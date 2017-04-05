@@ -64,6 +64,7 @@ clean:
 	rm -f $(EXECUTABLE) $(TESTING)
 	rm -f *~ *.cm[ioxt] *.cmti *.o
 	rm -f */*~ */*.cm[ioxt] */*.cmti */*.o
+	rm -f */*/*~ */*/*.cm[ioxt] */*/*.cmti */*/*.o
 	rm -f $(GENERATED_SOURCES)
 	rm -f .depend .display .display_obj
 
