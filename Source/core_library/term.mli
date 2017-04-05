@@ -609,6 +609,9 @@ module Subst : sig
   (** [is_unifiable at l] returns [true] iff the pairs of term in [l] are unifiable, {% $\mguset{l} \neq \bot$. %} *)
   val is_unifiable : ('a, 'b) atom -> (('a, 'b) term * ('a, 'b) term) list -> bool
 
+  (** [is_matchable at [{% $u_1$ %};...;{% $u_n$ %}] [{% $v_1$ %};...;{% $v_n$ %}]] returns [true] iff there exists {% a substitution $\sigma$ such that
+      $\forall i \in \mathbb{N}^n_1, $u_i\sigma = v_i$. Note that we allow $\sigma$ be cyclic and to not respect types (for second-order variables). %}
+      @raise Internal_error if the two lists do not have the same length. *)
   val is_matchable : ('a, 'b) atom -> ('a, 'b) term list -> ('a, 'b) term list -> bool
 
   (** [is_extended_by at] {% $\sigma_1$~$\sigma_2$ %} returns [true] iff {% $\exists \sigma. \sigma_2 = \sigma_1\sigma$. %}*)

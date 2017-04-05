@@ -249,3 +249,7 @@ let rec parse_rewriting_system = function
 let rec parse_syntactic_equation_list at = function
   | [] -> []
   | (t1,t2)::q -> (parse_term at t1,parse_term at t2)::(parse_syntactic_equation_list at q)
+
+(******** Term list ********)
+
+let parse_term_list at = List.map (parse_term at)

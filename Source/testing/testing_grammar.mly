@@ -41,9 +41,10 @@ open Testing_parser_functions
 %left SEMI COMMA WEDGE VEE
 
 /* the entry points */
-%start verify_Term_Subst_unify
+%start verify_Term_Subst_unify verify_Term_Subst_is_matchable
 
 %type <string> verify_Term_Subst_unify
+%type <string> verify_Term_Subst_is_matchable
 
 %%
 /***********************************
@@ -76,6 +77,39 @@ verify_Term_Subst_unify:
         else
           let eq_list = parse_syntactic_equation_list Term.Recipe $24 in
           Testing_functions.apply_Term_Subst_unify Term.Recipe eq_list
+      }
+  | error
+      { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
+
+verify_Term_Subst_is_matchable:
+  | SIGNATURE DDOT signature
+    REWRITING_SYSTEM DDOT rewriting_system
+    FST_VARS DDOT fst_var_list
+    SND_VARS DDOT snd_var_list
+    NAMES DDOT name_list
+    AXIOMS DDOT axiom_list
+    INPUT DDOT atom
+    INPUT DDOT term_list
+    INPUT DDOT term_list
+    RESULT DDOT boolean
+      {
+        initialise_parsing ();
+        parse_signature $3;
+        parse_fst_vars $9;
+        parse_snd_vars $12;
+        parse_names $15;
+        parse_axioms $18;
+        parse_rewriting_system $6;
+
+        if $21 = true
+        then
+          let list1 = parse_term_list Term.Protocol $24 in
+          let list2 = parse_term_list Term.Protocol $27 in
+          Testing_functions.apply_Term_Subst_is_matchable Term.Protocol list1 list2
+        else
+          let list1 = parse_term_list Term.Recipe $24 in
+          let list2 = parse_term_list Term.Recipe $27 in
+          Testing_functions.apply_Term_Subst_is_matchable Term.Recipe list1 list2
       }
   | error
       { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
@@ -248,6 +282,30 @@ sub_substitution:
   | ident RIGHTARROW term COMMA sub_substitution
       { ($1,$3)::$5}
 
+/***********************************
+***           Term list          ***
+************************************/
+
+term_list:
+  | LBRACE RBRACE
+      { [] }
+  | LBRACE sub_term_list RBRACE
+      { $2 }
+
+sub_term_list :
+  | term
+      { [$1] }
+  | term SEMI sub_term_list
+      { $1 :: $3 }
+
+/***********************************
+***           Boolean            ***
+************************************/
+
+boolean:
+  | TOP { true }
+  | BOT { false }
+  
 /*************************
 ***       Terms        ***
 **************************/

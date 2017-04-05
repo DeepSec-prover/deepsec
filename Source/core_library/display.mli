@@ -70,10 +70,10 @@ val lcurlybracket : output -> string
 val rcurlybracket : output -> string
 
 (** Display of the symbol {% $[$ %} *)
-val llinebracket : output -> string
+val lbrace : output -> string
 
 (** Display of the symbol {% $]$ %} *)
-val rlinebracket : output -> string
+val rbrace : output -> string
 
 (** Display of the symbol {% $\emptyset$ %} *)
 val emptyset : output -> string

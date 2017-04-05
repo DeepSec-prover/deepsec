@@ -56,3 +56,9 @@ val validate_all_tests : data_IO -> unit
 val data_IO_Term_Subst_unify : data_IO
 
 val apply_Term_Subst_unify : ('a, 'b) atom -> (('a, 'b) term * ('a, 'b) term) list -> string
+
+(** {3 Term.Subst.is_matchable} *)
+
+val data_IO_Term_Subst_is_matchable : data_IO
+
+val apply_Term_Subst_is_matchable : ('a, 'b) atom -> ('a, 'b) term list -> ('a, 'b) term list -> string

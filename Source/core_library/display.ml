@@ -127,13 +127,13 @@ let rcurlybracket = function
   | HTML -> "&#125;"
   | Latex -> "\\}"
 
-let llinebracket = function
+let lbrace = function
   | Terminal | Testing -> "["
   | Pretty_Terminal -> "["
   | HTML -> "["
   | Latex -> "["
 
-let rlinebracket = function
+let rbrace = function
   | Terminal | Testing -> "]"
   | Pretty_Terminal -> "]"
   | HTML -> "]"

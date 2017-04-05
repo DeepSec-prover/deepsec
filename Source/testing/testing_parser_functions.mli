@@ -32,3 +32,5 @@ val parse_signature : (ident * int) list * int list -> unit
 val parse_rewriting_system : (ident * (term list * term) list) list -> unit
 
 val parse_syntactic_equation_list : ('a, 'b) Term.atom -> (term * term) list -> (('a, 'b) Term.term * ('a, 'b) Term.term) list
+
+val parse_term_list : ('a, 'b) Term.atom -> term list -> ('a, 'b) Term.term list

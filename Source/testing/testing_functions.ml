@@ -348,6 +348,17 @@ let gather_in_pair_list (type a) (type b) (at:(a,b) atom) (eq_list:((a,b) term *
       and axioms = List.fold_left (fun acc (t1,t2) -> get_axioms_with_list t2 (fun _ -> true) (get_axioms_with_list t1 (fun _ -> true) acc)) gather.g_axioms eq_list in
       { gather with g_names = names; g_snd_vars = snd_vars ; g_axioms = axioms }
 
+let gather_in_list (type a) (type b) (at:(a,b) atom) (tlist:(a,b) term list) (gather:gathering) = match at with
+  | Protocol ->
+      let names = List.fold_left (fun acc t -> get_names_with_list at t (fun _ -> true) acc) gather.g_names tlist
+      and fst_vars = List.fold_left (fun acc t -> get_vars_with_list at t (fun _ -> true) acc) gather.g_fst_vars tlist in
+      { gather with g_names = names; g_fst_vars = fst_vars }
+  | Recipe ->
+      let names = List.fold_left (fun acc t -> get_names_with_list at t (fun _ -> true) acc) gather.g_names tlist
+      and snd_vars = List.fold_left (fun acc t -> get_vars_with_list at t (fun _ -> true) acc) gather.g_snd_vars tlist
+      and axioms = List.fold_left (fun acc t -> get_axioms_with_list t (fun _ -> true) acc) gather.g_axioms tlist in
+      { gather with g_names = names; g_snd_vars = snd_vars ; g_axioms = axioms }
+
 let gather_in_subst_option (type a) (type b) (at:(a,b) atom) (subst_op:(a,b) Subst.t option) (gather:gathering) = match subst_op with
   | None -> gather
   | Some subst ->
@@ -402,6 +413,13 @@ let display_syntactic_equation_list out at rho eq_list =
 let display_substitution_option out at rho subst_op = match subst_op with
   | None -> bot out
   | Some subst -> Subst.display out ~rho:rho at subst
+
+let display_term_list out at rho t_list =
+  Printf.sprintf "%s%s%s" (lbrace out) (display_list (display out ~rho:rho at) "; " t_list) (rbrace out)
+
+let display_boolean out = function
+  | true -> top out
+  | _ -> bot out
 
 (*************************************
       Functions to be tested
@@ -483,17 +501,93 @@ let apply_Term_Subst_unify (type a) (type b) (at:(a,b) atom) (eq_list:((a,b) ter
   let test_terminal,_ = test_Term_Subst_unify at eq_list result in
   produce_test_terminal test_terminal
 
+(***** Term.Subst.is_matchable *****)
+
+let data_IO_Term_Subst_is_matchable =
+  {
+    validated_tests = [];
+    tests_to_check = [];
+    additional_tests = [];
+
+    is_being_tested = true;
+
+    template_html = "template_term_subst_is_matchable.html";
+    html_file = "term_subst_is_matchable.html";
+    terminal_file = "term_subst_is_matchable.txt";
+
+    folder_validated = "Testing_data/Validated_tests/";
+    folder_to_check = "Testing_data/Tests_to_check/"
+  }
+
+let test_Term_Subst_is_matchable (type a) (type b) (at:(a,b) atom) (list1:(a,b) term list) (list2:(a,b) term list) (result:bool) =
+  (**** Retreive the names, variables and axioms *****)
+  let gathering = gather_in_list at list2 (gather_in_list at list1 (gather_in_signature empty_gathering)) in
+
+  (**** Generate the display renaming ****)
+  let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in
+
+  (**** Generate test_display for terminal *****)
+
+  let test_terminal =
+    {
+      signature = Symbol.display_signature Testing;
+      rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
+      fst_ord_vars = display_var_list Testing Protocol rho gathering.g_fst_vars;
+      snd_ord_vars = display_var_list Testing Recipe rho gathering.g_snd_vars;
+      names = display_name_list Testing rho gathering.g_names;
+      axioms = display_axiom_list Testing rho gathering.g_axioms;
+
+      inputs = [ (display_atom Testing at, Text); (display_term_list Testing at rho list1,Inline); (display_term_list Testing at rho list2,Inline) ];
+      output = (display_boolean Testing result,Inline)
+    } in
+
+  let test_latex =
+    {
+      signature = (let t = Symbol.display_signature Latex in if t = emptyset Latex then "" else t);
+      rewrite_rules = (let t = Rewrite_rules.display_all_rewrite_rules Latex rho in if t = emptyset Latex then "" else t);
+      fst_ord_vars = "";
+      snd_ord_vars = "";
+      names = "";
+      axioms = "";
+
+      inputs = [ (display_atom Latex at, Text); (display_term_list Latex at rho list1,Inline); (display_term_list Latex at rho list2,Inline) ];
+      output = (display_boolean Latex result,Inline)
+    } in
+
+  test_terminal, test_latex
+
+let update_Term_Subst_is_matchable () =
+  Subst.update_test_is_matchable Protocol (fun list1 list2 result ->
+    if data_IO_Term_Subst_is_matchable.is_being_tested
+    then add_test (test_Term_Subst_is_matchable Protocol list1 list2 result) data_IO_Term_Subst_is_matchable
+  );
+  Subst.update_test_is_matchable Recipe (fun list1 list2 result ->
+    if data_IO_Term_Subst_is_matchable.is_being_tested
+    then add_test (test_Term_Subst_is_matchable Recipe list1 list2 result) data_IO_Term_Subst_is_matchable
+  )
+
+let apply_Term_Subst_is_matchable (type a) (type b) (at:(a,b) atom) (list1:(a,b) term list) (list2:(a,b) term list) =
+  let result = Subst.is_matchable at list1 list2 in
+
+  let test_terminal,_ = test_Term_Subst_is_matchable at list1 list2 result in
+  produce_test_terminal test_terminal
+
 
 (*************************************
          General function
 *************************************)
 
 let load () =
-  load_tests data_IO_Term_Subst_unify
+  load_tests data_IO_Term_Subst_unify;
+  load_tests data_IO_Term_Subst_is_matchable
 
 let publish () =
   publish_tests_to_check data_IO_Term_Subst_unify;
-  publish_validated_tests data_IO_Term_Subst_unify
+  publish_validated_tests data_IO_Term_Subst_unify;
+
+  publish_tests_to_check data_IO_Term_Subst_is_matchable;
+  publish_validated_tests data_IO_Term_Subst_is_matchable
 
 let update () =
-  update_Term_Subst_unify ()
+  update_Term_Subst_unify ();
+  update_Term_Subst_is_matchable ()
