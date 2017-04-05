@@ -1,0 +1,222 @@
+body {
+  background-color: #e6e6e6;
+  font: 15px "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+/* Main structure */
+
+#main {
+  margin-left: auto ;
+  margin-right: auto ;
+  display: table;
+  min-width: 1200px;
+}
+
+/* The Menu */
+
+#menu {
+  background-color: #faf0ee;
+  display: table-cell;
+  width: 200px;
+  vertical-align: top;
+  position: relative;
+}
+
+#menu-text {
+  margin-top: 40px;
+  margin-bottom: 300px;
+}
+
+#menu-text a {
+  font-weight: bold;
+  text-decoration: none;
+}
+
+#menu-text a:visited {
+  color: black;
+}
+
+#menu-text a:link {
+  color: black;
+}
+
+#menu-text a:hover {
+  color: gray;
+}
+
+#menu-text ul{
+  list-style: none;
+  padding: 0px;
+  margin: 0 0 0 20px ;
+}
+
+#menu-text li {
+  margin:0 0 7px 0;
+}
+
+/* The logos of the menu */
+
+#menu-logo {
+  text-align: center;
+}
+
+#logo {
+  width: 75%;
+}
+
+#menu-other-logo {
+  position:absolute;
+  bottom:20px;
+  margin-top: 200px;
+  text-align: center;
+}
+
+#menu-logo-loria-cnrs {
+  display: table;
+}
+
+#menu-logo-loria {
+  display: table-cell;
+  vertical-align: middle;
+  width: 134px;
+}
+
+#menu-logo-cnrs {
+  display: table-cell;
+  vertical-align: middle;
+  width: 65px;
+}
+
+#menu-logo-inria {
+  margin-top: 10px;
+}
+
+/**** THE CONTENT *****/
+
+#content {
+  background-color: white;
+  display: table-cell;
+  vertical-align: top;
+}
+
+#content-header {
+  display: table;
+  margin-top: 20px;
+  margin-left: 20px;
+
+}
+
+#content-text {
+  margin-right: 20px;
+  margin-left: 20px;
+}
+
+#big-logo {
+  display: table-cell;
+  width: 260px;
+  vertical-align: top;
+  text-align: right;
+}
+
+#title {
+  display: table-cell;
+}
+
+#title-main {
+  margin-top: 60px;
+  font-weight: bold;
+  font-size: 30px;
+}
+
+#title-sub {
+  margin-top: 0px;
+  font-weight: bold;
+  font-size: 16px;
+  font-style: italic;
+}
+
+p {
+  text-align: justify;
+}
+
+li {
+  text-align: justify;
+}
+
+.title-news {
+  float: left;
+  font-weight: bold;
+}
+.date-news {
+  float: right;
+}
+
+.clear-news {
+    clear: both;
+}
+
+.title-paragraph {
+  font-weight: bold;
+}
+
+.big-separation {
+  width: 300px;
+  margin-top: 30px;
+}
+
+.small-separation {
+  width: 100px;
+  margin-top: 30px;
+}
+
+.highlight {
+    font-style: italic;
+}
+
+.title-test {
+  font-weight: bold;
+}
+
+.generate-commands {
+  text-align: center;
+  font-weight: bold;
+}
+
+.command {
+  text-align: center;
+}
+
+
+
+a:visited {
+  color: #f6513a;
+}
+
+a:link {
+  color: #f6513a;
+}
+
+a:hover {
+  color: #bb3c2a;
+}
+
+h1 {
+
+}
+
+h2 {
+  color: #4A4A4A;
+}
+
+h3 {
+
+}
+
+.hiddenInformation {
+    display: none;
+    border: 1px dashed gray;
+    padding: 15px;
+    margin-top: 0px;
+    text-indent: 2em;
+    text-align: justify;
+}
