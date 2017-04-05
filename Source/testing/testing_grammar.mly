@@ -42,9 +42,11 @@ open Testing_parser_functions
 
 /* the entry points */
 %start verify_Term_Subst_unify verify_Term_Subst_is_matchable
+%start verify_Term_Subst_is_extended_by
 
 %type <string> verify_Term_Subst_unify
 %type <string> verify_Term_Subst_is_matchable
+%type <string> verify_Term_Subst_is_extended_by
 
 %%
 /***********************************
@@ -110,6 +112,39 @@ verify_Term_Subst_is_matchable:
           let list1 = parse_term_list Term.Recipe $24 in
           let list2 = parse_term_list Term.Recipe $27 in
           Testing_functions.apply_Term_Subst_is_matchable Term.Recipe list1 list2
+      }
+  | error
+      { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
+
+verify_Term_Subst_is_extended_by:
+  | SIGNATURE DDOT signature
+    REWRITING_SYSTEM DDOT rewriting_system
+    FST_VARS DDOT fst_var_list
+    SND_VARS DDOT snd_var_list
+    NAMES DDOT name_list
+    AXIOMS DDOT axiom_list
+    INPUT DDOT atom
+    INPUT DDOT substitution
+    INPUT DDOT substitution
+    RESULT DDOT boolean
+      {
+        initialise_parsing ();
+        parse_signature $3;
+        parse_fst_vars $9;
+        parse_snd_vars $12;
+        parse_names $15;
+        parse_axioms $18;
+        parse_rewriting_system $6;
+
+        if $21 = true
+        then
+          let subst1 = parse_substitution Term.Protocol $24 in
+          let subst2 = parse_substitution Term.Protocol $27 in
+          Testing_functions.apply_Term_Subst_is_extended_by Term.Protocol subst1 subst2
+        else
+          let subst1 = parse_substitution Term.Recipe $24 in
+          let subst2 = parse_substitution Term.Recipe $27 in
+          Testing_functions.apply_Term_Subst_is_extended_by Term.Recipe subst1 subst2
       }
   | error
       { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
@@ -305,7 +340,7 @@ sub_term_list :
 boolean:
   | TOP { true }
   | BOT { false }
-  
+
 /*************************
 ***       Terms        ***
 **************************/

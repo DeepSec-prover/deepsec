@@ -200,6 +200,10 @@ let publish_validated_tests data =
   with
     | End_of_file -> close_out out_html
 
+let publish_tests data =
+  publish_tests_to_check data;
+  publish_validated_tests data
+
 (**** Loading tests ****)
 
 let load_tests data =
@@ -283,7 +287,6 @@ let load_tests data =
     | Sys_error _ -> ()
   end
 
-
 (***** Validation of tests *****)
 
 let validate data liste_number =
@@ -359,20 +362,21 @@ let gather_in_list (type a) (type b) (at:(a,b) atom) (tlist:(a,b) term list) (ga
       and axioms = List.fold_left (fun acc t -> get_axioms_with_list t (fun _ -> true) acc) gather.g_axioms tlist in
       { gather with g_names = names; g_snd_vars = snd_vars ; g_axioms = axioms }
 
+let gather_in_subst (type a) (type b) (at:(a,b) atom) (subst:(a,b) Subst.t) (gather:gathering) = match at with
+  | Protocol ->
+      let names = Subst.get_names_with_list at subst (fun _ -> true) gather.g_names
+      and fst_vars = Subst.get_vars_with_list at subst (fun _ -> true) gather.g_fst_vars in
+      { gather with g_names = names; g_fst_vars = fst_vars }
+  | Recipe ->
+      let names = Subst.get_names_with_list at subst (fun _ -> true) gather.g_names
+      and snd_vars = Subst.get_vars_with_list at subst (fun _ -> true) gather.g_snd_vars
+      and axioms = Subst.get_axioms_with_list subst (fun _ -> true) gather.g_axioms in
+      { gather with g_names = names; g_snd_vars = snd_vars ; g_axioms = axioms }
+
 let gather_in_subst_option (type a) (type b) (at:(a,b) atom) (subst_op:(a,b) Subst.t option) (gather:gathering) = match subst_op with
   | None -> gather
-  | Some subst ->
-      begin match at with
-        | Protocol ->
-            let names = Subst.get_names_with_list at subst (fun _ -> true) gather.g_names
-            and fst_vars = Subst.get_vars_with_list at subst (fun _ -> true) gather.g_fst_vars in
-            { gather with g_names = names; g_fst_vars = fst_vars }
-        | Recipe ->
-            let names = Subst.get_names_with_list at subst (fun _ -> true) gather.g_names
-            and snd_vars = Subst.get_vars_with_list at subst (fun _ -> true) gather.g_snd_vars
-            and axioms = Subst.get_axioms_with_list subst (fun _ -> true) gather.g_axioms in
-            { gather with g_names = names; g_snd_vars = snd_vars ; g_axioms = axioms }
-      end
+  | Some subst -> gather_in_subst at subst gather
+
 
 (*************************************
       Generic display functions
@@ -410,9 +414,11 @@ let display_syntactic_equation_list out at rho eq_list =
   then top out
   else display_list (fun (t1,t2) -> Printf.sprintf "%s %s %s" (display out ~rho:rho at t1) (eqs out) (display out ~rho:rho at t2)) (wedge out) eq_list
 
+let display_substitution out at rho subst = Subst.display out ~rho:rho at subst
+
 let display_substitution_option out at rho subst_op = match subst_op with
   | None -> bot out
-  | Some subst -> Subst.display out ~rho:rho at subst
+  | Some subst -> display_substitution out at rho subst
 
 let display_term_list out at rho t_list =
   Printf.sprintf "%s%s%s" (lbrace out) (display_list (display out ~rho:rho at) "; " t_list) (rbrace out)
@@ -572,6 +578,77 @@ let apply_Term_Subst_is_matchable (type a) (type b) (at:(a,b) atom) (list1:(a,b)
   let test_terminal,_ = test_Term_Subst_is_matchable at list1 list2 result in
   produce_test_terminal test_terminal
 
+(***** Term.Subst.is_extended_by *****)
+
+let data_IO_Term_Subst_is_extended_by =
+  {
+    validated_tests = [];
+    tests_to_check = [];
+    additional_tests = [];
+
+    is_being_tested = true;
+
+    template_html = "template_term_subst_is_extended_by.html";
+    html_file = "term_subst_is_extended_by.html";
+    terminal_file = "term_subst_is_extended_by.txt";
+
+    folder_validated = "Testing_data/Validated_tests/";
+    folder_to_check = "Testing_data/Tests_to_check/"
+  }
+
+let test_Term_Subst_is_extended_by (type a) (type b) (at:(a,b) atom) (subst1:(a,b) Subst.t) (subst2:(a,b) Subst.t) (result:bool) =
+  (**** Retreive the names, variables and axioms *****)
+  let gathering = gather_in_subst at subst2 (gather_in_subst at subst1 (gather_in_signature empty_gathering)) in
+
+  (**** Generate the display renaming ****)
+  let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in
+
+  (**** Generate test_display for terminal *****)
+
+  let test_terminal =
+    {
+      signature = Symbol.display_signature Testing;
+      rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
+      fst_ord_vars = display_var_list Testing Protocol rho gathering.g_fst_vars;
+      snd_ord_vars = display_var_list Testing Recipe rho gathering.g_snd_vars;
+      names = display_name_list Testing rho gathering.g_names;
+      axioms = display_axiom_list Testing rho gathering.g_axioms;
+
+      inputs = [ (display_atom Testing at, Text); (display_substitution Testing at rho subst1,Inline); (display_substitution Testing at rho subst2,Inline) ];
+      output = (display_boolean Testing result,Inline)
+    } in
+
+  let test_latex =
+    {
+      signature = (let t = Symbol.display_signature Latex in if t = emptyset Latex then "" else t);
+      rewrite_rules = (let t = Rewrite_rules.display_all_rewrite_rules Latex rho in if t = emptyset Latex then "" else t);
+      fst_ord_vars = "";
+      snd_ord_vars = (let t = display_var_list Latex Recipe rho gathering.g_snd_vars in if t = emptyset Latex then "" else t);
+      names = "";
+      axioms = "";
+
+      inputs = [ (display_atom Latex at, Text); (display_substitution Latex at rho subst1,Inline); (display_substitution Latex at rho subst2,Inline) ];
+      output = (display_boolean Latex result,Inline)
+    } in
+
+  test_terminal, test_latex
+
+let update_Term_Subst_is_extended_by () =
+  Subst.update_test_is_extended_by Protocol (fun subst1 subst2 result ->
+    if data_IO_Term_Subst_is_extended_by.is_being_tested
+    then add_test (test_Term_Subst_is_extended_by Protocol subst1 subst2 result) data_IO_Term_Subst_is_extended_by
+  );
+  Subst.update_test_is_extended_by Recipe (fun subst1 subst2 result ->
+    if data_IO_Term_Subst_is_extended_by.is_being_tested
+    then add_test (test_Term_Subst_is_extended_by Recipe subst1 subst2 result) data_IO_Term_Subst_is_extended_by
+  )
+
+let apply_Term_Subst_is_extended_by (type a) (type b) (at:(a,b) atom) (subst1:(a,b) Subst.t) (subst2:(a,b) Subst.t) =
+  let result = Subst.is_extended_by at subst1 subst2 in
+
+  let test_terminal,_ = test_Term_Subst_is_extended_by at subst1 subst2 result in
+  produce_test_terminal test_terminal
+
 
 (*************************************
          General function
@@ -579,15 +656,15 @@ let apply_Term_Subst_is_matchable (type a) (type b) (at:(a,b) atom) (list1:(a,b)
 
 let load () =
   load_tests data_IO_Term_Subst_unify;
-  load_tests data_IO_Term_Subst_is_matchable
+  load_tests data_IO_Term_Subst_is_matchable;
+  load_tests data_IO_Term_Subst_is_extended_by
 
 let publish () =
-  publish_tests_to_check data_IO_Term_Subst_unify;
-  publish_validated_tests data_IO_Term_Subst_unify;
-
-  publish_tests_to_check data_IO_Term_Subst_is_matchable;
-  publish_validated_tests data_IO_Term_Subst_is_matchable
+  publish_tests data_IO_Term_Subst_unify;
+  publish_tests data_IO_Term_Subst_is_matchable;
+  publish_tests data_IO_Term_Subst_is_extended_by
 
 let update () =
   update_Term_Subst_unify ();
-  update_Term_Subst_is_matchable ()
+  update_Term_Subst_is_matchable ();
+  update_Term_Subst_is_extended_by ()

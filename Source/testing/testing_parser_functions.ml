@@ -253,3 +253,28 @@ let rec parse_syntactic_equation_list at = function
 (******** Term list ********)
 
 let parse_term_list at = List.map (parse_term at)
+
+(******** Substitution ********)
+
+let parse_substitution : 'a 'b. ('a,'b) Term.atom -> (ident * term) list -> ('a,'b) Term.Subst.t = fun (type a) (type b) (at:(a,b) Term.atom) subst ->
+  List.fold_left (fun (acc_subst:(a,b) Term.Subst.t) ((s,line),term) ->
+    try
+      match Hashtbl.find environment s with
+        | VarFst v ->
+            begin match at with
+              | Term.Protocol ->
+                  let new_subst = Term.Subst.create at v (parse_term at term) in
+                  ((Term.Subst.compose acc_subst new_subst):(a,b) Term.Subst.t)
+              | Term.Recipe -> error_message line (Printf.sprintf "The identifier %s is a first-order variable but a recipe substitution is supposed to be parsed." s)
+            end
+        | VarSnd v ->
+            begin match at with
+              | Term.Protocol -> error_message line (Printf.sprintf "The identifier %s is a second-order variable but a protocol term substitution is supposed to be parsed." s)
+              | Term.Recipe ->
+                  let new_subst = Term.Subst.create at v (parse_term at term) in
+                  ((Term.Subst.compose acc_subst new_subst):(a,b) Term.Subst.t)
+            end
+        | env_elt -> error_message line (Printf.sprintf "The identifiant %s is declared as %s but a variable is expected." s (display_env_elt_type env_elt))
+    with
+      | Not_found -> error_message line (Printf.sprintf "The identifiant %s is not declared" s)
+  ) Term.Subst.identity subst

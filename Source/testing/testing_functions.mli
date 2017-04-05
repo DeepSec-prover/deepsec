@@ -62,3 +62,9 @@ val apply_Term_Subst_unify : ('a, 'b) atom -> (('a, 'b) term * ('a, 'b) term) li
 val data_IO_Term_Subst_is_matchable : data_IO
 
 val apply_Term_Subst_is_matchable : ('a, 'b) atom -> ('a, 'b) term list -> ('a, 'b) term list -> string
+
+(** {3 Term.Subst.is_extended_by} *)
+
+val data_IO_Term_Subst_is_extended_by : data_IO
+
+val apply_Term_Subst_is_extended_by : ('a, 'b) atom -> ('a, 'b) Subst.t -> ('a, 'b) Subst.t -> string
