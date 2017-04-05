@@ -37,7 +37,9 @@ rule token = parse
 | [' ' '\t'] { token lexbuf }
 | ['\n'	'\r']	{ newline lexbuf; token lexbuf }
 | '='	 { EQ }
+| "=_R" { EQI }
 | "<>"	 { NEQ }
+| "<>_R" { NEQI }
 | "/\\"  { WEDGE }
 | "\\/" { VEE }
 | "->" { RIGHTARROW }

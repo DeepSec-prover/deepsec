@@ -691,21 +691,41 @@ module Modulo : sig
       Since we will apply a different treatment for positive and negative literals, we consider two distint types. %} *)
   type disequation
 
+  (** {3 Generation} *)
+
   (** [create_equation] {% $u$~$v$ generates the equation $u \eqi v$.%}*)
   val create_equation : protocol_term -> protocol_term -> equation
 
   (** [create_disequation] {% $u$~$v$ generates the disequation $u \neqi v$.%}*)
   val create_disequation : protocol_term -> protocol_term -> disequation
 
+  (** {3 Access} *)
+
+  (** [get_vars_eq_with_list eq f_q l] adds the variables in [eq] whose quantifier satisfies [f_q] in the list [l]. The addition of a variable as the union of sets, i.e. there is no dupplicate in the resulting list. *)
+  val get_vars_eq_with_list : equation -> (quantifier -> bool) -> fst_ord_variable list -> fst_ord_variable list
+
+  (** [get_names_eq_with_list eq f_b l] adds the names in [eq] whose boundedness atisfies [f_b] in the list [l]. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
+  val get_names_eq_with_list : equation -> (boundedness -> bool) -> name list -> name list
+
+  (** [get_vars_diseq_with_list diseq f_q l] adds the variables in [diseq] whose quantifier satisfies [f_q] in the list [l]. The addition of a variable as the union of sets, i.e. there is no dupplicate in the resulting list. *)
+  val get_vars_diseq_with_list : disequation -> (quantifier -> bool) -> fst_ord_variable list -> fst_ord_variable list
+
+  (** [get_names_diseq_with_list diseq f_b l] adds the names in [diseq] whose boundedness atisfies [f_b] in the list [l]. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
+  val get_names_diseq_with_list : disequation -> (boundedness -> bool) -> name list -> name list
+
+  (** {3 Display} *)
+
   val display_equation : Display.output -> ?rho:display_renamings option -> equation -> string
 
   val display_disequation : Display.output -> ?rho:display_renamings option -> disequation -> string
+
+  (** {3 transformation} *)
 
   exception Top
 
   exception Bot
 
-  (** [syntactic_equations_of l_eq] returns {% a set of substitutions $\\{ \sigma_1,\ldots \sigma_n \\}$ such that %}
+  (** [syntactic_equations_of_equations l_eq] returns {% a set of substitutions $\\{ \sigma_1,\ldots \sigma_n \\}$ such that %}
       if [l_eq] is the list of equations corresponding to {% $\bigwedge_{i=1}^m u_i \eqi v_i$ and $V = \bigcup_{i=1}^m \varsun{u_i,v_i}$ then for all $\sigma$,
       \\[
         \sigma \models \bigwedge_{i=1}^m u_i \eqi v_i \mbox{ iff } \sigma \models \bigvee_{i=1}^n \exists E_i. \bigwedge_{ x \in \Dom{\sigma_i}} x \eqs x\sigma_i
@@ -731,6 +751,17 @@ module Modulo : sig
       @raise Bot if the disequation is unsatisfiable.
       *)
   val syntactic_disequations_of_disequations : disequation -> (fst_ord, name) Diseq.t list
+
+  (** {3 Tested functions} *)
+
+  type 'a result =
+    | Top_raised
+    | Bot_raised
+    | Ok of 'a
+
+  val update_test_syntactic_equations_of_equations : (equation list -> (fst_ord, name) Subst.t list result -> unit) -> unit
+
+  val update_test_syntactic_disequations_of_disequations : (disequation -> (fst_ord, name) Diseq.t list result -> unit) -> unit
 end
 
 (** {2 Basic deduction facts} *)

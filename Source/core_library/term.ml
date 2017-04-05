@@ -1810,9 +1810,37 @@ module Modulo = struct
 
   type disequation = protocol_term * protocol_term
 
+  (******* Tested function *********)
+
+  type 'a result =
+    | Top_raised
+    | Bot_raised
+    | Ok of 'a
+
+  let test_syntactic_equations_of_equations : (equation list -> (fst_ord, name) Subst.t list result -> unit) ref = ref (fun _ _ -> ())
+
+  let update_test_syntactic_equations_of_equations f = test_syntactic_equations_of_equations := f
+
+  let test_syntactic_disequations_of_disequations : (disequation -> (fst_ord, name) Diseq.t list result -> unit) ref = ref (fun _ _ -> ())
+
+  let update_test_syntactic_disequations_of_disequations f = test_syntactic_disequations_of_disequations := f
+
+  (****** Generation *******)
+
   let create_equation t1 t2 = t1,t2
 
   let create_disequation t1 t2 = t1,t2
+
+  (****** Access *******)
+
+  let get_vars_eq_with_list (t1,t2) f v_l = get_vars_with_list Protocol t1 f (get_vars_with_list Protocol t2 f v_l)
+
+  let get_names_eq_with_list (t1,t2) f n_l = get_names_with_list Protocol t1 f (get_names_with_list Protocol t2 f n_l)
+
+  let get_vars_diseq_with_list (t1,t2) f v_l = get_vars_with_list Protocol t1 f (get_vars_with_list Protocol t2 f v_l)
+
+  let get_names_diseq_with_list (t1,t2) f n_l = get_names_with_list Protocol t1 f (get_names_with_list Protocol t2 f n_l)
+  (****** Display *******)
 
   let display_equation out ?(rho=None) (t1,t2) =
     Printf.sprintf "%s %s %s" (display out ~rho:rho Protocol t1) (eqi out) (display out ~rho:rho Protocol t2)
@@ -1855,15 +1883,22 @@ module Modulo = struct
                     let saved_linked_variables_from_unify = !Subst.linked_variables_fst in
                     Subst.linked_variables_fst := !Subst.linked_variables_fst @ saved_linked_variables;
 
-                    next_f rhs';
+                    begin try
+                      next_f rhs';
 
-                    Subst.linked_variables_fst := saved_linked_variables_from_unify;
-                    Subst.cleanup Protocol;
-                    Subst.linked_variables_fst := saved_linked_variables
-
-                  with Subst.Not_unifiable ->
-                    Subst.cleanup Protocol;
-                    Subst.linked_variables_fst := saved_linked_variables
+                      Subst.linked_variables_fst := saved_linked_variables_from_unify;
+                      Subst.cleanup Protocol;
+                      Subst.linked_variables_fst := saved_linked_variables
+                    with ex ->
+                      Subst.linked_variables_fst := saved_linked_variables_from_unify;
+                      Subst.cleanup Protocol;
+                      Subst.linked_variables_fst := saved_linked_variables;
+                      raise ex
+                    end
+                  with
+                    | Subst.Not_unifiable ->
+                        Subst.cleanup Protocol;
+                        Subst.linked_variables_fst := saved_linked_variables
                   end
                 ) rw_rules
               )
@@ -1875,6 +1910,12 @@ module Modulo = struct
   exception Top
 
   let syntactic_equations_of_equations list_eq =
+    (* Retreive the variables *)
+    List.iter (fun (t1,t2) -> get_vars_term Protocol (fun _ -> true) t1; get_vars_term Protocol (fun _ -> true) t2) list_eq;
+    let variables_in_list_eq = retrieve_search Protocol in
+    cleanup_search Protocol;
+
+    (* Start the rewriting *)
     let substitutions_list = ref [] in
 
     let rec go_through_list list_eq' next_f = match list_eq' with
@@ -1891,14 +1932,26 @@ module Modulo = struct
                   let saved_linked_variables_from_unify = !Subst.linked_variables_fst in
                   Subst.linked_variables_fst := !Subst.linked_variables_fst @ saved_linked_variables;
 
-                  next_f ();
+                  begin try
+                    next_f ();
 
-                  Subst.linked_variables_fst := saved_linked_variables_from_unify;
-                  Subst.cleanup Protocol;
-                  Subst.linked_variables_fst := saved_linked_variables
-                with Subst.Not_unifiable ->
-                  Subst.cleanup Protocol;
-                  Subst.linked_variables_fst := saved_linked_variables
+                    Subst.linked_variables_fst := saved_linked_variables_from_unify;
+                    Subst.cleanup Protocol;
+                    Subst.linked_variables_fst := saved_linked_variables
+                  with ex ->
+                    Subst.linked_variables_fst := saved_linked_variables_from_unify;
+                    Subst.cleanup Protocol;
+                    Subst.linked_variables_fst := saved_linked_variables;
+                    raise ex
+                  end
+                with
+                  | Subst.Not_unifiable ->
+                      Subst.cleanup Protocol;
+                      Subst.linked_variables_fst := saved_linked_variables
+                  | ex ->
+                      Subst.cleanup Protocol;
+                      Subst.linked_variables_fst := saved_linked_variables;
+                      raise ex
                 end
               )
             )
@@ -1906,15 +1959,21 @@ module Modulo = struct
     in
 
     go_through_list list_eq (fun () ->
-      let subst = List.map (fun var -> (var,Subst.follow_link (Var var))) !Subst.linked_variables_fst in
+      let subst = List.fold_left (fun acc var ->
+          match var.link with
+            | NoLink -> acc
+            | TLink t -> (var,Subst.follow_link t)::acc
+            | _ -> Config.internal_error "[term.ml >> Modulo.syntactic_equations_of_equations] Unexpected link"
+        ) [] variables_in_list_eq in
 
-      substitutions_list := subst::!substitutions_list
+      if subst = []
+      then (Config.test (fun () -> !test_syntactic_equations_of_equations list_eq Top_raised); raise Top)
+      else substitutions_list := subst::!substitutions_list
     );
+
     if !substitutions_list = []
-    then raise Bot
-    else if List.hd !substitutions_list = []
-    then raise Top
-    else !substitutions_list
+    then (Config.test (fun () -> !test_syntactic_equations_of_equations list_eq Bot_raised); raise Bot)
+    else (Config.test (fun () -> !test_syntactic_equations_of_equations list_eq (Ok !substitutions_list)); !substitutions_list)
 
   let syntactic_disequations_of_disequations (t1,t2) =
     let disequations_list = ref [] in
@@ -1930,15 +1989,25 @@ module Modulo = struct
           let saved_linked_variables_from_unify = !Subst.linked_variables_fst in
           Subst.linked_variables_fst := !Subst.linked_variables_fst @ saved_linked_variables;
 
-          if !Subst.linked_variables_fst = []
-          then disequations_list := Diseq.Bot::!disequations_list
-          else
-            let disequations = Diseq.elim_universal_variables !Subst.linked_variables_fst in
-            disequations_list := (Diseq.Diseq disequations)::!disequations_list;
+          let disequations = Diseq.elim_universal_variables !Subst.linked_variables_fst in
 
-          Subst.linked_variables_fst := saved_linked_variables_from_unify;
-          Subst.cleanup Protocol;
-          Subst.linked_variables_fst := saved_linked_variables
+          if disequations = []
+          then
+            begin
+              Subst.linked_variables_fst := saved_linked_variables_from_unify;
+              Subst.cleanup Protocol;
+              Subst.linked_variables_fst := saved_linked_variables;
+              Config.test (fun () -> !test_syntactic_disequations_of_disequations (t1,t2) Bot_raised);
+              raise Bot
+            end
+          else
+            begin
+              disequations_list := (Diseq.Diseq disequations)::!disequations_list;
+
+              Subst.linked_variables_fst := saved_linked_variables_from_unify;
+              Subst.cleanup Protocol;
+              Subst.linked_variables_fst := saved_linked_variables
+            end
         with Subst.Not_unifiable ->
           Subst.cleanup Protocol;
           Subst.linked_variables_fst := saved_linked_variables
@@ -1947,10 +2016,8 @@ module Modulo = struct
     );
 
     if !disequations_list = []
-    then raise Top
-    else if List.hd !disequations_list = Diseq.Bot
-    then raise Bot
-    else !disequations_list
+    then (Config.test (fun () -> !test_syntactic_disequations_of_disequations (t1,t2) Top_raised); raise Top)
+    else (Config.test (fun () -> !test_syntactic_disequations_of_disequations (t1,t2) (Ok !disequations_list)); !disequations_list)
 end
 
 (***************************************************

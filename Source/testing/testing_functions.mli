@@ -74,3 +74,9 @@ val apply_Term_Subst_is_extended_by : ('a, 'b) atom -> ('a, 'b) Subst.t -> ('a, 
 val data_IO_Term_Subst_is_equal_equations : data_IO
 
 val apply_Term_Subst_is_equal_equations : ('a, 'b) atom -> ('a, 'b) Subst.t -> ('a, 'b) Subst.t -> string
+
+(** {3 Term.Modulo.syntactic_equations_of_equations} *)
+
+val data_IO_Term_Modulo_syntactic_equations_of_equations : data_IO
+
+val apply_Term_Modulo_syntactic_equations_of_equations : Modulo.equation list -> string

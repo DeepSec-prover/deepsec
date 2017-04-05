@@ -377,6 +377,15 @@ let gather_in_subst_option (type a) (type b) (at:(a,b) atom) (subst_op:(a,b) Sub
   | None -> gather
   | Some subst -> gather_in_subst at subst gather
 
+let gather_in_equation eq gather =
+  let names = Modulo.get_names_eq_with_list eq (fun _ -> true) gather.g_names
+  and fst_vars = Modulo.get_vars_eq_with_list eq (fun _ -> true) gather.g_fst_vars in
+  { gather with g_names = names; g_fst_vars = fst_vars }
+
+let gather_in_disequation diseq gather =
+  let names = Modulo.get_names_diseq_with_list diseq (fun _ -> true) gather.g_names
+  and fst_vars = Modulo.get_vars_diseq_with_list diseq (fun _ -> true) gather.g_fst_vars in
+  { gather with g_names = names; g_fst_vars = fst_vars }
 
 (*************************************
       Generic display functions
@@ -426,6 +435,16 @@ let display_term_list out at rho t_list =
 let display_boolean out = function
   | true -> top out
   | _ -> bot out
+
+let display_equation_list out rho eq_list =
+  if eq_list = []
+  then top out
+  else display_list (fun eq -> Modulo.display_equation out ~rho:rho eq) (wedge out) eq_list
+
+let display_substitution_list_result out rho = function
+  | Modulo.Top_raised -> top out
+  | Modulo.Bot_raised -> bot out
+  | Modulo.Ok subst_list -> display_list (display_substitution out Protocol rho) (vee out) subst_list
 
 (*************************************
       Functions to be tested
@@ -720,6 +739,82 @@ let apply_Term_Subst_is_equal_equations (type a) (type b) (at:(a,b) atom) (subst
   let test_terminal,_ = test_Term_Subst_is_equal_equations at subst1 subst2 result in
   produce_test_terminal test_terminal
 
+(***** Term.Modulo.syntactic_equations_of_equationss *****)
+
+let data_IO_Term_Modulo_syntactic_equations_of_equations =
+  {
+    validated_tests = [];
+    tests_to_check = [];
+    additional_tests = [];
+
+    is_being_tested = true;
+
+    template_html = "template_term_modulo_syntactic_equations_of_equations.html";
+    html_file = "term_modulo_syntactic_equations_of_equations.html";
+    terminal_file = "term_modulo_syntactic_equations_of_equations.txt";
+
+    folder_validated = "Testing_data/Validated_tests/";
+    folder_to_check = "Testing_data/Tests_to_check/"
+  }
+
+let test_Term_Modulo_syntactic_equations_of_equations eq_list result =
+  (**** Retreive the names, variables and axioms *****)
+  let gathering_arg = List.fold_left (fun acc eq -> gather_in_equation eq acc) (gather_in_signature empty_gathering) eq_list in
+  let gathering = match result with
+    | Modulo.Top_raised | Modulo.Bot_raised -> gathering_arg
+    | Modulo.Ok subst_l -> List.fold_left (fun acc subst -> gather_in_subst Protocol subst acc) gathering_arg subst_l
+  in
+
+  (**** Generate the display renaming ****)
+  let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in
+
+  (**** Generate test_display for terminal *****)
+
+  let test_terminal =
+    {
+      signature = Symbol.display_signature Testing;
+      rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
+      fst_ord_vars = display_var_list Testing Protocol rho gathering.g_fst_vars;
+      snd_ord_vars = display_var_list Testing Recipe rho gathering.g_snd_vars;
+      names = display_name_list Testing rho gathering.g_names;
+      axioms = display_axiom_list Testing rho gathering.g_axioms;
+
+      inputs = [ (display_equation_list Testing rho eq_list,Inline)];
+      output = ( display_substitution_list_result Testing rho result,Inline)
+    } in
+
+  let test_latex =
+    {
+      signature = (let t = Symbol.display_signature Latex in if t = emptyset Latex then "" else t);
+      rewrite_rules = (let t = Rewrite_rules.display_all_rewrite_rules Latex rho in if t = emptyset Latex then "" else t);
+      fst_ord_vars = "";
+      snd_ord_vars = "";
+      names = "";
+      axioms = "";
+
+      inputs = [ (display_equation_list Latex rho eq_list,Inline) ];
+      output = ( display_substitution_list_result Latex rho result,Inline)
+    } in
+
+  test_terminal, test_latex
+
+let update_Term_Modulo_syntactic_equations_of_equations () =
+  Modulo.update_test_syntactic_equations_of_equations (fun eq_list result ->
+    if data_IO_Term_Modulo_syntactic_equations_of_equations.is_being_tested
+    then add_test (test_Term_Modulo_syntactic_equations_of_equations eq_list result) data_IO_Term_Modulo_syntactic_equations_of_equations
+  )
+
+let apply_Term_Modulo_syntactic_equations_of_equations eq_list  =
+  let result =
+    try
+      Modulo.Ok (Modulo.syntactic_equations_of_equations eq_list)
+    with
+    | Modulo.Top -> Modulo.Top_raised
+    | Modulo.Bot -> Modulo.Bot_raised in
+
+  let test_terminal,_ = test_Term_Modulo_syntactic_equations_of_equations eq_list result in
+  produce_test_terminal test_terminal
+
 
 (*************************************
          General function
@@ -729,16 +824,19 @@ let load () =
   load_tests data_IO_Term_Subst_unify;
   load_tests data_IO_Term_Subst_is_matchable;
   load_tests data_IO_Term_Subst_is_extended_by;
-  load_tests data_IO_Term_Subst_is_equal_equations
+  load_tests data_IO_Term_Subst_is_equal_equations;
+  load_tests data_IO_Term_Modulo_syntactic_equations_of_equations
 
 let publish () =
   publish_tests data_IO_Term_Subst_unify;
   publish_tests data_IO_Term_Subst_is_matchable;
   publish_tests data_IO_Term_Subst_is_extended_by;
-  publish_tests data_IO_Term_Subst_is_equal_equations
+  publish_tests data_IO_Term_Subst_is_equal_equations;
+  publish_tests data_IO_Term_Modulo_syntactic_equations_of_equations
 
 let update () =
   update_Term_Subst_unify ();
   update_Term_Subst_is_matchable ();
   update_Term_Subst_is_extended_by ();
-  update_Term_Subst_is_equal_equations ()
+  update_Term_Subst_is_equal_equations ();
+  update_Term_Modulo_syntactic_equations_of_equations ()

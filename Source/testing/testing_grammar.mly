@@ -26,7 +26,7 @@ open Testing_parser_functions
 %token RECIPE
 
 /* Special token  */
-%token EQ NEQ
+%token EQ NEQ EQI NEQI
 %token WEDGE VEE
 %token BOT TOP
 %token RIGHTARROW
@@ -43,11 +43,13 @@ open Testing_parser_functions
 /* the entry points */
 %start verify_Term_Subst_unify verify_Term_Subst_is_matchable
 %start verify_Term_Subst_is_extended_by verify_Term_Subst_is_equal_equations
+%start verify_Term_Modulo_syntactic_equations_of_equations
 
 %type <string> verify_Term_Subst_unify
 %type <string> verify_Term_Subst_is_matchable
 %type <string> verify_Term_Subst_is_extended_by
 %type <string> verify_Term_Subst_is_equal_equations
+%type <string> verify_Term_Modulo_syntactic_equations_of_equations
 
 %%
 /***********************************
@@ -179,6 +181,30 @@ verify_Term_Subst_is_equal_equations:
           let subst1 = parse_substitution Term.Recipe $24 in
           let subst2 = parse_substitution Term.Recipe $27 in
           Testing_functions.apply_Term_Subst_is_equal_equations Term.Recipe subst1 subst2
+      }
+  | error
+      { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
+
+verify_Term_Modulo_syntactic_equations_of_equations:
+  | SIGNATURE DDOT signature
+    REWRITING_SYSTEM DDOT rewriting_system
+    FST_VARS DDOT fst_var_list
+    SND_VARS DDOT snd_var_list
+    NAMES DDOT name_list
+    AXIOMS DDOT axiom_list
+    INPUT DDOT equation_list
+    RESULT DDOT substitution_list_result
+      {
+        initialise_parsing ();
+        parse_signature $3;
+        parse_fst_vars $9;
+        parse_snd_vars $12;
+        parse_names $15;
+        parse_axioms $18;
+        parse_rewriting_system $6;
+
+        let eq_list = parse_equation_list  $21 in
+        Testing_functions.apply_Term_Modulo_syntactic_equations_of_equations eq_list
       }
   | error
       { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
@@ -329,6 +355,26 @@ sub_syntactic_equation_list :
   | term EQ term WEDGE sub_syntactic_equation_list
       { ($1,$3)::$5 }
 
+/*****************************************
+***           Equations list           ***
+******************************************/
+
+equation :
+  | term EQI term
+      { $1,$3 }
+
+equation_list :
+  | TOP
+      { [] }
+  | sub_equation_list
+      { $1 }
+
+sub_equation_list :
+  | equation
+      { [$1] }
+  | equation WEDGE sub_equation_list
+      { $1::$3 }
+
 /***********************************
 ***         Substitution         ***
 ************************************/
@@ -350,6 +396,20 @@ sub_substitution:
       { [$1,$3] }
   | ident RIGHTARROW term COMMA sub_substitution
       { ($1,$3)::$5}
+
+substitution_list_result:
+  | TOP
+      { Term.Modulo.Top_raised }
+  | BOT
+      { Term.Modulo.Bot_raised }
+  | substitution_list
+      { Term.Modulo.Ok $1 }
+
+substitution_list:
+  | substitution
+      { [$1] }
+  | substitution VEE substitution_list
+      { $1::$3 }
 
 /***********************************
 ***           Term list          ***

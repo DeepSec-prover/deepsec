@@ -250,6 +250,12 @@ let rec parse_syntactic_equation_list at = function
   | [] -> []
   | (t1,t2)::q -> (parse_term at t1,parse_term at t2)::(parse_syntactic_equation_list at q)
 
+(******** Equation_list ********)
+
+let rec parse_equation_list = function
+  | [] -> []
+  | (t1,t2)::q -> (Term.Modulo.create_equation (parse_term Term.Protocol t1) (parse_term Term.Protocol t2))::(parse_equation_list q)
+
 (******** Term list ********)
 
 let parse_term_list at = List.map (parse_term at)
