@@ -595,7 +595,7 @@ module Subst : sig
 
   exception Not_unifiable
 
-  (** [unify l] unifies the pairs of term in [l] and returns the most general substitution that unifies them, i.e., {% $\mguset{l}$. %}
+  (** [unify at l] unifies the pairs of term in [l] and returns the most general substitution that unifies them, i.e., {% $\mguset{l}$. %}
       When the subtitution {% $\sigma$ %} obtained is of the form {% $\sigma = \\{ x \rightarrow y \\}\sigma'$ for some variables $x,y$ of same type
       (i.e., $x,y \in \Xun$ when the substitution is on protocol term, and $x,y \in \Xdeuxi{i}$ for some $i$ when the substitution
       is on recipe) and some substitution $\sigma'$, then the following properties hold:
@@ -610,7 +610,7 @@ module Subst : sig
   val is_unifiable : ('a, 'b) atom -> (('a, 'b) term * ('a, 'b) term) list -> bool
 
   (** [is_matchable at [{% $u_1$ %};...;{% $u_n$ %}] [{% $v_1$ %};...;{% $v_n$ %}]] returns [true] iff there exists {% a substitution $\sigma$ such that
-      $\forall i \in \mathbb{N}^n_1, $u_i\sigma = v_i$. Note that we allow $\sigma$ be cyclic and to not respect types (for second-order variables). %}
+      $\forall i \in \mathbb{N}^n_1, $u_i\sigma = v_i$. Note that we allow $\sigma$ to be cyclic and to not respect types (for second-order variables). %}
       @raise Internal_error if the two lists do not have the same length. *)
   val is_matchable : ('a, 'b) atom -> ('a, 'b) term list -> ('a, 'b) term list -> bool
 

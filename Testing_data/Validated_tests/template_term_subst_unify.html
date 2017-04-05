@@ -38,7 +38,7 @@
 
         <div id="title">
           <div id="title-main">Testing</div>
-          <div id="title-sub">Tests to validate for the function Term.Subst.is_unifiable</div>
+          <div id="title-sub">Tests to validate for the function Term.Subst.unify</div>
         </div>
 
       </div>
@@ -46,7 +46,25 @@
       <div id="content-text">
 
         <p>
-          Small description of what the function is suppose to do.
+          <code>unify at l</code> unifies the pairs of term in <code>l</code> and returns the most general substitution that unifies them, i.e., \(mgu(l)\).
+          When the subtitution \( \sigma \) obtained is of the form \(\sigma = \{ x \rightarrow y \}\sigma'\) for some variables \(x,y\) of same type
+          (i.e., \(x,y \in \mathcal{X}^1 \) when the substitution is on protocol term, and \(x,y \in \mathcal{X}^2_{i}\) for some \(i\) when the substitution
+          is on recipe) and some substitution \(\sigma'\), then the following properties hold:
+          <ul>
+            <li> \(x\) is existential implies \(y\) is either existential or free</li>
+            <li> \(x\) is free implies \(y\) is free</li>
+          </ul>
+          If no most general unifier exists then \(\bot\) will be displayed as result.
+        </p>
+        <p>
+          Note that we adopt the following convention:
+          <ul>
+            <li>Free first-order (resp. second-order variables) will be denoted by \(w\) (resp. \(W\) )</li>
+            <li>Existential first-order (resp. second-order variables) will be denoted by \(x\) or \(y\) (resp. \(X\) or \(Y\) )</li>
+            <li>Universal first-order (resp. second-order variables) will be denoted by \(z\) (resp. \(Z\) )</li>
+            <li>Public names will be denoted by \(a\) or \(b\) or \(c\)</li>
+            <li>Bound names will be denoted by \(k\) or \(l\) or \(m\)</li>
+          </ul>
         </p>
 
         <!-- Beginning Tests -->
