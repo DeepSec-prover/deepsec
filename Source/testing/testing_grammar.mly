@@ -44,12 +44,14 @@ open Testing_parser_functions
 %start verify_Term_Subst_unify verify_Term_Subst_is_matchable
 %start verify_Term_Subst_is_extended_by verify_Term_Subst_is_equal_equations
 %start verify_Term_Modulo_syntactic_equations_of_equations
+%start verify_Term_Rewrite_rules_normalise
 
 %type <string> verify_Term_Subst_unify
 %type <string> verify_Term_Subst_is_matchable
 %type <string> verify_Term_Subst_is_extended_by
 %type <string> verify_Term_Subst_is_equal_equations
 %type <string> verify_Term_Modulo_syntactic_equations_of_equations
+%type <string> verify_Term_Rewrite_rules_normalise
 
 %%
 /***********************************
@@ -208,6 +210,31 @@ verify_Term_Modulo_syntactic_equations_of_equations:
       }
   | error
       { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
+
+verify_Term_Rewrite_rules_normalise:
+  | SIGNATURE DDOT signature
+    REWRITING_SYSTEM DDOT rewriting_system
+    FST_VARS DDOT fst_var_list
+    SND_VARS DDOT snd_var_list
+    NAMES DDOT name_list
+    AXIOMS DDOT axiom_list
+    INPUT DDOT term
+    RESULT DDOT term
+      {
+        initialise_parsing ();
+        parse_signature $3;
+        parse_fst_vars $9;
+        parse_snd_vars $12;
+        parse_names $15;
+        parse_axioms $18;
+        parse_rewriting_system $6;
+
+        let term = parse_term Term.Protocol $21 in
+        Testing_functions.apply_Term_Rewrite_rules_normalise term
+      }
+  | error
+      { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
+
 
 /***********************************
 ***     Signature definition     ***

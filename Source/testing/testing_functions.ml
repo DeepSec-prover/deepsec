@@ -382,9 +382,9 @@ let gather_in_equation eq gather =
   and fst_vars = Modulo.get_vars_eq_with_list eq (fun _ -> true) gather.g_fst_vars in
   { gather with g_names = names; g_fst_vars = fst_vars }
 
-let gather_in_disequation diseq gather =
-  let names = Modulo.get_names_diseq_with_list diseq (fun _ -> true) gather.g_names
-  and fst_vars = Modulo.get_vars_diseq_with_list diseq (fun _ -> true) gather.g_fst_vars in
+let gather_in_term term gather =
+  let names = get_names_with_list Protocol term (fun _ -> true) gather.g_names
+  and fst_vars = get_vars_with_list Protocol term (fun _ -> true) gather.g_fst_vars in
   { gather with g_names = names; g_fst_vars = fst_vars }
 
 (*************************************
@@ -739,7 +739,7 @@ let apply_Term_Subst_is_equal_equations (type a) (type b) (at:(a,b) atom) (subst
   let test_terminal,_ = test_Term_Subst_is_equal_equations at subst1 subst2 result in
   produce_test_terminal test_terminal
 
-(***** Term.Modulo.syntactic_equations_of_equationss *****)
+(***** Term.Modulo.syntactic_equations_of_equations *****)
 
 let data_IO_Term_Modulo_syntactic_equations_of_equations =
   {
@@ -815,6 +815,72 @@ let apply_Term_Modulo_syntactic_equations_of_equations eq_list  =
   let test_terminal,_ = test_Term_Modulo_syntactic_equations_of_equations eq_list result in
   produce_test_terminal test_terminal
 
+(***** Term.Rewrite_rules.normalise *****)
+
+let data_IO_Term_Rewrite_rules_normalise =
+  {
+    validated_tests = [];
+    tests_to_check = [];
+    additional_tests = [];
+
+    is_being_tested = true;
+
+    template_html = "template_term_rewrite_rules_normalise.html";
+    html_file = "term_rewrite_rules_normalise.html";
+    terminal_file = "term_rewrite_rules_normalise.txt";
+
+    folder_validated = "Testing_data/Validated_tests/";
+    folder_to_check = "Testing_data/Tests_to_check/"
+  }
+
+let test_Term_Rewrite_rules_normalise term result =
+  (**** Retreive the names, variables and axioms *****)
+  let gathering = gather_in_term result (gather_in_term term  (gather_in_signature empty_gathering)) in
+
+  (**** Generate the display renaming ****)
+  let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in
+
+  (**** Generate test_display for terminal *****)
+
+  let test_terminal =
+    {
+      signature = Symbol.display_signature Testing;
+      rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
+      fst_ord_vars = display_var_list Testing Protocol rho gathering.g_fst_vars;
+      snd_ord_vars = display_var_list Testing Recipe rho gathering.g_snd_vars;
+      names = display_name_list Testing rho gathering.g_names;
+      axioms = display_axiom_list Testing rho gathering.g_axioms;
+
+      inputs = [ (display Testing ~rho:rho Protocol term,Inline) ];
+      output = (display Testing ~rho:rho Protocol result,Inline)
+    } in
+
+  let test_latex =
+    {
+      signature = (let t = Symbol.display_signature Latex in if t = emptyset Latex then "" else t);
+      rewrite_rules = (let t = Rewrite_rules.display_all_rewrite_rules Latex rho in if t = emptyset Latex then "" else t);
+      fst_ord_vars = "";
+      snd_ord_vars = "";
+      names = "";
+      axioms = "";
+
+      inputs = [ (display Latex ~rho:rho Protocol term,Inline) ];
+      output = (display Latex ~rho:rho Protocol result,Inline)
+    } in
+
+  test_terminal, test_latex
+
+let update_Term_Rewrite_rules_normalise () =
+  Rewrite_rules.update_test_normalise (fun term result ->
+    if data_IO_Term_Rewrite_rules_normalise.is_being_tested
+    then add_test (test_Term_Rewrite_rules_normalise term result) data_IO_Term_Rewrite_rules_normalise
+  )
+
+let apply_Term_Rewrite_rules_normalise term  =
+  let result = Rewrite_rules.normalise term in
+
+  let test_terminal,_ = test_Term_Rewrite_rules_normalise term result in
+  produce_test_terminal test_terminal
 
 (*************************************
          General function
@@ -825,18 +891,21 @@ let load () =
   load_tests data_IO_Term_Subst_is_matchable;
   load_tests data_IO_Term_Subst_is_extended_by;
   load_tests data_IO_Term_Subst_is_equal_equations;
-  load_tests data_IO_Term_Modulo_syntactic_equations_of_equations
+  load_tests data_IO_Term_Modulo_syntactic_equations_of_equations;
+  load_tests data_IO_Term_Rewrite_rules_normalise
 
 let publish () =
   publish_tests data_IO_Term_Subst_unify;
   publish_tests data_IO_Term_Subst_is_matchable;
   publish_tests data_IO_Term_Subst_is_extended_by;
   publish_tests data_IO_Term_Subst_is_equal_equations;
-  publish_tests data_IO_Term_Modulo_syntactic_equations_of_equations
+  publish_tests data_IO_Term_Modulo_syntactic_equations_of_equations;
+  publish_tests data_IO_Term_Rewrite_rules_normalise
 
 let update () =
   update_Term_Subst_unify ();
   update_Term_Subst_is_matchable ();
   update_Term_Subst_is_extended_by ();
   update_Term_Subst_is_equal_equations ();
-  update_Term_Modulo_syntactic_equations_of_equations ()
+  update_Term_Modulo_syntactic_equations_of_equations ();
+  update_Term_Rewrite_rules_normalise ()

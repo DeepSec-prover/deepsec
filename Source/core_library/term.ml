@@ -1821,10 +1821,6 @@ module Modulo = struct
 
   let update_test_syntactic_equations_of_equations f = test_syntactic_equations_of_equations := f
 
-  let test_syntactic_disequations_of_disequations : (disequation -> (fst_ord, name) Diseq.t list result -> unit) ref = ref (fun _ _ -> ())
-
-  let update_test_syntactic_disequations_of_disequations f = test_syntactic_disequations_of_disequations := f
-
   (****** Generation *******)
 
   let create_equation t1 t2 = t1,t2
@@ -1997,7 +1993,6 @@ module Modulo = struct
               Subst.linked_variables_fst := saved_linked_variables_from_unify;
               Subst.cleanup Protocol;
               Subst.linked_variables_fst := saved_linked_variables;
-              Config.test (fun () -> !test_syntactic_disequations_of_disequations (t1,t2) Bot_raised);
               raise Bot
             end
           else
@@ -2016,8 +2011,8 @@ module Modulo = struct
     );
 
     if !disequations_list = []
-    then (Config.test (fun () -> !test_syntactic_disequations_of_disequations (t1,t2) Top_raised); raise Top)
-    else (Config.test (fun () -> !test_syntactic_disequations_of_disequations (t1,t2) (Ok !disequations_list)); !disequations_list)
+    then raise Top
+    else !disequations_list
 end
 
 (***************************************************
@@ -2338,11 +2333,30 @@ end
 
 module Rewrite_rules = struct
 
-  (****** Access ******)
+  type skeleton =
+    {
+      variable_at_position : snd_ord_variable;
+      recipe : recipe;
+      p_term : protocol_term;
+      basic_deduction_facts : BasicFact.t list;
+      rewrite_rule : symbol * protocol_term list * protocol_term
+    }
 
-  let get f = match f.cat with
-    | Destructor l -> l
-    | _ -> Config.internal_error "[term.ml >> Rewrite_rules.get] The function symbol should be a destructor."
+  (****** Tested functions ********)
+
+  let test_normalise : (protocol_term -> protocol_term -> unit) ref = ref (fun _ _ -> ())
+
+  let update_test_normalise f = test_normalise := f
+
+  let test_skeletons : (protocol_term -> symbol -> int -> skeleton list -> unit) ref = ref (fun _ _ _ _ -> ())
+
+  let update_test_skeletons f = test_skeletons := f
+
+  let test_generic_rewrite_rules_formula : (Fact.deduction -> skeleton -> Fact.deduction_formula list -> unit) ref = ref (fun _ _ _ -> ())
+
+  let update_test_generic_rewrite_rules_formula f = test_generic_rewrite_rules_formula := f
+
+  (****** Access ******)
 
   let get_vars_with_list l =
     List.fold_left (fun acc f ->
@@ -2357,19 +2371,19 @@ module Rewrite_rules = struct
 
   exception Found_normalise of protocol_term
 
-  let rec normalise t = match t with
+  let rec internal_normalise t = match t with
     | Func(f1,args) ->
         begin match f1.cat with
           | Constructor | Tuple ->
-              Func(f1, List.map normalise args)
+              Func(f1, List.map internal_normalise args)
           | Destructor (rw_rules) ->
-              let args' = List.map normalise args in
+              let args' = List.map internal_normalise args in
               begin try
                 List.iter (fun (lhs,rhs) ->
                   (***[BEGIN DEBUG]***)
                   Config.debug (fun () ->
                     if !Variable.Renaming.linked_variables_fst <> []
-                    then Config.internal_error "[term.ml >> Rewrite_rules.rewrite_term] The list of linked variables for renaming should be empty";
+                    then Config.internal_error "[term.ml >> Rewrite_rules.internal_normalise] The list of linked variables for renaming should be empty";
 
                   );
                   (***[END DEBUG]***)
@@ -2392,14 +2406,10 @@ module Rewrite_rules = struct
         end
     | _ -> t
 
-  type skeleton =
-    {
-      variable_at_position : snd_ord_variable;
-      recipe : recipe;
-      p_term : protocol_term;
-      basic_deduction_facts : BasicFact.t list;
-      rewrite_rule : symbol * protocol_term list * protocol_term
-    }
+  let normalise t =
+      let result = internal_normalise t in
+      Config.test (fun () -> !test_normalise t result);
+      result
 
   let rec search_variables = function
     | Var ({ link = NoLink; _ }) -> false
@@ -2516,28 +2526,6 @@ module Rewrite_rules = struct
           | Fact.Bot -> acc
         ) [] rw_rules
     | _ -> Config.internal_error "[term.ml >> Rewrite_rules.generic_rewrite_rules_formula] The function symbol should be a destructor."
-
-  let specific_rewrite_rules_formula fct skel  =
-    let (f,args,r) = skel.rewrite_rule
-    and x_snd = skel.variable_at_position
-    and recipe = skel.recipe
-    and term = skel.p_term
-    and b_fct_list = skel.basic_deduction_facts in
-
-    let args' = List.map (Variable.Renaming.rename_term Protocol Universal Variable.fst_ord_type) args in
-    let r' = Variable.Renaming.rename_term Protocol Universal Variable.fst_ord_type r in
-
-    Variable.Renaming.cleanup Protocol;
-
-    let b_fct, rest_b_fct = explore_list x_snd  b_fct_list in
-
-    Subst.link Recipe x_snd fct.Fact.df_recipe;
-    let new_recipe = Subst.apply_on_term recipe in
-    Subst.cleanup Recipe;
-
-    let head = Fact.create_deduction_fact new_recipe r' in
-
-    (Fact.create Fact.Deduction head rest_b_fct [Func(f,args'),term; b_fct.BasicFact.term, fct.Fact.df_term])
 
   let display_rewrite_rule out ?(rho=None) f (l,r) =
     Printf.sprintf "%s(%s) -> %s" f.name (display_list (display out ~rho:rho Protocol) "," l) (display out ~rho:rho Protocol r)
