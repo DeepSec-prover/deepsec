@@ -1,5 +1,5 @@
 EXECUTABLE = deepsec
-TESTING = testing
+TESTING = test_deepsec
 NAME_PROGRAMME = DeepSec
 VERSION = 1.0alpha
 SOURCE = Source/
