@@ -42,11 +42,12 @@ open Testing_parser_functions
 
 /* the entry points */
 %start verify_Term_Subst_unify verify_Term_Subst_is_matchable
-%start verify_Term_Subst_is_extended_by
+%start verify_Term_Subst_is_extended_by verify_Term_Subst_is_equal_equations
 
 %type <string> verify_Term_Subst_unify
 %type <string> verify_Term_Subst_is_matchable
 %type <string> verify_Term_Subst_is_extended_by
+%type <string> verify_Term_Subst_is_equal_equations
 
 %%
 /***********************************
@@ -145,6 +146,39 @@ verify_Term_Subst_is_extended_by:
           let subst1 = parse_substitution Term.Recipe $24 in
           let subst2 = parse_substitution Term.Recipe $27 in
           Testing_functions.apply_Term_Subst_is_extended_by Term.Recipe subst1 subst2
+      }
+  | error
+      { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
+
+verify_Term_Subst_is_equal_equations:
+  | SIGNATURE DDOT signature
+    REWRITING_SYSTEM DDOT rewriting_system
+    FST_VARS DDOT fst_var_list
+    SND_VARS DDOT snd_var_list
+    NAMES DDOT name_list
+    AXIOMS DDOT axiom_list
+    INPUT DDOT atom
+    INPUT DDOT substitution
+    INPUT DDOT substitution
+    RESULT DDOT boolean
+      {
+        initialise_parsing ();
+        parse_signature $3;
+        parse_fst_vars $9;
+        parse_snd_vars $12;
+        parse_names $15;
+        parse_axioms $18;
+        parse_rewriting_system $6;
+
+        if $21 = true
+        then
+          let subst1 = parse_substitution Term.Protocol $24 in
+          let subst2 = parse_substitution Term.Protocol $27 in
+          Testing_functions.apply_Term_Subst_is_equal_equations Term.Protocol subst1 subst2
+        else
+          let subst1 = parse_substitution Term.Recipe $24 in
+          let subst2 = parse_substitution Term.Recipe $27 in
+          Testing_functions.apply_Term_Subst_is_equal_equations Term.Recipe subst1 subst2
       }
   | error
       { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }

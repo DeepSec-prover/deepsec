@@ -68,3 +68,9 @@ val apply_Term_Subst_is_matchable : ('a, 'b) atom -> ('a, 'b) term list -> ('a, 
 val data_IO_Term_Subst_is_extended_by : data_IO
 
 val apply_Term_Subst_is_extended_by : ('a, 'b) atom -> ('a, 'b) Subst.t -> ('a, 'b) Subst.t -> string
+
+(** {3 Term.Subst.is_equal_equations} *)
+
+val data_IO_Term_Subst_is_equal_equations : data_IO
+
+val apply_Term_Subst_is_equal_equations : ('a, 'b) atom -> ('a, 'b) Subst.t -> ('a, 'b) Subst.t -> string

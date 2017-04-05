@@ -33,6 +33,13 @@ let data_verification_Term_Subst_is_extended_by =
     parsing_function = Testing_grammar.verify_Term_Subst_is_extended_by
   }
 
+let data_verification_Term_Subst_is_equal_equations =
+  {
+    data_IO = data_IO_Term_Subst_is_equal_equations;
+    name = "Term.Subst.is_equal_equations";
+    parsing_function = Testing_grammar.verify_Term_Subst_is_equal_equations
+  }
+
 (** {3 Generic verification of tests} *)
 
 (** [verify_function data] verifies all the tests for the function associated to [data]. *)
@@ -73,20 +80,23 @@ let verify_function data_verif =
 let verify_all () =
   verify_function data_verification_Term_Subst_unify;
   verify_function data_verification_Term_Subst_is_matchable;
-  verify_function data_verification_Term_Subst_is_extended_by
+  verify_function data_verification_Term_Subst_is_extended_by;
+  verify_function data_verification_Term_Subst_is_equal_equations
 
 (** [data_verification_of_name str] returns the data associated to a function such that [data.name = str]. If no data corresponds to [str] then the execution ends. *)
 let data_verification_of_name = function
   | s when s = data_verification_Term_Subst_unify.name -> data_verification_Term_Subst_unify
   | s when s = data_verification_Term_Subst_is_matchable.name -> data_verification_Term_Subst_is_matchable
   | s when s = data_verification_Term_Subst_is_extended_by.name -> data_verification_Term_Subst_is_extended_by
+  | s when s = data_verification_Term_Subst_is_equal_equations.name -> data_verification_Term_Subst_is_equal_equations
   | _ -> Printf.printf "Error : Incorrect name of function\n"; exit 0
 
 (** [validate_all ()] validates all the tests of all the functions. *)
 let validate_all () =
   validate_all_tests data_verification_Term_Subst_unify.data_IO;
   validate_all_tests data_verification_Term_Subst_is_matchable.data_IO;
-  validate_all_tests data_verification_Term_Subst_is_extended_by.data_IO
+  validate_all_tests data_verification_Term_Subst_is_extended_by.data_IO;
+  validate_all_tests data_verification_Term_Subst_is_equal_equations.data_IO
 
 (**/**)
 
