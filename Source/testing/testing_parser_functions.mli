@@ -40,3 +40,5 @@ val parse_term_list : ('a, 'b) Term.atom -> term list -> ('a, 'b) Term.term list
 val parse_substitution : ('a, 'b) Term.atom -> (ident * term) list -> ('a, 'b) Term.Subst.t
 
 val parse_term : ('a, 'b) Term.atom -> term -> ('a, 'b) Term.term
+
+val parse_symbol : ident -> Term.symbol

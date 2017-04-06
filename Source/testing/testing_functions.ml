@@ -329,6 +329,12 @@ type gathering =
     g_axioms : axiom list
   }
 
+let rec add_in_list elt f_eq = function
+  | [] -> [elt]
+  | (elt'::_) as l when f_eq elt elt' -> l
+  | elt'::q -> elt'::(add_in_list elt f_eq q)
+
+
 let empty_gathering =
   {
     g_names = [];
@@ -386,6 +392,26 @@ let gather_in_term term gather =
   let names = get_names_with_list Protocol term (fun _ -> true) gather.g_names
   and fst_vars = get_vars_with_list Protocol term (fun _ -> true) gather.g_fst_vars in
   { gather with g_names = names; g_fst_vars = fst_vars }
+
+let gather_in_recipe term gather =
+  let names = get_names_with_list Recipe term (fun _ -> true) gather.g_names
+  and snd_vars = get_vars_with_list Recipe term (fun _ -> true) gather.g_snd_vars
+  and axioms = get_axioms_with_list term (fun _ -> true) gather.g_axioms in
+  { gather with g_names = names; g_snd_vars = snd_vars; g_axioms = axioms }
+
+let gather_in_basic_fct bfct gather =
+  let names = get_names_with_list Protocol (BasicFact.get_protocol_term bfct) (fun _ -> true) gather.g_names
+  and fst_vars = get_vars_with_list Protocol (BasicFact.get_protocol_term bfct) (fun _ -> true) gather.g_fst_vars
+  and snd_vars = add_in_list (BasicFact.get_snd_ord_variable bfct) Variable.is_equal gather.g_snd_vars in
+  { gather with g_names = names; g_fst_vars = fst_vars; g_snd_vars = snd_vars }
+
+let gather_in_skeleton skel gather =
+  let new_gather = gather_in_recipe skel.Rewrite_rules.recipe gather in
+  let new_gather_2 = { new_gather with g_snd_vars = add_in_list skel.Rewrite_rules.variable_at_position Variable.is_equal new_gather.g_snd_vars } in
+  let new_gather_3 = gather_in_term skel.Rewrite_rules.p_term new_gather_2 in
+  let new_gather_4 = List.fold_left (fun acc_gather bfct -> gather_in_basic_fct bfct acc_gather) new_gather_3 skel.Rewrite_rules.basic_deduction_facts in
+  let (_,args,r) = skel.Rewrite_rules.rewrite_rule in
+  gather_in_list Protocol (r::args) new_gather_4
 
 (*************************************
       Generic display functions
@@ -445,6 +471,17 @@ let display_substitution_list_result out rho = function
   | Modulo.Top_raised -> top out
   | Modulo.Bot_raised -> bot out
   | Modulo.Ok subst_list -> display_list (display_substitution out Protocol rho) (vee out) subst_list
+
+let display_skeleton_list out rho skel_l = match out with
+  | Testing ->
+      if skel_l = []
+      then emptyset Testing
+      else Printf.sprintf "{ %s }" (display_list (Rewrite_rules.display_skeleton Testing ~rho:rho) ", " skel_l)
+  | Latex ->
+      if skel_l = []
+      then Printf.sprintf "\\(%s\\)" (emptyset Latex)
+      else Printf.sprintf "<ul> %s </ul>" (display_list (fun skel -> Printf.sprintf "<li> \\(%s\\) </li>" (Rewrite_rules.display_skeleton Latex ~rho:rho skel)) " " skel_l)
+  | _ -> Config.internal_error "[testing_function.ml >> display_skeleton_list] Unexpected display output."
 
 (*************************************
       Functions to be tested
@@ -882,6 +919,73 @@ let apply_Term_Rewrite_rules_normalise term  =
   let test_terminal,_ = test_Term_Rewrite_rules_normalise term result in
   produce_test_terminal test_terminal
 
+(***** Term.Rewrite_rules.skeletons *****)
+
+let data_IO_Term_Rewrite_rules_skeletons =
+  {
+    validated_tests = [];
+    tests_to_check = [];
+    additional_tests = [];
+
+    is_being_tested = true;
+
+    template_html = "template_term_rewrite_rules_skeletons.html";
+    html_file = "term_rewrite_rules_skeletons.html";
+    terminal_file = "term_rewrite_rules_skeletons.txt";
+
+    folder_validated = "Testing_data/Validated_tests/";
+    folder_to_check = "Testing_data/Tests_to_check/"
+  }
+
+let test_Term_Rewrite_rules_skeletons term f k result =
+  (**** Retreive the names, variables and axioms *****)
+  let gathering = List.fold_left (fun acc_gather skel -> gather_in_skeleton skel acc_gather) (gather_in_term term  (gather_in_signature empty_gathering)) result in
+
+  (**** Generate the display renaming ****)
+  let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in
+
+  (**** Generate test_display for terminal *****)
+
+  let test_terminal =
+    {
+      signature = Symbol.display_signature Testing;
+      rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
+      fst_ord_vars = display_var_list Testing Protocol rho gathering.g_fst_vars;
+      snd_ord_vars = display_var_list Testing Recipe rho gathering.g_snd_vars;
+      names = display_name_list Testing rho gathering.g_names;
+      axioms = display_axiom_list Testing rho gathering.g_axioms;
+
+      inputs = [ (display Testing ~rho:rho Protocol term,Inline) ; (Symbol.display Testing f, Inline); (string_of_int k,Text) ];
+      output = ( display_skeleton_list Testing rho result, Text )
+    } in
+
+  let test_latex =
+    {
+      signature = (let t = Symbol.display_signature Latex in if t = emptyset Latex then "" else t);
+      rewrite_rules = (let t = Rewrite_rules.display_all_rewrite_rules Latex rho in if t = emptyset Latex then "" else t);
+      fst_ord_vars = "";
+      snd_ord_vars = (let t = display_var_list Latex Recipe rho gathering.g_snd_vars in if t = emptyset Latex then "" else t);
+      names = "";
+      axioms = "";
+
+      inputs = [ (display Latex ~rho:rho Protocol term,Inline) ; (Symbol.display Latex f, Inline); (string_of_int k,Text) ];
+      output = ( display_skeleton_list Latex rho result, Text )
+    } in
+
+  test_terminal, test_latex
+
+let update_Term_Rewrite_rules_skeletons () =
+  Rewrite_rules.update_test_skeletons (fun term f k result ->
+    if data_IO_Term_Rewrite_rules_skeletons.is_being_tested
+    then add_test (test_Term_Rewrite_rules_skeletons term f k result) data_IO_Term_Rewrite_rules_skeletons
+  )
+
+let apply_Term_Rewrite_rules_skeletons term f k  =
+  let result = Rewrite_rules.skeletons term f k in
+
+  let test_terminal,_ = test_Term_Rewrite_rules_skeletons term f k result in
+  produce_test_terminal test_terminal
+
 (*************************************
          General function
 *************************************)
@@ -892,7 +996,8 @@ let load () =
   load_tests data_IO_Term_Subst_is_extended_by;
   load_tests data_IO_Term_Subst_is_equal_equations;
   load_tests data_IO_Term_Modulo_syntactic_equations_of_equations;
-  load_tests data_IO_Term_Rewrite_rules_normalise
+  load_tests data_IO_Term_Rewrite_rules_normalise;
+  load_tests data_IO_Term_Rewrite_rules_skeletons
 
 let publish () =
   publish_tests data_IO_Term_Subst_unify;
@@ -900,7 +1005,8 @@ let publish () =
   publish_tests data_IO_Term_Subst_is_extended_by;
   publish_tests data_IO_Term_Subst_is_equal_equations;
   publish_tests data_IO_Term_Modulo_syntactic_equations_of_equations;
-  publish_tests data_IO_Term_Rewrite_rules_normalise
+  publish_tests data_IO_Term_Rewrite_rules_normalise;
+  publish_tests data_IO_Term_Rewrite_rules_skeletons
 
 let update () =
   update_Term_Subst_unify ();
@@ -908,4 +1014,5 @@ let update () =
   update_Term_Subst_is_extended_by ();
   update_Term_Subst_is_equal_equations ();
   update_Term_Modulo_syntactic_equations_of_equations ();
-  update_Term_Rewrite_rules_normalise ()
+  update_Term_Rewrite_rules_normalise ();
+  update_Term_Rewrite_rules_skeletons ()

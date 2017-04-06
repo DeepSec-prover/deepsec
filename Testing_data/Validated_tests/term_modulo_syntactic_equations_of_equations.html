@@ -1,0 +1,125 @@
+<!DOCTYPE HTML>
+
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <title>DeepSec: DEciding EQuivalence Properties in SECcurity protocols</title>
+  <link rel="stylesheet" type="text/css" href="../style.css">
+  <script type="text/javascript" async
+      src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-MML-AM_CHTML">
+  </script>
+
+</head>
+
+<body>
+  <div id="main">
+
+    <!-- The menu -->
+
+    <div id="menu">
+
+      <!-- The links -->
+
+      <div id="menu-text">
+        <ul>
+          <li><a href="../../index.html">Testing</a></li>
+        </ul>
+      </div>
+
+    </div>
+
+    <!-- The content -->
+
+
+    <div id="content">
+
+      <div id="content-header">
+
+        <div id="title">
+          <div id="title-main">Testing</div>
+          <div id="title-sub">Tests to validate for the function Term.Modulo.syntactic_equations_of_equations</div>
+        </div>
+
+      </div>
+
+      <div id="content-text">
+
+        <p>
+          <code>syntactic_equations_of_equations l_eq</code> returns a set of substitutions that can be seen as a disjunction of substitution \( \sigma_1 \vee \ldots \vee \sigma_n\) such that
+          if <code>l_eq</code> is the list of equations corresponding to \(\bigwedge_{i=1}^m u_i =_{\mathcal{R}} v_i\) and \(V = \bigcup_{i=1}^m \mathit{vars}^1(u_i,v_i)\) then for all \(\sigma\),
+          \[
+            \sigma \models \bigwedge_{i=1}^m u_i =_{\mathcal{R}} v_i \mbox{ iff } \sigma \models \bigvee_{i=1}^n \exists E_i. \bigwedge_{ x \in \mathit{dom}(\sigma_i)} x =^? x\sigma_i
+          \]
+          where for all \(i \in {1,\ldots, n}, E_i = \mathit{vars}^1(\sigma_i) \setminus V\). Note that all the new variables
+          in the different substitutions are all existentially fresh.</p>
+        <p>
+          If the list of equations is always satisfiable (resp. unsatisfiable) then \(\top\) (resp. \(\bot\)) will be displayed as result.
+        </p>
+        <p>
+          Note that we adopt the following convention:
+          <ul>
+            <li>Free first-order (resp. second-order variables) will be denoted by \(w\) (resp. \(W\) )</li>
+            <li>Existential first-order (resp. second-order variables) will be denoted by \(x\) or \(y\) (resp. \(X\) or \(Y\) )</li>
+            <li>Universal first-order (resp. second-order variables) will be denoted by \(z\) (resp. \(Z\) )</li>
+            <li>Public names will be denoted by \(a\) or \(b\) or \(c\)</li>
+            <li>Bound names will be denoted by \(k\) or \(l\) or \(m\)</li>
+          </ul>
+        </p>
+
+        <!-- Beginning Tests -->
+        <!-- Next test -->
+        <hr class="big-separation">
+        <p class="title-test"> Test 1</p>
+        <p>\(\mathcal{F}_c = \{ f/2, g/2, h/1 \}\)</p>
+        <p>\(\mathcal{R} = \{ dest(g(y,x),x) \rightarrow h(y), dest(h(y),x) \rightarrow f(y,x) \}\)</p>
+        <p> Input 1 : \(h(a) =^?_{\mathcal{R}} h(a)\)</p>
+        <p> Result : \(\top\)</p>
+        <!-- Next test -->
+        <hr class="big-separation">
+        <p class="title-test"> Test 2</p>
+        <p>\(\mathcal{F}_c = \{ f/2, g/2, h/1 \}\)</p>
+        <p>\(\mathcal{R} = \{ dest(g(x_{1},y),y) \rightarrow h(x_{1}), dest(h(x_{1}),y) \rightarrow f(x_{1},y) \}\)</p>
+        <p> Input 1 : \(dest(y_{1},a) =^?_{\mathcal{R}} dest(y_{1},a)\)</p>
+        <p> Result : \(\{ y_{1} \rightarrow g(x_{2},a) \}\vee\{ y_{1} \rightarrow h(x) \}\)</p>
+        <!-- Next test -->
+        <hr class="big-separation">
+        <p class="title-test"> Test 3</p>
+        <p>\(\mathcal{F}_c = \{ f/2, g/2, h/1 \}\)</p>
+        <p>\(\mathcal{R} = \{ dest(g(y,x),x) \rightarrow h(y), dest(h(y),x) \rightarrow f(y,x) \}\)</p>
+        <p> Input 1 : \(dest(a,b) =^?_{\mathcal{R}} dest(a,b)\)</p>
+        <p> Result : \(\bot\)</p>
+        <!-- Next test -->
+        <hr class="big-separation">
+        <p class="title-test"> Test 4</p>
+        <p>\(\mathcal{F}_c = \{ f/2, g/2, h/1 \}\)</p>
+        <p>\(\mathcal{R} = \{ dest(g(x_{1},y_{1}),y_{1}) \rightarrow h(x_{1}), dest(h(x_{1}),y_{1}) \rightarrow f(x_{1},y_{1}) \}\)</p>
+        <p> Input 1 : \(dest(x_{2},w) =^?_{\mathcal{R}} h(y)\)</p>
+        <p> Result : \(\{ x_{2} \rightarrow g(x,w), y \rightarrow x \}\)</p>
+        <!-- Next test -->
+        <hr class="big-separation">
+        <p class="title-test"> Test 5</p>
+        <p>\(\mathcal{F}_c = \{ f/2, g/2, h/1 \}\)</p>
+        <p>\(\mathcal{R} = \{ dest(g(y,x_{1}),x_{1}) \rightarrow h(y), dest(h(y),x_{1}) \rightarrow f(y,x_{1}) \}\)</p>
+        <p> Input 1 : \(dest(h(b),w) =^?_{\mathcal{R}} f(x,a)\)</p>
+        <p> Result : \(\{ w \rightarrow a, x \rightarrow b \}\)</p>
+        <!-- Next test -->
+        <hr class="big-separation">
+        <p class="title-test"> Test 6</p>
+        <p>\(\mathcal{F}_c = \{ f/2, g/2, h/1 \}\)</p>
+        <p>\(\mathcal{R} = \{ dest(g(y_{1},x_{1}),x_{1}) \rightarrow h(y_{1}), dest(h(y_{1}),x_{1}) \rightarrow f(y_{1},x_{1}) \}\)</p>
+        <p> Input 1 : \(dest(y,a) =^?_{\mathcal{R}} w\)</p>
+        <p> Result : \(\{ y \rightarrow g(x_{2},a), w \rightarrow h(x_{2}) \}\vee\{ y \rightarrow h(x), w \rightarrow f(x,a) \}\)</p>
+        <!-- Next test -->
+        <hr class="big-separation">
+        <p class="title-test"> Test 7</p>
+        <p>\(\mathcal{F}_c = \{ f/2, g/2, h/1 \}\)</p>
+        <p>\(\mathcal{R} = \{ dest(g(y,x),x) \rightarrow h(y), dest(h(y),x) \rightarrow f(y,x) \}\)</p>
+        <p> Input 1 : \(dest(b,a) =^?_{\mathcal{R}} h(b)\)</p>
+        <p> Result : \(\bot\)</p>
+        <!-- End Tests -->
+      </div>
+    </div>
+  </div>
+</body>
+</html>

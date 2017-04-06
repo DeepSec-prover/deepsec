@@ -81,8 +81,14 @@ val data_IO_Term_Modulo_syntactic_equations_of_equations : data_IO
 
 val apply_Term_Modulo_syntactic_equations_of_equations : Modulo.equation list -> string
 
-(** {3 Term.Modulo.syntactic_equations_of_equations} *)
+(** {3 Term.Rewrite_rules.normalise} *)
 
 val data_IO_Term_Rewrite_rules_normalise : data_IO
 
 val apply_Term_Rewrite_rules_normalise : protocol_term -> string
+
+(** {3 Term.Rewrite_rules.skeletons} *)
+
+val data_IO_Term_Rewrite_rules_skeletons : data_IO
+
+val apply_Term_Rewrite_rules_skeletons : protocol_term -> symbol -> int -> string

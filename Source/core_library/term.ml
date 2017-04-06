@@ -2041,7 +2041,7 @@ module BasicFact = struct
 
   let display out ?(rho=None) ded =
     match out with
-      | Latex -> Printf.sprintf "\\dedfact{%s}{%s}" (Variable.display out ~rho:rho Recipe ~v_type:true ded.var) (display out ~rho:rho Protocol ded.term)
+      | Latex -> Printf.sprintf "%s \\vdash^? %s" (Variable.display out ~rho:rho Recipe ~v_type:true ded.var) (display out ~rho:rho Protocol ded.term)
       | _ -> Printf.sprintf "%s %s %s" (Variable.display out ~rho:rho Recipe ~v_type:true ded.var) (vdash out) (display out ~rho:rho Protocol ded.term)
 
 end
@@ -2473,6 +2473,20 @@ module Rewrite_rules = struct
   let skeletons u f k = match f.cat with
     | Destructor rw_rules ->
         let accumulator = ref [] in
+        let fresh_rw_rules =
+          List.map (fun (lhs,rhs) ->
+            Config.debug (fun () ->
+              if !Variable.Renaming.linked_variables_fst <> []
+              then Config.internal_error "[term.ml >> Rewrite_rules.skeletons] The list of linked variables for renaming should be empty"
+            );
+
+            let lhs' = List.map (Variable.Renaming.rename_term Protocol Existential Variable.fst_ord_type) lhs in
+            let rhs' = Variable.Renaming.rename_term Protocol Existential Variable.fst_ord_type rhs in
+
+            Variable.Renaming.cleanup Protocol;
+            (lhs',rhs')
+          ) rw_rules
+        in
 
         List.iter (fun (args,r) ->
           explore_term_list (get_vars Protocol r) u (Variable.snd_ord_type k) 0 f.arity (fun x_snd recipe_l term_l b_fct_list ->
@@ -2486,8 +2500,9 @@ module Rewrite_rules = struct
               } in
             accumulator := skel::!accumulator
           ) args
-        ) rw_rules;
+        ) fresh_rw_rules;
 
+        Config.test (fun () -> !test_skeletons u f k !accumulator);
         !accumulator
     | _ -> Config.internal_error "[term.ml >> Rewrite_rules.skeletons] The function symbol should be a destructor."
 
@@ -2527,8 +2542,27 @@ module Rewrite_rules = struct
         ) [] rw_rules
     | _ -> Config.internal_error "[term.ml >> Rewrite_rules.generic_rewrite_rules_formula] The function symbol should be a destructor."
 
-  let display_rewrite_rule out ?(rho=None) f (l,r) =
-    Printf.sprintf "%s(%s) -> %s" f.name (display_list (display out ~rho:rho Protocol) "," l) (display out ~rho:rho Protocol r)
+  let specific_rewrite_rules_formula fct skel  =
+    let (f,args,r) = skel.rewrite_rule
+    and x_snd = skel.variable_at_position
+    and recipe = skel.recipe
+    and term = skel.p_term
+    and b_fct_list = skel.basic_deduction_facts in
+
+    let args' = List.map (Variable.Renaming.rename_term Protocol Universal Variable.fst_ord_type) args in
+    let r' = Variable.Renaming.rename_term Protocol Universal Variable.fst_ord_type r in
+
+    Variable.Renaming.cleanup Protocol;
+
+    let b_fct, rest_b_fct = explore_list x_snd  b_fct_list in
+
+    Subst.link Recipe x_snd fct.Fact.df_recipe;
+    let new_recipe = Subst.apply_on_term recipe in
+    Subst.cleanup Recipe;
+
+    let head = Fact.create_deduction_fact new_recipe r' in
+
+    (Fact.create Fact.Deduction head rest_b_fct [Func(f,args'),term; b_fct.BasicFact.term, fct.Fact.df_term])
 
   let display_all_rewrite_rules out rho =
     let dest_without_proj = List.filter (fun f -> not (Symbol.is_proj f)) !Symbol.all_destructors in
@@ -2563,10 +2597,17 @@ module Rewrite_rules = struct
             let display_elt (l,r) = Printf.sprintf "%s %s %s" (display out ~rho:rho Protocol l) (rightarrow out) (display out ~rho:rho Protocol r) in
             Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list display_elt ", " destructor_list) (rcurlybracket out)
 
-    let display out ?(rho=None) symbol = match symbol.cat with
-      | Tuple -> Printf.sprintf "The symbol %s is a tuple hence no rewrite rules associated" symbol.name
-      | Constructor -> Printf.sprintf "The symbol %s is a constructor hence no rewrite rules associated" symbol.name
-      | Destructor(rw) -> Printf.sprintf "Rewrite rules associated to %s are %s" symbol.name (display_list (display_rewrite_rule out ~rho:rho symbol) ",  " rw)
+    let display_skeleton out ?(rho=None) skel =
+      let (f,args,r) = skel.rewrite_rule in
+
+      Printf.sprintf "(%s, %s, %s, %s, %s %s %s)"
+        (Variable.display out ~rho:rho Recipe skel.variable_at_position)
+        (display out ~rho:rho Recipe skel.recipe)
+        (display out ~rho:rho Protocol skel.p_term)
+        (display_list (BasicFact.display out ~rho:rho) (Printf.sprintf " %s " (wedge out)) skel.basic_deduction_facts)
+        (display out ~rho:rho Protocol (Func(f,args)))
+        (rightarrow out)
+        (display out ~rho:rho Protocol r)
 
 end
 

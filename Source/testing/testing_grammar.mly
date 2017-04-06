@@ -27,7 +27,7 @@ open Testing_parser_functions
 
 /* Special token  */
 %token EQ NEQ EQI NEQI
-%token WEDGE VEE
+%token WEDGE VEE VDASH
 %token BOT TOP
 %token RIGHTARROW
 %token LPAR RPAR
@@ -44,7 +44,7 @@ open Testing_parser_functions
 %start verify_Term_Subst_unify verify_Term_Subst_is_matchable
 %start verify_Term_Subst_is_extended_by verify_Term_Subst_is_equal_equations
 %start verify_Term_Modulo_syntactic_equations_of_equations
-%start verify_Term_Rewrite_rules_normalise
+%start verify_Term_Rewrite_rules_normalise verify_Term_Rewrite_rules_skeletons
 
 %type <string> verify_Term_Subst_unify
 %type <string> verify_Term_Subst_is_matchable
@@ -52,6 +52,7 @@ open Testing_parser_functions
 %type <string> verify_Term_Subst_is_equal_equations
 %type <string> verify_Term_Modulo_syntactic_equations_of_equations
 %type <string> verify_Term_Rewrite_rules_normalise
+%type <string> verify_Term_Rewrite_rules_skeletons
 
 %%
 /***********************************
@@ -231,6 +232,34 @@ verify_Term_Rewrite_rules_normalise:
 
         let term = parse_term Term.Protocol $21 in
         Testing_functions.apply_Term_Rewrite_rules_normalise term
+      }
+  | error
+      { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
+
+
+verify_Term_Rewrite_rules_skeletons:
+  | SIGNATURE DDOT signature
+    REWRITING_SYSTEM DDOT rewriting_system
+    FST_VARS DDOT fst_var_list
+    SND_VARS DDOT snd_var_list
+    NAMES DDOT name_list
+    AXIOMS DDOT axiom_list
+    INPUT DDOT term
+    INPUT DDOT ident
+    INPUT DDOT INT
+    RESULT DDOT skeleton_list
+      {
+        initialise_parsing ();
+        parse_signature $3;
+        parse_fst_vars $9;
+        parse_snd_vars $12;
+        parse_names $15;
+        parse_axioms $18;
+        parse_rewriting_system $6;
+
+        let term = parse_term Term.Protocol $21 in
+        let symbol = parse_symbol $24 in
+        Testing_functions.apply_Term_Rewrite_rules_skeletons term symbol $27
       }
   | error
       { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
@@ -437,6 +466,40 @@ substitution_list:
       { [$1] }
   | substitution VEE substitution_list
       { $1::$3 }
+
+/**********************************************
+***          Basic deduction fact           ***
+***********************************************/
+
+basic_deduction_fact:
+  | ident DDOT INT VDASH term
+      { ($1,$3,$5) }
+
+basic_deduction_fact_list:
+  | basic_deduction_fact
+      { [$1] }
+  | basic_deduction_fact WEDGE basic_deduction_fact_list
+      { $1::$3 }
+
+/***********************************
+***          Skeletons           ***
+************************************/
+
+skeleton_list:
+  | LCURL RCURL
+      { [] }
+  | LCURL sub_skeleton_list RCURL
+      { $2 }
+
+sub_skeleton_list:
+  | skeleton
+      { [$1] }
+  | skeleton COMMA sub_skeleton_list
+      { $1::$3 }
+
+skeleton:
+  | LPAR ident COMMA term COMMA term COMMA basic_deduction_fact_list COMMA term RIGHTARROW term RPAR
+      { ($2,$4,$6,$8,($10,$12)) }
 
 /***********************************
 ***           Term list          ***

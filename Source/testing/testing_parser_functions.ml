@@ -284,3 +284,13 @@ let parse_substitution : 'a 'b. ('a,'b) Term.atom -> (ident * term) list -> ('a,
     with
       | Not_found -> error_message line (Printf.sprintf "The identifiant %s is not declared" s)
   ) Term.Subst.identity subst
+
+(********* Symbol function ********)
+
+let parse_symbol (s,line) =
+  try
+    match Hashtbl.find environment s with
+      | Func(f) -> f
+      | env_elt -> error_message line (Printf.sprintf "The identifiant %s is declared as %s but a function symbol is expected." s (display_env_elt_type env_elt))
+  with
+    | Not_found -> error_message line (Printf.sprintf "The identifiant %s is not declared" s)

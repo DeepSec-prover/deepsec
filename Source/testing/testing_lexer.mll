@@ -56,6 +56,7 @@ rule token = parse
 | '/'    { SLASH }
 | '.'	 { DOT }
 | ','    { COMMA }
+| "|-"  { VDASH }
 
 | "proj_" (['0'-'9']+ as id_1) "_" (['0'-'9']+ as id_2)	{ PROJ(int_of_string id_1,int_of_string id_2) }
 
