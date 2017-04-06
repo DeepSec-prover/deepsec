@@ -41,6 +41,8 @@ ALL_OBJ = $(ALL_ML:.ml=.cmx)
 EXE_MAIN_OBJ = $(EXE_MAIN_ML:.ml=.cmx)
 EXE_TESTING_OBJ = $(EXE_TESTING_ML:.ml=.cmx)
 
+.PHONY: clean debug without_debug testing without_testing
+
 ### Targets
 
 all: .display_obj $(ALL_OBJ)
@@ -67,6 +69,34 @@ clean:
 	rm -f */*/*~ */*/*.cm[ioxt] */*/*.cmti */*/*.o
 	rm -f $(GENERATED_SOURCES)
 	rm -f .depend .display .display_obj
+
+debug:
+	@echo Prepare the compilation of deepsec for debugging
+	@sed /debug_activated/s/false/true/ Source/core_library/config.ml > .tmp.ml
+	@mv .tmp.ml Source/core_library/config.ml
+	@echo
+	@echo To complete the compilation, you should run make
+
+without_debug:
+	@echo Prepare the compilation of deepsec to run without debugging
+	@sed /debug_activated/s/true/false/ Source/core_library/config.ml > .tmp.ml
+	@mv .tmp.ml Source/core_library/config.ml
+	@echo
+	@echo To complete the compilation, you should run make
+
+testing:
+	@echo Prepare the compilation of deepsec for generating tests
+	@sed /test_activated/s/false/true/ Source/core_library/config.ml > .tmp.ml
+	@mv .tmp.ml Source/core_library/config.ml
+	@echo
+	@echo To complete the compilation, you should run make
+
+without_testing:
+	@echo Prepare the compilation of deepsec to run without generation of tests
+	@sed /test_activated/s/true/false/ Source/core_library/config.ml > .tmp.ml
+	@mv .tmp.ml Source/core_library/config.ml
+	@echo
+	@echo To complete the compilation, you should run make
 
 .display:
 	@echo ----------------------------------------------
