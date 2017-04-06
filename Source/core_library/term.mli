@@ -610,7 +610,7 @@ module Subst : sig
   val is_unifiable : ('a, 'b) atom -> (('a, 'b) term * ('a, 'b) term) list -> bool
 
   (** [is_matchable at [{% $u_1$ %};...;{% $u_n$ %}] [{% $v_1$ %};...;{% $v_n$ %}]] returns [true] iff there exists {% a substitution $\sigma$ such that
-      $\forall i \in \mathbb{N}^n_1, $u_i\sigma = v_i$. Note that we allow $\sigma$ to be cyclic and to not respect types (for second-order variables). %}
+      $\forall i \in \mathbb{N}^n_1$, $u_i\sigma = v_i$. Note that we allow $\sigma$ to be cyclic and to not respect types (for second-order variables). %}
       @raise Internal_error if the two lists do not have the same length. *)
   val is_matchable : ('a, 'b) atom -> ('a, 'b) term list -> ('a, 'b) term list -> bool
 
@@ -1035,6 +1035,8 @@ module Tools_Subterm :
   functor (SDF : SDF_Sub) (DF : DF) (Uni : Uni)->
     sig
 
+    (** {3 Consequence} *)
+
     (** [mem] {% $\Solved$~$\Df$~$\xi$~$t$ %} returns [true] iff {% $(\xi,t) \in \Consequence{\Solved \cup \Df}$.%}*)
     val mem : SDF.t -> DF.t -> recipe -> protocol_term -> bool
 
@@ -1051,6 +1053,16 @@ module Tools_Subterm :
     (** [uniform_consequence] {% $\Solved$~$\Df$~$\Set$~$t$ returns %} returns [Some(]{% $\xi$%}[)] if {% $(\xi,t) \in \Set$ or if $\forall \zeta. (\zeta,t) \not\in S$ and $(\xi,t) \in \Consequence{\Solved \cup \Df}$. %}*)
     val uniform_consequence : SDF.t -> DF.t -> Uni.t -> protocol_term -> recipe option
 
+    (** {3 Others} *)
+
     (** [is_df_solved DF] returns [true] if and only if all basic deduction facts in [DF] have distinct variables as right hand terms. *)
     val is_df_solved : DF.t -> bool
+
+    (** {3 Tested functions} *)
+
+    val update_test_partial_mem : ('a, 'b) atom -> (SDF.t -> DF.t -> ('a, 'b) term ->  (recipe * protocol_term) option -> unit) -> unit
+
+    val update_test_partial_mem_additional : ('a, 'b) atom -> (SDF.t -> DF.t -> BasicFact.t list -> ('a, 'b) term -> (recipe * protocol_term) option -> unit) -> unit
+
+    val update_test_uniform_consequence : (SDF.t -> DF.t -> Uni.t -> protocol_term -> recipe option -> unit) -> unit
   end

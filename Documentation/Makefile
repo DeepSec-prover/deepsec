@@ -3,12 +3,16 @@ NAME_PROGRAMME = DeepSec
 
 PATH_SOURCE = ../Source/
 
-INCLUDES = -I $(PATH_SOURCE) -I $(PATH_SOURCE)core_library -I $(PATH_SOURCE)testing
+INCLUDES = -I $(PATH_SOURCE) -I $(PATH_SOURCE)core_library -I $(PATH_SOURCE)subterms -I $(PATH_SOURCE)testing
 
 
 NAME_STANDARD = Core_library
 FILE_STANDARD = config.mli display.mli term.mli
 PATH_STANDARD = $(FILE_STANDARD:%= $(PATH_SOURCE)core_library/%)
+
+NAME_SUBTERMS = Subterms
+FILE_SUBTERMS = data_structure.mli
+PATH_SUBTERMS = $(FILE_SUBTERMS:%= $(PATH_SOURCE)subterms/%)
 
 NAME_TESTING = Testing
 FILE_TESTING = testing_functions.mli testing.ml
@@ -17,7 +21,7 @@ PATH_TESTING = $(FILE_TESTING:%= $(PATH_SOURCE)testing/%)
 
 # Starting Point
 
-main: display standard testing
+main: display standard subterms testing
 	@echo
 	@echo Compilation of the .pdf file :
 	@echo
@@ -35,6 +39,13 @@ standard:
 	@echo Compilation of the $(NAME_STANDARD).tex file:
 	@echo
 	ocamldoc.opt -hide $(HIDDEN_MODULE) -latextitle 4,subparagraph -noheader -notrailer -o $(NAME_STANDARD).tex -latex $(INCLUDES) $(PATH_STANDARD)
+
+subterms:
+	@echo
+	@echo Compilation of the $(NAME_SUBTERMS).tex file:
+	@echo
+	ocamldoc.opt -hide $(HIDDEN_MODULE) -latextitle 4,subparagraph -noheader -notrailer -o $(NAME_SUBTERMS).tex -latex $(INCLUDES) $(PATH_SUBTERMS)
+
 
 testing:
 	@echo

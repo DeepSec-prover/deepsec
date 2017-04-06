@@ -2994,6 +2994,30 @@ end
 
 module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
 
+  (***** Tested function *******)
+
+  let test_partial_mem_Protocol : (SDF.t -> DF.t -> protocol_term ->  (recipe * protocol_term) option -> unit) ref = ref (fun _ _ _ _ -> ())
+
+  let test_partial_mem_Recipe : (SDF.t -> DF.t -> recipe ->  (recipe * protocol_term) option -> unit) ref = ref (fun _ _ _ _ -> ())
+
+  let update_test_partial_mem (type a) (type b) (at:(a,b) atom) (f: SDF.t -> DF.t -> (a,b) term -> (recipe * protocol_term) option -> unit) = match at with
+    | Protocol -> test_partial_mem_Protocol := f
+    | Recipe -> test_partial_mem_Recipe := f
+
+  let test_partial_mem_additional_Protocol : (SDF.t -> DF.t -> BasicFact.t list -> protocol_term ->  (recipe * protocol_term) option -> unit) ref = ref (fun _ _ _ _ _ -> ())
+
+  let test_partial_mem_additional_Recipe : (SDF.t -> DF.t -> BasicFact.t list -> recipe ->  (recipe * protocol_term) option -> unit) ref = ref (fun _ _ _ _ _ -> ())
+
+  let update_test_partial_mem_additional (type a) (type b) (at:(a,b) atom) (f: SDF.t -> DF.t -> BasicFact.t list -> (a,b) term -> (recipe * protocol_term) option -> unit) = match at with
+    | Protocol -> test_partial_mem_additional_Protocol := f
+    | Recipe -> test_partial_mem_additional_Recipe := f
+
+  let test_uniform_consequence : (SDF.t -> DF.t -> Uni.t -> protocol_term -> recipe option -> unit) ref = ref (fun _ _ _ _ _ -> ())
+
+  let update_test_uniform_consequence f = test_uniform_consequence := f
+
+  (***** Consequence ******)
+
   let rec mem sdf df recipe term = match recipe, term with
     | Func(f,args_r), Func(f',args_t) when Symbol.is_equal f f' ->
         List.for_all2 (mem sdf df)  args_r args_t
@@ -3075,13 +3099,21 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
   let partial_mem (type a) (type b) (at:(a,b) atom) sdf df (term:(a,b) term) = match at with
     | Protocol ->
         begin match partial_mem_protocol sdf df term with
-          | None -> None
-          | Some r -> (Some (r,term):(recipe * protocol_term) option)
+          | None ->
+              Config.test (fun () -> !test_partial_mem_Protocol sdf df term None);
+              None
+          | Some r ->
+              Config.test (fun () -> !test_partial_mem_Protocol sdf df term (Some (r,term)));
+              (Some (r,term):(recipe * protocol_term) option)
         end
     | Recipe ->
         begin match partial_mem_recipe sdf df term with
-          | None -> None
-          | Some t -> (Some (term,t):(recipe * protocol_term) option)
+          | None ->
+              Config.test (fun () -> !test_partial_mem_Recipe sdf df term None);
+              None
+          | Some t ->
+              Config.test (fun () -> !test_partial_mem_Recipe sdf df term (Some (term,t)));
+              (Some (term,t):(recipe * protocol_term) option)
         end
 
   let partial_mem_additional_recipe sdf df b_fct_list recipe =
@@ -3176,13 +3208,21 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
   let partial_mem_additional (type a) (type b) (at:(a,b) atom) sdf df b_fct_list (term:(a,b) term) = match at with
     | Protocol ->
         begin match partial_mem_additional_protocol sdf df b_fct_list term with
-          | None -> None
-          | Some r -> (Some (r,term):(recipe * protocol_term) option)
+          | None ->
+              Config.test (fun () -> !test_partial_mem_additional_Protocol sdf df b_fct_list term None);
+              None
+          | Some r ->
+              Config.test (fun () -> !test_partial_mem_additional_Protocol sdf df b_fct_list term (Some (r,term)));
+              (Some (r,term):(recipe * protocol_term) option)
         end
     | Recipe ->
         begin match partial_mem_additional_recipe sdf df b_fct_list term with
-          | None -> None
-          | Some t -> (Some (term,t):(recipe * protocol_term) option)
+          | None ->
+              Config.test (fun () -> !test_partial_mem_additional_Recipe sdf df b_fct_list term None);
+              None
+          | Some t ->
+              Config.test (fun () -> !test_partial_mem_additional_Recipe sdf df b_fct_list term (Some (term,t)));
+              (Some (term,t):(recipe * protocol_term) option)
         end
 
   let uniform_consequence sdf df uni term =
@@ -3226,7 +3266,9 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
         | Some recipe -> Some recipe
     in
 
-    mem_term term
+    let result = mem_term term in
+    Config.test (fun () -> !test_uniform_consequence sdf df uni term result);
+    result
 
   exception Found
 

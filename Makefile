@@ -16,7 +16,7 @@ OCAMLDOC=ocamldoc
 
 ### Compiler options
 INCLUDES_MOD = str.cmxa
-INCLUDES = -I $(SOURCE)core_library -I $(SOURCE)testing
+INCLUDES = -I $(SOURCE)core_library -I $(SOURCE)subterms -I $(SOURCE)testing
 # Compiler options specific to OCaml version >= 4
 V4OPTIONS=$(if $(shell $(OCAMLOPT) -version | grep '^4'),-bin-annot)
 OCAMLFLAGS = $(INCLUDES) $(V4OPTIONS) -w Ae $(INCLUDES_MOD)
@@ -29,13 +29,16 @@ GENERATED_SOURCES = $(GENERATED_SOURCES_NAME:%=$(SOURCE)testing/%)
 CORE_ML_NAME = config.ml display.ml term.ml
 CORE_ML = $(CORE_ML_NAME:%.ml=$(SOURCE)core_library/%.ml)
 
+SUBTERMS_ML_NAME = data_structure.ml
+SUBTERMS_ML = $(SUBTERMS_ML_NAME:%.ml=$(SOURCE)subterms/%.ml)
+
 TESTING_ML_NAME = testing_functions.ml testing_parser_functions.ml testing_grammar.ml testing_lexer.ml
 TESTING_ML = $(TESTING_ML_NAME:%.ml=$(SOURCE)testing/%.ml)
 
-ALL_ML = $(CORE_ML) $(TESTING_ML) $(SOURCE)main.ml $(SOURCE)testing/testing.ml
+ALL_ML = $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(SOURCE)main.ml $(SOURCE)testing/testing.ml
 
-EXE_MAIN_ML = $(CORE_ML) $(TESTING_ML) $(SOURCE)main.ml
-EXE_TESTING_ML = $(CORE_ML) $(TESTING_ML) $(SOURCE)testing/testing.ml
+EXE_MAIN_ML = $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(SOURCE)main.ml
+EXE_TESTING_ML = $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(SOURCE)testing/testing.ml
 
 ALL_OBJ = $(ALL_ML:.ml=.cmx)
 EXE_MAIN_OBJ = $(EXE_MAIN_ML:.ml=.cmx)
