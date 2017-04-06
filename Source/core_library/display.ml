@@ -10,6 +10,16 @@ let rec display_list display_element connector = function
   | [t] -> display_element t
   | t::q -> Printf.sprintf "%s%s%s" (display_element  t) connector (display_list display_element connector q)
 
+let rec internal_create_tab = function
+  | 0 -> ""
+  | k -> "  "^(internal_create_tab (k-1))
+
+let create_tab k =
+  Config.debug (fun () ->
+    if k < 0
+    then Config.internal_error "[display.ml >> create_tab] The number of tabs cannot be negative."
+  );
+  internal_create_tab k
 
 (**** Special character ****)
 

@@ -210,6 +210,9 @@ module Variable : sig
       strictly strictly positive if [x1] is greater than [x2]. *)
   val order : ('a, 'b) atom -> ('a, 'b) variable -> ('a, 'b) variable -> int
 
+  (** Also a total ordering function over variables but specific for testing hence the display renamings as argument. *)
+  val order_for_testing : ('a, 'b) atom -> display_renamings -> ('a, 'b) variable -> ('a, 'b) variable -> int
+
   (** [display out at x] returns a string displaying the variable [x] depending on the outpout mode [out]. *)
   val display : Display.output -> ?rho:display_renamings option -> ('a, 'b) atom -> ?v_type:bool ->  ('a, 'b) variable -> string
 
@@ -441,6 +444,9 @@ val get_axioms_with_list : recipe -> (int -> bool) -> axiom list -> axiom list
     strictly strictly positive if [t1] is greater than [t2]. *)
 val order : ('a, 'b) atom -> ('a, 'b) term -> ('a, 'b) term -> int
 
+(** Also a total ordering function over terms but specific for testing hence the display renamings as argument. *)
+val order_for_testing : ('a, 'b) atom -> display_renamings -> ('a, 'b) term -> ('a, 'b) term -> int
+
 (** {3 Scanning} *)
 
 (** [is_ground t] returns [true] iff {% $\varsun{t} \cup \varsdeux{t} = \emptyset$. %} *)
@@ -635,7 +641,7 @@ end
 (** {% A valuation in this section corresponds to a triplet of substitutions $(\Phi,\Sigma,\sigma)$ where $\Phi : \AX \rightarrow \T(\Fc,\N)$,
     $\Sigma : \Xdeux \rightarrow \T(\F,\Npub \cup (\Xdeux \cap \Dom{\Phi}))$ and $\sigma : \Xun \rightarrow \T(\Fc,\N)$. %} *)
 
-(** {2  Syntactic disequations} *)
+(** {2 Syntactic disequations} *)
 
 module Diseq : sig
 
@@ -676,7 +682,7 @@ module Diseq : sig
   val display : Display.output -> ?rho:display_renamings option -> ('a, 'b) atom -> ('a, 'b) t -> string
 end
 
-(** {2  (Dis)equations modulo the rewriting system} *)
+(** {2 (Dis)equations modulo the rewriting system} *)
 
 module Modulo : sig
 

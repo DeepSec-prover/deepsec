@@ -12,6 +12,9 @@ type output =
 (** Generic display of a list. [display_list f_elt c [e1;...;en]] will return the string [(f_elt e1)^c^...^c^(f_elt en)].*)
 val display_list : ('a -> string) -> string -> 'a list -> string
 
+(** [create_tab k] generates a string of [k] tabulations, each tabulation being the string ["  "], i.e., 2 space bars).*)
+val create_tab : int -> string
+
 (** Display of the symbol {% $\neqi$ %} *)
 val neqi : output -> string
 

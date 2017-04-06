@@ -1,4 +1,5 @@
 open Term
+open Display
 
 (************************
 ***       SDF      ***
@@ -160,35 +161,90 @@ module SDF = struct
     let k = get_type (Fact.get_recipe fct) in
     { size = sdf.size + 1 ; map = SDF_Map.add (sdf.size + 1) ({ var_type = k; fact = fct }) sdf.map }
 
-  let display ?(per_line = 5) out sdf =
-    (* Will need to do something special about HTML and LaTeX but will do it latex *)
+  let display out ?(rho = None) ?(per_line = 8) ?(tab = 0) sdf = match out with
+    | Testing ->
+        if SDF_Map.is_empty sdf.map
+        then emptyset Testing
+        else
+          begin
+            let current_number = ref 1 in
+            let str = ref "{ " in
+            SDF_Map.iter (fun _ cell ->
+              if !current_number < sdf.size
+              then str := Printf.sprintf "%s%s, " !str (Fact.display_deduction_fact Testing ~rho:rho cell.fact)
+              else str := Printf.sprintf "%s%s }" !str (Fact.display_deduction_fact Testing ~rho:rho cell.fact);
 
-    let current_number = ref 1 in
+              incr current_number
+            ) sdf.map;
+            !str
+          end
+    | Latex ->
+        if SDF_Map.is_empty sdf.map
+        then emptyset Latex
+        else
+          begin
+            let str = ref "\\left\\{ \\begin{array}{l} " in
+            let current_number = ref 1 in
+            SDF_Map.iter (fun _ cell ->
+              if !current_number >= sdf.size
+              then str := Printf.sprintf "%s%s \\end{array}\\right\\}" !str (Fact.display_deduction_fact Latex ~rho:rho cell.fact)
+              else if (!current_number / per_line)*per_line = !current_number
+              then str := Printf.sprintf "%s%s,\\\\" !str (Fact.display_deduction_fact Latex ~rho:rho cell.fact)
+              else str := Printf.sprintf "%s%s, " !str (Fact.display_deduction_fact Latex ~rho:rho cell.fact);
 
-    match sdf.size with
-      | 0 -> "[ ]"
-      | s when s <= per_line ->
-          let str = ref "[ " in
-          SDF_Map.iter (fun _ cell ->
-            if !current_number < s
-            then str := !str ^ (Fact.display_deduction_fact out cell.fact) ^ "; "
-            else str := !str ^ (Fact.display_deduction_fact out cell.fact) ^ " ]";
+              incr current_number
+            ) sdf.map;
+            !str
+          end
+    | HTML ->
+        if SDF_Map.is_empty sdf.map
+        then emptyset HTML
+        else
+          begin
+            let str = ref "<table class=\"sdf\"><tr><td>" in
+            let current_number = ref 1 in
+            SDF_Map.iter (fun _ cell ->
+              if !current_number >= sdf.size
+              then str := Printf.sprintf "%s%s</td></tr></table>" !str (Fact.display_deduction_fact HTML ~rho:rho cell.fact)
+              else if (!current_number / per_line)*per_line = !current_number
+              then str := Printf.sprintf "%s%s,</td></tr><tr><td>" !str (Fact.display_deduction_fact HTML ~rho:rho cell.fact)
+              else str := Printf.sprintf "%s%s, " !str (Fact.display_deduction_fact HTML ~rho:rho cell.fact);
 
-            current_number := !current_number + 1
-          ) sdf.map;
-          !str
-      | s ->
-          let str = ref "\n[\n     " in
-          SDF_Map.iter (fun _ cell ->
-            if !current_number >= s
-            then str:= !str ^ (Fact.display_deduction_fact out  cell.fact) ^ "\n]"
-            else if (!current_number / per_line)*per_line = !current_number
-            then str := !str ^ (Fact.display_deduction_fact out cell.fact) ^ ";\n     "
-            else str := !str ^ (Fact.display_deduction_fact out cell.fact) ^ "; ";
+              incr current_number
+            ) sdf.map;
+            !str
+          end
+    | _ ->
+        let tab_str = create_tab tab in
+        begin match sdf.size with
+          | 0 -> "{}"
+          | s when s <= per_line ->
+              let str = ref "{ " in
+              let current_number = ref 1 in
+              SDF_Map.iter (fun _ cell ->
+                if !current_number < sdf.size
+                then str := Printf.sprintf "%s%s; " !str (Fact.display_deduction_fact out ~rho:rho cell.fact)
+                else str := Printf.sprintf "%s%s }" !str (Fact.display_deduction_fact out ~rho:rho cell.fact);
 
-            current_number := !current_number + 1
-          ) sdf.map;
-          !str
+                incr current_number
+              ) sdf.map;
+              !str
+          | _ ->
+              let tab_str_inside = create_tab (tab+1) in
+              let str = ref (Printf.sprintf "\n%s{\n%s" tab_str tab_str_inside) in
+              let current_number = ref 1 in
+              SDF_Map.iter (fun _ cell ->
+                if !current_number >= sdf.size
+                then str := Printf.sprintf "%s%s\n%s}\n" !str (Fact.display_deduction_fact out ~rho:rho cell.fact) tab_str
+                else if (!current_number / per_line)*per_line = !current_number
+                then str := Printf.sprintf "%s%s,\n%s" !str (Fact.display_deduction_fact out cell.fact) tab_str_inside
+                else str := Printf.sprintf "%s%s, "!str (Fact.display_deduction_fact out ~rho:rho cell.fact);
+
+                incr current_number
+              ) sdf.map;
+              !str
+        end
+
 end
 
 (************************
@@ -301,35 +357,99 @@ module DF = struct
 
   let iter df f = DF_Map.iter (fun _ b_fct -> f b_fct) df
 
-  let display ?(per_line = 5) out df =
-    (* Will need to do something special about HTML and LaTeX but will do it latex *)
+  let display out ?(rho = None) ?(per_line = 8) ?(tab = 0) df = match out with
+    | Testing ->
+        let rho' = match rho with
+          | None -> Config.internal_error "[data_structure.ml >> DF.display] There should always be display renamings when testing."
+          | Some r -> r
+        in
 
-    let current_number = ref 1 in
+        if DF_Map.is_empty df
+        then emptyset Testing
+        else
+          begin
+            let s = DF_Map.cardinal df in
+            let bindings = DF_Map.bindings df in
+            let sorted_bindings = List.fast_sort (fun (x,_) (y,_) -> Variable.order_for_testing Recipe rho' x y) bindings in
+            let current_number = ref 1 in
+            let str = ref "{ " in
+            List.iter (fun (_,bfct) ->
+              if !current_number < s
+              then str := Printf.sprintf "%s%s, " !str (BasicFact.display Testing ~rho:rho bfct)
+              else str := Printf.sprintf "%s%s }" !str (BasicFact.display Testing ~rho:rho bfct);
 
-    match DF_Map.cardinal df with
-      | 0 -> "[ ]"
-      | s when s <= per_line ->
-          let str = ref "[ " in
-          DF_Map.iter (fun _ b_fct ->
-            if !current_number < s
-            then str := !str ^ (BasicFact.display out b_fct) ^ "; "
-            else str := !str ^ (BasicFact.display out b_fct) ^ " ]";
+              incr current_number
+            ) sorted_bindings;
+            !str
+          end
+    | Latex ->
+        if DF_Map.is_empty df
+        then emptyset Latex
+        else
+          begin
+            let s = DF_Map.cardinal df in
+            let str = ref "\\left\\{ \\begin{array}{l} " in
+            let current_number = ref 1 in
+            DF_Map.iter (fun _ bfct ->
+              if !current_number >= s
+              then str := Printf.sprintf "%s%s \\end{array}\\right\\}" !str (BasicFact.display Latex ~rho:rho bfct)
+              else if (!current_number / per_line)*per_line = !current_number
+              then str := Printf.sprintf "%s%s,\\\\" !str (BasicFact.display Latex ~rho:rho bfct)
+              else str := Printf.sprintf "%s%s, " !str (BasicFact.display Latex ~rho:rho bfct);
 
-            current_number := !current_number + 1
-          ) df;
-          !str
-      | s ->
-          let str = ref "\n[\n     " in
-          DF_Map.iter (fun _ b_fct ->
-            if !current_number >= s
-            then str:= !str ^ (BasicFact.display out b_fct) ^ "\n]"
-            else if (!current_number / per_line)*per_line = !current_number
-            then str := !str ^ (BasicFact.display out b_fct) ^ ";\n     "
-            else str := !str ^ (BasicFact.display out b_fct) ^ "; ";
+              incr current_number
+            ) df;
+            !str
+          end
+    | HTML ->
+        if DF_Map.is_empty df
+        then emptyset HTML
+        else
+          begin
+            let s = DF_Map.cardinal df in
+            let str = ref "<table class=\"df\"><tr><td>" in
+            let current_number = ref 1 in
+            DF_Map.iter (fun _ bfct ->
+              if !current_number >= s
+              then str := Printf.sprintf "%s%s</td></tr></table>" !str (BasicFact.display HTML ~rho:rho bfct)
+              else if (!current_number / per_line)*per_line = !current_number
+              then str := Printf.sprintf "%s%s,</td></tr><tr><td>" !str (BasicFact.display HTML ~rho:rho bfct)
+              else str := Printf.sprintf "%s%s, " !str (BasicFact.display HTML ~rho:rho bfct);
 
-            current_number := !current_number + 1
-          ) df;
-          !str
+              incr current_number
+            ) df;
+            !str
+          end
+    | _ ->
+        let tab_str = create_tab tab in
+        begin match DF_Map.cardinal df with
+          | 0 -> "{}"
+          | s when s <= per_line ->
+              let str = ref "{ " in
+              let current_number = ref 1 in
+              DF_Map.iter (fun _ bfct ->
+                if !current_number < s
+                then str := Printf.sprintf "%s%s; " !str (BasicFact.display out ~rho:rho bfct)
+                else str := Printf.sprintf "%s%s }" !str (BasicFact.display out ~rho:rho bfct);
+
+                incr current_number
+              ) df;
+              !str
+          | s ->
+              let tab_str_inside = create_tab (tab+1) in
+              let str = ref (Printf.sprintf "\n%s{\n%s" tab_str tab_str_inside) in
+              let current_number = ref 1 in
+              DF_Map.iter (fun _ bfct ->
+                if !current_number >= s
+                then str := Printf.sprintf "%s%s\n%s}\n" !str (BasicFact.display out ~rho:rho bfct) tab_str
+                else if (!current_number / per_line)*per_line = !current_number
+                then str := Printf.sprintf "%s%s,\n%s" !str (BasicFact.display out bfct) tab_str_inside
+                else str := Printf.sprintf "%s%s, "!str (BasicFact.display out ~rho:rho bfct);
+
+                incr current_number
+              ) df;
+              !str
+        end
 end
 
 
@@ -584,158 +704,147 @@ module UF = struct
       unsolved_eq_formula = new_unsolved_eq_formula_1
     }
 
-  let display ?(per_line = 5) ?(recipe_equivalent_id = false) ?(equality_type = false) ?(split_solved = false) out uf =
-    (* Will need to do something special about HTML and LaTeX but will do it latex *)
+  let display_equality_type = function
+    | Constructor_SDF (id,f) -> Printf.sprintf "_Const(%d,%s)" id (Symbol.display Testing f)
+    | Equality_SDF(id1,id2) -> Printf.sprintf "_Equa(%d,%d)" id1 id2
+    | Consequence_UF(id) -> Printf.sprintf "_Conseq(%d)" id
 
-    let current_number = ref 1 in
-    let s_max = ref 0 in
-    let str = ref "" in
+  let display_cell_equality rho (id,cell) =
+    Printf.sprintf "(%d,%s,%s)"
+      id
+      (Fact.display_formula Testing ~rho:rho Fact.Equality cell.equality)
+      (display_equality_type cell.eq_type)
 
-    let display_ded id ded =
-      if recipe_equivalent_id
-      then Printf.sprintf "%s %s with id = %d %s" (Display.lbrace out) (Fact.display_formula out Fact.Deduction  ded) id (Display.rbrace out)
-      else Fact.display_formula out Fact.Deduction ded
-    in
+  let display_deduction_formula rho (id,ded_for_list) =
+    Printf.sprintf "(%d,[%s])" id (display_list (fun form -> Printf.sprintf "(%s)" (Fact.display_formula Testing ~rho:rho Fact.Deduction form)) ";" ded_for_list)
 
-    let display_eq_type = function
-      | Constructor_SDF (id,f) -> Printf.sprintf "Constructor(%d,%s)" id (Symbol.display out f)
-      | Equality_SDF(id1,id2) -> Printf.sprintf "Equality(%d,%d)" id1 id2
-      | Consequence_UF(id) -> Printf.sprintf "Consequence(%d)" id
-    in
+  let gather_deduction_formula uf = match uf.solved_ded_formula, uf.unsolved_ded_formula with
+    | None, None -> []
+    | Some(id,form), None -> [(id,[form])]
+    | None, Some(id,form_l) -> [(id,form_l)]
+    | Some(id,form), Some(id',form_l) -> [(id,[form]); (id',form_l)]
 
-    let display_eq id cell = match recipe_equivalent_id, equality_type with
-      | false, false -> Fact.display_formula out Fact.Equality  cell.equality
-      | true, false -> Printf.sprintf "%s %s with id = %d %s" (Display.lbrace out) (Fact.display_formula out Fact.Equality cell.equality) id (Display.rbrace out)
-      | true, true -> Printf.sprintf "%s %s with id = %d and type = %s %s" (Display.lbrace out) (Fact.display_formula out Fact.Equality cell.equality) id (display_eq_type cell.eq_type) (Display.rbrace out)
-      | _, _ -> Printf.sprintf "%s %s with type = %s %s" (Display.lbrace out) (Fact.display_formula out Fact.Equality cell.equality) (display_eq_type cell.eq_type) (Display.rbrace out)
-    in
+  let pretty_gather_deduction_formula uf = match uf.solved_ded_formula, uf.unsolved_ded_formula with
+    | None, None -> []
+    | Some(_,form), None -> [form]
+    | None, Some(_,form_l) -> form_l
+    | Some(_,form), Some(_,form_l) -> form::form_l
 
-    let display_below dis =
-      if !current_number < !s_max
-      then str := !str ^ dis ^ "; "
-      else str := !str ^ dis ^ " " ^ (Display.rcurlybracket out);
+  let gather_equality_formula uf =
+    (UF_Map.bindings uf.solved_eq_formula)@(UF_Map.bindings uf.unsolved_eq_formula)
 
-      current_number := !current_number + 1
-    in
-
-    let display_above dis =
-      if !current_number >= !s_max
-      then str:= !str ^ dis ^ "\n" ^ (Display.rcurlybracket out)
-      else if (!current_number / per_line)*per_line = !current_number
-      then str := !str ^ dis ^ ";\n     "
-      else str := !str ^ dis ^ "; ";
-
-      current_number := !current_number + 1
-    in
-
-    if split_solved
-    then
-      begin
-      (* Solved *)
-      s_max := UF_Map.cardinal uf.solved_eq_formula + (if uf.solved_ded_formula = None then 0 else 1);
-
-      let str_solved =
-        if !s_max = 0
-        then Printf.sprintf "Solved = %s %s" (Display.lcurlybracket out) (Display.rcurlybracket out)
-        else if !s_max <= per_line
-        then
-          let _ = str := (Printf.sprintf "Solved = %s " (Display.lcurlybracket out)) in
-
-          let _ = match uf.solved_ded_formula with
-            | None -> ()
-            | Some(id,ded) -> display_below (display_ded id ded)
-          in
-          let _ = UF_Map.iter (fun id cell -> display_below (display_eq id cell)) uf.solved_eq_formula in
-
-          !str
+  let display out ?(rho = None) ?(per_line = 3) ?(tab = 0) uf = match out with
+    | Testing -> Printf.sprintf "{{%s}{%s}}"
+        (display_list (display_deduction_formula rho) "" (gather_deduction_formula uf))
+        (display_list (display_cell_equality rho) "" (gather_equality_formula uf))
+    | Latex ->
+        let ded_formula_list = pretty_gather_deduction_formula uf
+        and eq_formula_list = gather_equality_formula uf in
+        let s = (List.length ded_formula_list) + (List.length eq_formula_list) in
+        if s = 0
+        then emptyset Latex
         else
-          let _ = str := (Printf.sprintf "\n%s\n     " (Display.lcurlybracket out)) in
+          begin
+            let str = ref "\\left\\{ \\begin{array}{l} " in
+            let current_number = ref 1 in
+            List.iter (fun form ->
+              if !current_number >= s
+              then str := Printf.sprintf "%s%s \\end{array}\\right\\}" !str (Fact.display_formula Latex ~rho:rho Fact.Deduction form)
+              else if (!current_number / per_line)*per_line = !current_number
+              then str := Printf.sprintf "%s%s,\\\\" !str (Fact.display_formula Latex ~rho:rho Fact.Deduction form)
+              else str := Printf.sprintf "%s%s,  " !str (Fact.display_formula Latex ~rho:rho Fact.Deduction form);
 
-          let _ = match uf.solved_ded_formula with
-            | None -> ()
-            | Some(id,ded) -> display_above (display_ded id ded)
-          in
-          let _ = UF_Map.iter (fun id cell -> display_above (display_eq id cell)) uf.solved_eq_formula in
+              incr current_number
+            ) ded_formula_list;
+            List.iter (fun (_,cell) ->
+              if !current_number >= s
+              then str := Printf.sprintf "%s%s \\end{array}\\right\\}" !str (Fact.display_formula Latex ~rho:rho Fact.Equality cell.equality)
+              else if (!current_number / per_line)*per_line = !current_number
+              then str := Printf.sprintf "%s%s,\\\\" !str (Fact.display_formula Latex ~rho:rho Fact.Equality cell.equality)
+              else str := Printf.sprintf "%s%s,  " !str (Fact.display_formula Latex ~rho:rho Fact.Equality cell.equality);
 
-          !str
-      in
-
-      (* UnSolved *)
-      s_max := UF_Map.cardinal uf.unsolved_eq_formula + (match uf.unsolved_ded_formula with None -> 0 | Some(_,l) -> List.length l);
-      current_number := 1;
-
-      let str_unsolved =
-        if !s_max = 0
-        then Printf.sprintf "Unsolved = %s %s" (Display.lcurlybracket out) (Display.rcurlybracket out)
-        else if !s_max <= per_line
-        then
-          let _ = str := (Printf.sprintf "Unsolved = %s " (Display.lcurlybracket out)) in
-
-          let _ = match uf.unsolved_ded_formula with
-            | None -> ()
-            | Some(id,ded_list) -> List.iter (fun ded -> display_below (display_ded id ded)) ded_list
-          in
-          let _ = UF_Map.iter (fun id cell -> display_below (display_eq id cell)) uf.unsolved_eq_formula in
-
-          !str
+              incr current_number
+            ) eq_formula_list;
+            !str
+          end
+    | HTML ->
+        let ded_formula_list = pretty_gather_deduction_formula uf
+        and eq_formula_list = gather_equality_formula uf in
+        let s = (List.length ded_formula_list) + (List.length eq_formula_list) in
+        if s = 0
+        then emptyset HTML
         else
-          let _ =  str := (Printf.sprintf "\n%s\n     " (Display.lcurlybracket out)) in
+          begin
+            let str = ref "<table class=\"uf\"><tr><td>" in
+            let current_number = ref 1 in
+            List.iter (fun form ->
+              if !current_number >= s
+              then str := Printf.sprintf "%s%s</td></tr></table>" !str (Fact.display_formula HTML ~rho:rho Fact.Deduction form)
+              else if (!current_number / per_line)*per_line = !current_number
+              then str := Printf.sprintf "%s%s,</td></tr><tr><td>" !str (Fact.display_formula HTML ~rho:rho Fact.Deduction form)
+              else str := Printf.sprintf "%s%s, " !str (Fact.display_formula HTML ~rho:rho Fact.Deduction form);
 
-          let _ = match uf.unsolved_ded_formula with
-            | None -> ()
-            | Some(id,ded_list) -> List.iter (fun ded -> display_above (display_ded id ded)) ded_list
-          in
-          let _ = UF_Map.iter (fun id cell -> display_above (display_eq id cell)) uf.unsolved_eq_formula in
+              incr current_number
+            ) ded_formula_list;
+            List.iter (fun (_,cell) ->
+              if !current_number >= s
+              then str := Printf.sprintf "%s%s</td></tr></table>" !str (Fact.display_formula HTML ~rho:rho Fact.Equality cell.equality)
+              else if (!current_number / per_line)*per_line = !current_number
+              then str := Printf.sprintf "%s%s,</td></tr><tr><td>" !str (Fact.display_formula HTML ~rho:rho Fact.Equality cell.equality)
+              else str := Printf.sprintf "%s%s, " !str (Fact.display_formula HTML ~rho:rho Fact.Equality cell.equality);
 
-          !str
-      in
+              incr current_number
+            ) eq_formula_list;
+            !str
+          end
+    | _ ->
+        let ded_formula_list = pretty_gather_deduction_formula uf
+        and eq_formula_list = gather_equality_formula uf in
+        let tab_str = create_tab tab in
+        begin match (List.length ded_formula_list) + (List.length eq_formula_list) with
+          | 0 -> "{}"
+          | s when s <= per_line ->
+              let str = ref "{ " in
+              let current_number = ref 1 in
+              List.iter (fun form ->
+                if !current_number < s
+                then str := Printf.sprintf "%s%s; " !str (Fact.display_formula out ~rho:rho Fact.Deduction form)
+                else str := Printf.sprintf "%s%s }" !str (Fact.display_formula out ~rho:rho Fact.Deduction form);
 
-      str_solved ^ "\n" ^ str_unsolved ^ "\n"
-      end
-    else
-      begin
-      (* Solved *)
-      s_max := UF_Map.cardinal uf.solved_eq_formula + UF_Map.cardinal uf.unsolved_eq_formula + (if uf.solved_ded_formula = None then 0 else 1) + (match uf.unsolved_ded_formula with None -> 0 | Some(_,l) -> List.length l);
+                incr current_number
+              ) ded_formula_list;
+              List.iter (fun (_,cell) ->
+                if !current_number < s
+                then str := Printf.sprintf "%s%s; " !str (Fact.display_formula out ~rho:rho Fact.Equality cell.equality)
+                else str := Printf.sprintf "%s%s }" !str (Fact.display_formula out ~rho:rho Fact.Equality cell.equality);
 
-      if !s_max = 0
-      then Printf.sprintf "%s %s" (Display.lcurlybracket out) (Display.rcurlybracket out)
-      else if !s_max <= per_line
-      then
-        let _ =  str := (Printf.sprintf "%s " (Display.lcurlybracket out)) in
+                incr current_number
+              ) eq_formula_list;
+              !str
+          | s ->
+              let tab_str_inside = create_tab (tab+1) in
+              let str = ref (Printf.sprintf "\n%s{\n%s" tab_str tab_str_inside) in
+              let current_number = ref 1 in
+              List.iter (fun form ->
+                if !current_number >= s
+                then str := Printf.sprintf "%s%s\n%s}\n" !str (Fact.display_formula out ~rho:rho Fact.Deduction form) tab_str
+                else if (!current_number / per_line)*per_line = !current_number
+                then str := Printf.sprintf "%s%s,\n%s" !str (Fact.display_formula out ~rho:rho Fact.Deduction form) tab_str_inside
+                else str := Printf.sprintf "%s%s, "!str (Fact.display_formula out ~rho:rho Fact.Deduction form);
 
-        let _ = match uf.solved_ded_formula with
-          | None -> ()
-          | Some(id,ded) -> display_below (display_ded id ded)
-        in
+                incr current_number
+              ) ded_formula_list;
+              List.iter (fun (_,cell) ->
+                if !current_number >= s
+                then str := Printf.sprintf "%s%s\n%s}\n" !str (Fact.display_formula out ~rho:rho Fact.Equality cell.equality) tab_str
+                else if (!current_number / per_line)*per_line = !current_number
+                then str := Printf.sprintf "%s%s,\n%s" !str (Fact.display_formula out ~rho:rho Fact.Equality cell.equality) tab_str_inside
+                else str := Printf.sprintf "%s%s, "!str (Fact.display_formula out ~rho:rho Fact.Equality cell.equality);
 
-        let _ = match uf.unsolved_ded_formula with
-          | None -> ()
-          | Some(id,ded_list) -> List.iter (fun ded -> display_below (display_ded id ded)) ded_list
-        in
-
-        let _ = UF_Map.iter (fun id cell -> display_below (display_eq id cell)) uf.solved_eq_formula in
-        let _ = UF_Map.iter (fun id cell -> display_below (display_eq id cell)) uf.unsolved_eq_formula in
-
-        !str
-      else
-        let _ = str := (Printf.sprintf "\n%s\n     " (Display.lcurlybracket out)) in
-
-        let _ = match uf.solved_ded_formula with
-          | None -> ()
-          | Some(id,ded) -> display_above (display_ded id ded)
-        in
-
-        let _ = match uf.unsolved_ded_formula with
-          | None -> ()
-          | Some(id,ded_list) -> List.iter (fun ded -> display_above (display_ded id ded)) ded_list
-        in
-
-        let _ = UF_Map.iter (fun id cell -> display_above (display_eq id cell)) uf.solved_eq_formula in
-        let _ = UF_Map.iter (fun id cell -> display_above(display_eq id cell)) uf.unsolved_eq_formula in
-
-        !str
-
-      end
+                incr current_number
+              ) eq_formula_list;
+              !str
+        end
 end
 
 (************************

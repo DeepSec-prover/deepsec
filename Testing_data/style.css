@@ -212,6 +212,21 @@ h3 {
 
 }
 
+.sdf {
+  border-right: 1px black solid;
+  border-left: 1px black solid
+}
+
+.df {
+  border-right: 1px black solid;
+  border-left: 1px black solid
+}
+
+.uf {
+  border-right: 1px black solid;
+  border-left: 1px black solid
+}
+
 .hiddenInformation {
     display: none;
     border: 1px dashed gray;

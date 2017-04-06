@@ -74,8 +74,10 @@ module SDF : sig
 
   (** {3 Display} *)
 
-  (** [display k out] {% $\Solved$%} displays {% $\Solved$ %} with at most [k] deduction facts per line. *)
-  val display : ?per_line:int -> Display.output -> t -> string
+  (** [display out ~rho:rho ~per_line:n ~tab:k] {% $\Solved$%} displays {% $\Solved$ %} with at most [n] deduction facts per line. Moreover,
+      when [out = Terminal] or [out = Pretty_Terminal] and when the number of elements in {% $\Solved$ %} is strictly bigger than [n] then
+      {% $\Solved$ %} is displayed on a new line and each line is preceded by [k] tabulations. *)
+  val display : Display.output -> ?rho:display_renamings option -> ?per_line:int -> ?tab:int -> t -> string
 end
 
 (** {2 {% The set of basic deduction facts formulas \texorpdfstring{$\Df$}{DF} %}}*)
@@ -132,8 +134,10 @@ module DF : sig
 
   (** {3 Display} *)
 
-  (** [display k out] {% $\Df$%} displays {% $\Df$ %} with at most [k] basic deduction facts per line. *)
-  val display : ?per_line:int -> Display.output -> t -> string
+  (** [display out ~rho:rho ~per_line:n ~tab:k] {% $\Df$ %} displays {% $\Df$ %} with at most [n] basic deduction facts per line. Moreover,
+      when [out = Terminal] or [out = Pretty_Terminal] and when the number of elements in {% $\Df$ %} is strictly bigger than [n] then
+      {% $\Df$ %} is displayed on a new line and each line is preceded by [k] tabulations. *)
+  val display : Display.output -> ?rho:display_renamings option -> ?per_line:int -> ?tab:int -> t -> string
 end
 
 (** {2 {% The set of unsolved formulas \texorpdfstring{$\USolved$}{UF} %}}*)
@@ -157,6 +161,7 @@ module UF : sig
   (** [add_equality] {% $\USolved$~$\psi$%} [id] returns the set {% $\USolved \cup \{ \psi\}$. Note that we associate to $\psi$ the recipe equivalent id%} [id]. *)
   val add_equality : t -> Fact.equality_formula -> id_recipe_equivalent -> equality_type -> t
 
+  (** [add_deduction] {% $\USolved$~$[\psi_1;\ldots;\psi_n]$ %} [id] returns the set {% $\USolved \cup \{ \psi_1,\ldots, \psi_n\}$. Note that we associate to $\psi_1,\ldots, \psi_n$ the same recipe equivalent id%} [id]. *)
   val add_deduction : t -> Fact.deduction_formula list -> id_recipe_equivalent -> t
 
   (** [remove_solved_id fct UF id] returns the set [UF] containing the same solved [fct] formulas, except for the formula with the recipe equivalent id equal to [id].
@@ -212,9 +217,10 @@ module UF : sig
 
   (** {3 Display} *)
 
-  (** [display k b_r b_e split out UF] displays [UF] with at most [k] basic deduction facts per line. When  [b_r = true] , it displays the recipe equivalent id of each formula.
-      When [b_e = true], it also display the equality type of each equality formula. Finally when [split = true], the set [UF] is displayed as two lists, one with solved formulas and one with unsolved formula. *)
-  val display : ?per_line:int -> ?recipe_equivalent_id:bool -> ?equality_type:bool -> ?split_solved:bool -> Display.output -> t -> string
+  (** [display out ~rho:rho ~per_line:n ~tab:k] {% $\USolved$ %} displays {% $\Df$ %} with at most [n] formulas per line. Moreover,
+      when [out = Terminal] or [out = Pretty_Terminal] and when the number of elements in {% $\USolved$ %} is strictly bigger than [n] then
+      {% $\USolved$ %} is displayed on a new line and each line is preceded by [k] tabulations. *)
+  val display : Display.output -> ?rho:display_renamings option -> ?per_line:int -> ?tab:int -> t -> string
 
 end
 

@@ -253,6 +253,32 @@ module Variable = struct
           | n -> n
         end
 
+  let order_for_testing (type a) (type b) (at:(a,b) atom) rho (x:(a,b) variable) (y:(a,b) variable) = match at with
+    | Protocol ->
+        begin try
+          let _,x' = List.find (fun (var,_) -> var == x) rho.rho_fst_var
+          and _,y' = List.find (fun (var,_) -> var == y) rho.rho_fst_var in
+          match compare x'.label y'.label with
+            | 0 -> compare x'.index y'.index
+            | k -> k
+        with
+          | Not_found -> Config.internal_error "[term.ml >> Variable.order_for_testing] All variables should be renamed for testing."
+        end
+    | Recipe ->
+        begin try
+          let _,x' = List.find (fun (var,_) -> var == x) rho.rho_snd_var
+          and _,y' = List.find (fun (var,_) -> var == y) rho.rho_snd_var in
+          match compare (type_of x') (type_of y') with
+            | 0 ->
+                begin match compare x'.label y'.label with
+                  | 0 -> compare x'.index y'.index
+                  | k -> k
+                end
+            | k -> k
+        with
+          | Not_found -> Config.internal_error "[term.ml >> Variable.order_for_testing] All variables should be renamed for testing."
+        end
+
   let search_variable_in_display_renaming (type a) (type b) (at:(a,b) atom) display_op (var:(a,b) variable) = match display_op with
     | None -> var
     | Some rho ->
@@ -523,6 +549,16 @@ module Name = struct
   let is_equal n1 n2 = n1 == n2
 
   let is_public n = n.bound = Public
+
+  let order_for_testing rho a b =
+    try
+      let _,a' = List.find (fun (n,_) -> n == a) rho.rho_name
+      and _,b' = List.find (fun (n,_) -> n == b) rho.rho_name in
+      match compare a'.label_n b'.label_n with
+        | 0 -> compare a'.index_n b'.index_n
+        | k -> k
+    with
+    | Not_found -> Config.internal_error "[term.ml >> name_order_for_testing] All names should be renamed for testing."
 
   (***** Link *****)
 
@@ -915,7 +951,11 @@ module AxName = struct
 
   let order (type a) (type b) (at:(a,b) atom) (axn1:b) (axn2:b) = match at with
     | Protocol -> compare axn1.index_n axn2.index_n
-    | Recipe -> compare axn1 axn2
+    | Recipe -> compare axn1.id_axiom axn2.id_axiom
+
+  let order_for_testing (type a) (type b) (at:(a,b) atom) rho (axn1:b) (axn2:b) = match at with
+    | Protocol -> Name.order_for_testing rho axn1 axn2
+    | Recipe -> compare axn1.id_axiom axn2.id_axiom
 
   let display (type a) (type b) out ?(rho=None) (at:(a,b) atom) (axn:b) = match at with
     | Protocol -> Name.display out ~rho:rho axn
@@ -997,6 +1037,28 @@ and order_list at l1 l2 = match l1, l2 with
       if ord <> 0
       then ord
       else order_list at q1 q2
+
+let rec order_for_testing at rho t1 t2 = match t1,t2 with
+  | Var v1, Var v2 -> Variable.order_for_testing at rho v1 v2
+  | AxName n1, AxName n2 -> AxName.order_for_testing at rho n1 n2
+  | Func(f1,args1), Func(f2,args2) ->
+      let ord = Symbol.order f1 f2 in
+      if ord <> 0
+      then ord
+      else order_list_for_testing at rho args1 args2
+  | Var _, _ -> -1
+  | AxName _, Var _ -> 1
+  | AxName _, _ -> -1
+  | _ , _ -> 1
+
+and order_list_for_testing at rho l1 l2 = match l1, l2 with
+  | [], [] -> 0
+  | [],_ | _,[] -> Config.internal_error "[terms.ml >> order_list] The lists should be of equal size."
+  | t1::q1, t2::q2 ->
+      let ord = order_for_testing at rho t1 t2 in
+      if ord <> 0
+      then ord
+      else order_list_for_testing at rho q1 q2
 
 (********* Scanning Functions *********)
 
