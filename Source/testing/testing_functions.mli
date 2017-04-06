@@ -92,3 +92,9 @@ val apply_Term_Rewrite_rules_normalise : protocol_term -> string
 val data_IO_Term_Rewrite_rules_skeletons : data_IO
 
 val apply_Term_Rewrite_rules_skeletons : protocol_term -> symbol -> int -> string
+
+(** {3 Term.Rewrite_rules.generic_rewrite_rules_formula} *)
+
+val data_IO_Term_Rewrite_rules_generic_rewrite_rules_formula : data_IO
+
+val apply_Term_Rewrite_rules_generic_rewrite_rules_formula : Fact.deduction -> Rewrite_rules.skeleton -> string

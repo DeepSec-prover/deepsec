@@ -66,6 +66,90 @@
         <p class="title-test"> Test 1</p>
         <p>\(\mathcal{F}_c = \{ aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 \}\)</p>
         <p>\(\mathcal{R} = \{ unblind(sign(blind(x_{1},y),y_{1}),y) \rightarrow sign(x_{1},y_{1}), dest(g(x_{1},y),y) \rightarrow h(x_{1}), dest(h(x_{1}),y) \rightarrow f(x_{1},y), dec(enc(x_{1},y),y) \rightarrow x_{1}, check(sign(x_{1},y),vk(y)) \rightarrow x_{1}, adec(aenc(x_{1},pk(y)),y) \rightarrow x_{1} \}\)</p>
+        <p>\(\{ Z\text{:}1, Z_{1}\text{:}1 \} \subseteq \mathcal{X}^2\)</p>
+        <p> Input 1 : \(enc(a,y)\)</p>
+        <p> Input 2 : \(dec\)</p>
+        <p> Input 3 : 1</p>
+        <p> Result : <ul> <li> \((Z_{1}, dec(Z_{1},Z), dec(z,z_{1}), Z\text{:}1 \vdash^? z_{1} \wedge Z_{1}\text{:}1 \vdash^? z, dec(enc(x,x_{2}),x_{2}) \rightarrow x)\) </li> </ul></p>
+        <!-- Next test -->
+        <hr class="big-separation">
+        <p class="title-test"> Test 2</p>
+        <p>\(\mathcal{F}_c = \{ aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 \}\)</p>
+        <p>\(\mathcal{R} = \{ unblind(sign(blind(y,x),x_{1}),x) \rightarrow sign(y,x_{1}), dest(g(y,x),x) \rightarrow h(y), dest(h(y),x) \rightarrow f(y,x), dec(enc(y,x),x) \rightarrow y, check(sign(y,x),vk(x)) \rightarrow y, adec(aenc(y,pk(x)),x) \rightarrow y \}\)</p>
+        <p> Input 1 : \(enc(a,x)\)</p>
+        <p> Input 2 : \(adec\)</p>
+        <p> Input 3 : 7</p>
+        <p> Result : \(\emptyset\)</p>
+        <!-- Next test -->
+        <hr class="big-separation">
+        <p class="title-test"> Test 3</p>
+        <p>\(\mathcal{F}_c = \{ aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 \}\)</p>
+        <p>\(\mathcal{R} = \{ unblind(sign(blind(y,x),x_{1}),x) \rightarrow sign(y,x_{1}), dest(g(y,x),x) \rightarrow h(y), dest(h(y),x) \rightarrow f(y,x), dec(enc(y,x),x) \rightarrow y, check(sign(y,x),vk(x)) \rightarrow y, adec(aenc(y,pk(x)),x) \rightarrow y \}\)</p>
+        <p> Input 1 : \(aenc(b,a)\)</p>
+        <p> Input 2 : \(adec\)</p>
+        <p> Input 3 : 3</p>
+        <p> Result : \(\emptyset\)</p>
+        <!-- Next test -->
+        <hr class="big-separation">
+        <p class="title-test"> Test 4</p>
+        <p>\(\mathcal{F}_c = \{ aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 \}\)</p>
+        <p>\(\mathcal{R} = \{ unblind(sign(blind(y,x),x_{1}),x) \rightarrow sign(y,x_{1}), dest(g(y,x),x) \rightarrow h(y), dest(h(y),x) \rightarrow f(y,x), dec(enc(y,x),x) \rightarrow y, check(sign(y,x),vk(x)) \rightarrow y, adec(aenc(y,pk(x)),x) \rightarrow y \}\)</p>
+        <p> Input 1 : \(aenc(a,x)\)</p>
+        <p> Input 2 : \(dec\)</p>
+        <p> Input 3 : 3</p>
+        <p> Result : \(\emptyset\)</p>
+        <!-- Next test -->
+        <hr class="big-separation">
+        <p class="title-test"> Test 5</p>
+        <p>\(\mathcal{F}_c = \{ aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 \}\)</p>
+        <p>\(\mathcal{R} = \{ unblind(sign(blind(y,x),x_{1}),x) \rightarrow sign(y,x_{1}), dest(g(y,x),x) \rightarrow h(y), dest(h(y),x) \rightarrow f(y,x), dec(enc(y,x),x) \rightarrow y, check(sign(y,x),vk(x)) \rightarrow y, adec(aenc(y,pk(x)),x) \rightarrow y \}\)</p>
+        <p> Input 1 : \(aenc(b,a)\)</p>
+        <p> Input 2 : \(dec\)</p>
+        <p> Input 3 : 1</p>
+        <p> Result : \(\emptyset\)</p>
+        <!-- Next test -->
+        <hr class="big-separation">
+        <p class="title-test"> Test 6</p>
+        <p>\(\mathcal{F}_c = \{ aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 \}\)</p>
+        <p>\(\mathcal{R} = \{ unblind(sign(blind(x_{1},y),y_{1}),y) \rightarrow sign(x_{1},y_{1}), dest(g(x_{1},y),y) \rightarrow h(x_{1}), dest(h(x_{1}),y) \rightarrow f(x_{1},y), dec(enc(x_{1},y),y) \rightarrow x_{1}, check(sign(x_{1},y),vk(y)) \rightarrow x_{1}, adec(aenc(x_{1},pk(y)),y) \rightarrow x_{1} \}\)</p>
+        <p>\(\{ Z\text{:}7, Z_{1}\text{:}7 \} \subseteq \mathcal{X}^2\)</p>
+        <p> Input 1 : \(aenc(a,y)\)</p>
+        <p> Input 2 : \(adec\)</p>
+        <p> Input 3 : 7</p>
+        <p> Result : <ul> <li> \((Z_{1}, adec(Z_{1},Z), adec(z,z_{1}), Z\text{:}7 \vdash^? z_{1} \wedge Z_{1}\text{:}7 \vdash^? z, adec(aenc(x,pk(x_{2})),x_{2}) \rightarrow x)\) </li> </ul></p>
+        <!-- Next test -->
+        <hr class="big-separation">
+        <p class="title-test"> Test 7</p>
+        <p>\(\mathcal{F}_c = \{ aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 \}\)</p>
+        <p>\(\mathcal{R} = \{ unblind(sign(blind(y,x),x_{1}),x) \rightarrow sign(y,x_{1}), dest(g(y,x),x) \rightarrow h(y), dest(h(y),x) \rightarrow f(y,x), dec(enc(y,x),x) \rightarrow y, check(sign(y,x),vk(x)) \rightarrow y, adec(aenc(y,pk(x)),x) \rightarrow y \}\)</p>
+        <p> Input 1 : \(aenc(b,a)\)</p>
+        <p> Input 2 : \(dec\)</p>
+        <p> Input 3 : 4</p>
+        <p> Result : \(\emptyset\)</p>
+        <!-- Next test -->
+        <hr class="big-separation">
+        <p class="title-test"> Test 8</p>
+        <p>\(\mathcal{F}_c = \{ aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 \}\)</p>
+        <p>\(\mathcal{R} = \{ unblind(sign(blind(y,x),x_{1}),x) \rightarrow sign(y,x_{1}), dest(g(y,x),x) \rightarrow h(y), dest(h(y),x) \rightarrow f(y,x), dec(enc(y,x),x) \rightarrow y, check(sign(y,x),vk(x)) \rightarrow y, adec(aenc(y,pk(x)),x) \rightarrow y \}\)</p>
+        <p> Input 1 : \(aenc(b,a)\)</p>
+        <p> Input 2 : \(dec\)</p>
+        <p> Input 3 : 3</p>
+        <p> Result : \(\emptyset\)</p>
+        <!-- Next test -->
+        <hr class="big-separation">
+        <p class="title-test"> Test 9</p>
+        <p>\(\mathcal{F}_c = \{ aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 \}\)</p>
+        <p>\(\mathcal{R} = \{ unblind(sign(blind(x_{1},y),y_{1}),y) \rightarrow sign(x_{1},y_{1}), dest(g(x_{1},y),y) \rightarrow h(x_{1}), dest(h(x_{1}),y) \rightarrow f(x_{1},y), dec(enc(x_{1},y),y) \rightarrow x_{1}, check(sign(x_{1},y),vk(y)) \rightarrow x_{1}, adec(aenc(x_{1},pk(y)),y) \rightarrow x_{1} \}\)</p>
+        <p>\(\{ Z\text{:}3, Z_{1}\text{:}3 \} \subseteq \mathcal{X}^2\)</p>
+        <p> Input 1 : \(aenc(a,y)\)</p>
+        <p> Input 2 : \(adec\)</p>
+        <p> Input 3 : 3</p>
+        <p> Result : <ul> <li> \((Z_{1}, adec(Z_{1},Z), adec(z,z_{1}), Z\text{:}3 \vdash^? z_{1} \wedge Z_{1}\text{:}3 \vdash^? z, adec(aenc(x,pk(x_{2})),x_{2}) \rightarrow x)\) </li> </ul></p>
+        <!-- Next test -->
+        <hr class="big-separation">
+        <p class="title-test"> Test 10</p>
+        <p>\(\mathcal{F}_c = \{ aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 \}\)</p>
+        <p>\(\mathcal{R} = \{ unblind(sign(blind(x_{1},y),y_{1}),y) \rightarrow sign(x_{1},y_{1}), dest(g(x_{1},y),y) \rightarrow h(x_{1}), dest(h(x_{1}),y) \rightarrow f(x_{1},y), dec(enc(x_{1},y),y) \rightarrow x_{1}, check(sign(x_{1},y),vk(y)) \rightarrow x_{1}, adec(aenc(x_{1},pk(y)),y) \rightarrow x_{1} \}\)</p>
         <p>\(\{ Z\text{:}5, Z_{1}\text{:}5 \} \subseteq \mathcal{X}^2\)</p>
         <p> Input 1 : \(aenc(x_{1},y)\)</p>
         <p> Input 2 : \(adec\)</p>
@@ -73,7 +157,7 @@
         <p> Result : <ul> <li> \((Z_{1}, adec(Z_{1},Z), adec(z,z_{1}), Z\text{:}5 \vdash^? z_{1} \wedge Z_{1}\text{:}5 \vdash^? z, adec(aenc(x,pk(x_{2})),x_{2}) \rightarrow x)\) </li> </ul></p>
         <!-- Next test -->
         <hr class="big-separation">
-        <p class="title-test"> Test 2</p>
+        <p class="title-test"> Test 11</p>
         <p>\(\mathcal{F}_c = \{ aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 \}\)</p>
         <p>\(\mathcal{R} = \{ unblind(sign(blind(y_{1},x_{2}),x_{1}),x_{2}) \rightarrow sign(y_{1},x_{1}), dest(g(y_{1},x_{2}),x_{2}) \rightarrow h(y_{1}), dest(h(y_{1}),x_{2}) \rightarrow f(y_{1},x_{2}), dec(enc(y_{1},x_{2}),x_{2}) \rightarrow y_{1}, check(sign(y_{1},x_{2}),vk(x_{2})) \rightarrow y_{1}, adec(aenc(y_{1},pk(x_{2})),x_{2}) \rightarrow y_{1} \}\)</p>
         <p>\(\{ Z\text{:}9, Z_{1}\text{:}9, Z_{2}\text{:}9, Z_{3}\text{:}9, Z_{4}\text{:}9 \} \subseteq \mathcal{X}^2\)</p>
@@ -83,7 +167,7 @@
         <p> Result : <ul> <li> \((Z_{2}, unblind(sign(Z_{2},Z_{3}),Z_{4}), unblind(sign(z_{2},z_{1}),z), Z_{4}\text{:}9 \vdash^? z \wedge Z_{3}\text{:}9 \vdash^? z_{1} \wedge Z_{2}\text{:}9 \vdash^? z_{2}, unblind(sign(blind(y,y_{2}),x),y_{2}) \rightarrow sign(y,x))\) </li> <li> \((Z_{1}, unblind(Z_{1},Z), unblind(z_{3},z_{4}), Z\text{:}9 \vdash^? z_{4} \wedge Z_{1}\text{:}9 \vdash^? z_{3}, unblind(sign(blind(y,y_{2}),x),y_{2}) \rightarrow sign(y,x))\) </li> </ul></p>
         <!-- Next test -->
         <hr class="big-separation">
-        <p class="title-test"> Test 3</p>
+        <p class="title-test"> Test 12</p>
         <p>\(\mathcal{F}_c = \{ aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 \}\)</p>
         <p>\(\mathcal{R} = \{ unblind(sign(blind(x_{1},y),y_{1}),y) \rightarrow sign(x_{1},y_{1}), dest(g(x_{1},y),y) \rightarrow h(x_{1}), dest(h(x_{1}),y) \rightarrow f(x_{1},y), dec(enc(x_{1},y),y) \rightarrow x_{1}, check(sign(x_{1},y),vk(y)) \rightarrow x_{1}, adec(aenc(x_{1},pk(y)),y) \rightarrow x_{1} \}\)</p>
         <p>\(\{ Z\text{:}7, Z_{1}\text{:}7 \} \subseteq \mathcal{X}^2\)</p>
@@ -93,7 +177,7 @@
         <p> Result : <ul> <li> \((Z_{1}, check(Z_{1},Z), check(z,z_{1}), Z\text{:}7 \vdash^? z_{1} \wedge Z_{1}\text{:}7 \vdash^? z, check(sign(x,x_{2}),vk(x_{2})) \rightarrow x)\) </li> </ul></p>
         <!-- Next test -->
         <hr class="big-separation">
-        <p class="title-test"> Test 4</p>
+        <p class="title-test"> Test 13</p>
         <p>\(\mathcal{F}_c = \{ aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 \}\)</p>
         <p>\(\mathcal{R} = \{ unblind(sign(blind(x_{1},y),y_{1}),y) \rightarrow sign(x_{1},y_{1}), dest(g(x_{1},y),y) \rightarrow h(x_{1}), dest(h(x_{1}),y) \rightarrow f(x_{1},y), dec(enc(x_{1},y),y) \rightarrow x_{1}, check(sign(x_{1},y),vk(y)) \rightarrow x_{1}, adec(aenc(x_{1},pk(y)),y) \rightarrow x_{1} \}\)</p>
         <p>\(\{ Z\text{:}5, Z_{1}\text{:}5 \} \subseteq \mathcal{X}^2\)</p>
@@ -103,7 +187,7 @@
         <p> Result : <ul> <li> \((Z_{1}, adec(Z_{1},Z), adec(z,z_{1}), Z\text{:}5 \vdash^? z_{1} \wedge Z_{1}\text{:}5 \vdash^? z, adec(aenc(x,pk(x_{2})),x_{2}) \rightarrow x)\) </li> </ul></p>
         <!-- Next test -->
         <hr class="big-separation">
-        <p class="title-test"> Test 5</p>
+        <p class="title-test"> Test 14</p>
         <p>\(\mathcal{F}_c = \{ aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 \}\)</p>
         <p>\(\mathcal{R} = \{ unblind(sign(blind(x_{1},y),y_{1}),y) \rightarrow sign(x_{1},y_{1}), dest(g(x_{1},y),y) \rightarrow h(x_{1}), dest(h(x_{1}),y) \rightarrow f(x_{1},y), dec(enc(x_{1},y),y) \rightarrow x_{1}, check(sign(x_{1},y),vk(y)) \rightarrow x_{1}, adec(aenc(x_{1},pk(y)),y) \rightarrow x_{1} \}\)</p>
         <p>\(\{ Z\text{:}2, Z_{1}\text{:}2 \} \subseteq \mathcal{X}^2\)</p>
@@ -113,7 +197,7 @@
         <p> Result : <ul> <li> \((Z_{1}, dec(Z_{1},Z), dec(z,z_{1}), Z\text{:}2 \vdash^? z_{1} \wedge Z_{1}\text{:}2 \vdash^? z, dec(enc(x,x_{2}),x_{2}) \rightarrow x)\) </li> </ul></p>
         <!-- Next test -->
         <hr class="big-separation">
-        <p class="title-test"> Test 6</p>
+        <p class="title-test"> Test 15</p>
         <p>\(\mathcal{F}_c = \{ aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 \}\)</p>
         <p>\(\mathcal{R} = \{ unblind(sign(blind(x_{2},y_{1}),y_{2}),y_{1}) \rightarrow sign(x_{2},y_{2}), dest(g(x_{2},y_{1}),y_{1}) \rightarrow h(x_{2}), dest(h(x_{2}),y_{1}) \rightarrow f(x_{2},y_{1}), dec(enc(x_{2},y_{1}),y_{1}) \rightarrow x_{2}, check(sign(x_{2},y_{1}),vk(y_{1})) \rightarrow x_{2}, adec(aenc(x_{2},pk(y_{1})),y_{1}) \rightarrow x_{2} \}\)</p>
         <p>\(\{ Z\text{:}4, Z_{1}\text{:}4, Z_{2}\text{:}4, Z_{3}\text{:}4 \} \subseteq \mathcal{X}^2\)</p>
@@ -123,7 +207,7 @@
         <p> Result : <ul> <li> \((Z_{2}, dest(Z_{2},Z_{3}), dest(z,z_{1}), Z_{3}\text{:}4 \vdash^? z_{1} \wedge Z_{2}\text{:}4 \vdash^? z, dest(g(x_{1},x_{3}),x_{3}) \rightarrow h(x_{1}))\) </li> <li> \((Z_{1}, dest(Z_{1},Z), dest(z_{2},z_{3}), Z\text{:}4 \vdash^? z_{3} \wedge Z_{1}\text{:}4 \vdash^? z_{2}, dest(h(y),x) \rightarrow f(y,x))\) </li> </ul></p>
         <!-- Next test -->
         <hr class="big-separation">
-        <p class="title-test"> Test 7</p>
+        <p class="title-test"> Test 16</p>
         <p>\(\mathcal{F}_c = \{ aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 \}\)</p>
         <p>\(\mathcal{R} = \{ unblind(sign(blind(y,x),x_{1}),x) \rightarrow sign(y,x_{1}), dest(g(y,x),x) \rightarrow h(y), dest(h(y),x) \rightarrow f(y,x), dec(enc(y,x),x) \rightarrow y, check(sign(y,x),vk(x)) \rightarrow y, adec(aenc(y,pk(x)),x) \rightarrow y \}\)</p>
         <p> Input 1 : \(aenc(y,x)\)</p>

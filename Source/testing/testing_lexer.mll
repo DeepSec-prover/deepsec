@@ -43,6 +43,7 @@ rule token = parse
 | "/\\"  { WEDGE }
 | "\\/" { VEE }
 | "->" { RIGHTARROW }
+| "<=" { LLEFTARROW }
 | '('	 { LPAR }
 | ')'	 { RPAR }
 | '['	 { LBRACE }

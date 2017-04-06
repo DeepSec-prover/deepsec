@@ -294,3 +294,47 @@ let parse_symbol (s,line) =
       | env_elt -> error_message line (Printf.sprintf "The identifiant %s is declared as %s but a function symbol is expected." s (display_env_elt_type env_elt))
   with
     | Not_found -> error_message line (Printf.sprintf "The identifiant %s is not declared" s)
+
+(********** Basic deduction fact *********)
+
+let parse_basic_deduction_fact ((s,line),k, term) =
+  let xsnd =
+    try
+      match Hashtbl.find environment s with
+        | VarSnd(x) when Term.Variable.type_of x = k -> x
+        | VarSnd(x) -> error_message line (Printf.sprintf "The identifiant %s is declared as a second-order variable with type %d but a second-order variable with type %d is expected." s (Term.Variable.type_of x) k)
+        | env_elt -> error_message line (Printf.sprintf "The identifiant %s is declared as %s but a second-order variable is expected." s (display_env_elt_type env_elt))
+    with
+      | Not_found -> error_message line (Printf.sprintf "The identifiant %s is not declared" s)
+  in
+  Term.BasicFact.create xsnd (parse_term Term.Protocol term)
+
+(********** Deduction fact *********)
+
+let parse_deduction_fact (recipe,term) =
+  Term.Fact.create_deduction_fact (parse_term Term.Recipe recipe) (parse_term Term.Protocol term)
+
+(********** Skeleton *********)
+
+let parse_skeleton ((s,line),recipe,term,bfct_l,(lhs,rhs)) =
+  let xsnd =
+    try
+      match Hashtbl.find environment s with
+        | VarSnd(x) -> x
+        | env_elt -> error_message line (Printf.sprintf "The identifiant %s is declared as %s but a second-order variable is expected." s (display_env_elt_type env_elt))
+    with
+      | Not_found -> error_message line (Printf.sprintf "The identifiant %s is not declared" s)
+
+  and recipe' = parse_term Term.Recipe recipe
+  and term' = parse_term Term.Protocol term
+  and bfct_l' = List.map parse_basic_deduction_fact bfct_l
+  and lhs' = parse_term Term.Protocol lhs
+  and rhs' = parse_term Term.Protocol rhs in
+
+  {
+    Term.Rewrite_rules.variable_at_position = xsnd;
+    Term.Rewrite_rules.recipe = recipe';
+    Term.Rewrite_rules.p_term = term';
+    Term.Rewrite_rules.basic_deduction_facts = bfct_l';
+    Term.Rewrite_rules.rewrite_rule = (Term.root lhs', Term.get_args lhs', rhs')
+  }

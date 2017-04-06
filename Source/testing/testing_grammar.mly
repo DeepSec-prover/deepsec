@@ -29,7 +29,7 @@ open Testing_parser_functions
 %token EQ NEQ EQI NEQI
 %token WEDGE VEE VDASH
 %token BOT TOP
-%token RIGHTARROW
+%token RIGHTARROW LLEFTARROW
 %token LPAR RPAR
 %token LBRACE RBRACE
 %token LCURL RCURL
@@ -44,7 +44,7 @@ open Testing_parser_functions
 %start verify_Term_Subst_unify verify_Term_Subst_is_matchable
 %start verify_Term_Subst_is_extended_by verify_Term_Subst_is_equal_equations
 %start verify_Term_Modulo_syntactic_equations_of_equations
-%start verify_Term_Rewrite_rules_normalise verify_Term_Rewrite_rules_skeletons
+%start verify_Term_Rewrite_rules_normalise verify_Term_Rewrite_rules_skeletons verify_Term_Rewrite_rules_generic_rewrite_rules_formula
 
 %type <string> verify_Term_Subst_unify
 %type <string> verify_Term_Subst_is_matchable
@@ -53,6 +53,7 @@ open Testing_parser_functions
 %type <string> verify_Term_Modulo_syntactic_equations_of_equations
 %type <string> verify_Term_Rewrite_rules_normalise
 %type <string> verify_Term_Rewrite_rules_skeletons
+%type <string> verify_Term_Rewrite_rules_generic_rewrite_rules_formula
 
 %%
 /***********************************
@@ -260,6 +261,32 @@ verify_Term_Rewrite_rules_skeletons:
         let term = parse_term Term.Protocol $21 in
         let symbol = parse_symbol $24 in
         Testing_functions.apply_Term_Rewrite_rules_skeletons term symbol $27
+      }
+  | error
+      { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
+
+verify_Term_Rewrite_rules_generic_rewrite_rules_formula:
+  | SIGNATURE DDOT signature
+    REWRITING_SYSTEM DDOT rewriting_system
+    FST_VARS DDOT fst_var_list
+    SND_VARS DDOT snd_var_list
+    NAMES DDOT name_list
+    AXIOMS DDOT axiom_list
+    INPUT DDOT deduction_fact
+    INPUT DDOT skeleton
+    RESULT DDOT deduction_formula_list
+      {
+        initialise_parsing ();
+        parse_signature $3;
+        parse_fst_vars $9;
+        parse_snd_vars $12;
+        parse_names $15;
+        parse_axioms $18;
+        parse_rewriting_system $6;
+
+        let ded_fct = parse_deduction_fact $21 in
+        let skel = parse_skeleton $24 in
+        Testing_functions.apply_Term_Rewrite_rules_generic_rewrite_rules_formula ded_fct skel
       }
   | error
       { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
@@ -479,6 +506,35 @@ basic_deduction_fact_list:
   | basic_deduction_fact
       { [$1] }
   | basic_deduction_fact WEDGE basic_deduction_fact_list
+      { $1::$3 }
+
+/****************************************
+***          Deduction fact           ***
+*****************************************/
+
+deduction_fact:
+  | term VDASH term
+      { ($1,$3) }
+
+/*******************************************
+***          Deduction formula           ***
+********************************************/
+
+deduction_formula:
+  | deduction_fact LLEFTARROW basic_deduction_fact_list SEMI substitution
+      { ($1,$3,$5) }
+
+deduction_formula_list:
+  | LCURL RCURL
+      { [] }
+  | LCURL sub_deduction_formula_list RCURL
+      { $2 }
+
+
+sub_deduction_formula_list:
+  | deduction_formula
+      { [$1] }
+  | deduction_formula COMMA sub_deduction_formula_list
       { $1::$3 }
 
 /***********************************

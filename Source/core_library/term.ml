@@ -737,7 +737,7 @@ module Axiom = struct
           | Testing -> Printf.sprintf "_ax_%d" ax.id_axiom
           | Terminal | Pretty_Terminal -> Printf.sprintf "ax_%d" ax.id_axiom
           | HTML -> Printf.sprintf "ax<sub>%d</sub>" ax.id_axiom
-          | Latex -> Printf.sprintf "\\ax_{%d}" ax.id_axiom
+          | Latex -> Printf.sprintf "\\mathsf{ax}_{%d}" ax.id_axiom
         end
     | Some n ->
         let n' = Name.search_name_in_display_renaming rho n in
@@ -2275,56 +2275,67 @@ module Fact = struct
     | Func(_,args) -> List.iter (find_univ_var at) args
     | _ -> ()
 
-  let display_formula (type a) out ?(rho=None) (fct:a t) (psi:a formula) =
-    begin match fct with
-      | Deduction ->
-          find_univ_var Recipe psi.head.df_recipe;
-          find_univ_var Protocol psi.head.df_term
-      | Equality ->
-          find_univ_var Recipe psi.head.ef_recipe_1;
-          find_univ_var Recipe psi.head.ef_recipe_2
-    end;
-
-    List.iter (fun bdf ->
-      find_univ_var Recipe (Var bdf.BasicFact.var);
-      find_univ_var Protocol bdf.BasicFact.term
-    ) psi.ded_fact_list;
-
-    List.iter (fun (t1,t2) ->
-      find_univ_var Protocol (Var t1);
-      find_univ_var Protocol t2
-    ) psi.equation_subst;
-
-    let forall_str =
-      match retrieve_search Protocol, retrieve_search Recipe with
-        | [],[] -> ""
-        | [],lvr -> Printf.sprintf "%s %s." (forall out) (display_list (Variable.display out ~rho:rho Recipe ~v_type:true) "," lvr)
-        | lvp, [] -> Printf.sprintf "%s %s." (forall out) (display_list (Variable.display out ~rho:rho Protocol ~v_type:true) "," lvp)
-        | lvp,lvr -> Printf.sprintf "%s %s,%s." (forall out) (display_list (Variable.display out ~rho:rho Recipe ~v_type:true) "," lvr) (display_list (Variable.display out ~rho:rho Protocol ~v_type:true) "," lvp)
-    in
-
-    cleanup_search Protocol;
-    cleanup_search Recipe;
-
-    match psi.ded_fact_list, psi.equation_subst with
-      | [],[] -> display_fact out ~rho:rho fct psi.head
-      | _,[] -> Printf.sprintf "%s %s %s %s"
-          forall_str
+  let display_formula (type a) out ?(rho=None) (fct:a t) (psi:a formula) = match out with
+    | Testing ->
+        Printf.sprintf "%s %s %s %s %s"
           (display_fact out ~rho:rho fct psi.head)
-          (leftarrow out)
+          (lLeftarrow out)
           (display_list (BasicFact.display out ~rho:rho) (Printf.sprintf " %s " (wedge out)) psi.ded_fact_list)
-      | [],_ -> Printf.sprintf "%s %s %s %s"
-          forall_str
-          (display_fact out ~rho:rho fct psi.head)
-          (leftarrow out)
-          (display_list (fun (t1,t2) -> Printf.sprintf "%s %s %s" (display out ~rho:rho Protocol (Var t1)) (eqs out) (display out ~rho:rho Protocol t2)) (Printf.sprintf " %s " (wedge out)) psi.equation_subst)
-      | _,_ -> Printf.sprintf "%s %s %s %s %s %s"
-          forall_str
-          (display_fact out ~rho:rho fct psi.head)
-          (leftarrow out)
-          (display_list (BasicFact.display out ~rho:rho) (Printf.sprintf " %s " (wedge out)) psi.ded_fact_list)
-          (wedge out)
-          (display_list (fun (t1,t2) -> Printf.sprintf "%s %s %s" (display out ~rho:rho Protocol (Var t1)) (eqs out) (display out ~rho:rho Protocol t2)) (Printf.sprintf " %s " (wedge out)) psi.equation_subst)
+          "; "
+          (Subst.display out ~rho:rho Protocol psi.equation_subst)
+    | _ ->
+        begin
+
+          begin match fct with
+            | Deduction ->
+                find_univ_var Recipe psi.head.df_recipe;
+                find_univ_var Protocol psi.head.df_term
+            | Equality ->
+                find_univ_var Recipe psi.head.ef_recipe_1;
+                find_univ_var Recipe psi.head.ef_recipe_2
+          end;
+
+          List.iter (fun bdf ->
+            find_univ_var Recipe (Var bdf.BasicFact.var);
+            find_univ_var Protocol bdf.BasicFact.term
+          ) psi.ded_fact_list;
+
+          List.iter (fun (t1,t2) ->
+            find_univ_var Protocol (Var t1);
+            find_univ_var Protocol t2
+          ) psi.equation_subst;
+
+          let forall_str =
+            match retrieve_search Protocol, retrieve_search Recipe with
+              | [],[] -> ""
+              | [],lvr -> Printf.sprintf "%s %s." (forall out) (display_list (Variable.display out ~rho:rho Recipe ~v_type:true) "," lvr)
+              | lvp, [] -> Printf.sprintf "%s %s." (forall out) (display_list (Variable.display out ~rho:rho Protocol ~v_type:true) "," lvp)
+              | lvp,lvr -> Printf.sprintf "%s %s,%s." (forall out) (display_list (Variable.display out ~rho:rho Recipe ~v_type:true) "," lvr) (display_list (Variable.display out ~rho:rho Protocol ~v_type:true) "," lvp)
+          in
+
+          cleanup_search Protocol;
+          cleanup_search Recipe;
+
+          match psi.ded_fact_list, psi.equation_subst with
+            | [],[] -> display_fact out ~rho:rho fct psi.head
+            | _,[] -> Printf.sprintf "%s %s %s %s"
+                forall_str
+                (display_fact out ~rho:rho fct psi.head)
+                (lLeftarrow out)
+                (display_list (BasicFact.display out ~rho:rho) (Printf.sprintf " %s " (wedge out)) psi.ded_fact_list)
+            | [],_ -> Printf.sprintf "%s %s %s %s"
+                forall_str
+                (display_fact out ~rho:rho fct psi.head)
+                (lLeftarrow out)
+                (display_list (fun (t1,t2) -> Printf.sprintf "%s %s %s" (display out ~rho:rho Protocol (Var t1)) (eqs out) (display out ~rho:rho Protocol t2)) (Printf.sprintf " %s " (wedge out)) psi.equation_subst)
+            | _,_ -> Printf.sprintf "%s %s %s %s %s %s"
+                forall_str
+                (display_fact out ~rho:rho fct psi.head)
+                (lLeftarrow out)
+                (display_list (BasicFact.display out ~rho:rho) (Printf.sprintf " %s " (wedge out)) psi.ded_fact_list)
+                (wedge out)
+                (display_list (fun (t1,t2) -> Printf.sprintf "%s %s %s" (display out ~rho:rho Protocol (Var t1)) (eqs out) (display out ~rho:rho Protocol t2)) (Printf.sprintf " %s " (wedge out)) psi.equation_subst)
+        end
 end
 
 (***************************************************
@@ -2521,25 +2532,29 @@ module Rewrite_rules = struct
 
     match f.cat with
     | Destructor rw_rules ->
-        List.fold_left (fun acc (args,r) ->
-          try
-            let args' = List.map (Variable.Renaming.rename_term Protocol Universal Variable.fst_ord_type) args in
-            let r' = Variable.Renaming.rename_term Protocol Universal Variable.fst_ord_type r in
+        let result =
+          List.fold_left (fun acc (args,r) ->
+            try
+              let args' = List.map (Variable.Renaming.rename_term Protocol Universal Variable.fst_ord_type) args in
+              let r' = Variable.Renaming.rename_term Protocol Universal Variable.fst_ord_type r in
 
-            Variable.Renaming.cleanup Protocol;
+              Variable.Renaming.cleanup Protocol;
 
-            let b_fct, rest_b_fct = explore_list x_snd  b_fct_list in
+              let b_fct, rest_b_fct = explore_list x_snd  b_fct_list in
 
-            Subst.link Recipe x_snd fct.Fact.df_recipe;
-            let new_recipe = Subst.apply_on_term recipe in
-            Subst.cleanup Recipe;
+              Subst.link Recipe x_snd fct.Fact.df_recipe;
+              let new_recipe = Subst.apply_on_term recipe in
+              Subst.cleanup Recipe;
 
-            let head = Fact.create_deduction_fact new_recipe r' in
+              let head = Fact.create_deduction_fact new_recipe r' in
 
-            (Fact.create Fact.Deduction head rest_b_fct [Func(f,args'),term; b_fct.BasicFact.term, fct.Fact.df_term])::acc
-          with
-          | Fact.Bot -> acc
-        ) [] rw_rules
+              (Fact.create Fact.Deduction head rest_b_fct [Func(f,args'),term; b_fct.BasicFact.term, fct.Fact.df_term])::acc
+            with
+            | Fact.Bot -> acc
+          ) [] rw_rules
+        in
+        Config.test (fun () -> !test_generic_rewrite_rules_formula fct skel result);
+        result
     | _ -> Config.internal_error "[term.ml >> Rewrite_rules.generic_rewrite_rules_formula] The function symbol should be a destructor."
 
   let specific_rewrite_rules_formula fct skel  =

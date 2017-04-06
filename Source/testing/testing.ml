@@ -61,6 +61,13 @@ let data_verification_Term_Rewrite_rules_skeletons =
     parsing_function = Testing_grammar.verify_Term_Rewrite_rules_skeletons
   }
 
+let data_verification_Term_Rewrite_rules_generic_rewrite_rules_formula =
+  {
+    data_IO = data_IO_Term_Rewrite_rules_generic_rewrite_rules_formula;
+    name = "Term.Rewrite_rules.generic_rewrite_rules_formula";
+    parsing_function = Testing_grammar.verify_Term_Rewrite_rules_generic_rewrite_rules_formula
+  }
+
 (** {3 Generic verification of tests} *)
 
 (** [verify_function data] verifies all the tests for the function associated to [data]. *)
@@ -105,7 +112,8 @@ let verify_all () =
   verify_function data_verification_Term_Subst_is_equal_equations;
   verify_function data_verification_Term_Modulo_syntactic_equations_of_equations;
   verify_function data_verification_Term_Rewrite_rules_normalise;
-  verify_function data_verification_Term_Rewrite_rules_skeletons
+  verify_function data_verification_Term_Rewrite_rules_skeletons;
+  verify_function data_verification_Term_Rewrite_rules_generic_rewrite_rules_formula
 
 (** [data_verification_of_name str] returns the data associated to a function such that [data.name = str]. If no data corresponds to [str] then the execution ends. *)
 let data_verification_of_name = function
@@ -116,6 +124,7 @@ let data_verification_of_name = function
   | s when s = data_verification_Term_Modulo_syntactic_equations_of_equations.name -> data_verification_Term_Modulo_syntactic_equations_of_equations
   | s when s = data_verification_Term_Rewrite_rules_normalise.name -> data_verification_Term_Rewrite_rules_normalise
   | s when s = data_verification_Term_Rewrite_rules_skeletons.name -> data_verification_Term_Rewrite_rules_skeletons
+  | s when s = data_verification_Term_Rewrite_rules_generic_rewrite_rules_formula.name -> data_verification_Term_Rewrite_rules_generic_rewrite_rules_formula
   | _ -> Printf.printf "Error : Incorrect name of function\n"; exit 0
 
 (** [validate_all ()] validates all the tests of all the functions. *)
@@ -126,7 +135,8 @@ let validate_all () =
   validate_all_tests data_verification_Term_Subst_is_equal_equations.data_IO;
   validate_all_tests data_verification_Term_Modulo_syntactic_equations_of_equations.data_IO;
   validate_all_tests data_verification_Term_Rewrite_rules_normalise.data_IO;
-  validate_all_tests data_verification_Term_Rewrite_rules_skeletons.data_IO
+  validate_all_tests data_verification_Term_Rewrite_rules_skeletons.data_IO;
+  validate_all_tests data_verification_Term_Rewrite_rules_generic_rewrite_rules_formula.data_IO
 
 (**/**)
 

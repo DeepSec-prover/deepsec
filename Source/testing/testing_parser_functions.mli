@@ -42,3 +42,9 @@ val parse_substitution : ('a, 'b) Term.atom -> (ident * term) list -> ('a, 'b) T
 val parse_term : ('a, 'b) Term.atom -> term -> ('a, 'b) Term.term
 
 val parse_symbol : ident -> Term.symbol
+
+val parse_basic_deduction_fact : ident * int * term -> Term.BasicFact.t
+
+val parse_deduction_fact : term * term -> Term.Fact.deduction
+
+val parse_skeleton : ident * term * term * (ident * int * term) list * (term * term) -> Term.Rewrite_rules.skeleton
