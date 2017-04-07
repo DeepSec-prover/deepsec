@@ -1721,6 +1721,51 @@ module Diseq = struct
     | Bot -> true
     | _ -> false
 
+  (*** Access ***)
+
+  let get_names_with_list (type a) (type b) (at:(a,b) atom) (diseq:(a,b) t) (l:name list) = match diseq with
+    | Top | Bot -> l
+    | Diseq diseq_l ->
+        List.iter Name.link_search l;
+
+        begin match at with
+          | Recipe ->
+              List.iter (fun (t1,t2) ->
+                get_names_recipe (fun _ -> true) t1;
+                get_names_recipe (fun _ -> true) t2
+              ) diseq_l
+          | Protocol ->
+              List.iter (fun (t1,t2) ->
+                get_names_protocol (fun _ -> true) t1;
+                get_names_protocol (fun _ -> true) t2
+              ) diseq_l
+        end;
+
+        let result = Name.retrieve_search () in
+        Name.cleanup_search ();
+        result
+
+  let get_vars_with_list (type a) (type b) (at:(a,b) atom) (diseq:(a,b) t) (l:(a,b) variable list) = match diseq with
+    | Top | Bot -> l
+    | Diseq diseq_l ->
+        List.iter (link_search at) l;
+
+        List.iter (fun (t1,t2) ->
+          get_vars_term at (fun _ -> true) t1;
+          get_vars_term at (fun _ -> true) t2
+        ) diseq_l;
+
+        let result = retrieve_search at in
+        cleanup_search at;
+        result
+
+  let get_axioms_with_list diseq ax_list  = match diseq with
+    | Top | Bot -> ax_list
+    | Diseq diseq_l ->
+        List.fold_left (fun acc (t1,t2) ->
+          get_axioms_with_list t2 (fun _ -> true) (get_axioms_with_list t1 (fun _ -> true) acc)
+        ) ax_list diseq_l
+
   let of_substitution at sigma l =
     if sigma = []
     then Bot
@@ -1838,27 +1883,41 @@ module Diseq = struct
     | Top -> top out
     | Bot -> bot out
     | Diseq diseq ->
+        begin match out with
+          | Testing ->
+              Config.debug (fun () ->
+                if diseq = []
+                then Config.internal_error "[term.ml >> Diseq.display] There should be some disequation (otherwise it should have been Bot)."
+              );
+              Printf.sprintf "(%s)" (
+                display_list (fun (t1,t2) ->
+                  Printf.sprintf "%s %s %s" (display Testing ~rho:rho at t1) (neqs Testing) (display Testing ~rho:rho at t2)
+                ) (Printf.sprintf " %s " (vee Testing)) diseq
+              )
+          | _ ->
+              let rec find_univ_var_term = function
+                | Var v when v.link = FLink -> ()
+                | Var v when v.quantifier = Universal ->
+                    link_search at v;
+                | Func(_,args) -> List.iter find_univ_var_term args
+                | _ -> ()
+              in
 
-        let rec find_univ_var_term = function
-          | Var v when v.link = FLink -> ()
-          | Var v when v.quantifier = Universal ->
-              link_search at v;
-          | Func(_,args) -> List.iter find_univ_var_term args
-          | _ -> ()
-        in
+              let display_single (t1,t2) =
+                Printf.sprintf "%s %s %s" (display out ~rho:rho at t1) (neqs out) (display out ~rho:rho at t2)
+              in
 
-        let display_single (t1,t2) =
-          Printf.sprintf "%s %s %s" (display out ~rho:rho at t1) (neqs out) (display out ~rho:rho at t2)
-        in
+              List.iter (fun (t1,t2) -> find_univ_var_term t1; find_univ_var_term t2) diseq;
 
-        List.iter (fun (t1,t2) -> find_univ_var_term t1; find_univ_var_term t2) diseq;
+              let found_vars = retrieve_search at in
+              cleanup_search at;
 
-        let found_vars = retrieve_search at in
-        cleanup_search at;
+              if found_vars = []
+              then Printf.sprintf "%s" (display_list display_single (Printf.sprintf " %s " (vee out)) diseq)
+              else Printf.sprintf "%s %s.%s" (forall out) (display_list (Variable.display out ~rho:rho  ~v_type:true at) "," found_vars) (display_list display_single (Printf.sprintf " %s " (vee out)) diseq)
+        end
 
-        if found_vars = []
-        then Printf.sprintf "%s" (display_list display_single (Printf.sprintf " %s " (vee out)) diseq)
-        else Printf.sprintf "%s %s.%s" (forall out) (display_list (Variable.display out ~rho:rho  ~v_type:true at) "," found_vars) (display_list display_single (Printf.sprintf " %s " (vee out)) diseq)
+  let create_for_testing l = Diseq l
 
 end
 

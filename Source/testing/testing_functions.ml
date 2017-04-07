@@ -1,5 +1,6 @@
 open Display
 open Term
+open Data_structure
 
 (*************************************
       Generic production of tests
@@ -347,16 +348,16 @@ let gather_in_equation eq gather =
   and fst_vars = Modulo.get_vars_eq_with_list eq (fun _ -> true) gather.g_fst_vars in
   { gather with g_names = names; g_fst_vars = fst_vars }
 
-let gather_in_term term gather =
-  let names = get_names_with_list Protocol term (fun _ -> true) gather.g_names
-  and fst_vars = get_vars_with_list Protocol term (fun _ -> true) gather.g_fst_vars in
-  { gather with g_names = names; g_fst_vars = fst_vars }
-
-let gather_in_recipe term gather =
-  let names = get_names_with_list Recipe term (fun _ -> true) gather.g_names
-  and snd_vars = get_vars_with_list Recipe term (fun _ -> true) gather.g_snd_vars
-  and axioms = get_axioms_with_list term (fun _ -> true) gather.g_axioms in
-  { gather with g_names = names; g_snd_vars = snd_vars; g_axioms = axioms }
+let gather_in_term (type a) (type b) (at:(a,b) atom) (term:(a,b) term) (gather:gathering) = match at with
+  | Protocol ->
+      let names = get_names_with_list Protocol term (fun _ -> true) gather.g_names
+      and fst_vars = get_vars_with_list Protocol term (fun _ -> true) gather.g_fst_vars in
+      { gather with g_names = names; g_fst_vars = fst_vars }
+  | Recipe ->
+      let names = get_names_with_list Recipe term (fun _ -> true) gather.g_names
+      and snd_vars = get_vars_with_list Recipe term (fun _ -> true) gather.g_snd_vars
+      and axioms = get_axioms_with_list term (fun _ -> true) gather.g_axioms in
+      { gather with g_names = names; g_snd_vars = snd_vars; g_axioms = axioms }
 
 let gather_in_basic_fct bfct gather =
   let names = get_names_with_list Protocol (BasicFact.get_protocol_term bfct) (fun _ -> true) gather.g_names
@@ -365,9 +366,9 @@ let gather_in_basic_fct bfct gather =
   { gather with g_names = names; g_fst_vars = fst_vars; g_snd_vars = snd_vars }
 
 let gather_in_skeleton skel gather =
-  let new_gather = gather_in_recipe skel.Rewrite_rules.recipe gather in
+  let new_gather = gather_in_term Recipe skel.Rewrite_rules.recipe gather in
   let new_gather_2 = { new_gather with g_snd_vars = add_in_list skel.Rewrite_rules.variable_at_position Variable.is_equal new_gather.g_snd_vars } in
-  let new_gather_3 = gather_in_term skel.Rewrite_rules.p_term new_gather_2 in
+  let new_gather_3 = gather_in_term Protocol skel.Rewrite_rules.p_term new_gather_2 in
   let new_gather_4 = List.fold_left (fun acc_gather bfct -> gather_in_basic_fct bfct acc_gather) new_gather_3 skel.Rewrite_rules.basic_deduction_facts in
   let (_,args,r) = skel.Rewrite_rules.rewrite_rule in
   gather_in_list Protocol (r::args) new_gather_4
@@ -375,13 +376,24 @@ let gather_in_skeleton skel gather =
 let gather_in_deduction_fact fct gather =
   let recipe = Fact.get_recipe fct
   and term = Fact.get_protocol_term fct in
-  gather_in_term term (gather_in_recipe recipe gather)
+  gather_in_term Protocol term (gather_in_term Recipe recipe gather)
 
 let gather_in_deduction_formula ded_form gather =
   let head = Fact.get_head ded_form
   and mgu = Fact.get_mgu_hypothesis ded_form
   and bfct_l = Fact.get_basic_fact_hypothesis ded_form in
   List.fold_left (fun acc_gather bfct -> gather_in_basic_fct bfct acc_gather) (gather_in_subst Protocol mgu (gather_in_deduction_fact head gather)) bfct_l
+
+let gather_in_Eq (type a) (type b) (at:(a,b) atom) (form:(a,b) Eq.t) (gather:gathering) = match at with
+  | Protocol ->
+      let names = Eq.get_names_with_list at form gather.g_names
+      and fst_vars = Eq.get_vars_with_list at form gather.g_fst_vars in
+      { gather with g_names = names; g_fst_vars = fst_vars }
+  | Recipe ->
+      let names = Eq.get_names_with_list at form gather.g_names
+      and snd_vars = Eq.get_vars_with_list at form gather.g_snd_vars
+      and axioms = Eq.get_axioms_with_list form gather.g_axioms in
+      { gather with g_names = names; g_snd_vars = snd_vars ; g_axioms = axioms }
 
 (*************************************
       Generic display functions
@@ -843,7 +855,7 @@ let data_IO_Term_Rewrite_rules_normalise =
 
 let test_Term_Rewrite_rules_normalise term result =
   (**** Retreive the names, variables and axioms *****)
-  let gathering = gather_in_term result (gather_in_term term  (gather_in_signature empty_gathering)) in
+  let gathering = gather_in_term Protocol result (gather_in_term Protocol term  (gather_in_signature empty_gathering)) in
 
   (**** Generate the display renaming ****)
   let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in
@@ -909,7 +921,7 @@ let data_IO_Term_Rewrite_rules_skeletons =
 
 let test_Term_Rewrite_rules_skeletons term f k result =
   (**** Retreive the names, variables and axioms *****)
-  let gathering = List.fold_left (fun acc_gather skel -> gather_in_skeleton skel acc_gather) (gather_in_term term  (gather_in_signature empty_gathering)) result in
+  let gathering = List.fold_left (fun acc_gather skel -> gather_in_skeleton skel acc_gather) (gather_in_term Protocol term  (gather_in_signature empty_gathering)) result in
 
   (**** Generate the display renaming ****)
   let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in
@@ -1030,6 +1042,77 @@ let load_Term_Rewrite_rules_generic_rewrite_rules_formula fct skel result =
   let _,test_latex = test_Term_Rewrite_rules_generic_rewrite_rules_formula fct skel result in
   produce_test_latex test_latex
 
+(***** Data_structure.Eq.implies *****)
+
+let data_IO_Data_structure_Eq_implies =
+  {
+    validated_tests = [];
+    tests_to_check = [];
+    additional_tests = [];
+
+    is_being_tested = true;
+
+    file = "data_structure_eq_implies"
+  }
+
+let test_Data_structure_Eq_implies (type a) (type b) (at:(a,b) atom) (form:(a,b) Eq.t) (term1:(a,b) term) (term2:(a,b) term) result =
+  (**** Retreive the names, variables and axioms *****)
+  let gathering = gather_in_term at term1 (gather_in_term at term2 (gather_in_Eq at form (gather_in_signature empty_gathering))) in
+
+  (**** Generate the display renaming ****)
+  let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in
+
+  (**** Generate test_display for terminal *****)
+
+  let test_terminal =
+    {
+      signature = Symbol.display_signature Testing;
+      rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
+      fst_ord_vars = display_var_list Testing Protocol rho gathering.g_fst_vars;
+      snd_ord_vars = display_var_list Testing Recipe rho gathering.g_snd_vars;
+      names = display_name_list Testing rho gathering.g_names;
+      axioms = display_axiom_list Testing rho gathering.g_axioms;
+
+      inputs = [ (display_atom Testing at, Text); (Eq.display Testing ~rho:rho at form,Inline); (display Testing ~rho:rho at term1,Inline); (display Testing ~rho:rho at term2,Inline) ];
+      output = ( display_boolean Testing result, Inline )
+    } in
+
+  let test_latex =
+    {
+      signature = (let t = Symbol.display_signature Latex in if t = emptyset Latex then "" else t);
+      rewrite_rules = (let t = Rewrite_rules.display_all_rewrite_rules Latex rho in if t = emptyset Latex then "" else t);
+      fst_ord_vars = "";
+      snd_ord_vars = (let t = display_var_list Latex Recipe rho gathering.g_snd_vars in if t = emptyset Latex then "" else t);
+      names = "";
+      axioms = "";
+
+      inputs = [ (display_atom Latex at, Text); (Eq.display Latex ~rho:rho at form,Inline); (display Latex ~rho:rho at term1,Inline); (display Latex ~rho:rho at term2,Inline) ];
+      output = ( display_boolean Latex result, Inline )
+    } in
+
+  test_terminal, test_latex
+
+let update_Data_structure_Eq_implies () =
+  Eq.update_test_implies Protocol (fun form term1 term2 result ->
+    if data_IO_Data_structure_Eq_implies.is_being_tested
+    then add_test (test_Data_structure_Eq_implies Protocol form term1 term2 result) data_IO_Data_structure_Eq_implies
+  );
+  Eq.update_test_implies Recipe (fun form term1 term2 result ->
+    if data_IO_Data_structure_Eq_implies.is_being_tested
+    then add_test (test_Data_structure_Eq_implies Recipe form term1 term2 result) data_IO_Data_structure_Eq_implies
+  )
+
+let apply_Data_structure_Eq_implies (type a) (type b) (at:(a,b) atom) (form:(a,b) Eq.t) (term1:(a,b) term) (term2:(a,b) term) =
+  let result = Eq.implies at form term1 term2 in
+
+  let test_terminal,_ = test_Data_structure_Eq_implies at form term1 term2 result in
+  produce_test_terminal test_terminal
+
+let load_Data_structure_Eq_implies (type a) (type b) (at:(a,b) atom) (form:(a,b) Eq.t) (term1:(a,b) term) (term2:(a,b) term) (result:bool) =
+  let _,test_latex = test_Data_structure_Eq_implies at form term1 term2 result in
+  produce_test_latex test_latex
+
+
 (*************************************
          General function
 *************************************)
@@ -1042,7 +1125,8 @@ let preload () =
   pre_load_tests data_IO_Term_Modulo_syntactic_equations_of_equations;
   pre_load_tests data_IO_Term_Rewrite_rules_normalise;
   pre_load_tests data_IO_Term_Rewrite_rules_skeletons;
-  pre_load_tests data_IO_Term_Rewrite_rules_generic_rewrite_rules_formula
+  pre_load_tests data_IO_Term_Rewrite_rules_generic_rewrite_rules_formula;
+  pre_load_tests data_IO_Data_structure_Eq_implies
 
 let publish () =
   publish_tests data_IO_Term_Subst_unify;
@@ -1052,7 +1136,8 @@ let publish () =
   publish_tests data_IO_Term_Modulo_syntactic_equations_of_equations;
   publish_tests data_IO_Term_Rewrite_rules_normalise;
   publish_tests data_IO_Term_Rewrite_rules_skeletons;
-  publish_tests data_IO_Term_Rewrite_rules_generic_rewrite_rules_formula
+  publish_tests data_IO_Term_Rewrite_rules_generic_rewrite_rules_formula;
+  publish_tests data_IO_Data_structure_Eq_implies
 
 let update () =
   update_Term_Subst_unify ();
@@ -1062,4 +1147,5 @@ let update () =
   update_Term_Modulo_syntactic_equations_of_equations ();
   update_Term_Rewrite_rules_normalise ();
   update_Term_Rewrite_rules_skeletons ();
-  update_Term_Rewrite_rules_generic_rewrite_rules_formula ()
+  update_Term_Rewrite_rules_generic_rewrite_rules_formula ();
+  update_Data_structure_Eq_implies ()

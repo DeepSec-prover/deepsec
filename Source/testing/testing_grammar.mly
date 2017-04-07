@@ -46,6 +46,8 @@ open Testing_parser_functions
 %start parse_Term_Modulo_syntactic_equations_of_equations
 %start parse_Term_Rewrite_rules_normalise parse_Term_Rewrite_rules_skeletons parse_Term_Rewrite_rules_generic_rewrite_rules_formula
 
+%start parse_Data_structure_Eq_implies
+
 %type <(Testing_parser_functions.parsing_mode -> string)> parse_Term_Subst_unify
 %type <(Testing_parser_functions.parsing_mode -> string)> parse_Term_Subst_is_matchable
 %type <(Testing_parser_functions.parsing_mode -> string)> parse_Term_Subst_is_extended_by
@@ -55,23 +57,22 @@ open Testing_parser_functions
 %type <(Testing_parser_functions.parsing_mode -> string)> parse_Term_Rewrite_rules_skeletons
 %type <(Testing_parser_functions.parsing_mode -> string)> parse_Term_Rewrite_rules_generic_rewrite_rules_formula
 
+%type <(Testing_parser_functions.parsing_mode -> string)> parse_Data_structure_Eq_implies
+
 %%
 /***********************************
 ***           Main Entry         ***
 ************************************/
 
-parse_Term_Subst_unify:
+header_of_test:
   | SIGNATURE DDOT signature
     REWRITING_SYSTEM DDOT rewriting_system
     FST_VARS DDOT fst_var_list
     SND_VARS DDOT snd_var_list
     NAMES DDOT name_list
     AXIOMS DDOT axiom_list
-    INPUT DDOT atom
-    INPUT DDOT syntactic_equation_list
-    RESULT DDOT substitution_option
       {
-        (fun mode ->
+        (fun () ->
           initialise_parsing ();
           parse_signature $3;
           parse_fst_vars $9;
@@ -79,20 +80,29 @@ parse_Term_Subst_unify:
           parse_names $15;
           parse_axioms $18;
           parse_rewriting_system $6;
+        )
+      }
 
-          if $21 = true
+parse_Term_Subst_unify:
+  | header_of_test
+    INPUT DDOT atom
+    INPUT DDOT syntactic_equation_list
+    RESULT DDOT substitution_option
+      {
+        (fun mode -> $1 ();
+          if $4 = true
           then
-            let eq_list = parse_syntactic_equation_list Term.Protocol $24 in
+            let eq_list = parse_syntactic_equation_list Term.Protocol $7 in
             if mode = Load
             then
-              let result = parse_substitution_option Term.Protocol $27 in
+              let result = parse_substitution_option Term.Protocol $10 in
               Testing_functions.load_Term_Subst_unify Term.Protocol eq_list result
             else Testing_functions.apply_Term_Subst_unify Term.Protocol eq_list
           else
-            let eq_list = parse_syntactic_equation_list Term.Recipe $24 in
+            let eq_list = parse_syntactic_equation_list Term.Recipe $7 in
             if mode = Load
             then
-              let result = parse_substitution_option Term.Recipe $27 in
+              let result = parse_substitution_option Term.Recipe $10 in
               Testing_functions.load_Term_Subst_unify Term.Recipe eq_list result
             else Testing_functions.apply_Term_Subst_unify Term.Recipe eq_list
         )
@@ -101,38 +111,25 @@ parse_Term_Subst_unify:
       { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
 
 parse_Term_Subst_is_matchable:
-  | SIGNATURE DDOT signature
-    REWRITING_SYSTEM DDOT rewriting_system
-    FST_VARS DDOT fst_var_list
-    SND_VARS DDOT snd_var_list
-    NAMES DDOT name_list
-    AXIOMS DDOT axiom_list
+  | header_of_test
     INPUT DDOT atom
     INPUT DDOT term_list
     INPUT DDOT term_list
     RESULT DDOT boolean
       {
-        (fun mode ->
-          initialise_parsing ();
-          parse_signature $3;
-          parse_fst_vars $9;
-          parse_snd_vars $12;
-          parse_names $15;
-          parse_axioms $18;
-          parse_rewriting_system $6;
-
-          if $21 = true
+        (fun mode -> $1 ();
+          if $4 = true
           then
-            let list1 = parse_term_list Term.Protocol $24 in
-            let list2 = parse_term_list Term.Protocol $27 in
+            let list1 = parse_term_list Term.Protocol $7 in
+            let list2 = parse_term_list Term.Protocol $10 in
             if mode = Load
-            then Testing_functions.load_Term_Subst_is_matchable Term.Protocol list1 list2 $30
+            then Testing_functions.load_Term_Subst_is_matchable Term.Protocol list1 list2 $13
             else Testing_functions.apply_Term_Subst_is_matchable Term.Protocol list1 list2
           else
-            let list1 = parse_term_list Term.Recipe $24 in
-            let list2 = parse_term_list Term.Recipe $27 in
+            let list1 = parse_term_list Term.Recipe $7 in
+            let list2 = parse_term_list Term.Recipe $10 in
             if mode = Load
-            then Testing_functions.load_Term_Subst_is_matchable Term.Recipe list1 list2 $30
+            then Testing_functions.load_Term_Subst_is_matchable Term.Recipe list1 list2 $13
             else Testing_functions.apply_Term_Subst_is_matchable Term.Recipe list1 list2
         )
       }
@@ -141,38 +138,25 @@ parse_Term_Subst_is_matchable:
 
 
 parse_Term_Subst_is_extended_by:
-  | SIGNATURE DDOT signature
-    REWRITING_SYSTEM DDOT rewriting_system
-    FST_VARS DDOT fst_var_list
-    SND_VARS DDOT snd_var_list
-    NAMES DDOT name_list
-    AXIOMS DDOT axiom_list
+  | header_of_test
     INPUT DDOT atom
     INPUT DDOT substitution
     INPUT DDOT substitution
     RESULT DDOT boolean
       {
-        (fun mode ->
-          initialise_parsing ();
-          parse_signature $3;
-          parse_fst_vars $9;
-          parse_snd_vars $12;
-          parse_names $15;
-          parse_axioms $18;
-          parse_rewriting_system $6;
-
-          if $21 = true
+        (fun mode -> $1 ();
+          if $4 = true
           then
-            let subst1 = parse_substitution Term.Protocol $24 in
-            let subst2 = parse_substitution Term.Protocol $27 in
+            let subst1 = parse_substitution Term.Protocol $7 in
+            let subst2 = parse_substitution Term.Protocol $10 in
             if mode = Load
-            then Testing_functions.load_Term_Subst_is_extended_by Term.Protocol subst1 subst2 $30
+            then Testing_functions.load_Term_Subst_is_extended_by Term.Protocol subst1 subst2 $13
             else Testing_functions.apply_Term_Subst_is_extended_by Term.Protocol subst1 subst2
           else
-            let subst1 = parse_substitution Term.Recipe $24 in
-            let subst2 = parse_substitution Term.Recipe $27 in
+            let subst1 = parse_substitution Term.Recipe $7 in
+            let subst2 = parse_substitution Term.Recipe $10 in
             if mode = Load
-            then Testing_functions.load_Term_Subst_is_extended_by Term.Recipe subst1 subst2 $30
+            then Testing_functions.load_Term_Subst_is_extended_by Term.Recipe subst1 subst2 $13
             else Testing_functions.apply_Term_Subst_is_extended_by Term.Recipe subst1 subst2
         )
       }
@@ -180,38 +164,25 @@ parse_Term_Subst_is_extended_by:
       { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
 
 parse_Term_Subst_is_equal_equations:
-  | SIGNATURE DDOT signature
-    REWRITING_SYSTEM DDOT rewriting_system
-    FST_VARS DDOT fst_var_list
-    SND_VARS DDOT snd_var_list
-    NAMES DDOT name_list
-    AXIOMS DDOT axiom_list
+  | header_of_test
     INPUT DDOT atom
     INPUT DDOT substitution
     INPUT DDOT substitution
     RESULT DDOT boolean
       {
-        (fun mode ->
-          initialise_parsing ();
-          parse_signature $3;
-          parse_fst_vars $9;
-          parse_snd_vars $12;
-          parse_names $15;
-          parse_axioms $18;
-          parse_rewriting_system $6;
-
-          if $21 = true
+        (fun mode -> $1 ();
+          if $4 = true
           then
-            let subst1 = parse_substitution Term.Protocol $24 in
-            let subst2 = parse_substitution Term.Protocol $27 in
+            let subst1 = parse_substitution Term.Protocol $7 in
+            let subst2 = parse_substitution Term.Protocol $10 in
             if mode = Load
-            then Testing_functions.load_Term_Subst_is_equal_equations Term.Protocol subst1 subst2 $30
+            then Testing_functions.load_Term_Subst_is_equal_equations Term.Protocol subst1 subst2 $13
             else Testing_functions.apply_Term_Subst_is_equal_equations Term.Protocol subst1 subst2
           else
-            let subst1 = parse_substitution Term.Recipe $24 in
-            let subst2 = parse_substitution Term.Recipe $27 in
+            let subst1 = parse_substitution Term.Recipe $7 in
+            let subst2 = parse_substitution Term.Recipe $10 in
             if mode = Load
-            then Testing_functions.load_Term_Subst_is_equal_equations Term.Recipe subst1 subst2 $30
+            then Testing_functions.load_Term_Subst_is_equal_equations Term.Recipe subst1 subst2 $13
             else Testing_functions.apply_Term_Subst_is_equal_equations Term.Recipe subst1 subst2
         )
       }
@@ -219,28 +190,15 @@ parse_Term_Subst_is_equal_equations:
       { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
 
 parse_Term_Modulo_syntactic_equations_of_equations:
-  | SIGNATURE DDOT signature
-    REWRITING_SYSTEM DDOT rewriting_system
-    FST_VARS DDOT fst_var_list
-    SND_VARS DDOT snd_var_list
-    NAMES DDOT name_list
-    AXIOMS DDOT axiom_list
+  | header_of_test
     INPUT DDOT equation_list
     RESULT DDOT substitution_list_result
       {
-        (fun mode ->
-          initialise_parsing ();
-          parse_signature $3;
-          parse_fst_vars $9;
-          parse_snd_vars $12;
-          parse_names $15;
-          parse_axioms $18;
-          parse_rewriting_system $6;
-
-          let eq_list = parse_equation_list  $21 in
+        (fun mode -> $1 ();
+          let eq_list = parse_equation_list $4 in
           if mode = Load
           then
-            let result = parse_substitution_list_result $24 in
+            let result = parse_substitution_list_result $7 in
             Testing_functions.load_Term_Modulo_syntactic_equations_of_equations eq_list result
           else Testing_functions.apply_Term_Modulo_syntactic_equations_of_equations eq_list
         )
@@ -249,28 +207,15 @@ parse_Term_Modulo_syntactic_equations_of_equations:
       { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
 
 parse_Term_Rewrite_rules_normalise:
-  | SIGNATURE DDOT signature
-    REWRITING_SYSTEM DDOT rewriting_system
-    FST_VARS DDOT fst_var_list
-    SND_VARS DDOT snd_var_list
-    NAMES DDOT name_list
-    AXIOMS DDOT axiom_list
+  | header_of_test
     INPUT DDOT term
     RESULT DDOT term
       {
-        (fun mode ->
-          initialise_parsing ();
-          parse_signature $3;
-          parse_fst_vars $9;
-          parse_snd_vars $12;
-          parse_names $15;
-          parse_axioms $18;
-          parse_rewriting_system $6;
-
-          let term = parse_term Term.Protocol $21 in
+        (fun mode -> $1 ();
+          let term = parse_term Term.Protocol $4 in
           if mode = Load
           then
-            let result = parse_term Term.Protocol $24 in
+            let result = parse_term Term.Protocol $7 in
             Testing_functions.load_Term_Rewrite_rules_normalise term result
           else Testing_functions.apply_Term_Rewrite_rules_normalise term
         )
@@ -279,63 +224,37 @@ parse_Term_Rewrite_rules_normalise:
       { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
 
 parse_Term_Rewrite_rules_skeletons:
-  | SIGNATURE DDOT signature
-    REWRITING_SYSTEM DDOT rewriting_system
-    FST_VARS DDOT fst_var_list
-    SND_VARS DDOT snd_var_list
-    NAMES DDOT name_list
-    AXIOMS DDOT axiom_list
+  | header_of_test
     INPUT DDOT term
     INPUT DDOT ident
     INPUT DDOT INT
     RESULT DDOT skeleton_list
       {
-        (fun mode ->
-          initialise_parsing ();
-          parse_signature $3;
-          parse_fst_vars $9;
-          parse_snd_vars $12;
-          parse_names $15;
-          parse_axioms $18;
-          parse_rewriting_system $6;
-
-          let term = parse_term Term.Protocol $21 in
-          let symbol = parse_symbol $24 in
+        (fun mode -> $1 ();
+          let term = parse_term Term.Protocol $4 in
+          let symbol = parse_symbol $7 in
           if mode = Load
           then
-            let result = parse_skeleton_list $30 in
-            Testing_functions.load_Term_Rewrite_rules_skeletons term symbol $27 result
-          else Testing_functions.apply_Term_Rewrite_rules_skeletons term symbol $27
+            let result = parse_skeleton_list $13 in
+            Testing_functions.load_Term_Rewrite_rules_skeletons term symbol $10 result
+          else Testing_functions.apply_Term_Rewrite_rules_skeletons term symbol $10
         )
       }
   | error
       { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
 
 parse_Term_Rewrite_rules_generic_rewrite_rules_formula:
-  | SIGNATURE DDOT signature
-    REWRITING_SYSTEM DDOT rewriting_system
-    FST_VARS DDOT fst_var_list
-    SND_VARS DDOT snd_var_list
-    NAMES DDOT name_list
-    AXIOMS DDOT axiom_list
+  | header_of_test
     INPUT DDOT deduction_fact
     INPUT DDOT skeleton
     RESULT DDOT deduction_formula_list
       {
-        (fun mode ->
-          initialise_parsing ();
-          parse_signature $3;
-          parse_fst_vars $9;
-          parse_snd_vars $12;
-          parse_names $15;
-          parse_axioms $18;
-          parse_rewriting_system $6;
-
-          let ded_fct = parse_deduction_fact $21 in
-          let skel = parse_skeleton $24 in
+        (fun mode -> $1 ();
+          let ded_fct = parse_deduction_fact $4 in
+          let skel = parse_skeleton $7 in
           if mode = Load
           then
-            let result = parse_deduction_formula_list $27 in
+            let result = parse_deduction_formula_list $10 in
             Testing_functions.load_Term_Rewrite_rules_generic_rewrite_rules_formula ded_fct skel result
           else Testing_functions.apply_Term_Rewrite_rules_generic_rewrite_rules_formula ded_fct skel
         )
@@ -343,6 +262,34 @@ parse_Term_Rewrite_rules_generic_rewrite_rules_formula:
   | error
       { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
 
+parse_Data_structure_Eq_implies:
+  | header_of_test
+    INPUT DDOT atom
+    INPUT DDOT data_Eq
+    INPUT DDOT term
+    INPUT DDOT term
+    RESULT DDOT boolean
+      {
+        (fun mode -> $1 ();
+          if $4 = true
+          then
+            let form = parse_Eq Term.Protocol $7 in
+            let term1 = parse_term Term.Protocol $10 in
+            let term2 = parse_term Term.Protocol $13 in
+            if mode = Load
+            then Testing_functions.load_Data_structure_Eq_implies Term.Protocol form term1 term2 $16
+            else Testing_functions.apply_Data_structure_Eq_implies Term.Protocol form term1 term2
+          else
+            let form = parse_Eq Term.Recipe $7 in
+            let term1 = parse_term Term.Recipe $10 in
+            let term2 = parse_term Term.Recipe $13 in
+            if mode = Load
+            then Testing_functions.load_Data_structure_Eq_implies Term.Recipe form term1 term2  $16
+            else Testing_functions.apply_Data_structure_Eq_implies Term.Recipe form term1 term2
+        )
+      }
+  | error
+      { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
 
 /***********************************
 ***     Signature definition     ***
@@ -632,6 +579,39 @@ sub_term_list :
 boolean:
   | TOP { true }
   | BOT { false }
+
+
+/***********************************
+***            Eq.t              ***
+************************************/
+
+data_Eq:
+  | TOP
+      { Top }
+  | BOT
+      { Bot }
+  | conjunction_syntaxtic_disequation
+      { Other $1 }
+
+syntactic_disequation:
+  | term NEQ term
+      { ($1,$3) }
+
+diseq_t:
+  | LPAR sub_diseq_t RPAR
+      { $2 }
+
+sub_diseq_t :
+  | syntactic_disequation
+      { [$1] }
+  | syntactic_disequation VEE sub_diseq_t
+      { $1::$3 }
+
+conjunction_syntaxtic_disequation:
+  | diseq_t
+      { [$1] }
+  | diseq_t WEDGE conjunction_syntaxtic_disequation
+      { $1::$3 }
 
 /*************************
 ***       Terms        ***

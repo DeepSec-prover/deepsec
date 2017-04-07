@@ -650,6 +650,17 @@ module Diseq : sig
       are protocol terms, then $u_1,v_1,\ldots, u_n,v_n$ are constructor protocol terms. %} *)
   type ('a, 'b) t
 
+  (** {4 Access} *)
+
+  (** [get_names_with_list s l] adds the names in [s] in the list [l]. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
+  val get_names_with_list : ('a, 'b) atom -> ('a, 'b) t -> name list -> name list
+
+  (** [get_vars_with_list at s l] adds the variables in [s] in the list [l]. The addition of a variable as the union of sets, i.e. there is no dupplicate in the resulting list. *)
+  val get_vars_with_list : ('a, 'b) atom -> ('a, 'b) t -> ('a, 'b) variable list -> ('a, 'b) variable list
+
+  (** [get_axioms_with_list s l] adds the axiom in [s] in the list [l]. The addition of an axiom as the union of sets, i.e. there is no dupplicate in the resulting list..*)
+  val get_axioms_with_list : (snd_ord, axiom) t -> axiom list -> axiom list
+
   (** {4 Tesing} *)
 
   (** [is_top diseq] returns [true] iff the disequation is {% $\top$ %}. Note that it is a syntactic condition meaning
@@ -680,6 +691,10 @@ module Diseq : sig
   (** {4 Display} *)
 
   val display : Display.output -> ?rho:display_renamings option -> ('a, 'b) atom -> ('a, 'b) t -> string
+
+  (** {4 Testing} *)
+
+  val create_for_testing : (('a, 'b) term * ('a, 'b) term) list -> ('a, 'b) t
 end
 
 (** {2 (Dis)equations modulo the rewriting system} *)

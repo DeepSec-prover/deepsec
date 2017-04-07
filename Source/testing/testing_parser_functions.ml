@@ -21,6 +21,11 @@ type parsing_mode =
   | Load
   | Verify
 
+type 'a top_bot =
+  | Top
+  | Bot
+  | Other of 'a
+
 let environment = Hashtbl.create 50
 
 (***********************************
@@ -360,3 +365,20 @@ let parse_skeleton ((s,line),recipe,term,bfct_l,(lhs,rhs)) =
   }
 
 let parse_skeleton_list l = List.map parse_skeleton l
+
+(*********** Eq.t *********)
+
+let parse_Eq at form = match form with
+  | Top -> Data_structure.Eq.top
+  | Bot -> Data_structure.Eq.bot
+  | Other diseq_conj ->
+      List.fold_right (fun diseq acc ->
+        let new_diseq =
+          Term.Diseq.create_for_testing (
+            List.map (fun (t1,t2) ->
+              parse_term at t1, parse_term at t2
+            ) diseq
+          )
+        in
+        Data_structure.Eq.wedge acc new_diseq
+      ) diseq_conj Data_structure.Eq.top

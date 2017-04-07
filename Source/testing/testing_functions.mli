@@ -1,6 +1,7 @@
 (** Management of tests *)
 
 open Term
+open Data_structure
 
 (** The type [data_IO] represents all the informations required by the test manager for each tested function.
     The first three lists represent the different tests and their status. Each test is representing by a pair of string [(str1,str2)] where
@@ -113,3 +114,11 @@ val data_IO_Term_Rewrite_rules_generic_rewrite_rules_formula : data_IO
 val apply_Term_Rewrite_rules_generic_rewrite_rules_formula : Fact.deduction -> Rewrite_rules.skeleton -> string
 
 val load_Term_Rewrite_rules_generic_rewrite_rules_formula : Fact.deduction -> Rewrite_rules.skeleton -> Fact.deduction_formula list -> string
+
+(** {3 Data_structure.Eq.implies} *)
+
+val data_IO_Data_structure_Eq_implies : data_IO
+
+val apply_Data_structure_Eq_implies : ('a, 'b) atom -> ('a, 'b) Eq.t -> ('a, 'b) term -> ('a, 'b) term -> string
+
+val load_Data_structure_Eq_implies : ('a, 'b) atom -> ('a, 'b) Eq.t -> ('a, 'b) term -> ('a, 'b) term -> bool -> string

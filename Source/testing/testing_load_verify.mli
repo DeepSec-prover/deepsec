@@ -29,6 +29,9 @@ val data_verification_Term_Rewrite_rules_skeletons : data_verification
 
 val data_verification_Term_Rewrite_rules_generic_rewrite_rules_formula : data_verification
 
+val data_verification_Data_structure_Eq_implies : data_verification
+
+
 (** {3 Verification of tests} *)
 
 (** [verify_function data] verifies all the tests for the function associated to [data]. *)

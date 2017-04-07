@@ -228,43 +228,52 @@ end
 
 module Eq : sig
 
-  type ('a, 'b) formula
+  type ('a, 'b) t
 
   (** {3 Generation} *)
 
   (** {% The formula $\top$. %}*)
-  val top : ('a, 'b) formula
+  val top : ('a, 'b) t
 
   (** {% The formula $\bot$. %}*)
-  val bot : ('a, 'b) formula
+  val bot : ('a, 'b) t
 
   (** [wedge] {% $\phi$~$\psi$ returns $\phi \wedge \psi$. %}*)
-  val wedge : ('a, 'b) formula -> ('a, 'b) Diseq.t -> ('a, 'b) formula
+  val wedge : ('a, 'b) t -> ('a, 'b) Diseq.t -> ('a, 'b) t
 
   (** [apply at] {% $\phi$~$\sigma$ returns $\phi\sigma\Vnorm$ following the normalisation rules from \citepaper{Figure}{fig:normalisation_formula}. %}*)
-  val apply : ('a, 'b) atom -> ('a, 'b) formula -> ('a, 'b) Subst.t -> ('a, 'b) formula
+  val apply : ('a, 'b) atom -> ('a, 'b) t -> ('a, 'b) Subst.t -> ('a, 'b) t
 
   (** [extract at] {% $\phi$ %} returns a pair {% $(\forall \tilde{x}. \psi, \phi')$ such that $\phi = \forall \tilde{x}. \psi \wedge \phi'$ when $\phi$ is not top or bot, otherwise it returns%} [None] {% and $\phi$. %} *)
-  val extract : ('a, 'b) formula -> ('a, 'b) Diseq.t option * ('a, 'b) formula
+  val extract : ('a, 'b) t -> ('a, 'b) Diseq.t option * ('a, 'b) t
+
+  (** [get_names_with_list s l] adds the names in [s] in the list [l]. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
+  val get_names_with_list : ('a, 'b) atom -> ('a, 'b) t -> name list -> name list
+
+  (** [get_vars_with_list at s l] adds the variables in [s] in the list [l]. The addition of a variable as the union of sets, i.e. there is no dupplicate in the resulting list. *)
+  val get_vars_with_list : ('a, 'b) atom -> ('a, 'b) t -> ('a, 'b) variable list -> ('a, 'b) variable list
+
+  (** [get_axioms_with_list s l] adds the axiom in [s] in the list [l]. The addition of an axiom as the union of sets, i.e. there is no dupplicate in the resulting list..*)
+  val get_axioms_with_list : (snd_ord, axiom) t -> axiom list -> axiom list
 
   (** {3 Testing} *)
 
   (** [is_bot] {% $\phi$ returns %} [true] if and only if {% $\phi = \bot$.%} *)
-  val is_bot : ('a, 'b) formula -> bool
+  val is_bot : ('a, 'b) t -> bool
 
   (** [is_top] {% $\phi$ returns %} [true] if and only if {% $\phi = \top$.%} *)
-  val is_top : ('a, 'b) formula -> bool
+  val is_top : ('a, 'b) t -> bool
 
   (** [implies at] {% $\phi$~$t_1$~$t_2$ returns true if and only if $\phi \Rightarrow t_1 \neqs t_2$ is a tautology.%}*)
-  val implies : ('a, 'b) atom -> ('a, 'b) formula -> ('a, 'b) term -> ('a, 'b) term -> bool
+  val implies : ('a, 'b) atom -> ('a, 'b) t -> ('a, 'b) term -> ('a, 'b) term -> bool
 
   (** {3 Display} *)
 
-  val display : Display.output -> ('a, 'b) atom -> ('a, 'b) formula -> string
+  val display : Display.output -> ?rho:display_renamings option -> ('a, 'b) atom -> ('a, 'b) t -> string
 
   (** {3 Tested function} *)
 
-  val update_test_implies : ('a, 'b) atom -> (('a, 'b) formula -> ('a, 'b) term -> ('a, 'b) term -> bool -> unit) -> unit
+  val update_test_implies : ('a, 'b) atom -> (('a, 'b) t -> ('a, 'b) term -> ('a, 'b) term -> bool -> unit) -> unit
 end
 
 (** {2 The set of subterm consequence} *)

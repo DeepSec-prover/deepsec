@@ -15,6 +15,11 @@ type parsing_mode =
   | Load
   | Verify
 
+type 'a top_bot =
+  | Top
+  | Bot
+  | Other of 'a
+
 (***********************************
 ***            Parsing           ***
 ************************************)
@@ -65,8 +70,6 @@ val parse_skeleton : ident * term * term * (ident * int * term) list * (term * t
 val parse_skeleton_list : (ident * term * term * (ident * int * term) list * (term * term)) list -> Term.Rewrite_rules.skeleton list
 
 
-
-
 val parse_basic_deduction_fact : ident * int * term -> Term.BasicFact.t
 
 val parse_deduction_fact : term * term -> Term.Fact.deduction
@@ -74,3 +77,6 @@ val parse_deduction_fact : term * term -> Term.Fact.deduction
 val parse_deduction_formula : (term * term) * (ident * int * term) list * (ident * term) list -> Term.Fact.deduction_formula
 
 val parse_deduction_formula_list : ((term * term) * (ident * int * term) list * (ident * term) list) list -> Term.Fact.deduction_formula list
+
+
+val parse_Eq : ('a, 'b) Term.atom -> (term * term) list list top_bot -> ('a, 'b) Data_structure.Eq.t

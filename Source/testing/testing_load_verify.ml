@@ -67,6 +67,13 @@ let data_verification_Term_Rewrite_rules_generic_rewrite_rules_formula =
     parsing_function = Testing_grammar.parse_Term_Rewrite_rules_generic_rewrite_rules_formula
   }
 
+let data_verification_Data_structure_Eq_implies =
+  {
+    data_IO = data_IO_Data_structure_Eq_implies;
+    name = "Data_structure.Eq.implies";
+    parsing_function = Testing_grammar.parse_Data_structure_Eq_implies
+  }
+
 (** {3 Verification of tests} *)
 
 (** [verify_function data] verifies all the tests for the function associated to [data]. *)
@@ -112,7 +119,8 @@ let verify_all () =
   verify_function data_verification_Term_Modulo_syntactic_equations_of_equations;
   verify_function data_verification_Term_Rewrite_rules_normalise;
   verify_function data_verification_Term_Rewrite_rules_skeletons;
-  verify_function data_verification_Term_Rewrite_rules_generic_rewrite_rules_formula
+  verify_function data_verification_Term_Rewrite_rules_generic_rewrite_rules_formula;
+  verify_function data_verification_Data_structure_Eq_implies
 
 (** {3 Loading of tests} *)
 
@@ -141,4 +149,5 @@ let load () =
   load_function data_verification_Term_Modulo_syntactic_equations_of_equations;
   load_function data_verification_Term_Rewrite_rules_normalise;
   load_function data_verification_Term_Rewrite_rules_skeletons;
-  load_function data_verification_Term_Rewrite_rules_generic_rewrite_rules_formula
+  load_function data_verification_Term_Rewrite_rules_generic_rewrite_rules_formula;
+  load_function data_verification_Data_structure_Eq_implies

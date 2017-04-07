@@ -853,22 +853,22 @@ end
 
 module Eq = struct
 
-  type ('a, 'b) formula =
+  type ('a, 'b) t =
     | Top
     | Bot
     | Conj of ('a, 'b) Diseq.t list
 
   (* Tested function *)
 
-  let test_implies_Protocol : ((fst_ord, name) formula -> (fst_ord, name) term -> (fst_ord, name) term -> bool -> unit) ref = ref (fun _ _ _ _ -> ())
+  let test_implies_Protocol : ((fst_ord, name) t -> (fst_ord, name) term -> (fst_ord, name) term -> bool -> unit) ref = ref (fun _ _ _ _ -> ())
 
-  let test_implies_Recipe : ((snd_ord, axiom) formula -> (snd_ord, axiom) term -> (snd_ord, axiom) term -> bool -> unit) ref = ref (fun _ _ _ _ -> ())
+  let test_implies_Recipe : ((snd_ord, axiom) t -> (snd_ord, axiom) term -> (snd_ord, axiom) term -> bool -> unit) ref = ref (fun _ _ _ _ -> ())
 
-  let test_implies (type a) (type b) (at:(a,b) atom) (form: (a,b) formula) (term1:(a,b) term) (term2:(a,b) term) (res:bool) = match at with
+  let test_implies (type a) (type b) (at:(a,b) atom) (form: (a,b) t) (term1:(a,b) term) (term2:(a,b) term) (res:bool) = match at with
     | Protocol -> !test_implies_Protocol form term1 term2 res
     | Recipe -> !test_implies_Recipe form term1 term2 res
 
-  let update_test_implies (type a) (type b) (at:(a,b) atom) (f: (a, b) formula -> (a, b) term -> (a, b) term -> bool -> unit) = match at with
+  let update_test_implies (type a) (type b) (at:(a,b) atom) (f: (a, b) t -> (a, b) term -> (a, b) term -> bool -> unit) = match at with
     | Protocol -> test_implies_Protocol := f
     | Recipe -> test_implies_Recipe := f
 
@@ -890,6 +890,23 @@ module Eq = struct
     | Top -> Conj [diseq]
     | Bot -> Bot
     | Conj diseq_l -> Conj (diseq::diseq_l)
+
+  (***** Access *****)
+
+  let get_names_with_list at form l = match form with
+    | Bot | Top -> l
+    | Conj diseq_l ->
+        List.fold_left (fun acc diseq -> Diseq.get_names_with_list at diseq acc) l diseq_l
+
+  let get_vars_with_list at form l = match form with
+    | Bot | Top -> l
+    | Conj diseq_l ->
+        List.fold_left (fun acc diseq -> Diseq.get_vars_with_list at diseq acc) l diseq_l
+
+  let get_axioms_with_list form l = match form with
+    | Bot | Top -> l
+    | Conj diseq_l ->
+        List.fold_left (fun acc diseq -> Diseq.get_axioms_with_list diseq acc) l diseq_l
 
   exception Is_Bot
 
@@ -933,10 +950,10 @@ module Eq = struct
     | Conj [diseq] -> Some diseq, Top
     | Conj (diseq::q) -> Some diseq, Conj q
 
-  let display out at = function
+  let display out ?(rho=None) at = function
     | Top -> Display.top out
     | Bot -> Display.bot out
-    | Conj diseq_list -> Display.display_list (Diseq.display out at) (Printf.sprintf " %s " (Display.wedge out)) diseq_list
+    | Conj diseq_list -> Display.display_list (Diseq.display out ~rho:rho at) (Printf.sprintf " %s " (Display.wedge out)) diseq_list
 
 end
 

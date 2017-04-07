@@ -13,6 +13,7 @@ let data_verification_of_name = function
   | s when s = data_verification_Term_Rewrite_rules_normalise.name -> data_verification_Term_Rewrite_rules_normalise
   | s when s = data_verification_Term_Rewrite_rules_skeletons.name -> data_verification_Term_Rewrite_rules_skeletons
   | s when s = data_verification_Term_Rewrite_rules_generic_rewrite_rules_formula.name -> data_verification_Term_Rewrite_rules_generic_rewrite_rules_formula
+  | s when s = data_verification_Data_structure_Eq_implies.name -> data_verification_Data_structure_Eq_implies
   | _ -> Printf.printf "Error : Incorrect name of function\n"; exit 0
 
 (** [validate_all ()] validates all the tests of all the functions. *)
@@ -24,7 +25,8 @@ let validate_all () =
   validate_all_tests data_verification_Term_Modulo_syntactic_equations_of_equations.data_IO;
   validate_all_tests data_verification_Term_Rewrite_rules_normalise.data_IO;
   validate_all_tests data_verification_Term_Rewrite_rules_skeletons.data_IO;
-  validate_all_tests data_verification_Term_Rewrite_rules_generic_rewrite_rules_formula.data_IO
+  validate_all_tests data_verification_Term_Rewrite_rules_generic_rewrite_rules_formula.data_IO;
+  validate_all_tests data_verification_Data_structure_Eq_implies.data_IO
 
 (**/**)
 
