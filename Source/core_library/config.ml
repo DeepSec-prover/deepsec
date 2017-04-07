@@ -17,3 +17,8 @@ let test =
   if test_activated
   then fun f -> f ()
   else fun _ -> ()
+
+(**** Testing *****)
+
+let path_html_template = ref "Source/html_templates/"
+let path_testing_data = ref "testing_data/"

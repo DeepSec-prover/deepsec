@@ -840,6 +840,8 @@ module Fact : sig
 
   val create : 'a t -> 'a -> BasicFact.t list -> (protocol_term * protocol_term) list -> 'a formula
 
+  val create_for_testing : 'a -> BasicFact.t list -> (fst_ord, name)Subst.t -> 'a formula
+
   (** {3 Access} *)
 
   (** [get_recipe fct] with [fct] being {% $\dedfact{\xi}{u}$ returns $\xi$. %} *)

@@ -83,12 +83,7 @@ type data_IO =
 
     mutable is_being_tested : bool;
 
-    template_html : string;
-    html_file : string;
-    terminal_file : string;
-
-    folder_validated : string;
-    folder_to_check : string
+    file : string
   }
 
 let add_test (test_terminal,test_latex) data =
@@ -101,8 +96,6 @@ let add_test (test_terminal,test_latex) data =
   then data.additional_tests <- (terminal,latex) :: data.additional_tests
 
 let template_line = "        <!-- The tests -->"
-let begin_test = "        <!-- Beginning Tests -->"
-let end_test = "        <!-- End Tests -->"
 let next_test = "        <!-- Next test -->"
 let next_test_txt = "--Test"
 
@@ -110,9 +103,9 @@ let next_test_txt = "--Test"
 (**** Publication of tests *****)
 
 let publish_tests_to_check data =
-  let path_html = Printf.sprintf "%s%s" data.folder_to_check data.html_file
-  and path_txt = Printf.sprintf "%s%s" data.folder_to_check data.terminal_file
-  and path_template = Printf.sprintf "%s%s" data.folder_to_check data.template_html in
+  let path_html = Printf.sprintf "%s%s%s.html" !Config.path_testing_data "tests_to_check/" data.file
+  and path_txt = Printf.sprintf "%s%s%s.txt" !Config.path_testing_data "tests_to_check/" data.file
+  and path_template = Printf.sprintf "%s%s%s.html" !Config.path_html_template "tests_to_check/" data.file in
 
   let out_html = open_out path_html in
   let out_txt = open_out path_txt in
@@ -156,9 +149,9 @@ let publish_tests_to_check data =
     | End_of_file -> close_out out_html
 
 let publish_validated_tests data =
-  let path_html = Printf.sprintf "%s%s" data.folder_validated data.html_file
-  and path_txt = Printf.sprintf "%s%s" data.folder_validated data.terminal_file
-  and path_template = Printf.sprintf "%s%s" data.folder_validated data.template_html in
+  let path_html = Printf.sprintf "%s%s%s.html" !Config.path_testing_data "validated_tests/" data.file
+  and path_txt = Printf.sprintf "%s%s%s.txt" !Config.path_testing_data "validated_tests/" data.file
+  and path_template = Printf.sprintf "%s%s%s.html" !Config.path_html_template "validated_tests/" data.file in
 
   let out_html = open_out path_html in
   let out_txt = open_out path_txt in
@@ -206,45 +199,15 @@ let publish_tests data =
 
 (**** Loading tests ****)
 
-let load_tests data =
-  let path_html_to_check = Printf.sprintf "%s%s" data.folder_to_check data.html_file
-  and path_txt_to_check = Printf.sprintf "%s%s" data.folder_to_check data.terminal_file
-  and path_html_checked =  Printf.sprintf "%s%s" data.folder_validated data.html_file
-  and path_txt_checked = Printf.sprintf "%s%s" data.folder_validated data.terminal_file in
+let pre_load_tests data =
+  let path_txt_to_check = Printf.sprintf "%s%s%s.txt" !Config.path_testing_data "tests_to_check/" data.file
+  and path_txt_checked = Printf.sprintf "%s%s%s.txt" !Config.path_testing_data "validated_tests/" data.file in
 
-  let sub_load in_html in_txt is_to_check =
-
-    (*** Go until begining of tests html ***)
-
-    let line = ref "" in
-
-    while !line <> begin_test do
-      let l = input_line in_html in
-      line := l
-    done;
-
-    (*** Retreive the latex tests ***)
-
-    let html = ref [] in
-
-    line := input_line in_html;
-
-    while !line <> end_test do
-      let _ = input_line in_html in
-      let _ = input_line in_html in
-      let str = ref "" in
-      line := input_line in_html;
-      while !line <> next_test && !line <> end_test do
-        str := Printf.sprintf "%s%s\n" !str !line;
-        line := input_line in_html;
-      done;
-      html := !str :: !html
-    done;
-
-    close_in in_html;
+  let sub_load in_txt is_to_check =
 
     (**** Retreive the txt tests ***)
 
+    let line = ref "" in
     let txt = ref [] in
 
     begin try
@@ -267,22 +230,20 @@ let load_tests data =
     end;
 
     if is_to_check
-    then data.tests_to_check <- List.fold_left2 (fun acc t latex -> (t,latex)::acc) [] !txt !html
-    else data.validated_tests <- List.fold_left2 (fun acc t latex -> (t,latex)::acc) [] !txt !html
+    then data.tests_to_check <- List.fold_left (fun acc t -> (t,"")::acc) [] !txt
+    else data.validated_tests <- List.fold_left (fun acc t -> (t,"")::acc) [] !txt
   in
 
   begin try
-    let in_html_to_check = open_in path_html_to_check in
     let in_txt_to_check = open_in path_txt_to_check in
-    sub_load in_html_to_check in_txt_to_check true
+    sub_load in_txt_to_check true
   with
     | Sys_error _ -> ()
   end;
 
   begin try
-    let in_html_checked = open_in path_html_checked in
     let in_txt_checked = open_in path_txt_checked in
-    sub_load in_html_checked in_txt_checked false
+    sub_load in_txt_checked false
   with
     | Sys_error _ -> ()
   end
@@ -316,7 +277,6 @@ let validate_all_tests data =
   publish_tests_to_check data;
   publish_validated_tests data
 
-
 (**********************************************************
       Generic gathering of names, variables and axioms
 ***********************************************************)
@@ -333,7 +293,6 @@ let rec add_in_list elt f_eq = function
   | [] -> [elt]
   | (elt'::_) as l when f_eq elt elt' -> l
   | elt'::q -> elt'::(add_in_list elt f_eq q)
-
 
 let empty_gathering =
   {
@@ -519,12 +478,7 @@ let data_IO_Term_Subst_unify =
 
     is_being_tested = true;
 
-    template_html = "template_term_subst_unify.html";
-    html_file = "term_subst_unify.html";
-    terminal_file = "term_subst_unify.txt";
-
-    folder_validated = "Testing_data/Validated_tests/";
-    folder_to_check = "Testing_data/Tests_to_check/"
+    file = "term_subst_unify"
   }
 
 let test_Term_Subst_unify (type a) (type b) (at:(a,b) atom) (eq_list:((a,b) term * (a,b) term) list) (result:(a, b) Subst.t option) =
@@ -585,6 +539,10 @@ let apply_Term_Subst_unify (type a) (type b) (at:(a,b) atom) (eq_list:((a,b) ter
   let test_terminal,_ = test_Term_Subst_unify at eq_list result in
   produce_test_terminal test_terminal
 
+let load_Term_Subst_unify (type a) (type b) (at:(a,b) atom) (eq_list:((a,b) term * (a,b) term) list) (result:(a, b) Subst.t option) =
+  let _,test_latex = test_Term_Subst_unify at eq_list result in
+  produce_test_latex test_latex
+
 (***** Term.Subst.is_matchable *****)
 
 let data_IO_Term_Subst_is_matchable =
@@ -595,12 +553,7 @@ let data_IO_Term_Subst_is_matchable =
 
     is_being_tested = true;
 
-    template_html = "template_term_subst_is_matchable.html";
-    html_file = "term_subst_is_matchable.html";
-    terminal_file = "term_subst_is_matchable.txt";
-
-    folder_validated = "Testing_data/Validated_tests/";
-    folder_to_check = "Testing_data/Tests_to_check/"
+    file = "term_subst_is_matchable"
   }
 
 let test_Term_Subst_is_matchable (type a) (type b) (at:(a,b) atom) (list1:(a,b) term list) (list2:(a,b) term list) (result:bool) =
@@ -656,6 +609,10 @@ let apply_Term_Subst_is_matchable (type a) (type b) (at:(a,b) atom) (list1:(a,b)
   let test_terminal,_ = test_Term_Subst_is_matchable at list1 list2 result in
   produce_test_terminal test_terminal
 
+let load_Term_Subst_is_matchable (type a) (type b) (at:(a,b) atom) (list1:(a,b) term list) (list2:(a,b) term list) (result:bool) =
+  let _,test_latex = test_Term_Subst_is_matchable at list1 list2 result in
+  produce_test_latex test_latex
+
 (***** Term.Subst.is_extended_by *****)
 
 let data_IO_Term_Subst_is_extended_by =
@@ -666,12 +623,7 @@ let data_IO_Term_Subst_is_extended_by =
 
     is_being_tested = true;
 
-    template_html = "template_term_subst_is_extended_by.html";
-    html_file = "term_subst_is_extended_by.html";
-    terminal_file = "term_subst_is_extended_by.txt";
-
-    folder_validated = "Testing_data/Validated_tests/";
-    folder_to_check = "Testing_data/Tests_to_check/"
+    file = "term_subst_is_extended_by"
   }
 
 let test_Term_Subst_is_extended_by (type a) (type b) (at:(a,b) atom) (subst1:(a,b) Subst.t) (subst2:(a,b) Subst.t) (result:bool) =
@@ -727,6 +679,10 @@ let apply_Term_Subst_is_extended_by (type a) (type b) (at:(a,b) atom) (subst1:(a
   let test_terminal,_ = test_Term_Subst_is_extended_by at subst1 subst2 result in
   produce_test_terminal test_terminal
 
+let load_Term_Subst_is_extended_by (type a) (type b) (at:(a,b) atom) (subst1:(a,b) Subst.t) (subst2:(a,b) Subst.t) (result:bool) =
+  let _,test_latex = test_Term_Subst_is_extended_by at subst1 subst2 result in
+  produce_test_latex test_latex
+
 (***** Term.Subst.is_equal_equations *****)
 
 let data_IO_Term_Subst_is_equal_equations =
@@ -737,12 +693,7 @@ let data_IO_Term_Subst_is_equal_equations =
 
     is_being_tested = true;
 
-    template_html = "template_term_subst_is_equal_equations.html";
-    html_file = "term_subst_is_equal_equations.html";
-    terminal_file = "term_subst_is_equal_equations.txt";
-
-    folder_validated = "Testing_data/Validated_tests/";
-    folder_to_check = "Testing_data/Tests_to_check/"
+    file = "term_subst_is_equal_equations"
   }
 
 let test_Term_Subst_is_equal_equations (type a) (type b) (at:(a,b) atom) (subst1:(a,b) Subst.t) (subst2:(a,b) Subst.t) (result:bool) =
@@ -798,6 +749,10 @@ let apply_Term_Subst_is_equal_equations (type a) (type b) (at:(a,b) atom) (subst
   let test_terminal,_ = test_Term_Subst_is_equal_equations at subst1 subst2 result in
   produce_test_terminal test_terminal
 
+let load_Term_Subst_is_equal_equations (type a) (type b) (at:(a,b) atom) (subst1:(a,b) Subst.t) (subst2:(a,b) Subst.t) (result:bool) =
+  let _,test_latex = test_Term_Subst_is_equal_equations at subst1 subst2 result in
+  produce_test_latex test_latex
+
 (***** Term.Modulo.syntactic_equations_of_equations *****)
 
 let data_IO_Term_Modulo_syntactic_equations_of_equations =
@@ -808,12 +763,7 @@ let data_IO_Term_Modulo_syntactic_equations_of_equations =
 
     is_being_tested = true;
 
-    template_html = "template_term_modulo_syntactic_equations_of_equations.html";
-    html_file = "term_modulo_syntactic_equations_of_equations.html";
-    terminal_file = "term_modulo_syntactic_equations_of_equations.txt";
-
-    folder_validated = "Testing_data/Validated_tests/";
-    folder_to_check = "Testing_data/Tests_to_check/"
+    file = "term_modulo_syntactic_equations_of_equations"
   }
 
 let test_Term_Modulo_syntactic_equations_of_equations eq_list result =
@@ -874,6 +824,10 @@ let apply_Term_Modulo_syntactic_equations_of_equations eq_list  =
   let test_terminal,_ = test_Term_Modulo_syntactic_equations_of_equations eq_list result in
   produce_test_terminal test_terminal
 
+let load_Term_Modulo_syntactic_equations_of_equations eq_list result =
+  let _,test_latex = test_Term_Modulo_syntactic_equations_of_equations eq_list result in
+  produce_test_latex test_latex
+
 (***** Term.Rewrite_rules.normalise *****)
 
 let data_IO_Term_Rewrite_rules_normalise =
@@ -884,12 +838,7 @@ let data_IO_Term_Rewrite_rules_normalise =
 
     is_being_tested = true;
 
-    template_html = "template_term_rewrite_rules_normalise.html";
-    html_file = "term_rewrite_rules_normalise.html";
-    terminal_file = "term_rewrite_rules_normalise.txt";
-
-    folder_validated = "Testing_data/Validated_tests/";
-    folder_to_check = "Testing_data/Tests_to_check/"
+    file = "term_rewrite_rules_normalise"
   }
 
 let test_Term_Rewrite_rules_normalise term result =
@@ -941,6 +890,10 @@ let apply_Term_Rewrite_rules_normalise term  =
   let test_terminal,_ = test_Term_Rewrite_rules_normalise term result in
   produce_test_terminal test_terminal
 
+let load_Term_Rewrite_rules_normalise term result =
+  let _,test_latex = test_Term_Rewrite_rules_normalise term result in
+  produce_test_latex test_latex
+
 (***** Term.Rewrite_rules.skeletons *****)
 
 let data_IO_Term_Rewrite_rules_skeletons =
@@ -951,12 +904,7 @@ let data_IO_Term_Rewrite_rules_skeletons =
 
     is_being_tested = true;
 
-    template_html = "template_term_rewrite_rules_skeletons.html";
-    html_file = "term_rewrite_rules_skeletons.html";
-    terminal_file = "term_rewrite_rules_skeletons.txt";
-
-    folder_validated = "Testing_data/Validated_tests/";
-    folder_to_check = "Testing_data/Tests_to_check/"
+    file = "term_rewrite_rules_skeletons"
   }
 
 let test_Term_Rewrite_rules_skeletons term f k result =
@@ -1008,6 +956,10 @@ let apply_Term_Rewrite_rules_skeletons term f k  =
   let test_terminal,_ = test_Term_Rewrite_rules_skeletons term f k result in
   produce_test_terminal test_terminal
 
+let load_Term_Rewrite_rules_skeletons term f k result =
+  let _,test_latex = test_Term_Rewrite_rules_skeletons term f k result in
+  produce_test_latex test_latex
+
 (***** Term.Rewrite_rules.generic_rewrite_rules_formula *****)
 
 let data_IO_Term_Rewrite_rules_generic_rewrite_rules_formula =
@@ -1018,12 +970,7 @@ let data_IO_Term_Rewrite_rules_generic_rewrite_rules_formula =
 
     is_being_tested = true;
 
-    template_html = "template_term_rewrite_rules_generic_rewrite_rules_formula.html";
-    html_file = "term_rewrite_rules_generic_rewrite_rules_formula.html";
-    terminal_file = "term_rewrite_rules_generic_rewrite_rules_formula.txt";
-
-    folder_validated = "Testing_data/Validated_tests/";
-    folder_to_check = "Testing_data/Tests_to_check/"
+    file = "term_rewrite_rules_generic_rewrite_rules_formula"
   }
 
 let test_Term_Rewrite_rules_generic_rewrite_rules_formula fct skel result =
@@ -1079,19 +1026,23 @@ let apply_Term_Rewrite_rules_generic_rewrite_rules_formula fct skel  =
   let test_terminal,_ = test_Term_Rewrite_rules_generic_rewrite_rules_formula fct skel result in
   produce_test_terminal test_terminal
 
+let load_Term_Rewrite_rules_generic_rewrite_rules_formula fct skel result =
+  let _,test_latex = test_Term_Rewrite_rules_generic_rewrite_rules_formula fct skel result in
+  produce_test_latex test_latex
+
 (*************************************
          General function
 *************************************)
 
-let load () =
-  load_tests data_IO_Term_Subst_unify;
-  load_tests data_IO_Term_Subst_is_matchable;
-  load_tests data_IO_Term_Subst_is_extended_by;
-  load_tests data_IO_Term_Subst_is_equal_equations;
-  load_tests data_IO_Term_Modulo_syntactic_equations_of_equations;
-  load_tests data_IO_Term_Rewrite_rules_normalise;
-  load_tests data_IO_Term_Rewrite_rules_skeletons;
-  load_tests data_IO_Term_Rewrite_rules_generic_rewrite_rules_formula
+let preload () =
+  pre_load_tests data_IO_Term_Subst_unify;
+  pre_load_tests data_IO_Term_Subst_is_matchable;
+  pre_load_tests data_IO_Term_Subst_is_extended_by;
+  pre_load_tests data_IO_Term_Subst_is_equal_equations;
+  pre_load_tests data_IO_Term_Modulo_syntactic_equations_of_equations;
+  pre_load_tests data_IO_Term_Rewrite_rules_normalise;
+  pre_load_tests data_IO_Term_Rewrite_rules_skeletons;
+  pre_load_tests data_IO_Term_Rewrite_rules_generic_rewrite_rules_formula
 
 let publish () =
   publish_tests data_IO_Term_Subst_unify;

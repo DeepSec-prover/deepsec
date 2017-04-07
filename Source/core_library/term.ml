@@ -2169,6 +2169,12 @@ module Fact = struct
       end
     with Subst.Not_unifiable -> Subst.cleanup Protocol; raise Bot
 
+  let create_for_testing head b_fct_list subst =
+    {
+      head = head;
+      ded_fact_list = b_fct_list;
+      equation_subst = subst
+    }
   (********* Access ********)
 
   let get_recipe fct = fct.df_recipe

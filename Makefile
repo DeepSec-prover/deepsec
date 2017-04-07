@@ -32,7 +32,7 @@ CORE_ML = $(CORE_ML_NAME:%.ml=$(SOURCE)core_library/%.ml)
 SUBTERMS_ML_NAME = data_structure.ml
 SUBTERMS_ML = $(SUBTERMS_ML_NAME:%.ml=$(SOURCE)subterms/%.ml)
 
-TESTING_ML_NAME = testing_functions.ml testing_parser_functions.ml testing_grammar.ml testing_lexer.ml
+TESTING_ML_NAME = testing_functions.ml testing_parser_functions.ml testing_grammar.ml testing_lexer.ml testing_load_verify.ml
 TESTING_ML = $(TESTING_ML_NAME:%.ml=$(SOURCE)testing/%.ml)
 
 ALL_ML = $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(SOURCE)main.ml $(SOURCE)testing/testing.ml

@@ -14,16 +14,11 @@ type data_IO =
 
     mutable is_being_tested : bool; (** When [is_being_tested] is set to [false], no test is produce for this function *)
 
-    template_html : string; (** Name of html file representing the template for generating html page. *)
-    html_file : string; (** Name of the html file that will be generated. *)
-    terminal_file : string; (** Name of the txt file that will be generated. *)
-
-    folder_validated : string; (** Path of the folder that contain the validated tests for this function. *)
-    folder_to_check : string (** Path of the folder that contain the tests that need to be checked. *)
+    file : string (** Core name of the files that will be generated for this function. *)
   }
 
-(** Load all the tests, validated or not. *)
-val load : unit -> unit
+(** Preload the tests, validated or not. *)
+val preload : unit -> unit
 
 (** Publish all the tests, validated or not, i.e. it generates every html and txt files for each tested function. *)
 val publish : unit -> unit
@@ -41,14 +36,18 @@ val validate_all_tests : data_IO -> unit
 (** {2 Functions to be tested} *)
 
 (** For each tested function, we need to associate some data of type [data_IO] as well as a function that will produce the test resulting of an application
-    of the function. By convention, we use the full name of the function. For example, consider the function [A.B.C.function_test : 'a -> 'b -> 'c -> bool].
+    of the function and a function that will load the test. By convention, we use the full name of the function. For example, consider the function [A.B.C.function_test : 'a -> 'b -> 'c -> bool].
     The data I/O for testing [A.B.C.function_test] will be stored in
 
     [val data_A_B_C_function_test : data_IO]
 
-    and the function producing the test will be the following one.
+    the function producing the test will be as follows:
 
     [val apply_A_B_C_function_test : 'a -> 'b -> 'c -> string]
+
+    and the function loading the test will be as follows:
+
+    [val load_A_B_C_function_test : 'a -> 'b -> 'c -> bool -> string]
 **)
 
 (** {3 Term.Subst.Unify} *)
@@ -57,11 +56,15 @@ val data_IO_Term_Subst_unify : data_IO
 
 val apply_Term_Subst_unify : ('a, 'b) atom -> (('a, 'b) term * ('a, 'b) term) list -> string
 
+val load_Term_Subst_unify : ('a, 'b) atom -> (('a, 'b) term * ('a, 'b) term) list -> ('a, 'b) Subst.t option -> string
+
 (** {3 Term.Subst.is_matchable} *)
 
 val data_IO_Term_Subst_is_matchable : data_IO
 
 val apply_Term_Subst_is_matchable : ('a, 'b) atom -> ('a, 'b) term list -> ('a, 'b) term list -> string
+
+val load_Term_Subst_is_matchable : ('a, 'b) atom -> ('a, 'b) term list -> ('a, 'b) term list -> bool -> string
 
 (** {3 Term.Subst.is_extended_by} *)
 
@@ -69,11 +72,15 @@ val data_IO_Term_Subst_is_extended_by : data_IO
 
 val apply_Term_Subst_is_extended_by : ('a, 'b) atom -> ('a, 'b) Subst.t -> ('a, 'b) Subst.t -> string
 
+val load_Term_Subst_is_extended_by : ('a, 'b) atom -> ('a, 'b) Subst.t -> ('a, 'b) Subst.t -> bool -> string
+
 (** {3 Term.Subst.is_equal_equations} *)
 
 val data_IO_Term_Subst_is_equal_equations : data_IO
 
 val apply_Term_Subst_is_equal_equations : ('a, 'b) atom -> ('a, 'b) Subst.t -> ('a, 'b) Subst.t -> string
+
+val load_Term_Subst_is_equal_equations : ('a, 'b) atom -> ('a, 'b) Subst.t -> ('a, 'b) Subst.t -> bool -> string
 
 (** {3 Term.Modulo.syntactic_equations_of_equations} *)
 
@@ -81,11 +88,15 @@ val data_IO_Term_Modulo_syntactic_equations_of_equations : data_IO
 
 val apply_Term_Modulo_syntactic_equations_of_equations : Modulo.equation list -> string
 
+val load_Term_Modulo_syntactic_equations_of_equations : Modulo.equation list -> (fst_ord, name) Subst.t list Modulo.result -> string
+
 (** {3 Term.Rewrite_rules.normalise} *)
 
 val data_IO_Term_Rewrite_rules_normalise : data_IO
 
 val apply_Term_Rewrite_rules_normalise : protocol_term -> string
+
+val load_Term_Rewrite_rules_normalise : protocol_term -> protocol_term -> string
 
 (** {3 Term.Rewrite_rules.skeletons} *)
 
@@ -93,8 +104,12 @@ val data_IO_Term_Rewrite_rules_skeletons : data_IO
 
 val apply_Term_Rewrite_rules_skeletons : protocol_term -> symbol -> int -> string
 
+val load_Term_Rewrite_rules_skeletons : protocol_term -> symbol -> int -> Rewrite_rules.skeleton list -> string
+
 (** {3 Term.Rewrite_rules.generic_rewrite_rules_formula} *)
 
 val data_IO_Term_Rewrite_rules_generic_rewrite_rules_formula : data_IO
 
 val apply_Term_Rewrite_rules_generic_rewrite_rules_formula : Fact.deduction -> Rewrite_rules.skeleton -> string
+
+val load_Term_Rewrite_rules_generic_rewrite_rules_formula : Fact.deduction -> Rewrite_rules.skeleton -> Fact.deduction_formula list -> string

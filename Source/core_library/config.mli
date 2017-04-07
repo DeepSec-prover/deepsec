@@ -11,3 +11,7 @@ val debug : (unit -> unit) -> unit
 
 (** [debug f] executes [f] if the program was compiled with the option [testing], else it does nothing. *)
 val test : (unit -> unit) -> unit
+
+val path_html_template : string ref
+
+val path_testing_data : string ref

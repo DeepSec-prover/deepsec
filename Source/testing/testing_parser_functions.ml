@@ -17,6 +17,10 @@ type env_elt =
   | Axiom of Term.axiom
   | Func of Term.symbol
 
+type parsing_mode =
+  | Load
+  | Verify
+
 let environment = Hashtbl.create 50
 
 (***********************************
@@ -285,6 +289,15 @@ let parse_substitution : 'a 'b. ('a,'b) Term.atom -> (ident * term) list -> ('a,
       | Not_found -> error_message line (Printf.sprintf "The identifiant %s is not declared" s)
   ) Term.Subst.identity subst
 
+let parse_substitution_option at = function
+  | None -> None
+  | Some s -> Some (parse_substitution at s)
+
+let parse_substitution_list_result = function
+  | Term.Modulo.Top_raised -> Term.Modulo.Top_raised
+  | Term.Modulo.Bot_raised -> Term.Modulo.Bot_raised
+  | Term.Modulo.Ok s -> Term.Modulo.Ok (List.map (parse_substitution Term.Protocol) s)
+
 (********* Symbol function ********)
 
 let parse_symbol (s,line) =
@@ -314,6 +327,13 @@ let parse_basic_deduction_fact ((s,line),k, term) =
 let parse_deduction_fact (recipe,term) =
   Term.Fact.create_deduction_fact (parse_term Term.Recipe recipe) (parse_term Term.Protocol term)
 
+(********** Deduction formula *********)
+
+let parse_deduction_formula (head,bfct_l,subst) =
+  Term.Fact.create_for_testing (parse_deduction_fact head) (List.map parse_basic_deduction_fact bfct_l) (parse_substitution Term.Protocol subst)
+
+let parse_deduction_formula_list = List.map (parse_deduction_formula)
+
 (********** Skeleton *********)
 
 let parse_skeleton ((s,line),recipe,term,bfct_l,(lhs,rhs)) =
@@ -338,3 +358,5 @@ let parse_skeleton ((s,line),recipe,term,bfct_l,(lhs,rhs)) =
     Term.Rewrite_rules.basic_deduction_facts = bfct_l';
     Term.Rewrite_rules.rewrite_rule = (Term.root lhs', Term.get_args lhs', rhs')
   }
+
+let parse_skeleton_list l = List.map parse_skeleton l

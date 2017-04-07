@@ -68,7 +68,7 @@ let test_generic ded f k =
 
 
 let _ =
-  Testing_functions.load ();
+  Testing_load_verify.load ();
   Testing_functions.update ();
 
   let _ = Rewrite_rules.skeletons x dest 4 in
