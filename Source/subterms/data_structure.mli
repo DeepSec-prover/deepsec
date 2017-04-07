@@ -235,6 +235,9 @@ module Eq : sig
   (** {% The formula $\top$. %}*)
   val top : ('a, 'b) formula
 
+  (** {% The formula $\bot$. %}*)
+  val bot : ('a, 'b) formula
+
   (** [wedge] {% $\phi$~$\psi$ returns $\phi \wedge \psi$. %}*)
   val wedge : ('a, 'b) formula -> ('a, 'b) Diseq.t -> ('a, 'b) formula
 
@@ -258,6 +261,10 @@ module Eq : sig
   (** {3 Display} *)
 
   val display : Display.output -> ('a, 'b) atom -> ('a, 'b) formula -> string
+
+  (** {3 Tested function} *)
+
+  val update_test_implies : ('a, 'b) atom -> (('a, 'b) formula -> ('a, 'b) term -> ('a, 'b) term -> bool -> unit) -> unit
 end
 
 (** {2 The set of subterm consequence} *)

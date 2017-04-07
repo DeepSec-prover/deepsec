@@ -858,7 +858,25 @@ module Eq = struct
     | Bot
     | Conj of ('a, 'b) Diseq.t list
 
+  (* Tested function *)
+
+  let test_implies_Protocol : ((fst_ord, name) formula -> (fst_ord, name) term -> (fst_ord, name) term -> bool -> unit) ref = ref (fun _ _ _ _ -> ())
+
+  let test_implies_Recipe : ((snd_ord, axiom) formula -> (snd_ord, axiom) term -> (snd_ord, axiom) term -> bool -> unit) ref = ref (fun _ _ _ _ -> ())
+
+  let test_implies (type a) (type b) (at:(a,b) atom) (form: (a,b) formula) (term1:(a,b) term) (term2:(a,b) term) (res:bool) = match at with
+    | Protocol -> !test_implies_Protocol form term1 term2 res
+    | Recipe -> !test_implies_Recipe form term1 term2 res
+
+  let update_test_implies (type a) (type b) (at:(a,b) atom) (f: (a, b) formula -> (a, b) term -> (a, b) term -> bool -> unit) = match at with
+    | Protocol -> test_implies_Protocol := f
+    | Recipe -> test_implies_Recipe := f
+
+  (* Generation *)
+
   let top = Top
+
+  let bot = Bot
 
   let is_bot = function
     | Bot -> true
@@ -900,9 +918,13 @@ module Eq = struct
     try
       let subst = Subst.unify at [(t1,t2)] in
 
-      apply at form subst = Bot
+      let res = apply at form subst = Bot in
+      Config.test (fun () -> test_implies at form t1 t2 res);
+      res
     with
-      | Subst.Not_unifiable -> true
+      | Subst.Not_unifiable ->
+          Config.test (fun () -> test_implies at form t1 t2 true);
+          true
 
   let extract = function
     | Top -> None, Top
