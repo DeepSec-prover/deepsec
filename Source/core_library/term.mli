@@ -1036,23 +1036,23 @@ module type Uni =
     val find_protocol_term : t -> protocol_term -> (recipe -> bool) -> recipe option
   end
 
-module Tools :
+module Tools_General :
   functor (SDF : SDF) (DF : DF) ->
     sig
 
-    (** [mem k] {% $\Solved$~$\Df$ %} [o_psi] {% $\xi$~$t$ %} returns [true] iff one of the following properties holds: {%
+    (** [consequence k] {% $\Solved$~$\Df$ %} [o_psi] {% $\xi$~$t$ %} returns [true] iff one of the following properties holds: {%
         \begin{itemize}
           \item %} [o_psi = None] {% and $(\xi,t) \in \Consequence{\Solved \cup \SetRestr{\Df}{k}}$
           \item %} [o_psi = Some(]{% $\psi$%}[)] {% and $\psi = (\clause{S}{H}{\varphi})$ and $(\xi,t) \in \Consequence{\Solved \cup \SetRestr{\Df}{k} \cup \varphi}$
         \end{itemize} %}*)
-    val mem : int -> SDF.t -> DF.t -> 'a Fact.formula option -> recipe -> protocol_term -> bool
+    val consequence : int -> SDF.t -> DF.t -> 'a Fact.formula option -> recipe -> protocol_term -> bool
 
-    (** [partial_mem] is related to [mem]. When [at = Protocol] (resp. [Recipe]), [partial_mem at k] {% $\Solved$~$\Df$ %} [o_psi] {% $t$ (resp. $\xi$)
+    (** [partial_consequence] is related to [consequence]. When [at = Protocol] (resp. [Recipe]), [partial_consequence at k] {% $\Solved$~$\Df$ %} [o_psi] {% $t$ (resp. $\xi$)
         \begin{itemize}
         \item %} returns [None] if {% for all $\xi$ (resp. for all $t$),%} [mem k] {% $\Solved$~$\Df$ %} [o_psi] {% $\xi$~$t$ %} returns [false]; {% otherwise
         \item %} returns [Some(]{% $\xi$%}[)] (resp. [Some(]{% $t$%}[)]) such that [mem k] {% $\Solved$~$\Df$ %} [o_psi] {% $\xi$~$t$ %} returns [true]. {%
         \end{itemize} %}*)
-    val partial_mem : ('a, 'b) atom -> int -> SDF.t -> DF.t -> 'c Fact.formula option  -> ('a, 'b) term -> (recipe * protocol_term) option
+    val partial_consequence : ('a, 'b) atom -> int -> SDF.t -> DF.t -> 'c Fact.formula option  -> ('a, 'b) term -> (recipe * protocol_term) option
 
     (** [is_df_solved DF] returns [true] if and only if all basic deduction facts in [DF] have distinct variables as right hand terms. *)
     val is_df_solved : DF.t -> bool
@@ -1064,18 +1064,18 @@ module Tools_Subterm :
 
     (** {3 Consequence} *)
 
-    (** [mem] {% $\Solved$~$\Df$~$\xi$~$t$ %} returns [true] iff {% $(\xi,t) \in \Consequence{\Solved \cup \Df}$.%}*)
-    val mem : SDF.t -> DF.t -> recipe -> protocol_term -> bool
+    (** [consequence] {% $\Solved$~$\Df$~$\xi$~$t$ %} returns [true] iff {% $(\xi,t) \in \Consequence{\Solved \cup \Df}$.%}*)
+    val consequence : SDF.t -> DF.t -> recipe -> protocol_term -> bool
 
-    (** [partial_mem] is related to [mem]. When [at = Protocol] (resp. [Recipe]), [partial_mem at] {% $\Solved$~$\Df$~$t$ (resp. $\xi$)
+    (** [partial_consequence] is related to [consequence]. When [at = Protocol] (resp. [Recipe]), [partial_consequence at] {% $\Solved$~$\Df$~$t$ (resp. $\xi$)
         \begin{itemize}
         \item %} returns [None] if {% for all $\xi$ (resp. for all $t$),%} [mem] {% $\Solved$~$\Df$~$\xi$~$t$ %} returns [false]; {% otherwise
         \item %} returns [Some(]{% $\xi$%}[)] (resp. [Some(]{% $t$%}[)]) such that [mem] {% $\Solved$~$\Df$~$\xi$~$t$ %} returns [true]. {%
         \end{itemize} %}*)
-    val partial_mem : ('a, 'b) atom -> SDF.t -> DF.t -> ('a, 'b) term -> (recipe * protocol_term) option
+    val partial_consequence : ('a, 'b) atom -> SDF.t -> DF.t -> ('a, 'b) term -> (recipe * protocol_term) option
 
-    (** Similar to [partial_mem] but consider the consequence with an additional set of basic deduction fact. *)
-    val partial_mem_additional : ('a, 'b) atom -> SDF.t -> DF.t -> BasicFact.t list -> ('a, 'b) term -> (recipe * protocol_term) option
+    (** Similar to [partial_consequence] but consider the consequence with an additional set of basic deduction fact. *)
+    val partial_consequence_additional : ('a, 'b) atom -> SDF.t -> DF.t -> BasicFact.t list -> ('a, 'b) term -> (recipe * protocol_term) option
 
     (** [uniform_consequence] {% $\Solved$~$\Df$~$\Set$~$t$ returns %} returns [Some(]{% $\xi$%}[)] if {% $(\xi,t) \in \Set$ or if $\forall \zeta. (\zeta,t) \not\in S$ and $(\xi,t) \in \Consequence{\Solved \cup \Df}$. %}*)
     val uniform_consequence : SDF.t -> DF.t -> Uni.t -> protocol_term -> recipe option
@@ -1087,9 +1087,9 @@ module Tools_Subterm :
 
     (** {3 Tested functions} *)
 
-    val update_test_partial_mem : ('a, 'b) atom -> (SDF.t -> DF.t -> ('a, 'b) term ->  (recipe * protocol_term) option -> unit) -> unit
+    val update_test_partial_consequence : ('a, 'b) atom -> (SDF.t -> DF.t -> ('a, 'b) term ->  (recipe * protocol_term) option -> unit) -> unit
 
-    val update_test_partial_mem_additional : ('a, 'b) atom -> (SDF.t -> DF.t -> BasicFact.t list -> ('a, 'b) term -> (recipe * protocol_term) option -> unit) -> unit
+    val update_test_partial_consequence_additional : ('a, 'b) atom -> (SDF.t -> DF.t -> BasicFact.t list -> ('a, 'b) term -> (recipe * protocol_term) option -> unit) -> unit
 
     val update_test_uniform_consequence : (SDF.t -> DF.t -> Uni.t -> protocol_term -> recipe option -> unit) -> unit
   end

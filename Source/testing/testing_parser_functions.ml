@@ -26,6 +26,18 @@ type 'a top_bot =
   | Bot
   | Other of 'a
 
+type equation = term * term
+
+type substitution = (ident * term) list
+
+type skeleton = ident * term * term * (ident * int * term) list * (term * term)
+
+type basic_deduction_fact = ident * int * term
+
+type deduction_fact = term * term
+
+type deduction_formula = deduction_fact * basic_deduction_fact list * substitution
+
 let environment = Hashtbl.create 50
 
 (***********************************
@@ -382,3 +394,23 @@ let parse_Eq at form = match form with
         in
         Data_structure.Eq.wedge acc new_diseq
       ) diseq_conj Data_structure.Eq.top
+
+(*********** SDF *********)
+
+let parse_SDF  =
+  List.fold_left (fun acc ded ->
+    Data_structure.SDF.add acc (parse_deduction_fact ded)
+  ) Data_structure.SDF.empty
+
+(*********** DF *********)
+
+let parse_DF  =
+  List.fold_left (fun acc bfct ->
+    Data_structure.DF.add acc (parse_basic_deduction_fact bfct)
+  ) Data_structure.DF.empty
+
+(*********** Consequence *********)
+
+let parse_consequence  = function
+  | None -> None
+  | Some(recipe,term) -> Some(parse_term Term.Recipe recipe, parse_term Term.Protocol term)

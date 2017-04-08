@@ -1027,6 +1027,13 @@ module Uniformity_Set = struct
     then snd_applied
     else Subst.apply subst_fst snd_applied map_protocol_term
 
+  (******* Iterators ********)
+
+  let iter uniset f =
+    Subterm.iter (fun term recipe_set ->
+      Recipe_Set.iter (fun recipe -> f recipe term) recipe_set
+    ) uniset
+
   (******* Testing ********)
 
   exception Found
@@ -1078,41 +1085,30 @@ module Uniformity_Set = struct
 
   (******* Display *******)
 
-  let display_recipe_set rho recipe_set =
-    Config.debug (fun () ->
-      if Recipe_Set.is_empty recipe_set
-      then Config.internal_error "[data_structure.ml >> display_recipe_set] The set should not be empty."
-    );
-
-    let s = Recipe_Set.cardinal recipe_set in
-    let current_number = ref 1 in
-    let str = ref "{ " in
-    Recipe_Set.iter (fun recipe ->
-      if !current_number < s
-      then str := Printf.sprintf "%s%s, " !str (display Testing ~rho:rho Recipe recipe)
-      else str := Printf.sprintf "%s%s }" !str (display Testing ~rho:rho Recipe recipe);
-
-      incr current_number
-    ) recipe_set;
-    !str
-
-
   let display out ?(rho = None) ?(per_line = 8) ?(tab = 0) uniset = match out with
     | Testing ->
         if Subterm.is_empty uniset
         then emptyset Testing
         else
           begin
-            let s = Subterm.cardinal uniset in
+            let elements = ref [] in
+            Subterm.iter (fun term recipe_set ->
+              Recipe_Set.iter (fun recipe ->
+                elements := (recipe,term) :: !elements
+              ) recipe_set
+            ) uniset;
+            let sorted_elements = List.sort (fun (r1,_) (r2,_) -> order Recipe r1 r2) !elements in
+
+            let s = List.length sorted_elements in
             let current_number = ref 1 in
             let str = ref "{ " in
-            Subterm.iter (fun term recipe_set ->
+            List.iter (fun (recipe,term) ->
               if !current_number < s
-              then str := Printf.sprintf "%s(%s,%s), " !str (display Testing ~rho:rho Protocol term) (display_recipe_set rho recipe_set)
-              else str := Printf.sprintf "%s(%s,%s) }" !str (display Testing ~rho:rho Protocol term) (display_recipe_set rho recipe_set);
+              then str := Printf.sprintf "%s(%s,%s), " !str (display Testing ~rho:rho Recipe recipe) (display Testing ~rho:rho Protocol term)
+              else str := Printf.sprintf "%s(%s,%s) }" !str (display Testing ~rho:rho Recipe recipe) (display Testing ~rho:rho Protocol term);
 
               incr current_number
-            ) uniset;
+            ) sorted_elements;
             !str
           end
     | Latex ->
@@ -1192,7 +1188,6 @@ module Uniformity_Set = struct
               !str
         end
 end
-
 
 (*****************************************
 ***                Tools               ***

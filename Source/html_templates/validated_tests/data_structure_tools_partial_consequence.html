@@ -39,19 +39,24 @@
 
         <div id="title">
           <div id="title-main">Testing</div>
-          <div id="title-sub">Tests to validate for the function Term.Subst.is_matchable</div>
+          <div id="title-sub">Tests to validate for the function Data_structure.Tools.partial_consequence</div>
         </div>
 
       </div>
 
       <div id="content-text">
-
+        \( \newcommand{\Solved}{{\sf SDF}}
+            \newcommand{\Df}{{\sf DF}}
+            \newcommand{\Consequence}[1]{\rm{Conseq}(#1)}
+        \)
         <p>
-          Given two lists <code>l1 = </code>\( [u_1;\ldots;u_n]\) and <code>l2 = </code>\( [v_1;\ldots;v_n]\), <code>is_matchable at l1 l2</code> returns \(\top\) iff
-          there exists a substitution \(\sigma\) such that \(\forall i \in \mathbb{N}^n_1, u_i\sigma = v_i\). Note that we allow \(\sigma\) to be cyclic and to not respect types (for second-order variables).
+          <code>partial Protocol</code> \({\sf SDF}\) \({\sf DF}\) \(t\) returns \({\tt Some}(\xi,t)\) when there exists \(\xi\) such that \((\xi,t) \in \Consequence{\Solved \cup \Df}\); otherwise it returns \({\tt None}\).
         </p>
         <p>
-          We also adopt the following convention:
+          <code>partial Recipe</code> \({\sf SDF}\) \({\sf DF}\) \(\xi\) returns \({\tt Some}(\xi,t)\) when there exists \(t\) such that \((\xi,t) \in \Consequence{\Solved \cup \Df}\); otherwise it returns \({\tt None}\).
+        </p>
+        <p>
+          Note that we adopt the following convention:
           <ul>
             <li>Free first-order (resp. second-order variables) will be denoted by \(w\) (resp. \(W\) )</li>
             <li>Existential first-order (resp. second-order variables) will be denoted by \(x\) or \(y\) (resp. \(X\) or \(Y\) )</li>

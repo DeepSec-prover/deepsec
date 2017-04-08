@@ -21,4 +21,4 @@ let test =
 (**** Testing *****)
 
 let path_html_template = ref "Source/html_templates/"
-let path_testing_data = ref "testing_data/"
+let path_index = ref "./"

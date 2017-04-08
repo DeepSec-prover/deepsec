@@ -17,7 +17,7 @@
     var checked_tests = document.getElementsByClassName('ValidateButton');
     var len = checked_tests.length;
 
-    var command_line = "./test_deepsec validate function Term.Subst.unify tests"
+    var command_line = "./test_deepsec validate function Data_structure.Tools.partial_consequence tests"
     var checked = 0;
     for(var i=0; i<len; ++i){
       if(checked_tests[i].checked){
@@ -65,23 +65,21 @@
 
         <div id="title">
           <div id="title-main">Testing</div>
-          <div id="title-sub">Tests to validate for the function Term.Subst.unify</div>
+          <div id="title-sub">Tests to validate for the function Data_structure.Tools.partial_consequence</div>
         </div>
 
       </div>
 
       <div id="content-text">
-
+        \( \newcommand{\Solved}{{\sf SDF}}
+            \newcommand{\Df}{{\sf DF}}
+            \newcommand{\Consequence}[1]{\rm{CONSEQ}(#1)}
+        \)
         <p>
-          <code>unify at l</code> unifies the pairs of term in <code>l</code> and returns the most general substitution that unifies them, i.e., \(mgu(l)\).
-          When the subtitution \( \sigma \) obtained is of the form \(\sigma = \{ x \rightarrow y \}\sigma'\) for some variables \(x,y\) of same type
-          (i.e., \(x,y \in \mathcal{X}^1 \) when the substitution is on protocol term, and \(x,y \in \mathcal{X}^2_{i}\) for some \(i\) when the substitution
-          is on recipe) and some substitution \(\sigma'\), then the following properties hold:
-          <ul>
-            <li> \(x\) is existential implies \(y\) is either existential or free</li>
-            <li> \(x\) is free implies \(y\) is free</li>
-          </ul>
-          If no most general unifier exists then \(\bot\) will be displayed as result.
+          <code>partial Protocol</code> \({\sf SDF}\) \({\sf DF}\) \(t\) returns \({\tt Some}(\xi,t)\) when there exists \(\xi\) such that \((\xi,t) \in \Consequence{\Solved \cup \Df}\); otherwise it returns \({\tt None}\).
+        </p>
+        <p>
+          <code>partial Recipe</code> \({\sf SDF}\) \({\sf DF}\) \(\xi\) returns \({\tt Some}(\xi,t)\) when there exists \(t\) such that \((\xi,t) \in \Consequence{\Solved \cup \Df}\); otherwise it returns \({\tt None}\).
         </p>
         <p>
           Note that we adopt the following convention:
@@ -99,7 +97,7 @@
         <div>
           <p class="generate-commands"> The command to apply to validate the tests:</p>
           <p id="command-line" class="command">No test is validated yet</p>
-          <p> To be used with care : All the tests can be directly validated by the command ./test_deepsec validate all -function Term.Subst.unify</p>
+          <p> To be used with care : All the tests can be directly validated by the command ./test_deepsec validate all -function Data_structure.Tools.partial_consequence</p>
         </div>
         <!-- Beginning Tests -->
         <!-- The tests -->

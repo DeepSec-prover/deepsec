@@ -2741,7 +2741,7 @@ module type Uni =
     val find_protocol_term : t -> protocol_term -> (recipe -> bool) -> recipe option
   end
 
-module Tools (SDF: SDF) (DF: DF) = struct
+module Tools_General (SDF: SDF) (DF: DF) = struct
 
   (******* Consequence *******)
 
@@ -2760,7 +2760,7 @@ module Tools (SDF: SDF) (DF: DF) = struct
         List.iter2 (match_term at) args args'
     | _,_ -> raise No_match
 
-  let mem k sdf df op_psi recipe protocol_term =
+  let consequence k sdf df op_psi recipe protocol_term =
 
     let rec mem_list r_list t_list = match r_list, t_list with
       | [],[] -> true
@@ -3026,7 +3026,7 @@ module Tools (SDF: SDF) (DF: DF) = struct
 
     mem_term protocol_term
 
-  let partial_mem (type a) (type b) (at:(a,b) atom) k sdf df op_psi (term:(a,b) term) = match at with
+  let partial_consequence (type a) (type b) (at:(a,b) atom) k sdf df op_psi (term:(a,b) term) = match at with
     | Protocol ->
         begin match partial_mem_protocol k sdf df op_psi term with
           | None -> None
@@ -3063,21 +3063,21 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
 
   (***** Tested function *******)
 
-  let test_partial_mem_Protocol : (SDF.t -> DF.t -> protocol_term ->  (recipe * protocol_term) option -> unit) ref = ref (fun _ _ _ _ -> ())
+  let test_partial_consequence_Protocol : (SDF.t -> DF.t -> protocol_term ->  (recipe * protocol_term) option -> unit) ref = ref (fun _ _ _ _ -> ())
 
-  let test_partial_mem_Recipe : (SDF.t -> DF.t -> recipe ->  (recipe * protocol_term) option -> unit) ref = ref (fun _ _ _ _ -> ())
+  let test_partial_consequence_Recipe : (SDF.t -> DF.t -> recipe ->  (recipe * protocol_term) option -> unit) ref = ref (fun _ _ _ _ -> ())
 
-  let update_test_partial_mem (type a) (type b) (at:(a,b) atom) (f: SDF.t -> DF.t -> (a,b) term -> (recipe * protocol_term) option -> unit) = match at with
-    | Protocol -> test_partial_mem_Protocol := f
-    | Recipe -> test_partial_mem_Recipe := f
+  let update_test_partial_consequence (type a) (type b) (at:(a,b) atom) (f: SDF.t -> DF.t -> (a,b) term -> (recipe * protocol_term) option -> unit) = match at with
+    | Protocol -> test_partial_consequence_Protocol := f
+    | Recipe -> test_partial_consequence_Recipe := f
 
-  let test_partial_mem_additional_Protocol : (SDF.t -> DF.t -> BasicFact.t list -> protocol_term ->  (recipe * protocol_term) option -> unit) ref = ref (fun _ _ _ _ _ -> ())
+  let test_partial_consequence_additional_Protocol : (SDF.t -> DF.t -> BasicFact.t list -> protocol_term ->  (recipe * protocol_term) option -> unit) ref = ref (fun _ _ _ _ _ -> ())
 
-  let test_partial_mem_additional_Recipe : (SDF.t -> DF.t -> BasicFact.t list -> recipe ->  (recipe * protocol_term) option -> unit) ref = ref (fun _ _ _ _ _ -> ())
+  let test_partial_consequence_additional_Recipe : (SDF.t -> DF.t -> BasicFact.t list -> recipe ->  (recipe * protocol_term) option -> unit) ref = ref (fun _ _ _ _ _ -> ())
 
-  let update_test_partial_mem_additional (type a) (type b) (at:(a,b) atom) (f: SDF.t -> DF.t -> BasicFact.t list -> (a,b) term -> (recipe * protocol_term) option -> unit) = match at with
-    | Protocol -> test_partial_mem_additional_Protocol := f
-    | Recipe -> test_partial_mem_additional_Recipe := f
+  let update_test_partial_consequence_additional (type a) (type b) (at:(a,b) atom) (f: SDF.t -> DF.t -> BasicFact.t list -> (a,b) term -> (recipe * protocol_term) option -> unit) = match at with
+    | Protocol -> test_partial_consequence_additional_Protocol := f
+    | Recipe -> test_partial_consequence_additional_Recipe := f
 
   let test_uniform_consequence : (SDF.t -> DF.t -> Uni.t -> protocol_term -> recipe option -> unit) ref = ref (fun _ _ _ _ _ -> ())
 
@@ -3085,9 +3085,9 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
 
   (***** Consequence ******)
 
-  let rec mem sdf df recipe term = match recipe, term with
+  let rec consequence sdf df recipe term = match recipe, term with
     | Func(f,args_r), Func(f',args_t) when Symbol.is_equal f f' ->
-        List.for_all2 (mem sdf df)  args_r args_t
+        List.for_all2 (consequence sdf df)  args_r args_t
     | Func(f,_), _ when Symbol.is_constructor f -> false
     | Func(_,_), _ | AxName _, _ ->
         SDF.exists sdf (fun fct -> (is_equal fct.Fact.df_recipe recipe) && (is_equal fct.Fact.df_term term))
@@ -3163,23 +3163,23 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
 
     mem_term pterm
 
-  let partial_mem (type a) (type b) (at:(a,b) atom) sdf df (term:(a,b) term) = match at with
+  let partial_consequence (type a) (type b) (at:(a,b) atom) sdf df (term:(a,b) term) = match at with
     | Protocol ->
         begin match partial_mem_protocol sdf df term with
           | None ->
-              Config.test (fun () -> !test_partial_mem_Protocol sdf df term None);
+              Config.test (fun () -> !test_partial_consequence_Protocol sdf df term None);
               None
           | Some r ->
-              Config.test (fun () -> !test_partial_mem_Protocol sdf df term (Some (r,term)));
+              Config.test (fun () -> !test_partial_consequence_Protocol sdf df term (Some (r,term)));
               (Some (r,term):(recipe * protocol_term) option)
         end
     | Recipe ->
         begin match partial_mem_recipe sdf df term with
           | None ->
-              Config.test (fun () -> !test_partial_mem_Recipe sdf df term None);
+              Config.test (fun () -> !test_partial_consequence_Recipe sdf df term None);
               None
           | Some t ->
-              Config.test (fun () -> !test_partial_mem_Recipe sdf df term (Some (term,t)));
+              Config.test (fun () -> !test_partial_consequence_Recipe sdf df term (Some (term,t)));
               (Some (term,t):(recipe * protocol_term) option)
         end
 
@@ -3272,23 +3272,23 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
 
     mem_term pterm
 
-  let partial_mem_additional (type a) (type b) (at:(a,b) atom) sdf df b_fct_list (term:(a,b) term) = match at with
+  let partial_consequence_additional (type a) (type b) (at:(a,b) atom) sdf df b_fct_list (term:(a,b) term) = match at with
     | Protocol ->
         begin match partial_mem_additional_protocol sdf df b_fct_list term with
           | None ->
-              Config.test (fun () -> !test_partial_mem_additional_Protocol sdf df b_fct_list term None);
+              Config.test (fun () -> !test_partial_consequence_additional_Protocol sdf df b_fct_list term None);
               None
           | Some r ->
-              Config.test (fun () -> !test_partial_mem_additional_Protocol sdf df b_fct_list term (Some (r,term)));
+              Config.test (fun () -> !test_partial_consequence_additional_Protocol sdf df b_fct_list term (Some (r,term)));
               (Some (r,term):(recipe * protocol_term) option)
         end
     | Recipe ->
         begin match partial_mem_additional_recipe sdf df b_fct_list term with
           | None ->
-              Config.test (fun () -> !test_partial_mem_additional_Recipe sdf df b_fct_list term None);
+              Config.test (fun () -> !test_partial_consequence_additional_Recipe sdf df b_fct_list term None);
               None
           | Some t ->
-              Config.test (fun () -> !test_partial_mem_additional_Recipe sdf df b_fct_list term (Some (term,t)));
+              Config.test (fun () -> !test_partial_consequence_additional_Recipe sdf df b_fct_list term (Some (term,t)));
               (Some (term,t):(recipe * protocol_term) option)
         end
 

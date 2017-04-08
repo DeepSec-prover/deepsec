@@ -17,7 +17,7 @@ body {
 #menu {
   background-color: #faf0ee;
   display: table-cell;
-  width: 200px;
+  width: 150px;
   vertical-align: top;
   position: relative;
 }
@@ -25,6 +25,7 @@ body {
 #menu-text {
   margin-top: 40px;
   margin-bottom: 300px;
+  width: 150px;
 }
 
 #menu-text a {

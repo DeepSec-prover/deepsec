@@ -49,7 +49,7 @@ val validate_all_tests : data_IO -> unit
     and the function loading the test will be as follows:
 
     [val load_A_B_C_function_test : 'a -> 'b -> 'c -> bool -> string]
-**)
+*)
 
 (** {3 Term.Subst.Unify} *)
 
@@ -122,3 +122,11 @@ val data_IO_Data_structure_Eq_implies : data_IO
 val apply_Data_structure_Eq_implies : ('a, 'b) atom -> ('a, 'b) Eq.t -> ('a, 'b) term -> ('a, 'b) term -> string
 
 val load_Data_structure_Eq_implies : ('a, 'b) atom -> ('a, 'b) Eq.t -> ('a, 'b) term -> ('a, 'b) term -> bool -> string
+
+(** {3 Data_structure.Tools.partial_consequence} *)
+
+val data_IO_Data_structure_Tools_partial_consequence : data_IO
+
+val apply_Data_structure_Tools_partial_consequence : ('a, 'b) atom -> SDF.t -> DF.t -> ('a, 'b) term -> string
+
+val load_Data_structure_Tools_partial_consequence : ('a, 'b) atom -> SDF.t -> DF.t -> ('a, 'b) term -> (recipe * protocol_term) option -> string

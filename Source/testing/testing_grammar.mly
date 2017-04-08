@@ -46,7 +46,7 @@ open Testing_parser_functions
 %start parse_Term_Modulo_syntactic_equations_of_equations
 %start parse_Term_Rewrite_rules_normalise parse_Term_Rewrite_rules_skeletons parse_Term_Rewrite_rules_generic_rewrite_rules_formula
 
-%start parse_Data_structure_Eq_implies
+%start parse_Data_structure_Eq_implies parse_Data_structure_Tools_partial_consequence
 
 %type <(Testing_parser_functions.parsing_mode -> string)> parse_Term_Subst_unify
 %type <(Testing_parser_functions.parsing_mode -> string)> parse_Term_Subst_is_matchable
@@ -58,6 +58,7 @@ open Testing_parser_functions
 %type <(Testing_parser_functions.parsing_mode -> string)> parse_Term_Rewrite_rules_generic_rewrite_rules_formula
 
 %type <(Testing_parser_functions.parsing_mode -> string)> parse_Data_structure_Eq_implies
+%type <(Testing_parser_functions.parsing_mode -> string)> parse_Data_structure_Tools_partial_consequence
 
 %%
 /***********************************
@@ -286,6 +287,39 @@ parse_Data_structure_Eq_implies:
             if mode = Load
             then Testing_functions.load_Data_structure_Eq_implies Term.Recipe form term1 term2  $16
             else Testing_functions.apply_Data_structure_Eq_implies Term.Recipe form term1 term2
+        )
+      }
+  | error
+      { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
+
+parse_Data_structure_Tools_partial_consequence:
+  | header_of_test
+    INPUT DDOT atom
+    INPUT DDOT sdf
+    INPUT DDOT df
+    INPUT DDOT term
+    RESULT DDOT consequence
+      {
+        (fun mode -> $1 ();
+          if $4 = true
+          then
+            let sdf = parse_SDF $7 in
+            let df = parse_DF $10 in
+            let term = parse_term Term.Protocol $13 in
+            if mode = Load
+            then
+              let result = parse_consequence $16 in
+              Testing_functions.load_Data_structure_Tools_partial_consequence Term.Protocol sdf df term result
+            else Testing_functions.apply_Data_structure_Tools_partial_consequence Term.Protocol sdf df term
+          else
+            let sdf = parse_SDF $7 in
+            let df = parse_DF $10 in
+            let term = parse_term Term.Recipe $13 in
+            if mode = Load
+            then
+              let result = parse_consequence $16 in
+              Testing_functions.load_Data_structure_Tools_partial_consequence Term.Recipe sdf df term result
+            else Testing_functions.apply_Data_structure_Tools_partial_consequence Term.Recipe sdf df term
         )
       }
   | error
@@ -612,6 +646,48 @@ conjunction_syntaxtic_disequation:
       { [$1] }
   | diseq_t WEDGE conjunction_syntaxtic_disequation
       { $1::$3 }
+
+/*************************
+***        SDF         ***
+**************************/
+
+sdf:
+  | LCURL RCURL
+      { [] }
+  | LCURL sub_sdf RCURL
+      { $2 }
+
+sub_sdf:
+  | deduction_fact
+      { [$1] }
+  | deduction_fact COMMA sub_sdf
+      { $1::$3 }
+
+/*************************
+***        DF         ***
+**************************/
+
+df:
+  | LCURL RCURL
+      { [] }
+  | LCURL sub_df RCURL
+      { $2 }
+
+sub_df:
+  | basic_deduction_fact
+      { [$1] }
+  | basic_deduction_fact COMMA sub_df
+      { $1::$3 }
+
+/********************************
+***        Consequence        ***
+*********************************/
+
+consequence:
+  | BOT
+      { None }
+  | LPAR term COMMA term RPAR
+      { Some ($2,$4) }
 
 /*************************
 ***       Terms        ***

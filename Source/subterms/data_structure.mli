@@ -299,6 +299,10 @@ module Uniformity_Set : sig
   (** [apply] {% $\Set$~$\Sigma$~$\sigma$ returns the set $\Set\Sigma\sigma$. %}*)
   val apply : t -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t -> t
 
+  (** {3 Iterator} *)
+
+  val iter : t -> (recipe -> protocol_term -> unit) -> unit
+
   (** {3 Testing} *)
 
   (** [find_protocol] {% $\Set$~$t$%} [f] returns [Some] {% $\xi$ if $(\xi,t) \in \Set$ %} and [f] {% $\xi$ %} returns [true]. Otherwise it returns [None].*)
@@ -318,21 +322,26 @@ end
 
 (** {2 The instantiated Tools module} *)
 
+(** This module is an instantiation of the functor {!module:Term.Tools_Subterm}, i.e.
+
+[module Tools = Term.Tools_Subterm(SDF)(DF)(Uniformity_Set)]
+ *)
+
 module Tools : sig
   (** {3 Consequence} *)
 
-  (** [mem] {% $\Solved$~$\Df$~$\xi$~$t$ %} returns [true] iff {% $(\xi,t) \in \Consequence{\Solved \cup \Df}$.%}*)
-  val mem : SDF.t -> DF.t -> recipe -> protocol_term -> bool
+  (** [consequence] {% $\Solved$~$\Df$~$\xi$~$t$ %} returns [true] iff {% $(\xi,t) \in \Consequence{\Solved \cup \Df}$.%}*)
+  val consequence : SDF.t -> DF.t -> recipe -> protocol_term -> bool
 
-  (** [partial_mem] is related to [mem]. When [at = Protocol] (resp. [Recipe]), [partial_mem at] {% $\Solved$~$\Df$~$t$ (resp. $\xi$)
+  (** [partial_consequence] is related to [consequence]. When [at = Protocol] (resp. [Recipe]), [partial_consequence at] {% $\Solved$~$\Df$~$t$ (resp. $\xi$)
       \begin{itemize}
       \item %} returns [None] if {% for all $\xi$ (resp. for all $t$),%} [mem] {% $\Solved$~$\Df$~$\xi$~$t$ %} returns [false]; {% otherwise
       \item %} returns [Some(]{% $\xi$%}[)] (resp. [Some(]{% $t$%}[)]) such that [mem] {% $\Solved$~$\Df$~$\xi$~$t$ %} returns [true]. {%
       \end{itemize} %}*)
-  val partial_mem : ('a, 'b) atom -> SDF.t -> DF.t -> ('a, 'b) term -> (recipe * protocol_term) option
+  val partial_consequence : ('a, 'b) atom -> SDF.t -> DF.t -> ('a, 'b) term -> (recipe * protocol_term) option
 
-  (** Similar to [partial_mem] but consider the consequence with an additional set of basic deduction fact. *)
-  val partial_mem_additional : ('a, 'b) atom -> SDF.t -> DF.t -> BasicFact.t list -> ('a, 'b) term -> (recipe * protocol_term) option
+  (** Similar to [partial_consequence] but consider the consequence with an additional set of basic deduction fact. *)
+  val partial_consequence_additional : ('a, 'b) atom -> SDF.t -> DF.t -> BasicFact.t list -> ('a, 'b) term -> (recipe * protocol_term) option
 
   (** [uniform_consequence] {% $\Solved$~$\Df$~$\Set$~$t$ returns %} returns [Some(]{% $\xi$%}[)] if {% $(\xi,t) \in \Set$ or if $\forall \zeta. (\zeta,t) \not\in S$ and $(\xi,t) \in \Consequence{\Solved \cup \Df}$. %}*)
   val uniform_consequence : SDF.t -> DF.t -> Uniformity_Set.t -> protocol_term -> recipe option
@@ -344,9 +353,9 @@ module Tools : sig
 
   (** {3 Tested functions} *)
 
-  val update_test_partial_mem : ('a, 'b) atom -> (SDF.t -> DF.t -> ('a, 'b) term ->  (recipe * protocol_term) option -> unit) -> unit
+  val update_test_partial_consequence : ('a, 'b) atom -> (SDF.t -> DF.t -> ('a, 'b) term ->  (recipe * protocol_term) option -> unit) -> unit
 
-  val update_test_partial_mem_additional : ('a, 'b) atom -> (SDF.t -> DF.t -> BasicFact.t list -> ('a, 'b) term -> (recipe * protocol_term) option -> unit) -> unit
+  val update_test_partial_consequence_additional : ('a, 'b) atom -> (SDF.t -> DF.t -> BasicFact.t list -> ('a, 'b) term -> (recipe * protocol_term) option -> unit) -> unit
 
   val update_test_uniform_consequence : (SDF.t -> DF.t -> Uniformity_Set.t -> protocol_term -> recipe option -> unit) -> unit
 end

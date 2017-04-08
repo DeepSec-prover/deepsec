@@ -74,6 +74,27 @@ let data_verification_Data_structure_Eq_implies =
     parsing_function = Testing_grammar.parse_Data_structure_Eq_implies
   }
 
+let data_verification_Data_structure_Tools_partial_consequence =
+  {
+    data_IO = data_IO_Data_structure_Tools_partial_consequence;
+    name = "Data_structure.Tools.partial_consequence";
+    parsing_function = Testing_grammar.parse_Data_structure_Tools_partial_consequence
+  }
+
+let list_data =
+  [
+    data_verification_Term_Subst_unify;
+    data_verification_Term_Subst_is_matchable;
+    data_verification_Term_Subst_is_extended_by;
+    data_verification_Term_Subst_is_equal_equations;
+    data_verification_Term_Modulo_syntactic_equations_of_equations;
+    data_verification_Term_Rewrite_rules_normalise;
+    data_verification_Term_Rewrite_rules_skeletons;
+    data_verification_Term_Rewrite_rules_generic_rewrite_rules_formula;
+    data_verification_Data_structure_Eq_implies;
+    data_verification_Data_structure_Tools_partial_consequence
+  ]
+
 (** {3 Verification of tests} *)
 
 (** [verify_function data] verifies all the tests for the function associated to [data]. *)
@@ -111,16 +132,7 @@ let verify_function data_verif =
     end
 
 (** [verify_all] verifies all the tests of all the functions. *)
-let verify_all () =
-  verify_function data_verification_Term_Subst_unify;
-  verify_function data_verification_Term_Subst_is_matchable;
-  verify_function data_verification_Term_Subst_is_extended_by;
-  verify_function data_verification_Term_Subst_is_equal_equations;
-  verify_function data_verification_Term_Modulo_syntactic_equations_of_equations;
-  verify_function data_verification_Term_Rewrite_rules_normalise;
-  verify_function data_verification_Term_Rewrite_rules_skeletons;
-  verify_function data_verification_Term_Rewrite_rules_generic_rewrite_rules_formula;
-  verify_function data_verification_Data_structure_Eq_implies
+let verify_all () = List.iter verify_function list_data
 
 (** {3 Loading of tests} *)
 
@@ -142,12 +154,63 @@ let load_function data_verif =
 
 let load () =
   preload ();
-  load_function data_verification_Term_Subst_unify;
-  load_function data_verification_Term_Subst_is_matchable;
-  load_function data_verification_Term_Subst_is_extended_by;
-  load_function data_verification_Term_Subst_is_equal_equations;
-  load_function data_verification_Term_Modulo_syntactic_equations_of_equations;
-  load_function data_verification_Term_Rewrite_rules_normalise;
-  load_function data_verification_Term_Rewrite_rules_skeletons;
-  load_function data_verification_Term_Rewrite_rules_generic_rewrite_rules_formula;
-  load_function data_verification_Data_structure_Eq_implies
+  List.iter load_function list_data
+
+(** {3 Other publications} *)
+
+let template_line_validated = "            <!-- Validated_tests -->"
+let template_line_to_check = "            <!-- Tests_to_check -->"
+
+let publish_index () =
+  let path_html = Printf.sprintf "%stesting_data/testing.html" !Config.path_index
+  and path_template = Printf.sprintf "%stesting.html" !Config.path_html_template in
+
+  let out_html = open_out path_html in
+  let open_template = open_in path_template in
+
+  let print_validated_address data =
+    Printf.fprintf out_html "<li>Function <a href=\"%svalidated_tests/%s.html\">%s</a> (Number of tests : %d)</li>"
+      !Config.path_index
+      data.data_IO.file
+      data.name
+      (List.length data.data_IO.validated_tests)
+  in
+
+  let print_to_check_address data =
+    Printf.fprintf out_html "<li>Function <a href=\"%stests_to_check/%s.html\">%s</a> (Number of tests : %d)</li>"
+      !Config.path_index
+      data.data_IO.file
+      data.name
+      ((List.length data.data_IO.tests_to_check) + (List.length data.data_IO.additional_tests))
+  in
+
+  let line = ref "" in
+  while !line <> template_line_validated do
+    let l = input_line open_template in
+    if l <> template_line_validated
+    then Printf.fprintf out_html "%s\n" l;
+    line := l
+  done;
+
+  List.iter print_validated_address list_data;
+
+  let l = input_line open_template in
+  Printf.fprintf out_html "%s\n" l;
+  line := l;
+
+  while !line <> template_line_to_check do
+    let l = input_line open_template in
+    if l <> template_line_to_check
+    then Printf.fprintf out_html "%s\n" l;
+    line := l
+  done;
+
+  List.iter print_to_check_address list_data;
+
+  try
+    while true do
+      let l = input_line open_template in
+      Printf.fprintf out_html "%s\n" l;
+    done
+  with
+    | End_of_file -> close_out out_html

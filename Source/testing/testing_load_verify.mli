@@ -31,6 +31,8 @@ val data_verification_Term_Rewrite_rules_generic_rewrite_rules_formula : data_ve
 
 val data_verification_Data_structure_Eq_implies : data_verification
 
+val data_verification_Data_structure_Tools_partial_consequence : data_verification
+
 
 (** {3 Verification of tests} *)
 
@@ -43,3 +45,7 @@ val verify_all : unit -> unit
 (** {3 Loading of tests} *)
 
 val load : unit -> unit
+
+(** {3 Other publications} *)
+
+val publish_index : unit -> unit

@@ -14,4 +14,4 @@ val test : (unit -> unit) -> unit
 
 val path_html_template : string ref
 
-val path_testing_data : string ref
+val path_index : string ref

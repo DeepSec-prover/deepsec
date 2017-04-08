@@ -104,8 +104,8 @@ let next_test_txt = "--Test"
 (**** Publication of tests *****)
 
 let publish_tests_to_check data =
-  let path_html = Printf.sprintf "%s%s%s.html" !Config.path_testing_data "tests_to_check/" data.file
-  and path_txt = Printf.sprintf "%s%s%s.txt" !Config.path_testing_data "tests_to_check/" data.file
+  let path_html = Printf.sprintf "%stesting_data/%s%s.html" !Config.path_index "tests_to_check/" data.file
+  and path_txt = Printf.sprintf "%stesting_data/%s%s.txt" !Config.path_index "tests_to_check/" data.file
   and path_template = Printf.sprintf "%s%s%s.html" !Config.path_html_template "tests_to_check/" data.file in
 
   let out_html = open_out path_html in
@@ -150,8 +150,8 @@ let publish_tests_to_check data =
     | End_of_file -> close_out out_html
 
 let publish_validated_tests data =
-  let path_html = Printf.sprintf "%s%s%s.html" !Config.path_testing_data "validated_tests/" data.file
-  and path_txt = Printf.sprintf "%s%s%s.txt" !Config.path_testing_data "validated_tests/" data.file
+  let path_html = Printf.sprintf "%stesting_data/%s%s.html" !Config.path_index "validated_tests/" data.file
+  and path_txt = Printf.sprintf "%stesting_data/%s%s.txt" !Config.path_index "validated_tests/" data.file
   and path_template = Printf.sprintf "%s%s%s.html" !Config.path_html_template "validated_tests/" data.file in
 
   let out_html = open_out path_html in
@@ -201,8 +201,8 @@ let publish_tests data =
 (**** Loading tests ****)
 
 let pre_load_tests data =
-  let path_txt_to_check = Printf.sprintf "%s%s%s.txt" !Config.path_testing_data "tests_to_check/" data.file
-  and path_txt_checked = Printf.sprintf "%s%s%s.txt" !Config.path_testing_data "validated_tests/" data.file in
+  let path_txt_to_check = Printf.sprintf "%stesting_data/%s%s.txt" !Config.path_index "tests_to_check/" data.file
+  and path_txt_checked = Printf.sprintf "%stesting_data/%s%s.txt" !Config.path_index "validated_tests/" data.file in
 
   let sub_load in_txt is_to_check =
 
@@ -395,6 +395,16 @@ let gather_in_Eq (type a) (type b) (at:(a,b) atom) (form:(a,b) Eq.t) (gather:gat
       and axioms = Eq.get_axioms_with_list form gather.g_axioms in
       { gather with g_names = names; g_snd_vars = snd_vars ; g_axioms = axioms }
 
+let gather_in_SDF sdf gather =
+  let acc_gather = ref gather in
+  SDF.iter sdf (fun ded_fact -> acc_gather := gather_in_deduction_fact ded_fact !acc_gather);
+  !acc_gather
+
+let gather_in_DF df gather =
+  let acc_gather = ref gather in
+  DF.iter df (fun bfct -> acc_gather := gather_in_basic_fct bfct !acc_gather);
+  !acc_gather
+
 (*************************************
       Generic display functions
 **************************************)
@@ -476,6 +486,10 @@ let display_deduction_formula_list out rho ded_form_l = match out with
       else Printf.sprintf "<ul> %s </ul>" (display_list (fun ded_form -> Printf.sprintf "<li> \\(%s\\) </li>" (Fact.display_formula Latex ~rho:rho Fact.Deduction ded_form)) " " ded_form_l)
   | _ -> Config.internal_error "[testing_function.ml >> display_deduction_formula_list] Unexpected display output."
 
+let display_consequence out rho = function
+  | None -> bot out
+  | Some(recipe,term) -> Printf.sprintf "(%s,%s)" (display out ~rho:rho Recipe recipe) (display out ~rho:rho Protocol term)
+
 (*************************************
       Functions to be tested
 *************************************)
@@ -498,10 +512,10 @@ let header_terminal_and_latex snd_ord_vars rho gathering =
     {
       signature = Symbol.display_signature Testing;
       rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
-      fst_ord_vars = display_var_list Testing Protocol rho (List.sort (Variable.order Protocol) gathering.g_fst_vars);
+      fst_ord_vars = display_var_list Testing Protocol rho gathering.g_fst_vars;
       snd_ord_vars = display_var_list Testing Recipe rho (List.sort (Variable.order Recipe) gathering.g_snd_vars);
-      names = display_name_list Testing rho (List.sort Name.order gathering.g_names);
-      axioms = display_axiom_list Testing rho (List.sort Axiom.order gathering.g_axioms);
+      names = display_name_list Testing rho gathering.g_names;
+      axioms = display_axiom_list Testing rho gathering.g_axioms;
 
       inputs = [];
       output = ("",Text)
@@ -1020,6 +1034,63 @@ let load_Data_structure_Eq_implies (type a) (type b) (at:(a,b) atom) (form:(a,b)
   let _,test_latex = test_Data_structure_Eq_implies at form term1 term2 result in
   produce_test_latex test_latex
 
+(***** Data_structure.Tools.partial_consequence *****)
+
+let data_IO_Data_structure_Tools_partial_consequence =
+  {
+    validated_tests = [];
+    tests_to_check = [];
+    additional_tests = [];
+
+    is_being_tested = true;
+
+    file = "data_structure_tools_partial_consequence"
+  }
+
+let test_Data_structure_Tools_partial_consequence (type a) (type b) (at:(a,b) atom) sdf df (term:(a,b) term) result =
+  (**** Retreive the names, variables and axioms *****)
+  let gathering = gather_in_SDF sdf (gather_in_DF df (gather_in_term at term (gather_in_signature empty_gathering))) in
+
+  (**** Generate the display renaming ****)
+  let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in
+
+  (**** Generate test_display for terminal *****)
+
+  let terminal_header, latex_header = header_terminal_and_latex true rho gathering in
+  let test_terminal =
+    { terminal_header with
+      inputs = [ (display_atom Testing at, Text); (SDF.display Testing ~rho:rho sdf,Display); (DF.display Testing ~rho:rho df,Display); (display Testing ~rho:rho at term,Inline) ];
+      output = ( display_consequence Testing rho result, Inline )
+    } in
+
+  let test_latex =
+    { latex_header with
+      inputs = [ (display_atom Latex at, Text); (SDF.display Latex ~rho:rho sdf,Display); (DF.display Latex ~rho:rho df,Display); (display Latex ~rho:rho at term,Inline) ];
+      output = ( display_consequence Latex rho result, Inline )
+    } in
+
+  test_terminal, test_latex
+
+let update_Data_structure_Tools_partial_consequence () =
+  Tools.update_test_partial_consequence Protocol (fun sdf df term result ->
+    if data_IO_Data_structure_Tools_partial_consequence.is_being_tested
+    then add_test (test_Data_structure_Tools_partial_consequence Protocol sdf df term result) data_IO_Data_structure_Tools_partial_consequence
+  );
+  Tools.update_test_partial_consequence Recipe (fun sdf df term result ->
+    if data_IO_Data_structure_Tools_partial_consequence.is_being_tested
+    then add_test (test_Data_structure_Tools_partial_consequence Recipe sdf df term result) data_IO_Data_structure_Tools_partial_consequence
+  )
+
+let apply_Data_structure_Tools_partial_consequence (type a) (type b) (at:(a,b) atom) sdf df (term:(a,b) term)  =
+  let result = Tools.partial_consequence at sdf df term in
+
+  let test_terminal,_ = test_Data_structure_Tools_partial_consequence at sdf df term result in
+  produce_test_terminal test_terminal
+
+let load_Data_structure_Tools_partial_consequence (type a) (type b) (at:(a,b) atom) sdf df (term:(a,b) term) result =
+  let _,test_latex = test_Data_structure_Tools_partial_consequence at sdf df term result in
+  produce_test_latex test_latex
+
 
 (*************************************
          General function
@@ -1034,7 +1105,8 @@ let preload () =
   pre_load_tests data_IO_Term_Rewrite_rules_normalise;
   pre_load_tests data_IO_Term_Rewrite_rules_skeletons;
   pre_load_tests data_IO_Term_Rewrite_rules_generic_rewrite_rules_formula;
-  pre_load_tests data_IO_Data_structure_Eq_implies
+  pre_load_tests data_IO_Data_structure_Eq_implies;
+  pre_load_tests data_IO_Data_structure_Tools_partial_consequence
 
 let publish () =
   publish_tests data_IO_Term_Subst_unify;
@@ -1045,7 +1117,8 @@ let publish () =
   publish_tests data_IO_Term_Rewrite_rules_normalise;
   publish_tests data_IO_Term_Rewrite_rules_skeletons;
   publish_tests data_IO_Term_Rewrite_rules_generic_rewrite_rules_formula;
-  publish_tests data_IO_Data_structure_Eq_implies
+  publish_tests data_IO_Data_structure_Eq_implies;
+  publish_tests data_IO_Data_structure_Tools_partial_consequence
 
 let update () =
   update_Term_Subst_unify ();
@@ -1056,4 +1129,5 @@ let update () =
   update_Term_Rewrite_rules_normalise ();
   update_Term_Rewrite_rules_skeletons ();
   update_Term_Rewrite_rules_generic_rewrite_rules_formula ();
-  update_Data_structure_Eq_implies ()
+  update_Data_structure_Eq_implies ();
+  update_Data_structure_Tools_partial_consequence ()
