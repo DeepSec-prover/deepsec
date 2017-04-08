@@ -359,27 +359,20 @@ module DF = struct
 
   let display out ?(rho = None) ?(per_line = 8) ?(tab = 0) df = match out with
     | Testing ->
-        let rho' = match rho with
-          | None -> Config.internal_error "[data_structure.ml >> DF.display] There should always be display renamings when testing."
-          | Some r -> r
-        in
-
         if DF_Map.is_empty df
         then emptyset Testing
         else
           begin
             let s = DF_Map.cardinal df in
-            let bindings = DF_Map.bindings df in
-            let sorted_bindings = List.fast_sort (fun (x,_) (y,_) -> Variable.order_for_testing Recipe rho' x y) bindings in
             let current_number = ref 1 in
             let str = ref "{ " in
-            List.iter (fun (_,bfct) ->
+            DF_Map.iter (fun _ bfct ->
               if !current_number < s
               then str := Printf.sprintf "%s%s, " !str (BasicFact.display Testing ~rho:rho bfct)
               else str := Printf.sprintf "%s%s }" !str (BasicFact.display Testing ~rho:rho bfct);
 
               incr current_number
-            ) sorted_bindings;
+            ) df;
             !str
           end
     | Latex ->
@@ -592,6 +585,18 @@ module UF = struct
 
   let iter_solved_equality_id uf f =
     UF_Map.iter (fun id cell -> f id cell.equality cell.eq_type) uf.solved_eq_formula
+
+  let iter (type a) (fct:a Fact.t) uf (f:a Fact.formula -> unit) = match fct with
+    | Fact.Deduction ->
+        begin match uf.solved_ded_formula, uf.unsolved_ded_formula with
+          | None, None -> ()
+          | Some(_,form),None -> f form
+          | None, Some(_,form_l) -> List.iter f form_l
+          | Some(_,form), Some(_,form_l) -> f form; List.iter f form_l
+        end
+    | Fact.Equality ->
+        UF_Map.iter (fun _ cell -> f cell.equality) uf.solved_eq_formula;
+        UF_Map.iter (fun _ cell -> f cell.equality) uf.unsolved_eq_formula
 
   let is_unsolved (type a) (fct: a Fact.t) uf id = match fct with
     | Fact.Deduction ->
@@ -1080,43 +1085,34 @@ module Uniformity_Set = struct
     );
 
     let s = Recipe_Set.cardinal recipe_set in
-    let recipes = Recipe_Set.elements recipe_set in
-    let sorted_recipes = List.fast_sort (order_for_testing Recipe rho) recipes in
     let current_number = ref 1 in
     let str = ref "{ " in
-    List.iter (fun recipe ->
+    Recipe_Set.iter (fun recipe ->
       if !current_number < s
-      then str := Printf.sprintf "%s%s, " !str (display Testing ~rho:(Some rho) Recipe recipe)
-      else str := Printf.sprintf "%s%s }" !str (display Testing ~rho:(Some rho) Recipe recipe);
+      then str := Printf.sprintf "%s%s, " !str (display Testing ~rho:rho Recipe recipe)
+      else str := Printf.sprintf "%s%s }" !str (display Testing ~rho:rho Recipe recipe);
 
       incr current_number
-    ) sorted_recipes;
+    ) recipe_set;
     !str
 
 
   let display out ?(rho = None) ?(per_line = 8) ?(tab = 0) uniset = match out with
     | Testing ->
-        let rho' = match rho with
-          | None -> Config.internal_error "[data_structure.ml >> Uniformity_Set.display] There should always be display renamings when testing."
-          | Some r -> r
-        in
-
         if Subterm.is_empty uniset
         then emptyset Testing
         else
           begin
             let s = Subterm.cardinal uniset in
-            let bindings = Subterm.bindings uniset in
-            let sorted_bindings = List.fast_sort (fun (term1,_) (term2,_) -> order_for_testing Protocol rho' term1 term2) bindings in
             let current_number = ref 1 in
             let str = ref "{ " in
-            List.iter (fun (term,recipe_set) ->
+            Subterm.iter (fun term recipe_set ->
               if !current_number < s
-              then str := Printf.sprintf "%s(%s,%s), " !str (display Testing ~rho:rho Protocol term) (display_recipe_set rho' recipe_set)
-              else str := Printf.sprintf "%s(%s,%s) }" !str (display Testing ~rho:rho Protocol term) (display_recipe_set rho' recipe_set);
+              then str := Printf.sprintf "%s(%s,%s), " !str (display Testing ~rho:rho Protocol term) (display_recipe_set rho recipe_set)
+              else str := Printf.sprintf "%s(%s,%s) }" !str (display Testing ~rho:rho Protocol term) (display_recipe_set rho recipe_set);
 
               incr current_number
-            ) sorted_bindings;
+            ) uniset;
             !str
           end
     | Latex ->
@@ -1196,3 +1192,10 @@ module Uniformity_Set = struct
               !str
         end
 end
+
+
+(*****************************************
+***                Tools               ***
+******************************************)
+
+module Tools = Tools_Subterm(SDF)(DF)(Uniformity_Set)

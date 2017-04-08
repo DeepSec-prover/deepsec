@@ -206,14 +206,18 @@ module UF : sig
 
   (** {3 Iterators} *)
 
-  (** [iter_solved_id fct UF f] applies [f] to all solved [fct] formulas in [UF]. [f] also receives the recipe equivalent id of the formula as first argument.
+  (** [iter_solved_equality_id UF f] applies [f] to all solved equality formulas in [UF]. [f] also receives the recipe equivalent id of the formula as first argument and its equality type as third argument.
       The order in which the recipe equivalent ids and formulas are passed to [f] is unspecified.*)
   val iter_solved_equality_id :  t -> (id_recipe_equivalent -> Fact.equality_formula -> equality_type -> unit) -> unit
 
 
-  (** [iter_solved_id fct UF f] applies [f] to all solved [fct] formulas in [UF]. [f] also receives the recipe equivalent id of the formula as first argument.
+  (** [iter_solved_deduction_id UF f] applies [f] to all solved deduction formulas in [UF]. [f] also receives the recipe equivalent id of the formula as first argument.
       The order in which the recipe equivalent ids and formulas are passed to [f] is unspecified.*)
   val iter_solved_deduction_id :  t -> (id_recipe_equivalent -> Fact.deduction_formula -> unit) -> unit
+
+  (** [iter fct UF f] applies [f] to all solved [fct] formulas in [UF].
+      The order in which the recipe equivalent ids and formulas are passed to [f] is unspecified.*)
+  val iter :  'a Fact.t -> t -> ('a Fact.formula -> unit) -> unit
 
   (** {3 Display} *)
 
@@ -310,4 +314,39 @@ module Uniformity_Set : sig
       when [out = Terminal] or [out = Pretty_Terminal] and when the number of elements in [set] is strictly bigger than [n] then
       [set] is displayed on a new line and each line is preceded by [k] tabulations. *)
   val display : Display.output -> ?rho:display_renamings option -> ?per_line:int -> ?tab:int -> t -> string
+end
+
+(** {2 The instantiated Tools module} *)
+
+module Tools : sig
+  (** {3 Consequence} *)
+
+  (** [mem] {% $\Solved$~$\Df$~$\xi$~$t$ %} returns [true] iff {% $(\xi,t) \in \Consequence{\Solved \cup \Df}$.%}*)
+  val mem : SDF.t -> DF.t -> recipe -> protocol_term -> bool
+
+  (** [partial_mem] is related to [mem]. When [at = Protocol] (resp. [Recipe]), [partial_mem at] {% $\Solved$~$\Df$~$t$ (resp. $\xi$)
+      \begin{itemize}
+      \item %} returns [None] if {% for all $\xi$ (resp. for all $t$),%} [mem] {% $\Solved$~$\Df$~$\xi$~$t$ %} returns [false]; {% otherwise
+      \item %} returns [Some(]{% $\xi$%}[)] (resp. [Some(]{% $t$%}[)]) such that [mem] {% $\Solved$~$\Df$~$\xi$~$t$ %} returns [true]. {%
+      \end{itemize} %}*)
+  val partial_mem : ('a, 'b) atom -> SDF.t -> DF.t -> ('a, 'b) term -> (recipe * protocol_term) option
+
+  (** Similar to [partial_mem] but consider the consequence with an additional set of basic deduction fact. *)
+  val partial_mem_additional : ('a, 'b) atom -> SDF.t -> DF.t -> BasicFact.t list -> ('a, 'b) term -> (recipe * protocol_term) option
+
+  (** [uniform_consequence] {% $\Solved$~$\Df$~$\Set$~$t$ returns %} returns [Some(]{% $\xi$%}[)] if {% $(\xi,t) \in \Set$ or if $\forall \zeta. (\zeta,t) \not\in S$ and $(\xi,t) \in \Consequence{\Solved \cup \Df}$. %}*)
+  val uniform_consequence : SDF.t -> DF.t -> Uniformity_Set.t -> protocol_term -> recipe option
+
+  (** {3 Others} *)
+
+  (** [is_df_solved DF] returns [true] if and only if all basic deduction facts in [DF] have distinct variables as right hand terms. *)
+  val is_df_solved : DF.t -> bool
+
+  (** {3 Tested functions} *)
+
+  val update_test_partial_mem : ('a, 'b) atom -> (SDF.t -> DF.t -> ('a, 'b) term ->  (recipe * protocol_term) option -> unit) -> unit
+
+  val update_test_partial_mem_additional : ('a, 'b) atom -> (SDF.t -> DF.t -> BasicFact.t list -> ('a, 'b) term -> (recipe * protocol_term) option -> unit) -> unit
+
+  val update_test_uniform_consequence : (SDF.t -> DF.t -> Uniformity_Set.t -> protocol_term -> recipe option -> unit) -> unit
 end

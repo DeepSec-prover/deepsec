@@ -210,9 +210,6 @@ module Variable : sig
       strictly strictly positive if [x1] is greater than [x2]. *)
   val order : ('a, 'b) atom -> ('a, 'b) variable -> ('a, 'b) variable -> int
 
-  (** Also a total ordering function over variables but specific for testing hence the display renamings as argument. *)
-  val order_for_testing : ('a, 'b) atom -> display_renamings -> ('a, 'b) variable -> ('a, 'b) variable -> int
-
   (** [display out at x] returns a string displaying the variable [x] depending on the outpout mode [out]. *)
   val display : Display.output -> ?rho:display_renamings option -> ('a, 'b) atom -> ?v_type:bool ->  ('a, 'b) variable -> string
 
@@ -453,9 +450,6 @@ val get_axioms_with_list : recipe -> (int -> bool) -> axiom list -> axiom list
     the [t1] and [t2] are equal, [order at t1 t2] is strictly negative if [t1] is smaller than [t2], and
     strictly strictly positive if [t1] is greater than [t2]. *)
 val order : ('a, 'b) atom -> ('a, 'b) term -> ('a, 'b) term -> int
-
-(** Also a total ordering function over terms but specific for testing hence the display renamings as argument. *)
-val order_for_testing : ('a, 'b) atom -> display_renamings -> ('a, 'b) term -> ('a, 'b) term -> int
 
 (** {3 Scanning} *)
 
