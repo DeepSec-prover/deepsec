@@ -306,5 +306,8 @@ module Uniformity_Set : sig
 
   (** {3 Display} *)
 
-  val display : ?per_line:int -> Display.output -> t -> string
+  (** [display out ~rho:rho ~per_line:n ~tab:k set] displays [set] with at most [n] formulas per line. Moreover,
+      when [out = Terminal] or [out = Pretty_Terminal] and when the number of elements in [set] is strictly bigger than [n] then
+      [set] is displayed on a new line and each line is preceded by [k] tabulations. *)
+  val display : Display.output -> ?rho:display_renamings option -> ?per_line:int -> ?tab:int -> t -> string
 end

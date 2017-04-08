@@ -1073,48 +1073,126 @@ module Uniformity_Set = struct
 
   (******* Display *******)
 
-  let display ?(per_line = 5) out uni =
+  let display_recipe_set rho recipe_set =
+    Config.debug (fun () ->
+      if Recipe_Set.is_empty recipe_set
+      then Config.internal_error "[data_structure.ml >> display_recipe_set] The set should not be empty."
+    );
 
+    let s = Recipe_Set.cardinal recipe_set in
+    let recipes = Recipe_Set.elements recipe_set in
+    let sorted_recipes = List.fast_sort (order_for_testing Recipe rho) recipes in
     let current_number = ref 1 in
-    let s_max = ref 0 in
+    let str = ref "{ " in
+    List.iter (fun recipe ->
+      if !current_number < s
+      then str := Printf.sprintf "%s%s, " !str (display Testing ~rho:(Some rho) Recipe recipe)
+      else str := Printf.sprintf "%s%s }" !str (display Testing ~rho:(Some rho) Recipe recipe);
 
-    Subterm.iter (fun _ set ->
-      s_max := !s_max + Recipe_Set.cardinal set
-    ) uni;
+      incr current_number
+    ) sorted_recipes;
+    !str
 
-    if !s_max = 0
-    then Printf.sprintf "%s %s" (Display.lcurlybracket out) (Display.rcurlybracket out)
-    else if !s_max <= per_line
-    then
-      begin
-        let str = ref (Printf.sprintf "%s " (Display.lcurlybracket out)) in
-        Subterm.iter (fun pterm recipe_set ->
-          Recipe_Set.iter (fun recipe ->
-            if !current_number < !s_max
-            then str := !str ^ (Printf.sprintf "(%s,%s)" (display out Recipe recipe) (display out Protocol pterm)) ^ "; "
-            else str := !str ^ (Printf.sprintf "(%s,%s)" (display out Recipe recipe) (display out Protocol pterm)) ^ " " ^ (Display.rcurlybracket out);
 
-            current_number := !current_number + 1
-          ) recipe_set
-        ) uni;
+  let display out ?(rho = None) ?(per_line = 8) ?(tab = 0) uniset = match out with
+    | Testing ->
+        let rho' = match rho with
+          | None -> Config.internal_error "[data_structure.ml >> Uniformity_Set.display] There should always be display renamings when testing."
+          | Some r -> r
+        in
 
-        !str
-      end
-    else
-      begin
-        let str = ref (Printf.sprintf "\n%s\n     " (Display.lcurlybracket out)) in
-        Subterm.iter (fun pterm recipe_set ->
-          Recipe_Set.iter (fun recipe ->
-            if !current_number >= !s_max
-            then str:= !str ^ (Printf.sprintf "(%s,%s)" (display out Recipe recipe) (display out Protocol pterm)) ^ "\n" ^ (Display.rcurlybracket out)
-            else if (!current_number / per_line) * per_line = !current_number
-            then str := !str ^ (Printf.sprintf "(%s,%s)" (display out Recipe recipe) (display out Protocol pterm)) ^ ";\n     "
-            else str := !str ^ (Printf.sprintf "(%s,%s)" (display out Recipe recipe) (display out Protocol pterm)) ^ "; ";
+        if Subterm.is_empty uniset
+        then emptyset Testing
+        else
+          begin
+            let s = Subterm.cardinal uniset in
+            let bindings = Subterm.bindings uniset in
+            let sorted_bindings = List.fast_sort (fun (term1,_) (term2,_) -> order_for_testing Protocol rho' term1 term2) bindings in
+            let current_number = ref 1 in
+            let str = ref "{ " in
+            List.iter (fun (term,recipe_set) ->
+              if !current_number < s
+              then str := Printf.sprintf "%s(%s,%s), " !str (display Testing ~rho:rho Protocol term) (display_recipe_set rho' recipe_set)
+              else str := Printf.sprintf "%s(%s,%s) }" !str (display Testing ~rho:rho Protocol term) (display_recipe_set rho' recipe_set);
 
-            current_number := !current_number + 1
-          ) recipe_set
-        ) uni;
-        !str
-      end
+              incr current_number
+            ) sorted_bindings;
+            !str
+          end
+    | Latex ->
+        if Subterm.is_empty uniset
+        then emptyset Latex
+        else
+          begin
+            let s = Subterm.fold (fun _ recipe_set acc -> (Recipe_Set.cardinal recipe_set) + acc) uniset 0 in
+            let str = ref "\\left\\{ \\begin{array}{l} " in
+            let current_number = ref 1 in
+            Subterm.iter (fun term recipe_set ->
+              Recipe_Set.iter (fun recipe ->
+                if !current_number >= s
+                then str := Printf.sprintf "%s(%s,%s) \\end{array}\\right\\}" !str (display Latex ~rho:rho Recipe recipe) (display Latex ~rho:rho Protocol term)
+                else if (!current_number / per_line)*per_line = !current_number
+                then str := Printf.sprintf "%s(%s,%s),\\\\" !str (display Latex ~rho:rho Recipe recipe) (display Latex ~rho:rho Protocol term)
+                else str := Printf.sprintf "%s(%s,%s), " !str(display Latex ~rho:rho Recipe recipe) (display Latex ~rho:rho Protocol term);
 
+                incr current_number
+              ) recipe_set
+            ) uniset;
+            !str
+          end
+    | HTML ->
+        if Subterm.is_empty uniset
+        then emptyset HTML
+        else
+          begin
+            let s = Subterm.fold (fun _ recipe_set acc -> (Recipe_Set.cardinal recipe_set) + acc) uniset 0 in
+            let str = ref "<table class=\"uniformset\"><tr><td>" in
+            let current_number = ref 1 in
+            Subterm.iter (fun term recipe_set ->
+              Recipe_Set.iter (fun recipe ->
+                if !current_number >= s
+                then str := Printf.sprintf "%s(%s,%s)</td></tr></table>" !str (display HTML ~rho:rho Recipe recipe) (display HTML ~rho:rho Protocol term)
+                else if (!current_number / per_line)*per_line = !current_number
+                then str := Printf.sprintf "%s(%s,%s),</td></tr><tr><td>" !str (display HTML ~rho:rho Recipe recipe) (display HTML ~rho:rho Protocol term)
+                else str := Printf.sprintf "%s(%s,%s), " !str (display HTML ~rho:rho Recipe recipe) (display HTML ~rho:rho Protocol term);
+
+                incr current_number
+              ) recipe_set
+            ) uniset;
+            !str
+          end
+    | _ ->
+        let tab_str = create_tab tab in
+        begin match Subterm.fold (fun _ recipe_set acc -> (Recipe_Set.cardinal recipe_set) + acc) uniset 0 with
+          | 0 -> "{}"
+          | s when s <= per_line ->
+              let str = ref "{ " in
+              let current_number = ref 1 in
+              Subterm.iter (fun term recipe_set ->
+                Recipe_Set.iter (fun recipe ->
+                  if !current_number < s
+                  then str := Printf.sprintf "%s(%s,%s); " !str (display out ~rho:rho Recipe recipe) (display out ~rho:rho Protocol term)
+                  else str := Printf.sprintf "%s(%s,%s) }" !str (display out ~rho:rho Recipe recipe) (display out ~rho:rho Protocol term);
+
+                  incr current_number
+                ) recipe_set
+              ) uniset;
+              !str
+          | s ->
+              let tab_str_inside = create_tab (tab+1) in
+              let str = ref (Printf.sprintf "\n%s{\n%s" tab_str tab_str_inside) in
+              let current_number = ref 1 in
+              Subterm.iter (fun term recipe_set ->
+                Recipe_Set.iter (fun recipe ->
+                  if !current_number >= s
+                  then str := Printf.sprintf "%s(%s,%s)\n%s}\n" !str (display out ~rho:rho Recipe recipe) (display out ~rho:rho Protocol term) tab_str
+                  else if (!current_number / per_line)*per_line = !current_number
+                  then str := Printf.sprintf "%s(%s,%s),\n%s" !str (display out ~rho:rho Recipe recipe) (display out ~rho:rho Protocol term) tab_str_inside
+                  else str := Printf.sprintf "%s(%s,%s), "!str (display out ~rho:rho Recipe recipe) (display out ~rho:rho Protocol term);
+
+                  incr current_number
+                ) recipe_set
+              ) uniset;
+              !str
+        end
 end

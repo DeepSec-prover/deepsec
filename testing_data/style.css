@@ -227,6 +227,11 @@ h3 {
   border-left: 1px black solid
 }
 
+.uniformset {
+  border-right: 1px black solid;
+  border-left: 1px black solid
+}
+
 .hiddenInformation {
     display: none;
     border: 1px dashed gray;
