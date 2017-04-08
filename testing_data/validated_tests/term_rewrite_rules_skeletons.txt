@@ -1,8 +1,8 @@
 --Test
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_y_1,pk(_x_1)); _x_1], _y_1]; check,[[sign(_y_1,_x_1); vk(_x_1)], _y_1]; dec,[[enc(_y_1,_x_1); _x_1], _y_1]; dest,[[h(_y_1); _x_1], f(_y_1,_x_1);  [g(_y_1,_x_1); _x_1], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_1),_x_2); _x_1], sign(_y_1,_x_2)]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2, _z_0, _z_1, _y_2 }
-_Snd_ord_vars : { _Z_0:1, _Z_1:1 }
+_Fst_ord_vars : { _y_0, _x_1, _y_1, _x_2, _x_0, _y_2, _z_0, _z_1 }
+_Snd_ord_vars : { _Z_1:1, _Z_0:1 }
 _Names : { _a_0 }
 _Axioms : { }
 _Input : enc(_a_0,_y_0)
@@ -34,8 +34,8 @@ _Result : { }
 --Test
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_y_1,pk(_x_1)); _x_1], _y_1]; check,[[sign(_y_1,_x_1); vk(_x_1)], _y_1]; dec,[[enc(_y_1,_x_1); _x_1], _y_1]; dest,[[h(_y_1); _x_1], f(_y_1,_x_1);  [g(_y_1,_x_1); _x_1], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_1),_x_2); _x_1], sign(_y_1,_x_2)]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2, _z_0, _z_1, _y_2 }
-_Snd_ord_vars : { _Z_0:3, _Z_1:3 }
+_Fst_ord_vars : { _y_0, _x_1, _y_1, _x_2, _x_0, _y_2, _z_0, _z_1 }
+_Snd_ord_vars : { _Z_1:3, _Z_0:3 }
 _Names : { _a_0 }
 _Axioms : { }
 _Input : aenc(_a_0,_y_0)
@@ -56,8 +56,8 @@ _Result : { }
 --Test
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_x_2,pk(_y_1)); _y_1], _x_2]; check,[[sign(_x_2,_y_1); vk(_y_1)], _x_2]; dec,[[enc(_x_2,_y_1); _y_1], _x_2]; dest,[[h(_x_2); _y_1], f(_x_2,_y_1);  [g(_x_2,_y_1); _y_1], h(_x_2)]; unblind,[[sign(blind(_x_2,_y_1),_y_2); _y_1], sign(_x_2,_y_2)]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2, _y_2, _z_0, _z_1, _x_3 }
-_Snd_ord_vars : { _Z_0:5, _Z_1:5 }
+_Fst_ord_vars : { _y_0, _x_1, _y_1, _x_2, _y_2, _x_0, _x_3, _z_0, _z_1 }
+_Snd_ord_vars : { _Z_1:5, _Z_0:5 }
 _Names : { }
 _Axioms : { }
 _Input : aenc(_x_1,_y_0)
@@ -67,8 +67,8 @@ _Result : { (_Z_1, adec(_Z_1,_Z_0), adec(_z_0,_z_1), _Z_0:5 |- _z_1 /\ _Z_1:5 |-
 --Test
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_y_1,pk(_x_2)); _x_2], _y_1]; check,[[sign(_y_1,_x_2); vk(_x_2)], _y_1]; dec,[[enc(_y_1,_x_2); _x_2], _y_1]; dest,[[h(_y_1); _x_2], f(_y_1,_x_2);  [g(_y_1,_x_2); _x_2], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_2),_x_1); _x_2], sign(_y_1,_x_1)]]
-_Fst_ord_vars : { _x_0, _y_0, _z_0, _z_1, _z_2, _x_1, _y_1, _x_2, _y_2, _x_3, _z_3, _z_4 }
-_Snd_ord_vars : { _Z_0:9, _Z_1:9, _Z_2:9, _Z_3:9, _Z_4:9 }
+_Fst_ord_vars : { _x_1, _y_1, _x_2, _y_2, _y_0, _x_3, _x_0, _z_3, _z_4, _z_2, _z_1, _z_0 }
+_Snd_ord_vars : { _Z_1:9, _Z_0:9, _Z_2:9, _Z_3:9, _Z_4:9 }
 _Names : { }
 _Axioms : { }
 _Input : _y_2
@@ -78,8 +78,8 @@ _Result : { (_Z_2, unblind(sign(_Z_2,_Z_3),_Z_4), unblind(sign(_z_2,_z_1),_z_0),
 --Test
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_y_1,pk(_x_1)); _x_1], _y_1]; check,[[sign(_y_1,_x_1); vk(_x_1)], _y_1]; dec,[[enc(_y_1,_x_1); _x_1], _y_1]; dest,[[h(_y_1); _x_1], f(_y_1,_x_1);  [g(_y_1,_x_1); _x_1], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_1),_x_2); _x_1], sign(_y_1,_x_2)]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2, _z_0, _z_1, _y_2 }
-_Snd_ord_vars : { _Z_0:7, _Z_1:7 }
+_Fst_ord_vars : { _y_0, _x_1, _y_1, _x_2, _x_0, _y_2, _z_0, _z_1 }
+_Snd_ord_vars : { _Z_1:7, _Z_0:7 }
 _Names : { }
 _Axioms : { }
 _Input : _y_0
@@ -89,8 +89,8 @@ _Result : { (_Z_1, check(_Z_1,_Z_0), check(_z_0,_z_1), _Z_0:7 |- _z_1 /\ _Z_1:7 
 --Test
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_y_1,pk(_x_1)); _x_1], _y_1]; check,[[sign(_y_1,_x_1); vk(_x_1)], _y_1]; dec,[[enc(_y_1,_x_1); _x_1], _y_1]; dest,[[h(_y_1); _x_1], f(_y_1,_x_1);  [g(_y_1,_x_1); _x_1], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_1),_x_2); _x_1], sign(_y_1,_x_2)]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2, _z_0, _z_1, _y_2 }
-_Snd_ord_vars : { _Z_0:5, _Z_1:5 }
+_Fst_ord_vars : { _y_0, _x_1, _y_1, _x_2, _x_0, _y_2, _z_0, _z_1 }
+_Snd_ord_vars : { _Z_1:5, _Z_0:5 }
 _Names : { }
 _Axioms : { }
 _Input : _y_0
@@ -100,8 +100,8 @@ _Result : { (_Z_1, adec(_Z_1,_Z_0), adec(_z_0,_z_1), _Z_0:5 |- _z_1 /\ _Z_1:5 |-
 --Test
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_y_1,pk(_x_1)); _x_1], _y_1]; check,[[sign(_y_1,_x_1); vk(_x_1)], _y_1]; dec,[[enc(_y_1,_x_1); _x_1], _y_1]; dest,[[h(_y_1); _x_1], f(_y_1,_x_1);  [g(_y_1,_x_1); _x_1], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_1),_x_2); _x_1], sign(_y_1,_x_2)]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2, _z_0, _z_1, _y_2 }
-_Snd_ord_vars : { _Z_0:2, _Z_1:2 }
+_Fst_ord_vars : { _y_0, _x_1, _y_1, _x_2, _x_0, _y_2, _z_0, _z_1 }
+_Snd_ord_vars : { _Z_1:2, _Z_0:2 }
 _Names : { }
 _Axioms : { }
 _Input : _y_0
@@ -111,8 +111,8 @@ _Result : { (_Z_1, dec(_Z_1,_Z_0), dec(_z_0,_z_1), _Z_0:2 |- _z_1 /\ _Z_1:2 |- _
 --Test
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_y_2,pk(_x_2)); _x_2], _y_2]; check,[[sign(_y_2,_x_2); vk(_x_2)], _y_2]; dec,[[enc(_y_2,_x_2); _x_2], _y_2]; dest,[[h(_y_2); _x_2], f(_y_2,_x_2);  [g(_y_2,_x_2); _x_2], h(_y_2)]; unblind,[[sign(blind(_y_2,_x_2),_x_3); _x_2], sign(_y_2,_x_3)]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2, _y_2, _x_3, _z_0, _z_1, _y_3, _z_2, _z_3 }
-_Snd_ord_vars : { _Z_0:4, _Z_1:4, _Z_2:4, _Z_3:4 }
+_Fst_ord_vars : { _y_1, _x_2, _y_2, _x_3, _y_0, _x_0, _x_1, _y_3, _z_2, _z_3, _z_0, _z_1 }
+_Snd_ord_vars : { _Z_1:4, _Z_0:4, _Z_2:4, _Z_3:4 }
 _Names : { }
 _Axioms : { }
 _Input : _y_1
@@ -122,8 +122,8 @@ _Result : { (_Z_2, dest(_Z_2,_Z_3), dest(_z_0,_z_1), _Z_3:4 |- _z_1 /\ _Z_2:4 |-
 --Test
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_x_1,pk(_y_0)); _y_0], _x_1]; check,[[sign(_x_1,_y_0); vk(_y_0)], _x_1]; dec,[[enc(_x_1,_y_0); _y_0], _x_1]; dest,[[h(_x_1); _y_0], f(_x_1,_y_0);  [g(_x_1,_y_0); _y_0], h(_x_1)]; unblind,[[sign(blind(_x_1,_y_0),_y_1); _y_0], sign(_x_1,_y_1)]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _z_0, _z_1, _x_2 }
-_Snd_ord_vars : { _Z_0:1, _Z_1:1 }
+_Fst_ord_vars : { _y_0, _x_1, _y_1, _x_0, _x_2, _z_0, _z_1 }
+_Snd_ord_vars : { _Z_1:1, _Z_0:1 }
 _Names : { _a_0 }
 _Axioms : { }
 _Input : enc(_a_0,_y_0)
@@ -177,8 +177,8 @@ _Result : { }
 --Test
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_x_1,pk(_y_0)); _y_0], _x_1]; check,[[sign(_x_1,_y_0); vk(_y_0)], _x_1]; dec,[[enc(_x_1,_y_0); _y_0], _x_1]; dest,[[h(_x_1); _y_0], f(_x_1,_y_0);  [g(_x_1,_y_0); _y_0], h(_x_1)]; unblind,[[sign(blind(_x_1,_y_0),_y_1); _y_0], sign(_x_1,_y_1)]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _z_0, _z_1, _x_2 }
-_Snd_ord_vars : { _Z_0:7, _Z_1:7 }
+_Fst_ord_vars : { _y_0, _x_1, _y_1, _x_0, _x_2, _z_0, _z_1 }
+_Snd_ord_vars : { _Z_1:7, _Z_0:7 }
 _Names : { _a_0 }
 _Axioms : { }
 _Input : aenc(_a_0,_y_0)
@@ -210,8 +210,8 @@ _Result : { }
 --Test
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_x_1,pk(_y_0)); _y_0], _x_1]; check,[[sign(_x_1,_y_0); vk(_y_0)], _x_1]; dec,[[enc(_x_1,_y_0); _y_0], _x_1]; dest,[[h(_x_1); _y_0], f(_x_1,_y_0);  [g(_x_1,_y_0); _y_0], h(_x_1)]; unblind,[[sign(blind(_x_1,_y_0),_y_1); _y_0], sign(_x_1,_y_1)]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _z_0, _z_1, _x_2 }
-_Snd_ord_vars : { _Z_0:3, _Z_1:3 }
+_Fst_ord_vars : { _y_0, _x_1, _y_1, _x_0, _x_2, _z_0, _z_1 }
+_Snd_ord_vars : { _Z_1:3, _Z_0:3 }
 _Names : { _a_0 }
 _Axioms : { }
 _Input : aenc(_a_0,_y_0)
@@ -221,8 +221,8 @@ _Result : { (_Z_1, adec(_Z_1,_Z_0), adec(_z_0,_z_1), _Z_0:3 |- _z_1 /\ _Z_1:3 |-
 --Test
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_x_1,pk(_y_0)); _y_0], _x_1]; check,[[sign(_x_1,_y_0); vk(_y_0)], _x_1]; dec,[[enc(_x_1,_y_0); _y_0], _x_1]; dest,[[h(_x_1); _y_0], f(_x_1,_y_0);  [g(_x_1,_y_0); _y_0], h(_x_1)]; unblind,[[sign(blind(_x_1,_y_0),_y_1); _y_0], sign(_x_1,_y_1)]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _z_0, _z_1, _x_2 }
-_Snd_ord_vars : { _Z_0:5, _Z_1:5 }
+_Fst_ord_vars : { _y_0, _x_1, _y_1, _x_0, _x_2, _z_0, _z_1 }
+_Snd_ord_vars : { _Z_1:5, _Z_0:5 }
 _Names : { }
 _Axioms : { }
 _Input : aenc(_x_1,_y_0)
@@ -232,8 +232,8 @@ _Result : { (_Z_1, adec(_Z_1,_Z_0), adec(_z_0,_z_1), _Z_0:5 |- _z_1 /\ _Z_1:5 |-
 --Test
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_y_1,pk(_x_2)); _x_2], _y_1]; check,[[sign(_y_1,_x_2); vk(_x_2)], _y_1]; dec,[[enc(_y_1,_x_2); _x_2], _y_1]; dest,[[h(_y_1); _x_2], f(_y_1,_x_2);  [g(_y_1,_x_2); _x_2], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_2),_x_1); _x_2], sign(_y_1,_x_1)]]
-_Fst_ord_vars : { _x_0, _y_0, _z_0, _z_1, _z_2, _x_1, _y_1, _x_2, _y_2, _z_3, _z_4 }
-_Snd_ord_vars : { _Z_0:9, _Z_1:9, _Z_2:9, _Z_3:9, _Z_4:9 }
+_Fst_ord_vars : { _x_1, _y_1, _x_2, _y_0, _y_2, _x_0, _z_3, _z_4, _z_2, _z_1, _z_0 }
+_Snd_ord_vars : { _Z_1:9, _Z_0:9, _Z_2:9, _Z_3:9, _Z_4:9 }
 _Names : { }
 _Axioms : { }
 _Input : _y_1
@@ -243,8 +243,8 @@ _Result : { (_Z_2, unblind(sign(_Z_2,_Z_3),_Z_4), unblind(sign(_z_2,_z_1),_z_0),
 --Test
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_x_1,pk(_y_0)); _y_0], _x_1]; check,[[sign(_x_1,_y_0); vk(_y_0)], _x_1]; dec,[[enc(_x_1,_y_0); _y_0], _x_1]; dest,[[h(_x_1); _y_0], f(_x_1,_y_0);  [g(_x_1,_y_0); _y_0], h(_x_1)]; unblind,[[sign(blind(_x_1,_y_0),_y_1); _y_0], sign(_x_1,_y_1)]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _z_0, _z_1, _x_2 }
-_Snd_ord_vars : { _Z_0:7, _Z_1:7 }
+_Fst_ord_vars : { _y_0, _x_1, _y_1, _x_0, _x_2, _z_0, _z_1 }
+_Snd_ord_vars : { _Z_1:7, _Z_0:7 }
 _Names : { }
 _Axioms : { }
 _Input : _x_1
@@ -254,8 +254,8 @@ _Result : { (_Z_1, check(_Z_1,_Z_0), check(_z_0,_z_1), _Z_0:7 |- _z_1 /\ _Z_1:7 
 --Test
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_x_1,pk(_y_0)); _y_0], _x_1]; check,[[sign(_x_1,_y_0); vk(_y_0)], _x_1]; dec,[[enc(_x_1,_y_0); _y_0], _x_1]; dest,[[h(_x_1); _y_0], f(_x_1,_y_0);  [g(_x_1,_y_0); _y_0], h(_x_1)]; unblind,[[sign(blind(_x_1,_y_0),_y_1); _y_0], sign(_x_1,_y_1)]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _z_0, _z_1, _x_2 }
-_Snd_ord_vars : { _Z_0:5, _Z_1:5 }
+_Fst_ord_vars : { _y_0, _x_1, _y_1, _x_0, _x_2, _z_0, _z_1 }
+_Snd_ord_vars : { _Z_1:5, _Z_0:5 }
 _Names : { }
 _Axioms : { }
 _Input : _x_1
@@ -265,8 +265,8 @@ _Result : { (_Z_1, adec(_Z_1,_Z_0), adec(_z_0,_z_1), _Z_0:5 |- _z_1 /\ _Z_1:5 |-
 --Test
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_x_1,pk(_y_0)); _y_0], _x_1]; check,[[sign(_x_1,_y_0); vk(_y_0)], _x_1]; dec,[[enc(_x_1,_y_0); _y_0], _x_1]; dest,[[h(_x_1); _y_0], f(_x_1,_y_0);  [g(_x_1,_y_0); _y_0], h(_x_1)]; unblind,[[sign(blind(_x_1,_y_0),_y_1); _y_0], sign(_x_1,_y_1)]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _z_0, _z_1, _x_2 }
-_Snd_ord_vars : { _Z_0:2, _Z_1:2 }
+_Fst_ord_vars : { _y_0, _x_1, _y_1, _x_0, _x_2, _z_0, _z_1 }
+_Snd_ord_vars : { _Z_1:2, _Z_0:2 }
 _Names : { }
 _Axioms : { }
 _Input : _x_1
@@ -276,8 +276,8 @@ _Result : { (_Z_1, dec(_Z_1,_Z_0), dec(_z_0,_z_1), _Z_0:2 |- _z_1 /\ _Z_1:2 |- _
 --Test
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_x_2,pk(_y_1)); _y_1], _x_2]; check,[[sign(_x_2,_y_1); vk(_y_1)], _x_2]; dec,[[enc(_x_2,_y_1); _y_1], _x_2]; dest,[[h(_x_2); _y_1], f(_x_2,_y_1);  [g(_x_2,_y_1); _y_1], h(_x_2)]; unblind,[[sign(blind(_x_2,_y_1),_y_2); _y_1], sign(_x_2,_y_2)]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2, _y_2, _z_0, _z_1, _x_3, _z_2, _z_3 }
-_Snd_ord_vars : { _Z_0:4, _Z_1:4, _Z_2:4, _Z_3:4 }
+_Fst_ord_vars : { _y_1, _x_2, _y_2, _y_0, _x_0, _x_1, _x_3, _z_2, _z_3, _z_0, _z_1 }
+_Snd_ord_vars : { _Z_1:4, _Z_0:4, _Z_2:4, _Z_3:4 }
 _Names : { }
 _Axioms : { }
 _Input : _x_2

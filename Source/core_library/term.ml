@@ -550,6 +550,8 @@ module Name = struct
 
   let is_public n = n.bound = Public
 
+  let order n1 n2 = compare n1.index_n n2.index_n
+
   let order_for_testing rho a b =
     try
       let _,a' = List.find (fun (n,_) -> n == a) rho.rho_name
@@ -761,7 +763,7 @@ module Axiom = struct
       { id_axiom = old_acc ; public_name = Some n }
     ) n_list
 
-
+  let order ax1 ax2 = compare ax1.id_axiom ax2.id_axiom
 
   let index_of ax = ax.id_axiom
 

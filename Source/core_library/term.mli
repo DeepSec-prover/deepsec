@@ -290,6 +290,11 @@ module Axiom : sig
   (** [of_public_name n k] generates the {% axiom $\ax_k$ and associate it with $n$. %} *)
   val of_public_name : name -> int -> axiom
 
+  (** A total ordering function over axioms. This is a two-argument function [order] such that  [order ax1 ax2] is zero if
+      the [ax1] and [ax2] are equal, [order ax1 ax2] is strictly negative if [ax1] is smaller than [ax2], and
+      strictly strictly positive if [ax1] is greater than [ax2]. *)
+  val order : axiom -> axiom -> int
+
   (** [index_of_axiom ax] returns the index of the axiom [ax]. *)
   val index_of : axiom -> int
 
@@ -312,6 +317,11 @@ module Name :  sig
 
   (** [fresh_from n] creates a fresh name with the same label and same boundedness as [n].*)
   val fresh_from : name -> name
+
+  (** A total ordering function over names. This is a two-argument function [order] such that  [order n1 n2] is zero if
+      the [n1] and [n2] are equal, [order n1 n2] is strictly negative if [n1] is smaller than [n2], and
+      strictly strictly positive if [n1] is greater than [n2]. *)
+  val order : name -> name -> int
 
   (** Check whether a name is public. *)
   val is_public : name -> bool

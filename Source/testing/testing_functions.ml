@@ -506,10 +506,10 @@ let test_Term_Subst_unify (type a) (type b) (at:(a,b) atom) (eq_list:((a,b) term
     {
       signature = Symbol.display_signature Testing;
       rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
-      fst_ord_vars = display_var_list Testing Protocol rho gathering.g_fst_vars;
-      snd_ord_vars = display_var_list Testing Recipe rho gathering.g_snd_vars;
-      names = display_name_list Testing rho gathering.g_names;
-      axioms = display_axiom_list Testing rho gathering.g_axioms;
+      fst_ord_vars = display_var_list Testing Protocol rho (List.sort (Variable.order Protocol) gathering.g_fst_vars);
+      snd_ord_vars = display_var_list Testing Recipe rho (List.sort (Variable.order Recipe) gathering.g_snd_vars);
+      names = display_name_list Testing rho (List.sort Name.order gathering.g_names);
+      axioms = display_axiom_list Testing rho (List.sort Axiom.order gathering.g_axioms);
 
       inputs = [ (display_atom Testing at, Text); (display_syntactic_equation_list Testing at rho eq_list,Inline) ];
       output = (display_substitution_option Testing at rho result,Inline)
@@ -581,10 +581,10 @@ let test_Term_Subst_is_matchable (type a) (type b) (at:(a,b) atom) (list1:(a,b) 
     {
       signature = Symbol.display_signature Testing;
       rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
-      fst_ord_vars = display_var_list Testing Protocol rho gathering.g_fst_vars;
-      snd_ord_vars = display_var_list Testing Recipe rho gathering.g_snd_vars;
-      names = display_name_list Testing rho gathering.g_names;
-      axioms = display_axiom_list Testing rho gathering.g_axioms;
+      fst_ord_vars = display_var_list Testing Protocol rho (List.sort (Variable.order Protocol) gathering.g_fst_vars);
+      snd_ord_vars = display_var_list Testing Recipe rho (List.sort (Variable.order Recipe) gathering.g_snd_vars);
+      names = display_name_list Testing rho (List.sort Name.order gathering.g_names);
+      axioms = display_axiom_list Testing rho (List.sort Axiom.order gathering.g_axioms);
 
       inputs = [ (display_atom Testing at, Text); (display_term_list Testing at rho list1,Inline); (display_term_list Testing at rho list2,Inline) ];
       output = (display_boolean Testing result,Inline)
@@ -651,10 +651,10 @@ let test_Term_Subst_is_extended_by (type a) (type b) (at:(a,b) atom) (subst1:(a,
     {
       signature = Symbol.display_signature Testing;
       rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
-      fst_ord_vars = display_var_list Testing Protocol rho gathering.g_fst_vars;
-      snd_ord_vars = display_var_list Testing Recipe rho gathering.g_snd_vars;
-      names = display_name_list Testing rho gathering.g_names;
-      axioms = display_axiom_list Testing rho gathering.g_axioms;
+      fst_ord_vars = display_var_list Testing Protocol rho (List.sort (Variable.order Protocol) gathering.g_fst_vars);
+      snd_ord_vars = display_var_list Testing Recipe rho (List.sort (Variable.order Recipe) gathering.g_snd_vars);
+      names = display_name_list Testing rho (List.sort Name.order gathering.g_names);
+      axioms = display_axiom_list Testing rho (List.sort Axiom.order gathering.g_axioms);
 
       inputs = [ (display_atom Testing at, Text); (display_substitution Testing at rho subst1,Inline); (display_substitution Testing at rho subst2,Inline) ];
       output = (display_boolean Testing result,Inline)
@@ -721,10 +721,10 @@ let test_Term_Subst_is_equal_equations (type a) (type b) (at:(a,b) atom) (subst1
     {
       signature = Symbol.display_signature Testing;
       rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
-      fst_ord_vars = display_var_list Testing Protocol rho gathering.g_fst_vars;
-      snd_ord_vars = display_var_list Testing Recipe rho gathering.g_snd_vars;
-      names = display_name_list Testing rho gathering.g_names;
-      axioms = display_axiom_list Testing rho gathering.g_axioms;
+      fst_ord_vars = display_var_list Testing Protocol rho (List.sort (Variable.order Protocol) gathering.g_fst_vars);
+      snd_ord_vars = display_var_list Testing Recipe rho (List.sort (Variable.order Recipe) gathering.g_snd_vars);
+      names = display_name_list Testing rho (List.sort Name.order gathering.g_names);
+      axioms = display_axiom_list Testing rho (List.sort Axiom.order gathering.g_axioms);
 
       inputs = [ (display_atom Testing at, Text); (display_substitution Testing at rho subst1,Inline); (display_substitution Testing at rho subst2,Inline) ];
       output = (display_boolean Testing result,Inline)
@@ -795,10 +795,10 @@ let test_Term_Modulo_syntactic_equations_of_equations eq_list result =
     {
       signature = Symbol.display_signature Testing;
       rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
-      fst_ord_vars = display_var_list Testing Protocol rho gathering.g_fst_vars;
-      snd_ord_vars = display_var_list Testing Recipe rho gathering.g_snd_vars;
-      names = display_name_list Testing rho gathering.g_names;
-      axioms = display_axiom_list Testing rho gathering.g_axioms;
+      fst_ord_vars = display_var_list Testing Protocol rho (List.sort (Variable.order Protocol) gathering.g_fst_vars);
+      snd_ord_vars = display_var_list Testing Recipe rho (List.sort (Variable.order Recipe) gathering.g_snd_vars);
+      names = display_name_list Testing rho (List.sort Name.order gathering.g_names);
+      axioms = display_axiom_list Testing rho (List.sort Axiom.order gathering.g_axioms);
 
       inputs = [ (display_equation_list Testing rho eq_list,Inline)];
       output = ( display_substitution_list_result Testing rho result,Inline)
@@ -866,10 +866,10 @@ let test_Term_Rewrite_rules_normalise term result =
     {
       signature = Symbol.display_signature Testing;
       rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
-      fst_ord_vars = display_var_list Testing Protocol rho gathering.g_fst_vars;
-      snd_ord_vars = display_var_list Testing Recipe rho gathering.g_snd_vars;
-      names = display_name_list Testing rho gathering.g_names;
-      axioms = display_axiom_list Testing rho gathering.g_axioms;
+      fst_ord_vars = display_var_list Testing Protocol rho (List.sort (Variable.order Protocol) gathering.g_fst_vars);
+      snd_ord_vars = display_var_list Testing Recipe rho (List.sort (Variable.order Recipe) gathering.g_snd_vars);
+      names = display_name_list Testing rho (List.sort Name.order gathering.g_names);
+      axioms = display_axiom_list Testing rho (List.sort Axiom.order gathering.g_axioms);
 
       inputs = [ (display Testing ~rho:rho Protocol term,Inline) ];
       output = (display Testing ~rho:rho Protocol result,Inline)
@@ -932,10 +932,10 @@ let test_Term_Rewrite_rules_skeletons term f k result =
     {
       signature = Symbol.display_signature Testing;
       rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
-      fst_ord_vars = display_var_list Testing Protocol rho gathering.g_fst_vars;
-      snd_ord_vars = display_var_list Testing Recipe rho gathering.g_snd_vars;
-      names = display_name_list Testing rho gathering.g_names;
-      axioms = display_axiom_list Testing rho gathering.g_axioms;
+      fst_ord_vars = display_var_list Testing Protocol rho (List.sort (Variable.order Protocol) gathering.g_fst_vars);
+      snd_ord_vars = display_var_list Testing Recipe rho (List.sort (Variable.order Recipe) gathering.g_snd_vars);
+      names = display_name_list Testing rho (List.sort Name.order gathering.g_names);
+      axioms = display_axiom_list Testing rho (List.sort Axiom.order gathering.g_axioms);
 
       inputs = [ (display Testing ~rho:rho Protocol term,Inline) ; (Symbol.display Testing f, Inline); (string_of_int k,Text) ];
       output = ( display_skeleton_list Testing rho result, Text )
@@ -1002,10 +1002,10 @@ let test_Term_Rewrite_rules_generic_rewrite_rules_formula fct skel result =
     {
       signature = Symbol.display_signature Testing;
       rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
-      fst_ord_vars = display_var_list Testing Protocol rho gathering.g_fst_vars;
-      snd_ord_vars = display_var_list Testing Recipe rho gathering.g_snd_vars;
-      names = display_name_list Testing rho gathering.g_names;
-      axioms = display_axiom_list Testing rho gathering.g_axioms;
+      fst_ord_vars = display_var_list Testing Protocol rho (List.sort (Variable.order Protocol) gathering.g_fst_vars);
+      snd_ord_vars = display_var_list Testing Recipe rho (List.sort (Variable.order Recipe) gathering.g_snd_vars);
+      names = display_name_list Testing rho (List.sort Name.order gathering.g_names);
+      axioms = display_axiom_list Testing rho (List.sort Axiom.order gathering.g_axioms);
 
       inputs = [ (Fact.display_deduction_fact Testing ~rho:rho fct,Inline) ; (Rewrite_rules.display_skeleton Testing ~rho:rho skel, Inline) ];
       output = ( display_deduction_formula_list Testing rho result, Text )
@@ -1068,10 +1068,10 @@ let test_Data_structure_Eq_implies (type a) (type b) (at:(a,b) atom) (form:(a,b)
     {
       signature = Symbol.display_signature Testing;
       rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
-      fst_ord_vars = display_var_list Testing Protocol rho gathering.g_fst_vars;
-      snd_ord_vars = display_var_list Testing Recipe rho gathering.g_snd_vars;
-      names = display_name_list Testing rho gathering.g_names;
-      axioms = display_axiom_list Testing rho gathering.g_axioms;
+      fst_ord_vars = display_var_list Testing Protocol rho (List.sort (Variable.order Protocol) gathering.g_fst_vars);
+      snd_ord_vars = display_var_list Testing Recipe rho (List.sort (Variable.order Recipe) gathering.g_snd_vars);
+      names = display_name_list Testing rho (List.sort Name.order gathering.g_names);
+      axioms = display_axiom_list Testing rho (List.sort Axiom.order gathering.g_axioms);
 
       inputs = [ (display_atom Testing at, Text); (Eq.display Testing ~rho:rho at form,Inline); (display Testing ~rho:rho at term1,Inline); (display Testing ~rho:rho at term2,Inline) ];
       output = ( display_boolean Testing result, Inline )
