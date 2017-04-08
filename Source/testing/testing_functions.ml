@@ -493,15 +493,7 @@ let data_IO_Term_Subst_unify =
     file = "term_subst_unify"
   }
 
-let test_Term_Subst_unify (type a) (type b) (at:(a,b) atom) (eq_list:((a,b) term * (a,b) term) list) (result:(a, b) Subst.t option) =
-  (**** Retreive the names, variables and axioms *****)
-  let gathering = gather_in_subst_option at result (gather_in_pair_list at eq_list (gather_in_signature empty_gathering)) in
-
-  (**** Generate the display renaming ****)
-  let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in
-
-  (**** Generate test_display for terminal *****)
-
+let header_terminal_and_latex snd_ord_vars rho gathering =
   let test_terminal =
     {
       signature = Symbol.display_signature Testing;
@@ -511,8 +503,8 @@ let test_Term_Subst_unify (type a) (type b) (at:(a,b) atom) (eq_list:((a,b) term
       names = display_name_list Testing rho (List.sort Name.order gathering.g_names);
       axioms = display_axiom_list Testing rho (List.sort Axiom.order gathering.g_axioms);
 
-      inputs = [ (display_atom Testing at, Text); (display_syntactic_equation_list Testing at rho eq_list,Inline) ];
-      output = (display_substitution_option Testing at rho result,Inline)
+      inputs = [];
+      output = ("",Text)
     } in
 
   let test_latex =
@@ -520,14 +512,36 @@ let test_Term_Subst_unify (type a) (type b) (at:(a,b) atom) (eq_list:((a,b) term
       signature = (let t = Symbol.display_signature Latex in if t = emptyset Latex then "" else t);
       rewrite_rules = (let t = Rewrite_rules.display_all_rewrite_rules Latex rho in if t = emptyset Latex then "" else t);
       fst_ord_vars = "";
-      snd_ord_vars = (let t = display_var_list Latex Recipe rho gathering.g_snd_vars in if t = emptyset Latex then "" else t);
+      snd_ord_vars = (if snd_ord_vars then (let t = display_var_list Latex Recipe rho gathering.g_snd_vars in if t = emptyset Latex then "" else t) else "");
       names = "";
       axioms = "";
 
+      inputs = [];
+      output = ("",Text)
+    } in
+
+  (test_terminal,test_latex)
+
+let test_Term_Subst_unify (type a) (type b) (at:(a,b) atom) (eq_list:((a,b) term * (a,b) term) list) (result:(a, b) Subst.t option) =
+  (**** Retreive the names, variables and axioms *****)
+  let gathering = gather_in_subst_option at result (gather_in_pair_list at eq_list (gather_in_signature empty_gathering)) in
+
+  (**** Generate the display renaming ****)
+  let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in
+
+  (**** Generate test_display for terminal *****)
+
+  let terminal_header, latex_header = header_terminal_and_latex true rho gathering in
+  let test_terminal =
+    { terminal_header with
+      inputs = [ (display_atom Testing at, Text); (display_syntactic_equation_list Testing at rho eq_list,Inline) ];
+      output = (display_substitution_option Testing at rho result,Inline)
+    } in
+  let test_latex =
+    { latex_header with
       inputs = [ (display_atom Latex at, Text); (display_syntactic_equation_list Latex at rho eq_list,Inline) ];
       output = (display_substitution_option Latex at rho result,Inline)
     } in
-
   test_terminal, test_latex
 
 let update_Term_Subst_unify () =
@@ -577,32 +591,17 @@ let test_Term_Subst_is_matchable (type a) (type b) (at:(a,b) atom) (list1:(a,b) 
 
   (**** Generate test_display for terminal *****)
 
+  let terminal_header, latex_header = header_terminal_and_latex false rho gathering in
   let test_terminal =
-    {
-      signature = Symbol.display_signature Testing;
-      rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
-      fst_ord_vars = display_var_list Testing Protocol rho (List.sort (Variable.order Protocol) gathering.g_fst_vars);
-      snd_ord_vars = display_var_list Testing Recipe rho (List.sort (Variable.order Recipe) gathering.g_snd_vars);
-      names = display_name_list Testing rho (List.sort Name.order gathering.g_names);
-      axioms = display_axiom_list Testing rho (List.sort Axiom.order gathering.g_axioms);
-
+    { terminal_header with
       inputs = [ (display_atom Testing at, Text); (display_term_list Testing at rho list1,Inline); (display_term_list Testing at rho list2,Inline) ];
       output = (display_boolean Testing result,Inline)
     } in
-
   let test_latex =
-    {
-      signature = (let t = Symbol.display_signature Latex in if t = emptyset Latex then "" else t);
-      rewrite_rules = (let t = Rewrite_rules.display_all_rewrite_rules Latex rho in if t = emptyset Latex then "" else t);
-      fst_ord_vars = "";
-      snd_ord_vars = "";
-      names = "";
-      axioms = "";
-
+    { latex_header with
       inputs = [ (display_atom Latex at, Text); (display_term_list Latex at rho list1,Inline); (display_term_list Latex at rho list2,Inline) ];
       output = (display_boolean Latex result,Inline)
     } in
-
   test_terminal, test_latex
 
 let update_Term_Subst_is_matchable () =
@@ -647,28 +646,15 @@ let test_Term_Subst_is_extended_by (type a) (type b) (at:(a,b) atom) (subst1:(a,
 
   (**** Generate test_display for terminal *****)
 
+  let terminal_header, latex_header = header_terminal_and_latex true rho gathering in
   let test_terminal =
-    {
-      signature = Symbol.display_signature Testing;
-      rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
-      fst_ord_vars = display_var_list Testing Protocol rho (List.sort (Variable.order Protocol) gathering.g_fst_vars);
-      snd_ord_vars = display_var_list Testing Recipe rho (List.sort (Variable.order Recipe) gathering.g_snd_vars);
-      names = display_name_list Testing rho (List.sort Name.order gathering.g_names);
-      axioms = display_axiom_list Testing rho (List.sort Axiom.order gathering.g_axioms);
-
+    { terminal_header with
       inputs = [ (display_atom Testing at, Text); (display_substitution Testing at rho subst1,Inline); (display_substitution Testing at rho subst2,Inline) ];
       output = (display_boolean Testing result,Inline)
     } in
 
   let test_latex =
-    {
-      signature = (let t = Symbol.display_signature Latex in if t = emptyset Latex then "" else t);
-      rewrite_rules = (let t = Rewrite_rules.display_all_rewrite_rules Latex rho in if t = emptyset Latex then "" else t);
-      fst_ord_vars = "";
-      snd_ord_vars = (let t = display_var_list Latex Recipe rho gathering.g_snd_vars in if t = emptyset Latex then "" else t);
-      names = "";
-      axioms = "";
-
+    { latex_header with
       inputs = [ (display_atom Latex at, Text); (display_substitution Latex at rho subst1,Inline); (display_substitution Latex at rho subst2,Inline) ];
       output = (display_boolean Latex result,Inline)
     } in
@@ -717,28 +703,15 @@ let test_Term_Subst_is_equal_equations (type a) (type b) (at:(a,b) atom) (subst1
 
   (**** Generate test_display for terminal *****)
 
+  let terminal_header, latex_header = header_terminal_and_latex true rho gathering in
   let test_terminal =
-    {
-      signature = Symbol.display_signature Testing;
-      rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
-      fst_ord_vars = display_var_list Testing Protocol rho (List.sort (Variable.order Protocol) gathering.g_fst_vars);
-      snd_ord_vars = display_var_list Testing Recipe rho (List.sort (Variable.order Recipe) gathering.g_snd_vars);
-      names = display_name_list Testing rho (List.sort Name.order gathering.g_names);
-      axioms = display_axiom_list Testing rho (List.sort Axiom.order gathering.g_axioms);
-
+    { terminal_header with
       inputs = [ (display_atom Testing at, Text); (display_substitution Testing at rho subst1,Inline); (display_substitution Testing at rho subst2,Inline) ];
       output = (display_boolean Testing result,Inline)
     } in
 
   let test_latex =
-    {
-      signature = (let t = Symbol.display_signature Latex in if t = emptyset Latex then "" else t);
-      rewrite_rules = (let t = Rewrite_rules.display_all_rewrite_rules Latex rho in if t = emptyset Latex then "" else t);
-      fst_ord_vars = "";
-      snd_ord_vars = (let t = display_var_list Latex Recipe rho gathering.g_snd_vars in if t = emptyset Latex then "" else t);
-      names = "";
-      axioms = "";
-
+    { latex_header with
       inputs = [ (display_atom Latex at, Text); (display_substitution Latex at rho subst1,Inline); (display_substitution Latex at rho subst2,Inline) ];
       output = (display_boolean Latex result,Inline)
     } in
@@ -791,28 +764,15 @@ let test_Term_Modulo_syntactic_equations_of_equations eq_list result =
 
   (**** Generate test_display for terminal *****)
 
+  let terminal_header, latex_header = header_terminal_and_latex false rho gathering in
   let test_terminal =
-    {
-      signature = Symbol.display_signature Testing;
-      rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
-      fst_ord_vars = display_var_list Testing Protocol rho (List.sort (Variable.order Protocol) gathering.g_fst_vars);
-      snd_ord_vars = display_var_list Testing Recipe rho (List.sort (Variable.order Recipe) gathering.g_snd_vars);
-      names = display_name_list Testing rho (List.sort Name.order gathering.g_names);
-      axioms = display_axiom_list Testing rho (List.sort Axiom.order gathering.g_axioms);
-
+    { terminal_header with
       inputs = [ (display_equation_list Testing rho eq_list,Inline)];
       output = ( display_substitution_list_result Testing rho result,Inline)
     } in
 
   let test_latex =
-    {
-      signature = (let t = Symbol.display_signature Latex in if t = emptyset Latex then "" else t);
-      rewrite_rules = (let t = Rewrite_rules.display_all_rewrite_rules Latex rho in if t = emptyset Latex then "" else t);
-      fst_ord_vars = "";
-      snd_ord_vars = "";
-      names = "";
-      axioms = "";
-
+    { latex_header with
       inputs = [ (display_equation_list Latex rho eq_list,Inline) ];
       output = ( display_substitution_list_result Latex rho result,Inline)
     } in
@@ -862,28 +822,15 @@ let test_Term_Rewrite_rules_normalise term result =
 
   (**** Generate test_display for terminal *****)
 
+  let terminal_header, latex_header = header_terminal_and_latex false rho gathering in
   let test_terminal =
-    {
-      signature = Symbol.display_signature Testing;
-      rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
-      fst_ord_vars = display_var_list Testing Protocol rho (List.sort (Variable.order Protocol) gathering.g_fst_vars);
-      snd_ord_vars = display_var_list Testing Recipe rho (List.sort (Variable.order Recipe) gathering.g_snd_vars);
-      names = display_name_list Testing rho (List.sort Name.order gathering.g_names);
-      axioms = display_axiom_list Testing rho (List.sort Axiom.order gathering.g_axioms);
-
+    { terminal_header with
       inputs = [ (display Testing ~rho:rho Protocol term,Inline) ];
       output = (display Testing ~rho:rho Protocol result,Inline)
     } in
 
   let test_latex =
-    {
-      signature = (let t = Symbol.display_signature Latex in if t = emptyset Latex then "" else t);
-      rewrite_rules = (let t = Rewrite_rules.display_all_rewrite_rules Latex rho in if t = emptyset Latex then "" else t);
-      fst_ord_vars = "";
-      snd_ord_vars = "";
-      names = "";
-      axioms = "";
-
+    { latex_header with
       inputs = [ (display Latex ~rho:rho Protocol term,Inline) ];
       output = (display Latex ~rho:rho Protocol result,Inline)
     } in
@@ -928,28 +875,15 @@ let test_Term_Rewrite_rules_skeletons term f k result =
 
   (**** Generate test_display for terminal *****)
 
+  let terminal_header, latex_header = header_terminal_and_latex true rho gathering in
   let test_terminal =
-    {
-      signature = Symbol.display_signature Testing;
-      rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
-      fst_ord_vars = display_var_list Testing Protocol rho (List.sort (Variable.order Protocol) gathering.g_fst_vars);
-      snd_ord_vars = display_var_list Testing Recipe rho (List.sort (Variable.order Recipe) gathering.g_snd_vars);
-      names = display_name_list Testing rho (List.sort Name.order gathering.g_names);
-      axioms = display_axiom_list Testing rho (List.sort Axiom.order gathering.g_axioms);
-
+    { terminal_header with
       inputs = [ (display Testing ~rho:rho Protocol term,Inline) ; (Symbol.display Testing f, Inline); (string_of_int k,Text) ];
       output = ( display_skeleton_list Testing rho result, Text )
     } in
 
   let test_latex =
-    {
-      signature = (let t = Symbol.display_signature Latex in if t = emptyset Latex then "" else t);
-      rewrite_rules = (let t = Rewrite_rules.display_all_rewrite_rules Latex rho in if t = emptyset Latex then "" else t);
-      fst_ord_vars = "";
-      snd_ord_vars = (let t = display_var_list Latex Recipe rho gathering.g_snd_vars in if t = emptyset Latex then "" else t);
-      names = "";
-      axioms = "";
-
+    { latex_header with
       inputs = [ (display Latex ~rho:rho Protocol term,Inline) ; (Symbol.display Latex f, Inline); (string_of_int k,Text) ];
       output = ( display_skeleton_list Latex rho result, Text )
     } in
@@ -998,28 +932,15 @@ let test_Term_Rewrite_rules_generic_rewrite_rules_formula fct skel result =
 
   (**** Generate test_display for terminal *****)
 
+  let terminal_header, latex_header = header_terminal_and_latex true rho gathering in
   let test_terminal =
-    {
-      signature = Symbol.display_signature Testing;
-      rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
-      fst_ord_vars = display_var_list Testing Protocol rho (List.sort (Variable.order Protocol) gathering.g_fst_vars);
-      snd_ord_vars = display_var_list Testing Recipe rho (List.sort (Variable.order Recipe) gathering.g_snd_vars);
-      names = display_name_list Testing rho (List.sort Name.order gathering.g_names);
-      axioms = display_axiom_list Testing rho (List.sort Axiom.order gathering.g_axioms);
-
+    { terminal_header with
       inputs = [ (Fact.display_deduction_fact Testing ~rho:rho fct,Inline) ; (Rewrite_rules.display_skeleton Testing ~rho:rho skel, Inline) ];
       output = ( display_deduction_formula_list Testing rho result, Text )
     } in
 
   let test_latex =
-    {
-      signature = (let t = Symbol.display_signature Latex in if t = emptyset Latex then "" else t);
-      rewrite_rules = (let t = Rewrite_rules.display_all_rewrite_rules Latex rho in if t = emptyset Latex then "" else t);
-      fst_ord_vars = "";
-      snd_ord_vars = (let t = display_var_list Latex Recipe rho gathering.g_snd_vars in if t = emptyset Latex then "" else t);
-      names = "";
-      axioms = "";
-
+    { latex_header with
       inputs = [ (Fact.display_deduction_fact Latex ~rho:rho fct,Inline) ; (Rewrite_rules.display_skeleton Latex ~rho:rho skel, Inline) ];
       output = ( display_deduction_formula_list Latex rho result, Text )
     } in
@@ -1064,28 +985,15 @@ let test_Data_structure_Eq_implies (type a) (type b) (at:(a,b) atom) (form:(a,b)
 
   (**** Generate test_display for terminal *****)
 
+  let terminal_header, latex_header = header_terminal_and_latex true rho gathering in
   let test_terminal =
-    {
-      signature = Symbol.display_signature Testing;
-      rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
-      fst_ord_vars = display_var_list Testing Protocol rho (List.sort (Variable.order Protocol) gathering.g_fst_vars);
-      snd_ord_vars = display_var_list Testing Recipe rho (List.sort (Variable.order Recipe) gathering.g_snd_vars);
-      names = display_name_list Testing rho (List.sort Name.order gathering.g_names);
-      axioms = display_axiom_list Testing rho (List.sort Axiom.order gathering.g_axioms);
-
+    { terminal_header with
       inputs = [ (display_atom Testing at, Text); (Eq.display Testing ~rho:rho at form,Inline); (display Testing ~rho:rho at term1,Inline); (display Testing ~rho:rho at term2,Inline) ];
       output = ( display_boolean Testing result, Inline )
     } in
 
   let test_latex =
-    {
-      signature = (let t = Symbol.display_signature Latex in if t = emptyset Latex then "" else t);
-      rewrite_rules = (let t = Rewrite_rules.display_all_rewrite_rules Latex rho in if t = emptyset Latex then "" else t);
-      fst_ord_vars = "";
-      snd_ord_vars = (let t = display_var_list Latex Recipe rho gathering.g_snd_vars in if t = emptyset Latex then "" else t);
-      names = "";
-      axioms = "";
-
+    { latex_header with
       inputs = [ (display_atom Latex at, Text); (Eq.display Latex ~rho:rho at form,Inline); (display Latex ~rho:rho at term1,Inline); (display Latex ~rho:rho at term2,Inline) ];
       output = ( display_boolean Latex result, Inline )
     } in
