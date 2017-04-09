@@ -964,7 +964,7 @@ module Rewrite_rules : sig
 
   val display_skeleton : Display.output -> ?rho:display_renamings option -> skeleton -> string
 
-  val display_all_rewrite_rules : Display.output -> display_renamings option -> string
+  val display_all_rewrite_rules : Display.output -> ?per_line:int -> ?tab:int -> display_renamings option -> string
 
   (** {3 Tested functions} *)
 

@@ -2646,7 +2646,7 @@ module Rewrite_rules = struct
 
     (Fact.create Fact.Deduction head rest_b_fct [Func(f,args'),term; b_fct.BasicFact.term, fct.Fact.df_term])
 
-  let display_all_rewrite_rules out rho =
+  let display_all_rewrite_rules out ?(per_line = 3) ?(tab = 0) rho =
     let dest_without_proj = List.filter (fun f -> not (Symbol.is_proj f)) !Symbol.all_destructors in
 
     match out with
@@ -2664,7 +2664,7 @@ module Rewrite_rules = struct
               | _ -> Config.internal_error "[term.ml >> display_signature] all_destructors should only contain destructors."
             in
             Printf.sprintf "[%s]" (display_list display_rewrite_rules "; " dest_without_proj)
-      | _ ->
+      | Latex ->
           if dest_without_proj = []
           then emptyset out
           else
@@ -2675,9 +2675,85 @@ module Rewrite_rules = struct
                     ) acc rw_rules
                 | _ -> Config.internal_error "[term.ml >> display_signature] all_destructors should only contain destructors.(2)"
               ) [] dest_without_proj in
+            let s = List.length destructor_list in
+            begin
+              let str = ref "\\left\\{ \\begin{array}{l} " in
+              let current_number = ref 1 in
+              List.iter (fun (l,r) ->
+                if !current_number >= s
+                then str := Printf.sprintf "%s%s %s %s \\end{array}\\right\\}" !str (display out ~rho:rho Protocol l) (rightarrow out) (display out ~rho:rho Protocol r)
+                else if (!current_number / per_line)*per_line = !current_number
+                then str := Printf.sprintf "%s%s %s %s,\\\\" !str (display out ~rho:rho Protocol l) (rightarrow out) (display out ~rho:rho Protocol r)
+                else str := Printf.sprintf "%s%s %s %s, " !str (display out ~rho:rho Protocol l) (rightarrow out) (display out ~rho:rho Protocol r);
 
-            let display_elt (l,r) = Printf.sprintf "%s %s %s" (display out ~rho:rho Protocol l) (rightarrow out) (display out ~rho:rho Protocol r) in
-            Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list display_elt ", " destructor_list) (rcurlybracket out)
+                incr current_number
+              ) destructor_list;
+              !str
+            end
+      | HTML ->
+          if dest_without_proj = []
+          then emptyset out
+          else
+            let destructor_list = List.fold_left (fun acc f -> match f.cat with
+                | Destructor rw_rules ->
+                    List.fold_left (fun acc_1 (arg_l,r) ->
+                      (Func(f,arg_l),r)::acc_1
+                    ) acc rw_rules
+                | _ -> Config.internal_error "[term.ml >> display_signature] all_destructors should only contain destructors.(2)"
+              ) [] dest_without_proj in
+            let s = List.length destructor_list in
+            begin
+              let str = ref "<table class=\"rewrite\"><tr><td>" in
+              let current_number = ref 1 in
+              List.iter (fun (l,r) ->
+                if !current_number >= s
+                then str := Printf.sprintf "%s%s %s %s</td></tr></table>" !str (display out ~rho:rho Protocol l) (rightarrow out) (display out ~rho:rho Protocol r)
+                else if (!current_number / per_line)*per_line = !current_number
+                then str := Printf.sprintf "%s%s %s %s,,</td></tr><tr><td>" !str (display out ~rho:rho Protocol l) (rightarrow out) (display out ~rho:rho Protocol r)
+                else str := Printf.sprintf "%s%s %s %s, " !str (display out ~rho:rho Protocol l) (rightarrow out) (display out ~rho:rho Protocol r);
+
+                incr current_number
+              ) destructor_list;
+              !str
+            end
+      | _ ->
+          let destructor_list = List.fold_left (fun acc f -> match f.cat with
+              | Destructor rw_rules ->
+                  List.fold_left (fun acc_1 (arg_l,r) ->
+                    (Func(f,arg_l),r)::acc_1
+                  ) acc rw_rules
+              | _ -> Config.internal_error "[term.ml >> display_signature] all_destructors should only contain destructors.(2)"
+            ) [] dest_without_proj in
+          let s = List.length destructor_list in
+          let tab_str = create_tab tab in
+          begin match s with
+            | 0 -> "{}"
+            | s when s <= per_line ->
+                let str = ref "{ " in
+                let current_number = ref 1 in
+                List.iter (fun (l,r) ->
+                  if !current_number < s
+                  then str := Printf.sprintf "%s%s %s %s; " !str  (display out ~rho:rho Protocol l) (rightarrow out) (display out ~rho:rho Protocol r)
+                  else str := Printf.sprintf "%s%s %s %s }" !str  (display out ~rho:rho Protocol l) (rightarrow out) (display out ~rho:rho Protocol r);
+
+                  incr current_number
+                ) destructor_list;
+                !str
+            | _ ->
+                let tab_str_inside = create_tab (tab+1) in
+                let str = ref (Printf.sprintf "\n%s{\n%s" tab_str tab_str_inside) in
+                let current_number = ref 1 in
+                List.iter (fun (l,r) ->
+                  if !current_number >= s
+                  then str := Printf.sprintf "%s%s %s %s\n%s}\n" !str (display out ~rho:rho Protocol l) (rightarrow out) (display out ~rho:rho Protocol r) tab_str
+                  else if (!current_number / per_line)*per_line = !current_number
+                  then str := Printf.sprintf "%s%s %s %s,\n%s" !str  (display out ~rho:rho Protocol l) (rightarrow out) (display out ~rho:rho Protocol r) tab_str_inside
+                  else str := Printf.sprintf "%s%s %s %s, "!str  (display out ~rho:rho Protocol l) (rightarrow out) (display out ~rho:rho Protocol r);
+
+                  incr current_number
+                ) destructor_list;
+                !str
+          end
 
     let display_skeleton out ?(rho=None) skel =
       let (f,args,r) = skel.rewrite_rule in
