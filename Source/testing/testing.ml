@@ -4,31 +4,18 @@ open Testing_functions
 open Testing_load_verify
 
 (** [data_verification_of_name str] returns the data associated to a function such that [data.name = str]. If no data corresponds to [str] then the execution ends. *)
-let data_verification_of_name = function
-  | s when s = data_verification_Term_Subst_unify.name -> data_verification_Term_Subst_unify
-  | s when s = data_verification_Term_Subst_is_matchable.name -> data_verification_Term_Subst_is_matchable
-  | s when s = data_verification_Term_Subst_is_extended_by.name -> data_verification_Term_Subst_is_extended_by
-  | s when s = data_verification_Term_Subst_is_equal_equations.name -> data_verification_Term_Subst_is_equal_equations
-  | s when s = data_verification_Term_Modulo_syntactic_equations_of_equations.name -> data_verification_Term_Modulo_syntactic_equations_of_equations
-  | s when s = data_verification_Term_Rewrite_rules_normalise.name -> data_verification_Term_Rewrite_rules_normalise
-  | s when s = data_verification_Term_Rewrite_rules_skeletons.name -> data_verification_Term_Rewrite_rules_skeletons
-  | s when s = data_verification_Term_Rewrite_rules_generic_rewrite_rules_formula.name -> data_verification_Term_Rewrite_rules_generic_rewrite_rules_formula
-  | s when s = data_verification_Data_structure_Eq_implies.name -> data_verification_Data_structure_Eq_implies
-  | s when s = data_verification_Data_structure_Tools_partial_consequence.name -> data_verification_Data_structure_Tools_partial_consequence
-  | _ -> Printf.printf "Error : Incorrect name of function\n"; exit 0
+let data_verification_of_name s =
+  try
+    List.find (fun data ->
+      s = data.name
+    ) all_data_verification
+  with Not_found -> Printf.printf "Error : Incorrect name of function\n"; exit 0
 
 (** [validate_all ()] validates all the tests of all the functions. *)
 let validate_all () =
-  validate_all_tests data_verification_Term_Subst_unify.data_IO;
-  validate_all_tests data_verification_Term_Subst_is_matchable.data_IO;
-  validate_all_tests data_verification_Term_Subst_is_extended_by.data_IO;
-  validate_all_tests data_verification_Term_Subst_is_equal_equations.data_IO;
-  validate_all_tests data_verification_Term_Modulo_syntactic_equations_of_equations.data_IO;
-  validate_all_tests data_verification_Term_Rewrite_rules_normalise.data_IO;
-  validate_all_tests data_verification_Term_Rewrite_rules_skeletons.data_IO;
-  validate_all_tests data_verification_Term_Rewrite_rules_generic_rewrite_rules_formula.data_IO;
-  validate_all_tests data_verification_Data_structure_Eq_implies.data_IO;
-  validate_all_tests data_verification_Data_structure_Tools_partial_consequence.data_IO
+  List.iter (fun data ->
+    validate_all_tests data.data_IO
+  ) all_data_verification
 
 (**/**)
 
@@ -42,7 +29,11 @@ let print_help () =
   Printf.printf "      testing verify [-function <string>]\n";
   Printf.printf "      testing validate all\n";
   Printf.printf "      testing validate all [-function <string>]\n";
-  Printf.printf "      testing validate function <string> tests <int> ... <int>\n"
+  Printf.printf "      testing validate function <string> tests <int> ... <int>\n\n";
+  Printf.printf "List of tested functions:\n";
+  List.iter (fun data ->
+    Printf.printf "      %s\n" data.name
+  ) all_data_verification
 
 let rec create_list = function
   | k when k = Array.length Sys.argv -> []
@@ -55,9 +46,9 @@ let _ =
   else if Array.length Sys.argv = 4 && (Sys.argv).(1) = "verify" &&  (Sys.argv).(2) = "-function"
   then verify_function (data_verification_of_name (Sys.argv).(3))
   else if Array.length Sys.argv = 3 && (Sys.argv).(1) = "validate" && (Sys.argv).(2) = "all"
-  then validate_all ()
+  then (validate_all (); publish_index ())
   else if Array.length Sys.argv = 5 && (Sys.argv).(1) = "validate" && (Sys.argv).(2) = "all" && (Sys.argv).(3) = "-function"
-  then validate_all_tests (data_verification_of_name (Sys.argv).(4)).data_IO
+  then (validate_all_tests (data_verification_of_name (Sys.argv).(4)).data_IO; publish_index ())
   else if Array.length Sys.argv >= 6 && (Sys.argv).(1) = "validate" && (Sys.argv).(2) = "function" && (Sys.argv).(4) = "tests"
   then validate (data_verification_of_name (Sys.argv).(3)).data_IO (create_list 5)
   else print_help ()

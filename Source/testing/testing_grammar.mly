@@ -47,6 +47,7 @@ open Testing_parser_functions
 %start parse_Term_Rewrite_rules_normalise parse_Term_Rewrite_rules_skeletons parse_Term_Rewrite_rules_generic_rewrite_rules_formula
 
 %start parse_Data_structure_Eq_implies parse_Data_structure_Tools_partial_consequence
+%start parse_Data_structure_Tools_partial_consequence_additional
 
 %type <(Testing_parser_functions.parsing_mode -> string)> parse_Term_Subst_unify
 %type <(Testing_parser_functions.parsing_mode -> string)> parse_Term_Subst_is_matchable
@@ -59,6 +60,7 @@ open Testing_parser_functions
 
 %type <(Testing_parser_functions.parsing_mode -> string)> parse_Data_structure_Eq_implies
 %type <(Testing_parser_functions.parsing_mode -> string)> parse_Data_structure_Tools_partial_consequence
+%type <(Testing_parser_functions.parsing_mode -> string)> parse_Data_structure_Tools_partial_consequence_additional
 
 %%
 /***********************************
@@ -325,6 +327,42 @@ parse_Data_structure_Tools_partial_consequence:
   | error
       { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
 
+parse_Data_structure_Tools_partial_consequence_additional:
+  | header_of_test
+    INPUT DDOT atom
+    INPUT DDOT sdf
+    INPUT DDOT df
+    INPUT DDOT basic_deduction_fact_list_conseq
+    INPUT DDOT term
+    RESULT DDOT consequence
+      {
+        (fun mode -> $1 ();
+          if $4 = true
+          then
+            let sdf = parse_SDF $7 in
+            let df = parse_DF $10 in
+            let bfct_l = List.map parse_basic_deduction_fact $13 in
+            let term = parse_term Term.Protocol $16 in
+            if mode = Load
+            then
+              let result = parse_consequence $19 in
+              Testing_functions.load_Data_structure_Tools_partial_consequence_additional Term.Protocol sdf df bfct_l term result
+            else Testing_functions.apply_Data_structure_Tools_partial_consequence_additional Term.Protocol sdf df bfct_l term
+          else
+            let sdf = parse_SDF $7 in
+            let df = parse_DF $10 in
+            let bfct_l = List.map parse_basic_deduction_fact $13 in
+            let term = parse_term Term.Recipe $16 in
+            if mode = Load
+            then
+              let result = parse_consequence $19 in
+              Testing_functions.load_Data_structure_Tools_partial_consequence_additional Term.Recipe sdf df bfct_l term result
+            else Testing_functions.apply_Data_structure_Tools_partial_consequence_additional Term.Recipe sdf df bfct_l term
+        )
+      }
+  | error
+      { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
+
 /***********************************
 ***     Signature definition     ***
 ************************************/
@@ -539,6 +577,18 @@ basic_deduction_fact_list:
   | basic_deduction_fact
       { [$1] }
   | basic_deduction_fact WEDGE basic_deduction_fact_list
+      { $1::$3 }
+
+basic_deduction_fact_list_conseq:
+  | LCURL RCURL
+      { [] }
+  | LCURL sub_basic_deduction_fact_list_conseq RCURL
+      { $2 }
+
+sub_basic_deduction_fact_list_conseq:
+  | basic_deduction_fact
+      { [$1] }
+  | basic_deduction_fact COMMA sub_basic_deduction_fact_list_conseq
       { $1::$3 }
 
 /****************************************

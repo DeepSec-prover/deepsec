@@ -81,7 +81,14 @@ let data_verification_Data_structure_Tools_partial_consequence =
     parsing_function = Testing_grammar.parse_Data_structure_Tools_partial_consequence
   }
 
-let list_data =
+let data_verification_Data_structure_Tools_partial_consequence_additional =
+  {
+    data_IO = data_IO_Data_structure_Tools_partial_consequence_additional;
+    name = "Data_structure.Tools.partial_consequence_additional";
+    parsing_function = Testing_grammar.parse_Data_structure_Tools_partial_consequence_additional
+  }
+
+let all_data_verification =
   [
     data_verification_Term_Subst_unify;
     data_verification_Term_Subst_is_matchable;
@@ -92,7 +99,8 @@ let list_data =
     data_verification_Term_Rewrite_rules_skeletons;
     data_verification_Term_Rewrite_rules_generic_rewrite_rules_formula;
     data_verification_Data_structure_Eq_implies;
-    data_verification_Data_structure_Tools_partial_consequence
+    data_verification_Data_structure_Tools_partial_consequence;
+    data_verification_Data_structure_Tools_partial_consequence_additional
   ]
 
 (** {3 Verification of tests} *)
@@ -132,7 +140,7 @@ let verify_function data_verif =
     end
 
 (** [verify_all] verifies all the tests of all the functions. *)
-let verify_all () = List.iter verify_function list_data
+let verify_all () = List.iter verify_function all_data_verification
 
 (** {3 Loading of tests} *)
 
@@ -154,7 +162,7 @@ let load_function data_verif =
 
 let load () =
   preload ();
-  List.iter load_function list_data
+  List.iter load_function all_data_verification
 
 (** {3 Other publications} *)
 
@@ -192,7 +200,7 @@ let publish_index () =
     line := l
   done;
 
-  List.iter print_validated_address list_data;
+  List.iter print_validated_address all_data_verification ;
 
   let l = input_line open_template in
   Printf.fprintf out_html "%s\n" l;
@@ -205,7 +213,7 @@ let publish_index () =
     line := l
   done;
 
-  List.iter print_to_check_address list_data;
+  List.iter print_to_check_address all_data_verification ;
 
   try
     while true do

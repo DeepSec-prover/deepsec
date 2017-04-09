@@ -140,6 +140,27 @@ let test_partial_consequence () =
   let _ = Tools.partial_consequence Recipe sdf_3 df_2 r6 in
   let _ = Tools.partial_consequence Recipe sdf_3 df_2 r7 in
 
+  let _Z_var = Variable.fresh Recipe Free (Variable.snd_ord_type 1) in
+
+  let _Z = of_variable _X_var in
+
+  let bdf_3 = BasicFact.create _Z_var a in
+
+  let _ = Tools.partial_consequence_additional Protocol sdf_3 df_2 [bdf_3] t1 in
+  let _ = Tools.partial_consequence_additional Protocol sdf_3 df_2 [bdf_3] t2 in
+  let _ = Tools.partial_consequence_additional Protocol sdf_3 df_2 [bdf_3] t3 in
+  let _ = Tools.partial_consequence_additional Protocol sdf_3 df_2 [bdf_3] t4 in
+  let _ = Tools.partial_consequence_additional Protocol sdf_3 df_2 [bdf_3] t5 in
+  let _ = Tools.partial_consequence_additional Protocol sdf_3 df_2 [bdf_3] t6 in
+  let _ = Tools.partial_consequence_additional Protocol sdf_3 df_2 [bdf_3] t7 in
+
+  let _ = Tools.partial_consequence_additional Recipe sdf_3 df_2 [bdf_3] r1 in
+  let _ = Tools.partial_consequence_additional Recipe sdf_3 df_2 [bdf_3] r2 in
+  let _ = Tools.partial_consequence_additional Recipe sdf_3 df_2 [bdf_3] r3 in
+  let _ = Tools.partial_consequence_additional Recipe sdf_3 df_2 [bdf_3] r4 in
+  let _ = Tools.partial_consequence_additional Recipe sdf_3 df_2 [bdf_3] r5 in
+  let _ = Tools.partial_consequence_additional Recipe sdf_3 df_2 [bdf_3] r6 in
+  let _ = Tools.partial_consequence_additional Recipe sdf_3 df_2 [bdf_3] r7 in
   ()
 
 

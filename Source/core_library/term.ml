@@ -3272,8 +3272,19 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
 
     mem_term pterm
 
+  let compare_variables df bfct_list =
+    List.iter (fun bfct ->
+      let xsnd = BasicFact.get_snd_ord_variable bfct in
+      DF.iter df (fun bfct_df ->
+        let xsnd' = BasicFact.get_snd_ord_variable bfct_df in
+        if Variable.order Recipe xsnd xsnd' <= 0
+        then Config.internal_error "[term.ml >> Tools_Subterm.compare_variables] The second-order variables in the addition list of basic deduction fact should be bigger than the variables in DF (in the sense of Variable.order)."
+      )
+    ) bfct_list
+
   let partial_consequence_additional (type a) (type b) (at:(a,b) atom) sdf df b_fct_list (term:(a,b) term) = match at with
     | Protocol ->
+        Config.debug (fun () -> compare_variables df b_fct_list);
         begin match partial_mem_additional_protocol sdf df b_fct_list term with
           | None ->
               Config.test (fun () -> !test_partial_consequence_additional_Protocol sdf df b_fct_list term None);
@@ -3283,6 +3294,7 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
               (Some (r,term):(recipe * protocol_term) option)
         end
     | Recipe ->
+        Config.debug (fun () -> compare_variables df b_fct_list);
         begin match partial_mem_additional_recipe sdf df b_fct_list term with
           | None ->
               Config.test (fun () -> !test_partial_consequence_additional_Recipe sdf df b_fct_list term None);

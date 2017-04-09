@@ -490,6 +490,11 @@ let display_consequence out rho = function
   | None -> bot out
   | Some(recipe,term) -> Printf.sprintf "(%s,%s)" (display out ~rho:rho Recipe recipe) (display out ~rho:rho Protocol term)
 
+let display_basic_deduction_fact_list out rho bfct_l =
+  if bfct_l = []
+  then emptyset out
+  else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list (BasicFact.display out ~rho:rho) ", " bfct_l) (rcurlybracket out)
+
 (*************************************
       Functions to be tested
 *************************************)
@@ -1048,6 +1053,7 @@ let data_IO_Data_structure_Tools_partial_consequence =
   }
 
 let test_Data_structure_Tools_partial_consequence (type a) (type b) (at:(a,b) atom) sdf df (term:(a,b) term) result =
+
   (**** Retreive the names, variables and axioms *****)
   let gathering = gather_in_SDF sdf (gather_in_DF df (gather_in_term at term (gather_in_signature empty_gathering))) in
 
@@ -1091,6 +1097,63 @@ let load_Data_structure_Tools_partial_consequence (type a) (type b) (at:(a,b) at
   let _,test_latex = test_Data_structure_Tools_partial_consequence at sdf df term result in
   produce_test_latex test_latex
 
+(***** Data_structure.Tools.partial_consequence *****)
+
+let data_IO_Data_structure_Tools_partial_consequence_additional =
+  {
+    validated_tests = [];
+    tests_to_check = [];
+    additional_tests = [];
+
+    is_being_tested = true;
+
+    file = "data_structure_tools_partial_consequence_additional"
+  }
+
+let test_Data_structure_Tools_partial_consequence_additional (type a) (type b) (at:(a,b) atom) sdf df bfct_l (term:(a,b) term) result =
+  (**** Retreive the names, variables and axioms *****)
+  let gathering = List.fold_left (fun acc_gather bfct -> gather_in_basic_fct bfct acc_gather) (gather_in_SDF sdf (gather_in_DF df (gather_in_term at term (gather_in_signature empty_gathering)))) bfct_l in
+
+  (**** Generate the display renaming ****)
+  let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in
+
+  (**** Generate test_display for terminal *****)
+
+  let terminal_header, latex_header = header_terminal_and_latex true rho gathering in
+  let test_terminal =
+    { terminal_header with
+      inputs = [ (display_atom Testing at, Text); (SDF.display Testing ~rho:rho sdf,Display); (DF.display Testing ~rho:rho df,Display); (display_basic_deduction_fact_list Testing rho bfct_l , Inline); (display Testing ~rho:rho at term,Inline) ];
+      output = ( display_consequence Testing rho result, Inline )
+    } in
+
+  let test_latex =
+    { latex_header with
+      inputs = [ (display_atom Latex at, Text); (SDF.display Latex ~rho:rho sdf,Display); (DF.display Latex ~rho:rho df,Display); (display_basic_deduction_fact_list Latex rho bfct_l, Inline); (display Latex ~rho:rho at term,Inline) ];
+      output = ( display_consequence Latex rho result, Inline )
+    } in
+
+  test_terminal, test_latex
+
+let update_Data_structure_Tools_partial_consequence_additional () =
+  Tools.update_test_partial_consequence_additional Protocol (fun sdf df bfct_l term result ->
+    if data_IO_Data_structure_Tools_partial_consequence_additional.is_being_tested
+    then add_test (test_Data_structure_Tools_partial_consequence_additional Protocol sdf df bfct_l term result) data_IO_Data_structure_Tools_partial_consequence_additional
+  );
+  Tools.update_test_partial_consequence_additional Recipe (fun sdf df bfct_l term result ->
+    if data_IO_Data_structure_Tools_partial_consequence_additional.is_being_tested
+    then add_test (test_Data_structure_Tools_partial_consequence_additional Recipe sdf df bfct_l term result) data_IO_Data_structure_Tools_partial_consequence_additional
+  )
+
+let apply_Data_structure_Tools_partial_consequence_additional (type a) (type b) (at:(a,b) atom) sdf df bfct_l (term:(a,b) term)  =
+  let result = Tools.partial_consequence_additional at sdf df bfct_l term in
+
+  let test_terminal,_ = test_Data_structure_Tools_partial_consequence_additional at sdf df bfct_l term result in
+  produce_test_terminal test_terminal
+
+let load_Data_structure_Tools_partial_consequence_additional (type a) (type b) (at:(a,b) atom) sdf df bfct_l (term:(a,b) term) result =
+  let _,test_latex = test_Data_structure_Tools_partial_consequence_additional at sdf df bfct_l term result in
+  produce_test_latex test_latex
+
 
 (*************************************
          General function
@@ -1106,7 +1169,8 @@ let preload () =
   pre_load_tests data_IO_Term_Rewrite_rules_skeletons;
   pre_load_tests data_IO_Term_Rewrite_rules_generic_rewrite_rules_formula;
   pre_load_tests data_IO_Data_structure_Eq_implies;
-  pre_load_tests data_IO_Data_structure_Tools_partial_consequence
+  pre_load_tests data_IO_Data_structure_Tools_partial_consequence;
+  pre_load_tests data_IO_Data_structure_Tools_partial_consequence_additional
 
 let publish () =
   publish_tests data_IO_Term_Subst_unify;
@@ -1118,7 +1182,8 @@ let publish () =
   publish_tests data_IO_Term_Rewrite_rules_skeletons;
   publish_tests data_IO_Term_Rewrite_rules_generic_rewrite_rules_formula;
   publish_tests data_IO_Data_structure_Eq_implies;
-  publish_tests data_IO_Data_structure_Tools_partial_consequence
+  publish_tests data_IO_Data_structure_Tools_partial_consequence;
+  publish_tests data_IO_Data_structure_Tools_partial_consequence_additional
 
 let update () =
   update_Term_Subst_unify ();
@@ -1130,4 +1195,5 @@ let update () =
   update_Term_Rewrite_rules_skeletons ();
   update_Term_Rewrite_rules_generic_rewrite_rules_formula ();
   update_Data_structure_Eq_implies ();
-  update_Data_structure_Tools_partial_consequence ()
+  update_Data_structure_Tools_partial_consequence ();
+  update_Data_structure_Tools_partial_consequence_additional ()

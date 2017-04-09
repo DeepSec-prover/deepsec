@@ -13,26 +13,7 @@ type data_verification =
 
 (** {3 Functions to be tested} *)
 
-val data_verification_Term_Subst_unify : data_verification
-
-val data_verification_Term_Subst_is_matchable : data_verification
-
-val data_verification_Term_Subst_is_extended_by : data_verification
-
-val data_verification_Term_Subst_is_equal_equations : data_verification
-
-val data_verification_Term_Modulo_syntactic_equations_of_equations : data_verification
-
-val data_verification_Term_Rewrite_rules_normalise : data_verification
-
-val data_verification_Term_Rewrite_rules_skeletons : data_verification
-
-val data_verification_Term_Rewrite_rules_generic_rewrite_rules_formula : data_verification
-
-val data_verification_Data_structure_Eq_implies : data_verification
-
-val data_verification_Data_structure_Tools_partial_consequence : data_verification
-
+val all_data_verification : data_verification list
 
 (** {3 Verification of tests} *)
 

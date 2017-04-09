@@ -130,3 +130,11 @@ val data_IO_Data_structure_Tools_partial_consequence : data_IO
 val apply_Data_structure_Tools_partial_consequence : ('a, 'b) atom -> SDF.t -> DF.t -> ('a, 'b) term -> string
 
 val load_Data_structure_Tools_partial_consequence : ('a, 'b) atom -> SDF.t -> DF.t -> ('a, 'b) term -> (recipe * protocol_term) option -> string
+
+(** {3 Data_structure.Tools.partial_consequence_additional} *)
+
+val data_IO_Data_structure_Tools_partial_consequence_additional : data_IO
+
+val apply_Data_structure_Tools_partial_consequence_additional : ('a, 'b) atom -> SDF.t -> DF.t -> BasicFact.t list -> ('a, 'b) term -> string
+
+val load_Data_structure_Tools_partial_consequence_additional : ('a, 'b) atom -> SDF.t -> DF.t -> BasicFact.t list -> ('a, 'b) term -> (recipe * protocol_term) option -> string
