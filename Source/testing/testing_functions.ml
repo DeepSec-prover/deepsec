@@ -1097,7 +1097,7 @@ let load_Data_structure_Tools_partial_consequence (type a) (type b) (at:(a,b) at
   let _,test_latex = test_Data_structure_Tools_partial_consequence at sdf df term result in
   produce_test_latex test_latex
 
-(***** Data_structure.Tools.partial_consequence *****)
+(***** Data_structure.Tools.partial_consequence_additional *****)
 
 let data_IO_Data_structure_Tools_partial_consequence_additional =
   {

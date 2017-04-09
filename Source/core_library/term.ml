@@ -2739,6 +2739,10 @@ module type Uni =
 
     (** [find_protocol] {% $\Set$~$t$%} [f] returns [Some] {% $\xi$ if $(\xi,t) \in \Set$ %} and [f] {% $\xi$ %} returns [true]. Otherwise it returns [None].*)
     val find_protocol_term : t -> protocol_term -> (recipe -> bool) -> recipe option
+
+    (** [iter] {% $\Set$ %} [f] applies the function [f] to all pairs {% $(\xi,t) \in \Set$.
+        Warning : The order in which the function [iter] goes through the pairs of $\Set$ is unspecified. %}*)
+    val iter : t -> (recipe -> protocol_term -> unit) -> unit
   end
 
 module Tools_General (SDF: SDF) (DF: DF) = struct
@@ -3304,10 +3308,43 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
               (Some (term,t):(recipe * protocol_term) option)
         end
 
+  exception Found
+
+  let vars_occurs_in_df (type a) (type b) (at:(a,b) atom) df (x:(a,b) variable) =
+    try
+      DF.iter df (fun bfct ->
+        match at with
+          | Recipe ->
+              let xsnd = BasicFact.get_snd_ord_variable bfct in
+              if x = xsnd
+              then raise Found
+          | Protocol ->
+              let term = BasicFact.get_protocol_term bfct in
+              if var_occurs x term
+              then raise Found
+      );
+      false
+    with
+      | Found -> true
+
   let uniform_consequence sdf df uni term =
+    Config.debug (fun () ->
+      Uni.iter uni (fun recipe term ->
+        let xsnd_l = get_vars Recipe recipe
+        and xfst_l = get_vars Protocol term in
+        List.iter (fun x ->
+          if not (vars_occurs_in_df Recipe df x)
+          then Config.internal_error "[term.ml >> Tools_Subterm.uniform_consequence] The second-order variable in the uniformity set should be in DF."
+        ) xsnd_l;
+        List.iter (fun x ->
+          if not (vars_occurs_in_df Protocol df x)
+          then Config.internal_error "[term.ml >> Tools_Subterm.uniform_consequence] The first-order variable in the uniformity set should be in DF."
+        ) xfst_l;
+      );
+    );
 
     let rec mem_list = function
-      | [] -> Config.internal_error "[term.ml >> Consequence_Subterm.uniform_consequence] The list should not be empty"
+      | [] -> Config.internal_error "[term.ml >> Tools_Subterm.uniform_consequence] The list should not be empty"
       | [t] ->
           begin match mem_term t with
             | None -> None
@@ -3349,7 +3386,7 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
     Config.test (fun () -> !test_uniform_consequence sdf df uni term result);
     result
 
-  exception Found
+
 
   let is_df_solved df =
     try

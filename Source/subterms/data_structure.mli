@@ -301,6 +301,8 @@ module Uniformity_Set : sig
 
   (** {3 Iterator} *)
 
+  (** [iter] {% $\Set$ %} [f] applies the function [f] to all pairs {% $(\xi,t) \in \Set$.
+      Warning : The order in which the function [iter] goes through the pairs of $\Set$ is unspecified. %}*)
   val iter : t -> (recipe -> protocol_term -> unit) -> unit
 
   (** {3 Testing} *)
