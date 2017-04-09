@@ -26,7 +26,7 @@ OCAMLFLAGS = $(INCLUDES) $(V4OPTIONS) -w Ae $(INCLUDES_MOD)
 GENERATED_SOURCES_NAME = testing_grammar.ml testing_lexer.ml testing_grammar.mli
 GENERATED_SOURCES = $(GENERATED_SOURCES_NAME:%=$(SOURCE)testing/%)
 
-CORE_ML_NAME = config.ml display.ml term.ml
+CORE_ML_NAME = config.ml display.ml term.ml process.ml
 CORE_ML = $(CORE_ML_NAME:%.ml=$(SOURCE)core_library/%.ml)
 
 SUBTERMS_ML_NAME = data_structure.ml
