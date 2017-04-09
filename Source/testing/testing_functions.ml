@@ -405,6 +405,13 @@ let gather_in_DF df gather =
   DF.iter df (fun bfct -> acc_gather := gather_in_basic_fct bfct !acc_gather);
   !acc_gather
 
+let gather_in_Uniformity_Set uniset gather =
+  let acc_gather = ref gather in
+  Uniformity_Set.iter uniset (fun recipe term ->
+    acc_gather := gather_in_term Recipe recipe (gather_in_term Protocol term !acc_gather)
+  );
+  !acc_gather
+
 (*************************************
       Generic display functions
 **************************************)
@@ -494,6 +501,10 @@ let display_basic_deduction_fact_list out rho bfct_l =
   if bfct_l = []
   then emptyset out
   else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list (BasicFact.display out ~rho:rho) ", " bfct_l) (rcurlybracket out)
+
+let display_recipe_option out rho = function
+  | None -> bot out
+  | Some recipe -> display out ~rho:rho Recipe recipe
 
 (*************************************
       Functions to be tested
@@ -1154,36 +1165,87 @@ let load_Data_structure_Tools_partial_consequence_additional (type a) (type b) (
   let _,test_latex = test_Data_structure_Tools_partial_consequence_additional at sdf df bfct_l term result in
   produce_test_latex test_latex
 
+(***** Data_structure.Tools.uniform_consequence *****)
+
+let data_IO_Data_structure_Tools_uniform_consequence =
+  {
+    validated_tests = [];
+    tests_to_check = [];
+    additional_tests = [];
+
+    is_being_tested = true;
+
+    file = "data_structure_tools_uniform_consequence"
+  }
+
+let test_Data_structure_Tools_uniform_consequence sdf df uniset term result =
+  (**** Retreive the names, variables and axioms *****)
+  let gathering = gather_in_Uniformity_Set uniset (gather_in_SDF sdf (gather_in_DF df (gather_in_term Protocol term (gather_in_signature empty_gathering)))) in
+
+  (**** Generate the display renaming ****)
+  let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in
+
+  (**** Generate test_display for terminal *****)
+
+  let terminal_header, latex_header = header_terminal_and_latex true rho gathering in
+  let test_terminal =
+    { terminal_header with
+      inputs = [ (SDF.display Testing ~rho:rho sdf,Display); (DF.display Testing ~rho:rho df,Display); (Uniformity_Set.display Testing ~rho:rho uniset, Display); (display Testing ~rho:rho Protocol term,Inline) ];
+      output = ( display_recipe_option Testing rho result, Inline )
+    } in
+
+  let test_latex =
+    { latex_header with
+      inputs = [ (SDF.display Latex ~rho:rho sdf,Display); (DF.display Latex ~rho:rho df,Display); (Uniformity_Set.display Latex ~rho:rho uniset, Display); (display Latex ~rho:rho Protocol term,Inline) ];
+      output = ( display_recipe_option Latex rho result, Inline )
+    } in
+
+  test_terminal, test_latex
+
+let update_Data_structure_Tools_uniform_consequence () =
+  Tools.update_test_uniform_consequence (fun sdf df uniset term result ->
+    if data_IO_Data_structure_Tools_uniform_consequence.is_being_tested
+    then add_test (test_Data_structure_Tools_uniform_consequence sdf df uniset term result) data_IO_Data_structure_Tools_uniform_consequence
+  );
+  Tools.update_test_uniform_consequence (fun sdf df uniset term result ->
+    if data_IO_Data_structure_Tools_uniform_consequence.is_being_tested
+    then add_test (test_Data_structure_Tools_uniform_consequence sdf df uniset term result) data_IO_Data_structure_Tools_uniform_consequence
+  )
+
+let apply_Data_structure_Tools_uniform_consequence sdf df uniset term  =
+  let result = Tools.uniform_consequence sdf df uniset term in
+
+  let test_terminal,_ = test_Data_structure_Tools_uniform_consequence sdf df uniset term result in
+  produce_test_terminal test_terminal
+
+let load_Data_structure_Tools_uniform_consequence sdf df uniset term result =
+  let _,test_latex = test_Data_structure_Tools_uniform_consequence sdf df uniset term result in
+  produce_test_latex test_latex
+
+let list_data =
+  [
+    data_IO_Term_Subst_unify;
+    data_IO_Term_Subst_is_matchable;
+    data_IO_Term_Subst_is_extended_by;
+    data_IO_Term_Subst_is_equal_equations;
+    data_IO_Term_Modulo_syntactic_equations_of_equations;
+    data_IO_Term_Rewrite_rules_normalise;
+    data_IO_Term_Rewrite_rules_skeletons;
+    data_IO_Term_Rewrite_rules_generic_rewrite_rules_formula;
+    data_IO_Data_structure_Eq_implies;
+    data_IO_Data_structure_Tools_partial_consequence;
+    data_IO_Data_structure_Tools_partial_consequence_additional;
+    data_IO_Data_structure_Tools_uniform_consequence
+  ]
+
 
 (*************************************
          General function
 *************************************)
 
-let preload () =
-  pre_load_tests data_IO_Term_Subst_unify;
-  pre_load_tests data_IO_Term_Subst_is_matchable;
-  pre_load_tests data_IO_Term_Subst_is_extended_by;
-  pre_load_tests data_IO_Term_Subst_is_equal_equations;
-  pre_load_tests data_IO_Term_Modulo_syntactic_equations_of_equations;
-  pre_load_tests data_IO_Term_Rewrite_rules_normalise;
-  pre_load_tests data_IO_Term_Rewrite_rules_skeletons;
-  pre_load_tests data_IO_Term_Rewrite_rules_generic_rewrite_rules_formula;
-  pre_load_tests data_IO_Data_structure_Eq_implies;
-  pre_load_tests data_IO_Data_structure_Tools_partial_consequence;
-  pre_load_tests data_IO_Data_structure_Tools_partial_consequence_additional
+let preload () = List.iter (fun data -> pre_load_tests data) list_data
 
-let publish () =
-  publish_tests data_IO_Term_Subst_unify;
-  publish_tests data_IO_Term_Subst_is_matchable;
-  publish_tests data_IO_Term_Subst_is_extended_by;
-  publish_tests data_IO_Term_Subst_is_equal_equations;
-  publish_tests data_IO_Term_Modulo_syntactic_equations_of_equations;
-  publish_tests data_IO_Term_Rewrite_rules_normalise;
-  publish_tests data_IO_Term_Rewrite_rules_skeletons;
-  publish_tests data_IO_Term_Rewrite_rules_generic_rewrite_rules_formula;
-  publish_tests data_IO_Data_structure_Eq_implies;
-  publish_tests data_IO_Data_structure_Tools_partial_consequence;
-  publish_tests data_IO_Data_structure_Tools_partial_consequence_additional
+let publish () = List.iter (fun data -> publish_tests data) list_data
 
 let update () =
   update_Term_Subst_unify ();
@@ -1196,4 +1258,5 @@ let update () =
   update_Term_Rewrite_rules_generic_rewrite_rules_formula ();
   update_Data_structure_Eq_implies ();
   update_Data_structure_Tools_partial_consequence ();
-  update_Data_structure_Tools_partial_consequence_additional ()
+  update_Data_structure_Tools_partial_consequence_additional ();
+  update_Data_structure_Tools_uniform_consequence ()

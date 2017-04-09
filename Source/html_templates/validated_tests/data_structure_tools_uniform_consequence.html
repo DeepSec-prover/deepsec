@@ -39,23 +39,19 @@
 
         <div id="title">
           <div id="title-main">Testing</div>
-          <div id="title-sub">Validated tests for the function Term.Modulo.syntactic_equations_of_equations</div>
+          <div id="title-sub">Validated tests for the function Data_structure.Tools.uniform_consequence</div>
         </div>
 
       </div>
 
       <div id="content-text">
-
+        \( \newcommand{\Solved}{{\sf SDF}}
+            \newcommand{\Df}{{\sf DF}}
+            \newcommand{\Consequence}[1]{\rm{Conseq}(#1)}
+            \newcommand{\Set}{{\sf S}}
+        \)
         <p>
-          <code>syntactic_equations_of_equations l_eq</code> returns a set of substitutions that can be seen as a disjunction of substitution \( \sigma_1 \vee \ldots \vee \sigma_n\) such that
-          if <code>l_eq</code> is the list of equations corresponding to \(\bigwedge_{i=1}^m u_i =_{\mathcal{R}} v_i\) and \(V = \bigcup_{i=1}^m \mathit{vars}^1(u_i,v_i)\) then for all \(\sigma\),
-          \[
-            \sigma \models \bigwedge_{i=1}^m u_i =_{\mathcal{R}} v_i \mbox{ iff } \sigma \models \bigvee_{i=1}^n \exists E_i. \bigwedge_{ x \in \mathit{dom}(\sigma_i)} x =^? x\sigma_i
-          \]
-          where for all \(i \in {1,\ldots, n}, E_i = \mathit{vars}^1(\sigma_i) \setminus V\). Note that all the new variables
-          in the different substitutions are all existentially fresh.</p>
-        <p>
-          If the list of equations is always satisfiable (resp. unsatisfiable) then \(\top\) (resp. \(\bot\)) will be displayed as result.
+          <code>uniform_consequence</code> \(\Solved\) \(\Df\) \(\Set\) \(t\) returns \(\xi\) if \((\xi,t) \in \Set\) or if \(\forall \zeta. (\zeta,t) \not\in S\) and \((\xi,t) \in \Consequence{\Solved \cup \Df}\). Otherwise it returns \( \bot\).
         </p>
         <p>
           Note that we adopt the following convention:

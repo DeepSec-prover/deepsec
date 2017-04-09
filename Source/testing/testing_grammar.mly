@@ -48,6 +48,7 @@ open Testing_parser_functions
 
 %start parse_Data_structure_Eq_implies parse_Data_structure_Tools_partial_consequence
 %start parse_Data_structure_Tools_partial_consequence_additional
+%start parse_Data_structure_Tools_uniform_consequence
 
 %type <(Testing_parser_functions.parsing_mode -> string)> parse_Term_Subst_unify
 %type <(Testing_parser_functions.parsing_mode -> string)> parse_Term_Subst_is_matchable
@@ -61,6 +62,7 @@ open Testing_parser_functions
 %type <(Testing_parser_functions.parsing_mode -> string)> parse_Data_structure_Eq_implies
 %type <(Testing_parser_functions.parsing_mode -> string)> parse_Data_structure_Tools_partial_consequence
 %type <(Testing_parser_functions.parsing_mode -> string)> parse_Data_structure_Tools_partial_consequence_additional
+%type <(Testing_parser_functions.parsing_mode -> string)> parse_Data_structure_Tools_uniform_consequence
 
 %%
 /***********************************
@@ -358,6 +360,29 @@ parse_Data_structure_Tools_partial_consequence_additional:
               let result = parse_consequence $19 in
               Testing_functions.load_Data_structure_Tools_partial_consequence_additional Term.Recipe sdf df bfct_l term result
             else Testing_functions.apply_Data_structure_Tools_partial_consequence_additional Term.Recipe sdf df bfct_l term
+        )
+      }
+  | error
+      { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
+
+parse_Data_structure_Tools_uniform_consequence:
+  | header_of_test
+    INPUT DDOT sdf
+    INPUT DDOT df
+    INPUT DDOT uniformity_set
+    INPUT DDOT term
+    RESULT DDOT recipe_option
+      {
+        (fun mode -> $1 ();
+          let sdf = parse_SDF $4 in
+          let df = parse_DF $7 in
+          let uniset = parse_Uniformity_Set $10 in
+          let term = parse_term Term.Protocol $13 in
+          if mode = Load
+          then
+            let result = parse_recipe_option $16 in
+            Testing_functions.load_Data_structure_Tools_uniform_consequence sdf df uniset term result
+          else Testing_functions.apply_Data_structure_Tools_uniform_consequence sdf df uniset term
         )
       }
   | error
@@ -729,6 +754,22 @@ sub_df:
   | basic_deduction_fact COMMA sub_df
       { $1::$3 }
 
+/***********************************
+***        Uniformity_Set        ***
+************************************/
+
+uniformity_set:
+  | LCURL RCURL
+      { [] }
+  | LCURL sub_uniformity_set RCURL
+      { $2 }
+
+sub_uniformity_set:
+  | LPAR term COMMA term RPAR
+      { [($2,$4)] }
+  | LPAR term COMMA term RPAR COMMA sub_uniformity_set
+      { ($2,$4)::$7 }
+
 /********************************
 ***        Consequence        ***
 *********************************/
@@ -738,6 +779,12 @@ consequence:
       { None }
   | LPAR term COMMA term RPAR
       { Some ($2,$4) }
+
+recipe_option:
+  | BOT
+      { None }
+  | term
+      { Some $1 }
 
 /*************************
 ***       Terms        ***

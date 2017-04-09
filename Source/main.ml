@@ -93,6 +93,9 @@ let test_partial_consequence () =
   let bdf_2 = BasicFact.create _X_var b in
 
   let ax_1 = of_axiom (Axiom.create 1) in
+  let ax_2 = of_axiom (Axiom.create 2) in
+  let ax_3 = of_axiom (Axiom.create 3) in
+  let ax_4 = of_axiom (Axiom.create 4) in
 
   let ded_1 = Fact.create_deduction_fact ax_1 (apply_function h [a]) in
   let ded_2 = Fact.create_deduction_fact (apply_function dec [ax_1;_Y]) (apply_function f [a;x]) in
@@ -123,6 +126,18 @@ let test_partial_consequence () =
   let _ = Tools.partial_consequence Protocol sdf_3 df_2 t6 in
   let _ = Tools.partial_consequence Protocol sdf_3 df_2 t7 in
 
+  let uniset_0 = Uniformity_Set.empty in
+  let uniset_1 = Uniformity_Set.add uniset_0 ax_2 (apply_function h [b]) in
+  let uniset_2 = Uniformity_Set.add uniset_1 ax_3 (apply_function f [y;a]) in
+  let uniset_3 = Uniformity_Set.add uniset_2 ax_4 (apply_function f [a;y]) in
+
+  let _ = Tools.uniform_consequence sdf_3 df_2 uniset_3 t1 in
+  let _ = Tools.uniform_consequence sdf_3 df_2 uniset_3 t2 in
+  let _ = Tools.uniform_consequence sdf_3 df_2 uniset_3 t3 in
+  let _ = Tools.uniform_consequence sdf_3 df_2 uniset_3 t4 in
+  let _ = Tools.uniform_consequence sdf_3 df_2 uniset_3 t5 in
+  let _ = Tools.uniform_consequence sdf_3 df_2 uniset_3 t6 in
+  let _ = Tools.uniform_consequence sdf_3 df_2 uniset_3 t7 in
 
   let r1 = ax_1 in
   let r2 = apply_function dec [ax_1; _Y] in

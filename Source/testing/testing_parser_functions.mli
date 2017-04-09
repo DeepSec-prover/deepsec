@@ -97,4 +97,8 @@ val parse_SDF : deduction_fact list -> Data_structure.SDF.t
 
 val parse_DF : basic_deduction_fact list -> Data_structure.DF.t
 
+val parse_Uniformity_Set : (term * term) list -> Data_structure.Uniformity_Set.t
+
 val parse_consequence : (term * term) option -> (Term.recipe * Term.protocol_term) option
+
+val parse_recipe_option : term option -> Term.recipe option

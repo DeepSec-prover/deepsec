@@ -409,8 +409,21 @@ let parse_DF  =
     Data_structure.DF.add acc (parse_basic_deduction_fact bfct)
   ) Data_structure.DF.empty
 
+(*********** Uniformity_Set *********)
+
+let parse_Uniformity_Set =
+  List.fold_left (fun acc (recipe,term) ->
+    Data_structure.Uniformity_Set.add acc (parse_term Term.Recipe recipe) (parse_term Term.Protocol term)
+  ) Data_structure.Uniformity_Set.empty
+
 (*********** Consequence *********)
 
 let parse_consequence  = function
   | None -> None
   | Some(recipe,term) -> Some(parse_term Term.Recipe recipe, parse_term Term.Protocol term)
+
+(*********** Consequence *********)
+
+let parse_recipe_option  = function
+  | None -> None
+  | Some(recipe) -> Some(parse_term Term.Recipe recipe)

@@ -138,3 +138,11 @@ val data_IO_Data_structure_Tools_partial_consequence_additional : data_IO
 val apply_Data_structure_Tools_partial_consequence_additional : ('a, 'b) atom -> SDF.t -> DF.t -> BasicFact.t list -> ('a, 'b) term -> string
 
 val load_Data_structure_Tools_partial_consequence_additional : ('a, 'b) atom -> SDF.t -> DF.t -> BasicFact.t list -> ('a, 'b) term -> (recipe * protocol_term) option -> string
+
+(** {3 Data_structure.Tools.uniform_consequence} *)
+
+val data_IO_Data_structure_Tools_uniform_consequence : data_IO
+
+val apply_Data_structure_Tools_uniform_consequence : SDF.t -> DF.t -> Uniformity_Set.t -> protocol_term -> string
+
+val load_Data_structure_Tools_uniform_consequence : SDF.t -> DF.t -> Uniformity_Set.t -> protocol_term -> recipe option -> string

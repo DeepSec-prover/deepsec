@@ -88,6 +88,13 @@ let data_verification_Data_structure_Tools_partial_consequence_additional =
     parsing_function = Testing_grammar.parse_Data_structure_Tools_partial_consequence_additional
   }
 
+let data_verification_Data_structure_Tools_uniform_consequence =
+  {
+    data_IO = data_IO_Data_structure_Tools_uniform_consequence;
+    name = "Data_structure.Tools.uniform_consequence";
+    parsing_function = Testing_grammar.parse_Data_structure_Tools_uniform_consequence
+  }
+
 let all_data_verification =
   [
     data_verification_Term_Subst_unify;
@@ -100,7 +107,8 @@ let all_data_verification =
     data_verification_Term_Rewrite_rules_generic_rewrite_rules_formula;
     data_verification_Data_structure_Eq_implies;
     data_verification_Data_structure_Tools_partial_consequence;
-    data_verification_Data_structure_Tools_partial_consequence_additional
+    data_verification_Data_structure_Tools_partial_consequence_additional;
+    data_verification_Data_structure_Tools_uniform_consequence
   ]
 
 (** {3 Verification of tests} *)

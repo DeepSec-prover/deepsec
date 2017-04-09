@@ -345,7 +345,7 @@ module Tools : sig
   (** Similar to [partial_consequence] but consider the consequence with an additional set of basic deduction fact. *)
   val partial_consequence_additional : ('a, 'b) atom -> SDF.t -> DF.t -> BasicFact.t list -> ('a, 'b) term -> (recipe * protocol_term) option
 
-  (** [uniform_consequence] {% $\Solved$~$\Df$~$\Set$~$t$ returns %} returns [Some(]{% $\xi$%}[)] if {% $(\xi,t) \in \Set$ or if $\forall \zeta. (\zeta,t) \not\in S$ and $(\xi,t) \in \Consequence{\Solved \cup \Df}$. %}*)
+  (** [uniform_consequence] {% $\Solved$~$\Df$~$\Set$~$t$ %} returns [Some(]{% $\xi$%}[)] if {% $(\xi,t) \in \Set$ or if $\forall \zeta. (\zeta,t) \not\in S$ and $(\xi,t) \in \Consequence{\Solved \cup \Df}$. %}*)
   val uniform_consequence : SDF.t -> DF.t -> Uniformity_Set.t -> protocol_term -> recipe option
 
   (** {3 Others} *)
