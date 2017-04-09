@@ -205,6 +205,18 @@ let display_var_name_for_latex str index =
     let str' = Str.global_replace reg_latex_2 "\\_" str in
     Printf.sprintf "%s_{%d}" str' index
 
+let display_var_name_for_HTML str index =
+  if index = 0
+  then
+    if Str.string_match reg_latex_1 str 0
+    then
+      let body = Str.matched_group 1 str in
+      let number = Str.matched_group 2 str in
+      Printf.sprintf "%s<sub>%s</sub>" body number
+    else Str.global_replace reg_latex_2 "\\_" str
+  else
+    Printf.sprintf "%s<sub>%d</sub>" str index
+
 (************************************
 ***            Variables          ***
 *************************************)
@@ -295,14 +307,8 @@ module Variable = struct
           end
       | HTML ->
           begin match at,v_type with
-            | Recipe, true ->
-                if x.index = 0
-                then Printf.sprintf "%s:%d" x.label x.var_type
-                else Printf.sprintf "%s<sub>%d</sub>:%d" x.label x.index x.var_type
-            | _ , _ ->
-                if x.index = 0
-                then Printf.sprintf "%s" x.label
-                else Printf.sprintf "%s<sub>%d</sub>" x.label x.index
+            | Recipe, true -> Printf.sprintf "%s:%d" (display_var_name_for_HTML x.label x.index) x.var_type
+            | _ , _ -> display_var_name_for_HTML x.label x.index
           end
       | Latex ->
           begin match at,v_type with
@@ -491,6 +497,11 @@ module Variable = struct
 
     (******** Display *********)
 
+    let display_domain out ?(rho=None) at ?(v_type=false) domain =
+      if domain = []
+      then emptyset out
+      else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list (display out ~rho:rho at ~v_type:v_type) ", " domain) (rcurlybracket out)
+
     let display out ?(rho=None) at ?(v_type=false) subst =
       let display_element (x,t) =
         Printf.sprintf "%s %s %s" (display out ~rho:rho at ~v_type:v_type x) (rightarrow out) (display out ~rho:rho at ~v_type:v_type t)
@@ -499,6 +510,7 @@ module Variable = struct
       if subst = []
       then emptyset out
       else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list display_element "; " subst) (rcurlybracket out)
+
 
   end
 end
@@ -561,11 +573,8 @@ module Name = struct
           if n'.index_n = 0
           then Printf.sprintf "%s" n'.label_n
           else Printf.sprintf "%s_%d" n'.label_n n'.index_n
-      | HTML ->
-          if n'.index_n = 0
-          then Printf.sprintf "%s" n'.label_n
-          else Printf.sprintf "%s<sub>%d</sub>" n'.label_n n'.index_n
-      | Latex -> (display_var_name_for_latex n'.label_n n'.index_n)
+      | HTML -> display_var_name_for_HTML n'.label_n n'.index_n
+      | Latex -> display_var_name_for_latex n'.label_n n'.index_n
 
   (***** Renaming *****)
 
@@ -678,6 +687,12 @@ module Name = struct
         (* Unlink the variables of the renaming *)
         List.iter (fun (n,_) -> n.link_n <- NNoLink) rho;
         raise exc
+
+    let display_domain out ?(rho=None) domain =
+      if domain = []
+      then emptyset out
+      else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list (display out ~rho:rho) ", " domain) (rcurlybracket out)
+
 
     let display out ?(rho=None) subst =
       let display_element (x,t) =

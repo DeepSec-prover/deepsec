@@ -271,6 +271,7 @@ module Variable : sig
 
     val display : Display.output -> ?rho:display_renamings option -> ('a, 'b) atom -> ?v_type:bool -> ('a, 'b) t -> string
 
+    val display_domain : Display.output -> ?rho:display_renamings option -> ('a, 'b) atom -> ?v_type:bool -> ('a, 'b) domain -> string
   end
 
 end
@@ -379,6 +380,8 @@ module Name :  sig
     (** {4 Display} *)
 
     val display : Display.output -> ?rho:display_renamings option -> t -> string
+
+    val display_domain : Display.output -> ?rho:display_renamings option -> domain -> string
   end
 end
 

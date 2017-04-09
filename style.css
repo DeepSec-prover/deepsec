@@ -241,3 +241,87 @@ h3 {
     text-indent: 2em;
     text-align: justify;
 }
+
+
+/***************************
+      Process display
+***************************/
+
+/* The dag */
+
+.dag-name {
+    font-weight: bold;
+}
+
+}
+.dag svg {
+    border: 1px solid #999;
+    display: block;
+    max-height: 100%;
+}
+
+.dag text {
+    font-weight: 300;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serf;
+    font-size: 14px;
+}
+
+.dag rect {
+    fill: #fff;
+}
+
+.dag .node rect {
+    stroke-width: 2px;
+    stroke: #333;
+    fill: none;
+}
+
+.dag .edge rect {
+    fill: #fff;
+}
+
+.dag .edge path {
+    fill: none;
+    stroke: #333;
+    stroke-width: 1.5px;
+}
+
+/* The main process */
+
+.processTable{
+}
+
+
+.processTableRow {
+}
+
+.processDag {
+	border: 0px;
+	padding: 0px 0px;
+}
+
+.processRenaming {
+	border: 0px;
+	padding: 0px 0px 0px 30px;
+  vertical-align: top;
+}
+
+.expansedTable {
+  display: table;
+}
+
+.expansedBody {
+  display: table-row-group;
+}
+
+.expansedRow {
+	display: table-row;
+}
+
+.expansedLine {
+  display: table-cell;
+  white-space:nowrap;
+}
+.expansedProcess {
+  display: table-cell;
+}

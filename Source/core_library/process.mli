@@ -2,20 +2,40 @@
 
 open Term
 
+(** {2 Syntax *)
+
 type expansed_process =
   | Nil
   | Output of protocol_term * protocol_term * expansed_process
   | Input of protocol_term * fst_ord_variable * expansed_process
   | IfThenElse of protocol_term * protocol_term * expansed_process * expansed_process
+  | Let of protocol_term * protocol_term * expansed_process * expansed_process
   | New of name * expansed_process
-  | Par of expansed_process list
+  | Par of (expansed_process * int) list
   | Choice of expansed_process list
+
 
 type process
 
+(** {3 Generation} *)
+
 val process_of_expansed_process : expansed_process -> process
 
+(** {3 Access} *)
+
 val get_free_names : process -> name list
+
+(** {3 Display functions} *)
+
+val display_process_testing : display_renamings option -> process -> string
+
+val display_expansed_process_testing : display_renamings option -> expansed_process -> string
+
+val display_process_HTML : ?rho: display_renamings option -> ?name: string -> int -> process -> string * string
+
+val display_expansed_process_HTML : ?rho: display_renamings option -> ?margin_px:int -> expansed_process -> string
+
+(** {2 Semantics} *)
 
 type semantics =
   | Classic
