@@ -68,6 +68,8 @@ let fresh_id =
   in
   f
 
+let get_vars_Term = get_vars_with_list
+
 (******************************************
 ***          Tested function            ***
 *******************************************)
@@ -304,7 +306,30 @@ let rec is_equal_modulo_symbolic_derivation symb_1 symb_2 =
           is_equal_modulo_symbolic_derivation symb_pos1 symb_pos2
           &&
           is_equal_modulo_symbolic_derivation symb_neg1 symb_neg2
+      | ALet(t1,r1,c_then1,c_else1), ALet(t2,r2,c_then2,c_else2) ->
+          let fresh_variables_1 = Variable.Renaming.not_in_domain symb_1.var_renaming (get_vars_Term Protocol t1 (fun _ -> true) []) in
+          let fresh_variables_2 = Variable.Renaming.not_in_domain symb_2.var_renaming (get_vars_Term Protocol t2 (fun _ -> true) []) in
 
+          if List.length fresh_variables_1 = List.length fresh_variables_2 then
+            let new_v_rho_1,new_v_rho_2 =
+              List.fold_left2 (fun (acc_rho1,acc_rho2) x1 x2 ->
+                let new_x = Variable.fresh Protocol Free Variable.fst_ord_type in
+                Variable.Renaming.compose acc_rho1 x1 new_x, Variable.Renaming.compose acc_rho2 x2 new_x
+              ) (symb_1.var_renaming, symb_2.var_renaming) fresh_variables_1 fresh_variables_2
+            in
+            let (t1',r1') = apply_renamings_pair new_v_rho_1 symb_1.name_renaming (t1,r1)
+            and (t2',r2') = apply_renamings_pair new_v_rho_2 symb_2.name_renaming (t2,r2)
+
+            and symb_then1 = { symb_1 with content_mult = { content = c_then1; mult = 1 }; var_renaming = new_v_rho_1 }
+            and symb_then2 = { symb_2 with content_mult = { content = c_then2; mult = 1 }; var_renaming = new_v_rho_2 }
+            and symb_else1 = { symb_1 with content_mult = { content = c_else1; mult = 1 } }
+            and symb_else2 = { symb_1 with content_mult = { content = c_else2; mult = 1 } } in
+
+            is_equal t1' t2'
+            && is_equal r1' r2'
+            && is_equal_modulo_symbolic_derivation symb_then1 symb_then2
+            && is_equal_modulo_symbolic_derivation symb_else1 symb_else2
+          else false
       | ANew(k1,c1), ANew(k2,c2) ->
           let new_k = Name.fresh Bound in
           let rho_1 = Name.Renaming.compose symb_1.name_renaming k1 new_k
@@ -1069,16 +1094,14 @@ let rec next_output_classic_trace_content content v_rho n_rho proc equations dis
               ) [] disequations
             in
             let new_equations = Subst.compose equations equations_modulo in
-            let new_proc = add_content_in_proc cont_else 1 new_v_rho_else new_n_rho_else proc in
-            next_output_classic_trace_content cont_then new_v_rho_then new_n_rho_then new_proc new_equations new_disequations f_continuation
+            next_output_classic_trace_content cont_then new_v_rho_then new_n_rho_then proc new_equations new_disequations f_continuation
           with
           | Bot_disequations -> ()
         ) equations_modulo_list
       with
         | Modulo.Bot -> ()
         | Modulo.Top ->
-            let new_proc = add_content_in_proc cont_else 1 new_v_rho_else new_n_rho_else proc in
-            next_output_classic_trace_content cont_then new_v_rho_then new_n_rho_then new_proc equations disequations f_continuation
+            next_output_classic_trace_content cont_then new_v_rho_then new_n_rho_then proc equations disequations f_continuation
       end;
 
       (* Output is in the Else branch *)
@@ -1086,13 +1109,71 @@ let rec next_output_classic_trace_content content v_rho n_rho proc equations dis
       begin try
         let disequations_modulo = Modulo.syntactic_disequations_of_disequations (Modulo.create_disequation new_t new_r) in
         let new_disequations = disequations_modulo @ disequations in
-        let new_proc = add_content_in_proc cont_then 1 new_v_rho_then new_n_rho_then proc in
-        next_output_classic_trace_content cont_else new_v_rho_else new_n_rho_else new_proc equations new_disequations f_continuation
+        next_output_classic_trace_content cont_else new_v_rho_else new_n_rho_else proc equations new_disequations f_continuation
       with
         | Modulo.Bot -> ()
         | Modulo.Top ->
-            let new_proc = add_content_in_proc cont_then 1 new_v_rho_then new_n_rho_then proc in
-            next_output_classic_trace_content cont_else new_v_rho_else new_n_rho_else new_proc equations disequations f_continuation
+            next_output_classic_trace_content cont_else new_v_rho_else new_n_rho_else proc equations disequations f_continuation
+      end
+  | ALet(t,r,cont_then,cont_else) ->
+      let fresh_variables = Variable.Renaming.not_in_domain v_rho (get_vars_Term Protocol t (fun _ -> true) []) in
+      let new_v_rho_then, new_v_rho_else =
+        List.fold_left (fun (acc_rho_then,acc_rho_else) x ->
+          let new_x_then = Variable.fresh_from x in
+          let new_x_else = Variable.fresh Protocol Universal Variable.fst_ord_type in
+
+          Variable.Renaming.compose acc_rho_then x new_x_then, Variable.Renaming.compose acc_rho_else x new_x_else
+        ) (v_rho,v_rho) fresh_variables
+      in
+
+      let (t_then,r_then) = apply_renamings_pair new_v_rho_then n_rho (t,r)  in
+      let (t_else,r_else) = apply_renamings_pair new_v_rho_else n_rho (t,r) in
+
+      let (new_t_then,new_r_then) = Subst.apply equations (t_then,r_then) (fun (x,y) f -> f x, f y) in
+      let (new_t_else,new_r_else) = Subst.apply equations (t_else,r_else) (fun (x,y) f -> f x, f y) in
+
+      let new_n_rho_then = Name.Renaming.restrict n_rho cont_then.bound_name
+      and new_n_rho_else = Name.Renaming.restrict n_rho cont_else.bound_name
+      and new_v_rho_then = Variable.Renaming.restrict new_v_rho_then cont_then.bound_var
+      and new_v_rho_else = Variable.Renaming.restrict v_rho cont_else.bound_var in
+
+      (* Output is in the Then branch *)
+
+      begin try
+        let equations_modulo_list = Modulo.syntactic_equations_of_equations [Modulo.create_equation new_t_then new_r_then] in
+        List.iter (fun equations_modulo ->
+          try
+            let new_disequations =
+              List.fold_left (fun acc diseq ->
+                let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
+                if Diseq.is_top new_diseq
+                then acc
+                else if Diseq.is_bot new_diseq
+                then raise Bot_disequations
+                else new_diseq::acc
+              ) [] disequations
+            in
+            let new_equations = Subst.compose equations equations_modulo in
+            next_output_classic_trace_content cont_then new_v_rho_then new_n_rho_then proc new_equations new_disequations f_continuation
+          with
+          | Bot_disequations -> ()
+        ) equations_modulo_list
+      with
+        | Modulo.Bot -> ()
+        | Modulo.Top ->
+            next_output_classic_trace_content cont_then new_v_rho_then new_n_rho_then proc equations disequations f_continuation
+      end;
+
+      (* Output is in the Else branch *)
+
+      begin try
+        let disequations_modulo = Modulo.syntactic_disequations_of_disequations (Modulo.create_disequation new_t_else new_r_else) in
+        let new_disequations = disequations_modulo @ disequations in
+        next_output_classic_trace_content cont_else new_v_rho_else new_n_rho_else proc equations new_disequations f_continuation
+      with
+        | Modulo.Bot -> ()
+        | Modulo.Top ->
+            next_output_classic_trace_content cont_else new_v_rho_else new_n_rho_else proc equations disequations f_continuation
       end
   | ANew(n,cont) ->
       let new_n = Name.fresh_from n in
@@ -1294,6 +1375,66 @@ and next_input_classic_trace_content content v_rho n_rho proc equations disequat
         | Modulo.Top ->
             let new_proc = add_content_in_proc cont_then 1 new_v_rho_then new_n_rho_then proc in
             next_input_classic_trace_content cont_else new_v_rho_else new_n_rho_else new_proc equations disequations f_continuation
+      end
+  | ALet(t,r,cont_then,cont_else) ->
+      let fresh_variables = Variable.Renaming.not_in_domain v_rho (get_vars_Term Protocol t (fun _ -> true) []) in
+      let new_v_rho_then, new_v_rho_else =
+        List.fold_left (fun (acc_rho_then,acc_rho_else) x ->
+          let new_x_then = Variable.fresh_from x in
+          let new_x_else = Variable.fresh Protocol Universal Variable.fst_ord_type in
+
+          Variable.Renaming.compose acc_rho_then x new_x_then, Variable.Renaming.compose acc_rho_else x new_x_else
+        ) (v_rho,v_rho) fresh_variables
+      in
+
+      let (t_then,r_then) = apply_renamings_pair new_v_rho_then n_rho (t,r)  in
+      let (t_else,r_else) = apply_renamings_pair new_v_rho_else n_rho (t,r) in
+
+      let (new_t_then,new_r_then) = Subst.apply equations (t_then,r_then) (fun (x,y) f -> f x, f y) in
+      let (new_t_else,new_r_else) = Subst.apply equations (t_else,r_else) (fun (x,y) f -> f x, f y) in
+
+      let new_n_rho_then = Name.Renaming.restrict n_rho cont_then.bound_name
+      and new_n_rho_else = Name.Renaming.restrict n_rho cont_else.bound_name
+      and new_v_rho_then = Variable.Renaming.restrict new_v_rho_then cont_then.bound_var
+      and new_v_rho_else = Variable.Renaming.restrict v_rho cont_else.bound_var in
+
+      (* Output is in the Then branch *)
+
+      begin try
+        let equations_modulo_list = Modulo.syntactic_equations_of_equations [Modulo.create_equation new_t_then new_r_then] in
+        List.iter (fun equations_modulo ->
+          try
+            let new_disequations =
+              List.fold_left (fun acc diseq ->
+                let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
+                if Diseq.is_top new_diseq
+                then acc
+                else if Diseq.is_bot new_diseq
+                then raise Bot_disequations
+                else new_diseq::acc
+              ) [] disequations
+            in
+            let new_equations = Subst.compose equations equations_modulo in
+            next_input_classic_trace_content cont_then new_v_rho_then new_n_rho_then proc new_equations new_disequations f_continuation
+          with
+          | Bot_disequations -> ()
+        ) equations_modulo_list
+      with
+        | Modulo.Bot -> ()
+        | Modulo.Top ->
+            next_input_classic_trace_content cont_then new_v_rho_then new_n_rho_then proc equations disequations f_continuation
+      end;
+
+      (* Output is in the Else branch *)
+
+      begin try
+        let disequations_modulo = Modulo.syntactic_disequations_of_disequations (Modulo.create_disequation new_t_else new_r_else) in
+        let new_disequations = disequations_modulo @ disequations in
+        next_input_classic_trace_content cont_else new_v_rho_else new_n_rho_else proc equations new_disequations f_continuation
+      with
+        | Modulo.Bot -> ()
+        | Modulo.Top ->
+            next_input_classic_trace_content cont_else new_v_rho_else new_n_rho_else proc equations disequations f_continuation
       end
   | ANew(n,cont) ->
       let new_n = Name.fresh_from n in

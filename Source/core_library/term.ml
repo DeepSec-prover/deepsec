@@ -404,6 +404,12 @@ module Variable = struct
 
     (******* Operators ********)
 
+    let not_in_domain rho v_list =
+      List.iter (fun (v,_) -> v.link <- FLink) rho;
+      let result = List.filter (fun v -> v.link = NoLink) v_list in
+      List.iter (fun (v,_) -> v.link <- NoLink) rho;
+      result
+
     let of_list l = l
 
     let restrict rho domain =

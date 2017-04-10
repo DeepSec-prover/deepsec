@@ -130,7 +130,7 @@ without_testing:
 	ocamllex $<
 
 .mly.ml:
-	ocamlyacc $<
+	ocamlyacc -v $<
 
 ### Dependencies
 

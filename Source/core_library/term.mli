@@ -248,6 +248,9 @@ module Variable : sig
     (** Checks whether the two renamings are the same. *)
     val is_equal : ('a, 'b) atom -> ('a, 'b) t -> ('a, 'b) t -> bool
 
+    (** [not_in_domain] {% $\rho$~$S$ %} returns {% $S \setminus \Dom{\rho}$ %}.*)
+    val not_in_domain : ('a, 'b) t -> ('a, 'b) variable list -> ('a, 'b) variable list
+
     (** {4 Operators} *)
 
     (** Generates a domain from a list of variables. *)

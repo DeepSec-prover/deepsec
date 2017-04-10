@@ -900,8 +900,8 @@ content:
 renaming:
   | LCURL RCURL
       { [] }
-  | sub_renaming
-      { $1 }
+  | LCURL sub_renaming RCURL
+      { $2 }
 
 sub_renaming:
   | ident RIGHTARROW ident
