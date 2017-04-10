@@ -1,5 +1,6 @@
 open Term
 open Data_structure
+open Process
 
 (** Rewriting system **)
 
@@ -63,9 +64,11 @@ let z = of_variable z_var
 
 let a_name = Name.fresh_with_label Public "a"
 let b_name = Name.fresh_with_label Public "b"
+let c_name = Name.fresh_with_label Public "c"
 
 let a = of_name a_name
 let b = of_name b_name
+let c = of_name c_name
 
 let ded_1 = Fact.create_deduction_fact (of_axiom (Axiom.create 2)) (apply_function aenc [a;y])
 let ded_2 = Fact.create_deduction_fact (of_axiom (Axiom.create 2)) (apply_function aenc [a;b])
@@ -178,6 +181,55 @@ let test_partial_consequence () =
   let _ = Tools.partial_consequence_additional Recipe sdf_3 df_2 [bdf_3] r7 in
   ()
 
+(******* Tests of Process.of_expansed_process ******)
+
+let test_of_expansed_process () =
+  let x_var = Variable.fresh Protocol Free Variable.fst_ord_type in
+
+  let k_name = Name.fresh_with_label Bound "k_1" in
+  let k'_name = Name.fresh_with_label Bound "k_2" in
+  let k''_name = Name.fresh_with_label Bound "k_3" in
+
+  let k = of_name k_name in
+  let k' = of_name k'_name in
+  let k'' = of_name k''_name in
+
+  let t1 = apply_function f [a;k] in
+  let t2 = apply_function f [a;k'] in
+  let t3 = apply_function f [b;k''] in
+  let t4 = apply_function g [a;b] in
+
+  let proc_expansed_1 =
+    Par [
+      (New (k_name,
+        Input (c,x_var, Output(c,t1,
+          Output(c,t4, Nil)))),2);
+      (New (k'_name,
+        Output (c,t2,
+          Output(c,t4, Nil))),1);
+      (New (k''_name,
+        Output (c,t3,
+          Output(c,t4, Nil))),1)
+    ]
+  in
+  let proc_expansed_2 =
+    Par [
+      (New (k_name,
+        Output (c,t1,
+          Output(c,t4, Nil))),1);
+      (New (k'_name,
+        Output (c,t2,
+          Output(c,t4, Nil))),4);
+      (New (k''_name,
+        Output (c,t3,
+          Output(c,t4, Nil))),2)
+    ]
+  in
+  Process.initialise ();
+  let _ = of_expansed_process proc_expansed_1 in
+  Process.initialise ();
+  let _ = of_expansed_process proc_expansed_2 in
+  ()
 
 let _ =
   Testing_load_verify.load ();
@@ -199,6 +251,8 @@ let _ =
   test_generic ded_3 dec 1;
 
   test_partial_consequence ();
+
+  test_of_expansed_process ();
 
   Testing_functions.publish ();
   Testing_load_verify.publish_index ()

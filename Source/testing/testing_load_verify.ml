@@ -98,7 +98,7 @@ let data_verification_Data_structure_Tools_uniform_consequence =
 let data_verification_Process_of_expansed_process =
   {
     data_IO = data_IO_Process_of_expansed_process;
-    name = "Process.of_expaned_process";
+    name = "Process.of_expansed_process";
     parsing_function = Testing_grammar.parse_Process_of_expansed_process
   }
 
@@ -131,6 +131,7 @@ let verify_function data_verif =
   and faulty_tests = ref [] in
 
   List.iter (fun (valid_test,_) ->
+    Process.initialise ();
     let lexbuf = Lexing.from_string valid_test in
     match (data_verif.parsing_function Testing_lexer.token lexbuf) Verify with
       | RLoad _ -> Config.internal_error "[testing_load_verify.ml >> verify_function] It should be a result for verify."
@@ -165,16 +166,18 @@ let load_function data_verif =
 
   data_verif.data_IO.validated_tests <-
     List.mapi (fun i (terminal_test,_) ->
+      Process.initialise ();
       let lexbuf = Lexing.from_string terminal_test in
-      match (data_verif.parsing_function Testing_lexer.token lexbuf) (Load i) with
+      match (data_verif.parsing_function Testing_lexer.token lexbuf) (Load (i+1)) with
         | RVerify _ -> Config.internal_error "[testing_load_verify.ml >> load_function] It should be a result for loading."
         | RLoad latex_test -> (terminal_test,latex_test)
     ) data_verif.data_IO.validated_tests;
 
   data_verif.data_IO.tests_to_check <-
     List.mapi (fun i (terminal_test,_) ->
+      Process.initialise ();
       let lexbuf = Lexing.from_string terminal_test in
-      match (data_verif.parsing_function Testing_lexer.token lexbuf) (Load i) with
+      match (data_verif.parsing_function Testing_lexer.token lexbuf) (Load (i+1)) with
         | RVerify _ -> Config.internal_error "[testing_load_verify.ml >> load_function] It should be a result for loading."
         | RLoad latex_test -> (terminal_test,latex_test)
     ) data_verif.data_IO.tests_to_check

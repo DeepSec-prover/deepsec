@@ -290,13 +290,9 @@ let publish_validated_tests data =
 
       List.iter (fun (_,html_code) -> match html_code with
         | NoScript _ -> Config.internal_error "[testing_function >> publish_validated_tests] No script when there should be (2)"
-        | Script(_,script,_) -> Printf.fprintf out_script "%s\n" script
-      ) data.tests_to_check;
-
-      List.iter (fun (_,html_code) -> match html_code with
-        | NoScript _ -> Config.internal_error "[testing_function >> publish_validated_tests] No script when there should be (3)"
-        | Script(_,script,_) -> Printf.fprintf out_script "%s\n" script
-      ) data.additional_tests;
+        | Script(_,script,_) ->
+            Printf.fprintf out_script "%s\n" script
+      ) data.validated_tests;
 
       close_out out_script
     end
@@ -1393,6 +1389,7 @@ let test_Process_of_expansed_process process result =
     } in
 
   let test_latex i =
+
     let (html_result,script_result) = Process.display_process_HTML ~rho:rho ~id_rho:id_rho ~name:"Result process" (string_of_int i) result in
 
     let test_latex =

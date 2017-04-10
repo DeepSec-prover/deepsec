@@ -547,9 +547,9 @@ let display_action_HTML rho = function
   | ANil -> "0"
   | AOut(ch,t,_) -> Printf.sprintf "out(%s,%s)" (display HTML ~rho:rho Protocol ch) (display HTML ~rho:rho Protocol t)
   | AIn(ch,x,_) -> Printf.sprintf "in(%s,%s)" (display HTML ~rho:rho Protocol ch) (Variable.display HTML ~rho:rho Protocol x)
-  | ATest(t1,t2,_,_) -> Printf.sprintf "if %s %s %s" (display HTML ~rho:rho Protocol t1) (eqs HTML) (display HTML ~rho:rho Protocol t2)
-  | ALet(t1,t2,_,_) -> Printf.sprintf "let %s %s %s" (display HTML ~rho:rho Protocol t1) (eqs HTML) (display HTML ~rho:rho Protocol t2)
-  | ANew(k,_) -> Printf.sprintf "new %s" (Name.display HTML ~rho:rho k)
+  | ATest(t1,t2,_,_) -> Printf.sprintf "if&nbsp;%s&nbsp;%s&nbsp;%s" (display HTML ~rho:rho Protocol t1) (eqs HTML) (display HTML ~rho:rho Protocol t2)
+  | ALet(t1,t2,_,_) -> Printf.sprintf "let&nbsp;%s&nbsp;%s&nbsp;%s" (display HTML ~rho:rho Protocol t1) (eqs HTML) (display HTML ~rho:rho Protocol t2)
+  | ANew(k,_) -> Printf.sprintf "new&nbsp;%s" (Name.display HTML ~rho:rho k)
   | APar(_) -> "|"
   | AChoice(_) -> "+"
 
@@ -647,7 +647,7 @@ let display_process_HTML ?(rho=None) ?(id_rho=(fun x -> x)) ?(name="Process") id
     str := Printf.sprintf "%s        links: [\n" !str;
     List.iter (fun c -> str := Printf.sprintf "%s%s" !str (display_links_from_content_HTML id_rho c)) list_contents;
     str := Printf.sprintf "%s%s" !str (display_renaming_links_HTML id_rho process);
-    str := Printf.sprintf "        ]\n    }\n);\n";
+    str := Printf.sprintf "%s        ]\n    }\n);\n" !str;
     !str
   in
 
