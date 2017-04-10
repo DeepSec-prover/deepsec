@@ -19,7 +19,7 @@ type process
 
 (** {3 Generation} *)
 
-val process_of_expansed_process : expansed_process -> process
+val of_expansed_process : expansed_process -> process
 
 (** {3 Access} *)
 
@@ -34,6 +34,10 @@ val display_expansed_process_testing : display_renamings option -> expansed_proc
 val display_process_HTML : ?rho: display_renamings option -> ?name: string -> int -> process -> string * string
 
 val display_expansed_process_HTML : ?rho: display_renamings option -> ?margin_px:int -> expansed_process -> string
+
+(** {3 Tested function} *)
+
+val update_test_of_expansed_process: (expansed_process -> process  -> unit) -> unit
 
 (** {2 Semantics} *)
 

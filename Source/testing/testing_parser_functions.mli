@@ -12,8 +12,14 @@ type term =
   | Proj of int * int * term * int
 
 type parsing_mode =
-  | Load
+  | Load of int
   | Verify
+
+type result_parsing =
+  | RLoad of Testing_functions.html_code
+  | RVerify of string
+
+type parser = parsing_mode -> result_parsing
 
 type 'a top_bot =
   | Top

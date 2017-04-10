@@ -50,19 +50,19 @@ open Testing_parser_functions
 %start parse_Data_structure_Tools_partial_consequence_additional
 %start parse_Data_structure_Tools_uniform_consequence
 
-%type <(Testing_parser_functions.parsing_mode -> string)> parse_Term_Subst_unify
-%type <(Testing_parser_functions.parsing_mode -> string)> parse_Term_Subst_is_matchable
-%type <(Testing_parser_functions.parsing_mode -> string)> parse_Term_Subst_is_extended_by
-%type <(Testing_parser_functions.parsing_mode -> string)> parse_Term_Subst_is_equal_equations
-%type <(Testing_parser_functions.parsing_mode -> string)> parse_Term_Modulo_syntactic_equations_of_equations
-%type <(Testing_parser_functions.parsing_mode -> string)> parse_Term_Rewrite_rules_normalise
-%type <(Testing_parser_functions.parsing_mode -> string)> parse_Term_Rewrite_rules_skeletons
-%type <(Testing_parser_functions.parsing_mode -> string)> parse_Term_Rewrite_rules_generic_rewrite_rules_formula
+%type <(Testing_parser_functions.parser)> parse_Term_Subst_unify
+%type <(Testing_parser_functions.parser)> parse_Term_Subst_is_matchable
+%type <(Testing_parser_functions.parser)> parse_Term_Subst_is_extended_by
+%type <(Testing_parser_functions.parser)> parse_Term_Subst_is_equal_equations
+%type <(Testing_parser_functions.parser)> parse_Term_Modulo_syntactic_equations_of_equations
+%type <(Testing_parser_functions.parser)> parse_Term_Rewrite_rules_normalise
+%type <(Testing_parser_functions.parser)> parse_Term_Rewrite_rules_skeletons
+%type <(Testing_parser_functions.parser)> parse_Term_Rewrite_rules_generic_rewrite_rules_formula
 
-%type <(Testing_parser_functions.parsing_mode -> string)> parse_Data_structure_Eq_implies
-%type <(Testing_parser_functions.parsing_mode -> string)> parse_Data_structure_Tools_partial_consequence
-%type <(Testing_parser_functions.parsing_mode -> string)> parse_Data_structure_Tools_partial_consequence_additional
-%type <(Testing_parser_functions.parsing_mode -> string)> parse_Data_structure_Tools_uniform_consequence
+%type <(Testing_parser_functions.parser)> parse_Data_structure_Eq_implies
+%type <(Testing_parser_functions.parser)> parse_Data_structure_Tools_partial_consequence
+%type <(Testing_parser_functions.parser)> parse_Data_structure_Tools_partial_consequence_additional
+%type <(Testing_parser_functions.parser)> parse_Data_structure_Tools_uniform_consequence
 
 %%
 /***********************************
@@ -98,18 +98,20 @@ parse_Term_Subst_unify:
           if $4 = true
           then
             let eq_list = parse_syntactic_equation_list Term.Protocol $7 in
-            if mode = Load
-            then
-              let result = parse_substitution_option Term.Protocol $10 in
-              Testing_functions.load_Term_Subst_unify Term.Protocol eq_list result
-            else Testing_functions.apply_Term_Subst_unify Term.Protocol eq_list
+            match mode with
+              | Load i ->
+                  let result = parse_substitution_option Term.Protocol $10 in
+                  RLoad(Testing_functions.load_Term_Subst_unify i Term.Protocol eq_list result)
+              | Verify ->
+                  RVerify (Testing_functions.apply_Term_Subst_unify Term.Protocol eq_list)
           else
             let eq_list = parse_syntactic_equation_list Term.Recipe $7 in
-            if mode = Load
-            then
-              let result = parse_substitution_option Term.Recipe $10 in
-              Testing_functions.load_Term_Subst_unify Term.Recipe eq_list result
-            else Testing_functions.apply_Term_Subst_unify Term.Recipe eq_list
+            match mode with
+              | Load i ->
+                  let result = parse_substitution_option Term.Recipe $10 in
+                  RLoad (Testing_functions.load_Term_Subst_unify i Term.Recipe eq_list result)
+              | Verify ->
+                  RVerify (Testing_functions.apply_Term_Subst_unify Term.Recipe eq_list)
         )
       }
   | error
@@ -127,15 +129,15 @@ parse_Term_Subst_is_matchable:
           then
             let list1 = parse_term_list Term.Protocol $7 in
             let list2 = parse_term_list Term.Protocol $10 in
-            if mode = Load
-            then Testing_functions.load_Term_Subst_is_matchable Term.Protocol list1 list2 $13
-            else Testing_functions.apply_Term_Subst_is_matchable Term.Protocol list1 list2
+            match mode with
+              | Load i -> RLoad (Testing_functions.load_Term_Subst_is_matchable i Term.Protocol list1 list2 $13)
+              | Verify -> RVerify (Testing_functions.apply_Term_Subst_is_matchable Term.Protocol list1 list2)
           else
             let list1 = parse_term_list Term.Recipe $7 in
             let list2 = parse_term_list Term.Recipe $10 in
-            if mode = Load
-            then Testing_functions.load_Term_Subst_is_matchable Term.Recipe list1 list2 $13
-            else Testing_functions.apply_Term_Subst_is_matchable Term.Recipe list1 list2
+            match mode with
+              | Load i -> RLoad (Testing_functions.load_Term_Subst_is_matchable i Term.Recipe list1 list2 $13)
+              | Verify -> RVerify (Testing_functions.apply_Term_Subst_is_matchable Term.Recipe list1 list2)
         )
       }
   | error
@@ -154,15 +156,15 @@ parse_Term_Subst_is_extended_by:
           then
             let subst1 = parse_substitution Term.Protocol $7 in
             let subst2 = parse_substitution Term.Protocol $10 in
-            if mode = Load
-            then Testing_functions.load_Term_Subst_is_extended_by Term.Protocol subst1 subst2 $13
-            else Testing_functions.apply_Term_Subst_is_extended_by Term.Protocol subst1 subst2
+            match mode with
+              | Load i -> RLoad (Testing_functions.load_Term_Subst_is_extended_by i Term.Protocol subst1 subst2 $13)
+              | Verify -> RVerify (Testing_functions.apply_Term_Subst_is_extended_by Term.Protocol subst1 subst2)
           else
             let subst1 = parse_substitution Term.Recipe $7 in
             let subst2 = parse_substitution Term.Recipe $10 in
-            if mode = Load
-            then Testing_functions.load_Term_Subst_is_extended_by Term.Recipe subst1 subst2 $13
-            else Testing_functions.apply_Term_Subst_is_extended_by Term.Recipe subst1 subst2
+            match mode with
+              | Load i -> RLoad (Testing_functions.load_Term_Subst_is_extended_by i Term.Recipe subst1 subst2 $13)
+              | Verify -> RVerify (Testing_functions.apply_Term_Subst_is_extended_by Term.Recipe subst1 subst2)
         )
       }
   | error
@@ -180,15 +182,15 @@ parse_Term_Subst_is_equal_equations:
           then
             let subst1 = parse_substitution Term.Protocol $7 in
             let subst2 = parse_substitution Term.Protocol $10 in
-            if mode = Load
-            then Testing_functions.load_Term_Subst_is_equal_equations Term.Protocol subst1 subst2 $13
-            else Testing_functions.apply_Term_Subst_is_equal_equations Term.Protocol subst1 subst2
+            match mode with
+              | Load i -> RLoad (Testing_functions.load_Term_Subst_is_equal_equations i Term.Protocol subst1 subst2 $13)
+              | Verify -> RVerify (Testing_functions.apply_Term_Subst_is_equal_equations Term.Protocol subst1 subst2)
           else
             let subst1 = parse_substitution Term.Recipe $7 in
             let subst2 = parse_substitution Term.Recipe $10 in
-            if mode = Load
-            then Testing_functions.load_Term_Subst_is_equal_equations Term.Recipe subst1 subst2 $13
-            else Testing_functions.apply_Term_Subst_is_equal_equations Term.Recipe subst1 subst2
+            match mode with
+              | Load i -> RLoad (Testing_functions.load_Term_Subst_is_equal_equations i Term.Recipe subst1 subst2 $13)
+              | Verify -> RVerify (Testing_functions.apply_Term_Subst_is_equal_equations Term.Recipe subst1 subst2)
         )
       }
   | error
@@ -201,11 +203,11 @@ parse_Term_Modulo_syntactic_equations_of_equations:
       {
         (fun mode -> $1 ();
           let eq_list = parse_equation_list $4 in
-          if mode = Load
-          then
-            let result = parse_substitution_list_result $7 in
-            Testing_functions.load_Term_Modulo_syntactic_equations_of_equations eq_list result
-          else Testing_functions.apply_Term_Modulo_syntactic_equations_of_equations eq_list
+          match mode with
+            | Load i ->
+                let result = parse_substitution_list_result $7 in
+                RLoad(Testing_functions.load_Term_Modulo_syntactic_equations_of_equations i eq_list result)
+            | Verify -> RVerify (Testing_functions.apply_Term_Modulo_syntactic_equations_of_equations eq_list)
         )
       }
   | error
@@ -218,11 +220,11 @@ parse_Term_Rewrite_rules_normalise:
       {
         (fun mode -> $1 ();
           let term = parse_term Term.Protocol $4 in
-          if mode = Load
-          then
-            let result = parse_term Term.Protocol $7 in
-            Testing_functions.load_Term_Rewrite_rules_normalise term result
-          else Testing_functions.apply_Term_Rewrite_rules_normalise term
+          match mode with
+            | Load i ->
+                let result = parse_term Term.Protocol $7 in
+                RLoad(Testing_functions.load_Term_Rewrite_rules_normalise i term result)
+            | Verify -> RVerify (Testing_functions.apply_Term_Rewrite_rules_normalise term)
         )
       }
   | error
@@ -238,11 +240,11 @@ parse_Term_Rewrite_rules_skeletons:
         (fun mode -> $1 ();
           let term = parse_term Term.Protocol $4 in
           let symbol = parse_symbol $7 in
-          if mode = Load
-          then
-            let result = parse_skeleton_list $13 in
-            Testing_functions.load_Term_Rewrite_rules_skeletons term symbol $10 result
-          else Testing_functions.apply_Term_Rewrite_rules_skeletons term symbol $10
+          match mode with
+            | Load i ->
+                let result = parse_skeleton_list $13 in
+                RLoad(Testing_functions.load_Term_Rewrite_rules_skeletons i term symbol $10 result)
+            | Verify -> RVerify(Testing_functions.apply_Term_Rewrite_rules_skeletons term symbol $10)
         )
       }
   | error
@@ -257,11 +259,11 @@ parse_Term_Rewrite_rules_generic_rewrite_rules_formula:
         (fun mode -> $1 ();
           let ded_fct = parse_deduction_fact $4 in
           let skel = parse_skeleton $7 in
-          if mode = Load
-          then
-            let result = parse_deduction_formula_list $10 in
-            Testing_functions.load_Term_Rewrite_rules_generic_rewrite_rules_formula ded_fct skel result
-          else Testing_functions.apply_Term_Rewrite_rules_generic_rewrite_rules_formula ded_fct skel
+          match mode with
+            | Load i ->
+                let result = parse_deduction_formula_list $10 in
+                RLoad(Testing_functions.load_Term_Rewrite_rules_generic_rewrite_rules_formula i ded_fct skel result)
+            | Verify -> RVerify(Testing_functions.apply_Term_Rewrite_rules_generic_rewrite_rules_formula ded_fct skel)
         )
       }
   | error
@@ -281,16 +283,16 @@ parse_Data_structure_Eq_implies:
             let form = parse_Eq Term.Protocol $7 in
             let term1 = parse_term Term.Protocol $10 in
             let term2 = parse_term Term.Protocol $13 in
-            if mode = Load
-            then Testing_functions.load_Data_structure_Eq_implies Term.Protocol form term1 term2 $16
-            else Testing_functions.apply_Data_structure_Eq_implies Term.Protocol form term1 term2
+            match mode with
+              | Load i -> RLoad(Testing_functions.load_Data_structure_Eq_implies i Term.Protocol form term1 term2 $16)
+              | Verify -> RVerify(Testing_functions.apply_Data_structure_Eq_implies Term.Protocol form term1 term2)
           else
             let form = parse_Eq Term.Recipe $7 in
             let term1 = parse_term Term.Recipe $10 in
             let term2 = parse_term Term.Recipe $13 in
-            if mode = Load
-            then Testing_functions.load_Data_structure_Eq_implies Term.Recipe form term1 term2  $16
-            else Testing_functions.apply_Data_structure_Eq_implies Term.Recipe form term1 term2
+            match mode with
+              | Load i -> RLoad(Testing_functions.load_Data_structure_Eq_implies i Term.Recipe form term1 term2  $16)
+              | Verify -> RVerify(Testing_functions.apply_Data_structure_Eq_implies Term.Recipe form term1 term2)
         )
       }
   | error
@@ -310,20 +312,20 @@ parse_Data_structure_Tools_partial_consequence:
             let sdf = parse_SDF $7 in
             let df = parse_DF $10 in
             let term = parse_term Term.Protocol $13 in
-            if mode = Load
-            then
-              let result = parse_consequence $16 in
-              Testing_functions.load_Data_structure_Tools_partial_consequence Term.Protocol sdf df term result
-            else Testing_functions.apply_Data_structure_Tools_partial_consequence Term.Protocol sdf df term
+            match mode with
+              | Load i ->
+                  let result = parse_consequence $16 in
+                  RLoad(Testing_functions.load_Data_structure_Tools_partial_consequence i Term.Protocol sdf df term result)
+              | Verify -> RVerify(Testing_functions.apply_Data_structure_Tools_partial_consequence Term.Protocol sdf df term)
           else
             let sdf = parse_SDF $7 in
             let df = parse_DF $10 in
             let term = parse_term Term.Recipe $13 in
-            if mode = Load
-            then
-              let result = parse_consequence $16 in
-              Testing_functions.load_Data_structure_Tools_partial_consequence Term.Recipe sdf df term result
-            else Testing_functions.apply_Data_structure_Tools_partial_consequence Term.Recipe sdf df term
+            match mode with
+              | Load i ->
+                  let result = parse_consequence $16 in
+                  RLoad(Testing_functions.load_Data_structure_Tools_partial_consequence i Term.Recipe sdf df term result)
+              | Verify -> RVerify(Testing_functions.apply_Data_structure_Tools_partial_consequence Term.Recipe sdf df term)
         )
       }
   | error
@@ -345,21 +347,21 @@ parse_Data_structure_Tools_partial_consequence_additional:
             let df = parse_DF $10 in
             let bfct_l = List.map parse_basic_deduction_fact $13 in
             let term = parse_term Term.Protocol $16 in
-            if mode = Load
-            then
-              let result = parse_consequence $19 in
-              Testing_functions.load_Data_structure_Tools_partial_consequence_additional Term.Protocol sdf df bfct_l term result
-            else Testing_functions.apply_Data_structure_Tools_partial_consequence_additional Term.Protocol sdf df bfct_l term
+            match mode with
+              | Load i ->
+                  let result = parse_consequence $19 in
+                  RLoad(Testing_functions.load_Data_structure_Tools_partial_consequence_additional i Term.Protocol sdf df bfct_l term result)
+              | Verify -> RVerify(Testing_functions.apply_Data_structure_Tools_partial_consequence_additional Term.Protocol sdf df bfct_l term)
           else
             let sdf = parse_SDF $7 in
             let df = parse_DF $10 in
             let bfct_l = List.map parse_basic_deduction_fact $13 in
             let term = parse_term Term.Recipe $16 in
-            if mode = Load
-            then
-              let result = parse_consequence $19 in
-              Testing_functions.load_Data_structure_Tools_partial_consequence_additional Term.Recipe sdf df bfct_l term result
-            else Testing_functions.apply_Data_structure_Tools_partial_consequence_additional Term.Recipe sdf df bfct_l term
+            match mode with
+              | Load i ->
+                  let result = parse_consequence $19 in
+                  RLoad(Testing_functions.load_Data_structure_Tools_partial_consequence_additional i Term.Recipe sdf df bfct_l term result)
+              | Verify -> RVerify(Testing_functions.apply_Data_structure_Tools_partial_consequence_additional Term.Recipe sdf df bfct_l term)
         )
       }
   | error
@@ -378,11 +380,11 @@ parse_Data_structure_Tools_uniform_consequence:
           let df = parse_DF $7 in
           let uniset = parse_Uniformity_Set $10 in
           let term = parse_term Term.Protocol $13 in
-          if mode = Load
-          then
-            let result = parse_recipe_option $16 in
-            Testing_functions.load_Data_structure_Tools_uniform_consequence sdf df uniset term result
-          else Testing_functions.apply_Data_structure_Tools_uniform_consequence sdf df uniset term
+          match mode with
+            | Load i ->
+                let result = parse_recipe_option $16 in
+                RLoad(Testing_functions.load_Data_structure_Tools_uniform_consequence i sdf df uniset term result)
+            | Verify -> RVerify(Testing_functions.apply_Data_structure_Tools_uniform_consequence sdf df uniset term)
         )
       }
   | error

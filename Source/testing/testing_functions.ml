@@ -24,6 +24,10 @@ type test_display =
     output : string * latex_mode
   }
 
+type html_code =
+  | NoScript of string
+  | Script of string * string
+
 let produce_test_terminal test  =
   let str = ref "" in
 
@@ -43,7 +47,7 @@ let produce_test_terminal test  =
 
   !str
 
-let produce_test_latex test =
+let produce_test_latex (test,script) =
   let str = ref "" in
 
   if test.signature <> ""
@@ -72,36 +76,60 @@ let produce_test_latex test =
     | Text ->  str := Printf.sprintf "%s        <p> Result : %s</p>\n" !str text_out
   end;
 
-  !str
+  match script with
+    | None -> NoScript !str
+    | Some s -> Script (!str,s)
 
 (**** Data for each functions *****)
 
 type data_IO =
   {
-    mutable validated_tests : (string * string) list;
-    mutable tests_to_check : (string * string) list;
-    mutable additional_tests : (string * string) list;
+    scripts  : bool;
+
+    mutable validated_tests : (string * html_code) list;
+    mutable tests_to_check : (string * html_code) list;
+    mutable additional_tests : (string * html_code) list;
 
     mutable is_being_tested : bool;
 
     file : string
   }
 
-let add_test (test_terminal,test_latex) data =
+let nb_validated_test = ref 0
+
+let nb_tests_to_check = ref 0
+
+let nb_additional_tests = ref 0
+
+let add_test (test_terminal,test_html) data =
   let terminal = produce_test_terminal test_terminal in
-  let latex = produce_test_latex test_latex in
 
   if List.for_all (fun (str,_) -> str <> terminal) data.validated_tests
     && List.for_all (fun (str,_) -> str <> terminal) data.tests_to_check
     && List.for_all (fun (str,_) -> str <> terminal) data.additional_tests
-  then data.additional_tests <- (terminal,latex) :: data.additional_tests
+  then
+    begin
+      incr nb_additional_tests;
+      let html = produce_test_latex (test_html (!nb_additional_tests + !nb_tests_to_check)) in
+      data.additional_tests <- (terminal,html) :: data.additional_tests
+    end
 
 let template_line = "        <!-- The tests -->"
 let next_test = "        <!-- Next test -->"
 let next_test_txt = "--Test"
 
+let scripts_loading = "            // Loading the different processes"
+
 
 (**** Publication of tests *****)
+
+let rec publish_loading_script out = function
+  | 0 -> ()
+  | k ->
+      publish_loading_script out (k-1);
+      Printf.fprintf out "            window.loadData%d = function (data) {\n" k;
+      Printf.fprintf out "                DAG.displayGraph(data, jQuery('#dag-name-%d'), jQuery('#dag-%d > svg'));\n" k k;
+      Printf.fprintf out "            };\n\n"
 
 let publish_tests_to_check data =
   let path_html = Printf.sprintf "%stesting_data/%s%s.html" !Config.path_index "tests_to_check/" data.file
@@ -117,8 +145,11 @@ let publish_tests_to_check data =
     Printf.fprintf out_html "%s\n" next_test;
     Printf.fprintf out_html "        <hr class=\"big-separation\">\n";
     Printf.fprintf out_html "        <p class=\"title-test\"> Test %d -- Validate <input class=\"ValidateButton\" type=\"checkbox\" value=\"%d\" onchange=\"display_command();\"></p>\n" !acc !acc;
-    Printf.fprintf out_html "%s" test_latex;
-
+    begin match test_latex with
+      | NoScript _ when data.scripts -> Config.internal_error "[testing_function >> publish_tests_to_check] No script when there should be."
+      | Script(_,_) when not data.scripts -> Config.internal_error "[testing_function >> publish_tests_to_check] Presence of a script when there should not be."
+      | NoScript str | Script (str,_) -> Printf.fprintf out_html "%s" str
+    end;
     Printf.fprintf out_txt "%s\n" next_test_txt;
     Printf.fprintf out_txt "%s" test_txt;
 
@@ -137,17 +168,54 @@ let publish_tests_to_check data =
   done;
 
   List.iter print data.tests_to_check;
-  List.iter print data.additional_tests;
+  List.iter print (List.rev data.additional_tests);
 
   close_out out_txt;
 
-  try
-    while true do
-      let l = input_line open_template in
-      Printf.fprintf out_html "%s\n" l;
-    done
-  with
-    | End_of_file -> close_out out_html
+  if data.scripts
+  then
+    begin
+      while !line <> scripts_loading do
+        let l = input_line open_template in
+        if l <> scripts_loading
+        then Printf.fprintf out_html "%s\n" l;
+        line := l
+      done;
+
+      publish_loading_script out_html (!nb_tests_to_check + !nb_additional_tests);
+
+      begin try
+        while true do
+          let l = input_line open_template in
+          Printf.fprintf out_html "%s\n" l;
+        done
+      with
+        | End_of_file -> close_out out_html
+      end;
+
+      let path_script = Printf.sprintf "%stesting_data/%s%s.js" !Config.path_index "tests_to_check/" data.file in
+      let out_script = open_out path_script in
+
+      List.iter (fun (_,html_code) -> match html_code with
+        | NoScript _ -> Config.internal_error "[testing_function >> publish_tests_to_check] No script when there should be (2)"
+        | Script(_,script) -> Printf.fprintf out_script "%s\n" script
+      ) data.tests_to_check;
+
+      List.iter (fun (_,html_code) -> match html_code with
+        | NoScript _ -> Config.internal_error "[testing_function >> publish_tests_to_check] No script when there should be (3)"
+        | Script(_,script) -> Printf.fprintf out_script "%s\n" script
+      ) data.additional_tests;
+
+      close_out out_script
+    end
+  else
+    try
+      while true do
+        let l = input_line open_template in
+        Printf.fprintf out_html "%s\n" l;
+      done
+    with
+      | End_of_file -> close_out out_html
 
 let publish_validated_tests data =
   let path_html = Printf.sprintf "%stesting_data/%s%s.html" !Config.path_index "validated_tests/" data.file
@@ -163,7 +231,11 @@ let publish_validated_tests data =
     Printf.fprintf out_html "%s\n" next_test;
     Printf.fprintf out_html "        <hr class=\"big-separation\">\n";
     Printf.fprintf out_html "        <p class=\"title-test\"> Test %d</p>\n" !acc;
-    Printf.fprintf out_html "%s" test_latex;
+    begin match test_latex with
+      | NoScript _ when data.scripts -> Config.internal_error "[testing_function >> publish_validated_tests] No script when there should be."
+      | Script(_,_) when not data.scripts -> Config.internal_error "[testing_function >> publish_validated_tests] Presence of a script when there should not be."
+      | NoScript str | Script (str,_) -> Printf.fprintf out_html "%s" str
+    end;
 
     Printf.fprintf out_txt "%s\n" next_test_txt;
     Printf.fprintf out_txt "%s" test_txt;
@@ -186,13 +258,50 @@ let publish_validated_tests data =
 
   close_out out_txt;
 
-  try
-    while true do
-      let l = input_line open_template in
-      Printf.fprintf out_html "%s\n" l;
-    done
-  with
-    | End_of_file -> close_out out_html
+  if data.scripts
+  then
+    begin
+      while !line <> scripts_loading do
+        let l = input_line open_template in
+        if l <> scripts_loading
+        then Printf.fprintf out_html "%s\n" l;
+        line := l
+      done;
+
+      publish_loading_script out_html !nb_validated_test;
+
+      begin try
+        while true do
+          let l = input_line open_template in
+          Printf.fprintf out_html "%s\n" l;
+        done
+      with
+        | End_of_file -> close_out out_html
+      end;
+
+      let path_script = Printf.sprintf "%stesting_data/%s%s.js" !Config.path_index "validated_tests/" data.file in
+      let out_script = open_out path_script in
+
+      List.iter (fun (_,html_code) -> match html_code with
+        | NoScript _ -> Config.internal_error "[testing_function >> publish_validated_tests] No script when there should be (2)"
+        | Script(_,script) -> Printf.fprintf out_script "%s\n" script
+      ) data.tests_to_check;
+
+      List.iter (fun (_,html_code) -> match html_code with
+        | NoScript _ -> Config.internal_error "[testing_function >> publish_validated_tests] No script when there should be (3)"
+        | Script(_,script) -> Printf.fprintf out_script "%s\n" script
+      ) data.additional_tests;
+
+      close_out out_script
+    end
+  else
+    try
+      while true do
+        let l = input_line open_template in
+        Printf.fprintf out_html "%s\n" l;
+      done
+    with
+      | End_of_file -> close_out out_html
 
 let publish_tests data =
   publish_tests_to_check data;
@@ -203,6 +312,12 @@ let publish_tests data =
 let pre_load_tests data =
   let path_txt_to_check = Printf.sprintf "%stesting_data/%s%s.txt" !Config.path_index "tests_to_check/" data.file
   and path_txt_checked = Printf.sprintf "%stesting_data/%s%s.txt" !Config.path_index "validated_tests/" data.file in
+
+  let init_html =
+    if data.scripts
+    then Script("","")
+    else NoScript ""
+  in
 
   let sub_load in_txt is_to_check =
 
@@ -231,22 +346,22 @@ let pre_load_tests data =
     end;
 
     if is_to_check
-    then data.tests_to_check <- List.fold_left (fun acc t -> (t,"")::acc) [] !txt
-    else data.validated_tests <- List.fold_left (fun acc t -> (t,"")::acc) [] !txt
+    then data.tests_to_check <- List.fold_left (fun acc t -> (t,init_html)::acc) [] !txt
+    else data.validated_tests <- List.fold_left (fun acc t -> (t,init_html)::acc) [] !txt
   in
 
   begin try
     let in_txt_to_check = open_in path_txt_to_check in
     sub_load in_txt_to_check true
   with
-    | Sys_error _ -> ()
+    | Sys_error _ -> nb_tests_to_check := List.length data.tests_to_check
   end;
 
   begin try
     let in_txt_checked = open_in path_txt_checked in
     sub_load in_txt_checked false
   with
-    | Sys_error _ -> ()
+    | Sys_error _ -> nb_validated_test := List.length data.validated_tests
   end
 
 (***** Validation of tests *****)
@@ -514,6 +629,7 @@ let display_recipe_option out rho = function
 
 let data_IO_Term_Subst_unify =
   {
+    scripts = false;
     validated_tests = [];
     tests_to_check = [];
     additional_tests = [];
@@ -572,7 +688,7 @@ let test_Term_Subst_unify (type a) (type b) (at:(a,b) atom) (eq_list:((a,b) term
       inputs = [ (display_atom Latex at, Text); (display_syntactic_equation_list Latex at rho eq_list,Inline) ];
       output = (display_substitution_option Latex at rho result,Inline)
     } in
-  test_terminal, test_latex
+  test_terminal, (fun _ -> test_latex, None)
 
 let update_Term_Subst_unify () =
   Subst.update_test_unify Protocol (fun eq_list result ->
@@ -595,14 +711,15 @@ let apply_Term_Subst_unify (type a) (type b) (at:(a,b) atom) (eq_list:((a,b) ter
   let test_terminal,_ = test_Term_Subst_unify at eq_list result in
   produce_test_terminal test_terminal
 
-let load_Term_Subst_unify (type a) (type b) (at:(a,b) atom) (eq_list:((a,b) term * (a,b) term) list) (result:(a, b) Subst.t option) =
+let load_Term_Subst_unify (type a) (type b) i (at:(a,b) atom) (eq_list:((a,b) term * (a,b) term) list) (result:(a, b) Subst.t option) =
   let _,test_latex = test_Term_Subst_unify at eq_list result in
-  produce_test_latex test_latex
+  produce_test_latex (test_latex i)
 
 (***** Term.Subst.is_matchable *****)
 
 let data_IO_Term_Subst_is_matchable =
   {
+    scripts = false;
     validated_tests = [];
     tests_to_check = [];
     additional_tests = [];
@@ -632,7 +749,7 @@ let test_Term_Subst_is_matchable (type a) (type b) (at:(a,b) atom) (list1:(a,b) 
       inputs = [ (display_atom Latex at, Text); (display_term_list Latex at rho list1,Inline); (display_term_list Latex at rho list2,Inline) ];
       output = (display_boolean Latex result,Inline)
     } in
-  test_terminal, test_latex
+  test_terminal, (fun _ -> test_latex, None)
 
 let update_Term_Subst_is_matchable () =
   Subst.update_test_is_matchable Protocol (fun list1 list2 result ->
@@ -650,14 +767,15 @@ let apply_Term_Subst_is_matchable (type a) (type b) (at:(a,b) atom) (list1:(a,b)
   let test_terminal,_ = test_Term_Subst_is_matchable at list1 list2 result in
   produce_test_terminal test_terminal
 
-let load_Term_Subst_is_matchable (type a) (type b) (at:(a,b) atom) (list1:(a,b) term list) (list2:(a,b) term list) (result:bool) =
+let load_Term_Subst_is_matchable (type a) (type b) i (at:(a,b) atom) (list1:(a,b) term list) (list2:(a,b) term list) (result:bool) =
   let _,test_latex = test_Term_Subst_is_matchable at list1 list2 result in
-  produce_test_latex test_latex
+  produce_test_latex (test_latex i)
 
 (***** Term.Subst.is_extended_by *****)
 
 let data_IO_Term_Subst_is_extended_by =
   {
+    scripts = false;
     validated_tests = [];
     tests_to_check = [];
     additional_tests = [];
@@ -689,7 +807,7 @@ let test_Term_Subst_is_extended_by (type a) (type b) (at:(a,b) atom) (subst1:(a,
       output = (display_boolean Latex result,Inline)
     } in
 
-  test_terminal, test_latex
+  test_terminal, (fun _ -> test_latex, None)
 
 let update_Term_Subst_is_extended_by () =
   Subst.update_test_is_extended_by Protocol (fun subst1 subst2 result ->
@@ -707,14 +825,15 @@ let apply_Term_Subst_is_extended_by (type a) (type b) (at:(a,b) atom) (subst1:(a
   let test_terminal,_ = test_Term_Subst_is_extended_by at subst1 subst2 result in
   produce_test_terminal test_terminal
 
-let load_Term_Subst_is_extended_by (type a) (type b) (at:(a,b) atom) (subst1:(a,b) Subst.t) (subst2:(a,b) Subst.t) (result:bool) =
+let load_Term_Subst_is_extended_by (type a) (type b) i (at:(a,b) atom) (subst1:(a,b) Subst.t) (subst2:(a,b) Subst.t) (result:bool) =
   let _,test_latex = test_Term_Subst_is_extended_by at subst1 subst2 result in
-  produce_test_latex test_latex
+  produce_test_latex (test_latex i)
 
 (***** Term.Subst.is_equal_equations *****)
 
 let data_IO_Term_Subst_is_equal_equations =
   {
+    scripts = false;
     validated_tests = [];
     tests_to_check = [];
     additional_tests = [];
@@ -746,7 +865,7 @@ let test_Term_Subst_is_equal_equations (type a) (type b) (at:(a,b) atom) (subst1
       output = (display_boolean Latex result,Inline)
     } in
 
-  test_terminal, test_latex
+  test_terminal, (fun _ -> test_latex, None)
 
 let update_Term_Subst_is_equal_equations () =
   Subst.update_test_is_equal_equations Protocol (fun subst1 subst2 result ->
@@ -764,14 +883,15 @@ let apply_Term_Subst_is_equal_equations (type a) (type b) (at:(a,b) atom) (subst
   let test_terminal,_ = test_Term_Subst_is_equal_equations at subst1 subst2 result in
   produce_test_terminal test_terminal
 
-let load_Term_Subst_is_equal_equations (type a) (type b) (at:(a,b) atom) (subst1:(a,b) Subst.t) (subst2:(a,b) Subst.t) (result:bool) =
+let load_Term_Subst_is_equal_equations (type a) (type b) i (at:(a,b) atom) (subst1:(a,b) Subst.t) (subst2:(a,b) Subst.t) (result:bool) =
   let _,test_latex = test_Term_Subst_is_equal_equations at subst1 subst2 result in
-  produce_test_latex test_latex
+  produce_test_latex (test_latex i)
 
 (***** Term.Modulo.syntactic_equations_of_equations *****)
 
 let data_IO_Term_Modulo_syntactic_equations_of_equations =
   {
+    scripts = false;
     validated_tests = [];
     tests_to_check = [];
     additional_tests = [];
@@ -807,7 +927,7 @@ let test_Term_Modulo_syntactic_equations_of_equations eq_list result =
       output = ( display_substitution_list_result Latex rho result,Inline)
     } in
 
-  test_terminal, test_latex
+  test_terminal, (fun _ -> test_latex, None)
 
 let update_Term_Modulo_syntactic_equations_of_equations () =
   Modulo.update_test_syntactic_equations_of_equations (fun eq_list result ->
@@ -826,14 +946,15 @@ let apply_Term_Modulo_syntactic_equations_of_equations eq_list  =
   let test_terminal,_ = test_Term_Modulo_syntactic_equations_of_equations eq_list result in
   produce_test_terminal test_terminal
 
-let load_Term_Modulo_syntactic_equations_of_equations eq_list result =
+let load_Term_Modulo_syntactic_equations_of_equations i eq_list result =
   let _,test_latex = test_Term_Modulo_syntactic_equations_of_equations eq_list result in
-  produce_test_latex test_latex
+  produce_test_latex (test_latex i)
 
 (***** Term.Rewrite_rules.normalise *****)
 
 let data_IO_Term_Rewrite_rules_normalise =
   {
+    scripts = false;
     validated_tests = [];
     tests_to_check = [];
     additional_tests = [];
@@ -865,7 +986,7 @@ let test_Term_Rewrite_rules_normalise term result =
       output = (display Latex ~rho:rho Protocol result,Inline)
     } in
 
-  test_terminal, test_latex
+  test_terminal, (fun _ -> test_latex, None)
 
 let update_Term_Rewrite_rules_normalise () =
   Rewrite_rules.update_test_normalise (fun term result ->
@@ -879,14 +1000,15 @@ let apply_Term_Rewrite_rules_normalise term  =
   let test_terminal,_ = test_Term_Rewrite_rules_normalise term result in
   produce_test_terminal test_terminal
 
-let load_Term_Rewrite_rules_normalise term result =
+let load_Term_Rewrite_rules_normalise i term result =
   let _,test_latex = test_Term_Rewrite_rules_normalise term result in
-  produce_test_latex test_latex
+  produce_test_latex (test_latex i)
 
 (***** Term.Rewrite_rules.skeletons *****)
 
 let data_IO_Term_Rewrite_rules_skeletons =
   {
+    scripts = false;
     validated_tests = [];
     tests_to_check = [];
     additional_tests = [];
@@ -918,7 +1040,7 @@ let test_Term_Rewrite_rules_skeletons term f k result =
       output = ( display_skeleton_list Latex rho result, Text )
     } in
 
-  test_terminal, test_latex
+  test_terminal, (fun _ -> test_latex, None)
 
 let update_Term_Rewrite_rules_skeletons () =
   Rewrite_rules.update_test_skeletons (fun term f k result ->
@@ -932,14 +1054,15 @@ let apply_Term_Rewrite_rules_skeletons term f k  =
   let test_terminal,_ = test_Term_Rewrite_rules_skeletons term f k result in
   produce_test_terminal test_terminal
 
-let load_Term_Rewrite_rules_skeletons term f k result =
+let load_Term_Rewrite_rules_skeletons i term f k result =
   let _,test_latex = test_Term_Rewrite_rules_skeletons term f k result in
-  produce_test_latex test_latex
+  produce_test_latex (test_latex i)
 
 (***** Term.Rewrite_rules.generic_rewrite_rules_formula *****)
 
 let data_IO_Term_Rewrite_rules_generic_rewrite_rules_formula =
   {
+    scripts = false;
     validated_tests = [];
     tests_to_check = [];
     additional_tests = [];
@@ -975,7 +1098,7 @@ let test_Term_Rewrite_rules_generic_rewrite_rules_formula fct skel result =
       output = ( display_deduction_formula_list Latex rho result, Text )
     } in
 
-  test_terminal, test_latex
+  test_terminal, (fun _ -> test_latex, None)
 
 let update_Term_Rewrite_rules_generic_rewrite_rules_formula () =
   Rewrite_rules.update_test_generic_rewrite_rules_formula (fun fct skel result ->
@@ -989,14 +1112,15 @@ let apply_Term_Rewrite_rules_generic_rewrite_rules_formula fct skel  =
   let test_terminal,_ = test_Term_Rewrite_rules_generic_rewrite_rules_formula fct skel result in
   produce_test_terminal test_terminal
 
-let load_Term_Rewrite_rules_generic_rewrite_rules_formula fct skel result =
+let load_Term_Rewrite_rules_generic_rewrite_rules_formula i fct skel result =
   let _,test_latex = test_Term_Rewrite_rules_generic_rewrite_rules_formula fct skel result in
-  produce_test_latex test_latex
+  produce_test_latex (test_latex i)
 
 (***** Data_structure.Eq.implies *****)
 
 let data_IO_Data_structure_Eq_implies =
   {
+    scripts = false;
     validated_tests = [];
     tests_to_check = [];
     additional_tests = [];
@@ -1028,7 +1152,7 @@ let test_Data_structure_Eq_implies (type a) (type b) (at:(a,b) atom) (form:(a,b)
       output = ( display_boolean Latex result, Inline )
     } in
 
-  test_terminal, test_latex
+  test_terminal, (fun _ -> test_latex, None)
 
 let update_Data_structure_Eq_implies () =
   Eq.update_test_implies Protocol (fun form term1 term2 result ->
@@ -1046,14 +1170,15 @@ let apply_Data_structure_Eq_implies (type a) (type b) (at:(a,b) atom) (form:(a,b
   let test_terminal,_ = test_Data_structure_Eq_implies at form term1 term2 result in
   produce_test_terminal test_terminal
 
-let load_Data_structure_Eq_implies (type a) (type b) (at:(a,b) atom) (form:(a,b) Eq.t) (term1:(a,b) term) (term2:(a,b) term) (result:bool) =
+let load_Data_structure_Eq_implies (type a) (type b) i (at:(a,b) atom) (form:(a,b) Eq.t) (term1:(a,b) term) (term2:(a,b) term) (result:bool) =
   let _,test_latex = test_Data_structure_Eq_implies at form term1 term2 result in
-  produce_test_latex test_latex
+  produce_test_latex (test_latex i)
 
 (***** Data_structure.Tools.partial_consequence *****)
 
 let data_IO_Data_structure_Tools_partial_consequence =
   {
+    scripts = false;
     validated_tests = [];
     tests_to_check = [];
     additional_tests = [];
@@ -1086,7 +1211,7 @@ let test_Data_structure_Tools_partial_consequence (type a) (type b) (at:(a,b) at
       output = ( display_consequence Latex rho result, Inline )
     } in
 
-  test_terminal, test_latex
+  test_terminal, (fun _ -> test_latex, None)
 
 let update_Data_structure_Tools_partial_consequence () =
   Tools.update_test_partial_consequence Protocol (fun sdf df term result ->
@@ -1104,14 +1229,15 @@ let apply_Data_structure_Tools_partial_consequence (type a) (type b) (at:(a,b) a
   let test_terminal,_ = test_Data_structure_Tools_partial_consequence at sdf df term result in
   produce_test_terminal test_terminal
 
-let load_Data_structure_Tools_partial_consequence (type a) (type b) (at:(a,b) atom) sdf df (term:(a,b) term) result =
+let load_Data_structure_Tools_partial_consequence (type a) (type b) i (at:(a,b) atom) sdf df (term:(a,b) term) result =
   let _,test_latex = test_Data_structure_Tools_partial_consequence at sdf df term result in
-  produce_test_latex test_latex
+  produce_test_latex (test_latex i)
 
 (***** Data_structure.Tools.partial_consequence_additional *****)
 
 let data_IO_Data_structure_Tools_partial_consequence_additional =
   {
+    scripts = false;
     validated_tests = [];
     tests_to_check = [];
     additional_tests = [];
@@ -1143,7 +1269,7 @@ let test_Data_structure_Tools_partial_consequence_additional (type a) (type b) (
       output = ( display_consequence Latex rho result, Inline )
     } in
 
-  test_terminal, test_latex
+  test_terminal, (fun _ -> test_latex, None)
 
 let update_Data_structure_Tools_partial_consequence_additional () =
   Tools.update_test_partial_consequence_additional Protocol (fun sdf df bfct_l term result ->
@@ -1161,14 +1287,15 @@ let apply_Data_structure_Tools_partial_consequence_additional (type a) (type b) 
   let test_terminal,_ = test_Data_structure_Tools_partial_consequence_additional at sdf df bfct_l term result in
   produce_test_terminal test_terminal
 
-let load_Data_structure_Tools_partial_consequence_additional (type a) (type b) (at:(a,b) atom) sdf df bfct_l (term:(a,b) term) result =
+let load_Data_structure_Tools_partial_consequence_additional (type a) (type b) i (at:(a,b) atom) sdf df bfct_l (term:(a,b) term) result =
   let _,test_latex = test_Data_structure_Tools_partial_consequence_additional at sdf df bfct_l term result in
-  produce_test_latex test_latex
+  produce_test_latex (test_latex i)
 
 (***** Data_structure.Tools.uniform_consequence *****)
 
 let data_IO_Data_structure_Tools_uniform_consequence =
   {
+    scripts = false;
     validated_tests = [];
     tests_to_check = [];
     additional_tests = [];
@@ -1200,7 +1327,7 @@ let test_Data_structure_Tools_uniform_consequence sdf df uniset term result =
       output = ( display_recipe_option Latex rho result, Inline )
     } in
 
-  test_terminal, test_latex
+  test_terminal, (fun _ -> test_latex, None)
 
 let update_Data_structure_Tools_uniform_consequence () =
   Tools.update_test_uniform_consequence (fun sdf df uniset term result ->
@@ -1218,9 +1345,9 @@ let apply_Data_structure_Tools_uniform_consequence sdf df uniset term  =
   let test_terminal,_ = test_Data_structure_Tools_uniform_consequence sdf df uniset term result in
   produce_test_terminal test_terminal
 
-let load_Data_structure_Tools_uniform_consequence sdf df uniset term result =
+let load_Data_structure_Tools_uniform_consequence i sdf df uniset term result =
   let _,test_latex = test_Data_structure_Tools_uniform_consequence sdf df uniset term result in
-  produce_test_latex test_latex
+  produce_test_latex (test_latex i)
 
 let list_data =
   [

@@ -66,6 +66,14 @@ let fresh_id =
   in
   f
 
+(******************************************
+***          Tested function            ***
+*******************************************)
+
+let test_of_expansed_process : (expansed_process -> process -> unit) ref = ref (fun _ _ -> ())
+
+let update_test_of_expansed_process f = test_of_expansed_process := f
+
 (*****************************
 ***      Free names        ***
 ******************************)
@@ -108,7 +116,6 @@ let apply_renamings_pair v_rho r_rho (t1,t2) =
   let f_apply = (fun (x,y) f -> (f x,f y)) in
   let (t1',t2') = Variable.Renaming.apply_on_terms v_rho (t1,t2) f_apply in
   Name.Renaming.apply_on_terms r_rho (t1',t2') f_apply
-
 
 let rec is_equal_modulo_symbolic_derivation symb_1 symb_2 =
   if symb_1.content_mult.mult <> symb_2.content_mult.mult
@@ -339,14 +346,17 @@ and content_mult_list_of_expansed_int_process_list = function
         | _,_ -> Config.internal_error "[process.ml >> content_of_expansed_process_list] The should not be two the same content in the list."
       end
 
-let process_of_expansed_process ex_proc =
+let of_expansed_process ex_proc =
   let content = content_of_expansed_process ex_proc in
-  match content.action with
+  let result = match content.action with
     | APar content_mult_list ->
         List.map (fun c_mult -> { content_mult = c_mult; var_renaming = Variable.Renaming.identity; name_renaming = Name.Renaming.identity } ) content_mult_list
     | _ ->
         let content_mult = { content = content; mult = 1} in
         [ { content_mult = content_mult; var_renaming = Variable.Renaming.identity; name_renaming = Name.Renaming.identity } ]
+  in
+  Config.test (fun () -> !test_of_expansed_process ex_proc result);
+  result
 
 (****************************************
 ***         Display function         ***
