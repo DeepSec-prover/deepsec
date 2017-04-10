@@ -88,42 +88,48 @@ end
 
 (** {2 Semantics} *)
 
+(** We consider three different semantics. The [Classic] semantics allows internal communication on both private and public channels.
+    The [Private] semantics only allows internal communication on private channels.
+    The [Eavesdrop] semantics only allows  internal communication on private channels but can also eavesdrop on public channels. {% See~\cite{DBLP:conf/post/BabelCK17} for more details. %}*)
 type semantics =
   | Classic
   | Private
   | Eavesdrop
 
+(** We consider two types of equivalence : Trace equivalence and Observational equivalence. The algorithm can combine any of these equivalences with any of the semantics defined above.*)
 type equivalence =
   | Trace_Equivalence
   | Observational_Equivalence
 
-
+(** The type [output_gathering] represents the differents elements that were necessary to satisfy for the out transition to occur.*)
 type output_gathering =
   {
-    out_equations : (fst_ord, name) Subst.t;
-    out_disequations : (fst_ord, name) Diseq.t list;
-    out_channel : protocol_term;
-    out_term : protocol_term
+    out_equations : (fst_ord, name) Subst.t; (** For the transition to occur, the messages must be an instance of this substitution. *)
+    out_disequations : (fst_ord, name) Diseq.t list; (** The messages should also satisfy all these disequations. *)
+    out_channel : protocol_term; (** The channel on which the out transition occurs. *)
+    out_term : protocol_term (** The message that was output. *)
   }
 
+(** The type [input_gathering] represents the differents elements that were necessary to satisfy for the in transition to occur.*)
 type input_gathering =
   {
-    in_equations : (fst_ord, name) Subst.t;
-    in_disequations : (fst_ord, name) Diseq.t list;
-    in_channel : protocol_term;
-    in_variable : fst_ord_variable
+    in_equations : (fst_ord, name) Subst.t; (** For the transition to occur, the messages must be an instance of this substitution. *)
+    in_disequations : (fst_ord, name) Diseq.t list; (** The messages should also satisfy all these disequations. *)
+    in_channel : protocol_term; (** The channel on which the in transition occurs. *)
+    in_variable : fst_ord_variable (** The variable that will be instantiated by the message received. *)
   }
 
+(** The type [eavesdrop_gathering] represents the differents elements that were necessary to satisfy for the eavesdrop transition to occur.*)
 type eavesdrop_gathering =
   {
-    eav_equations : (fst_ord, name) Subst.t;
-    eav_disequations : (fst_ord, name) Diseq.t list;
-    eav_channel : protocol_term;
-    eav_term : protocol_term
+    eav_equations : (fst_ord, name) Subst.t; (** For the transition to occur, the messages must be an instance of this substitution. *)
+    eav_disequations : (fst_ord, name) Diseq.t list; (** The messages should also satisfy all these disequations. *)
+    eav_channel : protocol_term; (** The channel on which the in transition occurs. *)
+    eav_term : protocol_term (** The message that has been eavesdroped *)
   }
 
-val nil : process
-
+(** [next_output sem eq proc subst f] will apply all the function [f] to all out transition available for the process [proc] instantiated by [subst], in the semantics
+    [sem] and for the equivalence [eq].*)
 val next_output :
   semantics ->
   equivalence ->
@@ -132,6 +138,8 @@ val next_output :
   (process -> output_gathering -> unit) ->
   unit
 
+(** [next_input sem eq proc subst f] will apply all the function [f] to all in transitions available for the process [proc] instantiated by [subst], in the semantics
+    [sem] and for the equivalence [eq].*)
 val next_input :
   semantics ->
   equivalence ->
@@ -139,3 +147,9 @@ val next_input :
   (Term.fst_ord, Term.name) Term.Subst.t ->
   (process -> input_gathering -> unit) ->
   unit
+
+(** {3 Tested functions} *)
+
+val update_test_next_output : (semantics -> equivalence -> process -> (Term.fst_ord, Term.name) Term.Subst.t -> (process * output_gathering) list -> unit) -> unit
+
+val update_test_next_input : (semantics -> equivalence -> process -> (Term.fst_ord, Term.name) Term.Subst.t -> (process * input_gathering) list -> unit) -> unit

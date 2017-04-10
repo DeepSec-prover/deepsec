@@ -370,10 +370,6 @@ let contents_of_general_dag = ref []
 
 let initialise () = contents_of_general_dag := []
 
-let nil_content = { action = ANil ; link = NoLink; id = fresh_id (); bound_var = Variable.Renaming.empty; bound_name = Name.Renaming.empty }
-
-let nil = [ { content_mult = { content = nil_content; mult = 1 }; var_renaming = Variable.Renaming.identity ; name_renaming = Name.Renaming.identity }]
-
 let add_content new_content =
   try
     let proc = [ { content_mult = { content = new_content; mult = 1 } ; var_renaming = Variable.Renaming.identity; name_renaming = Name.Renaming.identity } ] in
@@ -390,7 +386,9 @@ let add_content new_content =
         new_content
 
 let rec content_of_expansed_process = function
-  | Nil -> nil_content
+  | Nil ->
+      let new_content = { action = ANil ; link = NoLink; id = fresh_id (); bound_var = Variable.Renaming.empty; bound_name = Name.Renaming.empty } in
+      add_content new_content
   | Output(ch,t,ex_proc) ->
       let cont = content_of_expansed_process ex_proc in
       let new_content = { action = AOut(ch,t,cont); link = NoLink; id = fresh_id () ; bound_var = Variable.Renaming.empty; bound_name = Name.Renaming.empty } in
@@ -1491,14 +1489,45 @@ and next_input_classic_trace proc equations disequations f_continuation =
 ***        Transitions       * ***
 **********************************)
 
-let next_output sem equiv proc fst_subst = match sem, equiv with
-  | Classic, Trace_Equivalence -> next_output_classic_trace proc fst_subst []
-  | _, _ -> Config.internal_error "[process.ml >> next_output] Not implemented yet"
+let test_next_output : (semantics -> equivalence -> process -> (Term.fst_ord, Term.name) Term.Subst.t -> (process * output_gathering) list -> unit) ref = ref (fun _ _ _ _ _-> ())
 
-let next_input sem equiv proc fst_subst = match sem, equiv with
-  | Classic, Trace_Equivalence -> next_input_classic_trace proc fst_subst []
-  | _, _ -> Config.internal_error "[process.ml >> next_output] Not implemented yet"
+let update_test_next_output f = test_next_output := f
 
-(*********************************
-***      Display function      ***
-*********************************)
+let test_next_input : (semantics -> equivalence -> process -> (Term.fst_ord, Term.name) Term.Subst.t -> (process * input_gathering) list -> unit) ref = ref (fun _ _ _ _ _-> ())
+
+let update_test_next_input f = test_next_input := f
+
+let next_output sem equiv proc fst_subst f_continuation =
+  let testing_result = ref [] in
+
+  begin match sem, equiv with
+    | Classic, Trace_Equivalence ->
+        next_output_classic_trace proc fst_subst [] (fun proc output ->
+          Config.test (fun () ->
+            testing_result := (proc,output)::!testing_result
+          );
+          f_continuation proc output
+        )
+    | _, _ -> Config.internal_error "[process.ml >> next_output] Not implemented yet"
+  end;
+  Config.test (fun () ->
+    !test_next_output sem equiv proc fst_subst !testing_result
+  )
+
+
+let next_input sem equiv proc fst_subst f_continuation =
+  let testing_result = ref [] in
+
+  begin match sem, equiv with
+    | Classic, Trace_Equivalence ->
+        next_input_classic_trace proc fst_subst [] (fun proc input ->
+          Config.test (fun () ->
+            testing_result := (proc,input)::!testing_result
+          );
+          f_continuation proc input
+        )
+    | _, _ -> Config.internal_error "[process.ml >> next_output] Not implemented yet"
+  end;
+  Config.test (fun () ->
+    !test_next_input sem equiv proc fst_subst !testing_result
+  )
