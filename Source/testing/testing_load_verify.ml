@@ -95,6 +95,13 @@ let data_verification_Data_structure_Tools_uniform_consequence =
     parsing_function = Testing_grammar.parse_Data_structure_Tools_uniform_consequence
   }
 
+let data_verification_Process_of_expansed_process =
+  {
+    data_IO = data_IO_Process_of_expansed_process;
+    name = "Process.of_expaned_process";
+    parsing_function = Testing_grammar.parse_Process_of_expansed_process
+  }
+
 let all_data_verification =
   [
     data_verification_Term_Subst_unify;
@@ -108,7 +115,8 @@ let all_data_verification =
     data_verification_Data_structure_Eq_implies;
     data_verification_Data_structure_Tools_partial_consequence;
     data_verification_Data_structure_Tools_partial_consequence_additional;
-    data_verification_Data_structure_Tools_uniform_consequence
+    data_verification_Data_structure_Tools_uniform_consequence;
+    data_verification_Process_of_expansed_process
   ]
 
 (** {3 Verification of tests} *)

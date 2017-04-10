@@ -14,10 +14,13 @@ type expansed_process =
   | Par of (expansed_process * int) list
   | Choice of expansed_process list
 
-
 type process
 
+type id_renaming = int -> int
+
 (** {3 Generation} *)
+
+val initialise : unit -> unit
 
 val of_expansed_process : expansed_process -> process
 
@@ -33,17 +36,40 @@ val get_vars_with_list_expansed : expansed_process -> (fst_ord, name) variable l
 
 (** {3 Display functions} *)
 
-val display_process_testing : display_renamings option -> process -> string
+val display_process_testing : display_renamings option -> id_renaming -> process -> string
 
 val display_expansed_process_testing : display_renamings option -> expansed_process -> string
 
-val display_process_HTML : ?rho: display_renamings option -> ?name: string -> int -> process -> string * string
+val display_process_HTML : ?rho: display_renamings option -> ?id_rho: id_renaming -> ?name: string -> string -> process -> string * string
 
 val display_expansed_process_HTML : ?rho: display_renamings option -> ?margin_px:int -> expansed_process -> string
 
 (** {3 Tested function} *)
 
 val update_test_of_expansed_process: (expansed_process -> process  -> unit) -> unit
+
+module Testing : sig
+
+  val add_Nil : int -> unit
+
+  val add_Out : int -> protocol_term -> protocol_term -> int -> unit
+
+  val add_In : int -> protocol_term -> fst_ord_variable -> int -> unit
+
+  val add_Test : int -> protocol_term -> protocol_term -> int -> int -> unit
+
+  val add_Let : int -> protocol_term -> protocol_term -> int -> int -> unit
+
+  val add_New : int -> name -> int -> unit
+
+  val add_Par : int -> (int * int) list -> unit
+
+  val add_Choice : int -> (int * int) list -> unit
+
+  val create_process : ((int * int) * (fst_ord, name) Variable.Renaming.t * Name.Renaming.t) list  -> process
+
+  val get_id_renaming : process list -> id_renaming
+end
 
 (** {2 Semantics} *)
 

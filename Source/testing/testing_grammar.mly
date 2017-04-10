@@ -25,6 +25,13 @@ open Testing_parser_functions
 %token PROTOCOL
 %token RECIPE
 
+/* Process declaration */
+%token NIL
+%token OUTPUT INPUT
+%token TEST LET
+%token NEW
+%token PAR CHOICE
+
 /* Special token  */
 %token EQ NEQ EQI NEQI
 %token WEDGE VEE VDASH
@@ -50,6 +57,8 @@ open Testing_parser_functions
 %start parse_Data_structure_Tools_partial_consequence_additional
 %start parse_Data_structure_Tools_uniform_consequence
 
+%start parse_Process_of_expansed_process
+
 %type <(Testing_parser_functions.parser)> parse_Term_Subst_unify
 %type <(Testing_parser_functions.parser)> parse_Term_Subst_is_matchable
 %type <(Testing_parser_functions.parser)> parse_Term_Subst_is_extended_by
@@ -63,6 +72,8 @@ open Testing_parser_functions
 %type <(Testing_parser_functions.parser)> parse_Data_structure_Tools_partial_consequence
 %type <(Testing_parser_functions.parser)> parse_Data_structure_Tools_partial_consequence_additional
 %type <(Testing_parser_functions.parser)> parse_Data_structure_Tools_uniform_consequence
+
+%type <(Testing_parser_functions.parser)> parse_Process_of_expansed_process
 
 %%
 /***********************************
@@ -385,6 +396,23 @@ parse_Data_structure_Tools_uniform_consequence:
                 let result = parse_recipe_option $16 in
                 RLoad(Testing_functions.load_Data_structure_Tools_uniform_consequence i sdf df uniset term result)
             | Verify -> RVerify(Testing_functions.apply_Data_structure_Tools_uniform_consequence sdf df uniset term)
+        )
+      }
+  | error
+      { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
+
+parse_Process_of_expansed_process:
+  | header_of_test
+    INPUT DDOT expansed_process
+    RESULT DDOT process
+      {
+        (fun mode -> $1 ();
+          let process = parse_expansed_process $4 in
+          match mode with
+            | Load i ->
+                let result = parse_process $7 in
+                RLoad(Testing_functions.load_Process_of_expansed_process i process result)
+            | Verify -> RVerify(Testing_functions.apply_Process_of_expansed_process process)
         )
       }
   | error
@@ -816,3 +844,105 @@ term_arguments :
       { [$1] }
   | term COMMA term_arguments
       { $1::$3 }
+
+/***********************************
+***       Expansed process       ***
+************************************/
+
+expansed_process:
+  | NIL
+      { ENil }
+  | OUTPUT LPAR term COMMA term COMMA expansed_process RPAR
+      { EOutput($3,$5,$7) }
+  | INPUT LPAR term COMMA ident COMMA expansed_process RPAR
+      { EInput($3,$5,$7) }
+  | TEST LPAR term COMMA term COMMA expansed_process COMMA expansed_process RPAR
+      { ETest($3,$5,$7,$9) }
+  | LET LPAR term COMMA term COMMA expansed_process COMMA expansed_process RPAR
+      { ELet($3,$5,$7,$9) }
+  | NEW LPAR ident COMMA expansed_process RPAR
+      { ENew($3,$5) }
+  | PAR LPAR expansed_process_mult_list RPAR
+      { EPar($3) }
+  | CHOICE LPAR expansed_process_list RPAR
+      { EChoice($3) }
+
+expansed_process_mult_list:
+  | expansed_process COMMA INT
+      { [$1,$3] }
+  | expansed_process COMMA INT SEMI expansed_process_mult_list
+      { ($1,$3)::$5 }
+
+expansed_process_list:
+  | expansed_process
+      { [$1] }
+  | expansed_process SEMI expansed_process_list
+      { $1::$3 }
+
+/***********************************
+***            Process           ***
+************************************/
+
+process:
+  | LCURL LBRACE content_list RBRACE COMMA LBRACE symbolic_derivation_list RBRACE RCURL
+      { ($3,$7) }
+
+content_list:
+  | content
+      { [$1] }
+  | content SEMI content_list
+      { $1::$3 }
+
+content:
+  | LCURL INT SEMI action RCURL
+      { $2, $4 }
+
+renaming:
+  | LCURL RCURL
+      { [] }
+  | sub_renaming
+      { $1 }
+
+sub_renaming:
+  | ident RIGHTARROW ident
+      { [$1,$3] }
+  | ident RIGHTARROW ident SEMI sub_renaming
+      { ($1,$3)::$5 }
+
+action:
+  | NIL
+      { ANil }
+  | OUTPUT LPAR term COMMA term COMMA INT RPAR
+      { AOut($3,$5,$7) }
+  | INPUT LPAR term COMMA ident COMMA INT RPAR
+      { AIn($3,$5,$7) }
+  | TEST LPAR term COMMA term COMMA INT COMMA INT RPAR
+      { ATest($3,$5,$7,$9) }
+  | LET LPAR term COMMA term COMMA INT COMMA INT RPAR
+      { ALet($3,$5,$7,$9) }
+  | NEW LPAR ident COMMA INT RPAR
+      { ANew($3,$5) }
+  | PAR LPAR content_mult_list RPAR
+      { APar($3) }
+  | CHOICE LPAR content_mult_list RPAR
+      { AChoice($3) }
+
+content_mult:
+  | LPAR INT COMMA INT RPAR
+      { $2,$4 }
+
+content_mult_list:
+  | content_mult
+      { [$1] }
+  | content_mult COMMA content_mult_list
+      { $1::$3 }
+
+symbolic_derivation_list:
+  | symbolic_derivation
+      { [$1] }
+  | symbolic_derivation SEMI symbolic_derivation_list
+      { $1::$3 }
+
+symbolic_derivation:
+  | LCURL content_mult SEMI renaming SEMI renaming RCURL
+      { $2,$4,$6 }

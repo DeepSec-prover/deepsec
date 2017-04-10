@@ -21,7 +21,16 @@ let _ =
       "_Result", RESULT;
 
       "_Protocol", PROTOCOL;
-      "_Recipe", RECIPE
+      "_Recipe", RECIPE;
+
+      "_Nil", NIL;
+      "_Out", OUTPUT;
+      "_In", INPUT;
+      "_Test", TEST;
+      "_Let", LET;
+      "_New", NEW;
+      "_Par", PAR;
+      "_Choice", CHOICE
     ]
 
 let newline lexbuf =

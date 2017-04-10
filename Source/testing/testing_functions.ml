@@ -26,7 +26,7 @@ type test_display =
 
 type html_code =
   | NoScript of string
-  | Script of string * string
+  | Script of string * string * string list
 
 let produce_test_terminal test  =
   let str = ref "" in
@@ -78,7 +78,7 @@ let produce_test_latex (test,script) =
 
   match script with
     | None -> NoScript !str
-    | Some s -> Script (!str,s)
+    | Some (s,loading_ids) -> Script (!str,s, loading_ids)
 
 (**** Data for each functions *****)
 
@@ -123,13 +123,16 @@ let scripts_loading = "            // Loading the different processes"
 
 (**** Publication of tests *****)
 
-let rec publish_loading_script out = function
-  | 0 -> ()
-  | k ->
-      publish_loading_script out (k-1);
-      Printf.fprintf out "            window.loadData%d = function (data) {\n" k;
-      Printf.fprintf out "                DAG.displayGraph(data, jQuery('#dag-name-%d'), jQuery('#dag-%d > svg'));\n" k k;
-      Printf.fprintf out "            };\n\n"
+let publish_loading_script out =
+  List.iter (fun (_,html_code) -> match html_code with
+    | NoScript _ -> Config.internal_error "[testing_functions.ml >> public_loading_script] There should be some script."
+    | Script(_,_,id_l) ->
+        List.iter (fun id ->
+          Printf.fprintf out "            window.loadData%s = function (data) {\n" id;
+          Printf.fprintf out "                DAG.displayGraph(data, jQuery('#dag-name-%s'), jQuery('#dag-%s > svg'));\n" id id;
+          Printf.fprintf out "            };\n\n"
+        ) id_l
+  )
 
 let publish_tests_to_check data =
   let path_html = Printf.sprintf "%stesting_data/%s%s.html" !Config.path_index "tests_to_check/" data.file
@@ -147,8 +150,8 @@ let publish_tests_to_check data =
     Printf.fprintf out_html "        <p class=\"title-test\"> Test %d -- Validate <input class=\"ValidateButton\" type=\"checkbox\" value=\"%d\" onchange=\"display_command();\"></p>\n" !acc !acc;
     begin match test_latex with
       | NoScript _ when data.scripts -> Config.internal_error "[testing_function >> publish_tests_to_check] No script when there should be."
-      | Script(_,_) when not data.scripts -> Config.internal_error "[testing_function >> publish_tests_to_check] Presence of a script when there should not be."
-      | NoScript str | Script (str,_) -> Printf.fprintf out_html "%s" str
+      | Script(_,_,_) when not data.scripts -> Config.internal_error "[testing_function >> publish_tests_to_check] Presence of a script when there should not be."
+      | NoScript str | Script (str,_,_) -> Printf.fprintf out_html "%s" str
     end;
     Printf.fprintf out_txt "%s\n" next_test_txt;
     Printf.fprintf out_txt "%s" test_txt;
@@ -167,8 +170,10 @@ let publish_tests_to_check data =
     line := l
   done;
 
+  let additional_tests = List.rev data.additional_tests in
+
   List.iter print data.tests_to_check;
-  List.iter print (List.rev data.additional_tests);
+  List.iter print additional_tests;
 
   close_out out_txt;
 
@@ -182,7 +187,8 @@ let publish_tests_to_check data =
         line := l
       done;
 
-      publish_loading_script out_html (!nb_tests_to_check + !nb_additional_tests);
+      publish_loading_script out_html data.tests_to_check;
+      publish_loading_script out_html additional_tests;
 
       begin try
         while true do
@@ -198,12 +204,12 @@ let publish_tests_to_check data =
 
       List.iter (fun (_,html_code) -> match html_code with
         | NoScript _ -> Config.internal_error "[testing_function >> publish_tests_to_check] No script when there should be (2)"
-        | Script(_,script) -> Printf.fprintf out_script "%s\n" script
+        | Script(_,script,_) -> Printf.fprintf out_script "%s\n" script
       ) data.tests_to_check;
 
       List.iter (fun (_,html_code) -> match html_code with
         | NoScript _ -> Config.internal_error "[testing_function >> publish_tests_to_check] No script when there should be (3)"
-        | Script(_,script) -> Printf.fprintf out_script "%s\n" script
+        | Script(_,script,_) -> Printf.fprintf out_script "%s\n" script
       ) data.additional_tests;
 
       close_out out_script
@@ -233,8 +239,8 @@ let publish_validated_tests data =
     Printf.fprintf out_html "        <p class=\"title-test\"> Test %d</p>\n" !acc;
     begin match test_latex with
       | NoScript _ when data.scripts -> Config.internal_error "[testing_function >> publish_validated_tests] No script when there should be."
-      | Script(_,_) when not data.scripts -> Config.internal_error "[testing_function >> publish_validated_tests] Presence of a script when there should not be."
-      | NoScript str | Script (str,_) -> Printf.fprintf out_html "%s" str
+      | Script(_,_,_) when not data.scripts -> Config.internal_error "[testing_function >> publish_validated_tests] Presence of a script when there should not be."
+      | NoScript str | Script (str,_,_) -> Printf.fprintf out_html "%s" str
     end;
 
     Printf.fprintf out_txt "%s\n" next_test_txt;
@@ -268,7 +274,7 @@ let publish_validated_tests data =
         line := l
       done;
 
-      publish_loading_script out_html !nb_validated_test;
+      publish_loading_script out_html data.validated_tests;
 
       begin try
         while true do
@@ -284,12 +290,12 @@ let publish_validated_tests data =
 
       List.iter (fun (_,html_code) -> match html_code with
         | NoScript _ -> Config.internal_error "[testing_function >> publish_validated_tests] No script when there should be (2)"
-        | Script(_,script) -> Printf.fprintf out_script "%s\n" script
+        | Script(_,script,_) -> Printf.fprintf out_script "%s\n" script
       ) data.tests_to_check;
 
       List.iter (fun (_,html_code) -> match html_code with
         | NoScript _ -> Config.internal_error "[testing_function >> publish_validated_tests] No script when there should be (3)"
-        | Script(_,script) -> Printf.fprintf out_script "%s\n" script
+        | Script(_,script,_) -> Printf.fprintf out_script "%s\n" script
       ) data.additional_tests;
 
       close_out out_script
@@ -315,7 +321,7 @@ let pre_load_tests data =
 
   let init_html =
     if data.scripts
-    then Script("","")
+    then Script("","",[])
     else NoScript ""
   in
 
@@ -526,6 +532,16 @@ let gather_in_Uniformity_Set uniset gather =
     acc_gather := gather_in_term Recipe recipe (gather_in_term Protocol term !acc_gather)
   );
   !acc_gather
+
+let gather_in_process proc gather =
+  let names = Process.get_names_with_list proc (fun _ -> true) gather.g_names in
+  let fst_vars = Process.get_vars_with_list proc gather.g_fst_vars in
+  { gather with g_names = names; g_fst_vars = fst_vars }
+
+let gather_in_expansed_process proc gather =
+  let names = Process.get_names_with_list_expansed proc (fun _ -> true) gather.g_names in
+  let fst_vars = Process.get_vars_with_list_expansed proc gather.g_fst_vars in
+  { gather with g_names = names; g_fst_vars = fst_vars }
 
 (*************************************
       Generic display functions
@@ -1333,10 +1349,6 @@ let update_Data_structure_Tools_uniform_consequence () =
   Tools.update_test_uniform_consequence (fun sdf df uniset term result ->
     if data_IO_Data_structure_Tools_uniform_consequence.is_being_tested
     then add_test (test_Data_structure_Tools_uniform_consequence sdf df uniset term result) data_IO_Data_structure_Tools_uniform_consequence
-  );
-  Tools.update_test_uniform_consequence (fun sdf df uniset term result ->
-    if data_IO_Data_structure_Tools_uniform_consequence.is_being_tested
-    then add_test (test_Data_structure_Tools_uniform_consequence sdf df uniset term result) data_IO_Data_structure_Tools_uniform_consequence
   )
 
 let apply_Data_structure_Tools_uniform_consequence sdf df uniset term  =
@@ -1363,50 +1375,52 @@ let data_IO_Process_of_expansed_process =
     file = "process_of_expansed_process"
   }
 
-(*let test_Process_of_expansed_process process result =
+let test_Process_of_expansed_process process result =
   (**** Retreive the names, variables and axioms *****)
-  let gathering = gather_in_Uniformity_Set uniset (gather_in_SDF sdf (gather_in_DF df (gather_in_term Protocol term (gather_in_signature empty_gathering)))) in
+  let gathering = gather_in_process result (gather_in_expansed_process process (gather_in_signature empty_gathering)) in
 
   (**** Generate the display renaming ****)
   let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in
+  let id_rho = Process.Testing.get_id_renaming [result] in
 
   (**** Generate test_display for terminal *****)
 
   let terminal_header, latex_header = header_terminal_and_latex true rho gathering in
   let test_terminal =
     { terminal_header with
-      inputs = [ (SDF.display Testing ~rho:rho sdf,Display); (DF.display Testing ~rho:rho df,Display); (Uniformity_Set.display Testing ~rho:rho uniset, Display); (display Testing ~rho:rho Protocol term,Inline) ];
-      output = ( display_recipe_option Testing rho result, Inline )
+      inputs = [ (Process.display_expansed_process_testing rho process, Text) ];
+      output = ( Process.display_process_testing rho id_rho result, Text )
     } in
 
-  let test_latex =
-    { latex_header with
-      inputs = [ (SDF.display Latex ~rho:rho sdf,Display); (DF.display Latex ~rho:rho df,Display); (Uniformity_Set.display Latex ~rho:rho uniset, Display); (display Latex ~rho:rho Protocol term,Inline) ];
-      output = ( display_recipe_option Latex rho result, Inline )
-    } in
+  let test_latex i =
+    let (html_result,script_result) = Process.display_process_HTML ~rho:rho ~id_rho:id_rho ~name:"Result process" (string_of_int i) result in
 
-  test_terminal, (fun _ -> test_latex, None)
+    let test_latex =
+      { latex_header with
+        inputs = [ (Process.display_expansed_process_HTML ~rho:rho process, Text) ];
+        output = ( html_result, Text )
+      } in
+    (test_latex, Some(script_result, [(string_of_int i)]))
+  in
 
-let update_Data_structure_Tools_uniform_consequence () =
-  Tools.update_test_uniform_consequence (fun sdf df uniset term result ->
-    if data_IO_Data_structure_Tools_uniform_consequence.is_being_tested
-    then add_test (test_Data_structure_Tools_uniform_consequence sdf df uniset term result) data_IO_Data_structure_Tools_uniform_consequence
-  );
-  Tools.update_test_uniform_consequence (fun sdf df uniset term result ->
-    if data_IO_Data_structure_Tools_uniform_consequence.is_being_tested
-    then add_test (test_Data_structure_Tools_uniform_consequence sdf df uniset term result) data_IO_Data_structure_Tools_uniform_consequence
+  test_terminal, test_latex
+
+let update_Process_of_expansed_process () =
+  Process.update_test_of_expansed_process (fun process result ->
+    if data_IO_Process_of_expansed_process.is_being_tested
+    then add_test (test_Process_of_expansed_process process result) data_IO_Process_of_expansed_process
   )
 
-let apply_Data_structure_Tools_uniform_consequence sdf df uniset term  =
-  let result = Tools.uniform_consequence sdf df uniset term in
+let apply_Process_of_expansed_process process =
+  let result = Process.of_expansed_process process in
 
-  let test_terminal,_ = test_Data_structure_Tools_uniform_consequence sdf df uniset term result in
+  let test_terminal,_ = test_Process_of_expansed_process process result in
   produce_test_terminal test_terminal
 
-let load_Data_structure_Tools_uniform_consequence i sdf df uniset term result =
-  let _,test_latex = test_Data_structure_Tools_uniform_consequence sdf df uniset term result in
+let load_Process_of_expansed_process i process result =
+  let _,test_latex = test_Process_of_expansed_process process result in
   produce_test_latex (test_latex i)
-*)
+
 (*************************************
          General function
 *************************************)
@@ -1424,7 +1438,8 @@ let list_data =
     data_IO_Data_structure_Eq_implies;
     data_IO_Data_structure_Tools_partial_consequence;
     data_IO_Data_structure_Tools_partial_consequence_additional;
-    data_IO_Data_structure_Tools_uniform_consequence
+    data_IO_Data_structure_Tools_uniform_consequence;
+    data_IO_Process_of_expansed_process
   ]
 
 let preload () = List.iter (fun data -> pre_load_tests data) list_data
@@ -1443,4 +1458,5 @@ let update () =
   update_Data_structure_Eq_implies ();
   update_Data_structure_Tools_partial_consequence ();
   update_Data_structure_Tools_partial_consequence_additional ();
-  update_Data_structure_Tools_uniform_consequence ()
+  update_Data_structure_Tools_uniform_consequence ();
+  update_Process_of_expansed_process ();

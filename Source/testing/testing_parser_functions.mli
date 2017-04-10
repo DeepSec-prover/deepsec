@@ -3,13 +3,7 @@
 ***            Types             ***
 ************************************)
 
-type ident = string * int
-
-type term =
-  | Id of ident
-  | FuncApp of ident * term list
-  | Tuple of term list
-  | Proj of int * int * term * int
+(*** Parser types ****)
 
 type parsing_mode =
   | Load of int
@@ -20,6 +14,44 @@ type result_parsing =
   | RVerify of string
 
 type parser = parsing_mode -> result_parsing
+
+(*** Data types ***)
+
+type ident = string * int
+
+type term =
+  | Id of ident
+  | FuncApp of ident * term list
+  | Tuple of term list
+  | Proj of int * int * term * int
+
+type renaming = (ident * ident) list
+
+type expansed_process =
+  | ENil
+  | EOutput of term * term * expansed_process
+  | EInput of term * ident * expansed_process
+  | ETest of term * term * expansed_process * expansed_process
+  | ELet of term * term * expansed_process * expansed_process
+  | ENew of ident * expansed_process
+  | EPar of (expansed_process * int) list
+  | EChoice of expansed_process list
+
+type action =
+  | ANil
+  | AOut of term * term * int
+  | AIn of term * ident * int
+  | ATest of term * term * int * int
+  | ALet of term * term * int * int
+  | ANew of ident * int
+  | APar of (int * int) list
+  | AChoice of (int * int) list
+
+type content = int * action
+
+type symbolic_derivation = (int * int) * renaming * renaming
+
+type process = content list * symbolic_derivation list
 
 type 'a top_bot =
   | Top
@@ -108,3 +140,8 @@ val parse_Uniformity_Set : (term * term) list -> Data_structure.Uniformity_Set.t
 val parse_consequence : (term * term) option -> (Term.recipe * Term.protocol_term) option
 
 val parse_recipe_option : term option -> Term.recipe option
+
+
+val parse_process : process -> Process.process
+
+val parse_expansed_process : expansed_process -> Process.expansed_process

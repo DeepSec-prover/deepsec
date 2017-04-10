@@ -2,20 +2,7 @@
 ***            Types             ***
 ************************************)
 
-type ident = string * int
-
-type term =
-  | Id of ident
-  | FuncApp of ident * term list
-  | Tuple of term list
-  | Proj of int * int * term * int
-
-type env_elt =
-  | VarFst of Term.fst_ord_variable
-  | VarSnd of Term.snd_ord_variable
-  | Name of Term.name
-  | Axiom of Term.axiom
-  | Func of Term.symbol
+(*** Parser types ****)
 
 type parsing_mode =
   | Load of int
@@ -26,6 +13,52 @@ type result_parsing =
   | RVerify of string
 
 type parser = parsing_mode -> result_parsing
+
+(*** Data types ***)
+
+type env_elt =
+  | VarFst of Term.fst_ord_variable
+  | VarSnd of Term.snd_ord_variable
+  | Name of Term.name
+  | Axiom of Term.axiom
+  | Func of Term.symbol
+
+
+type ident = string * int
+
+type term =
+  | Id of ident
+  | FuncApp of ident * term list
+  | Tuple of term list
+  | Proj of int * int * term * int
+
+type renaming = (ident * ident) list
+
+type expansed_process =
+  | ENil
+  | EOutput of term * term * expansed_process
+  | EInput of term * ident * expansed_process
+  | ETest of term * term * expansed_process * expansed_process
+  | ELet of term * term * expansed_process * expansed_process
+  | ENew of ident * expansed_process
+  | EPar of (expansed_process * int) list
+  | EChoice of expansed_process list
+
+type action =
+  | ANil
+  | AOut of term * term * int
+  | AIn of term * ident * int
+  | ATest of term * term * int * int
+  | ALet of term * term * int * int
+  | ANew of ident * int
+  | APar of (int * int) list
+  | AChoice of (int * int) list
+
+type content = int * action
+
+type symbolic_derivation = (int * int) * renaming * renaming
+
+type process = content list * symbolic_derivation list
 
 type 'a top_bot =
   | Top
@@ -45,6 +78,7 @@ type deduction_fact = term * term
 type deduction_formula = deduction_fact * basic_deduction_fact list * substitution
 
 let environment = Hashtbl.create 50
+
 
 (***********************************
 ***         Error_message        ***
@@ -72,6 +106,14 @@ let initialise_parsing () =
 (******** First-order variables ********)
 
 let reg_fst_vars = Str.regexp "_\\([wxyz]\\)_[0-9]+"
+
+let parse_fst_var (s,line) =
+  try
+    match Hashtbl.find environment s with
+      | VarFst v -> v
+      | env_elt -> error_message line (Printf.sprintf "The identifiant %s is declared as %s but a first-order variable is expected." s (display_env_elt_type env_elt))
+  with
+  | _ -> error_message line (Printf.sprintf "The identifiant %s is not declared" s)
 
 let rec parse_fst_vars = function
   | [] -> ()
@@ -133,6 +175,15 @@ let rec parse_names = function
       else error_message line (Printf.sprintf "The identifiant %s should be a name, i.e. it should match the regex _[abcklm]_[0-9]+" s);
 
       parse_names q
+
+
+let parse_name (s,line) =
+  try
+    match Hashtbl.find environment s with
+      | Name v -> v
+      | env_elt -> error_message line (Printf.sprintf "The identifiant %s is declared as %s but a name is expected." s (display_env_elt_type env_elt))
+  with
+  | _ -> error_message line (Printf.sprintf "The identifiant %s is not declared" s)
 
 (******** Axioms ********)
 
@@ -433,3 +484,39 @@ let parse_consequence  = function
 let parse_recipe_option  = function
   | None -> None
   | Some(recipe) -> Some(parse_term Term.Recipe recipe)
+
+(*********** Expansed process **********)
+
+let rec parse_expansed_process = function
+  | ENil -> Process.Nil
+  | EOutput(ch,t,proc) -> Process.Output(parse_term Term.Protocol ch, parse_term Term.Protocol t, parse_expansed_process proc)
+  | EInput(ch,x,proc) -> Process.Input(parse_term Term.Protocol ch, parse_fst_var x, parse_expansed_process proc)
+  | ETest(t1,t2,proc_then,proc_else) -> Process.IfThenElse(parse_term Term.Protocol t1, parse_term Term.Protocol t2, parse_expansed_process proc_then, parse_expansed_process proc_else)
+  | ELet(t1,t2,proc_then,proc_else) -> Process.Let(parse_term Term.Protocol t1, parse_term Term.Protocol t2, parse_expansed_process proc_then, parse_expansed_process proc_else)
+  | ENew(k,proc) -> Process.New(parse_name k, parse_expansed_process proc)
+  | EPar(proc_l) -> Process.Par(List.map (fun (proc,m) -> (parse_expansed_process proc, m)) proc_l)
+  | EChoice(proc_l) -> Process.Choice(List.map parse_expansed_process proc_l)
+
+(*********** ¨Process **********)
+
+let parse_content (id,action) = match action with
+  | ANil -> Process.Testing.add_Nil id
+  | AOut(ch,t,id_p) -> Process.Testing.add_Out id (parse_term Term.Protocol ch) (parse_term Term.Protocol t) id_p
+  | AIn(ch,x,id_p) -> Process.Testing.add_In id (parse_term Term.Protocol ch) (parse_fst_var x) id_p
+  | ATest(t1,t2,id_then,id_else) -> Process.Testing.add_Test id (parse_term Term.Protocol t1) (parse_term Term.Protocol t2) id_then id_else
+  | ALet(t1,t2,id_then,id_else) -> Process.Testing.add_Let id (parse_term Term.Protocol t1) (parse_term Term.Protocol t2) id_then id_else
+  | ANew(k,id_p) -> Process.Testing.add_New id (parse_name k) id_p
+  | APar(proc_l) -> Process.Testing.add_Par id proc_l
+  | AChoice(proc_l) -> Process.Testing.add_Choice id proc_l
+
+let parse_vars_renaming v_list =
+  List.fold_right (fun (v1,v2) acc -> Term.Variable.Renaming.compose acc (parse_fst_var v1) (parse_fst_var v2)) v_list Term.Variable.Renaming.identity
+
+let parse_names_renaming n_list =
+  List.fold_right (fun (n1,n2) acc -> Term.Name.Renaming.compose acc (parse_name n1) (parse_name n2)) n_list Term.Name.Renaming.identity
+
+let parse_symbolic_derivation (content_mult, vars_rho, names_rho) = (content_mult, parse_vars_renaming vars_rho, parse_names_renaming names_rho)
+
+let parse_process (content_list,symb_list) =
+  List.iter parse_content content_list;
+  Process.Testing.create_process (List.map parse_symbolic_derivation symb_list)

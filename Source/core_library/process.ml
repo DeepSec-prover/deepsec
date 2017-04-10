@@ -54,6 +54,8 @@ and symbolic_derivation =
 
 and process = symbolic_derivation list
 
+type id_renaming = int -> int
+
 (*****************************
 ***          ID            ***
 ******************************)
@@ -100,33 +102,67 @@ let rec get_names_with_list_expansed process f_bound list_names = match process 
   | Choice(proc_l) ->
       List.fold_left (fun acc proc -> get_names_with_list_expansed proc f_bound acc) list_names proc_l
 
+let explored_name_list = ref []
+let explored_var_list = ref []
+let explored_content_list = ref []
 
-let rec get_names_with_list_content content f_bound list_names = match content.action with
-  | ANil -> list_names
-  | AOut(ch,t,cont) ->
-      let names_1 = get_names_with_list_content cont f_bound list_names in
-      let names_2 = get_names_with_list Protocol ch f_bound names_1 in
-      get_names_with_list Protocol t f_bound names_2
-  | AIn(ch,_,cont) ->
-      let names_1 = get_names_with_list_content cont f_bound list_names in
-      get_names_with_list Protocol ch f_bound names_1
-  | ATest(t,r,cont_then,cont_else) | ALet(t,r,cont_then,cont_else) ->
-      let names_1 = get_names_with_list_content cont_then f_bound list_names in
-      let names_2 = get_names_with_list_content cont_else f_bound names_1 in
-      let names_3 = get_names_with_list Protocol t f_bound names_2 in
-      get_names_with_list Protocol r f_bound names_3
-  | ANew(k,cont) ->
-      let names_1 = get_names_with_list_content cont f_bound list_names in
-      get_names_with_list Protocol (of_name k) f_bound names_1
-  | APar(cont_mult_list) ->
-      List.fold_left (fun acc cont_mult -> get_names_with_list_content cont_mult.content f_bound acc) list_names cont_mult_list
-  | AChoice(cont_mult_list) ->
-      List.fold_left (fun acc cont_mult -> get_names_with_list_content cont_mult.content f_bound acc) list_names cont_mult_list
+let rec explore_content_for_names f_bound c = match c.link with
+  | NoLink ->
+      begin match c.action with
+        | ANil -> ()
+        | AOut(ch,t,cont) ->
+            explore_content_for_names f_bound  cont;
+            explored_name_list := get_names_with_list Protocol t f_bound (get_names_with_list Protocol ch f_bound !explored_name_list)
+        | AIn(ch,_,cont) ->
+            explore_content_for_names f_bound  cont;
+            explored_name_list := get_names_with_list Protocol ch f_bound !explored_name_list
+        | ATest(t1,t2,cont_then,cont_else) | ALet(t1,t2,cont_then,cont_else) ->
+            explore_content_for_names f_bound  cont_then;
+            explore_content_for_names f_bound  cont_else;
+            explored_name_list := get_names_with_list Protocol t1 f_bound (get_names_with_list Protocol t2 f_bound !explored_name_list)
+        | ANew(k,cont) ->
+            explore_content_for_names f_bound  cont;
+            explored_name_list := get_names_with_list Protocol (of_name k) f_bound !explored_name_list
+        | APar(cont_mult_list) ->
+            List.iter (fun cont_mult -> explore_content_for_names f_bound cont_mult.content) cont_mult_list
+        | AChoice(cont_mult_list) ->
+            List.iter (fun cont_mult -> explore_content_for_names f_bound cont_mult.content) cont_mult_list
+      end;
+      c.link <- Found;
+      explored_content_list := c :: !explored_content_list
+  | Found -> ()
 
 let get_names_with_list proc f_bound list_names =
-  List.fold_left (fun acc symb ->
-    get_names_with_list_content symb.content_mult.content f_bound acc
-    ) list_names proc
+  Config.debug (fun () ->
+    if !explored_name_list <> [] || !explored_content_list <> []
+    then Config.internal_error "[process.ml >> get_names_with_list] explored lists should be empty"
+  );
+
+  explored_name_list := list_names;
+
+  List.iter (fun symb -> explore_content_for_names f_bound symb.content_mult.content) proc;
+
+  List.iter (fun c -> c.link <- NoLink) !explored_content_list;
+  explored_content_list := [];
+  let result = !explored_name_list in
+  explored_name_list := [];
+  result
+
+let get_names_with_list_content cont f_bound list_names =
+  Config.debug (fun () ->
+    if !explored_name_list <> [] || !explored_content_list <> []
+    then Config.internal_error "[process.ml >> get_names_with_list_content] explored lists should be empty"
+  );
+
+  explored_name_list := list_names;
+
+  explore_content_for_names f_bound cont;
+
+  List.iter (fun c -> c.link <- NoLink) !explored_content_list;
+  explored_content_list := [];
+  let result = !explored_name_list in
+  explored_name_list := [];
+  result
 
 let rec get_vars_with_list_expansed process list_vars = match process with
   | Nil -> list_vars
@@ -134,9 +170,10 @@ let rec get_vars_with_list_expansed process list_vars = match process with
       let vars_1 = get_vars_with_list_expansed proc list_vars in
       let vars_2 = get_vars_with_list Protocol ch (fun _ -> true) vars_1 in
       get_vars_with_list Protocol t (fun _ -> true) vars_2
-  | Input(ch,_,proc) ->
+  | Input(ch,x,proc) ->
       let vars_1 = get_vars_with_list_expansed proc list_vars in
-      get_vars_with_list Protocol ch (fun _ -> true) vars_1
+      let vars_2 = get_vars_with_list Protocol ch (fun _ -> true) vars_1 in
+      get_vars_with_list Protocol (of_variable x) (fun _ -> true) vars_2
   | IfThenElse(t1,t2,proc_then,proc_else) | Let(t1,t2,proc_then,proc_else) ->
       let vars_1 = get_vars_with_list_expansed proc_then list_vars in
       let vars_2 = get_vars_with_list_expansed proc_else vars_1 in
@@ -148,30 +185,61 @@ let rec get_vars_with_list_expansed process list_vars = match process with
   | Choice(proc_l) ->
       List.fold_left (fun acc proc -> get_vars_with_list_expansed proc acc) list_vars proc_l
 
-let rec get_vars_with_list_content content list_vars = match content.action with
-  | ANil -> list_vars
-  | AOut(ch,t,cont) ->
-      let vars_1 = get_vars_with_list_content cont list_vars in
-      let vars_2 = get_vars_with_list Protocol ch (fun _ -> true) vars_1 in
-      get_vars_with_list Protocol t (fun _ -> true) vars_2
-  | AIn(ch,_,cont) ->
-      let vars_1 = get_vars_with_list_content cont list_vars in
-      get_vars_with_list Protocol ch (fun _ -> true) vars_1
-  | ATest(t,r,cont_then,cont_else) | ALet(t,r,cont_then,cont_else) ->
-      let vars_1 = get_vars_with_list_content cont_then list_vars in
-      let vars_2 = get_vars_with_list_content cont_else vars_1 in
-      let vars_3 = get_vars_with_list Protocol t (fun _ -> true) vars_2 in
-      get_vars_with_list Protocol r (fun _ -> true) vars_3
-  | ANew(_,cont) -> get_vars_with_list_content cont list_vars
-  | APar(cont_mult_list) ->
-      List.fold_left (fun acc cont_mult -> get_vars_with_list_content cont_mult.content acc) list_vars cont_mult_list
-  | AChoice(cont_mult_list) ->
-      List.fold_left (fun acc cont_mult -> get_vars_with_list_content cont_mult.content acc) list_vars cont_mult_list
+let rec explore_content_for_vars c = match c.link with
+  | NoLink ->
+      begin match c.action with
+        | ANil -> ()
+        | AOut(ch,t,cont) ->
+            explore_content_for_vars cont;
+            explored_var_list := get_vars_with_list Protocol t (fun _ -> true) (get_vars_with_list Protocol ch (fun _ -> true) !explored_var_list)
+        | AIn(ch,x,cont) ->
+            explore_content_for_vars cont;
+            explored_var_list := get_vars_with_list Protocol (of_variable x) (fun _ -> true) (get_vars_with_list Protocol ch (fun _ -> true) !explored_var_list)
+        | ATest(t1,t2,cont_then,cont_else) | ALet(t1,t2,cont_then,cont_else) ->
+            explore_content_for_vars cont_then;
+            explore_content_for_vars cont_else;
+            explored_var_list := get_vars_with_list Protocol t1 (fun _ -> true) (get_vars_with_list Protocol t2 (fun _ -> true) !explored_var_list)
+        | ANew(_,cont) -> explore_content_for_vars cont
+        | APar(cont_mult_list) ->
+            List.iter (fun cont_mult -> explore_content_for_vars cont_mult.content) cont_mult_list
+        | AChoice(cont_mult_list) ->
+            List.iter (fun cont_mult -> explore_content_for_vars cont_mult.content) cont_mult_list
+      end;
+      c.link <- Found;
+      explored_content_list := c :: !explored_content_list
+  | Found -> ()
 
 let get_vars_with_list proc list_vars =
-  List.fold_left (fun acc symb ->
-    get_vars_with_list_content symb.content_mult.content acc
-    ) list_vars proc
+  Config.debug (fun () ->
+    if !explored_var_list <> [] || !explored_content_list <> []
+    then Config.internal_error "[process.ml >> get_vars_with_list] explored lists should be empty"
+  );
+
+  explored_var_list := list_vars;
+
+  List.iter (fun symb -> explore_content_for_vars symb.content_mult.content) proc;
+
+  List.iter (fun c -> c.link <- NoLink) !explored_content_list;
+  explored_content_list := [];
+  let result = !explored_var_list in
+  explored_var_list := [];
+  result
+
+let get_vars_with_list_content cont list_vars =
+  Config.debug (fun () ->
+    if !explored_var_list <> [] || !explored_content_list <> []
+    then Config.internal_error "[process.ml >> get_vars_with_list] explored lists should be empty"
+  );
+
+  explored_var_list := list_vars;
+
+  explore_content_for_vars cont;
+
+  List.iter (fun c -> c.link <- NoLink) !explored_content_list;
+  explored_content_list := [];
+  let result = !explored_var_list in
+  explored_var_list := [];
+  result
 
 (*****************************
 ***     Alpha renaming     ***
@@ -274,6 +342,8 @@ and is_equal_modulo_process proc_1 proc_2 = match proc_1, proc_2 with
 ******************************)
 
 let contents_of_general_dag = ref []
+
+let initialise () = contents_of_general_dag := []
 
 let nil_content = { action = ANil ; link = NoLink; id = fresh_id (); bound_var = Variable.Renaming.empty; bound_name = Name.Renaming.empty }
 
@@ -383,29 +453,27 @@ let of_expansed_process ex_proc =
 
 (******* Testing ********)
 
-let display_content_mult_testing c_mult =
-  Printf.sprintf "(%d,%d)" c_mult.content.id c_mult.mult
+let display_content_mult_testing id_rho c_mult =
+  Printf.sprintf "(%d,%d)" (id_rho c_mult.content.id) c_mult.mult
 
-let display_action_testing rho = function
+let display_action_testing rho id_rho = function
   | ANil -> "_Nil"
-  | AOut(ch,t,c) -> Printf.sprintf "_Out(%s,%s,%d)" (display Testing ~rho:rho Protocol ch) (display Testing ~rho:rho Protocol t) c.id
-  | AIn(ch,x,c) -> Printf.sprintf "_In(%s,%s,%d)" (display Testing ~rho:rho Protocol ch) (Variable.display Testing ~rho:rho Protocol x) c.id
-  | ATest(t1,t2,c_then,c_else) -> Printf.sprintf "_Test(%s,%s,%d,%d)" (display Testing ~rho:rho Protocol t1) (display Testing ~rho:rho Protocol t2) c_then.id c_else.id
-  | ALet(t1,t2,c_then,c_else) -> Printf.sprintf "_Let(%s,%s,%d,%d)" (display Testing ~rho:rho Protocol t1) (display Testing ~rho:rho Protocol t2) c_then.id c_else.id
-  | ANew(k,c) -> Printf.sprintf "_New(%s,%d)" (Name.display Testing ~rho:rho k) c.id
-  | APar(c_mult_list) -> Printf.sprintf "_Par(%s)" (display_list display_content_mult_testing "," c_mult_list)
-  | AChoice(c_mult_list) -> Printf.sprintf "_Choice(%s)" (display_list display_content_mult_testing "," c_mult_list)
+  | AOut(ch,t,c) -> Printf.sprintf "_Out(%s,%s,%d)" (display Testing ~rho:rho Protocol ch) (display Testing ~rho:rho Protocol t) (id_rho c.id)
+  | AIn(ch,x,c) -> Printf.sprintf "_In(%s,%s,%d)" (display Testing ~rho:rho Protocol ch) (Variable.display Testing ~rho:rho Protocol x) (id_rho c.id)
+  | ATest(t1,t2,c_then,c_else) -> Printf.sprintf "_Test(%s,%s,%d,%d)" (display Testing ~rho:rho Protocol t1) (display Testing ~rho:rho Protocol t2) (id_rho c_then.id) (id_rho c_else.id)
+  | ALet(t1,t2,c_then,c_else) -> Printf.sprintf "_Let(%s,%s,%d,%d)" (display Testing ~rho:rho Protocol t1) (display Testing ~rho:rho Protocol t2) (id_rho c_then.id) (id_rho c_else.id)
+  | ANew(k,c) -> Printf.sprintf "_New(%s,%d)" (Name.display Testing ~rho:rho k) (id_rho c.id)
+  | APar(c_mult_list) -> Printf.sprintf "_Par(%s)" (display_list (display_content_mult_testing id_rho) "," c_mult_list)
+  | AChoice(c_mult_list) -> Printf.sprintf "_Choice(%s)" (display_list (display_content_mult_testing id_rho) "," c_mult_list)
 
-let display_content_testing rho c =
-  Printf.sprintf "{ _id = %d; _var = %s; _name = %s; _action = %s }"
-    c.id
-    (Variable.Renaming.display_domain Testing ~rho:rho Protocol c.bound_var)
-    (Name.Renaming.display_domain Testing ~rho:rho c.bound_name)
-    (display_action_testing rho c.action)
+let display_content_testing rho id_rho c =
+  Printf.sprintf "{ %d; %s }"
+    (id_rho c.id)
+    (display_action_testing rho id_rho c.action)
 
-let display_symbolic_derivation_testing rho symb =
+let display_symbolic_derivation_testing rho id_rho symb =
   Printf.sprintf "{ %s; %s; %s }"
-    (display_content_mult_testing symb.content_mult)
+    (display_content_mult_testing id_rho symb.content_mult)
     (Variable.Renaming.display Testing ~rho:rho Protocol symb.var_renaming)
     (Name.Renaming.display Testing ~rho:rho symb.name_renaming)
 
@@ -431,12 +499,12 @@ let get_list_of_contents process =
   List.iter (fun c -> c.link <- NoLink) ordered_content_list;
   ordered_content_list
 
-let display_process_testing rho process =
+let display_process_testing rho id_rho process =
   let content_list = get_list_of_contents process in
 
   Printf.sprintf "{ [ %s ], [ %s ] }"
-    (display_list (display_content_testing rho) ";" content_list)
-    (display_list (display_symbolic_derivation_testing rho) ";" process)
+    (display_list (display_content_testing rho id_rho) ";" content_list)
+    (display_list (display_symbolic_derivation_testing rho id_rho) ";" process)
 
 let rec display_expansed_process_testing rho = function
   | Nil -> "_Nil"
@@ -485,27 +553,27 @@ let display_action_HTML rho = function
   | APar(_) -> "|"
   | AChoice(_) -> "+"
 
-let display_content_HTML rho content =
-  Printf.sprintf "            { id: '%d', value: { label: '<p>&nbsp;&nbsp;%s&nbsp;&nbsp;</p>' } },\n" content.id (display_action_HTML rho content.action)
+let display_content_HTML rho id_rho content =
+  Printf.sprintf "            { id: '%d', value: { label: '<p>&nbsp;&nbsp;%s&nbsp;&nbsp;</p>' } },\n" (id_rho content.id) (display_action_HTML rho content.action)
 
-let display_link_HTML parent son = function
-  | None -> Printf.sprintf "            { u: '%d', v: '%d' },\n" parent.id son.id
-  | Some label -> Printf.sprintf "            { u: '%d', v: '%d', value: { label: '%s' } },\n" parent.id son.id label
+let display_link_HTML id_rho parent son = function
+  | None -> Printf.sprintf "            { u: '%d', v: '%d' },\n" (id_rho parent.id) (id_rho son.id)
+  | Some label -> Printf.sprintf "            { u: '%d', v: '%d', value: { label: '%s' } },\n" (id_rho parent.id) (id_rho son.id) label
 
-let display_links_from_content_HTML content = match content.action with
+let display_links_from_content_HTML id_rho content = match content.action with
   | ANil -> ""
-  | AOut(_,_,c) | AIn(_,_,c) | ANew(_,c) -> display_link_HTML content c None
+  | AOut(_,_,c) | AIn(_,_,c) | ANew(_,c) -> display_link_HTML id_rho content c None
   | ATest(_,_,c_then,c_else) -> Printf.sprintf "%s%s"
-      (display_link_HTML content c_then (Some "then"))
-      (display_link_HTML content c_else (Some "else"))
+      (display_link_HTML id_rho content c_then (Some "then"))
+      (display_link_HTML id_rho content c_else (Some "else"))
   | ALet(_,_,c_then,c_else) -> Printf.sprintf "%s%s"
-      (display_link_HTML content c_then (Some "in"))
-      (display_link_HTML content c_else (Some "else"))
+      (display_link_HTML id_rho content c_then (Some "in"))
+      (display_link_HTML id_rho content c_else (Some "else"))
   | APar c_mult_l | AChoice c_mult_l ->
       display_list (fun c_mult ->
           if c_mult.mult = 0
-          then display_link_HTML content c_mult.content None
-          else display_link_HTML content c_mult.content (Some (string_of_int c_mult.mult))
+          then display_link_HTML id_rho content c_mult.content None
+          else display_link_HTML id_rho content c_mult.content (Some (string_of_int c_mult.mult))
         ) "" c_mult_l
 
 let display_renaming_nodes_HTML proc =
@@ -549,36 +617,36 @@ let display_renamings_HTML rho proc =
   ) proc;
   !str
 
-let display_renaming_links_HTML proc =
+let display_renaming_links_HTML id_rho proc =
   let acc = ref 1 in
   let str = ref "" in
   List.iter (fun symb ->
     match symb.content_mult.mult with
      | 1 ->
-        str := !str ^ (Printf.sprintf "            { u: 'rho_%d', v: '%d' },\n" !acc symb.content_mult.content.id);
+        str := !str ^ (Printf.sprintf "            { u: 'rho_%d', v: '%d' },\n" !acc (id_rho symb.content_mult.content.id));
         acc := !acc + 1
      | n ->
-        str := !str ^ (Printf.sprintf "            { u: 'rho_%d', v: '%d', value: { label: '%d' } },\n" !acc symb.content_mult.content.id n);
+        str := !str ^ (Printf.sprintf "            { u: 'rho_%d', v: '%d', value: { label: '%d' } },\n" !acc (id_rho symb.content_mult.content.id) n);
         acc := !acc + 1
     ) proc;
   !str
 
-let display_process_HTML ?(rho=None) ?(name="Process") id process =
+let display_process_HTML ?(rho=None) ?(id_rho=(fun x -> x)) ?(name="Process") id process =
 
   let javascript =
     let list_contents = get_list_of_contents process in
     let str = ref "" in
 
-    str := Printf.sprintf "%sloadData%d(\n" !str id;
+    str := Printf.sprintf "%sloadData%s(\n" !str id;
     str := Printf.sprintf "%s    {\n" !str;
     str := Printf.sprintf "%s        name: '%s',\n" !str name;
     str := Printf.sprintf "%s        nodes: [\n" !str;
-    List.iter (fun c -> str := Printf.sprintf "%s%s" !str (display_content_HTML rho c)) list_contents;
+    List.iter (fun c -> str := Printf.sprintf "%s%s" !str (display_content_HTML rho id_rho c)) list_contents;
     str := Printf.sprintf "%s%s" !str (display_renaming_nodes_HTML process);
     str := Printf.sprintf "%s        ],\n" !str;
     str := Printf.sprintf "%s        links: [\n" !str;
-    List.iter (fun c -> str := Printf.sprintf "%s%s" !str (display_links_from_content_HTML c)) list_contents;
-    str := Printf.sprintf "%s%s" !str (display_renaming_links_HTML process);
+    List.iter (fun c -> str := Printf.sprintf "%s%s" !str (display_links_from_content_HTML id_rho c)) list_contents;
+    str := Printf.sprintf "%s%s" !str (display_renaming_links_HTML id_rho process);
     str := Printf.sprintf "        ]\n    }\n);\n";
     !str
   in
@@ -586,11 +654,11 @@ let display_process_HTML ?(rho=None) ?(name="Process") id process =
   let html =
     let str = ref "" in
 
-    str := Printf.sprintf "%s            <span id=\"dag-name-%d\" class=\"dag-name\"></span>\n" !str id;
+    str := Printf.sprintf "%s            <span id=\"dag-name-%s\" class=\"dag-name\"></span>\n" !str id;
     str := Printf.sprintf "%s            <table class=\"processTable\">\n" !str;
     str := Printf.sprintf "%s              <tr class=\"processTableRow\">\n" !str;
     str := Printf.sprintf "%s                <td class=\"processDag\">\n" !str;
-    str := Printf.sprintf "%s                  <div id=\"dag-%d\" class=\"dag\">\n" !str id;
+    str := Printf.sprintf "%s                  <div id=\"dag-%s\" class=\"dag\">\n" !str id;
     str := Printf.sprintf "%s                    <svg height=\"80\">\n" !str;
     str := Printf.sprintf "%s                      <g transform=\"translate(20, 20)\"/>\n" !str;
     str := Printf.sprintf "%s                    </svg>\n" !str;
@@ -702,6 +770,120 @@ let display_expansed_process_HTML ?(rho=None) ?(margin_px=15) process =
 
   Printf.sprintf "          <div class=\"expansedTable\">\n            <div class=\"expansedBody\">\n%s            </div>\n          </div>\n"
     (sub_display_process 1 false process)
+
+(*******************************************************
+***        Transition in the classic semantics       ***
+********************************************************)
+
+module Testing = struct
+
+  let exists_id id = List.exists (fun content -> content.id = id) !contents_of_general_dag
+  let find_id id = List.find (fun content -> content.id = id) !contents_of_general_dag
+
+  let add id action =
+    let new_content = { action = action; link = NoLink; id = id; bound_var = Variable.Renaming.empty; bound_name = Name.Renaming.empty } in
+    new_content.bound_var <- Variable.Renaming.of_list (get_vars_with_list_content new_content []);
+    new_content.bound_name <- Name.Renaming.of_list (get_names_with_list_content new_content (fun b -> b = Bound) []);
+    contents_of_general_dag := new_content :: !contents_of_general_dag
+
+  let add_Nil id =
+    if not (exists_id id)
+    then add id ANil
+
+  let add_Out id ch t id_p =
+    if not (exists_id id)
+    then
+      let c = find_id id_p in
+      add id (AOut(ch,t,c))
+
+  let add_In id ch x id_p =
+    if not (exists_id id)
+    then
+      let c = find_id id_p in
+      add id (AIn(ch,x,c))
+
+  let add_Test id t1 t2 id_then id_else =
+    if not (exists_id id)
+    then
+      let c_then = find_id id_then in
+      let c_else = find_id id_else in
+      add id (ATest(t1,t2,c_then,c_else))
+
+  let add_Let id t1 t2 id_then id_else =
+    if not (exists_id id)
+    then
+      let c_then = find_id id_then in
+      let c_else = find_id id_else in
+      add id (ALet(t1,t2,c_then,c_else))
+
+  let add_New id n id_p =
+    if not (exists_id id)
+    then
+      let c = find_id id_p in
+      add id (ANew(n,c))
+
+  let add_Par id id_mult_list =
+    if not (exists_id id)
+    then
+      let cont_mult_list =
+        List.map (fun (id_p,m) ->
+          let c = find_id id_p in
+          { content = c; mult = m }
+        ) id_mult_list
+      in
+      add id (APar(cont_mult_list))
+
+  let add_Choice id id_mult_list =
+    if not (exists_id id)
+    then
+      let cont_mult_list =
+        List.map (fun (id_p,m) ->
+          let c = find_id id_p in
+          { content = c; mult = m }
+        ) id_mult_list
+      in
+      add id (AChoice(cont_mult_list))
+
+  let create_process symb_list =
+    List.map (fun ((id,mult),var_rho,name_rho) ->
+      let c = find_id id in
+      let cont_mult = { content = c; mult = mult } in
+      { content_mult = cont_mult; var_renaming = var_rho ; name_renaming = name_rho }
+    ) symb_list
+
+  let get_id_renaming process_list =
+
+    let content_list = ref [] in
+
+    let rec explore_content c = match c.link with
+      | NoLink ->
+          begin match c.action with
+            | ANil -> ()
+            | AOut(_,_,c') | AIn(_,_,c') | ANew(_,c') -> explore_content c'
+            | ATest(_,_,c1,c2) | ALet(_,_,c1,c2) -> explore_content c1; explore_content c2
+            | APar(c_mult_l) | AChoice(c_mult_l) -> List.iter (fun c_mult -> explore_content c_mult.content) c_mult_l
+          end;
+          c.link <- Found;
+          content_list := c :: !content_list
+      | Found -> ()
+    in
+
+    List.iter (fun process -> List.iter (fun symb -> explore_content symb.content_mult.content) process) process_list;
+
+    let ordered_content_list = List.rev !content_list in
+    List.iter (fun c -> c.link <- NoLink) ordered_content_list;
+
+    let id_rho id =
+      let rec explore_list k = function
+        | [] -> id
+        | c::_ when c.id = id -> k
+        | _::q -> explore_list (k+1) q
+      in
+      explore_list 1 ordered_content_list
+    in
+    id_rho
+
+end
 
 (*******************************************************
 ***        Transition in the classic semantics       ***

@@ -5,7 +5,7 @@ open Data_structure
 
 type html_code =
   | NoScript of string
-  | Script of string * string
+  | Script of string * string * string list
 
 (** The type [data_IO] represents all the informations required by the test manager for each tested function.
     The first three lists represent the different tests and their status. Each test is representing by a pair of string [(str1,str2)] where
@@ -152,3 +152,11 @@ val data_IO_Data_structure_Tools_uniform_consequence : data_IO
 val apply_Data_structure_Tools_uniform_consequence : SDF.t -> DF.t -> Uniformity_Set.t -> protocol_term -> string
 
 val load_Data_structure_Tools_uniform_consequence : int -> SDF.t -> DF.t -> Uniformity_Set.t -> protocol_term -> recipe option -> html_code
+
+(** {3 Process.of_expansed_process} *)
+
+val data_IO_Process_of_expansed_process : data_IO
+
+val apply_Process_of_expansed_process : Process.expansed_process -> string
+
+val load_Process_of_expansed_process : int -> Process.expansed_process  -> Process.process -> html_code
