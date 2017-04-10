@@ -225,8 +225,11 @@ let test_of_expansed_process () =
           Output(c,t4, Nil))),2)
     ]
   in
-  let _ = of_expansed_process proc_expansed_1 in
-  let _ = of_expansed_process proc_expansed_2 in
+  let proc1 = of_expansed_process proc_expansed_1 in
+  let proc2 = of_expansed_process proc_expansed_2 in
+
+  next_output Classic Trace_Equivalence proc1 Subst.identity (fun _ _ -> ());
+  next_output Classic Trace_Equivalence proc2 Subst.identity (fun _ _ -> ());
   ()
 
 let _ =

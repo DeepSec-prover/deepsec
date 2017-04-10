@@ -30,7 +30,14 @@ let _ =
       "_Let", LET;
       "_New", NEW;
       "_Par", PAR;
-      "_Choice", CHOICE
+      "_Choice", CHOICE;
+
+      "_Classic", CLASSIC;
+      "_Private", PRIVATE;
+      "_Eavesdrop", EAVESDROP;
+
+      "_TraceEq", TRACEEQ;
+      "_ObsEq", OBSEQ;
     ]
 
 let newline lexbuf =

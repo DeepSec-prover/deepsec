@@ -373,6 +373,24 @@ module Variable = struct
       then dom
       else v::dom
 
+    let get_vars_with_list rho vlist =
+      List.iter (fun x -> x.link <- FLink) vlist;
+
+      let result = ref vlist in
+
+      List.iter (fun (x,y) ->
+        match x.link,y.link with
+          | NoLink , NoLink -> x.link <- FLink; y.link <- FLink; result := x::y:: !result
+          | FLink, NoLink -> y.link <- FLink ; result := y:: !result
+          | NoLink, FLink -> x.link <- FLink; result := x:: !result
+          | FLink, FLink -> ()
+          | _,_ -> Config.internal_error "[term.ml >> Variable.Renaming.get_vars_with_list] Unexpected link"
+      ) rho;
+
+      List.iter (fun x -> x.link <- NoLink) !result;
+      !result
+
+
     (******* Testting *******)
 
     let is_identity rho = rho = []
@@ -620,6 +638,23 @@ module Name = struct
       if List.exists (is_equal n) dom
       then dom
       else n::dom
+
+    let get_names_with_list rho nlist =
+      List.iter (fun x -> x.link_n <- NLinkSearch) nlist;
+
+      let result = ref nlist in
+
+      List.iter (fun (x,y) ->
+        match x.link_n,y.link_n with
+          | NNoLink , NNoLink -> x.link_n <- NLinkSearch; y.link_n <- NLinkSearch; result := x::y:: !result
+          | NLinkSearch, NNoLink -> y.link_n <- NLinkSearch ; result := y:: !result
+          | NNoLink, NLinkSearch -> x.link_n <- NLinkSearch; result := x:: !result
+          | NLinkSearch, NLinkSearch -> ()
+          | _,_ -> Config.internal_error "[term.ml >> Name.Renaming.get_names_with_list] Unexpected link"
+      ) rho;
+
+      List.iter (fun x -> x.link_n <- NNoLink) !result;
+      !result
 
     (***** Testing *****)
 

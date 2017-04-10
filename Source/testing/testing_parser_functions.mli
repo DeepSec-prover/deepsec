@@ -60,6 +60,8 @@ type 'a top_bot =
 
 type equation = term * term
 
+type diseq = (term * term) list
+
 type substitution = (ident * term) list
 
 type skeleton = ident * term * term * (ident * int * term) list * (term * term)
@@ -145,3 +147,5 @@ val parse_recipe_option : term option -> Term.recipe option
 val parse_process : process -> Process.process
 
 val parse_expansed_process : expansed_process -> Process.expansed_process
+
+val parse_output_transition : (process * substitution * diseq list * term * term) list -> (Process.process * Process.output_gathering) list

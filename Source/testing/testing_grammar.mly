@@ -32,6 +32,10 @@ open Testing_parser_functions
 %token NEW
 %token PAR CHOICE
 
+/* Semantics and equivalence */
+%token CLASSIC PRIVATE EAVESDROP
+%token TRACEEQ OBSEQ
+
 /* Special token  */
 %token EQ NEQ EQI NEQI
 %token WEDGE VEE VDASH
@@ -58,6 +62,7 @@ open Testing_parser_functions
 %start parse_Data_structure_Tools_uniform_consequence
 
 %start parse_Process_of_expansed_process
+%start parse_Process_next_output
 
 %type <(Testing_parser_functions.parser)> parse_Term_Subst_unify
 %type <(Testing_parser_functions.parser)> parse_Term_Subst_is_matchable
@@ -74,6 +79,7 @@ open Testing_parser_functions
 %type <(Testing_parser_functions.parser)> parse_Data_structure_Tools_uniform_consequence
 
 %type <(Testing_parser_functions.parser)> parse_Process_of_expansed_process
+%type <(Testing_parser_functions.parser)> parse_Process_next_output
 
 %%
 /***********************************
@@ -153,7 +159,6 @@ parse_Term_Subst_is_matchable:
       }
   | error
       { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
-
 
 parse_Term_Subst_is_extended_by:
   | header_of_test
@@ -413,6 +418,27 @@ parse_Process_of_expansed_process:
                 let result = parse_process $7 in
                 RLoad(Testing_functions.load_Process_of_expansed_process i process result)
             | Verify -> RVerify(Testing_functions.apply_Process_of_expansed_process process)
+        )
+      }
+  | error
+      { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
+
+parse_Process_next_output:
+  | header_of_test
+    INPUT DDOT semantics
+    INPUT DDOT equivalence
+    INPUT DDOT process
+    INPUT DDOT substitution
+    RESULT DDOT output_transition_result
+      {
+        (fun mode -> $1 ();
+          let process = parse_process $10 in
+          let subst = parse_substitution Term.Protocol $13 in
+          match mode with
+            | Load i ->
+                let result = parse_output_transition $16 in
+                RLoad(Testing_functions.load_Process_next_output i $4 $7 process subst result)
+            | Verify -> RVerify(Testing_functions.apply_Process_next_output $4 $7 process subst)
         )
       }
   | error
@@ -946,3 +972,38 @@ symbolic_derivation_list:
 symbolic_derivation:
   | LCURL content_mult SEMI renaming SEMI renaming RCURL
       { $2,$4,$6 }
+
+/*************************************
+***           Transition           ***
+**************************************/
+
+semantics:
+  | CLASSIC     { Process.Classic }
+  | PRIVATE     { Process.Private }
+  | EAVESDROP   { Process.Eavesdrop }
+
+equivalence:
+  | TRACEEQ     { Process.Trace_Equivalence }
+  | OBSEQ       { Process.Observational_Equivalence }
+
+output_transition_result:
+  | LCURL RCURL
+      { [] }
+  | LCURL sub_output_transition_result RCURL
+      { $2 }
+
+sub_output_transition_result:
+  | output_transition
+      { [$1] }
+  | output_transition SEMI sub_output_transition_result
+      { $1::$3 }
+
+out_disequation:
+  | TOP
+      { [] }
+  | conjunction_syntaxtic_disequation
+      { $1 }
+
+output_transition:
+  | LCURL process SEMI substitution SEMI out_disequation SEMI term SEMI term RCURL
+      { ($2,$4,$6,$8,$10) }

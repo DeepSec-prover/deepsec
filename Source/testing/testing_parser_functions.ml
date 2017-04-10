@@ -67,6 +67,8 @@ type 'a top_bot =
 
 type equation = term * term
 
+type diseq = (term * term) list
+
 type substitution = (ident * term) list
 
 type skeleton = ident * term * term * (ident * int * term) list * (term * term)
@@ -520,3 +522,22 @@ let parse_symbolic_derivation (content_mult, vars_rho, names_rho) = (content_mul
 let parse_process (content_list,symb_list) =
   List.iter parse_content content_list;
   Process.Testing.create_process (List.map parse_symbolic_derivation symb_list)
+
+(*********** Output transition ************)
+
+let parse_output_transition out_l =
+  List.map (fun (proc, subst, diseq_l, channel, term) ->
+    let proc' = parse_process proc in
+    let subst' = parse_substitution Term.Protocol subst in
+    let diseq_l' =
+      List.map (fun diseq ->
+        Term.Diseq.create_for_testing (
+          List.map (fun (t1,t2) ->
+            parse_term Term.Protocol t1, parse_term Term.Protocol t2
+          ) diseq
+        )
+      ) diseq_l in
+    let channel' = parse_term Term.Protocol channel in
+    let term' = parse_term Term.Protocol term in
+    (proc', { Process.out_equations = subst'; Process.out_disequations = diseq_l'; Process.out_channel = channel'; Process.out_term = term'})
+  ) out_l

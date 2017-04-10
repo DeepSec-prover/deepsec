@@ -146,7 +146,7 @@ let get_names_with_list proc f_bound list_names =
 
   List.iter (fun c -> c.link <- NoLink) !explored_content_list;
   explored_content_list := [];
-  let result = !explored_name_list in
+  let result = List.fold_left (fun acc symb -> Name.Renaming.get_names_with_list symb.name_renaming acc) !explored_name_list proc in
   explored_name_list := [];
   result
 
@@ -223,7 +223,9 @@ let get_vars_with_list proc list_vars =
 
   List.iter (fun c -> c.link <- NoLink) !explored_content_list;
   explored_content_list := [];
-  let result = !explored_var_list in
+  let result =
+    List.fold_left (fun acc symb -> Variable.Renaming.get_vars_with_list symb.var_renaming acc) !explored_var_list proc
+  in
   explored_var_list := [];
   result
 
@@ -262,14 +264,7 @@ let rec is_equal_modulo_symbolic_derivation symb_1 symb_2 =
   then false
   else
     match symb_1.content_mult.content.action, symb_2.content_mult.content.action with
-      | ANil, ANil ->
-          Config.debug (fun () ->
-            if symb_1.content_mult.content == symb_2.content_mult.content
-            then ()
-            else Config.internal_error "[process.ml > is_equal_modulo_content] It should be physically the same content."
-            );
-          true
-
+      | ANil, ANil -> true
       | AOut(ch1,t1,c1), AOut(ch2,t2,c2) ->
           let (ch1',t1') = apply_renamings_pair symb_1.var_renaming symb_1.name_renaming (ch1,t1)
           and (ch2',t2') = apply_renamings_pair symb_2.var_renaming symb_2.name_renaming (ch2,t2)

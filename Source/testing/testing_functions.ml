@@ -95,12 +95,6 @@ type data_IO =
     file : string
   }
 
-let nb_validated_test = ref 0
-
-let nb_tests_to_check = ref 0
-
-let nb_additional_tests = ref 0
-
 let add_test (test_terminal,test_html) data =
   let terminal = produce_test_terminal test_terminal in
 
@@ -109,8 +103,8 @@ let add_test (test_terminal,test_html) data =
     && List.for_all (fun (str,_) -> str <> terminal) data.additional_tests
   then
     begin
-      incr nb_additional_tests;
-      let html = produce_test_latex (test_html (!nb_additional_tests + !nb_tests_to_check)) in
+      let nb_tests = 1 + (List.length data.tests_to_check) + (List.length data.additional_tests) in
+      let html = produce_test_latex (test_html nb_tests) in
       data.additional_tests <- (terminal,html) :: data.additional_tests
     end
 
@@ -356,14 +350,14 @@ let pre_load_tests data =
     let in_txt_to_check = open_in path_txt_to_check in
     sub_load in_txt_to_check true
   with
-    | Sys_error _ -> nb_tests_to_check := List.length data.tests_to_check
+    | Sys_error _ -> ()
   end;
 
   begin try
     let in_txt_checked = open_in path_txt_checked in
     sub_load in_txt_checked false
   with
-    | Sys_error _ -> nb_validated_test := List.length data.validated_tests
+    | Sys_error _ -> ()
   end
 
 (***** Validation of tests *****)
@@ -539,6 +533,22 @@ let gather_in_expansed_process proc gather =
   let fst_vars = Process.get_vars_with_list_expansed proc gather.g_fst_vars in
   { gather with g_names = names; g_fst_vars = fst_vars }
 
+let gather_in_diseq (type a) (type b) (at:(a,b) atom) (diseq:(a,b) Diseq.t) (gather:gathering) = match at with
+  | Protocol ->
+      let names = Diseq.get_names_with_list Protocol diseq  gather.g_names
+      and fst_vars = Diseq.get_vars_with_list Protocol diseq gather.g_fst_vars in
+      { gather with g_names = names; g_fst_vars = fst_vars }
+  | Recipe ->
+      let names = Diseq.get_names_with_list Recipe diseq gather.g_names
+      and snd_vars = Diseq.get_vars_with_list Recipe diseq gather.g_snd_vars
+      and axioms = Diseq.get_axioms_with_list diseq gather.g_axioms in
+      { gather with g_names = names; g_snd_vars = snd_vars; g_axioms = axioms }
+
+let gather_in_output_gathering out gather =
+  let gather_1 = gather_in_subst Protocol out.Process.out_equations gather in
+  let gather_2 = List.fold_left (fun acc_gather diseq -> gather_in_diseq Protocol diseq acc_gather) gather_1 out.Process.out_disequations in
+  gather_in_list Protocol [out.Process.out_channel; out.Process.out_term] gather_2
+
 (*************************************
       Generic display functions
 **************************************)
@@ -573,7 +583,7 @@ let display_axiom_list out rho axiom_list =
 let display_syntactic_equation_list out at rho eq_list =
   if eq_list = []
   then top out
-  else display_list (fun (t1,t2) -> Printf.sprintf "%s %s %s" (display out ~rho:rho at t1) (eqs out) (display out ~rho:rho at t2)) (wedge out) eq_list
+  else display_list (fun (t1,t2) -> Printf.sprintf "%s %s %s" (display out ~rho:rho at t1) (eqs out) (display out ~rho:rho at t2)) (Printf.sprintf " %s " (wedge out)) eq_list
 
 let display_substitution out at rho subst = Subst.display out ~rho:rho at subst
 
@@ -591,7 +601,7 @@ let display_boolean out = function
 let display_equation_list out rho eq_list =
   if eq_list = []
   then top out
-  else display_list (fun eq -> Modulo.display_equation out ~rho:rho eq) (wedge out) eq_list
+  else display_list (fun eq -> Modulo.display_equation out ~rho:rho eq) (Printf.sprintf " %s " (wedge out)) eq_list
 
 let display_substitution_list_result out rho = function
   | Modulo.Top_raised -> top out
@@ -632,6 +642,89 @@ let display_basic_deduction_fact_list out rho bfct_l =
 let display_recipe_option out rho = function
   | None -> bot out
   | Some recipe -> display out ~rho:rho Recipe recipe
+
+let display_semantics out sem = match out with
+  | Testing ->
+      begin match sem with
+        | Process.Classic -> "_Classic"
+        | Process.Private -> "_Private"
+        | Process.Eavesdrop -> "_Eavesdrop"
+      end
+  | _ ->
+      begin match sem with
+        | Process.Classic -> "Classic"
+        | Process.Private -> "Private"
+        | Process.Eavesdrop -> "Eavesdrop"
+      end
+
+let display_equivalence out eq = match out with
+  | Testing ->
+      begin match eq with
+        | Process.Trace_Equivalence -> "_TraceEq"
+        | Process.Observational_Equivalence -> "_ObsEq"
+      end
+  | _ ->
+      begin match eq with
+        | Process.Trace_Equivalence -> "Trace equivalence"
+        | Process.Observational_Equivalence -> "Observational equivalence"
+      end
+
+let display_next_output_result_testing rho id_rho proc_output_list =
+
+  let display_diseq_list diseq_l =
+    if diseq_l = []
+    then top Testing
+    else display_list (Diseq.display Testing ~rho:rho Protocol) (Printf.sprintf " %s " (wedge Testing)) diseq_l
+  in
+
+  let display_elt (proc, output) =
+    Printf.sprintf "{ %s;\n %s;\n %s;\n %s;\n %s }"
+      (Process.display_process_testing rho id_rho proc)
+      (display_substitution Testing Protocol rho output.Process.out_equations)
+      (display_diseq_list output.Process.out_disequations)
+      (display Testing ~rho:rho Protocol output.Process.out_channel)
+      (display Testing ~rho:rho Protocol output.Process.out_term)
+  in
+
+  if proc_output_list = []
+  then "{ }"
+  else Printf.sprintf "{ %s }" (display_list display_elt "; " proc_output_list)
+
+let display_diseq_list_latex rho diseq_list =
+  if diseq_list = []
+  then top Latex
+  else display_list (Diseq.display Latex ~rho:rho Protocol) (Printf.sprintf " %s " (wedge Latex)) diseq_list
+
+let display_next_output_result_HTML rho proc_output_list =
+  let size_list = List.length proc_output_list in
+
+  if size_list = 0
+  then "No output transitions"
+  else
+    begin
+      let str = ref "" in
+      str := Printf.sprintf "%sNumber of output transitions found: %d\n" !str size_list;
+      str := Printf.sprintf "%s            <ul>\n" !str;
+      let acc = ref 1 in
+      List.iter (fun (proc,output) ->
+        str := Printf.sprintf "%s              <li>Transition %d:\n" !str !acc;
+        str := Printf.sprintf "%s                <ul>\n" !str;
+        str := Printf.sprintf "%s                  <li>Substitution = \\(%s\\)</li>\n" !str
+          (display_substitution Latex Protocol rho output.Process.out_equations);
+        str := Printf.sprintf "%s                  <li>Disequations = \\(%s\\)</li>\n" !str
+          (display_diseq_list_latex rho output.Process.out_disequations);
+        str := Printf.sprintf "%s                  <li>Channel = \\(%s\\)</li>\n" !str
+          (display Latex ~rho:rho Protocol output.Process.out_channel);
+        str := Printf.sprintf "%s                  <li>Term = \\(%s\\)</li>\n" !str
+          (display Latex ~rho:rho Protocol output.Process.out_term);
+        str := Printf.sprintf "%s                  <li>\n%s                  <li>" !str proc;
+        str := Printf.sprintf "%s                </ul>\n" !str;
+        str := Printf.sprintf "%s              </li>\n" !str;
+        incr acc
+      ) proc_output_list;
+      str := Printf.sprintf "%s            </ul>\n" !str;
+      !str
+    end
 
 (*************************************
       Functions to be tested
@@ -1418,6 +1511,88 @@ let load_Process_of_expansed_process i process result =
   let _,test_latex = test_Process_of_expansed_process process result in
   produce_test_latex (test_latex i)
 
+(***** Process.next_output *****)
+
+let data_IO_Process_next_output =
+  {
+    scripts = true;
+    validated_tests = [];
+    tests_to_check = [];
+    additional_tests = [];
+
+    is_being_tested = true;
+
+    file = "process_next_output"
+  }
+
+let test_Process_next_output sem eq process subst result =
+  (**** Retreive the names, variables and axioms *****)
+  let gathering_0 = gather_in_subst Protocol subst (gather_in_process process (gather_in_signature empty_gathering)) in
+  let gathering =
+    List.fold_left (fun acc_gather (proc,out_gather) ->
+      gather_in_process proc (gather_in_output_gathering out_gather acc_gather)
+    ) gathering_0 result
+  in
+
+  (**** Generate the display renaming ****)
+  let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in
+  let id_rho = Process.Testing.get_id_renaming (process :: (List.map (fun (p,_) -> p) result)) in
+
+  (**** Generate test_display for terminal *****)
+
+  let terminal_header, latex_header = header_terminal_and_latex true rho gathering in
+  let test_terminal =
+    { terminal_header with
+      inputs = [ (display_semantics Testing sem, Text); (display_equivalence Testing eq, Text); (Process.display_process_testing rho id_rho process, Text); (display_substitution Testing Protocol rho subst, Inline) ];
+      output = ( display_next_output_result_testing rho id_rho result, Text )
+    } in
+
+  let test_latex i =
+    let str_id k = Printf.sprintf "%de%d" i k in
+    let id_input = str_id 0 in
+    let (html_input,script_input) = Process.display_process_HTML ~rho:rho ~id_rho:id_rho ~name:"Input Process" id_input process in
+
+    let rec produce_proc_output_list k = function
+      | [] -> ([],[],"")
+      | (proc,output)::q ->
+          let id = (str_id k) in
+          let name = Printf.sprintf "Process %d" k in
+          let (html,script) = Process.display_process_HTML ~rho:rho ~id_rho:id_rho ~name:name id proc in
+          let (rest_l,rest_id, rest_script) = produce_proc_output_list (k+1) q in
+          ((html,output)::rest_l, id::rest_id, (script^"\n"^rest_script))
+    in
+
+    let (proc_output_list,id_result, script_result) = produce_proc_output_list 1 result in
+    let all_script = script_input^"\n"^script_result in
+    let html_result = display_next_output_result_HTML rho proc_output_list in
+
+    let test_latex =
+      { latex_header with
+        inputs = [ (display_semantics Terminal sem, Text); (display_equivalence Terminal eq, Text); (html_input, Text); (display_substitution Latex Protocol rho subst, Inline) ];
+        output = ( html_result, Text )
+      } in
+    (test_latex, Some(all_script, id_input::id_result))
+  in
+
+  test_terminal, test_latex
+
+let update_Process_next_output () =
+  Process.update_test_next_output (fun sem eq process subst result ->
+    if data_IO_Process_next_output.is_being_tested
+    then add_test (test_Process_next_output sem eq process subst result) data_IO_Process_next_output
+  )
+
+let apply_Process_next_output sem eq process subst =
+  let result = ref [] in
+  Process.next_output sem eq process subst (fun proc output -> result := (proc,output)::!result);
+
+  let test_terminal,_ = test_Process_next_output sem eq process subst !result in
+  produce_test_terminal test_terminal
+
+let load_Process_next_output i sem eq process subst result =
+  let _,test_latex = test_Process_next_output sem eq process subst result in
+  produce_test_latex (test_latex i)
+
 (*************************************
          General function
 *************************************)
@@ -1436,7 +1611,8 @@ let list_data =
     data_IO_Data_structure_Tools_partial_consequence;
     data_IO_Data_structure_Tools_partial_consequence_additional;
     data_IO_Data_structure_Tools_uniform_consequence;
-    data_IO_Process_of_expansed_process
+    data_IO_Process_of_expansed_process;
+    data_IO_Process_next_output
   ]
 
 let preload () = List.iter (fun data -> pre_load_tests data) list_data
@@ -1457,3 +1633,4 @@ let update () =
   update_Data_structure_Tools_partial_consequence_additional ();
   update_Data_structure_Tools_uniform_consequence ();
   update_Process_of_expansed_process ();
+  update_Process_next_output ()

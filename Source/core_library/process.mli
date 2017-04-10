@@ -134,7 +134,7 @@ val next_output :
   semantics ->
   equivalence ->
   process ->
-  (Term.fst_ord, Term.name) Term.Subst.t ->
+  (fst_ord, name) Subst.t ->
   (process -> output_gathering -> unit) ->
   unit
 
@@ -144,12 +144,12 @@ val next_input :
   semantics ->
   equivalence ->
   process ->
-  (Term.fst_ord, Term.name) Term.Subst.t ->
+  (fst_ord, name) Subst.t ->
   (process -> input_gathering -> unit) ->
   unit
 
 (** {3 Tested functions} *)
 
-val update_test_next_output : (semantics -> equivalence -> process -> (Term.fst_ord, Term.name) Term.Subst.t -> (process * output_gathering) list -> unit) -> unit
+val update_test_next_output : (semantics -> equivalence -> process -> (fst_ord, name) Subst.t -> (process * output_gathering) list -> unit) -> unit
 
-val update_test_next_input : (semantics -> equivalence -> process -> (Term.fst_ord, Term.name) Term.Subst.t -> (process * input_gathering) list -> unit) -> unit
+val update_test_next_input : (semantics -> equivalence -> process -> (fst_ord, name) Subst.t -> (process * input_gathering) list -> unit) -> unit

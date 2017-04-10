@@ -160,3 +160,11 @@ val data_IO_Process_of_expansed_process : data_IO
 val apply_Process_of_expansed_process : Process.expansed_process -> string
 
 val load_Process_of_expansed_process : int -> Process.expansed_process  -> Process.process -> html_code
+
+(** {3 Process.next_output} *)
+
+val data_IO_Process_next_output : data_IO
+
+val apply_Process_next_output : Process.semantics -> Process.equivalence -> Process.process -> (fst_ord, name) Subst.t -> string
+
+val load_Process_next_output : int -> Process.semantics -> Process.equivalence -> Process.process -> (fst_ord, name) Subst.t -> (Process.process * Process.output_gathering) list -> html_code

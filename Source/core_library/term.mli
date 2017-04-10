@@ -240,6 +240,9 @@ module Variable : sig
     (** [add d x] adds the variable [x] in the domain [d]. *)
     val add : ('a, 'b) domain -> ('a, 'b) variable -> ('a, 'b) domain
 
+    (** [get_varss_with_list] {% $\rho$ %} [l] adds the variables in {% $\rho$ %} in the list [l]. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
+    val get_vars_with_list : ('a, 'b) t -> ('a, 'b) variable list -> ('a, 'b) variable list
+
     (** {4 Testing} *)
 
     (** Check whether the renaming is the identity renaming. *)
@@ -359,6 +362,9 @@ module Name :  sig
 
     (** [add d n] adds the name [n] in the domain [d]. *)
     val add : domain -> name -> domain
+
+    (** [get_names_with_list] {% $\rho$ %} [l] adds the names in {% $\rho$ %} in the list [l]. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
+    val get_names_with_list : t -> name list -> name list
 
     (** {4 Testing} *)
 
