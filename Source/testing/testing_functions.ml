@@ -1349,6 +1349,68 @@ let load_Data_structure_Tools_uniform_consequence i sdf df uniset term result =
   let _,test_latex = test_Data_structure_Tools_uniform_consequence sdf df uniset term result in
   produce_test_latex (test_latex i)
 
+(***** Process.of_expansed_process *****)
+
+let data_IO_Process_of_expansed_process =
+  {
+    scripts = true;
+    validated_tests = [];
+    tests_to_check = [];
+    additional_tests = [];
+
+    is_being_tested = true;
+
+    file = "process_of_expansed_process"
+  }
+
+(*let test_Process_of_expansed_process process result =
+  (**** Retreive the names, variables and axioms *****)
+  let gathering = gather_in_Uniformity_Set uniset (gather_in_SDF sdf (gather_in_DF df (gather_in_term Protocol term (gather_in_signature empty_gathering)))) in
+
+  (**** Generate the display renaming ****)
+  let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in
+
+  (**** Generate test_display for terminal *****)
+
+  let terminal_header, latex_header = header_terminal_and_latex true rho gathering in
+  let test_terminal =
+    { terminal_header with
+      inputs = [ (SDF.display Testing ~rho:rho sdf,Display); (DF.display Testing ~rho:rho df,Display); (Uniformity_Set.display Testing ~rho:rho uniset, Display); (display Testing ~rho:rho Protocol term,Inline) ];
+      output = ( display_recipe_option Testing rho result, Inline )
+    } in
+
+  let test_latex =
+    { latex_header with
+      inputs = [ (SDF.display Latex ~rho:rho sdf,Display); (DF.display Latex ~rho:rho df,Display); (Uniformity_Set.display Latex ~rho:rho uniset, Display); (display Latex ~rho:rho Protocol term,Inline) ];
+      output = ( display_recipe_option Latex rho result, Inline )
+    } in
+
+  test_terminal, (fun _ -> test_latex, None)
+
+let update_Data_structure_Tools_uniform_consequence () =
+  Tools.update_test_uniform_consequence (fun sdf df uniset term result ->
+    if data_IO_Data_structure_Tools_uniform_consequence.is_being_tested
+    then add_test (test_Data_structure_Tools_uniform_consequence sdf df uniset term result) data_IO_Data_structure_Tools_uniform_consequence
+  );
+  Tools.update_test_uniform_consequence (fun sdf df uniset term result ->
+    if data_IO_Data_structure_Tools_uniform_consequence.is_being_tested
+    then add_test (test_Data_structure_Tools_uniform_consequence sdf df uniset term result) data_IO_Data_structure_Tools_uniform_consequence
+  )
+
+let apply_Data_structure_Tools_uniform_consequence sdf df uniset term  =
+  let result = Tools.uniform_consequence sdf df uniset term in
+
+  let test_terminal,_ = test_Data_structure_Tools_uniform_consequence sdf df uniset term result in
+  produce_test_terminal test_terminal
+
+let load_Data_structure_Tools_uniform_consequence i sdf df uniset term result =
+  let _,test_latex = test_Data_structure_Tools_uniform_consequence sdf df uniset term result in
+  produce_test_latex (test_latex i)
+*)
+(*************************************
+         General function
+*************************************)
+
 let list_data =
   [
     data_IO_Term_Subst_unify;
@@ -1364,11 +1426,6 @@ let list_data =
     data_IO_Data_structure_Tools_partial_consequence_additional;
     data_IO_Data_structure_Tools_uniform_consequence
   ]
-
-
-(*************************************
-         General function
-*************************************)
 
 let preload () = List.iter (fun data -> pre_load_tests data) list_data
 

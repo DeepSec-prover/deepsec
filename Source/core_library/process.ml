@@ -74,34 +74,104 @@ let test_of_expansed_process : (expansed_process -> process -> unit) ref = ref (
 
 let update_test_of_expansed_process f = test_of_expansed_process := f
 
-(*****************************
-***      Free names        ***
-******************************)
+(*****************************************
+***               Access               ***
+*****************************************)
 
-let rec get_free_names_content content list_names = match content.action with
-  | ANil -> []
+let rec get_names_with_list_expansed process f_bound list_names = match process with
+  | Nil -> list_names
+  | Output(ch,t,proc) ->
+      let names_1 = get_names_with_list_expansed proc f_bound list_names in
+      let names_2 = get_names_with_list Protocol ch f_bound names_1 in
+      get_names_with_list Protocol t f_bound names_2
+  | Input(ch,_,proc) ->
+      let names_1 = get_names_with_list_expansed proc f_bound list_names in
+      get_names_with_list Protocol ch f_bound names_1
+  | IfThenElse(t1,t2,proc_then,proc_else) | Let(t1,t2,proc_then,proc_else) ->
+      let names_1 = get_names_with_list_expansed proc_then f_bound list_names in
+      let names_2 = get_names_with_list_expansed proc_else f_bound names_1 in
+      let names_3 = get_names_with_list Protocol t1 f_bound names_2 in
+      get_names_with_list Protocol t2 f_bound names_3
+  | New(k,proc) ->
+      let name_1 = get_names_with_list_expansed proc f_bound list_names in
+      get_names_with_list Protocol (of_name k) f_bound name_1
+  | Par(proc_l) ->
+      List.fold_left (fun acc (proc,_) -> get_names_with_list_expansed proc f_bound acc) list_names proc_l
+  | Choice(proc_l) ->
+      List.fold_left (fun acc proc -> get_names_with_list_expansed proc f_bound acc) list_names proc_l
+
+
+let rec get_names_with_list_content content f_bound list_names = match content.action with
+  | ANil -> list_names
   | AOut(ch,t,cont) ->
-      let names_1 = get_free_names_content cont list_names in
-      let names_2 = get_names_with_list Protocol ch (fun b -> b = Public) names_1 in
-      get_names_with_list Protocol t (fun b -> b = Public) names_2
+      let names_1 = get_names_with_list_content cont f_bound list_names in
+      let names_2 = get_names_with_list Protocol ch f_bound names_1 in
+      get_names_with_list Protocol t f_bound names_2
   | AIn(ch,_,cont) ->
-      let names_1 = get_free_names_content cont list_names in
-      get_names_with_list Protocol ch (fun b -> b = Public) names_1
+      let names_1 = get_names_with_list_content cont f_bound list_names in
+      get_names_with_list Protocol ch f_bound names_1
   | ATest(t,r,cont_then,cont_else) | ALet(t,r,cont_then,cont_else) ->
-      let names_1 = get_free_names_content cont_then list_names in
-      let names_2 = get_free_names_content cont_else names_1 in
-      let names_3 = get_names_with_list Protocol t (fun b -> b = Public) names_2 in
-      get_names_with_list Protocol r (fun b -> b =Public) names_3
-  | ANew(_,cont) -> get_free_names_content cont list_names
+      let names_1 = get_names_with_list_content cont_then f_bound list_names in
+      let names_2 = get_names_with_list_content cont_else f_bound names_1 in
+      let names_3 = get_names_with_list Protocol t f_bound names_2 in
+      get_names_with_list Protocol r f_bound names_3
+  | ANew(k,cont) ->
+      let names_1 = get_names_with_list_content cont f_bound list_names in
+      get_names_with_list Protocol (of_name k) f_bound names_1
   | APar(cont_mult_list) ->
-      List.fold_left (fun acc cont_mult -> get_free_names_content cont_mult.content acc) list_names cont_mult_list
+      List.fold_left (fun acc cont_mult -> get_names_with_list_content cont_mult.content f_bound acc) list_names cont_mult_list
   | AChoice(cont_mult_list) ->
-      List.fold_left (fun acc cont_mult -> get_free_names_content cont_mult.content acc) list_names cont_mult_list
+      List.fold_left (fun acc cont_mult -> get_names_with_list_content cont_mult.content f_bound acc) list_names cont_mult_list
 
-let get_free_names proc =
+let get_names_with_list proc f_bound list_names =
   List.fold_left (fun acc symb ->
-    get_free_names_content symb.content_mult.content acc
-    ) [] proc
+    get_names_with_list_content symb.content_mult.content f_bound acc
+    ) list_names proc
+
+let rec get_vars_with_list_expansed process list_vars = match process with
+  | Nil -> list_vars
+  | Output(ch,t,proc) ->
+      let vars_1 = get_vars_with_list_expansed proc list_vars in
+      let vars_2 = get_vars_with_list Protocol ch (fun _ -> true) vars_1 in
+      get_vars_with_list Protocol t (fun _ -> true) vars_2
+  | Input(ch,_,proc) ->
+      let vars_1 = get_vars_with_list_expansed proc list_vars in
+      get_vars_with_list Protocol ch (fun _ -> true) vars_1
+  | IfThenElse(t1,t2,proc_then,proc_else) | Let(t1,t2,proc_then,proc_else) ->
+      let vars_1 = get_vars_with_list_expansed proc_then list_vars in
+      let vars_2 = get_vars_with_list_expansed proc_else vars_1 in
+      let vars_3 = get_vars_with_list Protocol t1 (fun _ -> true) vars_2 in
+      get_vars_with_list Protocol t2 (fun _ -> true) vars_3
+  | New(_,proc) -> get_vars_with_list_expansed proc list_vars
+  | Par(proc_l) ->
+      List.fold_left (fun acc (proc,_) -> get_vars_with_list_expansed proc acc) list_vars proc_l
+  | Choice(proc_l) ->
+      List.fold_left (fun acc proc -> get_vars_with_list_expansed proc acc) list_vars proc_l
+
+let rec get_vars_with_list_content content list_vars = match content.action with
+  | ANil -> list_vars
+  | AOut(ch,t,cont) ->
+      let vars_1 = get_vars_with_list_content cont list_vars in
+      let vars_2 = get_vars_with_list Protocol ch (fun _ -> true) vars_1 in
+      get_vars_with_list Protocol t (fun _ -> true) vars_2
+  | AIn(ch,_,cont) ->
+      let vars_1 = get_vars_with_list_content cont list_vars in
+      get_vars_with_list Protocol ch (fun _ -> true) vars_1
+  | ATest(t,r,cont_then,cont_else) | ALet(t,r,cont_then,cont_else) ->
+      let vars_1 = get_vars_with_list_content cont_then list_vars in
+      let vars_2 = get_vars_with_list_content cont_else vars_1 in
+      let vars_3 = get_vars_with_list Protocol t (fun _ -> true) vars_2 in
+      get_vars_with_list Protocol r (fun _ -> true) vars_3
+  | ANew(_,cont) -> get_vars_with_list_content cont list_vars
+  | APar(cont_mult_list) ->
+      List.fold_left (fun acc cont_mult -> get_vars_with_list_content cont_mult.content acc) list_vars cont_mult_list
+  | AChoice(cont_mult_list) ->
+      List.fold_left (fun acc cont_mult -> get_vars_with_list_content cont_mult.content acc) list_vars cont_mult_list
+
+let get_vars_with_list proc list_vars =
+  List.fold_left (fun acc symb ->
+    get_vars_with_list_content symb.content_mult.content acc
+    ) list_vars proc
 
 (*****************************
 ***     Alpha renaming     ***
@@ -209,57 +279,6 @@ let nil_content = { action = ANil ; link = NoLink; id = fresh_id (); bound_var =
 
 let nil = [ { content_mult = { content = nil_content; mult = 1 }; var_renaming = Variable.Renaming.identity ; name_renaming = Name.Renaming.identity }]
 
-let rec get_bound_vars content current_list = match content.action with
-  | ANil -> []
-  | AOut(ch,t,cont) ->
-      let cont_var = get_bound_vars cont current_list in
-      let ch_var = get_vars_with_list Protocol ch (fun q -> q = Free) cont_var in
-      get_vars_with_list Protocol t (fun q -> q = Free) ch_var
-  | AIn(ch,x,cont) ->
-      let cont_var = get_bound_vars cont current_list in
-      let ch_var = get_vars_with_list Protocol ch (fun q -> q = Free) cont_var in
-      get_vars_with_list Protocol (of_variable x) (fun q -> q = Free) ch_var
-  | ATest(t,r,cont_then,cont_else) | ALet(t,r,cont_then,cont_else) ->
-      let cont_then_var = get_bound_vars cont_then current_list in
-      let cont_else_var = get_bound_vars cont_else cont_then_var in
-      let t_var = get_vars_with_list Protocol t (fun q -> q = Free) cont_else_var in
-      get_vars_with_list Protocol r (fun q -> q = Free) t_var
-  | ANew(_,cont) -> get_bound_vars cont current_list
-  | APar(cont_mult_list) ->
-      List.fold_left (fun acc cont_mult ->
-        get_bound_vars cont_mult.content acc
-      ) current_list cont_mult_list
-  | AChoice(cont_mult_list) ->
-      List.fold_left (fun acc cont_mult ->
-        get_bound_vars cont_mult.content acc
-      ) current_list cont_mult_list
-
-let rec get_bound_names content current_list = match content.action with
-  | ANil -> []
-  | AOut(ch,t,cont) ->
-      let cont_name = get_bound_names cont current_list in
-      let ch_name = get_names_with_list Protocol ch (fun b -> b = Bound) cont_name in
-      get_names_with_list Protocol t (fun b -> b = Bound) ch_name
-  | AIn(ch,_,cont) ->
-      let cont_name = get_bound_names cont current_list in
-      get_names_with_list Protocol ch (fun b -> b = Bound) cont_name
-  | ATest(t,r,cont_then,cont_else) | ALet(t,r,cont_then,cont_else) ->
-      let cont_then_name = get_bound_names cont_then current_list in
-      let cont_else_name = get_bound_names cont_else cont_then_name in
-      let t_name = get_names_with_list Protocol t (fun b -> b = Bound) cont_else_name in
-      get_names_with_list Protocol r (fun b -> b = Bound) t_name
-  | ANew(n,cont) ->
-      let cont_name = get_bound_names cont current_list in
-      get_names_with_list Protocol (of_name n) (fun b -> b = Bound) cont_name
-  | APar(cont_mult_list) ->
-      List.fold_left (fun acc cont_mult ->
-        get_bound_names cont_mult.content acc
-      ) current_list cont_mult_list
-  | AChoice(cont_mult_list) ->
-      List.fold_left (fun acc cont_mult ->
-        get_bound_names cont_mult.content acc
-      ) current_list cont_mult_list
-
 let add_content new_content =
   try
     let proc = [ { content_mult = { content = new_content; mult = 1 } ; var_renaming = Variable.Renaming.identity; name_renaming = Name.Renaming.identity } ] in
@@ -271,8 +290,8 @@ let add_content new_content =
   with
     | Not_found ->
         contents_of_general_dag := new_content :: !contents_of_general_dag;
-        new_content.bound_var <- Variable.Renaming.of_list (get_bound_vars new_content []);
-        new_content.bound_name <- Name.Renaming.of_list (get_bound_names new_content []);
+        new_content.bound_var <- Variable.Renaming.of_list (get_vars_with_list_content new_content []);
+        new_content.bound_name <- Name.Renaming.of_list (get_names_with_list_content new_content (fun b -> b = Bound) []);
         new_content
 
 let rec content_of_expansed_process = function

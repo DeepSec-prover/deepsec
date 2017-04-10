@@ -23,7 +23,13 @@ val of_expansed_process : expansed_process -> process
 
 (** {3 Access} *)
 
-val get_free_names : process -> name list
+val get_names_with_list : process -> (boundedness -> bool) -> name list -> name list
+
+val get_vars_with_list : process -> (fst_ord, name) variable list -> (fst_ord, name) variable list
+
+val get_names_with_list_expansed : expansed_process -> (boundedness -> bool) -> name list -> name list
+
+val get_vars_with_list_expansed : expansed_process -> (fst_ord, name) variable list -> (fst_ord, name) variable list
 
 (** {3 Display functions} *)
 
