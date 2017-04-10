@@ -7,7 +7,7 @@ INCLUDES = -I $(PATH_SOURCE) -I $(PATH_SOURCE)core_library -I $(PATH_SOURCE)subt
 
 
 NAME_STANDARD = Core_library
-FILE_STANDARD = config.mli display.mli term.mli
+FILE_STANDARD = config.mli display.mli term.mli process.mli
 PATH_STANDARD = $(FILE_STANDARD:%= $(PATH_SOURCE)core_library/%)
 
 NAME_SUBTERMS = Subterms

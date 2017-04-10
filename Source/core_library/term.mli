@@ -443,10 +443,10 @@ val get_vars : ('a, 'b) atom -> ('a, 'b) term -> ('a, 'b) variable list
 (** [get_vars_with_list at t f_q l] adds the variables in [t] whose quantifier satisfies [f_q] in the list [l]. The addition of a variable as the union of sets, i.e. there is no dupplicate in the resulting list. *)
 val get_vars_with_list : ('a, 'b) atom -> ('a, 'b) term -> (quantifier -> bool) -> ('a, 'b) variable list -> ('a, 'b) variable list
 
-(** [get_names_with_list t f_b l] adds the names in [t] whose boundedness atisfies [f_b] in the list [l]. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
+(** [get_names_with_list t f_b l] adds the names in [t] whose boundedness satisfies [f_b] in the list [l]. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
 val get_names_with_list : ('a, 'b) atom -> ('a, 'b) term -> (boundedness -> bool) -> name list -> name list
 
-(** [get_axioms_with_list t f_i l] adds the axiom in [t] whose index atisfies [f_i] in the list [l]. The addition of an axiom as the union of sets, i.e. there is no dupplicate in the resulting list..*)
+(** [get_axioms_with_list t f_i l] adds the axiom in [t] whose index satisfies [f_i] in the list [l]. The addition of an axiom as the union of sets, i.e. there is no dupplicate in the resulting list..*)
 val get_axioms_with_list : recipe -> (int -> bool) -> axiom list -> axiom list
 
 (** A total ordering function over terms. This is a three-argument function [order] such that  [order at t1 t2] is zero if

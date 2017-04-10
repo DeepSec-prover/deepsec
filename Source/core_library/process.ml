@@ -436,6 +436,7 @@ and content_mult_list_of_expansed_int_process_list = function
       end
 
 let of_expansed_process ex_proc =
+  initialise ();
   let content = content_of_expansed_process ex_proc in
   let result = match content.action with
     | APar content_mult_list ->

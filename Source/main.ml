@@ -225,9 +225,7 @@ let test_of_expansed_process () =
           Output(c,t4, Nil))),2)
     ]
   in
-  Process.initialise ();
   let _ = of_expansed_process proc_expansed_1 in
-  Process.initialise ();
   let _ = of_expansed_process proc_expansed_2 in
   ()
 
