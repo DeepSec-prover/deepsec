@@ -13,8 +13,6 @@ let fresh_id_recipe_equivalent () =
   accumulator_id_recipe_equivalent := !accumulator_id_recipe_equivalent + 1;
   !accumulator_id_recipe_equivalent
 
-let is_equal_id_recipe_equivalent id1 id2 = id1 = id2
-
 module SDF = struct
 
   module Int_Comp =
