@@ -2304,6 +2304,35 @@ module Fact = struct
     | Deduction -> get_axioms_with_list form.head.df_recipe f_ax ax_list
     | Equality -> get_axioms_with_list form.head.ef_recipe_1 f_ax (get_axioms_with_list form.head.ef_recipe_2 f_ax ax_list)
 
+  let rec search_term = function
+    | Var(v) when v.quantifier = Universal ->
+        begin match v.link with
+          | FLink -> ()
+          | NoLink -> link_search Protocol v
+          | _ -> Config.internal_error "[term.ml >> Fact.search_term] Unexpected link"
+        end
+    | Func(_,args) -> List.iter search_term args
+    | _ -> ()
+
+  let rec search_equation_subst = function
+    | [] -> ()
+    | (x,_)::_ when x.quantifier = Universal -> Config.internal_error "[term.ml >> Fact.search_equation_subst] The formula is not normalised. (1)"
+    | (_,t)::q -> search_term t; search_equation_subst q
+
+
+
+  let universal_variables form =
+
+    search_equation_subst form.equation_subst;
+    List.iter (fun b_fct -> link_search Recipe b_fct.BasicFact.var; search_term b_fct.BasicFact.term) form.ded_fact_list;
+
+    let vars_fst = retrieve_search Protocol
+    and vars_snd = retrieve_search Recipe in
+
+    cleanup_search Protocol;
+    cleanup_search Recipe;
+    vars_fst, vars_snd
+
   (********* Testing *********)
 
   let is_fact psi =

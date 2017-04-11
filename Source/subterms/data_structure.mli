@@ -2,12 +2,9 @@
 
 open Term
 
-type id_recipe_equivalent
+type id_recipe_equivalent = int
 
 val fresh_id_recipe_equivalent : unit -> id_recipe_equivalent
-
-val is_equal_id_recipe_equivalent : id_recipe_equivalent -> id_recipe_equivalent -> bool
-
 
 (** {2 {% The set of deduction facts \texorpdfstring{$\Solved$}{SDF} %}}*)
 

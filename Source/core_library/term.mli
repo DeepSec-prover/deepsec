@@ -902,6 +902,9 @@ module Fact : sig
   (** [get_axioms_with_list t fct] {% $\psi$ %} [f_i l] adds the axiom in the [fct] formula {% $\psi$ %} whose index satisfies [f_i] in the list [l]. The addition of an axiom as the union of sets, i.e. there is no dupplicate in the resulting list..*)
   val get_axioms_with_list : 'c t -> 'c formula -> (int -> bool) -> axiom list -> axiom list
 
+  (** [universal_variables form] returns the first-order and second-order universal variables in the formula [form] *)
+  val universal_variables : 'a formula -> (fst_ord, name) variable list * (snd_ord, axiom) variable list
+
   (** {3 Testing} *)
 
   (** [is_solved] {% $\psi$ %} returns [true] iff {% $\psi$ is a solved formula (see~\citepaper{Definition}{def:clause}). %} *)
