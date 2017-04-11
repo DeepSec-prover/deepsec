@@ -526,7 +526,7 @@ let parse_process (content_list,symb_list) =
 (*********** Output transition ************)
 
 let parse_output_transition out_l =
-  List.map (fun (proc, subst, diseq_l, channel, term) ->
+  List.map (fun (proc, subst, diseq_l, channel, term, term_list) ->
     let proc' = parse_process proc in
     let subst' = parse_substitution Term.Protocol subst in
     let diseq_l' =
@@ -539,5 +539,6 @@ let parse_output_transition out_l =
       ) diseq_l in
     let channel' = parse_term Term.Protocol channel in
     let term' = parse_term Term.Protocol term in
-    (proc', { Process.out_equations = subst'; Process.out_disequations = diseq_l'; Process.out_channel = channel'; Process.out_term = term'})
+    let term_list' = parse_term_list Term.Protocol term_list in
+    (proc', { Process.out_equations = subst'; Process.out_disequations = diseq_l'; Process.out_channel = channel'; Process.out_term = term'; Process.out_private_channels = term_list'})
   ) out_l

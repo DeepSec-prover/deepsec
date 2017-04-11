@@ -148,4 +148,4 @@ val parse_process : process -> Process.process
 
 val parse_expansed_process : expansed_process -> Process.expansed_process
 
-val parse_output_transition : (process * substitution * diseq list * term * term) list -> (Process.process * Process.output_gathering) list
+val parse_output_transition : (process * substitution * diseq list * term * term * term list) list -> (Process.process * Process.output_gathering) list

@@ -592,7 +592,12 @@ let display_substitution_option out at rho subst_op = match subst_op with
   | Some subst -> display_substitution out at rho subst
 
 let display_term_list out at rho t_list =
-  Printf.sprintf "%s%s%s" (lbrace out) (display_list (display out ~rho:rho at) "; " t_list) (rbrace out)
+  if t_list = []
+  then
+    match out with
+      | Testing -> Printf.sprintf "%s %s" (lbrace Testing) (rbrace Testing)
+      | _ -> emptyset out
+  else Printf.sprintf "%s%s%s" (lbrace out) (display_list (display out ~rho:rho at) "; " t_list) (rbrace out)
 
 let display_boolean out = function
   | true -> top out
@@ -678,12 +683,13 @@ let display_next_output_result_testing rho id_rho proc_output_list =
   in
 
   let display_elt (proc, output) =
-    Printf.sprintf "{ %s;\n %s;\n %s;\n %s;\n %s }"
+    Printf.sprintf "{ %s; %s; %s; %s; %s; %s }"
       (Process.display_process_testing rho id_rho proc)
       (display_substitution Testing Protocol rho output.Process.out_equations)
       (display_diseq_list output.Process.out_disequations)
       (display Testing ~rho:rho Protocol output.Process.out_channel)
       (display Testing ~rho:rho Protocol output.Process.out_term)
+      (display_term_list Testing Protocol rho output.Process.out_private_channels)
   in
 
   if proc_output_list = []
@@ -717,6 +723,8 @@ let display_next_output_result_HTML rho proc_output_list =
           (display Latex ~rho:rho Protocol output.Process.out_channel);
         str := Printf.sprintf "%s                  <li>Term = \\(%s\\)</li>\n" !str
           (display Latex ~rho:rho Protocol output.Process.out_term);
+        str := Printf.sprintf "%s                  <li>Private channels = \\(%s\\)</li>\n" !str
+          (display_term_list Latex Protocol rho output.Process.out_private_channels);
         str := Printf.sprintf "%s                  <li>\n%s                  <li>" !str proc;
         str := Printf.sprintf "%s                </ul>\n" !str;
         str := Printf.sprintf "%s              </li>\n" !str;

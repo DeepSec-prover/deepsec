@@ -107,7 +107,8 @@ type output_gathering =
     out_equations : (fst_ord, name) Subst.t; (** For the transition to occur, the messages must be an instance of this substitution. *)
     out_disequations : (fst_ord, name) Diseq.t list; (** The messages should also satisfy all these disequations. *)
     out_channel : protocol_term; (** The channel on which the out transition occurs. *)
-    out_term : protocol_term (** The message that was output. *)
+    out_term : protocol_term; (** The message that was output. *)
+    out_private_channels : protocol_term list (** The channels that must stay private *)
   }
 
 (** The type [input_gathering] represents the differents elements that were necessary to satisfy for the in transition to occur.*)
@@ -116,7 +117,8 @@ type input_gathering =
     in_equations : (fst_ord, name) Subst.t; (** For the transition to occur, the messages must be an instance of this substitution. *)
     in_disequations : (fst_ord, name) Diseq.t list; (** The messages should also satisfy all these disequations. *)
     in_channel : protocol_term; (** The channel on which the in transition occurs. *)
-    in_variable : fst_ord_variable (** The variable that will be instantiated by the message received. *)
+    in_variable : fst_ord_variable; (** The variable that will be instantiated by the message received. *)
+    in_private_channels : protocol_term list (** The channels that must stay private *)
   }
 
 (** The type [eavesdrop_gathering] represents the differents elements that were necessary to satisfy for the eavesdrop transition to occur.*)
@@ -125,10 +127,11 @@ type eavesdrop_gathering =
     eav_equations : (fst_ord, name) Subst.t; (** For the transition to occur, the messages must be an instance of this substitution. *)
     eav_disequations : (fst_ord, name) Diseq.t list; (** The messages should also satisfy all these disequations. *)
     eav_channel : protocol_term; (** The channel on which the in transition occurs. *)
-    eav_term : protocol_term (** The message that has been eavesdroped *)
+    eav_term : protocol_term; (** The message that has been eavesdroped *)
+    eav_private_channels : protocol_term list (** The channels that must stay private *)
   }
 
-(** [next_output sem eq proc subst f] will apply all the function [f] to all out transition available for the process [proc] instantiated by [subst], in the semantics
+(** [next_output sem eq proc subst f] will apply all the function [f] to all out transitions available for the process [proc] instantiated by [subst], in the semantics
     [sem] and for the equivalence [eq].*)
 val next_output :
   semantics ->

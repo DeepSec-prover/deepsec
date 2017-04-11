@@ -1005,5 +1005,5 @@ out_disequation:
       { $1 }
 
 output_transition:
-  | LCURL process SEMI substitution SEMI out_disequation SEMI term SEMI term RCURL
-      { ($2,$4,$6,$8,$10) }
+  | LCURL process SEMI substitution SEMI out_disequation SEMI term SEMI term SEMI term_list RCURL
+      { ($2,$4,$6,$8,$10, $12) }

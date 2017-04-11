@@ -922,7 +922,8 @@ type output_gathering =
     out_equations : (fst_ord, name) Subst.t;
     out_disequations : (fst_ord, name) Diseq.t list;
     out_channel : protocol_term;
-    out_term : protocol_term
+    out_term : protocol_term;
+    out_private_channels : protocol_term list
   }
 
 type input_gathering =
@@ -930,7 +931,8 @@ type input_gathering =
     in_equations : (fst_ord, name) Subst.t;
     in_disequations : (fst_ord, name) Diseq.t list;
     in_channel : protocol_term;
-    in_variable : fst_ord_variable
+    in_variable : fst_ord_variable;
+    in_private_channels : protocol_term list
   }
 
 type eavesdrop_gathering =
@@ -938,7 +940,8 @@ type eavesdrop_gathering =
     eav_equations : (fst_ord, name) Subst.t;
     eav_disequations : (fst_ord, name) Diseq.t list;
     eav_channel : protocol_term;
-    eav_term : protocol_term
+    eav_term : protocol_term;
+    eav_private_channels : protocol_term list
   }
 
 let rec add_content_in_proc content mult  v_rho n_rho = function
@@ -991,13 +994,13 @@ let rec next_output_classic_trace_content content v_rho n_rho proc equations dis
             let new_ch_2 = Rewrite_rules.normalise new_ch
             and new_t_2 = Rewrite_rules.normalise new_t in
 
-            f_continuation proc' { out_equations = new_equations; out_disequations = new_disequations; out_channel = new_ch_2; out_term = new_t_2 }
+            f_continuation proc' { out_equations = new_equations; out_disequations = new_disequations; out_channel = new_ch_2; out_term = new_t_2 ; out_private_channels = []}
           with
           | Bot_disequations -> ()
         ) equations_modulo_list
       with
         | Modulo.Bot -> ()
-        | Modulo.Top -> f_continuation proc' { out_equations = equations; out_disequations = disequations; out_channel = norm_ch; out_term = norm_t }
+        | Modulo.Top -> f_continuation proc' { out_equations = equations; out_disequations = disequations; out_channel = norm_ch; out_term = norm_t ; out_private_channels = []}
       end;
 
       (* This output may be used for an internal reduction *)
@@ -1202,7 +1205,6 @@ let rec next_output_classic_trace_content content v_rho n_rho proc equations dis
         next_output_classic_trace_content cont_mult.content new_v_rho new_n_rho proc equations disequations f_continuation
       ) cont_mult_list
 
-
 and next_output_classic_trace proc equations disequations f_continuation =
   let rec go_through_mult_list prev = function
     | [] -> ()
@@ -1252,13 +1254,13 @@ and next_input_classic_trace_content content v_rho n_rho proc equations disequat
             let new_ch_2 = Subst.apply equations_modulo norm_ch (fun x f -> f x) in
             let new_ch_3 = Rewrite_rules.normalise new_ch_2 in
 
-            f_continuation new_proc { in_equations = new_equations; in_disequations = new_disequations; in_channel = new_ch_3; in_variable = new_x }
+            f_continuation new_proc { in_equations = new_equations; in_disequations = new_disequations; in_channel = new_ch_3; in_variable = new_x ; in_private_channels = []}
           with
           | Bot_disequations -> ()
         ) equations_modulo_list
       with
         | Modulo.Bot -> ()
-        | Modulo.Top -> f_continuation new_proc { in_equations = equations; in_disequations = disequations; in_channel = norm_ch; in_variable = new_x }
+        | Modulo.Top -> f_continuation new_proc { in_equations = equations; in_disequations = disequations; in_channel = norm_ch; in_variable = new_x ; in_private_channels = []}
       end;
 
       next_output_classic_trace proc equations disequations (fun proc' out_gather ->
@@ -1508,7 +1510,6 @@ let next_output sem equiv proc fst_subst f_continuation =
   Config.test (fun () ->
     !test_next_output sem equiv proc fst_subst !testing_result
   )
-
 
 let next_input sem equiv proc fst_subst f_continuation =
   let testing_result = ref [] in
