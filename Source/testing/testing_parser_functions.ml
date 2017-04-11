@@ -178,7 +178,6 @@ let rec parse_names = function
 
       parse_names q
 
-
 let parse_name (s,line) =
   try
     match Hashtbl.find environment s with
@@ -523,7 +522,7 @@ let parse_process (content_list,symb_list) =
   List.iter parse_content content_list;
   Process.Testing.create_process (List.map parse_symbolic_derivation symb_list)
 
-(*********** Output transition ************)
+(*********** Transition ************)
 
 let parse_output_transition out_l =
   List.map (fun (proc, subst, diseq_l, channel, term, term_list) ->
@@ -541,4 +540,22 @@ let parse_output_transition out_l =
     let term' = parse_term Term.Protocol term in
     let term_list' = parse_term_list Term.Protocol term_list in
     (proc', { Process.out_equations = subst'; Process.out_disequations = diseq_l'; Process.out_channel = channel'; Process.out_term = term'; Process.out_private_channels = term_list'})
+  ) out_l
+
+let parse_input_transition out_l =
+  List.map (fun (proc, subst, diseq_l, channel, var, term_list) ->
+    let proc' = parse_process proc in
+    let subst' = parse_substitution Term.Protocol subst in
+    let diseq_l' =
+      List.map (fun diseq ->
+        Term.Diseq.create_for_testing (
+          List.map (fun (t1,t2) ->
+            parse_term Term.Protocol t1, parse_term Term.Protocol t2
+          ) diseq
+        )
+      ) diseq_l in
+    let channel' = parse_term Term.Protocol channel in
+    let var' = parse_fst_var var in
+    let term_list' = parse_term_list Term.Protocol term_list in
+    (proc', { Process.in_equations = subst'; Process.in_disequations = diseq_l'; Process.in_channel = channel'; Process.in_variable = var'; Process.in_private_channels = term_list'})
   ) out_l

@@ -10,6 +10,32 @@
       src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-MML-AM_CHTML">
   </script>
 
+  <script type="text/javascript">
+
+  function display_command()
+  {
+    var checked_tests = document.getElementsByClassName('ValidateButton');
+    var len = checked_tests.length;
+
+    var command_line = "./test_deepsec validate function Process.next_input tests"
+    var checked = 0;
+    for(var i=0; i<len; ++i){
+      if(checked_tests[i].checked){
+          checked = checked + 1;
+          command_line = command_line + " " + checked_tests[i].value;
+      }
+    }
+    var p_command_line = document.getElementById('command-line');
+
+    if(checked == 0){
+      p_command_line.innerHTML = "No test is validated yet";
+    } else {
+      p_command_line.innerHTML = command_line;
+    }
+  }
+  </script>
+
+
 </head>
 
 <body>
@@ -39,7 +65,7 @@
 
         <div id="title">
           <div id="title-main">Testing</div>
-          <div id="title-sub">Validated tests for the function Process.next_output</div>
+          <div id="title-sub">Tests to validate for the function Process.next_input</div>
         </div>
 
       </div>
@@ -47,9 +73,9 @@
       <div id="content-text">
 
         <p>
-          <code>next_output sem eq proc</code> \(\sigma\) <code>f</code> will apply the function <code>f</code> to all out transitions available for the process <code>proc</code> instantiated by \(\sigma\), in the semantics
-          <code>sem</code> and for the equivalence <code>eq</code>. Note that the semantics can be either Classic, Private or Eavesdrop. Moreover, the equivalence
-          can be either Trace equivalence or Observational equivalence.
+          <code>next_input sem eq proc</code> \(\sigma\) <code>f</code> will apply the function <code>f</code> to all input transitions available for the process <code>proc</code> instantiated by \(\sigma\), in the semantics
+              <code>sem</code> and for the equivalence <code>eq</code>. Note that the semantics can be either Classic, Private or Eavesdrop. Moreover, the equivalence
+              can be either Trace equivalence or Observational equivalence.
         </p>
         <p>
           Note that we adopt the following convention:
@@ -62,6 +88,13 @@
           </ul>
         </p>
 
+        <hr class="big-separation">
+
+        <div>
+          <p class="generate-commands"> The command to apply to validate the tests:</p>
+          <p id="command-line" class="command">No test is validated yet</p>
+          <p> To be used with care : All the tests can be directly validated by the command ./test_deepsec validate all -function Process.next_input</p>
+        </div>
         <!-- Beginning Tests -->
         <!-- The tests -->
         <!-- End Tests -->
@@ -72,7 +105,7 @@
         <script src="../../Scripts/dagre-d3.js"></script>
 
         <script src="../../Scripts/display_process.js"></script>
-        <script>loaddata('process_next_output.js');</script>
+        <script>loaddata('process_next_input.js');</script>
         <script>
 
         (function () {

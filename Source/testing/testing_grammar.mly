@@ -62,7 +62,7 @@ open Testing_parser_functions
 %start parse_Data_structure_Tools_uniform_consequence
 
 %start parse_Process_of_expansed_process
-%start parse_Process_next_output
+%start parse_Process_next_output parse_Process_next_input
 
 %type <(Testing_parser_functions.parser)> parse_Term_Subst_unify
 %type <(Testing_parser_functions.parser)> parse_Term_Subst_is_matchable
@@ -80,6 +80,7 @@ open Testing_parser_functions
 
 %type <(Testing_parser_functions.parser)> parse_Process_of_expansed_process
 %type <(Testing_parser_functions.parser)> parse_Process_next_output
+%type <(Testing_parser_functions.parser)> parse_Process_next_input
 
 %%
 /***********************************
@@ -439,6 +440,27 @@ parse_Process_next_output:
                 let result = parse_output_transition $16 in
                 RLoad(Testing_functions.load_Process_next_output i $4 $7 process subst result)
             | Verify -> RVerify(Testing_functions.apply_Process_next_output $4 $7 process subst)
+        )
+      }
+  | error
+      { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
+
+parse_Process_next_input:
+  | header_of_test
+    INPUT DDOT semantics
+    INPUT DDOT equivalence
+    INPUT DDOT process
+    INPUT DDOT substitution
+    RESULT DDOT input_transition_result
+      {
+        (fun mode -> $1 ();
+          let process = parse_process $10 in
+          let subst = parse_substitution Term.Protocol $13 in
+          match mode with
+            | Load i ->
+                let result = parse_input_transition $16 in
+                RLoad(Testing_functions.load_Process_next_input i $4 $7 process subst result)
+            | Verify -> RVerify(Testing_functions.apply_Process_next_input $4 $7 process subst)
         )
       }
   | error
@@ -998,12 +1020,28 @@ sub_output_transition_result:
   | output_transition SEMI sub_output_transition_result
       { $1::$3 }
 
-out_disequation:
+transition_disequation:
   | TOP
       { [] }
   | conjunction_syntaxtic_disequation
       { $1 }
 
 output_transition:
-  | LCURL process SEMI substitution SEMI out_disequation SEMI term SEMI term SEMI term_list RCURL
+  | LCURL process SEMI substitution SEMI transition_disequation SEMI term SEMI term SEMI term_list RCURL
+      { ($2,$4,$6,$8,$10, $12) }
+
+input_transition_result:
+  | LCURL RCURL
+      { [] }
+  | LCURL sub_input_transition_result RCURL
+      { $2 }
+
+sub_input_transition_result:
+  | input_transition
+      { [$1] }
+  | input_transition SEMI sub_input_transition_result
+      { $1::$3 }
+
+input_transition:
+  | LCURL process SEMI substitution SEMI transition_disequation SEMI term SEMI ident SEMI term_list RCURL
       { ($2,$4,$6,$8,$10, $12) }

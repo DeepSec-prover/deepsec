@@ -168,3 +168,11 @@ val data_IO_Process_next_output : data_IO
 val apply_Process_next_output : Process.semantics -> Process.equivalence -> Process.process -> (fst_ord, name) Subst.t -> string
 
 val load_Process_next_output : int -> Process.semantics -> Process.equivalence -> Process.process -> (fst_ord, name) Subst.t -> (Process.process * Process.output_gathering) list -> html_code
+
+(** {3 Process.next_input} *)
+
+val data_IO_Process_next_input : data_IO
+
+val apply_Process_next_input : Process.semantics -> Process.equivalence -> Process.process -> (fst_ord, name) Subst.t -> string
+
+val load_Process_next_input : int -> Process.semantics -> Process.equivalence -> Process.process -> (fst_ord, name) Subst.t -> (Process.process * Process.input_gathering) list -> html_code

@@ -39,7 +39,7 @@
 
         <div id="title">
           <div id="title-main">Testing</div>
-          <div id="title-sub">Validated tests for the function Process.next_output</div>
+          <div id="title-sub">Validated tests for the function Process.next_input</div>
         </div>
 
       </div>
@@ -47,7 +47,7 @@
       <div id="content-text">
 
         <p>
-          <code>next_output sem eq proc</code> \(\sigma\) <code>f</code> will apply the function <code>f</code> to all out transitions available for the process <code>proc</code> instantiated by \(\sigma\), in the semantics
+          <code>next_input sem eq proc</code> \(\sigma\) <code>f</code> will apply the function <code>f</code> to all input transitions available for the process <code>proc</code> instantiated by \(\sigma\), in the semantics
           <code>sem</code> and for the equivalence <code>eq</code>. Note that the semantics can be either Classic, Private or Eavesdrop. Moreover, the equivalence
           can be either Trace equivalence or Observational equivalence.
         </p>
@@ -72,7 +72,7 @@
         <script src="../../Scripts/dagre-d3.js"></script>
 
         <script src="../../Scripts/display_process.js"></script>
-        <script>loaddata('process_next_output.js');</script>
+        <script>loaddata('process_next_input.js');</script>
         <script>
 
         (function () {

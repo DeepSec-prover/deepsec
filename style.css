@@ -325,3 +325,13 @@ h3 {
 .expansedProcess {
   display: table-cell;
 }
+
+sub {
+    vertical-align: sub;
+    font-size: xx-small;
+}
+
+sup {
+    vertical-align: super;
+    font-size: xx-small;
+}

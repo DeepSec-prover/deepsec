@@ -230,6 +230,9 @@ let test_of_expansed_process () =
 
   next_output Classic Trace_Equivalence proc1 Subst.identity (fun _ _ -> ());
   next_output Classic Trace_Equivalence proc2 Subst.identity (fun _ _ -> ());
+
+  next_input Classic Trace_Equivalence proc1 Subst.identity (fun _ _ -> ());
+  next_input Classic Trace_Equivalence proc2 Subst.identity (fun _ _ -> ());
   ()
 
 let _ =

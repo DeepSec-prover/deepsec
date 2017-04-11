@@ -547,7 +547,14 @@ let gather_in_diseq (type a) (type b) (at:(a,b) atom) (diseq:(a,b) Diseq.t) (gat
 let gather_in_output_gathering out gather =
   let gather_1 = gather_in_subst Protocol out.Process.out_equations gather in
   let gather_2 = List.fold_left (fun acc_gather diseq -> gather_in_diseq Protocol diseq acc_gather) gather_1 out.Process.out_disequations in
-  gather_in_list Protocol [out.Process.out_channel; out.Process.out_term] gather_2
+  let gather_3 = gather_in_list Protocol out.Process.out_private_channels gather_2 in
+  gather_in_list Protocol [out.Process.out_channel; out.Process.out_term] gather_3
+
+let gather_in_input_gathering input gather =
+  let gather_1 = gather_in_subst Protocol input.Process.in_equations gather in
+  let gather_2 = List.fold_left (fun acc_gather diseq -> gather_in_diseq Protocol diseq acc_gather) gather_1 input.Process.in_disequations in
+  let gather_3 = gather_in_list Protocol input.Process.in_private_channels gather_2 in
+  gather_in_list Protocol [input.Process.in_channel; of_variable input.Process.in_variable] gather_3
 
 (*************************************
       Generic display functions
@@ -725,11 +732,71 @@ let display_next_output_result_HTML rho proc_output_list =
           (display Latex ~rho:rho Protocol output.Process.out_term);
         str := Printf.sprintf "%s                  <li>Private channels = \\(%s\\)</li>\n" !str
           (display_term_list Latex Protocol rho output.Process.out_private_channels);
-        str := Printf.sprintf "%s                  <li>\n%s                  <li>" !str proc;
+        str := Printf.sprintf "%s                  <li>\n%s                  </li>" !str proc;
         str := Printf.sprintf "%s                </ul>\n" !str;
         str := Printf.sprintf "%s              </li>\n" !str;
         incr acc
       ) proc_output_list;
+      str := Printf.sprintf "%s            </ul>\n" !str;
+      !str
+    end
+
+let display_next_input_result_testing rho id_rho proc_input_list =
+
+  let display_diseq_list diseq_l =
+    if diseq_l = []
+    then top Testing
+    else display_list (Diseq.display Testing ~rho:rho Protocol) (Printf.sprintf " %s " (wedge Testing)) diseq_l
+  in
+
+  let display_elt (proc, input) =
+    Printf.sprintf "{ %s; %s; %s; %s; %s; %s }"
+      (Process.display_process_testing rho id_rho proc)
+      (display_substitution Testing Protocol rho input.Process.in_equations)
+      (display_diseq_list input.Process.in_disequations)
+      (display Testing ~rho:rho Protocol input.Process.in_channel)
+      (Variable.display Testing ~rho:rho Protocol input.Process.in_variable)
+      (display_term_list Testing Protocol rho input.Process.in_private_channels)
+  in
+
+  if proc_input_list = []
+  then "{ }"
+  else Printf.sprintf "{ %s }" (display_list display_elt "; " proc_input_list)
+
+let display_diseq_list_latex rho diseq_list =
+  if diseq_list = []
+  then top Latex
+  else display_list (Diseq.display Latex ~rho:rho Protocol) (Printf.sprintf " %s " (wedge Latex)) diseq_list
+
+let display_next_input_result_HTML rho proc_input_list =
+  let size_list = List.length proc_input_list in
+
+  if size_list = 0
+  then "No input transitions"
+  else
+    begin
+      let str = ref "" in
+      str := Printf.sprintf "%sNumber of input transitions found: %d\n" !str size_list;
+      str := Printf.sprintf "%s            <ul>\n" !str;
+      let acc = ref 1 in
+      List.iter (fun (proc,input) ->
+        str := Printf.sprintf "%s              <li>Transition %d:\n" !str !acc;
+        str := Printf.sprintf "%s                <ul>\n" !str;
+        str := Printf.sprintf "%s                  <li>Substitution = \\(%s\\)</li>\n" !str
+          (display_substitution Latex Protocol rho input.Process.in_equations);
+        str := Printf.sprintf "%s                  <li>Disequations = \\(%s\\)</li>\n" !str
+          (display_diseq_list_latex rho input.Process.in_disequations);
+        str := Printf.sprintf "%s                  <li>Channel = \\(%s\\)</li>\n" !str
+          (display Latex ~rho:rho Protocol input.Process.in_channel);
+        str := Printf.sprintf "%s                  <li>Term = \\(%s\\)</li>\n" !str
+          (Variable.display Latex ~rho:rho Protocol input.Process.in_variable);
+        str := Printf.sprintf "%s                  <li>Private channels = \\(%s\\)</li>\n" !str
+          (display_term_list Latex Protocol rho input.Process.in_private_channels);
+        str := Printf.sprintf "%s                  <li>\n%s                  </li>" !str proc;
+        str := Printf.sprintf "%s                </ul>\n" !str;
+        str := Printf.sprintf "%s              </li>\n" !str;
+        incr acc
+      ) proc_input_list;
       str := Printf.sprintf "%s            </ul>\n" !str;
       !str
     end
@@ -1601,6 +1668,88 @@ let load_Process_next_output i sem eq process subst result =
   let _,test_latex = test_Process_next_output sem eq process subst result in
   produce_test_latex (test_latex i)
 
+(***** Process.next_input *****)
+
+let data_IO_Process_next_input =
+  {
+    scripts = true;
+    validated_tests = [];
+    tests_to_check = [];
+    additional_tests = [];
+
+    is_being_tested = true;
+
+    file = "process_next_input"
+  }
+
+let test_Process_next_input sem eq process subst result =
+  (**** Retreive the names, variables and axioms *****)
+  let gathering_0 = gather_in_subst Protocol subst (gather_in_process process (gather_in_signature empty_gathering)) in
+  let gathering =
+    List.fold_left (fun acc_gather (proc,in_gather) ->
+      gather_in_process proc (gather_in_input_gathering in_gather acc_gather)
+    ) gathering_0 result
+  in
+
+  (**** Generate the display renaming ****)
+  let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in
+  let id_rho = Process.Testing.get_id_renaming (process :: (List.map (fun (p,_) -> p) result)) in
+
+  (**** Generate test_display for terminal *****)
+
+  let terminal_header, latex_header = header_terminal_and_latex true rho gathering in
+  let test_terminal =
+    { terminal_header with
+      inputs = [ (display_semantics Testing sem, Text); (display_equivalence Testing eq, Text); (Process.display_process_testing rho id_rho process, Text); (display_substitution Testing Protocol rho subst, Inline) ];
+      output = ( display_next_input_result_testing rho id_rho result, Text )
+    } in
+
+  let test_latex i =
+    let str_id k = Printf.sprintf "%de%d" i k in
+    let id_input = str_id 0 in
+    let (html_input,script_input) = Process.display_process_HTML ~rho:rho ~id_rho:id_rho ~name:"Input Process" id_input process in
+
+    let rec produce_proc_input_list k = function
+      | [] -> ([],[],"")
+      | (proc,input)::q ->
+          let id = (str_id k) in
+          let name = Printf.sprintf "Process %d" k in
+          let (html,script) = Process.display_process_HTML ~rho:rho ~id_rho:id_rho ~name:name id proc in
+          let (rest_l,rest_id, rest_script) = produce_proc_input_list (k+1) q in
+          ((html,input)::rest_l, id::rest_id, (script^"\n"^rest_script))
+    in
+
+    let (proc_input_list,id_result, script_result) = produce_proc_input_list 1 result in
+    let all_script = script_input^"\n"^script_result in
+    let html_result = display_next_input_result_HTML rho proc_input_list in
+
+    let test_latex =
+      { latex_header with
+        inputs = [ (display_semantics Terminal sem, Text); (display_equivalence Terminal eq, Text); (html_input, Text); (display_substitution Latex Protocol rho subst, Inline) ];
+        output = ( html_result, Text )
+      } in
+    (test_latex, Some(all_script, id_input::id_result))
+  in
+
+  test_terminal, test_latex
+
+let update_Process_next_input () =
+  Process.update_test_next_input (fun sem eq process subst result ->
+    if data_IO_Process_next_input.is_being_tested
+    then add_test (test_Process_next_input sem eq process subst result) data_IO_Process_next_input
+  )
+
+let apply_Process_next_input sem eq process subst =
+  let result = ref [] in
+  Process.next_input sem eq process subst (fun proc input -> result := (proc,input)::!result);
+
+  let test_terminal,_ = test_Process_next_input sem eq process subst !result in
+  produce_test_terminal test_terminal
+
+let load_Process_next_input i sem eq process subst result =
+  let _,test_latex = test_Process_next_input sem eq process subst result in
+  produce_test_latex (test_latex i)
+
 (*************************************
          General function
 *************************************)
@@ -1620,7 +1769,8 @@ let list_data =
     data_IO_Data_structure_Tools_partial_consequence_additional;
     data_IO_Data_structure_Tools_uniform_consequence;
     data_IO_Process_of_expansed_process;
-    data_IO_Process_next_output
+    data_IO_Process_next_output;
+    data_IO_Process_next_input
   ]
 
 let preload () = List.iter (fun data -> pre_load_tests data) list_data
@@ -1641,4 +1791,5 @@ let update () =
   update_Data_structure_Tools_partial_consequence_additional ();
   update_Data_structure_Tools_uniform_consequence ();
   update_Process_of_expansed_process ();
-  update_Process_next_output ()
+  update_Process_next_output ();
+  update_Process_next_input ()
