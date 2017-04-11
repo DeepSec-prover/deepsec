@@ -20,13 +20,11 @@ type name =
     index_n : int;
     mutable link_n : link_n
   }
-
 and axiom =
   {
     id_axiom : int;
     public_name : name option;
   }
-
 and link_n =
   | NNoLink
   | NLink of name
@@ -44,20 +42,17 @@ type symbol_cat =
   | Tuple
   | Constructor
   | Destructor of ((fst_ord, name) term list *  (fst_ord, name) term) list
-
 and symbol =
   {
     name : string;
     arity : int;
     cat : symbol_cat
   }
-
 and ('a,'b) link =
   | NoLink
-  | TLink of ('a,'b) term
-  | VLink of ('a,'b) variable
+  | TLink of ('a, 'b) term
+  | VLink of ('a, 'b) variable
   | FLink
-
 and ('a,'b) variable =
   {
     label : string;
@@ -66,10 +61,9 @@ and ('a,'b) variable =
     quantifier : quantifier;
     var_type : 'a
   }
-
 and ('a,'b) term =
-  | Func of symbol * ('a,'b) term list
-  | Var of ('a,'b) variable
+  | Func of symbol * ('a, 'b) term list
+  | Var of ('a, 'b) variable
   | AxName of 'b
 
 type protocol_term = (fst_ord, name) term
@@ -101,7 +95,7 @@ let generate_display_renaming names fst_vars snd_vars =
     | t::q -> t::(organise_variables var q)
   in
 
-  let organised_names:(string* name list) list = List.fold_left (fun acc n -> organise_names n acc) [] names in
+  let organised_names:(string * name list) list = List.fold_left (fun acc n -> organise_names n acc) [] names in
   let organised_fst_vars = List.fold_left (fun acc v -> organise_variables v acc) [] fst_vars in
   let organised_snd_vars = List.fold_left (fun acc v -> organise_variables v acc) [] snd_vars in
 
@@ -1255,7 +1249,6 @@ let rec add_axiom_in_list ax ax_list = match ax_list with
       ax_list
   | ax'::q -> ax'::(add_axiom_in_list ax q)
 
-
 let rec get_axioms_with_list recipe f_id ax_list  = match recipe with
   | AxName ax when f_id ax.id_axiom ->
       if ax.id_axiom > 0 && ax.public_name <> None
@@ -2244,34 +2237,72 @@ module Fact = struct
 
   let get_basic_fact_hypothesis form = form.ded_fact_list
 
-  let rec search_term = function
-    | Var(v) when v.quantifier = Universal ->
-        begin match v.link with
-          | FLink -> ()
-          | NoLink -> link_search Protocol v
-          | _ -> Config.internal_error "[term.ml >> Fact.search_term] Unexpected link"
-        end
-    | Func(_,args) -> List.iter search_term args
-    | _ -> ()
+  let get_vars_with_list (type a) (type b) (type c) (at: (a,b) atom) (fct: c t) (form: c formula) f_quanti (v_list: (a,b) variable list) = match at with
+    | Protocol ->
+        List.iter (link_search Protocol) v_list;
 
-  let rec search_equation_subst = function
-    | [] -> ()
-    | (x,_)::_ when x.quantifier = Universal -> Config.internal_error "[term.ml >> Fact.search_equation_subst] The formula is not normalised. (1)"
-    | (_,t)::q -> search_term t; search_equation_subst q
+        List.iter (fun (x,t) ->
+          begin match x.link with
+            | NoLink when f_quanti x.quantifier -> link_search Protocol x
+            | FLink | NoLink -> ()
+            | _ -> Config.internal_error "[term.ml >> Fact.get_wars_with_list] Unexpected link"
+          end;
+          get_vars_term Protocol f_quanti t
+        ) form.equation_subst;
 
+        List.iter (fun b_fct -> get_vars_term Protocol f_quanti b_fct.BasicFact.term) form.ded_fact_list;
 
+        begin match fct with
+          | Deduction -> get_vars_term Protocol f_quanti form.head.df_term
+          | Equality -> ()
+        end;
 
-  let universal_variables form =
+        let result = retrieve_search Protocol in
+        cleanup_search Protocol;
+        (result: (a,b) variable list)
+    | Recipe ->
+        List.iter (link_search Recipe) v_list;
 
-    search_equation_subst form.equation_subst;
-    List.iter (fun b_fct -> link_search Recipe b_fct.BasicFact.var; search_term b_fct.BasicFact.term) form.ded_fact_list;
+        List.iter (fun b_fct ->
+          begin match b_fct.BasicFact.var.link with
+            | NoLink when f_quanti b_fct.BasicFact.var.quantifier -> link_search Recipe b_fct.BasicFact.var
+            | FLink | NoLink -> ()
+            | _ -> Config.internal_error "[term.ml >> Fact.get_wars_with_list] Unexpected link"
+          end;
+        ) form.ded_fact_list;
 
-    let vars_fst = retrieve_search Protocol
-    and vars_snd = retrieve_search Recipe in
+        begin match fct with
+          | Deduction -> get_vars_term Recipe f_quanti form.head.df_recipe
+          | Equality -> get_vars_term Recipe f_quanti form.head.ef_recipe_1; get_vars_term Recipe f_quanti form.head.ef_recipe_2
+        end;
 
-    cleanup_search Protocol;
-    cleanup_search Recipe;
-    vars_fst, vars_snd
+        let result = retrieve_search Recipe in
+        cleanup_search Recipe;
+        (result: (a,b) variable list)
+
+  let get_names_with_list (type a) (fct: a t) (form: a formula) f_bound (n_list: name list) =
+    List.iter Name.link_search n_list;
+
+    List.iter (fun (_,t) -> get_names_protocol f_bound t) form.equation_subst;
+
+    List.iter (fun b_fct -> get_names_protocol f_bound b_fct.BasicFact.term) form.ded_fact_list;
+
+    begin match fct with
+      | Deduction ->
+          get_names_protocol f_bound form.head.df_term;
+          get_names_recipe f_bound form.head.df_recipe
+      | Equality ->
+          get_names_recipe f_bound form.head.ef_recipe_1;
+          get_names_recipe f_bound form.head.ef_recipe_2
+    end;
+
+    let result = Name.retrieve_search () in
+    Name.cleanup_search ();
+    result
+
+  let get_axioms_with_list (type a) (fct: a t) (form: a formula) f_ax ax_list = match fct with
+    | Deduction -> get_axioms_with_list form.head.df_recipe f_ax ax_list
+    | Equality -> get_axioms_with_list form.head.ef_recipe_1 f_ax (get_axioms_with_list form.head.ef_recipe_2 f_ax ax_list)
 
   (********* Testing *********)
 

@@ -211,7 +211,7 @@ module Variable : sig
   val order : ('a, 'b) atom -> ('a, 'b) variable -> ('a, 'b) variable -> int
 
   (** [display out at x] returns a string displaying the variable [x] depending on the outpout mode [out]. *)
-  val display : Display.output -> ?rho:display_renamings option -> ('a, 'b) atom -> ?v_type:bool ->  ('a, 'b) variable -> string
+  val display : Display.output -> ?rho: display_renamings option -> ('a, 'b) atom -> ?v_type:bool ->  ('a, 'b) variable -> string
 
   (** {3 Renaming} *)
 
@@ -893,8 +893,14 @@ module Fact : sig
   (** [get_basic_fact_hypothesis] {% $\psi$ returns $\Df(\psi)$. %} *)
   val get_basic_fact_hypothesis : 'a formula -> BasicFact.t list
 
-  (** [universal_variables form] returns the first-order and second-order universal variables in the formula [form] *)
-  val universal_variables : 'a formula -> (fst_ord, name) variable list * (snd_ord, axiom) variable list
+  (** [get_vars_with_list at fct] {% $\psi$ %} [f_q l] adds the [at] variables in the [fct] formula {% $\psi$ %} whose quantifier satisfies [f_q] in the list [l]. The addition of a variable as the union of sets, i.e. there is no dupplicate in the resulting list. *)
+  val get_vars_with_list : ('a, 'b) atom -> 'c t -> 'c formula -> (quantifier -> bool) -> ('a, 'b) variable list -> ('a, 'b) variable list
+
+  (** [get_names_with_list t fct] {% $\psi$ %} [f_b l] adds the names in the [fct] formula {% $\psi$ %} whose boundedness satisfies [f_b] in the list [l]. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
+  val get_names_with_list : 'c t -> 'c formula -> (boundedness -> bool) -> name list -> name list
+
+  (** [get_axioms_with_list t fct] {% $\psi$ %} [f_i l] adds the axiom in the [fct] formula {% $\psi$ %} whose index satisfies [f_i] in the list [l]. The addition of an axiom as the union of sets, i.e. there is no dupplicate in the resulting list..*)
+  val get_axioms_with_list : 'c t -> 'c formula -> (int -> bool) -> axiom list -> axiom list
 
   (** {3 Testing} *)
 
