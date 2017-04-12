@@ -184,3 +184,11 @@ val data_IO_Constraint_system_mgs : data_IO
 val apply_Constraint_system_mgs : Constraint_system.simple -> string
 
 val load_Constraint_system_mgs : int -> Constraint_system.simple -> (Constraint_system.mgs * (fst_ord, name) Subst.t * Constraint_system.simple) list -> html_code
+
+(** {3 Constraint_system.one_mgs} *)
+
+val data_IO_Constraint_system_one_mgs : data_IO
+
+val apply_Constraint_system_one_mgs : Constraint_system.simple -> string
+
+val load_Constraint_system_one_mgs : int -> Constraint_system.simple -> (Constraint_system.mgs * (fst_ord, name) Subst.t * Constraint_system.simple) option -> html_code

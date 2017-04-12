@@ -594,5 +594,9 @@ let parse_mgs_result (mgs,subst,simple) =
   let simple' = parse_simple_constraint_system simple in
   (mgs',subst',simple')
 
+let parse_mgs_result_option = function
+  | None -> None
+  | Some res -> Some (parse_mgs_result res)
+
 let parse_mgs_result_list mgs_list =
   List.map parse_mgs_result mgs_list

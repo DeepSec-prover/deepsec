@@ -123,6 +123,13 @@ let data_verification_Constraint_system_mgs =
     parsing_function = Testing_grammar.parse_Constraint_system_mgs
   }
 
+let data_verification_Constraint_system_one_mgs =
+  {
+    data_IO = data_IO_Constraint_system_one_mgs;
+    name = "Constraint_system.one_mgs";
+    parsing_function = Testing_grammar.parse_Constraint_system_one_mgs
+  }
+
 let all_data_verification =
   [
     data_verification_Term_Subst_unify;
@@ -140,7 +147,8 @@ let all_data_verification =
     data_verification_Process_of_expansed_process;
     data_verification_Process_next_output;
     data_verification_Process_next_input;
-    data_verification_Constraint_system_mgs
+    data_verification_Constraint_system_mgs;
+    data_verification_Constraint_system_one_mgs
   ]
 
 (** {3 Verification of tests} *)

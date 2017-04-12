@@ -159,3 +159,5 @@ type simple_constraint_system = basic_deduction_fact list * equation list list t
 val parse_simple_constraint_system : simple_constraint_system -> Constraint_system.simple
 
 val parse_mgs_result_list : (mgs * substitution * simple_constraint_system) list -> (Constraint_system.mgs * (Term.fst_ord, Term.name) Term.Subst.t * Constraint_system.simple) list
+
+val parse_mgs_result_option : (mgs * substitution * simple_constraint_system) option -> (Constraint_system.mgs * (Term.fst_ord, Term.name) Term.Subst.t * Constraint_system.simple) option

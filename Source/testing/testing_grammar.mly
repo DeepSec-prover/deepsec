@@ -64,7 +64,7 @@ open Testing_parser_functions
 %start parse_Process_of_expansed_process
 %start parse_Process_next_output parse_Process_next_input
 
-%start parse_Constraint_system_mgs
+%start parse_Constraint_system_mgs parse_Constraint_system_one_mgs
 
 %type <(Testing_parser_functions.parser)> parse_Term_Subst_unify
 %type <(Testing_parser_functions.parser)> parse_Term_Subst_is_matchable
@@ -85,6 +85,7 @@ open Testing_parser_functions
 %type <(Testing_parser_functions.parser)> parse_Process_next_input
 
 %type <(Testing_parser_functions.parser)> parse_Constraint_system_mgs
+%type <(Testing_parser_functions.parser)> parse_Constraint_system_one_mgs
 
 %%
 /***********************************
@@ -482,6 +483,23 @@ parse_Constraint_system_mgs:
                 let result = parse_mgs_result_list $7 in
                 RLoad(Testing_functions.load_Constraint_system_mgs i csys result)
             | Verify -> RVerify(Testing_functions.apply_Constraint_system_mgs csys)
+        )
+      }
+  | error
+      { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
+
+parse_Constraint_system_one_mgs:
+  | header_of_test
+    INPUT DDOT simple_constraint_system
+    RESULT DDOT mgs_result_option
+      {
+        (fun mode -> $1 ();
+          let csys = parse_simple_constraint_system $4 in
+          match mode with
+            | Load i ->
+                let result = parse_mgs_result_option $7 in
+                RLoad(Testing_functions.load_Constraint_system_one_mgs i csys result)
+            | Verify -> RVerify(Testing_functions.apply_Constraint_system_one_mgs csys)
         )
       }
   | error
@@ -1080,6 +1098,12 @@ mgs:
 mgs_result:
   | LPAR mgs COMMA substitution COMMA simple_constraint_system RPAR
       { ($2,$4,$6) }
+
+mgs_result_option:
+  | BOT
+      { None }
+  | mgs_result
+      { Some $1 }
 
 mgs_result_list:
   | LCURL RCURL

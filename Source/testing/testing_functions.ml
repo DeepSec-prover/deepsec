@@ -850,6 +850,10 @@ let display_mgs_result_list out rho mgs_list = match out with
         end
   | _ -> Config.internal_error "[testing_function.ml >> display_mgs_result_list] Unexpected display mode."
 
+let display_mgs_result_option out rho mgs_option = match mgs_option with
+  | None -> bot out
+  | Some res -> display_mgs_result out rho 1 res
+
 (*************************************
       Functions to be tested
 *************************************)
@@ -1854,6 +1858,69 @@ let load_Constraint_system_mgs i csys result =
   let _,test_latex = test_Constraint_system_mgs csys result in
   produce_test_latex (test_latex i)
 
+(***** Constraint_system.one_mgs *****)
+
+let data_IO_Constraint_system_one_mgs =
+  {
+    scripts = false;
+    validated_tests = [];
+    tests_to_check = [];
+    additional_tests = [];
+
+    is_being_tested = true;
+
+    file = "constraint_system_one_mgs"
+  }
+
+let test_Constraint_system_one_mgs csys result =
+  (**** Retreive the names, variables and axioms *****)
+  let gathering = match result with
+    | None -> gather_in_simple_csys csys(gather_in_signature empty_gathering)
+    | Some res -> gather_in_mgs_result res (gather_in_simple_csys csys(gather_in_signature empty_gathering))
+  in
+
+  (**** Generate the display renaming ****)
+  let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in
+
+  (**** Generate test_display for terminal *****)
+
+  let terminal_header, latex_header = header_terminal_and_latex true rho gathering in
+
+  let test_terminal =
+    { terminal_header with
+      inputs = [ (Constraint_system.display_simple Testing ~rho:rho csys, Text) ];
+      output = ( display_mgs_result_option Testing rho result, Text )
+    } in
+
+  let test_latex =
+    { latex_header with
+      inputs = [ (Constraint_system.display_simple HTML ~rho:rho ~hidden:true csys, Text) ];
+      output = ( display_mgs_result_option HTML rho result, Text )
+    } in
+
+  test_terminal, (fun _ -> test_latex, None)
+
+let update_Constraint_system_one_mgs () =
+  Constraint_system.update_test_one_mgs (fun csys result ->
+    if data_IO_Constraint_system_one_mgs.is_being_tested
+    then add_test (test_Constraint_system_one_mgs csys result) data_IO_Constraint_system_mgs
+  )
+
+let apply_Constraint_system_one_mgs csys =
+  let result =
+    try
+      Some (Constraint_system.one_mgs csys)
+    with
+    | Constraint_system.Bot -> None
+  in
+
+  let test_terminal,_ = test_Constraint_system_one_mgs csys result in
+  produce_test_terminal test_terminal
+
+let load_Constraint_system_one_mgs i csys result =
+  let _,test_latex = test_Constraint_system_one_mgs csys result in
+  produce_test_latex (test_latex i)
+
 (*************************************
          General function
 *************************************)
@@ -1875,7 +1942,8 @@ let list_data =
     data_IO_Process_of_expansed_process;
     data_IO_Process_next_output;
     data_IO_Process_next_input;
-    data_IO_Constraint_system_mgs
+    data_IO_Constraint_system_mgs;
+    data_IO_Constraint_system_one_mgs
   ]
 
 let preload () = List.iter (fun data -> pre_load_tests data) list_data
@@ -1898,4 +1966,5 @@ let update () =
   update_Process_of_expansed_process ();
   update_Process_next_output ();
   update_Process_next_input ();
-  update_Constraint_system_mgs ()
+  update_Constraint_system_mgs ();
+  update_Constraint_system_one_mgs ()

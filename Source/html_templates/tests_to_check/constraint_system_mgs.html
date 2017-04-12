@@ -116,7 +116,13 @@
       <div id="content-text">
 
         <p>
-          <code>implies at</code> \(\phi\) \(t_1\) \(t_2\) returns \(\top\) if and only if \(\phi \Rightarrow t_1 \neq^? t_2\) is a tautology.
+          \( \newcommand{\C}{{\mathcal{C}}}
+              \newcommand{\CApply}[2]{#2\text{:}#1}
+              \newcommand{\mgs}[1]{mgs(#1)}
+              \newcommand{\mguset}[1]{\mathit{mgu}(#1)}
+          \)
+          <code>mgs</code> \(\C\) returns a list of elements \((\Sigma,\sigma,\C')\) such that \(\Sigma \in \mgs{\C}\), \(\C' = \CApply{\Sigma}{\C}\)
+              and \(\mguset{\C'} = \mguset{\C}\sigma\).
         </p>
         <p>
           Note that we adopt the following convention:

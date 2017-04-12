@@ -81,7 +81,7 @@
 
         <div id="title">
           <div id="title-main">Testing</div>
-          <div id="title-sub">Validated tests for the function Constraint_system.mgs</div>
+          <div id="title-sub">Validated tests for the function Constraint_system.one_mgs</div>
         </div>
 
       </div>
@@ -94,7 +94,7 @@
               \newcommand{\mgs}[1]{mgs(#1)}
               \newcommand{\mguset}[1]{\mathit{mgu}(#1)}
           \)
-          <code>mgs</code> \(\C\) returns a list of elements \((\Sigma,\sigma,\C')\) such that \(\Sigma \in \mgs{\C}\), \(\C' = \CApply{\Sigma}{\C}\)
+          <code>mgs</code> \(\C\) returns one element \((\Sigma,\sigma,\C')\) such that \(\Sigma \in \mgs{\C}\), \(\C' = \CApply{\Sigma}{\C}\)
               and \(\mguset{\C'} = \mguset{\C}\sigma\). Return \( \bot\) when no most general solution exists.
         </p>
         <p>
