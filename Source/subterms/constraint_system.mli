@@ -168,6 +168,12 @@ val create_mgs : (snd_ord, axiom) Subst.t -> snd_ord_variable list -> mgs
 
 val create_simple : DF.t -> (fst_ord, name) Eq.t -> (snd_ord, axiom) Eq.t -> SDF.t -> Uniformity_Set.t -> simple
 
+val create : protocol_term list -> DF.t -> (fst_ord, name) Eq.t -> (snd_ord, axiom) Eq.t -> SDF.t -> UF.t ->
+  (fst_ord, name) Subst.t -> (snd_ord, axiom) Subst.t -> Uniformity_Set.t ->
+  int list -> int list -> int list ->
+  (int * Rewrite_rules.skeleton) list -> (int * Rewrite_rules.skeleton) list ->
+  unit t
+
 (**/**)
 
 (** {2 Set of constraint systems} *)

@@ -68,9 +68,18 @@ type skeleton = ident * term * term * (ident * int * term) list * (term * term)
 
 type basic_deduction_fact = ident * int * term
 
-type deduction_fact = term * term
+type ded_eq_fact = term * term
 
-type deduction_formula = deduction_fact * basic_deduction_fact list * substitution
+type formula = ded_eq_fact * basic_deduction_fact list * substitution
+
+(* Type of UF *)
+
+type equality_type =
+  | Constructor_SDF of int * ident
+  | Equality_SDF of int * int
+  | Consequence_UF of int
+
+type uf = (int * formula list) list * (int * formula * equality_type) list
 
 (***********************************
 ***            Parsing           ***
@@ -95,7 +104,7 @@ val parse_signature : (ident * int) list * int list -> unit
 
 val parse_rewriting_system : (ident * (term list * term) list) list -> unit
 
-
+val parse_vars_renaming : ('a, 'b) Term.atom -> (ident * ident) list -> ('a, 'b) Term.Variable.Renaming.t
 
 val parse_term : ('a, 'b) Term.atom -> term -> ('a, 'b) Term.term
 
@@ -124,16 +133,18 @@ val parse_skeleton_list : skeleton list -> Term.Rewrite_rules.skeleton list
 
 val parse_basic_deduction_fact : basic_deduction_fact -> Term.BasicFact.t
 
-val parse_deduction_fact : deduction_fact -> Term.Fact.deduction
+val parse_deduction_fact : ded_eq_fact -> Term.Fact.deduction
 
-val parse_deduction_formula : deduction_formula -> Term.Fact.deduction_formula
+val parse_deduction_formula : formula -> Term.Fact.deduction_formula
 
-val parse_deduction_formula_list : deduction_formula list -> Term.Fact.deduction_formula list
+val parse_deduction_formula_list : formula list -> Term.Fact.deduction_formula list
+
+val parse_formula : 'a Term.Fact.t -> formula -> 'a Term.Fact.formula
 
 
 val parse_Eq : ('a, 'b) Term.atom -> equation list list top_bot -> ('a, 'b) Data_structure.Eq.t
 
-val parse_SDF : deduction_fact list -> Data_structure.SDF.t
+val parse_SDF : ded_eq_fact list -> Data_structure.SDF.t
 
 val parse_DF : basic_deduction_fact list -> Data_structure.DF.t
 
@@ -154,7 +165,17 @@ val parse_input_transition : (process * substitution * diseq list * term * ident
 
 type mgs = ident list * substitution
 
-type simple_constraint_system = basic_deduction_fact list * equation list list top_bot * equation list list top_bot * deduction_fact list * (term * term) list
+type constraint_system =
+  term list * basic_deduction_fact list * equation list list top_bot * equation list list top_bot * ded_eq_fact list *
+  uf *
+  substitution * substitution *
+  (term * term) list *
+  int list * int list * int list *
+  (int * skeleton) list * (int * skeleton) list
+
+type simple_constraint_system = basic_deduction_fact list * equation list list top_bot * equation list list top_bot * ded_eq_fact list * (term * term) list
+
+val parse_constraint_system : constraint_system -> unit Constraint_system.t
 
 val parse_simple_constraint_system : simple_constraint_system -> Constraint_system.simple
 

@@ -75,9 +75,18 @@ type skeleton = ident * term * term * (ident * int * term) list * (term * term)
 
 type basic_deduction_fact = ident * int * term
 
-type deduction_fact = term * term
+type ded_eq_fact = term * term
 
-type deduction_formula = deduction_fact * basic_deduction_fact list * substitution
+type formula = ded_eq_fact * basic_deduction_fact list * substitution
+
+(* Type of UF *)
+
+type equality_type =
+  | Constructor_SDF of int * ident
+  | Equality_SDF of int * int
+  | Consequence_UF of int
+
+type uf = (int * formula list) list * (int * formula * equality_type) list
 
 let environment = Hashtbl.create 50
 
@@ -405,10 +414,13 @@ let parse_basic_deduction_fact ((s,line),k, term) =
   in
   Term.BasicFact.create xsnd (parse_term Term.Protocol term)
 
-(********** Deduction fact *********)
+(********** Fact *********)
 
 let parse_deduction_fact (recipe,term) =
   Term.Fact.create_deduction_fact (parse_term Term.Recipe recipe) (parse_term Term.Protocol term)
+
+let parse_equality_fact (recipe1,recipe2) =
+  Term.Fact.create_equality_fact (parse_term Term.Recipe recipe1) (parse_term Term.Recipe recipe2)
 
 (********** Deduction formula *********)
 
@@ -416,6 +428,10 @@ let parse_deduction_formula (head,bfct_l,subst) =
   Term.Fact.create_for_testing (parse_deduction_fact head) (List.map parse_basic_deduction_fact bfct_l) (parse_substitution Term.Protocol subst)
 
 let parse_deduction_formula_list = List.map (parse_deduction_formula)
+
+let parse_formula (type a) (fct: a Term.Fact.t) (head,bfct_l,subst) = match fct with
+  | Term.Fact.Deduction -> ((parse_deduction_formula (head,bfct_l,subst)): a Term.Fact.formula)
+  | Term.Fact.Equality -> ((Term.Fact.create_for_testing (parse_equality_fact head) (List.map parse_basic_deduction_fact bfct_l) (parse_substitution Term.Protocol subst)): a Term.Fact.formula)
 
 (********** Skeleton *********)
 
@@ -475,6 +491,29 @@ let parse_DF  =
     Data_structure.DF.add acc (parse_basic_deduction_fact bfct)
   ) Data_structure.DF.empty
 
+(*********** UF *********)
+
+let parse_equality_type = function
+  | Constructor_SDF(n,ident) -> Data_structure.UF.Constructor_SDF(n,parse_symbol ident)
+  | Equality_SDF(id1,id2) ->  Data_structure.UF.Equality_SDF(id1,id2)
+  | Consequence_UF(id) -> Data_structure.UF.Consequence_UF(id)
+
+let parse_UF (ded_list,eq_list) =
+  let uf_0 = Data_structure.UF.empty in
+
+  let uf_1 =
+    List.fold_left (fun uf (id,sub_ded_list) ->
+      let sub_ded_list' = List.map parse_deduction_formula sub_ded_list in
+      Data_structure.UF.add_deduction uf sub_ded_list' id
+    ) uf_0 ded_list
+  in
+
+  List.fold_left (fun uf (id,eq_form,eq_type) ->
+    let eq_form' = parse_formula Term.Fact.Equality eq_form in
+    let eq_type' = parse_equality_type eq_type in
+    Data_structure.UF.add_equality uf eq_form' id eq_type'
+  ) uf_1 eq_list
+
 (*********** Uniformity_Set *********)
 
 let parse_Uniformity_Set =
@@ -518,13 +557,16 @@ let parse_content (id,action) = match action with
   | APar(proc_l) -> Process.Testing.add_Par id proc_l
   | AChoice(proc_l) -> Process.Testing.add_Choice id proc_l
 
-let parse_vars_renaming v_list =
-  List.fold_right (fun (v1,v2) acc -> Term.Variable.Renaming.compose acc (parse_fst_var v1) (parse_fst_var v2)) v_list Term.Variable.Renaming.identity
+let parse_vars_renaming (type a) (type b) (at:(a,b) Term.atom) v_list = match at with
+  | Term.Protocol ->
+      ((List.fold_right (fun (v1,v2) acc -> Term.Variable.Renaming.compose acc (parse_fst_var v1) (parse_fst_var v2)) v_list Term.Variable.Renaming.identity):(a,b) Term.Variable.Renaming.t)
+  | Term.Recipe ->
+      ((List.fold_right (fun (v1,v2) acc -> Term.Variable.Renaming.compose acc (parse_snd_var v1) (parse_snd_var v2)) v_list Term.Variable.Renaming.identity):(a,b) Term.Variable.Renaming.t)
 
 let parse_names_renaming n_list =
   List.fold_right (fun (n1,n2) acc -> Term.Name.Renaming.compose acc (parse_name n1) (parse_name n2)) n_list Term.Name.Renaming.identity
 
-let parse_symbolic_derivation (content_mult, vars_rho, names_rho) = (content_mult, parse_vars_renaming vars_rho, parse_names_renaming names_rho)
+let parse_symbolic_derivation (content_mult, vars_rho, names_rho) = (content_mult, parse_vars_renaming Term.Protocol vars_rho, parse_names_renaming names_rho)
 
 let parse_process (content_list,symb_list) =
   List.iter parse_content content_list;
@@ -572,8 +614,32 @@ let parse_input_transition out_l =
 
 type mgs = ident list * substitution
 
-type simple_constraint_system = basic_deduction_fact list * equation list list top_bot * equation list list top_bot * deduction_fact list * (term * term) list
+type constraint_system =
+  term list * basic_deduction_fact list * equation list list top_bot * equation list list top_bot * ded_eq_fact list *
+  uf *
+  substitution * substitution *
+  (term * term) list *
+  int list * int list * int list *
+  (int * skeleton) list * (int * skeleton) list
 
+type simple_constraint_system = basic_deduction_fact list * equation list list top_bot * equation list list top_bot * ded_eq_fact list * (term * term) list
+
+let parse_constraint_system (frame,df,eq1,eq2,sdf,uf,sub1,sub2,uni,il1,il2,il3,is1,is2) =
+  Constraint_system.create
+    (parse_term_list Term.Protocol frame)
+    (parse_DF df)
+    (parse_Eq Term.Protocol eq1)
+    (parse_Eq Term.Recipe eq2)
+    (parse_SDF sdf)
+    (parse_UF uf)
+    (parse_substitution Term.Protocol sub1)
+    (parse_substitution Term.Recipe sub2)
+    (parse_Uniformity_Set uni)
+    il1
+    il2
+    il3
+    (List.map (fun (i,skel) -> (i,parse_skeleton skel)) is1)
+    (List.map (fun (i,skel) -> (i,parse_skeleton skel)) is2)
 
 let parse_simple_constraint_system (df,eq1,eq2,sdf,uni) =
   let df' = parse_DF df in

@@ -25,6 +25,9 @@ open Testing_parser_functions
 %token PROTOCOL
 %token RECIPE
 
+%token DEDUCTION EQUALITY
+%token CONST EQUA CONSEQ
+
 /* Process declaration */
 %token NIL
 %token OUTPUT INPUT
@@ -37,7 +40,7 @@ open Testing_parser_functions
 %token TRACEEQ OBSEQ
 
 /* Special token  */
-%token EQ NEQ EQI NEQI
+%token EQ NEQ EQI NEQI EQF
 %token WEDGE VEE VDASH
 %token BOT TOP
 %token RIGHTARROW LLEFTARROW
@@ -65,6 +68,7 @@ open Testing_parser_functions
 %start parse_Process_next_output parse_Process_next_input
 
 %start parse_Constraint_system_mgs parse_Constraint_system_one_mgs
+%start parse_Constraint_system_simple_of_formula
 
 %type <(Testing_parser_functions.parser)> parse_Term_Subst_unify
 %type <(Testing_parser_functions.parser)> parse_Term_Subst_is_matchable
@@ -86,6 +90,7 @@ open Testing_parser_functions
 
 %type <(Testing_parser_functions.parser)> parse_Constraint_system_mgs
 %type <(Testing_parser_functions.parser)> parse_Constraint_system_one_mgs
+%type <(Testing_parser_functions.parser)> parse_Constraint_system_simple_of_formula
 
 %%
 /***********************************
@@ -505,6 +510,40 @@ parse_Constraint_system_one_mgs:
   | error
       { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
 
+parse_Constraint_system_simple_of_formula:
+  | header_of_test
+    INPUT DDOT fact
+    INPUT DDOT constraint_system
+    INPUT DDOT formula
+    RESULT DDOT LPAR renaming COMMA renaming COMMA simple_constraint_system RPAR
+      {
+        (fun mode -> $1 ();
+          let csys = parse_constraint_system $7 in
+
+          if $4
+          then
+            let form = parse_formula Term.Fact.Deduction $10 in
+            match mode with
+              | Load i ->
+                  let rho1 = parse_vars_renaming Term.Protocol $14 in
+                  let rho2 = parse_vars_renaming Term.Recipe $16 in
+                  let simple = parse_simple_constraint_system $18 in
+                  RLoad(Testing_functions.load_Constraint_system_simple_of_formula i Term.Fact.Deduction csys form (rho1,rho2,simple))
+              | Verify -> RVerify(Testing_functions.apply_Constraint_system_simple_of_formula Term.Fact.Deduction csys form)
+          else
+            let form = parse_formula Term.Fact.Equality $10 in
+            match mode with
+              | Load i ->
+                  let rho1 = parse_vars_renaming Term.Protocol $14 in
+                  let rho2 = parse_vars_renaming Term.Recipe $16 in
+                  let simple = parse_simple_constraint_system $18 in
+                  RLoad(Testing_functions.load_Constraint_system_simple_of_formula i Term.Fact.Equality csys form (rho1,rho2,simple))
+              | Verify -> RVerify(Testing_functions.apply_Constraint_system_simple_of_formula Term.Fact.Equality csys form)
+        )
+      }
+  | error
+      { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
+
 /***********************************
 ***     Signature definition     ***
 ************************************/
@@ -741,20 +780,37 @@ deduction_fact:
   | term VDASH term
       { ($1,$3) }
 
+equality_fact:
+  | term EQF term
+      { ($1,$3) }
+
 /*******************************************
-***          Deduction formula           ***
+***          Formula           ***
 ********************************************/
+
+fact:
+  | DEDUCTION { true }
+  | EQUALITY { false }
 
 deduction_formula:
   | deduction_fact LLEFTARROW basic_deduction_fact_list SEMI substitution
       { ($1,$3,$5) }
+
+equality_formula:
+  | equality_fact LLEFTARROW basic_deduction_fact_list SEMI substitution
+      { ($1,$3,$5) }
+
+formula:
+  | deduction_formula
+      { $1 }
+  | equality_formula
+      { $1 }
 
 deduction_formula_list:
   | LCURL RCURL
       { [] }
   | LCURL sub_deduction_formula_list RCURL
       { $2 }
-
 
 sub_deduction_formula_list:
   | deduction_formula
@@ -870,6 +926,66 @@ sub_df:
       { [$1] }
   | basic_deduction_fact COMMA sub_df
       { $1::$3 }
+
+/*************************
+***        UF         ***
+**************************/
+
+equality_type:
+  | CONST LPAR INT COMMA ident RPAR
+      { Constructor_SDF($3,$5) }
+  | EQUA LPAR INT COMMA INT RPAR
+      { Equality_SDF($3,$5) }
+  | CONSEQ LPAR INT RPAR
+      { Consequence_UF($3) }
+
+cell_equality:
+  | LPAR INT COMMA equality_formula COMMA equality_type RPAR
+      { ($2,$4,$6) }
+
+set_deduction_formula_uf:
+  | LPAR INT COMMA deduction_formula_list_uf RPAR
+      { ($2,$4) }
+
+deduction_formula_list_uf:
+  | LBRACE RBRACE
+      { [] }
+  | LBRACE sub_deduction_formula_list_uf RBRACE
+      { $2 }
+
+sub_deduction_formula_list_uf:
+  | LPAR deduction_formula RPAR
+      { [ $2 ] }
+  | LPAR deduction_formula RPAR SEMI sub_deduction_formula_list_uf
+      { $2::$5 }
+
+all_deduction_formula_uf:
+  | LCURL RCURL
+      { [] }
+  | LCURL sub_deduction_formula_uf RCURL
+      { $2 }
+
+sub_deduction_formula_uf:
+  | set_deduction_formula_uf
+      { [ $1 ] }
+  | set_deduction_formula_uf sub_deduction_formula_uf
+      { $1::$2 }
+
+all_equality_formula_uf:
+  | LCURL RCURL
+      { [] }
+  | LCURL sub_equality_formula_uf RCURL
+      { $2 }
+
+sub_equality_formula_uf:
+  | cell_equality
+      { [ $1 ] }
+  | cell_equality sub_equality_formula_uf
+      { $1::$2 }
+
+uf:
+  | LCURL all_deduction_formula_uf all_equality_formula_uf LCURL
+      { ($2,$3) }
 
 /***********************************
 ***        Uniformity_Set        ***
@@ -1090,6 +1206,34 @@ input_transition:
 simple_constraint_system:
   | LPAR df COMMA data_Eq COMMA data_Eq COMMA sdf COMMA uniformity_set RPAR
       { ($2,$4,$6,$8,$10) }
+
+int_list:
+  | LCURL RCURL
+      { [] }
+  | LCURL sub_int_list RCURL
+      { $2 }
+
+sub_int_list:
+  | INT
+      { [$1] }
+  | INT COMMA sub_int_list
+      { $1::$3 }
+
+int_skel_list:
+  | LCURL RCURL
+      { [] }
+  | LCURL sub_int_skel_list RCURL
+      { $2 }
+
+sub_int_skel_list:
+  | LPAR INT COMMA skeleton RPAR
+      { [($2,$4)] }
+  | LPAR INT COMMA skeleton RPAR COMMA sub_int_skel_list
+      { ($2,$4)::$7 }
+
+constraint_system:
+  | LPAR term_list COMMA df COMMA data_Eq COMMA data_Eq COMMA sdf COMMA uf COMMA substitution COMMA substitution COMMA uniformity_set COMMA int_list COMMA int_list COMMA int_list COMMA int_skel_list COMMA int_skel_list RPAR
+      { ($2,$4,$6,$8,$10,$12,$14,$16,$18,$20,$22,$24,$26,$28) }
 
 mgs:
   | LPAR ident_list COMMA substitution RPAR

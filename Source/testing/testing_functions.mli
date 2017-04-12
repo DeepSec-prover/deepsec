@@ -192,3 +192,11 @@ val data_IO_Constraint_system_one_mgs : data_IO
 val apply_Constraint_system_one_mgs : Constraint_system.simple -> string
 
 val load_Constraint_system_one_mgs : int -> Constraint_system.simple -> (Constraint_system.mgs * (fst_ord, name) Subst.t * Constraint_system.simple) option -> html_code
+
+(** {3 Constraint_system.simple_of_formula} *)
+
+val data_IO_Constraint_system_simple_of_formula : data_IO
+
+val apply_Constraint_system_simple_of_formula : 'a Fact.t -> 'b Constraint_system.t -> 'a Fact.formula -> string
+
+val load_Constraint_system_simple_of_formula : int -> 'a Fact.t -> 'b Constraint_system.t -> 'a Fact.formula -> (fst_ord, name) Variable.Renaming.t * (snd_ord, axiom) Variable.Renaming.t * Constraint_system.simple -> html_code

@@ -23,6 +23,9 @@ let _ =
       "_Protocol", PROTOCOL;
       "_Recipe", RECIPE;
 
+      "_Deduction", DEDUCTION;
+      "_Equality", EQUALITY;
+
       "_Nil", NIL;
       "_Out", OUTPUT;
       "_In", INPUT;
@@ -38,6 +41,10 @@ let _ =
 
       "_TraceEq", TRACEEQ;
       "_ObsEq", OBSEQ;
+
+      "_Const", CONST;
+      "_Equa", EQUA;
+      "_Conseq", CONSEQ;
     ]
 
 let newline lexbuf =
@@ -60,6 +67,7 @@ rule token = parse
 | "\\/" { VEE }
 | "->" { RIGHTARROW }
 | "<=" { LLEFTARROW }
+| "=_f" { EQF }
 | '('	 { LPAR }
 | ')'	 { RPAR }
 | '['	 { LBRACE }

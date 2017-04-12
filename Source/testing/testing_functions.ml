@@ -450,6 +450,14 @@ let gather_in_subst (type a) (type b) (at:(a,b) atom) (subst:(a,b) Subst.t) (gat
       and axioms = Subst.get_axioms_with_list subst (fun _ -> true) gather.g_axioms in
       { gather with g_names = names; g_snd_vars = snd_vars ; g_axioms = axioms }
 
+let gather_in_var_renaming (type a) (type b) (at:(a,b) atom) (subst:(a,b) Variable.Renaming.t) (gather:gathering) = match at with
+  | Protocol ->
+      let fst_vars = Variable.Renaming.get_vars_with_list subst gather.g_fst_vars in
+      { gather with g_fst_vars = fst_vars }
+  | Recipe ->
+      let snd_vars = Variable.Renaming.get_vars_with_list subst gather.g_snd_vars in
+      { gather with g_snd_vars = snd_vars }
+
 let gather_in_subst_option (type a) (type b) (at:(a,b) atom) (subst_op:(a,b) Subst.t option) (gather:gathering) = match subst_op with
   | None -> gather
   | Some subst -> gather_in_subst at subst gather
@@ -489,11 +497,25 @@ let gather_in_deduction_fact fct gather =
   and term = Fact.get_protocol_term fct in
   gather_in_term Protocol term (gather_in_term Recipe recipe gather)
 
+let gather_in_equality_fact fct gather =
+  let recipe_1,recipe_2 = Fact.get_both_recipes fct in
+  gather_in_term Recipe recipe_1 (gather_in_term Recipe recipe_2 gather)
+
 let gather_in_deduction_formula ded_form gather =
   let head = Fact.get_head ded_form
   and mgu = Fact.get_mgu_hypothesis ded_form
   and bfct_l = Fact.get_basic_fact_hypothesis ded_form in
   List.fold_left (fun acc_gather bfct -> gather_in_basic_fct bfct acc_gather) (gather_in_subst Protocol mgu (gather_in_deduction_fact head gather)) bfct_l
+
+let gather_in_equality_formula eq_form gather =
+  let head = Fact.get_head eq_form
+  and mgu = Fact.get_mgu_hypothesis eq_form
+  and bfct_l = Fact.get_basic_fact_hypothesis eq_form in
+  List.fold_left (fun acc_gather bfct -> gather_in_basic_fct bfct acc_gather) (gather_in_subst Protocol mgu (gather_in_equality_fact head gather)) bfct_l
+
+let gather_in_formula (type a) (fct:a Fact.t) (form:a Fact.formula) gather = match fct with
+  | Fact.Deduction -> gather_in_deduction_formula form gather
+  | Fact.Equality -> gather_in_equality_formula form gather
 
 let gather_in_Eq (type a) (type b) (at:(a,b) atom) (form:(a,b) Eq.t) (gather:gathering) = match at with
   | Protocol ->
@@ -568,6 +590,13 @@ let gather_in_mgs mgs gather =
 
 let gather_in_mgs_result (mgs, subst, csys) gather =
   gather_in_mgs mgs (gather_in_subst Protocol subst (gather_in_simple_csys csys gather))
+
+let gather_in_constraint_system csys gather =
+  let names = Constraint_system.get_names_with_list csys gather.g_names
+  and fst_vars = Constraint_system.get_vars_with_list Protocol csys gather.g_fst_vars
+  and snd_vars = Constraint_system.get_vars_with_list Recipe csys gather.g_snd_vars
+  and axioms = Constraint_system.get_axioms_with_list csys gather.g_axioms in
+  { g_names = names; g_fst_vars = fst_vars ; g_snd_vars = snd_vars; g_axioms = axioms }
 
 (*************************************
       Generic display functions
@@ -853,6 +882,34 @@ let display_mgs_result_list out rho mgs_list = match out with
 let display_mgs_result_option out rho mgs_option = match mgs_option with
   | None -> bot out
   | Some res -> display_mgs_result out rho 1 res
+
+let display_fact (type a) out (fct: a Fact.t) = match out with
+  | Testing ->
+    begin match fct with
+      | Fact.Deduction -> "_Deduction"
+      | Fact.Equality -> "_Equality"
+    end
+  | _ ->
+    begin match fct with
+      | Fact.Deduction -> "Deduction"
+      | Fact.Equality -> "Equality"
+    end
+
+let display_simple_of_formula out rho (subst1,subst2,simple) = match out with
+  | Testing ->
+      Printf.sprintf "(%s,%s,%s)"
+        (Variable.Renaming.display Testing ~rho:rho Protocol subst1)
+        (Variable.Renaming.display Testing ~rho:rho Recipe subst2)
+        (Constraint_system.display_simple Testing ~rho:rho simple)
+  | HTML ->
+      let str = ref "" in
+
+      str := Printf.sprintf "%s            <ul>\n" !str;
+      str := Printf.sprintf "%s              <li> \\(\\rho^1 = %s\\)</li>\n" !str (Variable.Renaming.display Latex ~rho:rho Protocol subst1);
+      str := Printf.sprintf "%s              <li> \\(\\rho^2 = %s\\)</li>\n" !str (Variable.Renaming.display Latex ~rho:rho Recipe subst2);
+      str := Printf.sprintf "%s              <li> %s </li>\n" !str (Constraint_system.display_simple HTML ~rho:rho ~hidden:true ~id:1 simple);
+      Printf.sprintf "%s            </ul>\n" !str
+  | _ -> Config.internal_error "[testing_function.ml >> display_simple_of_formula] Unexpected display mode."
 
 (*************************************
       Functions to be tested
@@ -1903,7 +1960,7 @@ let test_Constraint_system_one_mgs csys result =
 let update_Constraint_system_one_mgs () =
   Constraint_system.update_test_one_mgs (fun csys result ->
     if data_IO_Constraint_system_one_mgs.is_being_tested
-    then add_test (test_Constraint_system_one_mgs csys result) data_IO_Constraint_system_mgs
+    then add_test (test_Constraint_system_one_mgs csys result) data_IO_Constraint_system_one_mgs
   )
 
 let apply_Constraint_system_one_mgs csys =
@@ -1919,6 +1976,66 @@ let apply_Constraint_system_one_mgs csys =
 
 let load_Constraint_system_one_mgs i csys result =
   let _,test_latex = test_Constraint_system_one_mgs csys result in
+  produce_test_latex (test_latex i)
+
+(***** Constraint_system.simple_of_formula *****)
+
+let data_IO_Constraint_system_simple_of_formula =
+  {
+    scripts = false;
+    validated_tests = [];
+    tests_to_check = [];
+    additional_tests = [];
+
+    is_being_tested = true;
+
+    file = "constraint_system_simple_of_formula"
+  }
+
+let test_Constraint_system_simple_of_formula (type a) (fct:a Fact.t) csys (form:a Fact.formula) ((fst_subst,snd_subst,simple) as result) =
+  (**** Retreive the names, variables and axioms *****)
+  let gathering_0 = gather_in_var_renaming Protocol fst_subst (gather_in_var_renaming Recipe snd_subst (gather_in_simple_csys simple (gather_in_signature empty_gathering))) in
+  let gathering = gather_in_formula fct form (gather_in_constraint_system csys gathering_0) in
+
+  (**** Generate the display renaming ****)
+  let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in
+
+  (**** Generate test_display for terminal *****)
+
+  let terminal_header, latex_header = header_terminal_and_latex true rho gathering in
+
+  let test_terminal =
+    { terminal_header with
+      inputs = [ (display_fact Testing fct,Text); (Constraint_system.display Testing ~rho:rho csys, Text); (Fact.display_formula Testing ~rho:rho fct form, Inline) ];
+      output = ( display_simple_of_formula Testing rho result, Text )
+    } in
+
+  let test_latex =
+    { latex_header with
+      inputs = [ (display_fact HTML fct,Text); (Constraint_system.display HTML ~rho:rho ~hidden:true csys, Text); (Fact.display_formula Latex ~rho:rho fct form, Inline) ];
+      output = ( display_simple_of_formula HTML rho result, Text )
+    } in
+
+  test_terminal, (fun _ -> test_latex, None)
+
+let update_Constraint_system_simple_of_formula () =
+  Constraint_system.update_test_simple_of_formula Fact.Deduction (fun csys form result ->
+    if data_IO_Constraint_system_simple_of_formula.is_being_tested
+    then add_test (test_Constraint_system_simple_of_formula Fact.Deduction csys form result) data_IO_Constraint_system_simple_of_formula
+  );
+  Constraint_system.update_test_simple_of_formula Fact.Equality (fun csys form result ->
+    if data_IO_Constraint_system_simple_of_formula.is_being_tested
+    then add_test (test_Constraint_system_simple_of_formula Fact.Equality csys form result) data_IO_Constraint_system_simple_of_formula
+  )
+
+let apply_Constraint_system_simple_of_formula fct csys form =
+  let result = Constraint_system.simple_of_formula fct csys form in
+
+  let test_terminal,_ = test_Constraint_system_simple_of_formula fct csys form result in
+  produce_test_terminal test_terminal
+
+let load_Constraint_system_simple_of_formula i fct csys form result =
+  let _,test_latex = test_Constraint_system_simple_of_formula fct csys form result in
   produce_test_latex (test_latex i)
 
 (*************************************
@@ -1943,7 +2060,8 @@ let list_data =
     data_IO_Process_next_output;
     data_IO_Process_next_input;
     data_IO_Constraint_system_mgs;
-    data_IO_Constraint_system_one_mgs
+    data_IO_Constraint_system_one_mgs;
+    data_IO_Constraint_system_simple_of_formula
   ]
 
 let preload () = List.iter (fun data -> pre_load_tests data) list_data
@@ -1967,4 +2085,5 @@ let update () =
   update_Process_next_output ();
   update_Process_next_input ();
   update_Constraint_system_mgs ();
-  update_Constraint_system_one_mgs ()
+  update_Constraint_system_one_mgs ();
+  update_Constraint_system_simple_of_formula ()

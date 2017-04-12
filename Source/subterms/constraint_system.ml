@@ -295,8 +295,8 @@ let id_class_csys =
 
 let display out ?(rho=None) ?(hidden=false) ?(id=0) csys = match out with
   | Testing ->
-      Printf.sprintf "( %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s )"
-        (display_frame out rho csys.frame)
+      Printf.sprintf "( { %s }, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s )"
+        (display_list (display Testing ~rho:rho Protocol) "," csys.frame)
         (DF.display out ~rho:rho csys.df)
         (Eq.display out ~rho:rho Protocol csys.eqfst)
         (Eq.display out ~rho:rho Recipe csys.eqsnd)
@@ -443,6 +443,35 @@ let create_simple df subst1 subst2 sdf uni =
     simp_EqSnd = subst2;
     simp_SDF = sdf;
     simp_Sub_Cons = uni
+  }
+
+let create frame df eq1 eq2 sdf uf sub1 sub2 uni il1 il2 il3 is1 is2 =
+  {
+    additional_data = ();
+
+    frame = frame;
+    size_frame = List.length frame;
+
+    df = df;
+
+    eqfst = eq1;
+    eqsnd = eq2;
+
+    sdf = sdf;
+    uf = uf;
+
+    i_subst_fst = sub1;
+    i_subst_snd = sub2;
+
+    sub_cons = uni;
+
+    equality_constructor_checked = il1;
+    equality_constructor_to_checked = il2;
+
+    equality_to_checked = il3;
+
+    skeletons_checked = is1;
+    skeletons_to_check = is2
   }
 
 (***** Generators ******)
