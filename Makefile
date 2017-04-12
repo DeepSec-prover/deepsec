@@ -29,7 +29,7 @@ GENERATED_SOURCES = $(GENERATED_SOURCES_NAME:%=$(SOURCE)testing/%)
 CORE_ML_NAME = config.ml display.ml term.ml process.ml
 CORE_ML = $(CORE_ML_NAME:%.ml=$(SOURCE)core_library/%.ml)
 
-SUBTERMS_ML_NAME = data_structure.ml constraint_system.ml
+SUBTERMS_ML_NAME = data_structure.ml constraint_system.ml equivalence.ml
 SUBTERMS_ML = $(SUBTERMS_ML_NAME:%.ml=$(SOURCE)subterms/%.ml)
 
 TESTING_ML_NAME = testing_functions.ml testing_parser_functions.ml testing_grammar.ml testing_lexer.ml testing_load_verify.ml

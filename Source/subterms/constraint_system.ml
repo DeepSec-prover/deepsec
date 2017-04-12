@@ -385,6 +385,8 @@ type mgs = (snd_ord, axiom) Subst.t * snd_ord_variable list
 
 module Set_Snd_Ord_Variable = Set.Make(Ordered_Snd_Ord_Variable)
 
+let substitution_of_mgs (subst,_) = subst
+
 let is_uniformity_rule_applicable_simple csys =
   Uniformity_Set.exists_pair_with_same_protocol_term csys.simp_Sub_Cons (Eq.implies Recipe csys.simp_EqSnd)
 

@@ -85,6 +85,10 @@ type mgs
     set of most general unifier. The type%} [simple_constraint_system] represent the constraint systems that satisfiy these conditions. *)
 type simple
 
+(** [substitution_of_mgs mgs] returns the substitution corresponding to the most general solution typically removing
+    all extra information useful for the application of mgs on constraint systems. *)
+val substitution_of_mgs : mgs -> (snd_ord, axiom) Subst.t
+
 (** [mgs] {% $\C$ returns a list of elements $(\Sigma,\sigma,\C')$ such that $\Sigma \in \mgs{\C}$, $\C' = \CApply{\Sigma}{\C}$
     and $\mguset{\C'} = \mguset{\C}\sigma$.%} *)
 val mgs : simple -> (mgs * (fst_ord, name) Subst.t * simple) list
