@@ -385,6 +385,57 @@ type mgs = (snd_ord, axiom) Subst.t * snd_ord_variable list
 
 module Set_Snd_Ord_Variable = Set.Make(Ordered_Snd_Ord_Variable)
 
+(******** Testing **********)
+
+let unit_t_of csys = { csys with additional_data = () }
+
+let test_mgs : (simple -> (mgs * (fst_ord, name) Subst.t * simple) list -> unit) ref = ref (fun _ _ -> ())
+
+let update_test_mgs f = test_mgs := f
+
+let test_one_mgs : (simple -> (mgs * (fst_ord, name) Subst.t * simple) option -> unit) ref = ref (fun _ _ -> ())
+
+let update_test_one_mgs f = test_one_mgs := f
+
+let test_simple_of_formula_Deduction : (unit t -> Fact.deduction Fact.formula -> ((fst_ord, name) Variable.Renaming.t * (snd_ord, axiom) Variable.Renaming.t * simple) -> unit) ref = ref (fun _ _ _ -> ())
+
+let test_simple_of_formula_Equality : (unit t -> Fact.equality Fact.formula -> (fst_ord, name) Variable.Renaming.t * (snd_ord, axiom) Variable.Renaming.t * simple -> unit) ref = ref (fun _ _ _ -> ())
+
+let test_simple_of_formula (type a) (fct: a Fact.t) csys (form: a Fact.formula) result = match fct with
+  | Fact.Deduction -> !test_simple_of_formula_Deduction (unit_t_of csys) form result
+  | Fact.Equality -> !test_simple_of_formula_Equality (unit_t_of csys) form result
+
+let update_test_simple_of_formula (type a) (fct: a Fact.t) (f: unit t ->  a Fact.formula -> (fst_ord, name) Variable.Renaming.t * (snd_ord, axiom) Variable.Renaming.t * simple -> unit) = match fct with
+  | Fact.Deduction -> test_simple_of_formula_Deduction := f
+  | Fact.Equality -> test_simple_of_formula_Equality := f
+
+let test_simple_of_disequation_unit : (unit t -> (fst_ord, name) Diseq.t ->
+  (fst_ord, name) Variable.Renaming.t * simple -> unit) ref = ref (fun _ _ _ -> ())
+
+let test_simple_of_disequation csys diseq result = !test_simple_of_disequation_unit (unit_t_of csys) diseq result
+
+let update_test_simple_of_disequation f = test_simple_of_disequation_unit := f
+
+let test_apply_mgs_unit : (unit t -> mgs -> unit t option -> unit) ref = ref (fun _ _ _ -> ())
+
+let test_apply_mgs csys mgs result = !test_apply_mgs_unit (unit_t_of csys) mgs result
+
+let update_test_apply_mgs f = test_apply_mgs_unit := f
+
+let test_apply_mgs_on_formula_Deduction : (unit t -> mgs -> Fact.deduction Fact.formula -> Fact.deduction Fact.formula option -> unit) ref = ref (fun _ _ _ _ -> ())
+
+let test_apply_mgs_on_formula_Equality : (unit t -> mgs -> Fact.equality Fact.formula -> Fact.equality Fact.formula option -> unit) ref = ref (fun _ _ _ _ -> ())
+
+let test_apply_mgs_on_formula (type a) (fct: a Fact.t) csys mgs (form:a Fact.formula) (result:a Fact.formula option) = match fct with
+  | Fact.Deduction -> !test_apply_mgs_on_formula_Deduction (unit_t_of csys) mgs form result
+  | Fact.Equality -> !test_apply_mgs_on_formula_Equality (unit_t_of csys) mgs form result
+
+let update_test_apply_mgs_on_formula (type a) (fct: a Fact.t) (f: unit t ->  mgs -> a Fact.formula -> a Fact.formula option -> unit) = match fct with
+  | Fact.Deduction -> test_apply_mgs_on_formula_Deduction := f
+  | Fact.Equality -> test_apply_mgs_on_formula_Equality := f
+
+(***** Generators ******)
+
 let substitution_of_mgs (subst,_) = subst
 
 let is_uniformity_rule_applicable_simple csys =
@@ -530,21 +581,25 @@ let mgs csys =
 
   (* We first check if the constraint is not directly bot *)
 
-  if Eq.is_bot csys.simp_EqFst || Eq.is_bot csys.simp_EqSnd || is_uniformity_rule_applicable_simple csys
-  then []
-  else
-    begin
-      let init_mgs = DF.fold (fun acc b_fct ->
-        let x = BasicFact.get_snd_ord_variable b_fct in
-        (x, of_variable x)::acc
-        ) [] csys.simp_DF
-      in
+  let result =
+    if Eq.is_bot csys.simp_EqFst || Eq.is_bot csys.simp_EqSnd || is_uniformity_rule_applicable_simple csys
+    then []
+    else
+      begin
+        let init_mgs = DF.fold (fun acc b_fct ->
+          let x = BasicFact.get_snd_ord_variable b_fct in
+          (x, of_variable x)::acc
+          ) [] csys.simp_DF
+        in
 
-      apply_rules csys init_mgs Subst.identity Set_Snd_Ord_Variable.empty;
-      List.map (fun (mgs,fst_ord_mgs,var_list,csys') ->
-        ((Subst.create_multiple Recipe (List.filter (fun (r_1,r_2) -> not (is_equal (of_variable r_1) r_2)) mgs), var_list), fst_ord_mgs, csys')
-        ) !accumulator
-    end
+        apply_rules csys init_mgs Subst.identity Set_Snd_Ord_Variable.empty;
+        List.map (fun (mgs,fst_ord_mgs,var_list,csys') ->
+          ((Subst.create_multiple Recipe (List.filter (fun (r_1,r_2) -> not (is_equal (of_variable r_1) r_2)) mgs), var_list), fst_ord_mgs, csys')
+          ) !accumulator
+      end
+  in
+  Config.test (fun () -> !test_mgs csys result);
+  result
 
 exception Found_mgs of (snd_ord_variable * recipe) list * (fst_ord, name) Subst.t * (snd_ord_variable list)  * simple
 
@@ -684,7 +739,7 @@ let one_mgs csys =
   (* We first check if the constraint is not directly bot *)
 
   if Eq.is_bot csys.simp_EqFst || Eq.is_bot csys.simp_EqSnd || is_uniformity_rule_applicable_simple csys
-  then raise Not_found
+  then (Config.test (fun () -> !test_one_mgs csys None); raise Not_found)
   else
     begin
       let init_mgs = DF.fold (fun acc b_fct ->
@@ -695,9 +750,13 @@ let one_mgs csys =
 
       try
         apply_rules csys init_mgs Subst.identity Set_Snd_Ord_Variable.empty;
+        Config.test (fun () -> !test_one_mgs csys None);
         raise Not_found
       with
-      | Found_mgs (mgs,fst_ord_mgs,var_list,csys') -> ((Subst.create_multiple Recipe (List.filter (fun (r_1,r_2) -> not (is_equal (of_variable r_1) r_2)) mgs), var_list), fst_ord_mgs, csys')
+      | Found_mgs (mgs,fst_ord_mgs,var_list,csys') ->
+          let result = ((Subst.create_multiple Recipe (List.filter (fun (r_1,r_2) -> not (is_equal (of_variable r_1) r_2)) mgs), var_list), fst_ord_mgs, csys') in
+          Config.test (fun () -> !test_one_mgs csys (Some result));
+          result
     end
 
 let simple_of csys =
@@ -782,75 +841,79 @@ let simple_of_formula (type a) (fct: a Fact.t) csys (form: a Fact.formula) = mat
         simp_Sub_Cons = sub_cons_1
       } in
 
-      (fst_renaming, snd_renaming, simple_csys)
+      let result = (fst_renaming, snd_renaming, simple_csys) in
+      Config.test (fun () -> test_simple_of_formula Fact.Deduction csys form result);
+      result
 
-    | Fact.Equality ->
-        let fst_univ, snd_univ = Fact.universal_variables form in
+  | Fact.Equality ->
+      let fst_univ, snd_univ = Fact.universal_variables form in
 
-        let mgu_hypothesis = Fact.get_mgu_hypothesis form
-        and b_fct_hypothesis = Fact.get_basic_fact_hypothesis form
-        and recipe_1,recipe_2 = Fact.get_both_recipes (Fact.get_head form) in
+      let mgu_hypothesis = Fact.get_mgu_hypothesis form
+      and b_fct_hypothesis = Fact.get_basic_fact_hypothesis form
+      and recipe_1,recipe_2 = Fact.get_both_recipes (Fact.get_head form) in
 
-        let fst_renaming = Variable.Renaming.fresh Protocol fst_univ Existential
-        and snd_renaming = Variable.Renaming.fresh Recipe snd_univ Existential in
+      let fst_renaming = Variable.Renaming.fresh Protocol fst_univ Existential
+      and snd_renaming = Variable.Renaming.fresh Recipe snd_univ Existential in
 
-        let b_fct_hypothesis_1 =
-          Variable.Renaming.apply_on_terms fst_renaming b_fct_hypothesis (fun l f -> List.map (fun b_fct -> BasicFact.create (BasicFact.get_snd_ord_variable b_fct) (f (BasicFact.get_protocol_term b_fct))) l) in
+      let b_fct_hypothesis_1 =
+        Variable.Renaming.apply_on_terms fst_renaming b_fct_hypothesis (fun l f -> List.map (fun b_fct -> BasicFact.create (BasicFact.get_snd_ord_variable b_fct) (f (BasicFact.get_protocol_term b_fct))) l) in
 
-        let b_fct_hypothesis_2, recipe_1_2, recipe_2_2 =
-          Variable.Renaming.apply_on_terms snd_renaming (b_fct_hypothesis_1,recipe_1, recipe_2) (fun (l,r1,r2) f ->
-            List.map (fun b_fct ->
-              let v = of_variable (BasicFact.get_snd_ord_variable b_fct) in
-              let v' = variable_of (f v) in
-              BasicFact.create v' (BasicFact.get_protocol_term b_fct)
-              ) l,
-            f r1,
-            f r2
-            )
-        in
+      let b_fct_hypothesis_2, recipe_1_2, recipe_2_2 =
+        Variable.Renaming.apply_on_terms snd_renaming (b_fct_hypothesis_1,recipe_1, recipe_2) (fun (l,r1,r2) f ->
+          List.map (fun b_fct ->
+            let v = of_variable (BasicFact.get_snd_ord_variable b_fct) in
+            let v' = variable_of (f v) in
+            BasicFact.create v' (BasicFact.get_protocol_term b_fct)
+            ) l,
+          f r1,
+          f r2
+          )
+      in
 
-        let mgu_hypothesis_2 = Subst.compose_restricted mgu_hypothesis (Subst.of_renaming fst_renaming) in
+      let mgu_hypothesis_2 = Subst.compose_restricted mgu_hypothesis (Subst.of_renaming fst_renaming) in
 
-        let df_0 = DF.apply csys.df mgu_hypothesis_2
-        and eqfst_0 = Eq.apply Protocol csys.eqfst mgu_hypothesis_2
-        and sdf_0 = SDF.apply csys.sdf Subst.identity mgu_hypothesis_2
-        and sub_cons_0 = Uniformity_Set.apply csys.sub_cons Subst.identity mgu_hypothesis_2 in
+      let df_0 = DF.apply csys.df mgu_hypothesis_2
+      and eqfst_0 = Eq.apply Protocol csys.eqfst mgu_hypothesis_2
+      and sdf_0 = SDF.apply csys.sdf Subst.identity mgu_hypothesis_2
+      and sub_cons_0 = Uniformity_Set.apply csys.sub_cons Subst.identity mgu_hypothesis_2 in
 
-        let df_1 = List.fold_left DF.add df_0 b_fct_hypothesis_2 in
+      let df_1 = List.fold_left DF.add df_0 b_fct_hypothesis_2 in
 
-        let sub_cons_1 =
-          if not (is_function recipe_1_2)
-          then sub_cons_0
-          else
-            let recipe_args = get_args recipe_1_2 in
-            List.fold_left (fun sub_cons r ->
-              match Tools.partial_consequence Recipe sdf_0 df_1 r with
-                | None -> Config.internal_error "[constraint_system.ml >> simple_of_constraint_system_and_formula] The recipe should be consequence."
-                | Some (_,t) -> add_uniformity_subterms sub_cons r t
-              ) sub_cons_0 recipe_args
-        in
+      let sub_cons_1 =
+        if not (is_function recipe_1_2)
+        then sub_cons_0
+        else
+          let recipe_args = get_args recipe_1_2 in
+          List.fold_left (fun sub_cons r ->
+            match Tools.partial_consequence Recipe sdf_0 df_1 r with
+              | None -> Config.internal_error "[constraint_system.ml >> simple_of_constraint_system_and_formula] The recipe should be consequence."
+              | Some (_,t) -> add_uniformity_subterms sub_cons r t
+            ) sub_cons_0 recipe_args
+      in
 
-        let sub_cons_2 =
-          if not (is_function recipe_2_2)
-          then sub_cons_1
-          else
-            let recipe_args = get_args recipe_2_2 in
-            List.fold_left (fun sub_cons r ->
-              match Tools.partial_consequence Recipe sdf_0 df_1 r with
-                | None -> Config.internal_error "[constraint_system.ml >> simple_of_constraint_system_and_formula] The recipe should be consequence."
-                | Some (_,t) -> add_uniformity_subterms sub_cons r t
-              ) sub_cons_1 recipe_args
-        in
+      let sub_cons_2 =
+        if not (is_function recipe_2_2)
+        then sub_cons_1
+        else
+          let recipe_args = get_args recipe_2_2 in
+          List.fold_left (fun sub_cons r ->
+            match Tools.partial_consequence Recipe sdf_0 df_1 r with
+              | None -> Config.internal_error "[constraint_system.ml >> simple_of_constraint_system_and_formula] The recipe should be consequence."
+              | Some (_,t) -> add_uniformity_subterms sub_cons r t
+            ) sub_cons_1 recipe_args
+      in
 
-        let simple_csys = {
-          simp_DF = df_1;
-          simp_EqFst = eqfst_0;
-          simp_EqSnd = csys.eqsnd;
-          simp_SDF = sdf_0;
-          simp_Sub_Cons = sub_cons_2
-        } in
+      let simple_csys = {
+        simp_DF = df_1;
+        simp_EqFst = eqfst_0;
+        simp_EqSnd = csys.eqsnd;
+        simp_SDF = sdf_0;
+        simp_Sub_Cons = sub_cons_2
+      } in
 
-        (fst_renaming, snd_renaming, simple_csys)
+      let result = (fst_renaming, snd_renaming, simple_csys) in
+      Config.test (fun () -> test_simple_of_formula Fact.Equality csys form result);
+      result
 
 let simple_of_disequation csys diseq =
 
@@ -869,7 +932,9 @@ let simple_of_disequation csys diseq =
     simp_Sub_Cons = sub_cons_0
   } in
 
-  (renaming, simple_csys)
+  let result = (renaming, simple_csys) in
+  Config.test (fun () -> test_simple_of_disequation csys diseq result);
+  result
 
 (***** Access *****)
 
@@ -996,12 +1061,12 @@ let apply_mgs csys (subst_snd,list_var) =
     and new_eqfst = Eq.apply Protocol csys.eqfst subst_fst in
 
     if Eq.is_bot new_eqfst
-    then raise Bot;
+    then (Config.test (fun () -> test_apply_mgs csys (subst_snd,list_var) None); raise Bot);
 
     let new_eqsnd = Eq.apply Recipe csys.eqsnd subst_snd in
 
     if Eq.is_bot new_eqsnd
-    then raise Bot;
+    then (Config.test (fun () -> test_apply_mgs csys (subst_snd,list_var) None); raise Bot);
 
     let new_sdf_2 = SDF.apply new_sdf_1 Subst.identity subst_fst
     and new_uf_1 = UF.apply csys.uf subst_snd subst_fst
@@ -1030,10 +1095,10 @@ let apply_mgs csys (subst_snd,list_var) =
     in
 
     if is_uniformity_rule_applicable new_csys
-    then raise Bot
-    else new_csys
+    then (Config.test (fun () -> test_apply_mgs (unit_t_of csys) (subst_snd,list_var) None); raise Bot)
+    else (Config.test (fun () -> test_apply_mgs (unit_t_of csys) (subst_snd,list_var) (Some (unit_t_of new_csys))); new_csys)
   with
-    | Subst.Not_unifiable  -> raise Bot
+    | Subst.Not_unifiable  -> Config.test (fun () -> test_apply_mgs (unit_t_of csys) (subst_snd,list_var) None); raise Bot
 
 let rec remove_from_list x = function
   | [] -> Config.internal_error "[constraint_system.ml >> apply_on_formula] The variables in the domain should be in the deduction facts of the hypothesis of the formula."
@@ -1067,11 +1132,16 @@ let apply_mgs_on_formula (type a) (fct: a Fact.t) csys (subst_snd,list_var) (for
 
   let new_head = Fact.apply_on_fact fct head subst_snd Subst.identity in
 
-  Fact.create fct new_head new_b_fct_hyp equations
+  try
+    let result = Fact.create fct new_head new_b_fct_hyp equations in
+    Config.test (fun () -> test_apply_mgs_on_formula fct csys (subst_snd,list_var) formula (Some result));
+    result
+  with
+    | Fact.Bot -> Config.test (fun () -> test_apply_mgs_on_formula fct csys (subst_snd,list_var) formula None); raise Fact.Bot
 
-(*************************************
-***             Testing            ***
-**************************************)
+(**********************************
+**** Set of constraint systems ****
+***********************************)
 
 module Set = struct
 

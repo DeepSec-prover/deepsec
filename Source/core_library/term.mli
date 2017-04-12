@@ -926,6 +926,7 @@ module Fact : sig
       @raise Bot if {% $\psi\Sigma\sigma\Vnorm = \bot$. %} *)
   val apply : 'a t -> 'a formula -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t -> 'a formula
 
+
   val apply_on_fact : 'a t -> 'a -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t -> 'a
 
   (** {3 Display functions} *)

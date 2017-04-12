@@ -59,6 +59,11 @@ val add_disequations : ('a, 'b) atom -> 'c t -> ('a, 'b) Diseq.t list -> 'c t
 (** Replace the additional data in the constraint system by the one given as argument. *)
 val replace_additional_data : 'a t -> 'a -> 'a t
 
+(** [apply_substitution] {% $\C$~$\sigma$ returns $\C\sigma\Vnorm$.%}
+    @raise Bot if {% $\C\sigma\Vnorm = \bot$. %}
+    @raise Internal_error if {% $\forall \sigma', \sigma \neq \Cmgu{\C}\sigma'$. \highdebug %} *)
+val apply_substitution : 'a t -> (fst_ord, name) Subst.t -> 'a t
+
 (** {3 Scanning} *)
 
 (** [is_solved] {% $\C$ %} returns [true] if {% $\C$ is solved. %}*)
@@ -126,21 +131,39 @@ val get_axioms_simple_with_list : simple -> axiom list -> axiom list
 
 (** In this section, we will assimilate an element of type [most_general_solution] to its substitution of recipes *)
 
-(** [apply_mgs] {% $\C$~$\Sigma$ returns $\CApply{\Sigma}{\C}$. %} *)
+(** [apply_mgs] {% $\C$~$\Sigma$ returns $\CApply{\Sigma}{\C}\Vnorm$.%}
+    @raise Bot if {% $\CApply{\Sigma}{\C}\Vnorm = \bot$ %} *)
 val apply_mgs : 'a t -> mgs -> 'a t
 
-(** [apply_mgs_on_formula] {% $\C$~$\Sigma$~$\psi$ returns $\FApply{\Sigma}{\psi}{\C}$. %} *)
-val apply_mgs_on_formula : 'a Fact.t -> 'a t -> mgs -> 'a Fact.formula -> 'a Fact.formula
-
-(** [apply_substitution] {% $\C$~$\sigma$ returns $\C\sigma\Vnorm$.%}
-    @raise Internal_error if {% $\forall \sigma', \sigma \neq \Cmgu{\C}\sigma'$. %} *)
-val apply_substitution : 'a t -> (fst_ord, name) Subst.t -> 'a t
+(** [apply_mgs_on_formula] {% $\C$~$\Sigma$~$\psi$ returns $\FApply{\Sigma}{\psi}{\C}\Vnorm$. %}
+    @raise Fact.Bot if {% $\FApply{\Sigma}{\psi}{\C}\Vnorm = \bot$. %} *)
+val apply_mgs_on_formula : 'a Fact.t -> 'b t -> mgs -> 'a Fact.formula -> 'a Fact.formula
 
 (** {3 Display functions} *)
 
 val display_mgs : Display.output -> ?rho: display_renamings option -> mgs -> string
 
 val display_simple : Display.output -> ?rho: display_renamings option -> ?hidden:bool -> ?id:int -> simple -> string
+
+(**/**)
+
+(** {3 Tested function} *)
+
+val update_test_mgs : (simple -> (mgs * (fst_ord, name) Subst.t * simple) list -> unit) -> unit
+
+val update_test_one_mgs : (simple -> (mgs * (fst_ord, name) Subst.t * simple) option -> unit) -> unit
+
+val update_test_simple_of_formula : 'a Fact.t -> (unit t -> 'a Fact.formula ->
+  (fst_ord, name) Variable.Renaming.t * (snd_ord, axiom) Variable.Renaming.t * simple -> unit) -> unit
+
+val update_test_simple_of_disequation : (unit t -> (fst_ord, name) Diseq.t ->
+  (fst_ord, name) Variable.Renaming.t * simple -> unit) -> unit
+
+val update_test_apply_mgs : (unit t -> mgs -> unit t option -> unit) -> unit
+
+val update_test_apply_mgs_on_formula : 'a Fact.t -> (unit t -> mgs -> 'a Fact.formula -> 'a Fact.formula option -> unit) -> unit
+
+(**/**)
 
 (** {2 Set of constraint systems} *)
 
