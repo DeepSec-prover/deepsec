@@ -60,6 +60,12 @@ exception Bot
 
 (******** Access functions ********)
 
+let get_vars_Term = get_vars_with_list
+
+let get_names_Term = get_names_with_list
+
+let get_axioms_Term = get_axioms_with_list
+
 let get_additional_data csys = csys.additional_data
 
 let get_substitution_solution (type a) (type b) (at: (a,b) atom) csys = match at with
@@ -113,7 +119,6 @@ let get_axioms_with_list csys ax_list =
     result := get_axioms_with_list (Fact.get_recipe fct) (fun _ -> true) !result
   );
   !result
-
 
 (******** Scanning *****)
 
@@ -693,10 +698,6 @@ let one_mgs csys =
       | Found_mgs (mgs,fst_ord_mgs,var_list,csys') -> ((Subst.create_multiple Recipe (List.filter (fun (r_1,r_2) -> not (is_equal (of_variable r_1) r_2)) mgs), var_list), fst_ord_mgs, csys')
     end
 
-(*****************************************
-***           Transformations          ***
-******************************************)
-
 let simple_of csys =
   {
     simp_DF = csys.df;
@@ -868,6 +869,87 @@ let simple_of_disequation csys diseq =
 
   (renaming, simple_csys)
 
+(***** Access *****)
+
+let get_vars_simple_with_list (type a) (type b) (at: (a,b) atom) csys (vars_l: (a,b) variable list) =
+  let result_vars = ref vars_l in
+
+  match at with
+    | Protocol ->
+        DF.iter csys.simp_DF (fun bfct -> result_vars := get_vars_Term Protocol (BasicFact.get_protocol_term bfct) (fun _ -> true) !result_vars);
+        result_vars := Eq.get_vars_with_list Protocol csys.simp_EqFst !result_vars;
+        SDF.iter csys.simp_SDF (fun fct -> result_vars := get_vars_Term Protocol (Fact.get_protocol_term fct) (fun _-> true) !result_vars);
+        Uniformity_Set.iter csys.simp_Sub_Cons (fun _ t -> result_vars := get_vars_Term Protocol t (fun _ -> true) !result_vars);
+        !result_vars
+    | Recipe ->
+        DF.iter csys.simp_DF (fun bfct -> result_vars := get_vars_Term Recipe (of_variable (BasicFact.get_snd_ord_variable bfct)) (fun _ -> true) !result_vars);
+        result_vars := Eq.get_vars_with_list Recipe csys.simp_EqSnd !result_vars;
+        SDF.iter csys.simp_SDF (fun fct -> result_vars := get_vars_Term Recipe (Fact.get_recipe fct) (fun _-> true) !result_vars);
+        Uniformity_Set.iter csys.simp_Sub_Cons (fun r _ -> result_vars := get_vars_Term Recipe r (fun _ -> true) !result_vars);
+        !result_vars
+
+let get_names_simple_with_list csys names_l =
+  let result_vars = ref names_l in
+
+  DF.iter csys.simp_DF (fun bfct -> result_vars := get_names_Term Protocol (BasicFact.get_protocol_term bfct) (fun _ -> true) !result_vars);
+  result_vars := Eq.get_names_with_list Protocol csys.simp_EqFst !result_vars;
+  SDF.iter csys.simp_SDF (fun fct ->
+    result_vars := get_names_Term Protocol (Fact.get_protocol_term fct) (fun _-> true) !result_vars;
+    result_vars := get_names_Term Recipe (Fact.get_recipe fct) (fun _-> true) !result_vars
+  );
+  Uniformity_Set.iter csys.simp_Sub_Cons (fun _ t -> result_vars := get_names_Term Protocol t (fun _ -> true) !result_vars);
+  !result_vars
+
+let get_axioms_simple_with_list csys ax_list =
+  let result = ref ax_list in
+
+  SDF.iter_within_var_type 0 csys.simp_SDF (fun fct ->
+    result := get_axioms_Term (Fact.get_recipe fct) (fun _ -> true) !result
+  );
+  !result
+
+(**** Display *****)
+
+let display_simple out ?(rho=None) ?(hidden=false) ?(id=0) csys = match out with
+  | Testing ->
+      Printf.sprintf "( %s, %s, %s, %s, %s )"
+        (DF.display out ~rho:rho csys.simp_DF)
+        (Eq.display out ~rho:rho Protocol csys.simp_EqFst)
+        (Eq.display out ~rho:rho Recipe csys.simp_EqSnd)
+        (SDF.display out ~rho:rho csys.simp_SDF)
+        (Uniformity_Set.display out ~rho:rho csys.simp_Sub_Cons)
+  | HTML ->
+      let str = ref "" in
+      let id_j = id_class_csys () in
+      let id_s = if id = 0 then "" else "_"^(string_of_int id) in
+      let style =
+        if hidden
+        then " style=\"display:none;\""
+        else ""
+      in
+
+      let link_Df = Printf.sprintf "<a href=\"javascript:show_single('Df%d');\">\\({\\sf D}%s\\)</a>" id_j id_s in
+      let link_Sdf = Printf.sprintf "<a href=\"javascript:show_single('Sdf%d');\">\\({\\sf SDF}%s\\)</a>" id_j id_s in
+      let link_Eq1 = Printf.sprintf "<a href=\"javascript:show_single('Equn%d');\">\\({\\sf E}^1%s\\)</a>" id_j id_s in
+      let link_Eq2 = Printf.sprintf "<a href=\"javascript:show_single('Eqdeux%d');\">\\({\\sf E}^2%s\\)</a>" id_j id_s in
+      let link_Uni = Printf.sprintf "<a href=\"javascript:show_single('Uni%d');\">\\({\\sf R}%s\\)</a>" id_j id_s in
+
+      str := Printf.sprintf "\\( \\mathcal{C}%s =~(\\)%s, %s, %s, %s, %s, &nbsp;&nbsp;&nbsp; <a href=\"javascript:show_class('csys%d');\">All</a>\n"
+        id_s link_Df link_Eq1 link_Eq2 link_Sdf link_Uni id_j;
+
+      str := Printf.sprintf "%s            <div class=\"csys\">\n" !str;
+      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Df%d\" class=\"csys%d\"%s>\\({\\sf D}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (DF.display Latex ~rho:rho csys.simp_DF);
+      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Equn%d\" class=\"csys%d\"%s>\\({\\sf E}^1%s = %s\\)</div></div>\n" !str id_j id_j style id_s (Eq.display Latex ~rho:rho Protocol csys.simp_EqFst);
+      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Eqdeux%d\" class=\"csys%d\"%s>\\({\\sf E}^2%s = %s\\)</div></div>\n" !str id_j id_j style id_s (Eq.display Latex ~rho:rho Recipe csys.simp_EqSnd);
+      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Sdf%d\" class=\"csys%d\"%s>\\({\\sf SDF}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (SDF.display Latex ~rho:rho csys.simp_SDF);
+      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Uni%d\" class=\"csys%d\"%s>\\({\\sf R}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (Uniformity_Set.display out ~rho:rho csys.simp_Sub_Cons);
+
+      Printf.sprintf "%s            </div>\n" !str
+
+  | _ -> Config.internal_error "[constraint_system.ml >> display] This display mode is not implemented yet."
+
+(**** Operators *****)
+
 let apply_mgs csys (subst_snd,list_var) =
 
   let new_df_1 = List.fold_left (fun df x_snd ->
@@ -1028,11 +1110,9 @@ module Set = struct
     | _ -> Config.internal_error "[constraint_system.ml >> display] This display mode is not implemented yet."
 end
 
-
 (*************************************
 ***             Rules              ***
 **************************************)
-
 
 module Rule = struct
 

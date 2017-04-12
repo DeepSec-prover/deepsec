@@ -107,6 +107,17 @@ val simple_of_formula : 'a Fact.t -> 'b t -> 'a Fact.formula ->
 val simple_of_disequation : 'a t -> (fst_ord, name) Diseq.t ->
   (fst_ord, name) Variable.Renaming.t * simple
 
+(** {3 Access} *)
+
+(** [get_vars_simple_with_list at] {% $\C$ %} [l] adds the variables in {% $\C$ %} in the list [l]. Note that it does not cover the potential variables in the additional data. The addition of a variable as the union of sets, i.e. there is no dupplicate in the resulting list. *)
+val get_vars_simple_with_list : ('a, 'b) atom -> simple -> ('a, 'b) variable list -> ('a, 'b) variable list
+
+(** [get_names_simple_with_list] {% $\C$ %} [l] adds the names in {% $\C$ %} in the list [l]. Note that it does not cover the potential names in the additional data. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
+val get_names_simple_with_list : simple ->  name list -> name list
+
+(** [get_axioms_simple_with_list] {% $\C$ %} [l] adds the axiom in {% $\C$ %} in the list [l]. Note that it does not cover the potential axioms in the additional data. The addition of an axiom as the union of sets, i.e. there is no dupplicate in the resulting list..*)
+val get_axioms_simple_with_list : simple -> axiom list -> axiom list
+
 (** {3 Operations} *)
 
 (** In this section, we will assimilate an element of type [most_general_solution] to its substitution of recipes *)
@@ -120,6 +131,10 @@ val apply_mgs_on_formula : 'a Fact.t -> 'a t -> mgs -> 'a Fact.formula -> 'a Fac
 (** [apply_substitution] {% $\C$~$\sigma$ returns $\C\sigma\Vnorm$.%}
     @raise Internal_error if {% $\forall \sigma', \sigma \neq \Cmgu{\C}\sigma'$. %} *)
 val apply_substitution : 'a t -> (fst_ord, name) Subst.t -> 'a t
+
+(** {3 Display} *)
+
+val display_simple : Display.output -> ?rho: display_renamings option -> ?hidden:bool -> ?id:int -> simple -> string
 
 (** {2 Set of constraint systems} *)
 
@@ -170,9 +185,9 @@ module Rule : sig
     }
 
   (** All the normalisation and transformation rules have the same type. Typically, a rule is a function that takes two arguments
-      [S] and [f] where [S] is a set of constraint systems and [f] is a function that takes a constraint system as argument and return unit.
+      [S] and [f] where [S] is a set of constraint systems and [f] are continuation functions that each takes a constraint system as argument and return unit.
       A rule typically apply the rules (in the sense of {% those defined in~\citepaper{Section}{sec:normalisation_rule} and~\citepaper{Section}{sec:transformation rules}) %} and then
-      apply the function [f] on each normalised sets obtained by application of the rule. *)
+      apply the functions [f] on each normalised sets obtained by application of the rule depending on how the set of constraint systems was produced by the rule.  *)
 
   val sat : 'a Set.t -> 'a continuation -> unit
 
