@@ -151,3 +151,11 @@ val parse_expansed_process : expansed_process -> Process.expansed_process
 val parse_output_transition : (process * substitution * diseq list * term * term * term list) list -> (Process.process * Process.output_gathering) list
 
 val parse_input_transition : (process * substitution * diseq list * term * ident * term list) list -> (Process.process * Process.input_gathering) list
+
+type mgs = ident list * substitution
+
+type simple_constraint_system = basic_deduction_fact list * equation list list top_bot * equation list list top_bot * deduction_fact list * (term * term) list
+
+val parse_simple_constraint_system : simple_constraint_system -> Constraint_system.simple
+
+val parse_mgs_result_list : (mgs * substitution * simple_constraint_system) list -> (Constraint_system.mgs * (Term.fst_ord, Term.name) Term.Subst.t * Constraint_system.simple) list

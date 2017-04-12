@@ -136,7 +136,7 @@ let create_from_free_names data names_list =
   );
 
   let sdf,_ = List.fold_left (fun (sdf,k) n ->
-    (SDF.add sdf (Fact.create_deduction_fact (of_axiom (Axiom.create k)) (of_name n)),k+1)
+    (SDF.add sdf (Fact.create_deduction_fact (of_axiom (Axiom.of_public_name n k)) (of_name n)),k+1)
   ) (SDF.empty,1 - (List.length names_list)) names_list in
 
   {
@@ -351,7 +351,7 @@ let display out ?(rho=None) ?(hidden=false) ?(id=0) csys = match out with
       let link_Eq2 = Printf.sprintf "<a href=\"javascript:show_single('Eqdeux%d');\">\\({\\sf E}^2%s\\)</a>" id_j id_s in
       let link_Uni = Printf.sprintf "<a href=\"javascript:show_single('Uni%d');\">\\({\\sf R}%s\\)</a>" id_j id_s in
 
-      str := Printf.sprintf "\\( \\mathcal{C}%s =~(\\)%s, %s, %s, %s, %s, %s, %s &nbsp;&nbsp;&nbsp; <a href=\"javascript:show_class('csys%d');\">All</a>\n"
+      str := Printf.sprintf "\\( \\mathcal{C}%s =~(\\)%s, %s, %s, %s, %s, %s, %s\\()\\) &nbsp;&nbsp;&nbsp; <a href=\"javascript:show_class('csys%d');\">All</a>\n"
         id_s link_Phi link_Df link_Eq1 link_Eq2 link_Sdf link_Uf link_Uni id_j;
 
       str := Printf.sprintf "%s            <div class=\"csys\">\n" !str;
@@ -433,6 +433,17 @@ let test_apply_mgs_on_formula (type a) (fct: a Fact.t) csys mgs (form:a Fact.for
 let update_test_apply_mgs_on_formula (type a) (fct: a Fact.t) (f: unit t ->  mgs -> a Fact.formula -> a Fact.formula option -> unit) = match fct with
   | Fact.Deduction -> test_apply_mgs_on_formula_Deduction := f
   | Fact.Equality -> test_apply_mgs_on_formula_Equality := f
+
+let create_mgs subst v_list = (subst,v_list)
+
+let create_simple df subst1 subst2 sdf uni =
+  {
+    simp_DF = df;
+    simp_EqFst = subst1;
+    simp_EqSnd = subst2;
+    simp_SDF = sdf;
+    simp_Sub_Cons = uni
+  }
 
 (***** Generators ******)
 
@@ -979,7 +990,7 @@ let get_axioms_simple_with_list csys ax_list =
 
 let display_mgs out ?(rho=None) (subst,v_list) = match out with
   | Testing -> Printf.sprintf "({%s},%s)"
-      (display_list (Variable.display out ~rho:rho Recipe ~v_type:true) ", " v_list)
+      (display_list (Variable.display out ~rho:rho Recipe ~v_type:false) ", " v_list)
       (Subst.display out ~rho:rho Recipe subst)
   | _ ->
       if v_list = []
@@ -1014,7 +1025,7 @@ let display_simple out ?(rho=None) ?(hidden=false) ?(id=0) csys = match out with
       let link_Eq2 = Printf.sprintf "<a href=\"javascript:show_single('Eqdeux%d');\">\\({\\sf E}^2%s\\)</a>" id_j id_s in
       let link_Uni = Printf.sprintf "<a href=\"javascript:show_single('Uni%d');\">\\({\\sf R}%s\\)</a>" id_j id_s in
 
-      str := Printf.sprintf "\\( \\mathcal{C}%s =~(\\)%s, %s, %s, %s, %s, &nbsp;&nbsp;&nbsp; <a href=\"javascript:show_class('csys%d');\">All</a>\n"
+      str := Printf.sprintf "\\( \\mathcal{C}%s =~(\\)%s, %s, %s, %s, %s\\()\\) &nbsp;&nbsp;&nbsp; <a href=\"javascript:show_class('csys%d');\">All</a>\n"
         id_s link_Df link_Eq1 link_Eq2 link_Sdf link_Uni id_j;
 
       str := Printf.sprintf "%s            <div class=\"csys\">\n" !str;
@@ -1022,7 +1033,7 @@ let display_simple out ?(rho=None) ?(hidden=false) ?(id=0) csys = match out with
       str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Equn%d\" class=\"csys%d\"%s>\\({\\sf E}^1%s = %s\\)</div></div>\n" !str id_j id_j style id_s (Eq.display Latex ~rho:rho Protocol csys.simp_EqFst);
       str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Eqdeux%d\" class=\"csys%d\"%s>\\({\\sf E}^2%s = %s\\)</div></div>\n" !str id_j id_j style id_s (Eq.display Latex ~rho:rho Recipe csys.simp_EqSnd);
       str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Sdf%d\" class=\"csys%d\"%s>\\({\\sf SDF}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (SDF.display Latex ~rho:rho csys.simp_SDF);
-      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Uni%d\" class=\"csys%d\"%s>\\({\\sf R}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (Uniformity_Set.display out ~rho:rho csys.simp_Sub_Cons);
+      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Uni%d\" class=\"csys%d\"%s>\\({\\sf R}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (Uniformity_Set.display Latex ~rho:rho csys.simp_Sub_Cons);
 
       Printf.sprintf "%s            </div>\n" !str
 

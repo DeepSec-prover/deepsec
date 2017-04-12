@@ -5,6 +5,7 @@
     and transformation rules described in~\citepaper{Section}{sec:normalisation_rule} and~\citepaper{Section}{sec:transformation rules}.%} *)
 
 open Term
+open Data_structure
 
 (** {2 Constraint systems} *)
 
@@ -162,6 +163,10 @@ val update_test_simple_of_disequation : (unit t -> (fst_ord, name) Diseq.t ->
 val update_test_apply_mgs : (unit t -> mgs -> unit t option -> unit) -> unit
 
 val update_test_apply_mgs_on_formula : 'a Fact.t -> (unit t -> mgs -> 'a Fact.formula -> 'a Fact.formula option -> unit) -> unit
+
+val create_mgs : (snd_ord, axiom) Subst.t -> snd_ord_variable list -> mgs
+
+val create_simple : DF.t -> (fst_ord, name) Eq.t -> (snd_ord, axiom) Eq.t -> SDF.t -> Uniformity_Set.t -> simple
 
 (**/**)
 

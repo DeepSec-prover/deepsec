@@ -64,6 +64,8 @@ open Testing_parser_functions
 %start parse_Process_of_expansed_process
 %start parse_Process_next_output parse_Process_next_input
 
+%start parse_Constraint_system_mgs
+
 %type <(Testing_parser_functions.parser)> parse_Term_Subst_unify
 %type <(Testing_parser_functions.parser)> parse_Term_Subst_is_matchable
 %type <(Testing_parser_functions.parser)> parse_Term_Subst_is_extended_by
@@ -82,6 +84,8 @@ open Testing_parser_functions
 %type <(Testing_parser_functions.parser)> parse_Process_next_output
 %type <(Testing_parser_functions.parser)> parse_Process_next_input
 
+%type <(Testing_parser_functions.parser)> parse_Constraint_system_mgs
+
 %%
 /***********************************
 ***           Main Entry         ***
@@ -92,7 +96,7 @@ header_of_test:
     REWRITING_SYSTEM DDOT rewriting_system
     FST_VARS DDOT fst_var_list
     SND_VARS DDOT snd_var_list
-    NAMES DDOT name_list
+    NAMES DDOT ident_list
     AXIOMS DDOT axiom_list
       {
         (fun () ->
@@ -466,6 +470,23 @@ parse_Process_next_input:
   | error
       { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
 
+parse_Constraint_system_mgs:
+  | header_of_test
+    INPUT DDOT simple_constraint_system
+    RESULT DDOT mgs_result_list
+      {
+        (fun mode -> $1 ();
+          let csys = parse_simple_constraint_system $4 in
+          match mode with
+            | Load i ->
+                let result = parse_mgs_result_list $7 in
+                RLoad(Testing_functions.load_Constraint_system_mgs i csys result)
+            | Verify -> RVerify(Testing_functions.apply_Constraint_system_mgs csys)
+        )
+      }
+  | error
+      { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
+
 /***********************************
 ***     Signature definition     ***
 ************************************/
@@ -566,16 +587,16 @@ sub_snd_var_list :
   | ident DDOT INT COMMA sub_snd_var_list
       { ($1,$3)::$5 }
 
-name_list :
+ident_list :
   | LCURL RCURL
       { [] }
-  | LCURL sub_name_list RCURL
+  | LCURL sub_ident_list RCURL
       { $2 }
 
-sub_name_list :
+sub_ident_list :
   | ident
       { [$1] }
-  | ident COMMA sub_name_list
+  | ident COMMA sub_ident_list
       { $1::$3 }
 
 axiom_list :
@@ -1044,4 +1065,30 @@ sub_input_transition_result:
 
 input_transition:
   | LCURL process SEMI substitution SEMI transition_disequation SEMI term SEMI ident SEMI term_list RCURL
-      { ($2,$4,$6,$8,$10, $12) }
+      { ($2,$4,$6,$8,$10,$12) }
+
+/********* Constraint systems ***********/
+
+simple_constraint_system:
+  | LPAR df COMMA data_Eq COMMA data_Eq COMMA sdf COMMA uniformity_set RPAR
+      { ($2,$4,$6,$8,$10) }
+
+mgs:
+  | LPAR ident_list COMMA substitution RPAR
+      { ($2,$4) }
+
+mgs_result:
+  | LPAR mgs COMMA substitution COMMA simple_constraint_system RPAR
+      { ($2,$4,$6) }
+
+mgs_result_list:
+  | LCURL RCURL
+      { [] }
+  | LCURL sub_mgs_result_list RCURL
+      { $2 }
+
+sub_mgs_result_list:
+  | mgs_result
+      { [$1] }
+  | mgs_result COMMA sub_mgs_result_list
+      { $1::$3 }

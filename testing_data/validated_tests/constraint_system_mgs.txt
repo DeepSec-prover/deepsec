@@ -1,0 +1,9 @@
+--Test
+_Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_1)); _x_1], _y_0]; check,[[sign(_y_0,_x_1); vk(_x_1)], _y_0]; dec,[[enc(_y_0,_x_1); _x_1], _y_0]; dest,[[h(_y_0); _x_1], f(_y_0,_x_1);  [g(_y_0,_x_1); _x_1], h(_y_0)]; unblind,[[sign(blind(_y_0,_x_1),_x_0); _x_1], sign(_y_0,_x_0)]]
+_Fst_ord_vars : { _w_0, _x_0, _y_0, _x_1 }
+_Snd_ord_vars : { _W_1:0, _W_0:0 }
+_Names : { _a_0, _b_0, _c_0 }
+_Axioms : { _ax_-2[_b_0], _ax_-1[_a_0], _ax_0[_c_0] }
+_Input : ( { _W_1:0 |- _c_0, _W_0:0 |- _w_0 }, top, top, { _ax_-2 |- _b_0, _ax_-1 |- _a_0, _ax_0 |- _c_0 }, { (_W_1,_c_0), (_W_0,_w_0) } )
+_Result : { (({},{ _W_1 -> _ax_0 }),{ },( { _W_0:0 |- _w_0 }, top, top, { _ax_-2 |- _b_0, _ax_-1 |- _a_0, _ax_0 |- _c_0 }, { (_W_0,_w_0), (_ax_0,_c_0) } )) }

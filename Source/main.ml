@@ -233,6 +233,8 @@ let test_of_expansed_process () =
 
   next_input Classic Trace_Equivalence proc1 Subst.identity (fun _ _ -> ());
   next_input Classic Trace_Equivalence proc2 Subst.identity (fun _ _ -> ());
+
+  let _ = Equivalence.trace_equivalence Classic proc1 proc2 in
   ()
 
 let _ =
@@ -257,6 +259,5 @@ let _ =
   test_partial_consequence ();
 
   test_of_expansed_process ();
-
   Testing_functions.publish ();
   Testing_load_verify.publish_index ()

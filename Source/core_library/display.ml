@@ -10,6 +10,17 @@ let rec display_list display_element connector = function
   | [t] -> display_element t
   | t::q -> Printf.sprintf "%s%s%s" (display_element  t) connector (display_list display_element connector q)
 
+let display_list_i display_element connector = function
+  | [] -> ""
+  | [t] -> display_element 1 t
+  | t::q ->
+      let str = ref (display_element 1 t) in
+      List.iteri (fun i t ->
+        str := Printf.sprintf "%s%s%s" !str connector (display_element (i+2) t);
+      ) q;
+      !str
+
+
 let rec internal_create_tab = function
   | 0 -> ""
   | k -> "  "^(internal_create_tab (k-1))

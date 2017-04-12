@@ -12,6 +12,9 @@ type output =
 (** Generic display of a list. [display_list f_elt c [e1;...;en]] will return the string [(f_elt e1)^c^...^c^(f_elt en)].*)
 val display_list : ('a -> string) -> string -> 'a list -> string
 
+(** Generic display of a list with their index. [display_list_i f_elt c [e1;...;en]] will return the string [(f_elt 1 e1)^c^...^c^(f_elt n en)].*)
+val display_list_i : (int -> 'a -> string) -> string -> 'a list -> string
+
 (** [create_tab k] generates a string of [k] tabulations, each tabulation being the string ["  "], i.e., 2 space bars).*)
 val create_tab : int -> string
 

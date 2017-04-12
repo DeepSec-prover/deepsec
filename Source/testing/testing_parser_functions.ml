@@ -139,6 +139,14 @@ let rec parse_fst_vars = function
 
 let reg_snd_vars = Str.regexp "_\\([WXYZ]\\)_[0-9]+"
 
+let parse_snd_var (s,line) =
+  try
+    match Hashtbl.find environment s with
+      | VarSnd v -> v
+      | env_elt -> error_message line (Printf.sprintf "The identifiant %s is declared as %s but a second-order variable is expected." s (display_env_elt_type env_elt))
+  with
+  | _ -> error_message line (Printf.sprintf "The identifiant %s is not declared" s)
+
 let rec parse_snd_vars = function
   | [] -> ()
   | ((s,line),k)::q ->
@@ -559,3 +567,32 @@ let parse_input_transition out_l =
     let term_list' = parse_term_list Term.Protocol term_list in
     (proc', { Process.in_equations = subst'; Process.in_disequations = diseq_l'; Process.in_channel = channel'; Process.in_variable = var'; Process.in_private_channels = term_list'})
   ) out_l
+
+(*********** Constraint_system ***********)
+
+type mgs = ident list * substitution
+
+type simple_constraint_system = basic_deduction_fact list * equation list list top_bot * equation list list top_bot * deduction_fact list * (term * term) list
+
+
+let parse_simple_constraint_system (df,eq1,eq2,sdf,uni) =
+  let df' = parse_DF df in
+  let eq1' = parse_Eq Term.Protocol eq1 in
+  let eq2' = parse_Eq Term.Recipe eq2 in
+  let sdf' = parse_SDF sdf in
+  let uni' = parse_Uniformity_Set uni in
+  Constraint_system.create_simple df' eq1' eq2' sdf' uni'
+
+let parse_mgs (v_list,subst) =
+  let v_list' = List.map parse_snd_var v_list in
+  let subst' = parse_substitution Term.Recipe subst in
+  Constraint_system.create_mgs subst' v_list'
+
+let parse_mgs_result (mgs,subst,simple) =
+  let mgs' = parse_mgs mgs in
+  let subst' = parse_substitution Term.Protocol subst in
+  let simple' = parse_simple_constraint_system simple in
+  (mgs',subst',simple')
+
+let parse_mgs_result_list mgs_list =
+  List.map parse_mgs_result mgs_list

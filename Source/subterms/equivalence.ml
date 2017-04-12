@@ -34,7 +34,7 @@ let rec apply_transition_and_rules_classic csys_set size_frame =
 
     next_input Classic Trace_Equivalence symb_proc.current_process fst_subst (fun proc in_gathering ->
       let ded_fact_ch = BasicFact.create var_X_ch in_gathering.in_channel
-      and ded_fact_term = BasicFact.create var_X_ch (of_variable in_gathering.in_variable) in
+      and ded_fact_term = BasicFact.create var_X_var (of_variable in_gathering.in_variable) in
 
       try
         let new_csys_1 = Constraint_system.apply_substitution csys in_gathering.in_equations in

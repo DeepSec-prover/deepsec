@@ -556,6 +556,19 @@ let gather_in_input_gathering input gather =
   let gather_3 = gather_in_list Protocol input.Process.in_private_channels gather_2 in
   gather_in_list Protocol [input.Process.in_channel; of_variable input.Process.in_variable] gather_3
 
+let gather_in_simple_csys csys gather =
+  let names = Constraint_system.get_names_simple_with_list csys gather.g_names
+  and fst_vars = Constraint_system.get_vars_simple_with_list Protocol csys gather.g_fst_vars
+  and snd_vars = Constraint_system.get_vars_simple_with_list Recipe csys gather.g_snd_vars
+  and axioms = Constraint_system.get_axioms_simple_with_list csys gather.g_axioms in
+  { g_names = names; g_fst_vars = fst_vars ; g_snd_vars = snd_vars; g_axioms = axioms }
+
+let gather_in_mgs mgs gather =
+  gather_in_subst Recipe (Constraint_system.substitution_of_mgs mgs) gather
+
+let gather_in_mgs_result (mgs, subst, csys) gather =
+  gather_in_mgs mgs (gather_in_subst Protocol subst (gather_in_simple_csys csys gather))
+
 (*************************************
       Generic display functions
 **************************************)
@@ -800,6 +813,42 @@ let display_next_input_result_HTML rho proc_input_list =
       str := Printf.sprintf "%s            </ul>\n" !str;
       !str
     end
+
+let display_mgs_result out rho id (mgs,subst,simple) = match out with
+  | Testing ->
+      Printf.sprintf "(%s,%s,%s)"
+        (Constraint_system.display_mgs Testing ~rho:rho mgs)
+        (Subst.display Testing ~rho:rho Protocol subst)
+        (Constraint_system.display_simple Testing ~rho:rho simple)
+  | HTML ->
+      let str = ref "" in
+      let id_s = if id = 0 then "" else Printf.sprintf "_{%d}" id in
+
+      str := Printf.sprintf "%s            <ul>\n" !str;
+      str := Printf.sprintf "%s              <li> \\(\\Sigma%s = %s\\)</li>\n" !str id_s (Constraint_system.display_mgs Latex ~rho:rho mgs);
+      str := Printf.sprintf "%s              <li> \\(\\sigma%s = %s\\)</li>\n" !str id_s (Subst.display Latex ~rho:rho Protocol subst);
+      str := Printf.sprintf "%s              <li> %s </li>\n" !str (Constraint_system.display_simple HTML ~rho:rho ~hidden:true ~id:id simple);
+      Printf.sprintf "%s            </ul>\n" !str
+  | _ -> Config.internal_error "[testing_function.ml >> display_mgs_result] Unexpected display mode."
+
+let display_mgs_result_list out rho mgs_list = match out with
+  | Testing -> Printf.sprintf "{ %s }" (display_list (display_mgs_result Testing rho 0) "," mgs_list)
+  | HTML ->
+      if mgs_list = []
+      then Printf.sprintf "\\( %s \\)" (emptyset Latex)
+      else
+        begin
+          let str = ref "" in
+
+          str := Printf.sprintf "%s%d most general solutions were found.\n" !str (List.length mgs_list);
+          str := Printf.sprintf "%s            <ul>\n" !str;
+          str := !str ^ (display_list_i (fun i mgs_result ->
+              Printf.sprintf "              <li>\n%s              </li>\n" (display_mgs_result HTML rho i mgs_result)
+            ) "" mgs_list
+          );
+          Printf.sprintf "%s            </ul>\n" !str
+        end
+  | _ -> Config.internal_error "[testing_function.ml >> display_mgs_result_list] Unexpected display mode."
 
 (*************************************
       Functions to be tested
@@ -1750,6 +1799,61 @@ let load_Process_next_input i sem eq process subst result =
   let _,test_latex = test_Process_next_input sem eq process subst result in
   produce_test_latex (test_latex i)
 
+(***** Constraint_system.mgs *****)
+
+let data_IO_Constraint_system_mgs =
+  {
+    scripts = false;
+    validated_tests = [];
+    tests_to_check = [];
+    additional_tests = [];
+
+    is_being_tested = true;
+
+    file = "constraint_system_mgs"
+  }
+
+let test_Constraint_system_mgs csys result =
+  (**** Retreive the names, variables and axioms *****)
+  let gathering = List.fold_left (fun acc mgs_res ->  gather_in_mgs_result mgs_res acc) (gather_in_simple_csys csys(gather_in_signature empty_gathering)) result in
+
+  (**** Generate the display renaming ****)
+  let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in
+
+  (**** Generate test_display for terminal *****)
+
+  let terminal_header, latex_header = header_terminal_and_latex true rho gathering in
+
+  let test_terminal =
+    { terminal_header with
+      inputs = [ (Constraint_system.display_simple Testing ~rho:rho csys, Text) ];
+      output = ( display_mgs_result_list Testing rho result, Text )
+    } in
+
+  let test_latex =
+    { latex_header with
+      inputs = [ (Constraint_system.display_simple HTML ~rho:rho ~hidden:true csys, Text) ];
+      output = ( display_mgs_result_list HTML rho result, Text )
+    } in
+
+  test_terminal, (fun _ -> test_latex, None)
+
+let update_Constraint_system_mgs () =
+  Constraint_system.update_test_mgs (fun csys result ->
+    if data_IO_Constraint_system_mgs.is_being_tested
+    then add_test (test_Constraint_system_mgs csys result) data_IO_Constraint_system_mgs
+  )
+
+let apply_Constraint_system_mgs csys =
+  let result = Constraint_system.mgs csys in
+
+  let test_terminal,_ = test_Constraint_system_mgs csys result in
+  produce_test_terminal test_terminal
+
+let load_Constraint_system_mgs i csys result =
+  let _,test_latex = test_Constraint_system_mgs csys result in
+  produce_test_latex (test_latex i)
+
 (*************************************
          General function
 *************************************)
@@ -1770,7 +1874,8 @@ let list_data =
     data_IO_Data_structure_Tools_uniform_consequence;
     data_IO_Process_of_expansed_process;
     data_IO_Process_next_output;
-    data_IO_Process_next_input
+    data_IO_Process_next_input;
+    data_IO_Constraint_system_mgs
   ]
 
 let preload () = List.iter (fun data -> pre_load_tests data) list_data
@@ -1792,4 +1897,5 @@ let update () =
   update_Data_structure_Tools_uniform_consequence ();
   update_Process_of_expansed_process ();
   update_Process_next_output ();
-  update_Process_next_input ()
+  update_Process_next_input ();
+  update_Constraint_system_mgs ()
