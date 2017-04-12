@@ -71,6 +71,12 @@ let forall = function
   | HTML -> "&#8704;"
   | Latex -> "\\forall"
 
+let exists = function
+  | Terminal | Testing -> "exists"
+  | Pretty_Terminal -> "∃"
+  | HTML -> "&#8707;"
+  | Latex -> "\\exists"
+
 let vdash = function
   | Terminal | Testing -> "|-"
   | Pretty_Terminal -> "⊢"

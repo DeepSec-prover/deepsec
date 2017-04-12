@@ -40,14 +40,14 @@ val get_axioms_with_list : 'a t -> axiom list -> axiom list
     @raise Internal_error if the names {% $k_0, \ldots, k_n$ are not all public. \highdebug %} *)
 val create_from_free_names : 'a -> name list -> 'a t
 
-(** [add_basic_fact] {% $\C$~\dedfact{\quanti{X}{i}}{t}$ returns the constraint system $\C[ \Df \mapsto \Df \cup \dedfact{\quanti{X}{i}}{t}; \InitInput \mapsto \InitInput \cup \{X\}]$. %}
+(** [add_basic_fact] {% $\C$~$\dedfact{\quanti{X}{i}}{t}$ returns the constraint system $\C[ \Df \mapsto \Df \cup \dedfact{\quanti{X}{i}}{t}; \InitInput \mapsto \InitInput \cup \{X\}]$. %}
     @raise Internal_error if {% $t\mguset{\equality{\Equn(\C)}} \neq t$ or $X \in \varsdeux{\C}$. %} *)
 val add_basic_fact : 'a t -> BasicFact.t -> 'a t
 
 (** [add_axiom] {% $\C$~$\ax_n$~$t$~$id$ returns the constraint system $\C'$ obtained from $\C$ and such that
     $\Phi(\C') = \Phi(\C) \cup \{ \ax_n \rightarrow t\}$ and $\USolved(\C') = \USolved(\C) \cup \\{ \dedfact{\ax_n}{t}\\}$.%}
-    Note that the deduction formula added to $\USolved$ is given [id] as recipe equivalence.
-    @raise Internal_error if $|\Phi(\C) \neq n-1$ \high_debugging *)
+    Note that the deduction formula added to {% $\USolved$ %} is given [id] as recipe equivalence.
+    @raise Internal_error if {% $|\Phi(\C)| \neq n-1$ \highdebug %} *)
 val add_axiom : 'a t -> axiom -> protocol_term -> Data_structure.id_recipe_equivalent -> 'a t
 
 (** [add_disequations at] {% $\C$ %} [l] where the list [l] is {% $\phi_1$;\ldots; $\phi_n$ %} returns the constraint system
@@ -70,7 +70,7 @@ val display : Display.output -> ?rho: display_renamings option -> ?hidden:bool -
 
 (** {2 Most general solustions} *)
 
-(** This section focuses on computing the most general solutions of a constraint system. Compare to~\paper, there
+(** This section focuses on computing the most general solutions of a constraint system. {% Compare to~\paper, %}there
     are a few differences of syntax.*)
 
 (** {% In \citepaper{Definition}{def:most_general_solutions}, a most general solution is only a substitution of
@@ -132,7 +132,9 @@ val apply_mgs_on_formula : 'a Fact.t -> 'a t -> mgs -> 'a Fact.formula -> 'a Fac
     @raise Internal_error if {% $\forall \sigma', \sigma \neq \Cmgu{\C}\sigma'$. %} *)
 val apply_substitution : 'a t -> (fst_ord, name) Subst.t -> 'a t
 
-(** {3 Display} *)
+(** {3 Display functions} *)
+
+val display_mgs : Display.output -> ?rho: display_renamings option -> mgs -> string
 
 val display_simple : Display.output -> ?rho: display_renamings option -> ?hidden:bool -> ?id:int -> simple -> string
 

@@ -39,6 +39,9 @@ val top : output -> string
 (** Display of the symbol {% $\forall$ %} *)
 val forall : output -> string
 
+(** Display of the symbol {% $\exists$ %} *)
+val exists : output -> string
+
 (** Display of the symbol {% $\vdash$ %} *)
 val vdash : output -> string
 

@@ -11,7 +11,7 @@ FILE_STANDARD = config.mli display.mli term.mli process.mli
 PATH_STANDARD = $(FILE_STANDARD:%= $(PATH_SOURCE)core_library/%)
 
 NAME_SUBTERMS = Subterms
-FILE_SUBTERMS = data_structure.mli
+FILE_SUBTERMS = data_structure.mli constraint_system.mli
 PATH_SUBTERMS = $(FILE_SUBTERMS:%= $(PATH_SOURCE)subterms/%)
 
 NAME_TESTING = Testing

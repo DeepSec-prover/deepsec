@@ -910,6 +910,19 @@ let get_axioms_simple_with_list csys ax_list =
 
 (**** Display *****)
 
+let display_mgs out ?(rho=None) (subst,v_list) = match out with
+  | Testing -> Printf.sprintf "({%s},%s)"
+      (display_list (Variable.display out ~rho:rho Recipe ~v_type:true) ", " v_list)
+      (Subst.display out ~rho:rho Recipe subst)
+  | _ ->
+      if v_list = []
+      then Subst.display out ~rho:rho Recipe subst
+      else
+        Printf.sprintf "%s %s.%s"
+          (exists out)
+          (display_list (Variable.display out ~rho:rho Recipe ~v_type:true) ", " v_list)
+          (Subst.display out ~rho:rho Recipe subst)
+
 let display_simple out ?(rho=None) ?(hidden=false) ?(id=0) csys = match out with
   | Testing ->
       Printf.sprintf "( %s, %s, %s, %s, %s )"
