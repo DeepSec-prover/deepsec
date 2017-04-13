@@ -1494,36 +1494,76 @@ let test_next_input : (semantics -> equivalence -> process -> (Term.fst_ord, Ter
 
 let update_test_next_input f = test_next_input := f
 
-let next_output sem equiv proc fst_subst f_continuation =
-  let testing_result = ref [] in
+let internal_next_output sem equiv proc fst_subst f_continuation = match sem, equiv with
+  | Classic, Trace_Equivalence -> next_output_classic_trace proc fst_subst [] f_continuation
+  | _, _ -> Config.internal_error "[process.ml >> next_output] Not implemented yet"
 
-  begin match sem, equiv with
-    | Classic, Trace_Equivalence ->
-        next_output_classic_trace proc fst_subst [] (fun proc output ->
-          Config.test (fun () ->
-            testing_result := (proc,output)::!testing_result
-          );
-          f_continuation proc output
-        )
-    | _, _ -> Config.internal_error "[process.ml >> next_output] Not implemented yet"
-  end;
-  Config.test (fun () ->
+let test_next_output sem equiv proc fst_subst f_continuation =
+  try
+    let testing_result = ref [] in
+
+    begin match sem, equiv with
+      | Classic, Trace_Equivalence ->
+          next_output_classic_trace proc fst_subst [] (fun proc output ->
+            testing_result := (proc,output)::!testing_result;
+            f_continuation proc output
+          )
+      | _, _ -> Config.internal_error "[process.ml >> next_output] Not implemented yet"
+    end;
     !test_next_output sem equiv proc fst_subst !testing_result
-  )
+  with
+    | Config.Internal_error -> raise Config.Internal_error
+    | exc ->
+        let testing_result = ref [] in
 
-let next_input sem equiv proc fst_subst f_continuation =
-  let testing_result = ref [] in
+        begin match sem, equiv with
+          | Classic, Trace_Equivalence ->
+              next_output_classic_trace proc fst_subst [] (fun proc output ->
+                testing_result := (proc,output)::!testing_result
+              )
+          | _, _ -> Config.internal_error "[process.ml >> next_output] Not implemented yet"
+        end;
+        !test_next_output sem equiv proc fst_subst !testing_result;
+        raise exc
 
-  begin match sem, equiv with
-    | Classic, Trace_Equivalence ->
-        next_input_classic_trace proc fst_subst [] (fun proc input ->
-          Config.test (fun () ->
-            testing_result := (proc,input)::!testing_result
-          );
-          f_continuation proc input
-        )
-    | _, _ -> Config.internal_error "[process.ml >> next_output] Not implemented yet"
-  end;
-  Config.test (fun () ->
+let next_output =
+  if Config.test_activated
+  then test_next_output
+  else internal_next_output
+
+let internal_next_input sem equiv proc fst_subst f_continuation = match sem, equiv with
+  | Classic, Trace_Equivalence -> next_input_classic_trace proc fst_subst [] f_continuation
+  | _, _ -> Config.internal_error "[process.ml >> next_output] Not implemented yet"
+
+let test_next_input sem equiv proc fst_subst f_continuation =
+  try
+    let testing_result = ref [] in
+
+    begin match sem, equiv with
+      | Classic, Trace_Equivalence ->
+          next_input_classic_trace proc fst_subst [] (fun proc input ->
+            testing_result := (proc,input)::!testing_result;
+            f_continuation proc input
+          )
+      | _, _ -> Config.internal_error "[process.ml >> next_output] Not implemented yet"
+    end;
     !test_next_input sem equiv proc fst_subst !testing_result
-  )
+  with
+    | Config.Internal_error -> raise Config.Internal_error
+    | exc ->
+        let testing_result = ref [] in
+
+        begin match sem, equiv with
+          | Classic, Trace_Equivalence ->
+              next_input_classic_trace proc fst_subst [] (fun proc input ->
+                testing_result := (proc,input)::!testing_result
+              )
+          | _, _ -> Config.internal_error "[process.ml >> next_output] Not implemented yet"
+        end;
+        !test_next_input sem equiv proc fst_subst !testing_result;
+        raise exc
+
+let next_input =
+  if Config.test_activated
+  then test_next_input
+  else internal_next_input

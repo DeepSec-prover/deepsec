@@ -295,7 +295,7 @@ let id_class_csys =
 
 let display out ?(rho=None) ?(hidden=false) ?(id=0) csys = match out with
   | Testing ->
-      Printf.sprintf "( [ %s ]\n, %s\n, %s\n, %s\n, %s\n, %s\n, %s\n, %s\n, %s\n, %s\n, %s\n, %s\n, %s\n, %s\n )"
+      Printf.sprintf "( [ %s ], %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s )"
         (display_list (display Testing ~rho:rho Protocol) ";" csys.frame)
         (DF.display out ~rho:rho csys.df)
         (Eq.display out ~rho:rho Protocol csys.eqfst)
