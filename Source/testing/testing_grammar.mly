@@ -68,7 +68,7 @@ open Testing_parser_functions
 %start parse_Process_next_output parse_Process_next_input
 
 %start parse_Constraint_system_mgs parse_Constraint_system_one_mgs
-%start parse_Constraint_system_simple_of_formula
+%start parse_Constraint_system_simple_of_formula parse_Constraint_system_simple_of_disequation
 
 %type <(Testing_parser_functions.parser)> parse_Term_Subst_unify
 %type <(Testing_parser_functions.parser)> parse_Term_Subst_is_matchable
@@ -91,6 +91,7 @@ open Testing_parser_functions
 %type <(Testing_parser_functions.parser)> parse_Constraint_system_mgs
 %type <(Testing_parser_functions.parser)> parse_Constraint_system_one_mgs
 %type <(Testing_parser_functions.parser)> parse_Constraint_system_simple_of_formula
+%type <(Testing_parser_functions.parser)> parse_Constraint_system_simple_of_disequation
 
 %%
 /***********************************
@@ -539,6 +540,27 @@ parse_Constraint_system_simple_of_formula:
                   let simple = parse_simple_constraint_system $18 in
                   RLoad(Testing_functions.load_Constraint_system_simple_of_formula i Term.Fact.Equality csys form (rho1,rho2,simple))
               | Verify -> RVerify(Testing_functions.apply_Constraint_system_simple_of_formula Term.Fact.Equality csys form)
+        )
+      }
+  | error
+      { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
+
+parse_Constraint_system_simple_of_disequation:
+  | header_of_test
+    INPUT DDOT constraint_system
+    INPUT DDOT diseq_t
+    RESULT DDOT LPAR renaming COMMA simple_constraint_system RPAR
+      {
+        (fun mode -> $1 ();
+          let csys = parse_constraint_system $4 in
+          let diseq = parse_diseq Term.Protocol $7 in
+
+          match mode with
+            | Load i ->
+                let rho1 = parse_vars_renaming Term.Protocol $11 in
+                let simple = parse_simple_constraint_system $13 in
+                RLoad(Testing_functions.load_Constraint_system_simple_of_disequation i csys diseq (rho1,simple))
+            | Verify -> RVerify(Testing_functions.apply_Constraint_system_simple_of_disequation csys diseq)
         )
       }
   | error

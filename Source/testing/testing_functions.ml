@@ -911,6 +911,20 @@ let display_simple_of_formula out rho (subst1,subst2,simple) = match out with
       Printf.sprintf "%s            </ul>\n" !str
   | _ -> Config.internal_error "[testing_function.ml >> display_simple_of_formula] Unexpected display mode."
 
+let display_simple_of_disequation out rho (subst1,simple) = match out with
+  | Testing ->
+      Printf.sprintf "(%s,%s)"
+        (Variable.Renaming.display Testing ~rho:rho Protocol subst1)
+        (Constraint_system.display_simple Testing ~rho:rho simple)
+  | HTML ->
+      let str = ref "" in
+
+      str := Printf.sprintf "%s            <ul>\n" !str;
+      str := Printf.sprintf "%s              <li> \\(\\rho^1 = %s\\)</li>\n" !str (Variable.Renaming.display Latex ~rho:rho Protocol subst1);
+      str := Printf.sprintf "%s              <li> %s </li>\n" !str (Constraint_system.display_simple HTML ~rho:rho ~hidden:true ~id:1 simple);
+      Printf.sprintf "%s            </ul>\n" !str
+  | _ -> Config.internal_error "[testing_function.ml >> display_simple_of_formula] Unexpected display mode."
+
 (*************************************
       Functions to be tested
 *************************************)
@@ -2038,6 +2052,66 @@ let load_Constraint_system_simple_of_formula i fct csys form result =
   let _,test_latex = test_Constraint_system_simple_of_formula fct csys form result in
   produce_test_latex (test_latex i)
 
+(***** Constraint_system.simple_of_disequation *****)
+
+let data_IO_Constraint_system_simple_of_disequation =
+  {
+    scripts = false;
+    validated_tests = [];
+    tests_to_check = [];
+    additional_tests = [];
+
+    is_being_tested = true;
+
+    file = "constraint_system_simple_of_disequation"
+  }
+
+let test_Constraint_system_simple_of_disequation csys diseq ((fst_subst,simple) as result) =
+  (**** Retreive the names, variables and axioms *****)
+  let gathering_0 = gather_in_var_renaming Protocol fst_subst (gather_in_simple_csys simple (gather_in_signature empty_gathering)) in
+  let gathering = gather_in_diseq Protocol diseq (gather_in_constraint_system csys gathering_0) in
+
+  (**** Generate the display renaming ****)
+  let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in
+
+  (**** Generate test_display for terminal *****)
+
+  let terminal_header, latex_header = header_terminal_and_latex true rho gathering in
+
+  let test_terminal =
+    { terminal_header with
+      inputs = [ (Constraint_system.display Testing ~rho:rho csys, Text); (Diseq.display Testing ~rho:rho Protocol diseq, Inline) ];
+      output = ( display_simple_of_disequation Testing rho result, Text )
+    } in
+
+  let test_latex =
+    { latex_header with
+      inputs = [ (Constraint_system.display HTML ~rho:rho ~hidden:true csys, Text); (Diseq.display Latex ~rho:rho Protocol diseq, Inline) ];
+      output = ( display_simple_of_disequation HTML rho result, Text )
+    } in
+
+  test_terminal, (fun _ -> test_latex, None)
+
+let update_Constraint_system_simple_of_disequation () =
+  Constraint_system.update_test_simple_of_disequation (fun csys diseq result ->
+    if data_IO_Constraint_system_simple_of_disequation.is_being_tested
+    then add_test (test_Constraint_system_simple_of_disequation csys diseq result) data_IO_Constraint_system_simple_of_disequation
+  );
+  Constraint_system.update_test_simple_of_disequation (fun csys diseq result ->
+    if data_IO_Constraint_system_simple_of_disequation.is_being_tested
+    then add_test (test_Constraint_system_simple_of_disequation csys diseq result) data_IO_Constraint_system_simple_of_disequation
+  )
+
+let apply_Constraint_system_simple_of_disequation csys diseq =
+  let result = Constraint_system.simple_of_disequation csys diseq in
+
+  let test_terminal,_ = test_Constraint_system_simple_of_disequation csys diseq result in
+  produce_test_terminal test_terminal
+
+let load_Constraint_system_simple_of_disequation i csys diseq result =
+  let _,test_latex = test_Constraint_system_simple_of_disequation csys diseq result in
+  produce_test_latex (test_latex i)
+
 (*************************************
          General function
 *************************************)
@@ -2061,7 +2135,8 @@ let list_data =
     data_IO_Process_next_input;
     data_IO_Constraint_system_mgs;
     data_IO_Constraint_system_one_mgs;
-    data_IO_Constraint_system_simple_of_formula
+    data_IO_Constraint_system_simple_of_formula;
+    data_IO_Constraint_system_simple_of_disequation
   ]
 
 let preload () = List.iter (fun data -> pre_load_tests data) list_data
@@ -2086,4 +2161,5 @@ let update () =
   update_Process_next_input ();
   update_Constraint_system_mgs ();
   update_Constraint_system_one_mgs ();
-  update_Constraint_system_simple_of_formula ()
+  update_Constraint_system_simple_of_formula ();
+  update_Constraint_system_simple_of_disequation ()

@@ -352,6 +352,11 @@ let rec parse_equation_list = function
   | [] -> []
   | (t1,t2)::q -> (Term.Modulo.create_equation (parse_term Term.Protocol t1) (parse_term Term.Protocol t2))::(parse_equation_list q)
 
+(******** Diseq *********)
+
+let parse_diseq at diseq =
+  Term.Diseq.create_for_testing (List.map (fun (t1,t2) -> (parse_term at t1, parse_term at t2)) diseq)
+
 (******** Term list ********)
 
 let parse_term_list at = List.map (parse_term at)

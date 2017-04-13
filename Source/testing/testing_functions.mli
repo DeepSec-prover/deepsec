@@ -200,3 +200,11 @@ val data_IO_Constraint_system_simple_of_formula : data_IO
 val apply_Constraint_system_simple_of_formula : 'a Fact.t -> 'b Constraint_system.t -> 'a Fact.formula -> string
 
 val load_Constraint_system_simple_of_formula : int -> 'a Fact.t -> 'b Constraint_system.t -> 'a Fact.formula -> (fst_ord, name) Variable.Renaming.t * (snd_ord, axiom) Variable.Renaming.t * Constraint_system.simple -> html_code
+
+(** {3 Constraint_system.simple_of_disequation} *)
+
+val data_IO_Constraint_system_simple_of_disequation : data_IO
+
+val apply_Constraint_system_simple_of_disequation : 'a Constraint_system.t -> (fst_ord, name) Diseq.t -> string
+
+val load_Constraint_system_simple_of_disequation : int -> 'a Constraint_system.t -> (fst_ord, name) Diseq.t -> (fst_ord, name) Variable.Renaming.t * Constraint_system.simple -> html_code
