@@ -141,6 +141,8 @@ val parse_deduction_formula_list : formula list -> Term.Fact.deduction_formula l
 
 val parse_formula : 'a Term.Fact.t -> formula -> 'a Term.Fact.formula
 
+val parse_formula_option : 'a Term.Fact.t -> formula option -> 'a Term.Fact.formula option
+
 val parse_diseq : ('a, 'b) Term.atom -> (term * term) list -> ('a, 'b) Term.Diseq.t
 
 val parse_Eq : ('a, 'b) Term.atom -> equation list list top_bot -> ('a, 'b) Data_structure.Eq.t

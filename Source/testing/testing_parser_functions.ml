@@ -438,6 +438,10 @@ let parse_formula (type a) (fct: a Term.Fact.t) (head,bfct_l,subst) = match fct 
   | Term.Fact.Deduction -> ((parse_deduction_formula (head,bfct_l,subst)): a Term.Fact.formula)
   | Term.Fact.Equality -> ((Term.Fact.create_for_testing (parse_equality_fact head) (List.map parse_basic_deduction_fact bfct_l) (parse_substitution Term.Protocol subst)): a Term.Fact.formula)
 
+let parse_formula_option fct = function
+  | None -> None
+  | Some form -> Some (parse_formula fct form)
+
 (********** Skeleton *********)
 
 let parse_skeleton ((s,line),recipe,term,bfct_l,(lhs,rhs)) =

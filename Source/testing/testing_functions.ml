@@ -517,6 +517,10 @@ let gather_in_formula (type a) (fct:a Fact.t) (form:a Fact.formula) gather = mat
   | Fact.Deduction -> gather_in_deduction_formula form gather
   | Fact.Equality -> gather_in_equality_formula form gather
 
+let gather_in_formula_option fct form_op gather = match form_op with
+  | None -> gather
+  | Some form -> gather_in_formula fct form gather
+
 let gather_in_Eq (type a) (type b) (at:(a,b) atom) (form:(a,b) Eq.t) (gather:gathering) = match at with
   | Protocol ->
       let names = Eq.get_names_with_list at form gather.g_names
@@ -932,6 +936,10 @@ let display_simple_of_disequation out rho (subst1,simple) = match out with
 let display_constraint_system_option out rho = function
   | None -> bot out
   | Some csys -> Constraint_system.display out ~rho:rho ~hidden:true ~id:1 csys
+
+let display_formula_option out rho fct = function
+  | None -> bot out
+  | Some form -> Fact.display_formula out ~rho:rho fct form
 
 (*************************************
       Functions to be tested
@@ -2176,6 +2184,70 @@ let load_Constraint_system_apply_mgs i csys mgs result =
   let _,test_latex = test_Constraint_system_apply_mgs csys mgs result in
   produce_test_latex (test_latex i)
 
+(***** Constraint_system.apply_mgs_on_formula *****)
+
+let data_IO_Constraint_system_apply_mgs_on_formula =
+  {
+    scripts = false;
+    validated_tests = [];
+    tests_to_check = [];
+    additional_tests = [];
+
+    is_being_tested = true;
+
+    file = "constraint_system_apply_mgs_on_formula"
+  }
+
+let test_Constraint_system_apply_mgs_on_formula fct csys mgs form result =
+  (**** Retreive the names, variables and axioms *****)
+  let gathering = gather_in_constraint_system csys (gather_in_mgs mgs (gather_in_formula fct form (gather_in_formula_option fct result (gather_in_signature empty_gathering)))) in
+
+  (**** Generate the display renaming ****)
+  let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in
+
+  (**** Generate test_display for terminal *****)
+
+  let terminal_header, latex_header = header_terminal_and_latex true rho gathering in
+
+  let test_terminal =
+    { terminal_header with
+      inputs = [ (display_fact Testing fct, Text); (Constraint_system.display Testing ~rho:rho csys, Text); (Constraint_system.display_mgs Testing ~rho:rho mgs, Inline); (Fact.display_formula Testing ~rho:rho fct form, Inline)  ];
+      output = ( display_formula_option Testing rho fct result, Inline )
+    } in
+
+  let test_latex =
+    { latex_header with
+      inputs = [ (display_fact HTML fct, Text); (Constraint_system.display HTML ~rho:rho ~hidden:true csys, Text); (Constraint_system.display_mgs Latex ~rho:rho mgs, Inline); (Fact.display_formula Latex ~rho:rho fct form, Inline) ];
+      output = ( display_formula_option Latex rho fct result, Inline )
+    } in
+
+  test_terminal, (fun _ -> test_latex, None)
+
+let update_Constraint_system_apply_mgs_on_formula () =
+  Constraint_system.update_test_apply_mgs_on_formula Fact.Deduction (fun csys mgs form result ->
+    if data_IO_Constraint_system_apply_mgs_on_formula.is_being_tested
+    then add_test (test_Constraint_system_apply_mgs_on_formula Fact.Deduction csys mgs form result) data_IO_Constraint_system_apply_mgs_on_formula
+  );
+  Constraint_system.update_test_apply_mgs_on_formula Fact.Equality (fun csys mgs form result ->
+    if data_IO_Constraint_system_apply_mgs_on_formula.is_being_tested
+    then add_test (test_Constraint_system_apply_mgs_on_formula Fact.Equality csys mgs form result) data_IO_Constraint_system_apply_mgs_on_formula
+  )
+
+let apply_Constraint_system_apply_mgs_on_formula fct csys mgs form =
+  let result =
+    try
+      Some (Constraint_system.apply_mgs_on_formula fct csys mgs form)
+    with
+    | Fact.Bot -> None
+  in
+
+  let test_terminal,_ = test_Constraint_system_apply_mgs_on_formula fct csys mgs form result in
+  produce_test_terminal test_terminal
+
+let load_Constraint_system_apply_mgs_on_formula i fct csys mgs form result =
+  let _,test_latex = test_Constraint_system_apply_mgs_on_formula fct csys mgs form result in
+  produce_test_latex (test_latex i)
+
 (*************************************
          General function
 *************************************)
@@ -2201,7 +2273,8 @@ let list_data =
     data_IO_Constraint_system_one_mgs;
     data_IO_Constraint_system_simple_of_formula;
     data_IO_Constraint_system_simple_of_disequation;
-    data_IO_Constraint_system_apply_mgs
+    data_IO_Constraint_system_apply_mgs;
+    data_IO_Constraint_system_apply_mgs_on_formula
   ]
 
 let preload () = List.iter (fun data -> pre_load_tests data) list_data
@@ -2228,4 +2301,5 @@ let update () =
   update_Constraint_system_one_mgs ();
   update_Constraint_system_simple_of_formula ();
   update_Constraint_system_simple_of_disequation ();
-  update_Constraint_system_apply_mgs ()
+  update_Constraint_system_apply_mgs ();
+  update_Constraint_system_apply_mgs_on_formula ()

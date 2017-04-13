@@ -151,6 +151,13 @@ let data_verification_Constraint_system_apply_mgs =
     parsing_function = Testing_grammar.parse_Constraint_system_apply_mgs
   }
 
+let data_verification_Constraint_system_apply_mgs_on_formula =
+  {
+    data_IO = data_IO_Constraint_system_apply_mgs_on_formula;
+    name = "Constraint_system.apply_mgs_on_formula";
+    parsing_function = Testing_grammar.parse_Constraint_system_apply_mgs_on_formula
+  }
+
 let all_data_verification =
   [
     data_verification_Term_Subst_unify;
@@ -172,7 +179,8 @@ let all_data_verification =
     data_verification_Constraint_system_one_mgs;
     data_verification_Constraint_system_simple_of_formula;
     data_verification_Constraint_system_simple_of_disequation;
-    data_verification_Constraint_system_apply_mgs
+    data_verification_Constraint_system_apply_mgs;
+    data_verification_Constraint_system_apply_mgs_on_formula
   ]
 
 (** {3 Verification of tests} *)

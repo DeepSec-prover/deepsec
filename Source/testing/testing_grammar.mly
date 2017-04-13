@@ -69,7 +69,7 @@ open Testing_parser_functions
 
 %start parse_Constraint_system_mgs parse_Constraint_system_one_mgs
 %start parse_Constraint_system_simple_of_formula parse_Constraint_system_simple_of_disequation
-%start parse_Constraint_system_apply_mgs
+%start parse_Constraint_system_apply_mgs parse_Constraint_system_apply_mgs_on_formula
 
 %type <(Testing_parser_functions.parser)> parse_Term_Subst_unify
 %type <(Testing_parser_functions.parser)> parse_Term_Subst_is_matchable
@@ -94,6 +94,7 @@ open Testing_parser_functions
 %type <(Testing_parser_functions.parser)> parse_Constraint_system_simple_of_formula
 %type <(Testing_parser_functions.parser)> parse_Constraint_system_simple_of_disequation
 %type <(Testing_parser_functions.parser)> parse_Constraint_system_apply_mgs
+%type <(Testing_parser_functions.parser)> parse_Constraint_system_apply_mgs_on_formula
 
 %%
 /***********************************
@@ -588,6 +589,42 @@ parse_Constraint_system_apply_mgs:
   | error
       { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
 
+parse_Constraint_system_apply_mgs_on_formula:
+  | header_of_test
+    INPUT DDOT fact
+    INPUT DDOT constraint_system
+    INPUT DDOT mgs
+    INPUT DDOT formula
+    RESULT DDOT formula_option
+      {
+        (fun mode -> $1 ();
+
+          if $4
+          then
+            let csys = parse_constraint_system $7 in
+            let mgs = parse_mgs $10 in
+            let form = parse_formula Term.Fact.Deduction $13 in
+
+            match mode with
+              | Load i ->
+                  let result = parse_formula_option Term.Fact.Deduction $16 in
+                  RLoad(Testing_functions.load_Constraint_system_apply_mgs_on_formula i Term.Fact.Deduction csys mgs form result)
+              | Verify -> RVerify(Testing_functions.apply_Constraint_system_apply_mgs_on_formula Term.Fact.Deduction csys mgs form)
+          else
+            let csys = parse_constraint_system $7 in
+            let mgs = parse_mgs $10 in
+            let form = parse_formula Term.Fact.Equality $13 in
+
+            match mode with
+              | Load i ->
+                  let result = parse_formula_option Term.Fact.Equality $16 in
+                  RLoad(Testing_functions.load_Constraint_system_apply_mgs_on_formula i Term.Fact.Equality csys mgs form result)
+              | Verify -> RVerify(Testing_functions.apply_Constraint_system_apply_mgs_on_formula Term.Fact.Equality csys mgs form)
+        )
+      }
+  | error
+      { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
+
 /***********************************
 ***     Signature definition     ***
 ************************************/
@@ -849,6 +886,12 @@ formula:
       { $1 }
   | equality_formula
       { $1 }
+
+formula_option:
+  | BOT
+      { None }
+  | formula
+      { Some $1 }
 
 deduction_formula_list:
   | LCURL RCURL
