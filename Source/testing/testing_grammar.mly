@@ -69,6 +69,7 @@ open Testing_parser_functions
 
 %start parse_Constraint_system_mgs parse_Constraint_system_one_mgs
 %start parse_Constraint_system_simple_of_formula parse_Constraint_system_simple_of_disequation
+%start parse_Constraint_system_apply_mgs
 
 %type <(Testing_parser_functions.parser)> parse_Term_Subst_unify
 %type <(Testing_parser_functions.parser)> parse_Term_Subst_is_matchable
@@ -92,6 +93,7 @@ open Testing_parser_functions
 %type <(Testing_parser_functions.parser)> parse_Constraint_system_one_mgs
 %type <(Testing_parser_functions.parser)> parse_Constraint_system_simple_of_formula
 %type <(Testing_parser_functions.parser)> parse_Constraint_system_simple_of_disequation
+%type <(Testing_parser_functions.parser)> parse_Constraint_system_apply_mgs
 
 %%
 /***********************************
@@ -566,6 +568,26 @@ parse_Constraint_system_simple_of_disequation:
   | error
       { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
 
+parse_Constraint_system_apply_mgs:
+  | header_of_test
+    INPUT DDOT constraint_system
+    INPUT DDOT mgs
+    RESULT DDOT constraint_system_option
+      {
+        (fun mode -> $1 ();
+          let csys = parse_constraint_system $4 in
+          let mgs = parse_mgs $7 in
+
+          match mode with
+            | Load i ->
+                let result = parse_constraint_system_option $10 in
+                RLoad(Testing_functions.load_Constraint_system_apply_mgs i csys mgs result)
+            | Verify -> RVerify(Testing_functions.apply_Constraint_system_apply_mgs csys mgs)
+        )
+      }
+  | error
+      { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
+
 /***********************************
 ***     Signature definition     ***
 ************************************/
@@ -1006,7 +1028,7 @@ sub_equality_formula_uf:
       { $1::$2 }
 
 uf:
-  | LCURL all_deduction_formula_uf all_equality_formula_uf LCURL
+  | LCURL all_deduction_formula_uf all_equality_formula_uf RCURL
       { ($2,$3) }
 
 /***********************************
@@ -1256,6 +1278,12 @@ sub_int_skel_list:
 constraint_system:
   | LPAR term_list COMMA df COMMA data_Eq COMMA data_Eq COMMA sdf COMMA uf COMMA substitution COMMA substitution COMMA uniformity_set COMMA int_list COMMA int_list COMMA int_list COMMA int_skel_list COMMA int_skel_list RPAR
       { ($2,$4,$6,$8,$10,$12,$14,$16,$18,$20,$22,$24,$26,$28) }
+
+constraint_system_option:
+  | BOT
+      { None }
+  | constraint_system
+      { Some $1 }
 
 mgs:
   | LPAR ident_list COMMA substitution RPAR

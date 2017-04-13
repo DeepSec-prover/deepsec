@@ -598,6 +598,10 @@ let gather_in_constraint_system csys gather =
   and axioms = Constraint_system.get_axioms_with_list csys gather.g_axioms in
   { g_names = names; g_fst_vars = fst_vars ; g_snd_vars = snd_vars; g_axioms = axioms }
 
+let gather_in_constraint_system_option csys_op gather = match csys_op with
+  | None -> gather
+  | Some csys -> gather_in_constraint_system csys gather
+
 (*************************************
       Generic display functions
 **************************************)
@@ -924,6 +928,10 @@ let display_simple_of_disequation out rho (subst1,simple) = match out with
       str := Printf.sprintf "%s              <li> %s </li>\n" !str (Constraint_system.display_simple HTML ~rho:rho ~hidden:true ~id:1 simple);
       Printf.sprintf "%s            </ul>\n" !str
   | _ -> Config.internal_error "[testing_function.ml >> display_simple_of_formula] Unexpected display mode."
+
+let display_constraint_system_option out rho = function
+  | None -> bot out
+  | Some csys -> Constraint_system.display out ~rho:rho ~hidden:true ~id:1 csys
 
 (*************************************
       Functions to be tested
@@ -2096,10 +2104,6 @@ let update_Constraint_system_simple_of_disequation () =
   Constraint_system.update_test_simple_of_disequation (fun csys diseq result ->
     if data_IO_Constraint_system_simple_of_disequation.is_being_tested
     then add_test (test_Constraint_system_simple_of_disequation csys diseq result) data_IO_Constraint_system_simple_of_disequation
-  );
-  Constraint_system.update_test_simple_of_disequation (fun csys diseq result ->
-    if data_IO_Constraint_system_simple_of_disequation.is_being_tested
-    then add_test (test_Constraint_system_simple_of_disequation csys diseq result) data_IO_Constraint_system_simple_of_disequation
   )
 
 let apply_Constraint_system_simple_of_disequation csys diseq =
@@ -2110,6 +2114,66 @@ let apply_Constraint_system_simple_of_disequation csys diseq =
 
 let load_Constraint_system_simple_of_disequation i csys diseq result =
   let _,test_latex = test_Constraint_system_simple_of_disequation csys diseq result in
+  produce_test_latex (test_latex i)
+
+(***** Constraint_system.apply_mgs *****)
+
+let data_IO_Constraint_system_apply_mgs =
+  {
+    scripts = false;
+    validated_tests = [];
+    tests_to_check = [];
+    additional_tests = [];
+
+    is_being_tested = true;
+
+    file = "constraint_system_apply_mgs"
+  }
+
+let test_Constraint_system_apply_mgs csys mgs result =
+  (**** Retreive the names, variables and axioms *****)
+  let gathering = gather_in_constraint_system csys (gather_in_mgs mgs (gather_in_constraint_system_option result (gather_in_signature empty_gathering))) in
+
+  (**** Generate the display renaming ****)
+  let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in
+
+  (**** Generate test_display for terminal *****)
+
+  let terminal_header, latex_header = header_terminal_and_latex true rho gathering in
+
+  let test_terminal =
+    { terminal_header with
+      inputs = [ (Constraint_system.display Testing ~rho:rho csys, Text); (Constraint_system.display_mgs Testing ~rho:rho mgs, Inline)  ];
+      output = ( display_constraint_system_option Testing rho result, Text )
+    } in
+
+  let test_latex =
+    { latex_header with
+      inputs = [ (Constraint_system.display HTML ~rho:rho ~hidden:true csys, Text); (Constraint_system.display_mgs Latex ~rho:rho mgs, Inline) ];
+      output = ( display_constraint_system_option HTML rho result, Text )
+    } in
+
+  test_terminal, (fun _ -> test_latex, None)
+
+let update_Constraint_system_apply_mgs () =
+  Constraint_system.update_test_apply_mgs (fun csys mgs result ->
+    if data_IO_Constraint_system_apply_mgs.is_being_tested
+    then add_test (test_Constraint_system_apply_mgs csys mgs result) data_IO_Constraint_system_apply_mgs
+  )
+
+let apply_Constraint_system_apply_mgs csys mgs =
+  let result =
+    try
+      Some (Constraint_system.apply_mgs csys mgs)
+    with
+    | Constraint_system.Bot -> None
+  in
+
+  let test_terminal,_ = test_Constraint_system_apply_mgs csys mgs result in
+  produce_test_terminal test_terminal
+
+let load_Constraint_system_apply_mgs i csys mgs result =
+  let _,test_latex = test_Constraint_system_apply_mgs csys mgs result in
   produce_test_latex (test_latex i)
 
 (*************************************
@@ -2136,7 +2200,8 @@ let list_data =
     data_IO_Constraint_system_mgs;
     data_IO_Constraint_system_one_mgs;
     data_IO_Constraint_system_simple_of_formula;
-    data_IO_Constraint_system_simple_of_disequation
+    data_IO_Constraint_system_simple_of_disequation;
+    data_IO_Constraint_system_apply_mgs
   ]
 
 let preload () = List.iter (fun data -> pre_load_tests data) list_data
@@ -2162,4 +2227,5 @@ let update () =
   update_Constraint_system_mgs ();
   update_Constraint_system_one_mgs ();
   update_Constraint_system_simple_of_formula ();
-  update_Constraint_system_simple_of_disequation ()
+  update_Constraint_system_simple_of_disequation ();
+  update_Constraint_system_apply_mgs ()

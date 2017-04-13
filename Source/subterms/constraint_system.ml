@@ -295,8 +295,8 @@ let id_class_csys =
 
 let display out ?(rho=None) ?(hidden=false) ?(id=0) csys = match out with
   | Testing ->
-      Printf.sprintf "( { %s }, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s )"
-        (display_list (display Testing ~rho:rho Protocol) "," csys.frame)
+      Printf.sprintf "( [ %s ]\n, %s\n, %s\n, %s\n, %s\n, %s\n, %s\n, %s\n, %s\n, %s\n, %s\n, %s\n, %s\n, %s\n )"
+        (display_list (display Testing ~rho:rho Protocol) ";" csys.frame)
         (DF.display out ~rho:rho csys.df)
         (Eq.display out ~rho:rho Protocol csys.eqfst)
         (Eq.display out ~rho:rho Recipe csys.eqsnd)
@@ -343,7 +343,7 @@ let display out ?(rho=None) ?(hidden=false) ?(id=0) csys = match out with
               (display_list (fun (x,t) -> Printf.sprintf "%s %s %s" (display Latex ~rho:rho Recipe x) (eqs Latex) (display Latex ~rho:rho Recipe t)) (Printf.sprintf " %s " (wedge Latex)) equations)
       in
 
-      let link_Phi = Printf.sprintf "<a href=\"javascript:show_single('Phi%d');\">\\({\\Phi%s\\)</a>"  id_j id_s in
+      let link_Phi = Printf.sprintf "<a href=\"javascript:show_single('Phi%d');\">\\(\\Phi%s\\)</a>"  id_j id_s in
       let link_Df = Printf.sprintf "<a href=\"javascript:show_single('Df%d');\">\\({\\sf D}%s\\)</a>" id_j id_s in
       let link_Sdf = Printf.sprintf "<a href=\"javascript:show_single('Sdf%d');\">\\({\\sf SDF}%s\\)</a>" id_j id_s in
       let link_Uf = Printf.sprintf "<a href=\"javascript:show_single('Uf%d');\">\\({\\sf UF}%s\\)</a>" id_j id_s in
@@ -361,7 +361,7 @@ let display out ?(rho=None) ?(hidden=false) ?(id=0) csys = match out with
       str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Eqdeux%d\" class=\"csys%d\"%s>\\({\\sf E}^2%s = %s\\)</div></div>\n" !str id_j id_j style id_s display_subst_eq_snd;
       str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Sdf%d\" class=\"csys%d\"%s>\\({\\sf SDF}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (SDF.display Latex ~rho:rho csys.sdf);
       str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Uf%d\" class=\"csys%d\"%s>\\({\\sf UF}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (UF.display out ~rho:rho csys.uf);
-      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Uni%d\" class=\"csys%d\"%s>\\({\\sf R}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (Uniformity_Set.display out ~rho:rho csys.sub_cons);
+      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Uni%d\" class=\"csys%d\"%s>\\({\\sf R}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (Uniformity_Set.display Latex ~rho:rho csys.sub_cons);
 
       Printf.sprintf "%s            </div>\n" !str
 

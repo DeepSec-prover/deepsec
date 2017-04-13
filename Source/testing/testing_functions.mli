@@ -208,3 +208,11 @@ val data_IO_Constraint_system_simple_of_disequation : data_IO
 val apply_Constraint_system_simple_of_disequation : 'a Constraint_system.t -> (fst_ord, name) Diseq.t -> string
 
 val load_Constraint_system_simple_of_disequation : int -> 'a Constraint_system.t -> (fst_ord, name) Diseq.t -> (fst_ord, name) Variable.Renaming.t * Constraint_system.simple -> html_code
+
+(** {3 Constraint_system.apply_mgs} *)
+
+val data_IO_Constraint_system_apply_mgs : data_IO
+
+val apply_Constraint_system_apply_mgs : 'a Constraint_system.t -> Constraint_system.mgs -> string
+
+val load_Constraint_system_apply_mgs : int -> 'a Constraint_system.t -> Constraint_system.mgs -> 'a Constraint_system.t option -> html_code

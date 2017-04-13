@@ -646,6 +646,10 @@ let parse_constraint_system (frame,df,eq1,eq2,sdf,uf,sub1,sub2,uni,il1,il2,il3,i
     (List.map (fun (i,skel) -> (i,parse_skeleton skel)) is1)
     (List.map (fun (i,skel) -> (i,parse_skeleton skel)) is2)
 
+let parse_constraint_system_option = function
+  | None -> None
+  | Some csys -> Some (parse_constraint_system csys)
+
 let parse_simple_constraint_system (df,eq1,eq2,sdf,uni) =
   let df' = parse_DF df in
   let eq1' = parse_Eq Term.Protocol eq1 in
