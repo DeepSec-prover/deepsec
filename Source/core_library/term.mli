@@ -299,6 +299,10 @@ module Axiom : sig
       strictly strictly positive if [ax1] is greater than [ax2]. *)
   val order : axiom -> axiom -> int
 
+  (** [name_of ax] returns the public name associated to [ax].
+      @raise Internal_error when [ax] is not associated to a public name.*)
+  val name_of : axiom -> name
+
   (** [index_of_axiom ax] returns the index of the axiom [ax]. *)
   val index_of : axiom -> int
 
@@ -480,8 +484,8 @@ val name_occurs : name -> protocol_term -> bool
 (** [axiom_occurs ax r] returns [true] iff the axiom [ax] occurs in the recipe [r], i.e., {% $ax \in \axioms{r}$. %} *)
 val axiom_occurs : axiom -> recipe -> bool
 
-(** [is_equal t1 t2] returns [true] iff the terms [t1] and [t2] are equal. *)
-val is_equal : ('a, 'b) term -> ('a, 'b) term -> bool
+(** [is_equal at t1 t2] returns [true] iff the [at] terms [t1] and [t2] are equal. *)
+val is_equal : ('a, 'b) atom -> ('a, 'b) term -> ('a, 'b) term -> bool
 
 (** [is_variable t] returns [true] iff the term [t] is a variable, i.e., {% $t \in \X \setminus \AX$. %} *)
 val is_variable : ('a, 'b) term -> bool

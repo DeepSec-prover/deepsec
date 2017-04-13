@@ -50,5 +50,5 @@ let _ =
   else if Array.length Sys.argv = 5 && (Sys.argv).(1) = "validate" && (Sys.argv).(2) = "all" && (Sys.argv).(3) = "-function"
   then (validate_all_tests (data_verification_of_name (Sys.argv).(4)).data_IO; publish_index ())
   else if Array.length Sys.argv >= 6 && (Sys.argv).(1) = "validate" && (Sys.argv).(2) = "function" && (Sys.argv).(4) = "tests"
-  then validate (data_verification_of_name (Sys.argv).(3)).data_IO (create_list 5)
+  then (validate (data_verification_of_name (Sys.argv).(3)).data_IO (create_list 5); publish_index ())
   else print_help ()

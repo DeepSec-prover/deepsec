@@ -231,6 +231,24 @@ let rec parse_axioms = function
 
       parse_axioms q
 
+let reg_pos_axioms = Str.regexp "_ax_\\([0-9]+\\)"
+
+let lookup_axiom (s,line) =
+  if Str.string_match reg_pos_axioms s 0
+  then
+    let k = int_of_string (Str.matched_group 1 s) in
+    if k = 0
+    then error_message line "All axioms associated to a public name should have been already declared."
+    else
+      begin
+        let ax = Term.Axiom.create k in
+        Hashtbl.add environment s (Axiom ax);
+        ax
+      end
+  else error_message line (Printf.sprintf "The identifiant %s is not declared." s)
+
+
+
 (******** Signature ********)
 
 let rec parse_constructor = function
@@ -281,7 +299,12 @@ let rec parse_term : 'a 'b. ('a,'b) Term.atom -> term -> ('a,'b) Term.term = fun
           | Func(f) when Term.Symbol.get_arity f = 0 -> Term.apply_function f []
           | env_elt -> error_message line (Printf.sprintf "The identifiant %s is declared as %s but a name, a variable, an axiom or a unary function symbol is expected." s (display_env_elt_type env_elt))
       with
-        Not_found -> error_message line (Printf.sprintf "The identifiant %s is not declared" s)
+        Not_found ->
+          begin
+            match at with
+              | Term.Protocol -> error_message line (Printf.sprintf "The identifiant %s is not declared" s)
+              | Term.Recipe -> ((Term.of_axiom (lookup_axiom (s,line))):(a,b) Term.term)
+            end
       end
   | FuncApp((s,line),args) ->
       begin try

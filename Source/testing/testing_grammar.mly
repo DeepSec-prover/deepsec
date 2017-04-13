@@ -882,6 +882,7 @@ basic_deduction_fact:
       { ($1,$3,$5) }
 
 basic_deduction_fact_list:
+  | { [] }
   | basic_deduction_fact
       { [$1] }
   | basic_deduction_fact WEDGE basic_deduction_fact_list

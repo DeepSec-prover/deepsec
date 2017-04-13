@@ -272,7 +272,7 @@ let rec is_equal_modulo_symbolic_derivation symb_1 symb_2 =
           and symb_1' = { symb_1 with content_mult = { content = c1; mult = 1 } }
           and symb_2' = { symb_2 with content_mult = { content = c2; mult = 1 } } in
 
-          is_equal ch1' ch2' && is_equal t1' t2' && is_equal_modulo_symbolic_derivation symb_1' symb_2'
+          is_equal Protocol ch1' ch2' && is_equal Protocol t1' t2' && is_equal_modulo_symbolic_derivation symb_1' symb_2'
 
       | AIn(ch1,x1,c1), AIn(ch2,x2,c2) ->
           let new_x = Variable.fresh Protocol Free Variable.fst_ord_type in
@@ -285,7 +285,7 @@ let rec is_equal_modulo_symbolic_derivation symb_1 symb_2 =
           and symb_1' = { symb_1 with content_mult = { content = c1; mult = 1 }; var_renaming = rho_1 }
           and symb_2' = { symb_2 with content_mult = { content = c2; mult = 1 }; var_renaming = rho_2 } in
 
-          is_equal ch1' ch2' && is_equal_modulo_symbolic_derivation symb_1' symb_2'
+          is_equal Protocol ch1' ch2' && is_equal_modulo_symbolic_derivation symb_1' symb_2'
 
       | ATest(t1,r1,c_pos1,c_neg1), ATest(t2,r2,c_pos2,c_neg2) ->
           let (t1',r1') = apply_renamings_pair symb_1.var_renaming symb_1.name_renaming (t1,r1)
@@ -296,7 +296,7 @@ let rec is_equal_modulo_symbolic_derivation symb_1 symb_2 =
           and symb_neg1 = { symb_1 with content_mult = { content = c_neg1; mult = 1 } }
           and symb_neg2 = { symb_1 with content_mult = { content = c_neg2; mult = 1 } } in
 
-          ((is_equal t1' t2' && is_equal r1' r2') || (is_equal t1' r2' && is_equal r1' t2'))
+          ((is_equal Protocol t1' t2' && is_equal Protocol r1' r2') || (is_equal Protocol t1' r2' && is_equal Protocol r1' t2'))
           &&
           is_equal_modulo_symbolic_derivation symb_pos1 symb_pos2
           &&
@@ -320,8 +320,8 @@ let rec is_equal_modulo_symbolic_derivation symb_1 symb_2 =
             and symb_else1 = { symb_1 with content_mult = { content = c_else1; mult = 1 } }
             and symb_else2 = { symb_1 with content_mult = { content = c_else2; mult = 1 } } in
 
-            is_equal t1' t2'
-            && is_equal r1' r2'
+            is_equal Protocol t1' t2'
+            && is_equal Protocol r1' r2'
             && is_equal_modulo_symbolic_derivation symb_then1 symb_then2
             && is_equal_modulo_symbolic_derivation symb_else1 symb_else2
           else false

@@ -777,11 +777,25 @@ module Axiom = struct
       { id_axiom = old_acc ; public_name = Some n }
     ) n_list
 
+  let name_of ax = match ax.public_name with
+    | None -> Config.internal_error "[term.ml >> Axiom.name_of] The axiom should be associated to a public name"
+    | Some n -> n
+
   let order ax1 ax2 = compare ax1.id_axiom ax2.id_axiom
 
   let index_of ax = ax.id_axiom
 
-  let is_equal ax1 ax2 = ax1 = ax2
+  let is_equal ax1 ax2 =
+    Config.debug (fun () ->
+      if ax1.id_axiom = ax2.id_axiom
+      then
+        match ax1.public_name, ax2.public_name with
+          | None,None -> ()
+          | Some n1,Some n2 when n1 == n2 -> ()
+          | _,_ -> Config.internal_error "[term.ml >> Axiom.is_equal] Two axioms with same index does not have the same public name attribute."
+      else ()
+    );
+    ax1.id_axiom = ax2.id_axiom
 
   let display out ?(rho=None) ?(both=false) ax = match ax.public_name with
     | None ->
@@ -963,7 +977,9 @@ end
 
 module AxName = struct
 
-  let is_equal axn1 axn2 = axn1 == axn2
+  let is_equal (type a) (type b) (at: (a,b) atom) (axn1:b) (axn2:b) = match at with
+    | Protocol -> Name.is_equal axn1 axn2
+    | Recipe -> Axiom.is_equal axn1 axn2
 
   let order (type a) (type b) (at:(a,b) atom) (axn1:b) (axn2:b) = match at with
     | Protocol -> compare axn1.index_n axn2.index_n
@@ -1097,10 +1113,10 @@ let rec axiom_occurs n = function
   | _ -> false
 
 (* In the function is_equal on the other hand, we do not go through the TLink. *)
-let rec is_equal t1 t2 = match t1,t2 with
+let rec is_equal at t1 t2 = match t1,t2 with
   | Var(v1),Var(v2) when Variable.is_equal v1 v2 -> true
-  | AxName(n1),AxName(n2) when AxName.is_equal n1 n2 -> true
-  | Func(f1,args1), Func(f2,args2) when Symbol.is_equal f1 f2 -> List.for_all2 is_equal args1 args2
+  | AxName(n1),AxName(n2) when AxName.is_equal at n1 n2 -> true
+  | Func(f1,args1), Func(f2,args2) when Symbol.is_equal f1 f2 -> List.for_all2 (is_equal at) args1 args2
   | _,_ -> false
 
 let is_variable = function
@@ -1511,7 +1527,7 @@ module Subst = struct
       List.for_all (fun (x,t)->
         match x.link with
           | NoLink -> true
-          | TLink t' -> is_equal t t'
+          | TLink t' -> is_equal at t t'
           | _ -> Config.internal_error "[terml.ml >> Subst.is_extended_by] Unexpected link."
       ) subst_2 in
 
@@ -1596,7 +1612,7 @@ module Subst = struct
           | Protocol -> if var_occurs v2 t1  then raise Not_unifiable else link at v2 t1
           | Recipe -> if var_occurs_or_out_of_world v2 t1 then raise Not_unifiable else link at v2 t1
         end
-    | AxName(n1), AxName(n2) when AxName.is_equal n1 n2 -> ()
+    | AxName(n1), AxName(n2) when AxName.is_equal at n1 n2 -> ()
     | Func(f1,args1), Func(f2,args2) ->
         if Symbol.is_equal f1 f2 then List.iter2 (unify_term at) args1 args2 else raise Not_unifiable
     | _,_ -> raise Not_unifiable
@@ -1636,11 +1652,11 @@ module Subst = struct
 
   let rec match_term : 'a 'b. ('a,'b) atom -> ('a,'b) term -> ('a,'b) term -> unit = fun (type a) (type b) (at:(a, b) atom) (t1:(a, b) term) (t2:(a, b) term) -> match t1,t2 with
     | Var({link = TLink t ; _}), _ ->
-        if not (is_equal t t2)
+        if not (is_equal at t t2)
         then raise Not_matchable
     | _, Var({link = TLink _; _}) -> Config.internal_error "[term.ml >> Subst.match_term] Unexpected link"
     | Var(v1),_ -> link at v1 t2
-    | AxName(n1), AxName(n2) when AxName.is_equal n1 n2 -> ()
+    | AxName(n1), AxName(n2) when AxName.is_equal at n1 n2 -> ()
     | Func(f1,args1), Func(f2,args2) ->
         if Symbol.is_equal f1 f2 then List.iter2 (match_term at) args1 args2 else raise Not_matchable
     | _,_ -> raise Not_matchable
@@ -1666,13 +1682,13 @@ module Subst = struct
 
   (********** is_equal_equations **********)
 
-  let rec is_equal_linked_terms t1 t2 = match t1,t2 with
+  let rec is_equal_linked_terms at t1 t2 = match t1,t2 with
     | Var(v1),Var(v2) when Variable.is_equal v1 v2 -> true
-    | Var({link = TLink t;_}), _ -> is_equal_linked_terms t t2
-    | _, Var({link = TLink t;_}) -> is_equal_linked_terms t1 t
+    | Var({link = TLink t;_}), _ -> is_equal_linked_terms at t t2
+    | _, Var({link = TLink t;_}) -> is_equal_linked_terms at t1 t
     | Var _ , _ | _ , Var _ -> false
-    | AxName(n1),AxName(n2) when AxName.is_equal n1 n2 -> true
-    | Func(f1,args1), Func(f2,args2) when Symbol.is_equal f1 f2 -> List.for_all2 is_equal_linked_terms args1 args2
+    | AxName(n1),AxName(n2) when AxName.is_equal at n1 n2 -> true
+    | Func(f1,args1), Func(f2,args2) when Symbol.is_equal f1 f2 -> List.for_all2 (is_equal_linked_terms at) args1 args2
     | _,_ -> false
 
   let is_equal_equations at subst_1 subst_2 =
@@ -1684,7 +1700,7 @@ module Subst = struct
         | _ -> link at v t
     ) subst_1;
 
-    let result = List.for_all (fun (v,t) -> is_equal_linked_terms (Var v) t) subst_2 in
+    let result = List.for_all (fun (v,t) -> is_equal_linked_terms at (Var v) t) subst_2 in
 
     cleanup at;
     Config.test (fun () -> test_is_equal_equations at subst_1 subst_2 result);
@@ -1787,12 +1803,12 @@ module Diseq = struct
     | Func(f,args) -> Func(f, List.map (rename_universal_to_existential at) args)
     | term -> term
 
-  let rec check_disjoint_domain = function
+  let rec check_disjoint_domain at = function
     | [] -> true
     | (x,_) :: q ->
-        if (List.exists (fun (y,_) -> is_equal x y) q)
+        if (List.exists (fun (y,_) -> is_equal at x y) q)
         then false
-        else check_disjoint_domain q
+        else check_disjoint_domain at q
 
   let substitution_of (type a) (type b) (at:(a,b) atom) (form:(a,b) t) = match form with
     | Top -> [],[]
@@ -1804,13 +1820,13 @@ module Diseq = struct
 
           match at with
             | Protocol ->
-                if not (check_disjoint_domain diseq)
+                if not (check_disjoint_domain at diseq)
                 then Config.internal_error "[term.ml >> Diseq.substitution_of] The disequation should not be in normal form (2)";
 
                 if List.exists (fun (x,_) -> List.exists (fun (_,t) -> var_occurs (variable_of x) t) diseq) diseq
                 then Config.internal_error "[term.ml >> Diseq.substitution_of] The disequation should not be in normal form (3)"
             | Recipe ->
-                if not (check_disjoint_domain diseq)
+                if not (check_disjoint_domain at diseq)
                 then Config.internal_error "[term.ml >> Diseq.substitution_of] The disequation should not be in normal form (4)";
 
                 if List.exists (fun (x,_) -> List.exists (fun (_,t) -> var_occurs (variable_of x) t) diseq) diseq
@@ -2361,10 +2377,10 @@ module Fact = struct
   let is_equation_free psi = Subst.is_identity psi.equation_subst
 
   let is_recipe_equivalent (type a) (fct:a t) (psi_1: a formula) (psi_2:a formula) = match fct with
-    | Deduction -> is_equal psi_1.head.df_recipe psi_2.head.df_recipe
+    | Deduction -> is_equal Recipe psi_1.head.df_recipe psi_2.head.df_recipe
     | Equality ->
-        is_equal psi_1.head.ef_recipe_1 psi_2.head.ef_recipe_1 &&
-        is_equal psi_1.head.ef_recipe_2 psi_2.head.ef_recipe_2
+        is_equal Recipe psi_1.head.ef_recipe_1 psi_2.head.ef_recipe_1 &&
+        is_equal Recipe psi_1.head.ef_recipe_2 psi_2.head.ef_recipe_2
 
   (********** Modification *********)
 
@@ -2944,10 +2960,10 @@ module Tools_General (SDF: SDF) (DF: DF) = struct
   exception No_match
 
   let rec match_term at term_df term = match term_df, term with
-    | AxName n, AxName n' when AxName.is_equal n n' -> ()
+    | AxName n, AxName n' when AxName.is_equal at n n' -> ()
     | Var(v), _ when v.quantifier = Universal ->
         begin match v.link with
-          | TLink t -> if not (is_equal t term) then raise No_match
+          | TLink t -> if not (is_equal at t term) then raise No_match
           | NoLink ->  Subst.link at v term
           | _ -> Config.internal_error "[term.ml >> SDF.match_term] Unexpected link"
         end
@@ -2970,7 +2986,7 @@ module Tools_General (SDF: SDF) (DF: DF) = struct
       let go_through_SDF () =
         SDF.exists sdf (fun psi ->
           if psi.Fact.ded_fact_list = []
-          then is_equal psi.Fact.head.Fact.df_recipe r && is_equal psi.Fact.head.Fact.df_term t
+          then is_equal Recipe psi.Fact.head.Fact.df_recipe r && is_equal Protocol psi.Fact.head.Fact.df_term t
           else
             begin try
               match_term Recipe psi.Fact.head.Fact.df_recipe r;
@@ -2997,12 +3013,12 @@ module Tools_General (SDF: SDF) (DF: DF) = struct
       in
 
       let go_through_DF var =
-        DF.exists_within_var_type k df (fun ded -> Variable.is_equal ded.BasicFact.var var && is_equal ded.BasicFact.term t)
+        DF.exists_within_var_type k df (fun ded -> Variable.is_equal ded.BasicFact.var var && is_equal Protocol ded.BasicFact.term t)
       in
 
       let rec go_through_formula_hyp var = function
         | [] -> false
-        | ded::_ when Variable.is_equal ded.BasicFact.var var && is_equal ded.BasicFact.term t -> true
+        | ded::_ when Variable.is_equal ded.BasicFact.var var && is_equal Protocol ded.BasicFact.term t -> true
         | _::q -> go_through_formula_hyp var q
       in
 
@@ -3045,7 +3061,7 @@ module Tools_General (SDF: SDF) (DF: DF) = struct
         SDF.find_first sdf (fun psi ->
           if psi.Fact.ded_fact_list = []
           then
-            if is_equal psi.Fact.head.Fact.df_recipe r
+            if is_equal Recipe psi.Fact.head.Fact.df_recipe r
             then Some (psi.Fact.head.Fact.df_term)
             else None
           else
@@ -3141,7 +3157,7 @@ module Tools_General (SDF: SDF) (DF: DF) = struct
         SDF.find_first sdf (fun psi ->
           if psi.Fact.ded_fact_list = []
           then
-            if is_equal psi.Fact.head.Fact.df_term t
+            if is_equal Protocol psi.Fact.head.Fact.df_term t
             then Some (psi.Fact.head.Fact.df_recipe)
             else None
           else
@@ -3181,7 +3197,7 @@ module Tools_General (SDF: SDF) (DF: DF) = struct
 
       let go_through_DF () =
         DF.find_within_var_type k df (fun ded ->
-          if is_equal ded.BasicFact.term t
+          if is_equal Protocol ded.BasicFact.term t
           then Some (Var(ded.BasicFact.var))
           else None
         )
@@ -3189,7 +3205,7 @@ module Tools_General (SDF: SDF) (DF: DF) = struct
 
       let rec go_through_formula_hyp = function
         | [] -> None
-        | ded::_ when is_equal ded.BasicFact.term t -> Some (Var(ded.BasicFact.var))
+        | ded::_ when is_equal Protocol ded.BasicFact.term t -> Some (Var(ded.BasicFact.var))
         | _::q -> go_through_formula_hyp q
       in
 
@@ -3286,8 +3302,8 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
         List.for_all2 (consequence sdf df)  args_r args_t
     | Func(f,_), _ when Symbol.is_constructor f -> false
     | Func(_,_), _ | AxName _, _ ->
-        SDF.exists sdf (fun fct -> (is_equal fct.Fact.df_recipe recipe) && (is_equal fct.Fact.df_term term))
-    | Var(v),_ -> DF.exists_within_var_type (Variable.type_of v) df (fun b_fct -> (Variable.is_equal b_fct.BasicFact.var v) && (is_equal b_fct.BasicFact.term term))
+        SDF.exists sdf (fun fct -> (is_equal Recipe fct.Fact.df_recipe recipe) && (is_equal Protocol fct.Fact.df_term term))
+    | Var(v),_ -> DF.exists_within_var_type (Variable.type_of v) df (fun b_fct -> (Variable.is_equal b_fct.BasicFact.var v) && (is_equal Protocol b_fct.BasicFact.term term))
 
   let partial_mem_recipe sdf df recipe =
 
@@ -3314,7 +3330,7 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
             | None -> None
             | Some t_l -> Some (Func(f,t_l))
           end
-      | Func(_,_) | AxName _ -> SDF.find sdf (fun fct -> if is_equal fct.Fact.df_recipe recipe then Some fct.Fact.df_term else None)
+      | Func(_,_) | AxName _ -> SDF.find sdf (fun fct -> if is_equal Recipe fct.Fact.df_recipe recipe then Some fct.Fact.df_term else None)
       | Var v -> DF.find_within_var_type (Variable.type_of v) df (fun b_fct -> if Variable.is_equal b_fct.BasicFact.var v then Some b_fct.BasicFact.term else None)
 
     in
@@ -3344,15 +3360,15 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
       | Func(f,args_t) ->
           begin match mem_list args_t with
             | None ->
-                begin match SDF.find sdf (fun fct -> if is_equal fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
-                  | None -> DF.find df (fun b_fct -> if is_equal b_fct.BasicFact.term pterm then Some (Var b_fct.BasicFact.var) else None)
+                begin match SDF.find sdf (fun fct -> if is_equal Protocol fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
+                  | None -> DF.find df (fun b_fct -> if is_equal Protocol b_fct.BasicFact.term pterm then Some (Var b_fct.BasicFact.var) else None)
                   | Some r -> Some r
                 end
             | Some t_r -> Some (Func(f,t_r))
           end
       | _ ->
-          begin match SDF.find sdf (fun fct -> if is_equal fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
-            | None -> DF.find df (fun b_fct -> if is_equal b_fct.BasicFact.term pterm then Some (Var b_fct.BasicFact.var) else None)
+          begin match SDF.find sdf (fun fct -> if is_equal Protocol fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
+            | None -> DF.find df (fun b_fct -> if is_equal Protocol b_fct.BasicFact.term pterm then Some (Var b_fct.BasicFact.var) else None)
             | Some r -> Some r
           end
     in
@@ -3404,7 +3420,7 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
             | None -> None
             | Some t_l -> Some (Func(f,t_l))
           end
-      | Func(_,_) | AxName _ -> SDF.find sdf (fun fct -> if is_equal fct.Fact.df_recipe recipe then Some fct.Fact.df_term else None)
+      | Func(_,_) | AxName _ -> SDF.find sdf (fun fct -> if is_equal Recipe fct.Fact.df_recipe recipe then Some fct.Fact.df_term else None)
       | Var v ->
           begin try
             let b_fct = List.find (fun b_fct -> Variable.is_equal v b_fct.BasicFact.var) b_fct_list in
@@ -3441,12 +3457,12 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
           begin match mem_list args_t with
             | None ->
                 begin try
-                  let b_fct = List.find (fun b_fct -> is_equal pterm b_fct.BasicFact.term) b_fct_list in
+                  let b_fct = List.find (fun b_fct -> is_equal Protocol pterm b_fct.BasicFact.term) b_fct_list in
                   Some (Var b_fct.BasicFact.var)
                 with
                   | Not_found ->
-                      begin match SDF.find sdf (fun fct -> if is_equal fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
-                        | None -> DF.find df (fun b_fct -> if is_equal b_fct.BasicFact.term pterm then Some (Var b_fct.BasicFact.var) else None)
+                      begin match SDF.find sdf (fun fct -> if is_equal Protocol fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
+                        | None -> DF.find df (fun b_fct -> if is_equal Protocol b_fct.BasicFact.term pterm then Some (Var b_fct.BasicFact.var) else None)
                         | Some r -> Some r
                       end
                 end
@@ -3454,12 +3470,12 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
           end
       | _ ->
           begin try
-            let b_fct = List.find (fun b_fct -> is_equal pterm b_fct.BasicFact.term) b_fct_list in
+            let b_fct = List.find (fun b_fct -> is_equal Protocol pterm b_fct.BasicFact.term) b_fct_list in
             Some (Var b_fct.BasicFact.var)
           with
             | Not_found ->
-              begin match SDF.find sdf (fun fct -> if is_equal fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
-                | None -> DF.find df (fun b_fct -> if is_equal b_fct.BasicFact.term pterm then Some (Var b_fct.BasicFact.var) else None)
+              begin match SDF.find sdf (fun fct -> if is_equal Protocol fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
+                | None -> DF.find df (fun b_fct -> if is_equal Protocol b_fct.BasicFact.term pterm then Some (Var b_fct.BasicFact.var) else None)
                 | Some r -> Some r
               end
           end
@@ -3559,15 +3575,15 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
               | Func(f,args_t) ->
                   begin match mem_list args_t with
                     | None ->
-                        begin match SDF.find sdf (fun fct -> if is_equal fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
-                          | None -> DF.find df (fun b_fct -> if is_equal b_fct.BasicFact.term pterm then Some (Var b_fct.BasicFact.var) else None)
+                        begin match SDF.find sdf (fun fct -> if is_equal Protocol fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
+                          | None -> DF.find df (fun b_fct -> if is_equal Protocol b_fct.BasicFact.term pterm then Some (Var b_fct.BasicFact.var) else None)
                           | Some r -> Some r
                         end
                     | Some t_r -> Some (Func(f,t_r))
                   end
               | _ ->
-                  begin match SDF.find sdf (fun fct -> if is_equal fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
-                    | None -> DF.find df (fun b_fct -> if is_equal b_fct.BasicFact.term pterm then Some (Var b_fct.BasicFact.var) else None)
+                  begin match SDF.find sdf (fun fct -> if is_equal Protocol fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
+                    | None -> DF.find df (fun b_fct -> if is_equal Protocol b_fct.BasicFact.term pterm then Some (Var b_fct.BasicFact.var) else None)
                     | Some r -> Some r
                   end
             end

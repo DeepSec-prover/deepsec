@@ -190,8 +190,10 @@ let trace_equivalence_classic proc1 proc2 =
   let free_names_1 = Process.get_names_with_list proc1 (fun b -> b = Public) [] in
   let free_names_2 = Process.get_names_with_list proc2 (fun b -> b = Public) free_names_1 in
 
-  let csys_1 = Constraint_system.create_from_free_names symb_proc_1 free_names_2 in
-  let csys_2 = Constraint_system.create_from_free_names symb_proc_2 free_names_2 in
+  let free_axioms = Axiom.of_public_names_list free_names_2 in
+
+  let csys_1 = Constraint_system.create_from_free_names symb_proc_1 free_axioms in
+  let csys_2 = Constraint_system.create_from_free_names symb_proc_2 free_axioms in
 
   (**** Generate the initial set ****)
 

@@ -129,15 +129,15 @@ let is_uniformity_rule_applicable csys =
 
 (********* Generators *********)
 
-let create_from_free_names data names_list =
+let create_from_free_names data axioms_list =
   Config.debug (fun () ->
-    if not (List.for_all Name.is_public names_list)
+    if not (List.for_all (fun ax -> Axiom.index_of ax <= 0) axioms_list)
     then Config.internal_error "[contraint_system.ml >> create_from_free_names] All names should be public."
   );
 
-  let sdf,_ = List.fold_left (fun (sdf,k) n ->
-    (SDF.add sdf (Fact.create_deduction_fact (of_axiom (Axiom.of_public_name n k)) (of_name n)),k+1)
-  ) (SDF.empty,1 - (List.length names_list)) names_list in
+  let sdf = List.fold_left (fun sdf ax ->
+    SDF.add sdf (Fact.create_deduction_fact (of_axiom ax) (of_name (Axiom.name_of ax)))
+  ) SDF.empty axioms_list in
 
   {
     additional_data = data;
@@ -207,7 +207,7 @@ let add_basic_fact csys bfct =
 
     let t' = Subst.apply csys.i_subst_fst t (fun x f -> f x) in
 
-    if not (is_equal t t')
+    if not (is_equal Protocol t t')
     then Config.internal_error "[constraint_system.ml >> add_basic_fact] The substitution of the constraint system should not instantiate the protocol term of the basic deduction fact."
   );
 
@@ -360,7 +360,7 @@ let display out ?(rho=None) ?(hidden=false) ?(id=0) csys = match out with
       str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Equn%d\" class=\"csys%d\"%s>\\({\\sf E}^1%s = %s\\)</div></div>\n" !str id_j id_j style id_s display_subst_eq_fst;
       str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Eqdeux%d\" class=\"csys%d\"%s>\\({\\sf E}^2%s = %s\\)</div></div>\n" !str id_j id_j style id_s display_subst_eq_snd;
       str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Sdf%d\" class=\"csys%d\"%s>\\({\\sf SDF}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (SDF.display Latex ~rho:rho csys.sdf);
-      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Uf%d\" class=\"csys%d\"%s>\\({\\sf UF}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (UF.display out ~rho:rho csys.uf);
+      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Uf%d\" class=\"csys%d\"%s>\\({\\sf UF}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (UF.display Latex ~rho:rho csys.uf);
       str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Uni%d\" class=\"csys%d\"%s>\\({\\sf R}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (Uniformity_Set.display Latex ~rho:rho csys.sub_cons);
 
       Printf.sprintf "%s            </div>\n" !str
@@ -491,7 +491,7 @@ let mgs csys =
       let x_snd = BasicFact.get_snd_ord_variable basic_fct
       and msg = BasicFact.get_protocol_term basic_fct in
 
-      let test_on_subterms recipe = not (is_equal recipe (of_variable x_snd)) in
+      let test_on_subterms recipe = not (is_equal Recipe recipe (of_variable x_snd)) in
 
       match Uniformity_Set.find_protocol_term csys.simp_Sub_Cons msg test_on_subterms with
         | None -> None
@@ -634,7 +634,7 @@ let mgs csys =
 
         apply_rules csys init_mgs Subst.identity Set_Snd_Ord_Variable.empty;
         List.map (fun (mgs,fst_ord_mgs,var_list,csys') ->
-          ((Subst.create_multiple Recipe (List.filter (fun (r_1,r_2) -> not (is_equal (of_variable r_1) r_2)) mgs), var_list), fst_ord_mgs, csys')
+          ((Subst.create_multiple Recipe (List.filter (fun (r_1,r_2) -> not (is_equal Recipe (of_variable r_1) r_2)) mgs), var_list), fst_ord_mgs, csys')
           ) !accumulator
       end
   in
@@ -651,7 +651,7 @@ let one_mgs csys =
       let x_snd = BasicFact.get_snd_ord_variable basic_fct
       and msg = BasicFact.get_protocol_term basic_fct in
 
-      let test_on_subterms recipe = not (is_equal recipe (of_variable x_snd)) in
+      let test_on_subterms recipe = not (is_equal Recipe recipe (of_variable x_snd)) in
 
       match Uniformity_Set.find_protocol_term csys.simp_Sub_Cons msg test_on_subterms with
         | None -> None
@@ -794,7 +794,7 @@ let one_mgs csys =
         raise Not_found
       with
       | Found_mgs (mgs,fst_ord_mgs,var_list,csys') ->
-          let result = ((Subst.create_multiple Recipe (List.filter (fun (r_1,r_2) -> not (is_equal (of_variable r_1) r_2)) mgs), var_list), fst_ord_mgs, csys') in
+          let result = ((Subst.create_multiple Recipe (List.filter (fun (r_1,r_2) -> not (is_equal Recipe (of_variable r_1) r_2)) mgs), var_list), fst_ord_mgs, csys') in
           Config.test (fun () -> !test_one_mgs csys (Some result));
           result
     end
