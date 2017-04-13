@@ -1637,17 +1637,32 @@ module Rule = struct
 
     apply_rest_normalisation csys_set_1
 
-  let normalisation csys_set f_continuation =
-    let res = ref [] in
+  let test_normalisation csys_set f_continuation =
+    try
+      let res = ref [] in
 
-    internal_normalisation csys_set (fun csys_set' ->
-      Config.test (fun () -> res := (Set.unit_t_of csys_set')::!res);
-      f_continuation csys_set'
-    );
+      internal_normalisation csys_set (fun csys_set' ->
+        res := (Set.unit_t_of csys_set'):: !res;
+        f_continuation csys_set'
+      );
 
-    Config.test (fun () ->
       !test_normalisation_unit (Set.unit_t_of csys_set) !res
-    )
+    with
+      | Config.Internal_error -> raise Config.Internal_error
+      | exc ->
+          let res = ref [] in
+
+          internal_normalisation csys_set (fun csys_set' ->
+            res := (Set.unit_t_of csys_set')::!res
+          );
+
+          !test_normalisation_unit (Set.unit_t_of csys_set) !res;
+          raise exc
+
+  let normalisation =
+    if Config.test_activated
+    then test_normalisation
+    else internal_normalisation
 
   exception Rule_Not_applicable
 

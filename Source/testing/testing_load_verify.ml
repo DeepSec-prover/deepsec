@@ -208,6 +208,14 @@ let data_verification_Constraint_system_Rule_rewrite =
     parsing_function = parsing_function Constraint_system.Rule.rewrite
   }
 
+let data_verification_Constraint_system_Rule_normalisation =
+  {
+    data_IO = data_IO_Constraint_system_Rule_normalisation;
+    name = "Constraint_system.Rule.normalisation";
+    parsing_function = Testing_grammar.parse_Constraint_system_Rule_normalisation
+  }
+
+
 let all_data_verification =
   [
     data_verification_Term_Subst_unify;
@@ -236,7 +244,8 @@ let all_data_verification =
     data_verification_Constraint_system_Rule_sat_formula;
     data_verification_Constraint_system_Rule_equality_constructor;
     data_verification_Constraint_system_Rule_equality;
-    data_verification_Constraint_system_Rule_rewrite
+    data_verification_Constraint_system_Rule_rewrite;
+    data_verification_Constraint_system_Rule_normalisation
   ]
 
 (** {3 Verification of tests} *)

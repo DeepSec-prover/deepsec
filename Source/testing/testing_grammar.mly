@@ -71,7 +71,7 @@ open Testing_parser_functions
 %start parse_Constraint_system_simple_of_formula parse_Constraint_system_simple_of_disequation
 %start parse_Constraint_system_apply_mgs parse_Constraint_system_apply_mgs_on_formula
 
-%start parse_Constraint_system_Rule_rules
+%start parse_Constraint_system_Rule_rules parse_Constraint_system_Rule_normalisation
 
 %type <(Testing_parser_functions.parser)> parse_Term_Subst_unify
 %type <(Testing_parser_functions.parser)> parse_Term_Subst_is_matchable
@@ -99,6 +99,7 @@ open Testing_parser_functions
 %type <(Testing_parser_functions.parser)> parse_Constraint_system_apply_mgs_on_formula
 
 %type <((unit Constraint_system.Set.t -> unit Constraint_system.Rule.continuation -> unit) -> Testing_parser_functions.parser)> parse_Constraint_system_Rule_rules
+%type <(Testing_parser_functions.parser)> parse_Constraint_system_Rule_normalisation
 
 %%
 /***********************************
@@ -629,7 +630,6 @@ parse_Constraint_system_apply_mgs_on_formula:
   | error
       { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
 
-
 parse_Constraint_system_Rule_rules:
   | header_of_test
     INPUT DDOT constraint_system_set
@@ -649,6 +649,24 @@ parse_Constraint_system_Rule_rules:
                 RLoad(Testing_functions.load_Constraint_system_Rule_rules i csys_set (res1,res2,res3))
             | Verify -> RVerify(Testing_functions.apply_Constraint_system_Rule_rules rule csys_set)
         ))
+      }
+  | error
+      { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
+
+parse_Constraint_system_Rule_normalisation:
+  | header_of_test
+    INPUT DDOT constraint_system_set
+    RESULT DDOT constraint_system_set_list
+      {
+        (fun mode -> $1 ();
+          let csys_set = parse_constraint_system_set $4 in
+
+          match mode with
+            | Load i ->
+                let result = List.map parse_constraint_system_set $7 in
+                RLoad(Testing_functions.load_Constraint_system_Rule_normalisation i csys_set result)
+            | Verify -> RVerify(Testing_functions.apply_Constraint_system_Rule_normalisation csys_set)
+        )
       }
   | error
       { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }

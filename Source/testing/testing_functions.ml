@@ -986,6 +986,24 @@ let display_rules_result out rho id_init (l_1,l_2,l_3) = match out with
       Printf.sprintf "%s            </ul>\n" !str
   | _ -> Config.internal_error "[testing_function.ml >> display_rules_result] Unexpected display mode."
 
+let display_constraint_system_set_list out rho id_init l_set = match out with
+  | Testing -> Printf.sprintf "{%s}" (display_list (Constraint_system.Set.display Testing ~rho:rho ~id:0) "," l_set)
+  | HTML ->
+      let str = ref "" in
+      let id_set = ref 1 in
+      let id_csys = ref id_init in
+
+      str := Printf.sprintf "%s            <ul>\n" !str;
+
+      List.iter (fun csys_set ->
+        str := Printf.sprintf "%s              <li> \\(\\mathcal{S}_%d = \\)%s</li>\n" !str !id_set (Constraint_system.Set.display HTML ~rho:rho ~id:!id_csys csys_set);
+        incr id_set;
+        id_csys := !id_csys + Constraint_system.Set.size csys_set
+      ) l_set;
+
+      Printf.sprintf "%s            </ul>\n" !str
+  | _ -> Config.internal_error "[testing_function.ml >> display_constraint_system_set_list] Unexpected display mode."
+
 (*************************************
       Functions to be tested
 *************************************)
@@ -2418,6 +2436,65 @@ let load_Constraint_system_Rule_rules i csys_set result =
   let _,test_latex = test_Constraint_system_Rule_rules csys_set result in
   produce_test_latex (test_latex i)
 
+(**** Constraint_system.Rule.normalisation ****)
+
+let data_IO_Constraint_system_Rule_normalisation =
+  {
+    scripts = false;
+    validated_tests = [];
+    tests_to_check = [];
+    additional_tests = [];
+
+    is_being_tested = true;
+
+    file = "constraint_system_rule_normalisation"
+  }
+
+let test_Constraint_system_Rule_normalisation csys_set result =
+  (**** Retreive the names, variables and axioms *****)
+  let gathering = List.fold_left (fun acc set -> gather_in_constraint_system_set set acc) (gather_in_constraint_system_set csys_set (gather_in_signature empty_gathering)) result in
+
+  (**** Generate the display renaming ****)
+  let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in
+
+  (**** Generate test_display for terminal *****)
+
+  let terminal_header, latex_header = header_terminal_and_latex true rho gathering in
+
+  let size = Constraint_system.Set.size csys_set in
+
+  let test_terminal =
+    { terminal_header with
+      inputs = [ (Constraint_system.Set.display Testing ~rho:rho ~id:1 csys_set, Text)  ];
+      output = ( display_constraint_system_set_list Testing rho (size +1) result, Text )
+    } in
+
+  let test_latex =
+    { latex_header with
+      inputs = [ (Constraint_system.Set.display HTML ~rho:rho ~id:1 csys_set, Text) ];
+      output = ( display_constraint_system_set_list HTML rho (size +1) result, Text )
+    } in
+
+  test_terminal, (fun _ -> test_latex, None)
+
+let update_Constraint_system_Rule_normalisation () =
+  Constraint_system.Rule.update_test_normalisation (fun csys result ->
+    if data_IO_Constraint_system_Rule_normalisation.is_being_tested
+    then add_test (test_Constraint_system_Rule_normalisation csys result) data_IO_Constraint_system_Rule_normalisation
+  )
+
+let apply_Constraint_system_Rule_normalisation csys_set =
+  let result = ref [] in
+
+  Constraint_system.Rule.normalisation csys_set (fun set -> result := set::!result);
+
+  let test_terminal,_ = test_Constraint_system_Rule_normalisation csys_set !result in
+  produce_test_terminal test_terminal
+
+let load_Constraint_system_Rule_normalisation i csys_set result =
+  let _,test_latex = test_Constraint_system_Rule_normalisation csys_set result in
+  produce_test_latex (test_latex i)
+
 (*************************************
          General function
 *************************************)
@@ -2450,7 +2527,8 @@ let list_data =
     data_IO_Constraint_system_Rule_sat_formula;
     data_IO_Constraint_system_Rule_equality_constructor;
     data_IO_Constraint_system_Rule_equality;
-    data_IO_Constraint_system_Rule_rewrite
+    data_IO_Constraint_system_Rule_rewrite;
+    data_IO_Constraint_system_Rule_normalisation
   ]
 
 let preload () = List.iter (fun data -> pre_load_tests data) list_data
@@ -2484,4 +2562,5 @@ let update () =
   update_Constraint_system_Rule_rules Constraint_system.Rule.update_test_sat_formula data_IO_Constraint_system_Rule_sat_formula;
   update_Constraint_system_Rule_rules Constraint_system.Rule.update_test_equality_constructor data_IO_Constraint_system_Rule_equality_constructor;
   update_Constraint_system_Rule_rules Constraint_system.Rule.update_test_equality data_IO_Constraint_system_Rule_equality;
-  update_Constraint_system_Rule_rules Constraint_system.Rule.update_test_rewrite data_IO_Constraint_system_Rule_rewrite
+  update_Constraint_system_Rule_rules Constraint_system.Rule.update_test_rewrite data_IO_Constraint_system_Rule_rewrite;
+  update_Constraint_system_Rule_normalisation ()

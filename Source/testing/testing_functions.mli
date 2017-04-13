@@ -242,3 +242,11 @@ val data_IO_Constraint_system_Rule_rewrite : data_IO
 val apply_Constraint_system_Rule_rules : ('a Constraint_system.Set.t -> 'a Constraint_system.Rule.continuation -> unit) -> 'a Constraint_system.Set.t -> string
 
 val load_Constraint_system_Rule_rules : int -> 'a Constraint_system.Set.t -> unit Constraint_system.Set.t list * unit Constraint_system.Set.t list * unit Constraint_system.Set.t list -> html_code
+
+(** {3 Constraint_system.Rule.normalisation} *)
+
+val data_IO_Constraint_system_Rule_normalisation : data_IO
+
+val apply_Constraint_system_Rule_normalisation : 'a Constraint_system.Set.t -> string
+
+val load_Constraint_system_Rule_normalisation : int -> 'a Constraint_system.Set.t -> unit Constraint_system.Set.t list ->  html_code
