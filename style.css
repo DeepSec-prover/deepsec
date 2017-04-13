@@ -144,6 +144,10 @@ li {
   text-align: justify;
 }
 
+ul li ul {
+  margin-top: 10px;
+}
+
 .title-news {
   float: left;
   font-weight: bold;

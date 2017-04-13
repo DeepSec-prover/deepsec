@@ -606,6 +606,17 @@ let gather_in_constraint_system_option csys_op gather = match csys_op with
   | None -> gather
   | Some csys -> gather_in_constraint_system csys gather
 
+let gather_in_constraint_system_set csys_set gather =
+  let gather_res = ref gather in
+  Constraint_system.Set.iter (fun csys -> gather_res := gather_in_constraint_system csys !gather_res) csys_set;
+  !gather_res
+
+let gather_in_rules_result (l_1,l_2,l_3) gather =
+  let gather_1 = List.fold_left (fun acc csys_set -> gather_in_constraint_system_set csys_set acc) gather l_1 in
+  let gather_2 = List.fold_left (fun acc csys_set -> gather_in_constraint_system_set csys_set acc) gather_1 l_2 in
+  List.fold_left (fun acc csys_set -> gather_in_constraint_system_set csys_set acc) gather_2 l_3
+
+
 (*************************************
       Generic display functions
 **************************************)
@@ -940,6 +951,40 @@ let display_constraint_system_option out rho = function
 let display_formula_option out rho fct = function
   | None -> bot out
   | Some form -> Fact.display_formula out ~rho:rho fct form
+
+let display_rules_result out rho id_init (l_1,l_2,l_3) = match out with
+  | Testing ->
+      Printf.sprintf "({%s},{%s},{%s})"
+        (display_list (Constraint_system.Set.display Testing ~rho:rho ~id:0) "," l_1)
+        (display_list (Constraint_system.Set.display Testing ~rho:rho ~id:0) "," l_2)
+        (display_list (Constraint_system.Set.display Testing ~rho:rho ~id:0) "," l_3)
+  | HTML ->
+      let str = ref "" in
+      let id_set = ref 1 in
+      let id_csys = ref id_init in
+
+      str := Printf.sprintf "%s            <ul>\n" !str;
+
+      List.iter (fun csys_set ->
+        str := Printf.sprintf "%s              <li> Positive : \\(\\mathcal{S}_%d = \\)%s</li>\n" !str !id_set (Constraint_system.Set.display HTML ~rho:rho ~id:!id_csys csys_set);
+        incr id_set;
+        id_csys := !id_csys + Constraint_system.Set.size csys_set
+      ) l_1;
+
+      List.iter (fun csys_set ->
+        str := Printf.sprintf "%s              <li> Negative : \\(\\mathcal{S}_%d = \\)%s</li>\n" !str !id_set (Constraint_system.Set.display HTML ~rho:rho ~id:!id_csys csys_set);
+        incr id_set;
+        id_csys := !id_csys + Constraint_system.Set.size csys_set
+      ) l_2;
+
+      List.iter (fun csys_set ->
+        str := Printf.sprintf "%s              <li> Not applicable : \\(\\mathcal{S}_%d = \\)%s</li>\n" !str !id_set (Constraint_system.Set.display HTML ~rho:rho ~id:!id_csys csys_set);
+        incr id_set;
+        id_csys := !id_csys + Constraint_system.Set.size csys_set
+      ) l_3;
+
+      Printf.sprintf "%s            </ul>\n" !str
+  | _ -> Config.internal_error "[testing_function.ml >> display_rules_result] Unexpected display mode."
 
 (*************************************
       Functions to be tested
@@ -2248,6 +2293,131 @@ let load_Constraint_system_apply_mgs_on_formula i fct csys mgs form result =
   let _,test_latex = test_Constraint_system_apply_mgs_on_formula fct csys mgs form result in
   produce_test_latex (test_latex i)
 
+(***** Constraint_system.Rule.rules *****)
+
+let data_IO_Constraint_system_Rule_sat =
+  {
+    scripts = false;
+    validated_tests = [];
+    tests_to_check = [];
+    additional_tests = [];
+
+    is_being_tested = true;
+
+    file = "constraint_system_rule_sat"
+  }
+
+let data_IO_Constraint_system_Rule_sat_disequation =
+  {
+    scripts = false;
+    validated_tests = [];
+    tests_to_check = [];
+    additional_tests = [];
+
+    is_being_tested = true;
+
+    file = "constraint_system_rule_sat_disequation"
+  }
+
+let data_IO_Constraint_system_Rule_sat_formula =
+  {
+    scripts = false;
+    validated_tests = [];
+    tests_to_check = [];
+    additional_tests = [];
+
+    is_being_tested = true;
+
+    file = "constraint_system_rule_sat_formula"
+  }
+
+let data_IO_Constraint_system_Rule_equality_constructor =
+  {
+    scripts = false;
+    validated_tests = [];
+    tests_to_check = [];
+    additional_tests = [];
+
+    is_being_tested = true;
+
+    file = "constraint_system_rule_equality_constructor"
+  }
+
+let data_IO_Constraint_system_Rule_equality =
+  {
+    scripts = false;
+    validated_tests = [];
+    tests_to_check = [];
+    additional_tests = [];
+
+    is_being_tested = true;
+
+    file = "constraint_system_rule_equality"
+  }
+
+let data_IO_Constraint_system_Rule_rewrite =
+  {
+    scripts = false;
+    validated_tests = [];
+    tests_to_check = [];
+    additional_tests = [];
+
+    is_being_tested = true;
+
+    file = "constraint_system_rule_rewrite"
+  }
+
+let test_Constraint_system_Rule_rules csys_set result =
+  (**** Retreive the names, variables and axioms *****)
+  let gathering = gather_in_constraint_system_set csys_set (gather_in_rules_result result (gather_in_signature empty_gathering)) in
+
+  (**** Generate the display renaming ****)
+  let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in
+
+  (**** Generate test_display for terminal *****)
+
+  let terminal_header, latex_header = header_terminal_and_latex true rho gathering in
+
+  let size = Constraint_system.Set.size csys_set in
+
+  let test_terminal =
+    { terminal_header with
+      inputs = [ (Constraint_system.Set.display Testing ~rho:rho ~id:1 csys_set, Text)  ];
+      output = ( display_rules_result Testing rho (size +1) result, Text )
+    } in
+
+  let test_latex =
+    { latex_header with
+      inputs = [ (Constraint_system.Set.display HTML ~rho:rho ~id:1 csys_set, Text) ];
+      output = ( display_rules_result HTML rho (size + 1) result, Text )
+    } in
+
+  test_terminal, (fun _ -> test_latex, None)
+
+let update_Constraint_system_Rule_rules update_rule data_rule =
+  update_rule (fun csys result ->
+    if data_rule.is_being_tested
+    then add_test (test_Constraint_system_Rule_rules csys result) data_rule
+  )
+
+let apply_Constraint_system_Rule_rules rule csys_set =
+  let result_pos = ref [] in
+  let result_neg = ref [] in
+  let result_not = ref [] in
+
+  let f_pos csys_set = result_pos := csys_set :: !result_pos
+  and f_neg csys_set = result_neg := csys_set :: !result_neg
+  and f_not csys_set = result_not := csys_set :: !result_not in
+
+  rule csys_set { Constraint_system.Rule.positive = f_pos; Constraint_system.Rule.negative = f_neg; Constraint_system.Rule.not_applicable = f_not };
+
+  let test_terminal,_ = test_Constraint_system_Rule_rules csys_set (!result_pos,!result_neg,!result_not) in
+  produce_test_terminal test_terminal
+
+let load_Constraint_system_Rule_rules i csys_set result =
+  let _,test_latex = test_Constraint_system_Rule_rules csys_set result in
+  produce_test_latex (test_latex i)
+
 (*************************************
          General function
 *************************************)
@@ -2274,7 +2444,13 @@ let list_data =
     data_IO_Constraint_system_simple_of_formula;
     data_IO_Constraint_system_simple_of_disequation;
     data_IO_Constraint_system_apply_mgs;
-    data_IO_Constraint_system_apply_mgs_on_formula
+    data_IO_Constraint_system_apply_mgs_on_formula;
+    data_IO_Constraint_system_Rule_sat;
+    data_IO_Constraint_system_Rule_sat_disequation;
+    data_IO_Constraint_system_Rule_sat_formula;
+    data_IO_Constraint_system_Rule_equality_constructor;
+    data_IO_Constraint_system_Rule_equality;
+    data_IO_Constraint_system_Rule_rewrite
   ]
 
 let preload () = List.iter (fun data -> pre_load_tests data) list_data
@@ -2302,4 +2478,10 @@ let update () =
   update_Constraint_system_simple_of_formula ();
   update_Constraint_system_simple_of_disequation ();
   update_Constraint_system_apply_mgs ();
-  update_Constraint_system_apply_mgs_on_formula ()
+  update_Constraint_system_apply_mgs_on_formula ();
+  update_Constraint_system_Rule_rules Constraint_system.Rule.update_test_sat data_IO_Constraint_system_Rule_sat;
+  update_Constraint_system_Rule_rules Constraint_system.Rule.update_test_sat_disequation data_IO_Constraint_system_Rule_sat_disequation;
+  update_Constraint_system_Rule_rules Constraint_system.Rule.update_test_sat_formula data_IO_Constraint_system_Rule_sat_formula;
+  update_Constraint_system_Rule_rules Constraint_system.Rule.update_test_equality_constructor data_IO_Constraint_system_Rule_equality_constructor;
+  update_Constraint_system_Rule_rules Constraint_system.Rule.update_test_equality data_IO_Constraint_system_Rule_equality;
+  update_Constraint_system_Rule_rules Constraint_system.Rule.update_test_rewrite data_IO_Constraint_system_Rule_rewrite

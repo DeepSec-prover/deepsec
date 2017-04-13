@@ -158,6 +158,56 @@ let data_verification_Constraint_system_apply_mgs_on_formula =
     parsing_function = Testing_grammar.parse_Constraint_system_apply_mgs_on_formula
   }
 
+
+let parsing_function rule =
+  let f lextoken lex =
+    let parse_f = Testing_grammar.parse_Constraint_system_Rule_rules lextoken lex in
+    parse_f rule
+  in
+  f
+
+let data_verification_Constraint_system_Rule_sat =
+  {
+    data_IO = data_IO_Constraint_system_Rule_sat;
+    name = "Constraint_system.Rule.sat";
+    parsing_function = parsing_function Constraint_system.Rule.sat
+  }
+
+let data_verification_Constraint_system_Rule_sat_disequation =
+  {
+    data_IO = data_IO_Constraint_system_Rule_sat_disequation;
+    name = "Constraint_system.Rule.sat_disequation";
+    parsing_function = parsing_function Constraint_system.Rule.sat_disequation
+  }
+
+let data_verification_Constraint_system_Rule_sat_formula =
+  {
+    data_IO = data_IO_Constraint_system_Rule_sat_formula;
+    name = "Constraint_system.Rule.sat_formula";
+    parsing_function = parsing_function Constraint_system.Rule.sat_formula
+  }
+
+let data_verification_Constraint_system_Rule_equality_constructor =
+  {
+    data_IO = data_IO_Constraint_system_Rule_equality_constructor;
+    name = "Constraint_system.Rule.equality_constructor";
+    parsing_function = parsing_function Constraint_system.Rule.equality_constructor
+  }
+
+let data_verification_Constraint_system_Rule_equality =
+  {
+    data_IO = data_IO_Constraint_system_Rule_equality;
+    name = "Constraint_system.Rule.equality";
+    parsing_function = parsing_function Constraint_system.Rule.equality
+  }
+
+let data_verification_Constraint_system_Rule_rewrite =
+  {
+    data_IO = data_IO_Constraint_system_Rule_rewrite;
+    name = "Constraint_system.Rule.rewrite";
+    parsing_function = parsing_function Constraint_system.Rule.rewrite
+  }
+
 let all_data_verification =
   [
     data_verification_Term_Subst_unify;
@@ -180,7 +230,13 @@ let all_data_verification =
     data_verification_Constraint_system_simple_of_formula;
     data_verification_Constraint_system_simple_of_disequation;
     data_verification_Constraint_system_apply_mgs;
-    data_verification_Constraint_system_apply_mgs_on_formula
+    data_verification_Constraint_system_apply_mgs_on_formula;
+    data_verification_Constraint_system_Rule_sat;
+    data_verification_Constraint_system_Rule_sat_disequation;
+    data_verification_Constraint_system_Rule_sat_formula;
+    data_verification_Constraint_system_Rule_equality_constructor;
+    data_verification_Constraint_system_Rule_equality;
+    data_verification_Constraint_system_Rule_rewrite
   ]
 
 (** {3 Verification of tests} *)

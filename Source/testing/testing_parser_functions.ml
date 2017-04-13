@@ -650,6 +650,9 @@ let parse_constraint_system (frame,df,eq1,eq2,sdf,uf,sub1,sub2,uni,il1,il2,il3,i
     (List.map (fun (i,skel) -> (i,parse_skeleton skel)) is1)
     (List.map (fun (i,skel) -> (i,parse_skeleton skel)) is2)
 
+let parse_constraint_system_set csys_l =
+  List.fold_right (fun csys acc -> Constraint_system.Set.add (parse_constraint_system csys) acc) csys_l Constraint_system.Set.empty
+
 let parse_constraint_system_option = function
   | None -> None
   | Some csys -> Some (parse_constraint_system csys)

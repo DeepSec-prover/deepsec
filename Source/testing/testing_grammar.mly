@@ -71,6 +71,8 @@ open Testing_parser_functions
 %start parse_Constraint_system_simple_of_formula parse_Constraint_system_simple_of_disequation
 %start parse_Constraint_system_apply_mgs parse_Constraint_system_apply_mgs_on_formula
 
+%start parse_Constraint_system_Rule_rules
+
 %type <(Testing_parser_functions.parser)> parse_Term_Subst_unify
 %type <(Testing_parser_functions.parser)> parse_Term_Subst_is_matchable
 %type <(Testing_parser_functions.parser)> parse_Term_Subst_is_extended_by
@@ -95,6 +97,8 @@ open Testing_parser_functions
 %type <(Testing_parser_functions.parser)> parse_Constraint_system_simple_of_disequation
 %type <(Testing_parser_functions.parser)> parse_Constraint_system_apply_mgs
 %type <(Testing_parser_functions.parser)> parse_Constraint_system_apply_mgs_on_formula
+
+%type <((unit Constraint_system.Set.t -> unit Constraint_system.Rule.continuation -> unit) -> Testing_parser_functions.parser)> parse_Constraint_system_Rule_rules
 
 %%
 /***********************************
@@ -621,6 +625,30 @@ parse_Constraint_system_apply_mgs_on_formula:
                   RLoad(Testing_functions.load_Constraint_system_apply_mgs_on_formula i Term.Fact.Equality csys mgs form result)
               | Verify -> RVerify(Testing_functions.apply_Constraint_system_apply_mgs_on_formula Term.Fact.Equality csys mgs form)
         )
+      }
+  | error
+      { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
+
+
+parse_Constraint_system_Rule_rules:
+  | header_of_test
+    INPUT DDOT constraint_system_set
+    RESULT DDOT LPAR constraint_system_set_list COMMA constraint_system_set_list COMMA constraint_system_set_list RPAR
+      {
+        (fun rule -> (fun mode ->
+          $1 ();
+
+          let csys_set = parse_constraint_system_set $4 in
+
+          match mode with
+            | Load i ->
+                let res1 = List.map parse_constraint_system_set $8 in
+                let res2 = List.map parse_constraint_system_set $10 in
+                let res3 = List.map parse_constraint_system_set $12 in
+
+                RLoad(Testing_functions.load_Constraint_system_Rule_rules i csys_set (res1,res2,res3))
+            | Verify -> RVerify(Testing_functions.apply_Constraint_system_Rule_rules rule csys_set)
+        ))
       }
   | error
       { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
@@ -1353,3 +1381,28 @@ sub_mgs_result_list:
       { [$1] }
   | mgs_result COMMA sub_mgs_result_list
       { $1::$3 }
+
+
+constraint_system_set:
+  | LCURL RCURL
+      { [] }
+  | LCURL sub_constraint_system_set RCURL
+      { $2 }
+
+sub_constraint_system_set:
+  | constraint_system
+      { [$1] }
+  | constraint_system COMMA sub_constraint_system_set
+      { $1 :: $3 }
+
+constraint_system_set_list:
+  | LCURL RCURL
+      { [] }
+  | LCURL sub_constraint_system_set_list RCURL
+      { $2 }
+
+sub_constraint_system_set_list:
+  | constraint_system_set
+      { [$1] }
+  | constraint_system_set COMMA sub_constraint_system_set_list
+      { $1 :: $3 }

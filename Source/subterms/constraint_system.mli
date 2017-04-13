@@ -199,6 +199,8 @@ module Set : sig
   (** [for_all f] {% $S$ %} returns [true] iff for all constraint system {% $\C \in S$, %} [f] {% $\C$ %} [= true].*)
   val for_all : ('a csys -> bool) -> 'a t -> bool
 
+  val size : 'a t -> int
+
   (** Returns true if the set is empty. *)
   val is_empty : 'a t -> bool
 
@@ -240,4 +242,21 @@ module Rule : sig
   val equality : 'a Set.t -> 'a continuation -> unit
 
   val rewrite : 'a Set.t -> 'a continuation -> unit
+
+  (**/**)
+
+  val update_test_normalisation : (unit Set.t -> unit Set.t list -> unit) -> unit
+
+  val update_test_sat : (unit Set.t -> unit Set.t list * unit Set.t list * unit Set.t list -> unit) -> unit
+
+  val update_test_sat_disequation : (unit Set.t -> unit Set.t list * unit Set.t list * unit Set.t list -> unit) -> unit
+
+  val update_test_sat_formula : (unit Set.t -> unit Set.t list * unit Set.t list * unit Set.t list -> unit) -> unit
+
+  val update_test_equality_constructor : (unit Set.t -> unit Set.t list * unit Set.t list * unit Set.t list -> unit) -> unit
+
+  val update_test_equality : (unit Set.t -> unit Set.t list * unit Set.t list * unit Set.t list -> unit) -> unit
+
+  val update_test_rewrite : (unit Set.t -> unit Set.t list * unit Set.t list * unit Set.t list -> unit) -> unit
+  (**/**)
 end

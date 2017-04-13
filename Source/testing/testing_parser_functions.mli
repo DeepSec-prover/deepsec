@@ -180,6 +180,8 @@ type simple_constraint_system = basic_deduction_fact list * equation list list t
 
 val parse_constraint_system : constraint_system -> unit Constraint_system.t
 
+val parse_constraint_system_set : constraint_system list -> unit Constraint_system.Set.t
+
 val parse_constraint_system_option : constraint_system option -> unit Constraint_system.t option
 
 val parse_simple_constraint_system : simple_constraint_system -> Constraint_system.simple

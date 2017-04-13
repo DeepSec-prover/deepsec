@@ -217,10 +217,28 @@ val apply_Constraint_system_apply_mgs : 'a Constraint_system.t -> Constraint_sys
 
 val load_Constraint_system_apply_mgs : int -> 'a Constraint_system.t -> Constraint_system.mgs -> 'a Constraint_system.t option -> html_code
 
-(** {3 Constraint_system.apply_mgs} *)
+(** {3 Constraint_system.apply_mgs_on_formula} *)
 
 val data_IO_Constraint_system_apply_mgs_on_formula : data_IO
 
 val apply_Constraint_system_apply_mgs_on_formula : 'a Fact.t -> 'b Constraint_system.t -> Constraint_system.mgs -> 'a Fact.formula -> string
 
 val load_Constraint_system_apply_mgs_on_formula : int -> 'a Fact.t -> 'b Constraint_system.t -> Constraint_system.mgs -> 'a Fact.formula -> 'a Fact.formula option -> html_code
+
+(** {3 The transformation rules in Constraint_system.Rule} *)
+
+val data_IO_Constraint_system_Rule_sat : data_IO
+
+val data_IO_Constraint_system_Rule_sat_disequation : data_IO
+
+val data_IO_Constraint_system_Rule_sat_formula : data_IO
+
+val data_IO_Constraint_system_Rule_equality_constructor : data_IO
+
+val data_IO_Constraint_system_Rule_equality : data_IO
+
+val data_IO_Constraint_system_Rule_rewrite : data_IO
+
+val apply_Constraint_system_Rule_rules : ('a Constraint_system.Set.t -> 'a Constraint_system.Rule.continuation -> unit) -> 'a Constraint_system.Set.t -> string
+
+val load_Constraint_system_Rule_rules : int -> 'a Constraint_system.Set.t -> unit Constraint_system.Set.t list * unit Constraint_system.Set.t list * unit Constraint_system.Set.t list -> html_code

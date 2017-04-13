@@ -1191,7 +1191,11 @@ module Set = struct
   (** The type of set of constraint systems. *)
   type 'a t = 'a csys list
 
+  let unit_t_of (type a) (csys_set: a t) = ((List.map unit_t_of csys_set): unit t)
+
   let empty = []
+
+  let size = List.length
 
   let add csys csys_set = csys::csys_set
 
@@ -1222,7 +1226,7 @@ module Set = struct
         then Printf.sprintf "\\(%s\\)" (emptyset Latex)
         else
           begin
-            let str = ref (Printf.sprintf "\\( \\{ %s \\}\\) with\n" (display_initial id (List.length csys_set))) in
+            let str = ref (Printf.sprintf "\\( \\{ %s \\}\\) with </br>\n" (display_initial id (List.length csys_set))) in
 
             str := Printf.sprintf "%s            <ul>\n" !str;
 
@@ -1247,6 +1251,79 @@ module Rule = struct
       negative : 'a Set.t -> unit;
       not_applicable : 'a Set.t -> unit
     }
+
+  (* Tested functions *)
+
+  let test_normalisation_unit : (unit Set.t -> unit Set.t list -> unit) ref = ref (fun _ _ -> ())
+
+  let update_test_normalisation f = test_normalisation_unit := f
+
+
+  let test_sat_unit : (unit Set.t -> unit Set.t list * unit Set.t list * unit Set.t list  -> unit) ref = ref (fun _ _ -> ())
+
+  let update_test_sat f = test_sat_unit := f
+
+
+  let test_sat_disequation_unit : (unit Set.t -> unit Set.t list * unit Set.t list * unit Set.t list  -> unit) ref = ref (fun _ _ -> ())
+
+  let update_test_sat_disequation f = test_sat_disequation_unit := f
+
+
+  let test_sat_formula_unit : (unit Set.t -> unit Set.t list * unit Set.t list * unit Set.t list  -> unit) ref = ref (fun _ _ -> ())
+
+  let update_test_sat_formula f = test_sat_formula_unit := f
+
+
+  let test_equality_constructor_unit : (unit Set.t -> unit Set.t list * unit Set.t list * unit Set.t list  -> unit) ref = ref (fun _ _ -> ())
+
+  let update_test_equality_constructor f = test_equality_constructor_unit := f
+
+
+  let test_equality_unit : (unit Set.t -> unit Set.t list * unit Set.t list * unit Set.t list  -> unit) ref = ref (fun _ _ -> ())
+
+  let update_test_equality f = test_equality_unit := f
+
+
+  let test_rewrite_unit : (unit Set.t -> unit Set.t list * unit Set.t list * unit Set.t list  -> unit) ref = ref (fun _ _ -> ())
+
+  let update_test_rewrite f = test_rewrite_unit := f
+
+  let test_rule (type a) (rule : a Set.t -> a continuation -> unit) test_rule (csys_set: a Set.t) (continuation_func: a continuation) =
+    try
+      let res_pos = ref ([]:unit Set.t list)
+      and res_neg = ref ([]:unit Set.t list)
+      and res_not = ref ([]:unit Set.t list) in
+
+      let f_pos (set: a Set.t) =
+        res_pos := (Set.unit_t_of set)::!res_pos;
+        continuation_func.positive set
+      and f_neg (set: a Set.t) =
+        res_neg := (Set.unit_t_of set)::!res_neg;
+        continuation_func.negative set
+      and f_not (set: a Set.t) =
+        res_not := (Set.unit_t_of set)::!res_not;
+        continuation_func.not_applicable set
+      in
+
+      rule csys_set { positive = f_pos; negative = f_neg ; not_applicable = f_not };
+
+      test_rule (Set.unit_t_of csys_set) (!res_pos,!res_neg,!res_not)
+    with
+      | Config.Internal_error -> raise Config.Internal_error
+      | exc ->
+          let res_pos = ref ([]:unit Set.t list)
+          and res_neg = ref ([]:unit Set.t list)
+          and res_not = ref ([]:unit Set.t list) in
+
+          let f_pos set = res_pos := (Set.unit_t_of set)::!res_pos
+          and f_neg set = res_neg := (Set.unit_t_of set)::!res_neg
+          and f_not set = res_not := (Set.unit_t_of set)::!res_not in
+
+          rule csys_set { positive = f_pos; negative = f_neg ; not_applicable = f_not };
+          test_rule (Set.unit_t_of csys_set) (!res_pos,!res_neg,!res_not);
+          raise exc
+
+  (* The rules *)
 
   exception Found of id_recipe_equivalent
   exception Partition_eq of id_recipe_equivalent * UF.equality_type
@@ -1520,7 +1597,7 @@ module Rule = struct
     else
       f_continuation No_change csys_set
 
-  let rec normalisation csys_set f_continuation =
+  let rec internal_normalisation csys_set f_continuation =
 
     (* Application of the normalisation rule 10 from \paper *)
     let csys_set_1 = List.map (fun csys ->
@@ -1552,7 +1629,7 @@ module Rule = struct
         normalisation_SDF_or_consequence csys_set_1 (fun changes csys_set_2 ->
           match changes with
             | No_change -> f_continuation csys_set_2
-            | SDF_addition -> normalisation csys_set_2 f_continuation
+            | SDF_addition -> internal_normalisation csys_set_2 f_continuation
             | UF_Modification -> apply_rest_normalisation csys_set_2
         )
       )
@@ -1560,9 +1637,23 @@ module Rule = struct
 
     apply_rest_normalisation csys_set_1
 
+  let normalisation csys_set f_continuation =
+    let res = ref [] in
+
+    internal_normalisation csys_set (fun csys_set' ->
+      Config.test (fun () -> res := (Set.unit_t_of csys_set')::!res);
+      f_continuation csys_set'
+    );
+
+    Config.test (fun () ->
+      !test_normalisation_unit (Set.unit_t_of csys_set) !res
+    )
+
   exception Rule_Not_applicable
 
-  let sat csys_set continuation_func =
+  (**** The rule SAT ****)
+
+  let internal_sat csys_set continuation_func =
 
     try
       let rec explore_csys_set prev_csys_set = function
@@ -1612,7 +1703,14 @@ module Rule = struct
     with
       | Rule_Not_applicable -> continuation_func.not_applicable csys_set
 
-  let sat_disequation csys_set continuation_func =
+  let sat =
+    if Config.test_activated
+    then (fun csys_set continuation_func -> test_rule internal_sat !test_sat_unit csys_set continuation_func)
+    else internal_sat
+
+  (**** The rule SAT Disequation ****)
+
+  let internal_sat_disequation csys_set continuation_func =
 
     let result_rule = ref csys_set in
 
@@ -1674,10 +1772,16 @@ module Rule = struct
     with
       | Rule_Not_applicable -> continuation_func.not_applicable !result_rule
 
+  let sat_disequation =
+    if Config.test_activated
+    then (fun csys_set continuation_func -> test_rule internal_sat_disequation !test_sat_disequation_unit csys_set continuation_func)
+    else internal_sat_disequation
+
+  (**** The rule SAT Formula ****)
 
   exception Rule_Sat_Formula_applied of mgs
 
-  let sat_formula csys_set continuation_func =
+  let internal_sat_formula csys_set continuation_func =
     try
       List.iter (fun csys ->
         try
@@ -1732,6 +1836,13 @@ module Rule = struct
 
           normalisation negative_csys_set continuation_func.negative
 
+  let sat_formula =
+    if Config.test_activated
+    then (fun csys_set continuation_func -> test_rule internal_sat_formula !test_sat_formula_unit csys_set continuation_func)
+    else internal_sat_formula
+
+  (**** The rule Equality Constructor ****)
+
   let create_eq_constructor_formula csys id_sdf univ_vars_snd symbol =
     let fact = SDF.get csys.sdf id_sdf in
 
@@ -1750,7 +1861,7 @@ module Rule = struct
       else raise Fact.Bot
     else raise Fact.Bot
 
-  let equality_constructor csys_set continuation_func =
+  let internal_equality_constructor csys_set continuation_func =
 
     let rec explore_csys explored_csys_set = function
       | [] -> None, explored_csys_set
@@ -1847,7 +1958,14 @@ module Rule = struct
 
           normalisation negative_csys_set continuation_func.negative
 
-  let equality csys_set continuation_func =
+  let equality_constructor =
+    if Config.test_activated
+    then (fun csys_set continuation_func -> test_rule internal_equality_constructor !test_equality_constructor_unit csys_set continuation_func)
+    else internal_equality_constructor
+
+  (**** The rule Equality ****)
+
+  let internal_equality csys_set continuation_func =
 
     let rec explore_csys explored_csys_set = function
       | [] -> None, explored_csys_set
@@ -1931,9 +2049,16 @@ module Rule = struct
 
           normalisation negative_csys_set continuation_func.negative
 
+  let equality =
+    if Config.test_activated
+    then (fun csys_set continuation_func -> test_rule internal_equality !test_equality_unit csys_set continuation_func)
+    else internal_equality
+
+  (**** The rule Rewrite ****)
+
   exception Rule_rewrite_applicable of mgs * (snd_ord,axiom) Subst.t
 
-  let rewrite csys_set continuation_func =
+  let internal_rewrite csys_set continuation_func =
 
     let rec explore_csys explored_csys_set = function
       | [] -> None, explored_csys_set
@@ -2043,4 +2168,9 @@ module Rule = struct
           in
 
           normalisation negative_csys_set continuation_func.negative
+
+  let rewrite =
+    if Config.test_activated
+    then (fun csys_set continuation_func -> test_rule internal_rewrite !test_rewrite_unit csys_set continuation_func)
+    else internal_rewrite
 end
