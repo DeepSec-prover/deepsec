@@ -33,6 +33,7 @@ type plain_process =
   | Out of term * term * plain_process
   | Let of pattern * term * plain_process * plain_process
   | IfThenElse of term * term * plain_process * plain_process
+  | Seq of plain_process * plain_process
 
 type extended_process =
   | EPlain of plain_process

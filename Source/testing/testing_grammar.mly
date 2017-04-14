@@ -1366,7 +1366,7 @@ sub_int_skel_list:
       { ($2,$4)::$7 }
 
 constraint_system:
-  | LPAR term_list COMMA df COMMA data_Eq COMMA data_Eq COMMA sdf COMMA uf COMMA substitution COMMA substitution COMMA uniformity_set COMMA int_list COMMA int_list COMMA int_list COMMA int_skel_list COMMA int_skel_list RPAR
+  | LPAR term_list COMMA df COMMA data_Eq COMMA data_Eq COMMA sdf COMMA uf COMMA substitution COMMA substitution COMMA uniformity_set COMMA int_list COMMA int_list COMMA int_list COMMA int_skel_list COMMA int_skel_list COMMA LCURL RCURL RPAR
       { ($2,$4,$6,$8,$10,$12,$14,$16,$18,$20,$22,$24,$26,$28) }
 
 constraint_system_option:

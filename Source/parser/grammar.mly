@@ -24,12 +24,11 @@ open Parser_functions
 
 %start main
 
-%left MID
+%left QUADDOT
+%left MID PLUS
 %nonassoc BANG
-%left PLUS
 %left THEN IN
 %left ELSE
-
 %left SEMI
 
 %type <Parser_functions.declaration> main
@@ -130,6 +129,8 @@ plain_process:
       { Par($1,$3) }
   | plain_process PLUS plain_process
       { Choice($1,$3) }
+  | plain_process QUADDOT plain_process
+      { Seq($1,$3) }
   | NEW ident SEMI plain_process
       { New($2,$4) }
   | IN LPAR term COMMA ident RPAR SEMI plain_process

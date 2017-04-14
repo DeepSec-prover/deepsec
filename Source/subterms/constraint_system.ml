@@ -85,6 +85,14 @@ let get_vars_with_list (type a) (type b) (at: (a,b) atom) csys (vars_l: (a,b) va
         UF.iter Fact.Equality csys.uf (fun psi -> result_vars := Fact.get_vars_with_list Protocol Fact.Equality psi (fun _ -> true) !result_vars);
         result_vars := Subst.get_vars_with_list Protocol csys.i_subst_fst (fun _ -> true) !result_vars;
         Uniformity_Set.iter csys.sub_cons (fun _ t -> result_vars := get_vars_with_list Protocol t (fun _ -> true) !result_vars);
+        let f = List.iter (fun (_,skel) ->
+          result_vars := get_vars_with_list Protocol skel.Rewrite_rules.p_term (fun _ -> true) !result_vars;
+          List.iter (fun b_fct ->  result_vars := get_vars_with_list Protocol (BasicFact.get_protocol_term b_fct) (fun _ -> true) !result_vars) skel.Rewrite_rules.basic_deduction_facts;
+          let (_,l,t) = skel.Rewrite_rules.rewrite_rule in
+          List.iter (fun t -> result_vars := get_vars_with_list Protocol t (fun _ -> true) !result_vars) (t::l)
+        ) in
+        f csys.skeletons_checked;
+        f csys.skeletons_to_check;
         !result_vars
     | Recipe ->
         DF.iter csys.df (fun bfct -> result_vars := get_vars_with_list Recipe (of_variable (BasicFact.get_snd_ord_variable bfct)) (fun _ -> true) !result_vars);
@@ -94,6 +102,13 @@ let get_vars_with_list (type a) (type b) (at: (a,b) atom) csys (vars_l: (a,b) va
         UF.iter Fact.Equality csys.uf (fun psi -> result_vars := Fact.get_vars_with_list Recipe Fact.Equality psi (fun _ -> true) !result_vars);
         result_vars := Subst.get_vars_with_list Recipe csys.i_subst_snd (fun _ -> true) !result_vars;
         Uniformity_Set.iter csys.sub_cons (fun r _ -> result_vars := get_vars_with_list Recipe r (fun _ -> true) !result_vars);
+        let f = List.iter (fun (_,skel) ->
+          result_vars := get_vars_with_list Recipe (of_variable skel.Rewrite_rules.variable_at_position) (fun _ -> true) !result_vars;
+          result_vars := get_vars_with_list Recipe skel.Rewrite_rules.recipe (fun _ -> true) !result_vars;
+          List.iter (fun b_fct ->  result_vars := get_vars_with_list Recipe (of_variable (BasicFact.get_snd_ord_variable b_fct)) (fun _ -> true) !result_vars) skel.Rewrite_rules.basic_deduction_facts
+        ) in
+        f csys.skeletons_checked;
+        f csys.skeletons_to_check;
         !result_vars
 
 let get_names_with_list csys names_l =
@@ -295,7 +310,7 @@ let id_class_csys =
 
 let display out ?(rho=None) ?(hidden=false) ?(id=0) csys = match out with
   | Testing ->
-      Printf.sprintf "( [ %s ], %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s )"
+      Printf.sprintf "( [ %s ], %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, { } )"  (* The last set will be for the set of non-deducible terms *)
         (display_list (display Testing ~rho:rho Protocol) ";" csys.frame)
         (DF.display out ~rho:rho csys.df)
         (Eq.display out ~rho:rho Protocol csys.eqfst)

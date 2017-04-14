@@ -33,6 +33,7 @@ type plain_process =
   | Out of term * term * plain_process
   | Let of pattern * term * plain_process * plain_process
   | IfThenElse of term * term * plain_process * plain_process
+  | Seq of plain_process * plain_process
 
 type extended_process =
   | EPlain of plain_process
@@ -178,6 +179,7 @@ let rec parse_plain_process env = function
         | proc1, Process.Choice l_2 -> Process.Choice (proc1::l_2)
         | proc1, proc2 -> Process.Choice [proc1;proc2]
       end
+  | Seq(_,_)-> error_message 0 "Sequence is not yet implemented."
   | Par(p1,p2) ->
       begin match parse_plain_process env p1, parse_plain_process env p2 with
         | Process.Par l_1, Process.Par l_2 -> Process.Par (l_1@l_2)
