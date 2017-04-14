@@ -16,15 +16,15 @@ OCAMLDOC=ocamldoc
 
 ### Compiler options
 INCLUDES_MOD = str.cmxa
-INCLUDES = -I $(SOURCE)core_library -I $(SOURCE)subterms -I $(SOURCE)testing
+INCLUDES = -I $(SOURCE)core_library -I $(SOURCE)subterms -I $(SOURCE)testing -I $(SOURCE)parser
 # Compiler options specific to OCaml version >= 4
 V4OPTIONS=$(if $(shell $(OCAMLOPT) -version | grep '^4'),-bin-annot)
 OCAMLFLAGS = $(INCLUDES) $(V4OPTIONS) -w Ae $(INCLUDES_MOD)
 
 ### Sources
 
-GENERATED_SOURCES_NAME = testing_grammar.ml testing_lexer.ml testing_grammar.mli
-GENERATED_SOURCES = $(GENERATED_SOURCES_NAME:%=$(SOURCE)testing/%)
+GENERATED_SOURCES_NAME = testing/testing_grammar.ml testing/testing_lexer.ml testing/testing_grammar.mli parser/grammar.ml parser/lexer.ml parser/grammar.mli
+GENERATED_SOURCES = $(GENERATED_SOURCES_NAME:%=$(SOURCE)%)
 
 CORE_ML_NAME = config.ml display.ml term.ml process.ml
 CORE_ML = $(CORE_ML_NAME:%.ml=$(SOURCE)core_library/%.ml)
@@ -35,10 +35,13 @@ SUBTERMS_ML = $(SUBTERMS_ML_NAME:%.ml=$(SOURCE)subterms/%.ml)
 TESTING_ML_NAME = testing_functions.ml testing_parser_functions.ml testing_grammar.ml testing_lexer.ml testing_load_verify.ml
 TESTING_ML = $(TESTING_ML_NAME:%.ml=$(SOURCE)testing/%.ml)
 
-ALL_ML = $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(SOURCE)main.ml $(SOURCE)testing/testing.ml
+PARSER_ML_NAME = parser_functions.ml grammar.ml lexer.ml
+PARSER_ML = $(PARSER_ML_NAME:%.ml=$(SOURCE)parser/%.ml)
 
-EXE_MAIN_ML = $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(SOURCE)main.ml
-EXE_TESTING_ML = $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(SOURCE)testing/testing.ml
+ALL_ML = $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(SOURCE)main.ml $(SOURCE)testing/testing.ml
+
+EXE_MAIN_ML = $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(SOURCE)main.ml
+EXE_TESTING_ML = $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(SOURCE)testing/testing.ml
 
 ALL_OBJ = $(ALL_ML:.ml=.cmx)
 EXE_MAIN_OBJ = $(EXE_MAIN_ML:.ml=.cmx)
@@ -69,7 +72,7 @@ clean:
 	rm -f $(EXECUTABLE) $(TESTING)
 	rm -f *~ *.cm[ioxt] *.cmti *.o
 	rm -f */*~ */*.cm[ioxt] */*.cmti */*.o
-	rm -f */*/*~ */*/*.cm[ioxt] */*/*.cmti */*/*.o
+	rm -f */*/*~ */*/*.cm[ioxt] */*/*.cmti */*/*.o */*/*.output
 	rm -f $(GENERATED_SOURCES)
 	rm -f .depend .display .display_obj
 

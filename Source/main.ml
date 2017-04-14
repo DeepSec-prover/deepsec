@@ -1,268 +1,83 @@
-open Term
-open Data_structure
-open Process
 
-(** Rewriting system **)
+(******* Help ******)
 
-let x_var = Variable.fresh_with_label Existential Variable.fst_ord_type "x"
-let y_var = Variable.fresh_with_label Existential Variable.fst_ord_type "y"
-let z_var = Variable.fresh_with_label Existential Variable.fst_ord_type "z"
+let print_help () =
+  Printf.printf "Name : DeepSec\n";
+  Printf.printf "   DEciding Equivalence Properties for SECurity protocols\n\n";
+  Printf.printf "Version 1.0alpha\n\n"
 
-let x = of_variable x_var
-let y = of_variable y_var
-let z = of_variable z_var
+(******* Parsing *****)
 
-let h = Symbol.new_constructor 1 "h"
-let g = Symbol.new_constructor 2 "g"
-let f = Symbol.new_constructor 2 "f"
+let parse_file path =
 
-let enc = Symbol.new_constructor 2 "enc"
+  Printf.printf "Opening file %s\n" path;
 
-let dec = Symbol.new_destructor 2 "dec"
-  [
-    ([apply_function enc [x;y]; y], x)
-  ]
+  let channel_in = open_in path in
+  let lexbuf = Lexing.from_channel channel_in in
 
-let pk = Symbol.new_constructor 1 "pk"
-let aenc = Symbol.new_constructor 2 "aenc"
+  let _ =
+    try
+      while true do
+        Parser_functions.parse_one_declaration (Grammar.main Lexer.token lexbuf)
+      done
+    with
+      | Failure msg -> Printf.printf "%s\n" msg; exit 0
+      | End_of_file -> () in
 
-let adec = Symbol.new_destructor 2 "adec"
-  [
-    ([apply_function aenc [x;apply_function pk [y]]; y], x)
-  ]
+  close_in channel_in
 
-let vk = Symbol.new_constructor 1 "vk"
-let sign = Symbol.new_constructor 2 "sign"
+(****** Main ******)
 
-let check = Symbol.new_destructor 2 "check"
-  [
-    ([apply_function sign [x;y]; apply_function vk [y]], x)
-  ]
+let rec excecute_queries = function
+  | [] -> ()
+  | (Process.Trace_Equivalence,exproc1,exproc2)::q ->
+      let proc1 = Process.of_expansed_process exproc1 in
+      let proc2 = Process.of_expansed_process exproc2 in
 
-let blind = Symbol.new_constructor 2 "blind"
-
-let unblind = Symbol.new_destructor 2 "unblind"
-  [
-    ([apply_function sign [apply_function blind [x;y];z]; y], apply_function sign [x;z])
-  ]
-
-let dest = Symbol.new_destructor 2 "dest"
-  [
-    ([apply_function h [x]; y], apply_function f [x; y]);
-    ([apply_function g [x;y]; y], apply_function h [x])
-  ]
-
-(** Next **)
-
-let x_var = Variable.fresh Protocol Existential Variable.fst_ord_type
-let y_var = Variable.fresh Protocol Existential Variable.fst_ord_type
-let z_var = Variable.fresh Protocol Existential Variable.fst_ord_type
-
-let x = of_variable x_var
-let y = of_variable y_var
-let z = of_variable z_var
-
-let a_name = Name.fresh_with_label Public "a"
-let b_name = Name.fresh_with_label Public "b"
-let c_name = Name.fresh_with_label Public "c"
-
-let a = of_name a_name
-let b = of_name b_name
-let c = of_name c_name
-
-let ded_1 = Fact.create_deduction_fact (of_axiom (Axiom.create 2)) (apply_function aenc [a;y])
-let ded_2 = Fact.create_deduction_fact (of_axiom (Axiom.create 2)) (apply_function aenc [a;b])
-let ded_3 = Fact.create_deduction_fact (of_axiom (Axiom.create 2)) (apply_function enc [a;y])
-
-
-let test_generic ded f k =
-  let skel_list = Rewrite_rules.skeletons (Fact.get_protocol_term ded) f k in
-  List.iter (fun skel ->
-    let _ = Rewrite_rules.generic_rewrite_rules_formula ded skel in
-    ()
-  ) skel_list
-
-
-(********** Test of consequence ***********)
-
-let test_partial_consequence () =
-  let _X_var = Variable.fresh Recipe Free (Variable.snd_ord_type 0) in
-  let _Y_var = Variable.fresh Recipe Free (Variable.snd_ord_type 0) in
-
-  let _X = of_variable _X_var in
-  let _Y = of_variable _Y_var in
-
-  let bdf_1 = BasicFact.create _Y_var y in
-  let bdf_2 = BasicFact.create _X_var b in
-
-  let ax_1 = of_axiom (Axiom.create 1) in
-  let ax_2 = of_axiom (Axiom.create 2) in
-  let ax_3 = of_axiom (Axiom.create 3) in
-  let ax_4 = of_axiom (Axiom.create 4) in
-
-  let ded_1 = Fact.create_deduction_fact ax_1 (apply_function h [a]) in
-  let ded_2 = Fact.create_deduction_fact (apply_function dec [ax_1;_Y]) (apply_function f [a;x]) in
-  let ded_3 = Fact.create_deduction_fact (apply_function dec [apply_function g [_X;_Y]; ax_1]) (apply_function f [y;a]) in
-
-  let df_0 = DF.empty in
-  let df_1 = DF.add df_0 bdf_1 in
-  let df_2 = DF.add df_1 bdf_2 in
-
-  let sdf_0 = SDF.empty in
-  let sdf_1 = SDF.add sdf_0 ded_1 in
-  let sdf_2 = SDF.add sdf_1 ded_2 in
-  let sdf_3 = SDF.add sdf_2 ded_3 in
-
-  let t1 = apply_function h [a] in
-  let t2 = apply_function f [a;y] in
-  let t3 = apply_function h [b] in
-  let t4 = apply_function h [apply_function f [b;y]] in
-  let t5 = apply_function h [apply_function f [a;x]] in
-  let t6 = apply_function h [apply_function h [a]] in
-  let t7 = apply_function h [apply_function f [apply_function h [b];apply_function f [y;a]]] in
-
-  let _ = Tools.partial_consequence Protocol sdf_3 df_2 t1 in
-  let _ = Tools.partial_consequence Protocol sdf_3 df_2 t2 in
-  let _ = Tools.partial_consequence Protocol sdf_3 df_2 t3 in
-  let _ = Tools.partial_consequence Protocol sdf_3 df_2 t4 in
-  let _ = Tools.partial_consequence Protocol sdf_3 df_2 t5 in
-  let _ = Tools.partial_consequence Protocol sdf_3 df_2 t6 in
-  let _ = Tools.partial_consequence Protocol sdf_3 df_2 t7 in
-
-  let uniset_0 = Uniformity_Set.empty in
-  let uniset_1 = Uniformity_Set.add uniset_0 ax_2 (apply_function h [b]) in
-  let uniset_2 = Uniformity_Set.add uniset_1 ax_3 (apply_function f [y;a]) in
-  let uniset_3 = Uniformity_Set.add uniset_2 ax_4 (apply_function f [a;y]) in
-
-  let _ = Tools.uniform_consequence sdf_3 df_2 uniset_3 t1 in
-  let _ = Tools.uniform_consequence sdf_3 df_2 uniset_3 t2 in
-  let _ = Tools.uniform_consequence sdf_3 df_2 uniset_3 t3 in
-  let _ = Tools.uniform_consequence sdf_3 df_2 uniset_3 t4 in
-  let _ = Tools.uniform_consequence sdf_3 df_2 uniset_3 t5 in
-  let _ = Tools.uniform_consequence sdf_3 df_2 uniset_3 t6 in
-  let _ = Tools.uniform_consequence sdf_3 df_2 uniset_3 t7 in
-
-  let r1 = ax_1 in
-  let r2 = apply_function dec [ax_1; _Y] in
-  let r3 = apply_function h [_X] in
-  let r4 = apply_function h [apply_function f [_X;_Y]] in
-  let r5 = apply_function dec [apply_function f [_X;_Y]; ax_1] in
-  let r6 = apply_function h [ax_1] in
-  let r7 = apply_function dec [apply_function g [apply_function h [_X]; _Y]; _Y] in
-
-  let _ = Tools.partial_consequence Recipe sdf_3 df_2 r1 in
-  let _ = Tools.partial_consequence Recipe sdf_3 df_2 r2 in
-  let _ = Tools.partial_consequence Recipe sdf_3 df_2 r3 in
-  let _ = Tools.partial_consequence Recipe sdf_3 df_2 r4 in
-  let _ = Tools.partial_consequence Recipe sdf_3 df_2 r5 in
-  let _ = Tools.partial_consequence Recipe sdf_3 df_2 r6 in
-  let _ = Tools.partial_consequence Recipe sdf_3 df_2 r7 in
-
-  let _Z_var = Variable.fresh Recipe Free (Variable.snd_ord_type 1) in
-
-  let _Z = of_variable _X_var in
-
-  let bdf_3 = BasicFact.create _Z_var a in
-
-  let _ = Tools.partial_consequence_additional Protocol sdf_3 df_2 [bdf_3] t1 in
-  let _ = Tools.partial_consequence_additional Protocol sdf_3 df_2 [bdf_3] t2 in
-  let _ = Tools.partial_consequence_additional Protocol sdf_3 df_2 [bdf_3] t3 in
-  let _ = Tools.partial_consequence_additional Protocol sdf_3 df_2 [bdf_3] t4 in
-  let _ = Tools.partial_consequence_additional Protocol sdf_3 df_2 [bdf_3] t5 in
-  let _ = Tools.partial_consequence_additional Protocol sdf_3 df_2 [bdf_3] t6 in
-  let _ = Tools.partial_consequence_additional Protocol sdf_3 df_2 [bdf_3] t7 in
-
-  let _ = Tools.partial_consequence_additional Recipe sdf_3 df_2 [bdf_3] r1 in
-  let _ = Tools.partial_consequence_additional Recipe sdf_3 df_2 [bdf_3] r2 in
-  let _ = Tools.partial_consequence_additional Recipe sdf_3 df_2 [bdf_3] r3 in
-  let _ = Tools.partial_consequence_additional Recipe sdf_3 df_2 [bdf_3] r4 in
-  let _ = Tools.partial_consequence_additional Recipe sdf_3 df_2 [bdf_3] r5 in
-  let _ = Tools.partial_consequence_additional Recipe sdf_3 df_2 [bdf_3] r6 in
-  let _ = Tools.partial_consequence_additional Recipe sdf_3 df_2 [bdf_3] r7 in
-  ()
-
-(******* Tests of Process.of_expansed_process ******)
-
-let test_of_expansed_process () =
-  let x_var = Variable.fresh Protocol Free Variable.fst_ord_type in
-
-  let k_name = Name.fresh_with_label Bound "k_1" in
-  let k'_name = Name.fresh_with_label Bound "k_2" in
-  let k''_name = Name.fresh_with_label Bound "k_3" in
-
-  let k = of_name k_name in
-  let k' = of_name k'_name in
-  let k'' = of_name k''_name in
-
-  let t1 = apply_function f [a;k] in
-  let t2 = apply_function f [a;k'] in
-  let t3 = apply_function f [b;k''] in
-  let t4 = apply_function g [a;b] in
-
-  let proc_expansed_1 =
-    Par [
-      (New (k_name,
-        Input (c,x_var, Output(c,t1,
-          Output(c,t4, Nil)))),2);
-      (New (k'_name,
-        Output (c,t2,
-          Output(c,t4, Nil))),1);
-      (New (k''_name,
-        Output (c,t3,
-          Output(c,t4, Nil))),1)
-    ]
-  in
-  let proc_expansed_2 =
-    Par [
-      (New (k_name,
-        Output (c,t1,
-          Output(c,t4, Nil))),1);
-      (New (k'_name,
-        Output (c,t2,
-          Output(c,t4, Nil))),1);
-      (New (k''_name,
-        Output (c,t3,
-          Output(c,t4, Nil))),1)
-    ]
-  in
-  let proc1 = of_expansed_process proc_expansed_1 in
-  let proc2 = of_expansed_process proc_expansed_2 in
-
-  next_output Classic Trace_Equivalence proc1 Subst.identity (fun _ _ -> ());
-  next_output Classic Trace_Equivalence proc2 Subst.identity (fun _ _ -> ());
-
-  next_input Classic Trace_Equivalence proc1 Subst.identity (fun _ _ -> ());
-  next_input Classic Trace_Equivalence proc2 Subst.identity (fun _ _ -> ());
-
-  let _ = Equivalence.trace_equivalence Classic proc2 proc2 in
-  ()
+      begin match Equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 with
+        | Equivalence.Equivalent -> Printf.printf "Equivalent processes\n"
+        | Equivalence.Not_Equivalent _ -> Printf.printf "Processes not equivalent\n"
+      end;
+      excecute_queries q
+  | _ -> Config.internal_error "Observational_equivalence not implemented"
 
 let _ =
-  Testing_load_verify.load ();
-  Testing_functions.update ();
+  let path = ref "" in
+  let arret = ref false in
+  let i = ref 1 in
 
-  try
-    let _ = Rewrite_rules.skeletons x dest 4 in
-    let _ = Rewrite_rules.skeletons x dec 2 in
-    let _ = Rewrite_rules.skeletons x adec 5 in
-    let _ = Rewrite_rules.skeletons x check 7 in
-    let _ = Rewrite_rules.skeletons x unblind 9 in
-    let _ = Rewrite_rules.skeletons (apply_function aenc [x;y]) adec 5 in
-    let _ = Rewrite_rules.skeletons (apply_function aenc [x;y]) dest 5 in
+  while !i < Array.length Sys.argv && not !arret do
+    match (Sys.argv).(!i) with
+      | str_path ->
+          if !i = Array.length Sys.argv - 1
+          then path := str_path
+          else arret := true;
+          i := !i + 1
+  done;
 
-    test_generic ded_1 adec 3;
-    test_generic ded_1 dec 3;
-    test_generic ded_2 adec 3;
-    test_generic ded_2 dec 4;
-    test_generic ded_3 adec 7;
-    test_generic ded_3 dec 1;
+  if Array.length Sys.argv <= 1
+  then arret := true;
 
-    test_partial_consequence ();
+  if !arret || !path = ""
+  then print_help ()
+  else
+    begin
+      parse_file !path;
 
-    test_of_expansed_process ();
-    Testing_functions.publish ();
-    Testing_load_verify.publish_index ()
-  with
-  | _ ->
-    Testing_functions.publish ();
-    Testing_load_verify.publish_index ()
+      if Config.test_activated
+      then
+        begin
+          Testing_load_verify.load ();
+          Testing_functions.update ();
+          try
+            excecute_queries !Parser_functions.query_list;
+            Testing_functions.publish ();
+            Testing_load_verify.publish_index ()
+          with
+          | _ ->
+            Testing_functions.publish ();
+            Testing_load_verify.publish_index ()
+        end
+      else excecute_queries !Parser_functions.query_list
+    end;
+  exit 0

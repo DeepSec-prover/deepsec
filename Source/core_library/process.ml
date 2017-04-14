@@ -913,6 +913,8 @@ type semantics =
   | Private
   | Eavesdrop
 
+let chosen_semantics = ref Classic
+
 type equivalence =
   | Trace_Equivalence
   | Observational_Equivalence

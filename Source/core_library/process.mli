@@ -96,6 +96,8 @@ type semantics =
   | Private
   | Eavesdrop
 
+val chosen_semantics : semantics ref
+
 (** We consider two types of equivalence : Trace equivalence and Observational equivalence. The algorithm can combine any of these equivalences with any of the semantics defined above.*)
 type equivalence =
   | Trace_Equivalence
