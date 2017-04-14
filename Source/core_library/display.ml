@@ -62,7 +62,7 @@ let eqf = function
   | Terminal | Testing -> "=_f"
   | Pretty_Terminal -> "=ᵩ"
   | HTML -> "=<sub>& #936;</sub>"
-  | Latex -> "=_f"
+  | Latex -> "\\mathrel{=_f}"
 
 let bot = function
   | Terminal | Testing -> "bot"

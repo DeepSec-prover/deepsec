@@ -8,6 +8,26 @@ _Axioms : { }
 _Input : _Protocol
 _Input : aenc((_w_0,pk(_l_0)),pk(_m_0)) = aenc((_x_0,pk(_k_0)),pk(_m_0))
 _Result : bot
+--Test 22:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _w_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_w_0,_l_0,pk(_m_0)) = aenc((_w_0,_l_0,pk(_m_0)),pk(_k_0))
+_Result : bot
+--Test 78:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { _X_0:5 }
+_Names : { }
+_Axioms : { _ax_3 }
+_Input : _Recipe
+_Input : _X_0 = _ax_3
+_Result : { _X_0 -> _ax_3 }
 --Test 17:
 _Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
 _Rewriting_system : [adec,[[aenc(_x_0,pk(_y_0)); _y_0], _x_0]]
@@ -18,10 +38,70 @@ _Axioms : { }
 _Input : _Protocol
 _Input : _a_0 = _a_0
 _Result : { }
+--Test 30:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_l_0,pk(_m_0)) = pk(_k_0)
+_Result : bot
+--Test 38:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_x_0,pk(_y_0)); _y_0], _x_0]]
+_Fst_ord_vars : { _w_0, _x_0, _y_0, _x_1 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : aenc((_w_0,pk(_l_0)),pk(_k_0)) = aenc((_x_1,pk(_l_0)),pk(_k_0))
+_Result : { _w_0 -> _x_1 }
+--Test 42:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0, _k_1 }
+_Axioms : { }
+_Input : _Protocol
+_Input : _k_1 = aenc((_m_0,_l_0,pk(_k_1)),pk(_k_0))
+_Result : bot
+--Test 49:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : _m_0 = aenc((_m_0,pk(_l_0)),pk(_k_0))
+_Result : bot
+--Test 62:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : pk(_l_0) = aenc(_k_0,pk(_l_0))
+_Result : bot
 --Test 3:
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_y_0,pk(_x_1)); _x_1], _y_0]; check,[[sign(_y_0,_x_1); vk(_x_1)], _y_0]; dec,[[enc(_y_0,_x_1); _x_1], _y_0]; dest,[[h(_y_0); _x_1], f(_y_0,_x_1);  [g(_y_0,_x_1); _x_1], h(_y_0)]; unblind,[[sign(blind(_y_0,_x_1),_x_0); _x_1], sign(_y_0,_x_0)]]
 _Fst_ord_vars : { _x_0, _y_0, _x_1 }
+_Snd_ord_vars : { _W_0:0 }
+_Names : { _a_0 }
+_Axioms : { _ax_0[_a_0] }
+_Input : _Recipe
+_Input : _W_0 = _ax_0
+_Result : { _W_0 -> _ax_0 }
+--Test 76:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
 _Snd_ord_vars : { _W_0:0 }
 _Names : { _a_0 }
 _Axioms : { _ax_0[_a_0] }
@@ -37,6 +117,16 @@ _Names : { _k_0, _l_0 }
 _Axioms : { }
 _Input : _Protocol
 _Input : pk(_l_0) = pk(_k_0)
+_Result : bot
+--Test 23:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _w_0, _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : pk(_m_0) = aenc((_w_0,_l_0,pk(_m_0)),pk(_k_0))
 _Result : bot
 --Test 9:
 _Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
@@ -58,6 +148,106 @@ _Axioms : { }
 _Input : _Protocol
 _Input : aenc((_w_0,_w_1),pk(_k_0)) = _a_0
 _Result : bot
+--Test 39:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_k_0,_l_0,pk(_m_0)) = pk(_m_0)
+_Result : bot
+--Test 53:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1 }
+_Snd_ord_vars : { }
+_Names : { _a_0, _k_0, _l_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_x_1,_k_0,pk(_l_0)) = _a_0
+_Result : bot
+--Test 56:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0, _k_1 }
+_Axioms : { }
+_Input : _Protocol
+_Input : pk(_k_1) = aenc((_m_0,_l_0,pk(_k_1)),pk(_k_0))
+_Result : bot
+--Test 64:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_x_0,pk(_y_0)); _y_0], _x_0]]
+_Fst_ord_vars : { _w_0, _w_1, _x_0, _y_0, _x_1, _y_1 }
+_Snd_ord_vars : { }
+_Names : { _k_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : aenc((_w_1,_w_0),pk(_k_0)) = aenc((_x_1,_y_1),pk(_k_0))
+_Result : { _w_0 -> _y_1, _w_1 -> _x_1 }
+--Test 68:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _w_0, _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0, _k_1 }
+_Axioms : { }
+_Input : _Protocol
+_Input : _k_1 = aenc((_w_0,_m_0,pk(_l_0)),pk(_k_0))
+_Result : bot
+--Test 71:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { _W_0:4 }
+_Names : { _a_0 }
+_Axioms : { _ax_0[_a_0] }
+_Input : _Recipe
+_Input : _W_0 = _ax_0
+_Result : { _W_0 -> _ax_0 }
+--Test 81:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _w_0 }
+_Snd_ord_vars : { }
+_Names : { _a_0, _k_0, _l_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_w_0,_k_0,pk(_l_0)) = _a_0
+_Result : bot
+--Test 97:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_l_0,pk(_m_0)) = aenc((_l_0,pk(_m_0)),pk(_k_0))
+_Result : bot
+--Test 99:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_x_0,pk(_y_0)); _y_0], _x_0]]
+_Fst_ord_vars : { _w_0, _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : aenc((_w_0,pk(_l_0)),pk(_k_0)) = aenc((_m_0,pk(_l_0)),pk(_k_0))
+_Result : { _w_0 -> _m_0 }
+--Test 103:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { _W_0:4 }
+_Names : { }
+_Axioms : { _ax_4 }
+_Input : _Recipe
+_Input : _W_0 = _ax_4
+_Result : { _W_0 -> _ax_4 }
 --Test 4:
 _Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
 _Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
@@ -88,6 +278,76 @@ _Axioms : { _ax_0[_a_0] }
 _Input : _Recipe
 _Input : _W_0 = _ax_0
 _Result : { _W_0 -> _ax_0 }
+--Test 27:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_x_1,_l_0,pk(_m_0)) = aenc((_x_1,_l_0,pk(_m_0)),pk(_k_0))
+_Result : bot
+--Test 36:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _w_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : aenc((_w_0,pk(_k_0)),pk(_l_0)) = pk(_k_0)
+_Result : bot
+--Test 43:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _w_0, _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : _m_0 = aenc((_w_0,_l_0,pk(_k_0)),pk(_m_0))
+_Result : bot
+--Test 50:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_k_0,pk(_l_0)) = pk(_l_0)
+_Result : bot
+--Test 83:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : _l_0 = pk(_k_0)
+_Result : bot
+--Test 91:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_x_1,pk(_y_0)); _y_0], _x_1]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : _m_0 = aenc((_x_0,_m_0,pk(_l_0)),pk(_k_0))
+_Result : bot
+--Test 106:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { _W_0:5 }
+_Names : { _a_0 }
+_Axioms : { _ax_0[_a_0] }
+_Input : _Recipe
+_Input : _W_0 = _ax_0
+_Result : { _W_0 -> _ax_0 }
 --Test 11:
 _Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
 _Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
@@ -97,6 +357,16 @@ _Names : { _k_0 }
 _Axioms : { }
 _Input : _Protocol
 _Input : _k_0 = pk(_k_0)
+_Result : bot
+--Test 26:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_x_1,pk(_y_0)); _y_0], _x_1]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : _m_0 = aenc((_x_0,_l_0,pk(_k_0)),pk(_m_0))
 _Result : bot
 --Test 18:
 _Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
@@ -108,6 +378,56 @@ _Axioms : { }
 _Input : _Protocol
 _Input : aenc((_x_1,_y_1),pk(_l_0)) = pk(_k_0)
 _Result : bot
+--Test 33:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : _m_0 = aenc((_l_0,pk(_m_0)),pk(_k_0))
+_Result : bot
+--Test 37:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { _X_0:3 }
+_Names : { }
+_Axioms : { _ax_1 }
+_Input : _Recipe
+_Input : _X_0 = _ax_1
+_Result : { _X_0 -> _ax_1 }
+--Test 47:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_x_1,pk(_y_0)); _y_0], _x_1]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : _m_0 = aenc((_x_0,_l_0,pk(_m_0)),pk(_k_0))
+_Result : bot
+--Test 52:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _w_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : aenc((_w_0,pk(_k_0)),pk(_l_0)) = pk(_l_0)
+_Result : bot
+--Test 61:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : pk(_m_0) = aenc((_l_0,pk(_k_0)),pk(_m_0))
+_Result : bot
 --Test 1:
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_y_0,pk(_x_1)); _x_1], _y_0]; check,[[sign(_y_0,_x_1); vk(_x_1)], _y_0]; dec,[[enc(_y_0,_x_1); _x_1], _y_0]; dest,[[h(_y_0); _x_1], f(_y_0,_x_1);  [g(_y_0,_x_1); _x_1], h(_y_0)]; unblind,[[sign(blind(_y_0,_x_1),_x_0); _x_1], sign(_y_0,_x_0)]]
@@ -118,6 +438,86 @@ _Axioms : { }
 _Input : _Protocol
 _Input : _b_0 = _a_0
 _Result : bot
+--Test 74:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _w_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_w_0,pk(_l_0)) = pk(_k_0)
+_Result : bot
+--Test 82:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _a_0, _k_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : _k_0 = _a_0
+_Result : bot
+--Test 86:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { _X_0:5 }
+_Names : { }
+_Axioms : { _ax_2 }
+_Input : _Recipe
+_Input : _X_0 = _ax_2
+_Result : { _X_0 -> _ax_2 }
+--Test 90:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _w_0, _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : _m_0 = aenc((_w_0,_m_0,pk(_l_0)),pk(_k_0))
+_Result : bot
+--Test 96:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : _m_0 = aenc(_l_0,pk(_k_0))
+_Result : bot
+--Test 102:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _a_0, _k_0, _l_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_k_0,pk(_l_0)) = _a_0
+_Result : bot
+--Test 107:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : pk(_m_0) = aenc(_l_0,pk(_k_0))
+_Result : bot
+--Test 25:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _w_0, _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : pk(_m_0) = aenc((_w_0,_l_0,pk(_k_0)),pk(_m_0))
+_Result : bot
 --Test 16:
 _Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
 _Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
@@ -127,6 +527,16 @@ _Names : { }
 _Axioms : { _ax_1 }
 _Input : _Recipe
 _Input : _X_0 = _ax_1
+_Result : bot
+--Test 29:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : _l_0 = aenc(_k_0,pk(_l_0))
 _Result : bot
 --Test 19:
 _Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
@@ -148,6 +558,196 @@ _Axioms : { _ax_2 }
 _Input : _Recipe
 _Input : _X_0 = _ax_2
 _Result : { _X_0 -> _ax_2 }
+--Test 44:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { _W_0:3 }
+_Names : { _a_0 }
+_Axioms : { _ax_0[_a_0] }
+_Input : _Recipe
+_Input : _W_0 = _ax_0
+_Result : { _W_0 -> _ax_0 }
+--Test 54:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _w_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_w_0,pk(_k_0)) = pk(_k_0)
+_Result : bot
+--Test 55:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _w_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_w_0,pk(_m_0)) = aenc((_l_0,pk(_m_0)),pk(_k_0))
+_Result : bot
+--Test 79:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_x_1,pk(_y_0)); _y_0], _x_1]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0, _k_1 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_m_0,pk(_k_1)) = aenc((_x_0,_l_0,pk(_k_0)),pk(_k_1))
+_Result : bot
+--Test 95:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1 }
+_Snd_ord_vars : { }
+_Names : { _a_0, _k_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : aenc((_x_1,_y_1),pk(_k_0)) = _a_0
+_Result : bot
+--Test 108:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_x_1,pk(_y_0)); _y_0], _x_1]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0, _k_1 }
+_Axioms : { }
+_Input : _Protocol
+_Input : _k_1 = aenc((_x_0,_m_0,pk(_l_0)),pk(_k_0))
+_Result : bot
+--Test 28:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0, _k_1 }
+_Axioms : { }
+_Input : _Protocol
+_Input : _k_1 = aenc((_m_0,_l_0,pk(_k_0)),pk(_k_1))
+_Result : bot
+--Test 31:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0, _k_1 }
+_Axioms : { }
+_Input : _Protocol
+_Input : pk(_k_1) = aenc((_m_0,_l_0,pk(_k_0)),pk(_k_1))
+_Result : bot
+--Test 40:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0, _k_1 }
+_Axioms : { }
+_Input : _Protocol
+_Input : _k_1 = aenc((_m_0,_k_1,pk(_l_0)),pk(_k_0))
+_Result : bot
+--Test 41:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0, _k_1 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_m_0,pk(_k_1)) = aenc(_l_0,pk(_k_0))
+_Result : bot
+--Test 57:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_x_1,_y_1) = aenc((_m_0,pk(_l_0)),pk(_k_0))
+_Result : bot
+--Test 58:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _w_0 }
+_Snd_ord_vars : { }
+_Names : { _a_0, _k_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_w_0,pk(_k_0)) = _a_0
+_Result : bot
+--Test 65:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _w_0, _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0, _k_1 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_m_0,pk(_k_1)) = aenc((_w_0,_l_0,pk(_k_0)),pk(_k_1))
+_Result : bot
+--Test 72:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _w_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_w_0,_k_0,pk(_l_0)) = pk(_l_0)
+_Result : bot
+--Test 77:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0, _k_1 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_x_1,_m_0,pk(_k_1)) = aenc((_l_0,pk(_k_0)),pk(_k_1))
+_Result : bot
+--Test 92:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0, _k_1 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_l_0,_m_0,pk(_k_1)) = aenc((_l_0,_m_0,pk(_k_1)),pk(_k_0))
+_Result : bot
+--Test 93:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _w_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0, _k_1 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_w_0,_m_0,pk(_k_1)) = aenc((_l_0,pk(_k_0)),pk(_k_1))
+_Result : bot
+--Test 98:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_x_0,pk(_y_0)); _y_0], _x_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : pk(_k_0) = pk(_k_0)
+_Result : { }
+--Test 100:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _a_0, _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_k_0,_l_0,pk(_m_0)) = _a_0
+_Result : bot
 --Test 5:
 _Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
 _Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
@@ -158,6 +758,16 @@ _Axioms : { }
 _Input : _Protocol
 _Input : aenc((_w_0,pk(_l_0)),pk(_m_0)) = pk(_k_0)
 _Result : bot
+--Test 21:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { _X_0:3, _Y_0:5 }
+_Names : { }
+_Axioms : { }
+_Input : _Recipe
+_Input : _X_0 = _Y_0
+_Result : { _Y_0 -> _X_0 }
 --Test 7:
 _Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
 _Rewriting_system : [adec,[[aenc(_x_1,pk(_y_1)); _y_1], _x_1]]
@@ -168,6 +778,116 @@ _Axioms : { }
 _Input : _Protocol
 _Input : aenc((_y_0,_x_0),pk(_k_0)) = aenc((_l_0,pk(_m_0)),pk(_k_0))
 _Result : { _x_0 -> pk(_m_0), _y_0 -> _l_0 }
+--Test 24:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _w_0, _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : _m_0 = aenc((_w_0,_l_0,pk(_m_0)),pk(_k_0))
+_Result : bot
+--Test 32:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { _W_0:1 }
+_Names : { _a_0 }
+_Axioms : { _ax_0[_a_0] }
+_Input : _Recipe
+_Input : _W_0 = _ax_0
+_Result : { _W_0 -> _ax_0 }
+--Test 45:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_x_0,pk(_y_0)); _y_0], _x_0]]
+_Fst_ord_vars : { _w_0, _w_1, _x_0, _y_0, _x_1 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : aenc((_w_1,_w_0),pk(_k_0)) = aenc((_x_1,pk(_l_0)),pk(_k_0))
+_Result : { _w_0 -> pk(_l_0), _w_1 -> _x_1 }
+--Test 46:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { _X_0:4 }
+_Names : { }
+_Axioms : { _ax_3 }
+_Input : _Recipe
+_Input : _X_0 = _ax_3
+_Result : { _X_0 -> _ax_3 }
+--Test 67:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_x_0,pk(_y_0)); _y_0], _x_0]]
+_Fst_ord_vars : { _w_0, _x_0, _y_0, _x_1, _y_1 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : aenc((_w_0,pk(_l_0)),pk(_k_0)) = aenc((_x_1,_y_1),pk(_k_0))
+_Result : { _y_1 -> pk(_l_0), _w_0 -> _x_1 }
+--Test 69:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { _X_0:5 }
+_Names : { }
+_Axioms : { _ax_1 }
+_Input : _Recipe
+_Input : _X_0 = _ax_1
+_Result : { _X_0 -> _ax_1 }
+--Test 70:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_x_1,_l_0,pk(_m_0)) = pk(_k_0)
+_Result : bot
+--Test 75:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { _X_0:4 }
+_Names : { }
+_Axioms : { _ax_1 }
+_Input : _Recipe
+_Input : _X_0 = _ax_1
+_Result : { _X_0 -> _ax_1 }
+--Test 80:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : _l_0 = aenc(_l_0,pk(_k_0))
+_Result : bot
+--Test 84:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1 }
+_Snd_ord_vars : { }
+_Names : { _a_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_x_1,_y_1) = _a_0
+_Result : bot
+--Test 94:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _w_0, _w_1 }
+_Snd_ord_vars : { }
+_Names : { _k_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_w_0,_w_1) = pk(_k_0)
+_Result : bot
 --Test 10:
 _Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
 _Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
@@ -188,6 +908,136 @@ _Axioms : { }
 _Input : _Protocol
 _Input : (_x_1,_y_1) = pk(_k_0)
 _Result : bot
+--Test 34:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _w_0, _w_1 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_w_0,_w_1) = aenc((_m_0,pk(_l_0)),pk(_k_0))
+_Result : bot
+--Test 35:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _w_0 }
+_Snd_ord_vars : { }
+_Names : { _a_0, _k_0, _l_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : aenc((_w_0,pk(_k_0)),pk(_l_0)) = _a_0
+_Result : bot
+--Test 48:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_x_0,pk(_y_0)); _y_0], _x_0]]
+_Fst_ord_vars : { _w_0, _x_0, _y_0, _x_1 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : _w_0 = aenc((_x_1,pk(_k_0)),pk(_l_0))
+_Result : { _w_0 -> aenc((_x_1,pk(_k_0)),pk(_l_0)) }
+--Test 51:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0, _k_1 }
+_Axioms : { }
+_Input : _Protocol
+_Input : _k_1 = aenc((_m_0,pk(_l_0)),pk(_k_0))
+_Result : bot
+--Test 59:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0, _k_1 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_l_0,_m_0,pk(_k_1)) = pk(_k_0)
+_Result : bot
+--Test 60:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_1)); _x_1], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1 }
+_Snd_ord_vars : { }
+_Names : { _k_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : _x_0 = pk(_k_0)
+_Result : { _x_0 -> pk(_k_0) }
+--Test 63:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_x_0,pk(_y_0)); _y_0], _x_0]]
+_Fst_ord_vars : { _w_0, _w_1, _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : aenc((_w_1,_w_0),pk(_k_0)) = aenc((_l_0,pk(_m_0)),pk(_k_0))
+_Result : { _w_0 -> pk(_m_0), _w_1 -> _l_0 }
+--Test 66:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _w_0, _w_1 }
+_Snd_ord_vars : { }
+_Names : { _a_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_w_0,_w_1) = _a_0
+_Result : bot
+--Test 73:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { _X_0:3 }
+_Names : { }
+_Axioms : { _ax_2 }
+_Input : _Recipe
+_Input : _X_0 = _ax_2
+_Result : { _X_0 -> _ax_2 }
+--Test 85:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _a_0, _k_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : pk(_k_0) = _a_0
+_Result : bot
+--Test 88:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_x_0,pk(_y_0)); _y_0], _x_0]]
+_Fst_ord_vars : { _w_0, _x_0, _y_0, _x_1, _y_1 }
+_Snd_ord_vars : { }
+_Names : { _k_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : _w_0 = aenc((_x_1,_y_1),pk(_k_0))
+_Result : { _w_0 -> aenc((_x_1,_y_1),pk(_k_0)) }
+--Test 87:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0, _k_1, _l_1 }
+_Axioms : { }
+_Input : _Protocol
+_Input : _l_1 = aenc((_k_1,_m_0,pk(_l_0)),pk(_k_0))
+_Result : bot
+--Test 89:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_x_1,_k_0,pk(_l_0)) = pk(_l_0)
+_Result : bot
 --Test 2:
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]; check,[[sign(_y_0,_x_0); vk(_x_0)], _y_0]; dec,[[enc(_y_0,_x_0); _x_0], _y_0]; dest,[[h(_y_0); _x_0], f(_y_0,_x_0);  [g(_y_0,_x_0); _x_0], h(_y_0)]; unblind,[[sign(blind(_y_0,_x_0),_x_1); _x_0], sign(_y_0,_x_1)]]
@@ -198,3 +1048,33 @@ _Axioms : { }
 _Input : _Protocol
 _Input : _a_0 = _a_0
 _Result : { }
+--Test 101:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { _X_0:3 }
+_Names : { }
+_Axioms : { _ax_3 }
+_Input : _Recipe
+_Input : _X_0 = _ax_3
+_Result : { _X_0 -> _ax_3 }
+--Test 105:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _w_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : (_w_0,_l_0,pk(_m_0)) = pk(_k_0)
+_Result : bot
+--Test 104:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : _m_0 = aenc((_l_0,pk(_k_0)),pk(_m_0))
+_Result : bot
