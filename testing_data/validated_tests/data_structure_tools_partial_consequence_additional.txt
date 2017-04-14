@@ -1,69 +1,4 @@
---Test
-_Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
-_Rewriting_system : [adec,[[aenc(_y_1,pk(_x_2)); _x_2], _y_1]; check,[[sign(_y_1,_x_2); vk(_x_2)], _y_1]; dec,[[enc(_y_1,_x_2); _x_2], _y_1]; dest,[[h(_y_1); _x_2], f(_y_1,_x_2);  [g(_y_1,_x_2); _x_2], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_2),_x_1); _x_2], sign(_y_1,_x_1)]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2 }
-_Snd_ord_vars : { _W_0:0, _W_1:0, _W_2:1 }
-_Names : { _a_0, _b_0 }
-_Axioms : { _ax_1 }
-_Input : _Recipe
-_Input : { _ax_1 |- h(_b_0), dec(_ax_1,_W_1) |- f(_b_0,_x_0), dec(g(_W_0,_W_1),_ax_1) |- f(_y_0,_b_0) }
-_Input : { _W_0:0 |- _a_0, _W_1:0 |- _y_0 }
-_Input : { _W_2:1 |- _b_0 }
-_Input : dec(g(h(_W_0),_W_1),_W_1)
-_Result : bot
---Test
-_Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
-_Rewriting_system : [adec,[[aenc(_y_1,pk(_x_2)); _x_2], _y_1]; check,[[sign(_y_1,_x_2); vk(_x_2)], _y_1]; dec,[[enc(_y_1,_x_2); _x_2], _y_1]; dest,[[h(_y_1); _x_2], f(_y_1,_x_2);  [g(_y_1,_x_2); _x_2], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_2),_x_1); _x_2], sign(_y_1,_x_1)]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2 }
-_Snd_ord_vars : { _W_1:0, _W_0:0, _W_2:1 }
-_Names : { _a_0, _b_0 }
-_Axioms : { _ax_1 }
-_Input : _Recipe
-_Input : { _ax_1 |- h(_b_0), dec(_ax_1,_W_0) |- f(_b_0,_x_0), dec(g(_W_1,_W_0),_ax_1) |- f(_y_0,_b_0) }
-_Input : { _W_1:0 |- _a_0, _W_0:0 |- _y_0 }
-_Input : { _W_2:1 |- _b_0 }
-_Input : h(_ax_1)
-_Result : (h(_ax_1),h(h(_b_0)))
---Test
-_Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
-_Rewriting_system : [adec,[[aenc(_y_1,pk(_x_2)); _x_2], _y_1]; check,[[sign(_y_1,_x_2); vk(_x_2)], _y_1]; dec,[[enc(_y_1,_x_2); _x_2], _y_1]; dest,[[h(_y_1); _x_2], f(_y_1,_x_2);  [g(_y_1,_x_2); _x_2], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_2),_x_1); _x_2], sign(_y_1,_x_1)]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2 }
-_Snd_ord_vars : { _W_0:0, _W_1:0, _W_2:1 }
-_Names : { _a_0, _b_0 }
-_Axioms : { _ax_1 }
-_Input : _Recipe
-_Input : { _ax_1 |- h(_b_0), dec(_ax_1,_W_1) |- f(_b_0,_x_0), dec(g(_W_0,_W_1),_ax_1) |- f(_y_0,_b_0) }
-_Input : { _W_0:0 |- _a_0, _W_1:0 |- _y_0 }
-_Input : { _W_2:1 |- _b_0 }
-_Input : dec(f(_W_0,_W_1),_ax_1)
-_Result : bot
---Test
-_Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
-_Rewriting_system : [adec,[[aenc(_y_1,pk(_x_2)); _x_2], _y_1]; check,[[sign(_y_1,_x_2); vk(_x_2)], _y_1]; dec,[[enc(_y_1,_x_2); _x_2], _y_1]; dest,[[h(_y_1); _x_2], f(_y_1,_x_2);  [g(_y_1,_x_2); _x_2], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_2),_x_1); _x_2], sign(_y_1,_x_1)]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2 }
-_Snd_ord_vars : { _W_0:0, _W_1:0, _W_2:1 }
-_Names : { _a_0, _b_0 }
-_Axioms : { _ax_1 }
-_Input : _Recipe
-_Input : { _ax_1 |- h(_b_0), dec(_ax_1,_W_1) |- f(_b_0,_x_0), dec(g(_W_0,_W_1),_ax_1) |- f(_y_0,_b_0) }
-_Input : { _W_0:0 |- _a_0, _W_1:0 |- _y_0 }
-_Input : { _W_2:1 |- _b_0 }
-_Input : h(f(_W_0,_W_1))
-_Result : (h(f(_W_0,_W_1)),h(f(_a_0,_y_0)))
---Test
-_Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
-_Rewriting_system : [adec,[[aenc(_y_1,pk(_x_2)); _x_2], _y_1]; check,[[sign(_y_1,_x_2); vk(_x_2)], _y_1]; dec,[[enc(_y_1,_x_2); _x_2], _y_1]; dest,[[h(_y_1); _x_2], f(_y_1,_x_2);  [g(_y_1,_x_2); _x_2], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_2),_x_1); _x_2], sign(_y_1,_x_1)]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2 }
-_Snd_ord_vars : { _W_1:0, _W_0:0, _W_2:1 }
-_Names : { _a_0, _b_0 }
-_Axioms : { _ax_1 }
-_Input : _Recipe
-_Input : { _ax_1 |- h(_b_0), dec(_ax_1,_W_0) |- f(_b_0,_x_0), dec(g(_W_1,_W_0),_ax_1) |- f(_y_0,_b_0) }
-_Input : { _W_1:0 |- _a_0, _W_0:0 |- _y_0 }
-_Input : { _W_2:1 |- _b_0 }
-_Input : h(_W_1)
-_Result : (h(_W_1),h(_a_0))
---Test
+--Test 6:
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_y_1,pk(_x_2)); _x_2], _y_1]; check,[[sign(_y_1,_x_2); vk(_x_2)], _y_1]; dec,[[enc(_y_1,_x_2); _x_2], _y_1]; dest,[[h(_y_1); _x_2], f(_y_1,_x_2);  [g(_y_1,_x_2); _x_2], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_2),_x_1); _x_2], sign(_y_1,_x_1)]]
 _Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2 }
@@ -76,72 +11,7 @@ _Input : { _W_0:0 |- _a_0, _W_1:0 |- _y_0 }
 _Input : { _W_2:1 |- _b_0 }
 _Input : dec(_ax_1,_W_1)
 _Result : (dec(_ax_1,_W_1),f(_b_0,_x_0))
---Test
-_Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
-_Rewriting_system : [adec,[[aenc(_y_1,pk(_x_2)); _x_2], _y_1]; check,[[sign(_y_1,_x_2); vk(_x_2)], _y_1]; dec,[[enc(_y_1,_x_2); _x_2], _y_1]; dest,[[h(_y_1); _x_2], f(_y_1,_x_2);  [g(_y_1,_x_2); _x_2], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_2),_x_1); _x_2], sign(_y_1,_x_1)]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2 }
-_Snd_ord_vars : { _W_1:0, _W_0:0, _W_2:1 }
-_Names : { _a_0, _b_0 }
-_Axioms : { _ax_1 }
-_Input : _Recipe
-_Input : { _ax_1 |- h(_b_0), dec(_ax_1,_W_0) |- f(_b_0,_x_0), dec(g(_W_1,_W_0),_ax_1) |- f(_y_0,_b_0) }
-_Input : { _W_1:0 |- _a_0, _W_0:0 |- _y_0 }
-_Input : { _W_2:1 |- _b_0 }
-_Input : _ax_1
-_Result : (_ax_1,h(_b_0))
---Test
-_Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
-_Rewriting_system : [adec,[[aenc(_y_1,pk(_x_1)); _x_1], _y_1]; check,[[sign(_y_1,_x_1); vk(_x_1)], _y_1]; dec,[[enc(_y_1,_x_1); _x_1], _y_1]; dest,[[h(_y_1); _x_1], f(_y_1,_x_1);  [g(_y_1,_x_1); _x_1], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_1),_x_2); _x_1], sign(_y_1,_x_2)]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2 }
-_Snd_ord_vars : { _W_1:0, _W_0:0, _W_2:1 }
-_Names : { _a_0, _b_0 }
-_Axioms : { _ax_1 }
-_Input : _Protocol
-_Input : { _ax_1 |- h(_b_0), dec(_ax_1,_W_0) |- f(_b_0,_x_0), dec(g(_W_1,_W_0),_ax_1) |- f(_y_0,_b_0) }
-_Input : { _W_1:0 |- _a_0, _W_0:0 |- _y_0 }
-_Input : { _W_2:1 |- _b_0 }
-_Input : h(f(h(_a_0),f(_y_0,_b_0)))
-_Result : (h(f(h(_W_1),f(_W_0,_W_2))),h(f(h(_a_0),f(_y_0,_b_0))))
---Test
-_Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
-_Rewriting_system : [adec,[[aenc(_y_1,pk(_x_1)); _x_1], _y_1]; check,[[sign(_y_1,_x_1); vk(_x_1)], _y_1]; dec,[[enc(_y_1,_x_1); _x_1], _y_1]; dest,[[h(_y_1); _x_1], f(_y_1,_x_1);  [g(_y_1,_x_1); _x_1], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_1),_x_2); _x_1], sign(_y_1,_x_2)]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2 }
-_Snd_ord_vars : { _W_1:0, _W_0:0, _W_2:1 }
-_Names : { _a_0, _b_0 }
-_Axioms : { _ax_1 }
-_Input : _Protocol
-_Input : { _ax_1 |- h(_b_0), dec(_ax_1,_W_0) |- f(_b_0,_x_0), dec(g(_W_1,_W_0),_ax_1) |- f(_y_0,_b_0) }
-_Input : { _W_1:0 |- _a_0, _W_0:0 |- _y_0 }
-_Input : { _W_2:1 |- _b_0 }
-_Input : h(h(_b_0))
-_Result : (h(h(_W_2)),h(h(_b_0)))
---Test
-_Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
-_Rewriting_system : [adec,[[aenc(_y_1,pk(_x_1)); _x_1], _y_1]; check,[[sign(_y_1,_x_1); vk(_x_1)], _y_1]; dec,[[enc(_y_1,_x_1); _x_1], _y_1]; dest,[[h(_y_1); _x_1], f(_y_1,_x_1);  [g(_y_1,_x_1); _x_1], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_1),_x_2); _x_1], sign(_y_1,_x_2)]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2 }
-_Snd_ord_vars : { _W_1:0, _W_0:0, _W_2:1 }
-_Names : { _a_0, _b_0 }
-_Axioms : { _ax_1 }
-_Input : _Protocol
-_Input : { _ax_1 |- h(_b_0), dec(_ax_1,_W_0) |- f(_b_0,_y_0), dec(g(_W_1,_W_0),_ax_1) |- f(_x_0,_b_0) }
-_Input : { _W_1:0 |- _a_0, _W_0:0 |- _x_0 }
-_Input : { _W_2:1 |- _b_0 }
-_Input : h(f(_b_0,_y_0))
-_Result : (h(dec(_ax_1,_W_0)),h(f(_b_0,_y_0)))
---Test
-_Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
-_Rewriting_system : [adec,[[aenc(_y_1,pk(_x_1)); _x_1], _y_1]; check,[[sign(_y_1,_x_1); vk(_x_1)], _y_1]; dec,[[enc(_y_1,_x_1); _x_1], _y_1]; dest,[[h(_y_1); _x_1], f(_y_1,_x_1);  [g(_y_1,_x_1); _x_1], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_1),_x_2); _x_1], sign(_y_1,_x_2)]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2 }
-_Snd_ord_vars : { _W_1:0, _W_0:0, _W_2:1 }
-_Names : { _a_0, _b_0 }
-_Axioms : { _ax_1 }
-_Input : _Protocol
-_Input : { _ax_1 |- h(_b_0), dec(_ax_1,_W_0) |- f(_b_0,_x_0), dec(g(_W_1,_W_0),_ax_1) |- f(_y_0,_b_0) }
-_Input : { _W_1:0 |- _a_0, _W_0:0 |- _y_0 }
-_Input : { _W_2:1 |- _b_0 }
-_Input : h(f(_a_0,_y_0))
-_Result : (h(f(_W_1,_W_0)),h(f(_a_0,_y_0)))
---Test
+--Test 12:
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_y_1,pk(_x_1)); _x_1], _y_1]; check,[[sign(_y_1,_x_1); vk(_x_1)], _y_1]; dec,[[enc(_y_1,_x_1); _x_1], _y_1]; dest,[[h(_y_1); _x_1], f(_y_1,_x_1);  [g(_y_1,_x_1); _x_1], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_1),_x_2); _x_1], sign(_y_1,_x_2)]]
 _Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2 }
@@ -154,7 +24,7 @@ _Input : { _W_1:0 |- _a_0, _W_0:0 |- _y_0 }
 _Input : { _W_2:1 |- _b_0 }
 _Input : h(_a_0)
 _Result : (h(_W_1),h(_a_0))
---Test
+--Test 9:
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_y_1,pk(_x_1)); _x_1], _y_1]; check,[[sign(_y_1,_x_1); vk(_x_1)], _y_1]; dec,[[enc(_y_1,_x_1); _x_1], _y_1]; dest,[[h(_y_1); _x_1], f(_y_1,_x_1);  [g(_y_1,_x_1); _x_1], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_1),_x_2); _x_1], sign(_y_1,_x_2)]]
 _Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2 }
@@ -165,9 +35,35 @@ _Input : _Protocol
 _Input : { _ax_1 |- h(_b_0), dec(_ax_1,_W_0) |- f(_b_0,_x_0), dec(g(_W_1,_W_0),_ax_1) |- f(_y_0,_b_0) }
 _Input : { _W_1:0 |- _a_0, _W_0:0 |- _y_0 }
 _Input : { _W_2:1 |- _b_0 }
-_Input : f(_b_0,_y_0)
-_Result : (f(_W_2,_W_0),f(_b_0,_y_0))
---Test
+_Input : h(h(_b_0))
+_Result : (h(h(_W_2)),h(h(_b_0)))
+--Test 5:
+_Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
+_Rewriting_system : [adec,[[aenc(_y_1,pk(_x_2)); _x_2], _y_1]; check,[[sign(_y_1,_x_2); vk(_x_2)], _y_1]; dec,[[enc(_y_1,_x_2); _x_2], _y_1]; dest,[[h(_y_1); _x_2], f(_y_1,_x_2);  [g(_y_1,_x_2); _x_2], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_2),_x_1); _x_2], sign(_y_1,_x_1)]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2 }
+_Snd_ord_vars : { _W_1:0, _W_0:0, _W_2:1 }
+_Names : { _a_0, _b_0 }
+_Axioms : { _ax_1 }
+_Input : _Recipe
+_Input : { _ax_1 |- h(_b_0), dec(_ax_1,_W_0) |- f(_b_0,_x_0), dec(g(_W_1,_W_0),_ax_1) |- f(_y_0,_b_0) }
+_Input : { _W_1:0 |- _a_0, _W_0:0 |- _y_0 }
+_Input : { _W_2:1 |- _b_0 }
+_Input : h(_W_1)
+_Result : (h(_W_1),h(_a_0))
+--Test 3:
+_Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
+_Rewriting_system : [adec,[[aenc(_y_1,pk(_x_2)); _x_2], _y_1]; check,[[sign(_y_1,_x_2); vk(_x_2)], _y_1]; dec,[[enc(_y_1,_x_2); _x_2], _y_1]; dest,[[h(_y_1); _x_2], f(_y_1,_x_2);  [g(_y_1,_x_2); _x_2], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_2),_x_1); _x_2], sign(_y_1,_x_1)]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2 }
+_Snd_ord_vars : { _W_0:0, _W_1:0, _W_2:1 }
+_Names : { _a_0, _b_0 }
+_Axioms : { _ax_1 }
+_Input : _Recipe
+_Input : { _ax_1 |- h(_b_0), dec(_ax_1,_W_1) |- f(_b_0,_x_0), dec(g(_W_0,_W_1),_ax_1) |- f(_y_0,_b_0) }
+_Input : { _W_0:0 |- _a_0, _W_1:0 |- _y_0 }
+_Input : { _W_2:1 |- _b_0 }
+_Input : dec(f(_W_0,_W_1),_ax_1)
+_Result : bot
+--Test 14:
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_y_1,pk(_x_1)); _x_1], _y_1]; check,[[sign(_y_1,_x_1); vk(_x_1)], _y_1]; dec,[[enc(_y_1,_x_1); _x_1], _y_1]; dest,[[h(_y_1); _x_1], f(_y_1,_x_1);  [g(_y_1,_x_1); _x_1], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_1),_x_2); _x_1], sign(_y_1,_x_2)]]
 _Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2 }
@@ -180,3 +76,107 @@ _Input : { _W_1:0 |- _a_0, _W_0:0 |- _y_0 }
 _Input : { _W_2:1 |- _b_0 }
 _Input : h(_b_0)
 _Result : (h(_W_2),h(_b_0))
+--Test 8:
+_Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
+_Rewriting_system : [adec,[[aenc(_y_1,pk(_x_1)); _x_1], _y_1]; check,[[sign(_y_1,_x_1); vk(_x_1)], _y_1]; dec,[[enc(_y_1,_x_1); _x_1], _y_1]; dest,[[h(_y_1); _x_1], f(_y_1,_x_1);  [g(_y_1,_x_1); _x_1], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_1),_x_2); _x_1], sign(_y_1,_x_2)]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2 }
+_Snd_ord_vars : { _W_1:0, _W_0:0, _W_2:1 }
+_Names : { _a_0, _b_0 }
+_Axioms : { _ax_1 }
+_Input : _Protocol
+_Input : { _ax_1 |- h(_b_0), dec(_ax_1,_W_0) |- f(_b_0,_x_0), dec(g(_W_1,_W_0),_ax_1) |- f(_y_0,_b_0) }
+_Input : { _W_1:0 |- _a_0, _W_0:0 |- _y_0 }
+_Input : { _W_2:1 |- _b_0 }
+_Input : h(f(h(_a_0),f(_y_0,_b_0)))
+_Result : (h(f(h(_W_1),f(_W_0,_W_2))),h(f(h(_a_0),f(_y_0,_b_0))))
+--Test 4:
+_Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
+_Rewriting_system : [adec,[[aenc(_y_1,pk(_x_2)); _x_2], _y_1]; check,[[sign(_y_1,_x_2); vk(_x_2)], _y_1]; dec,[[enc(_y_1,_x_2); _x_2], _y_1]; dest,[[h(_y_1); _x_2], f(_y_1,_x_2);  [g(_y_1,_x_2); _x_2], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_2),_x_1); _x_2], sign(_y_1,_x_1)]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2 }
+_Snd_ord_vars : { _W_0:0, _W_1:0, _W_2:1 }
+_Names : { _a_0, _b_0 }
+_Axioms : { _ax_1 }
+_Input : _Recipe
+_Input : { _ax_1 |- h(_b_0), dec(_ax_1,_W_1) |- f(_b_0,_x_0), dec(g(_W_0,_W_1),_ax_1) |- f(_y_0,_b_0) }
+_Input : { _W_0:0 |- _a_0, _W_1:0 |- _y_0 }
+_Input : { _W_2:1 |- _b_0 }
+_Input : h(f(_W_0,_W_1))
+_Result : (h(f(_W_0,_W_1)),h(f(_a_0,_y_0)))
+--Test 11:
+_Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
+_Rewriting_system : [adec,[[aenc(_y_1,pk(_x_1)); _x_1], _y_1]; check,[[sign(_y_1,_x_1); vk(_x_1)], _y_1]; dec,[[enc(_y_1,_x_1); _x_1], _y_1]; dest,[[h(_y_1); _x_1], f(_y_1,_x_1);  [g(_y_1,_x_1); _x_1], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_1),_x_2); _x_1], sign(_y_1,_x_2)]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2 }
+_Snd_ord_vars : { _W_1:0, _W_0:0, _W_2:1 }
+_Names : { _a_0, _b_0 }
+_Axioms : { _ax_1 }
+_Input : _Protocol
+_Input : { _ax_1 |- h(_b_0), dec(_ax_1,_W_0) |- f(_b_0,_x_0), dec(g(_W_1,_W_0),_ax_1) |- f(_y_0,_b_0) }
+_Input : { _W_1:0 |- _a_0, _W_0:0 |- _y_0 }
+_Input : { _W_2:1 |- _b_0 }
+_Input : h(f(_a_0,_y_0))
+_Result : (h(f(_W_1,_W_0)),h(f(_a_0,_y_0)))
+--Test 1:
+_Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
+_Rewriting_system : [adec,[[aenc(_y_1,pk(_x_2)); _x_2], _y_1]; check,[[sign(_y_1,_x_2); vk(_x_2)], _y_1]; dec,[[enc(_y_1,_x_2); _x_2], _y_1]; dest,[[h(_y_1); _x_2], f(_y_1,_x_2);  [g(_y_1,_x_2); _x_2], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_2),_x_1); _x_2], sign(_y_1,_x_1)]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2 }
+_Snd_ord_vars : { _W_0:0, _W_1:0, _W_2:1 }
+_Names : { _a_0, _b_0 }
+_Axioms : { _ax_1 }
+_Input : _Recipe
+_Input : { _ax_1 |- h(_b_0), dec(_ax_1,_W_1) |- f(_b_0,_x_0), dec(g(_W_0,_W_1),_ax_1) |- f(_y_0,_b_0) }
+_Input : { _W_0:0 |- _a_0, _W_1:0 |- _y_0 }
+_Input : { _W_2:1 |- _b_0 }
+_Input : dec(g(h(_W_0),_W_1),_W_1)
+_Result : bot
+--Test 13:
+_Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
+_Rewriting_system : [adec,[[aenc(_y_1,pk(_x_1)); _x_1], _y_1]; check,[[sign(_y_1,_x_1); vk(_x_1)], _y_1]; dec,[[enc(_y_1,_x_1); _x_1], _y_1]; dest,[[h(_y_1); _x_1], f(_y_1,_x_1);  [g(_y_1,_x_1); _x_1], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_1),_x_2); _x_1], sign(_y_1,_x_2)]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2 }
+_Snd_ord_vars : { _W_1:0, _W_0:0, _W_2:1 }
+_Names : { _a_0, _b_0 }
+_Axioms : { _ax_1 }
+_Input : _Protocol
+_Input : { _ax_1 |- h(_b_0), dec(_ax_1,_W_0) |- f(_b_0,_x_0), dec(g(_W_1,_W_0),_ax_1) |- f(_y_0,_b_0) }
+_Input : { _W_1:0 |- _a_0, _W_0:0 |- _y_0 }
+_Input : { _W_2:1 |- _b_0 }
+_Input : f(_b_0,_y_0)
+_Result : (f(_W_2,_W_0),f(_b_0,_y_0))
+--Test 2:
+_Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
+_Rewriting_system : [adec,[[aenc(_y_1,pk(_x_2)); _x_2], _y_1]; check,[[sign(_y_1,_x_2); vk(_x_2)], _y_1]; dec,[[enc(_y_1,_x_2); _x_2], _y_1]; dest,[[h(_y_1); _x_2], f(_y_1,_x_2);  [g(_y_1,_x_2); _x_2], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_2),_x_1); _x_2], sign(_y_1,_x_1)]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2 }
+_Snd_ord_vars : { _W_1:0, _W_0:0, _W_2:1 }
+_Names : { _a_0, _b_0 }
+_Axioms : { _ax_1 }
+_Input : _Recipe
+_Input : { _ax_1 |- h(_b_0), dec(_ax_1,_W_0) |- f(_b_0,_x_0), dec(g(_W_1,_W_0),_ax_1) |- f(_y_0,_b_0) }
+_Input : { _W_1:0 |- _a_0, _W_0:0 |- _y_0 }
+_Input : { _W_2:1 |- _b_0 }
+_Input : h(_ax_1)
+_Result : (h(_ax_1),h(h(_b_0)))
+--Test 7:
+_Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
+_Rewriting_system : [adec,[[aenc(_y_1,pk(_x_2)); _x_2], _y_1]; check,[[sign(_y_1,_x_2); vk(_x_2)], _y_1]; dec,[[enc(_y_1,_x_2); _x_2], _y_1]; dest,[[h(_y_1); _x_2], f(_y_1,_x_2);  [g(_y_1,_x_2); _x_2], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_2),_x_1); _x_2], sign(_y_1,_x_1)]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2 }
+_Snd_ord_vars : { _W_1:0, _W_0:0, _W_2:1 }
+_Names : { _a_0, _b_0 }
+_Axioms : { _ax_1 }
+_Input : _Recipe
+_Input : { _ax_1 |- h(_b_0), dec(_ax_1,_W_0) |- f(_b_0,_x_0), dec(g(_W_1,_W_0),_ax_1) |- f(_y_0,_b_0) }
+_Input : { _W_1:0 |- _a_0, _W_0:0 |- _y_0 }
+_Input : { _W_2:1 |- _b_0 }
+_Input : _ax_1
+_Result : (_ax_1,h(_b_0))
+--Test 10:
+_Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
+_Rewriting_system : [adec,[[aenc(_y_1,pk(_x_1)); _x_1], _y_1]; check,[[sign(_y_1,_x_1); vk(_x_1)], _y_1]; dec,[[enc(_y_1,_x_1); _x_1], _y_1]; dest,[[h(_y_1); _x_1], f(_y_1,_x_1);  [g(_y_1,_x_1); _x_1], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_1),_x_2); _x_1], sign(_y_1,_x_2)]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1, _y_1, _x_2 }
+_Snd_ord_vars : { _W_1:0, _W_0:0, _W_2:1 }
+_Names : { _a_0, _b_0 }
+_Axioms : { _ax_1 }
+_Input : _Protocol
+_Input : { _ax_1 |- h(_b_0), dec(_ax_1,_W_0) |- f(_b_0,_y_0), dec(g(_W_1,_W_0),_ax_1) |- f(_x_0,_b_0) }
+_Input : { _W_1:0 |- _a_0, _W_0:0 |- _x_0 }
+_Input : { _W_2:1 |- _b_0 }
+_Input : h(f(_b_0,_y_0))
+_Result : (h(dec(_ax_1,_W_0)),h(f(_b_0,_y_0)))

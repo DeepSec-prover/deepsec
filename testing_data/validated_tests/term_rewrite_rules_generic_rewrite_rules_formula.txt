@@ -1,14 +1,4 @@
---Test
-_Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
-_Rewriting_system : [adec,[[aenc(_x_1,pk(_y_1)); _y_1], _x_1]; check,[[sign(_x_1,_y_1); vk(_y_1)], _x_1]; dec,[[enc(_x_1,_y_1); _y_1], _x_1]; dest,[[h(_x_1); _y_1], f(_x_1,_y_1);  [g(_x_1,_y_1); _y_1], h(_x_1)]; unblind,[[sign(blind(_x_1,_y_1),_y_0); _y_1], sign(_x_1,_y_0)]]
-_Fst_ord_vars : { _x_0, _z_0, _z_1, _y_0, _x_1, _y_1, _x_2, _y_2 }
-_Snd_ord_vars : { _Z_0:1, _Z_1:1 }
-_Names : { _a_0 }
-_Axioms : { _ax_2 }
-_Input : _ax_2 |- enc(_a_0,_x_2)
-_Input : (_Z_0, dec(_Z_0,_Z_1), dec(_z_1,_z_0), _Z_1:1 |- _z_0 /\ _Z_0:1 |- _z_1, dec(enc(_y_2,_x_0),_x_0) -> _y_2)
-_Result : { dec(_ax_2,_Z_1) |- _a_0 <= _Z_1:1 |- _x_2 ;  { } }
---Test
+--Test 2:
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_x_1,pk(_y_1)); _y_1], _x_1]; check,[[sign(_x_1,_y_1); vk(_y_1)], _x_1]; dec,[[enc(_x_1,_y_1); _y_1], _x_1]; dest,[[h(_x_1); _y_1], f(_x_1,_y_1);  [g(_x_1,_y_1); _y_1], h(_x_1)]; unblind,[[sign(blind(_x_1,_y_1),_y_0); _y_1], sign(_x_1,_y_0)]]
 _Fst_ord_vars : { _x_0, _z_0, _z_1, _y_0, _x_1, _y_1, _x_2, _y_2 }
@@ -18,3 +8,13 @@ _Axioms : { _ax_2 }
 _Input : _ax_2 |- aenc(_a_0,_x_2)
 _Input : (_Z_0, adec(_Z_0,_Z_1), adec(_z_1,_z_0), _Z_1:3 |- _z_0 /\ _Z_0:3 |- _z_1, adec(aenc(_y_2,pk(_x_0)),_x_0) -> _y_2)
 _Result : { adec(_ax_2,_Z_1) |- _a_0 <= _Z_1:3 |- _z_0 ;  { _x_2 -> pk(_z_0) } }
+--Test 1:
+_Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
+_Rewriting_system : [adec,[[aenc(_x_1,pk(_y_1)); _y_1], _x_1]; check,[[sign(_x_1,_y_1); vk(_y_1)], _x_1]; dec,[[enc(_x_1,_y_1); _y_1], _x_1]; dest,[[h(_x_1); _y_1], f(_x_1,_y_1);  [g(_x_1,_y_1); _y_1], h(_x_1)]; unblind,[[sign(blind(_x_1,_y_1),_y_0); _y_1], sign(_x_1,_y_0)]]
+_Fst_ord_vars : { _x_0, _z_0, _z_1, _y_0, _x_1, _y_1, _x_2, _y_2 }
+_Snd_ord_vars : { _Z_0:1, _Z_1:1 }
+_Names : { _a_0 }
+_Axioms : { _ax_2 }
+_Input : _ax_2 |- enc(_a_0,_x_2)
+_Input : (_Z_0, dec(_Z_0,_Z_1), dec(_z_1,_z_0), _Z_1:1 |- _z_0 /\ _Z_0:1 |- _z_1, dec(enc(_y_2,_x_0),_x_0) -> _y_2)
+_Result : { dec(_ax_2,_Z_1) |- _a_0 <= _Z_1:1 |- _x_2 ;  { } }

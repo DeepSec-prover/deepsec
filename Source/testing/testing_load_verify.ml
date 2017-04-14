@@ -215,7 +215,6 @@ let data_verification_Constraint_system_Rule_normalisation =
     parsing_function = Testing_grammar.parse_Constraint_system_Rule_normalisation
   }
 
-
 let all_data_verification =
   [
     data_verification_Term_Subst_unify;
@@ -251,69 +250,71 @@ let all_data_verification =
 (** {3 Verification of tests} *)
 
 (** [verify_function data] verifies all the tests for the function associated to [data]. *)
-let verify_function data_verif =
-  let nb_of_tests = List.length data_verif.data_IO.validated_tests in
+let verify_tests data_verif =
+  let nb_of_tests = Hashtbl.length data_verif.data_IO.validated_tests in
 
-  Printf.printf "### Testing the function %s... \n" data_verif.name;
+  Printf.printf "Testing the function %s..." data_verif.name;
 
-  let test_number = ref 1
-  and faulty_tests = ref [] in
-
-  List.iter (fun (valid_test,_) ->
+  Hashtbl.iter (fun valid_test (_,_) ->
     Process.initialise ();
     let lexbuf = Lexing.from_string valid_test in
     match (data_verif.parsing_function Testing_lexer.token lexbuf) Verify with
       | RLoad _ -> Config.internal_error "[testing_load_verify.ml >> verify_function] It should be a result for verify."
       | RVerify test when test <> valid_test ->
-          faulty_tests := (!test_number, valid_test, test) :: !faulty_tests;
-          incr test_number
-      | _ -> incr test_number
+
+          let nb_fault = 1 + Hashtbl.length data_verif.data_IO.faulty_tests in
+
+          (* Refresh HTML for orginal *)
+          Process.initialise ();
+          let lexbuf = Lexing.from_string valid_test in
+          let valid_latex = match (data_verif.parsing_function Testing_lexer.token lexbuf) (Load (2*nb_fault)) with
+            | RVerify _ -> Config.internal_error "[testing_load_verify.ml >> refresh_html] It should be a result for loading."
+            | RLoad latex_test -> latex_test
+          in
+
+          (* Refresh HTML for new *)
+          Process.initialise ();
+          let lexbuf = Lexing.from_string test in
+          let new_latex = match (data_verif.parsing_function Testing_lexer.token lexbuf) (Load (2*nb_fault + 1)) with
+            | RVerify _ -> Config.internal_error "[testing_load_verify.ml >> refresh_html] It should be a result for loading."
+            | RLoad latex_test -> latex_test
+          in
+
+          Hashtbl.add data_verif.data_IO.faulty_tests valid_test (valid_latex,test,new_latex,nb_fault)
+      | _ -> ()
   ) data_verif.data_IO.validated_tests;
 
-  faulty_tests := List.rev !faulty_tests;
+  let nb_of_faulty_tests = Hashtbl.length data_verif.data_IO.faulty_tests in
 
-  if !faulty_tests = []
-  then Printf.printf "All %d tests of the function %s were successful\n " nb_of_tests data_verif.name
+  if nb_of_faulty_tests = 0
+  then Printf.printf ": All %d tests were successful\n" nb_of_tests
   else
     begin
-      let nb_of_faulty_tests = List.length !faulty_tests in
-      Printf.printf "%d tests of the function %s were successful but %d were unsuccessful.\n\n"  (nb_of_tests - nb_of_faulty_tests) data_verif.name nb_of_faulty_tests;
-
-      List.iter (fun (nb,valid_test,faulty_test) ->
-        Printf.printf "**** Test %d of %s was unsuccessful.\n" nb data_verif.name;
-        Printf.printf "---- Validated test :\n%s" valid_test;
-        Printf.printf "---- Test obtained after verification :\n%s\n" faulty_test
-      ) !faulty_tests
+      Printf.printf ": %d tests were successful but %d were unsuccessful. [WARNING]\n"  (nb_of_tests - nb_of_faulty_tests) nb_of_faulty_tests;
+      publish_faulty_tests data_verif.data_IO
     end
 
 (** [verify_all] verifies all the tests of all the functions. *)
-let verify_all () = List.iter verify_function all_data_verification
+let verify_all () = List.iter verify_tests all_data_verification
 
 (** {3 Loading of tests} *)
 
-let load_function data_verif =
+let refresh_html_tests data_verif hash_tbl =
+  Hashtbl.filter_map_inplace (fun terminal_test (_,id) ->
+    Process.initialise ();
+    let lexbuf = Lexing.from_string terminal_test in
+    match (data_verif.parsing_function Testing_lexer.token lexbuf) (Load id) with
+      | RVerify _ -> Config.internal_error "[testing_load_verify.ml >> refresh_html] It should be a result for loading."
+      | RLoad latex_test -> Some (latex_test,id)
+  ) hash_tbl
 
-  data_verif.data_IO.validated_tests <-
-    List.mapi (fun i (terminal_test,_) ->
-      Process.initialise ();
-      let lexbuf = Lexing.from_string terminal_test in
-      match (data_verif.parsing_function Testing_lexer.token lexbuf) (Load (i+1)) with
-        | RVerify _ -> Config.internal_error "[testing_load_verify.ml >> load_function] It should be a result for loading."
-        | RLoad latex_test -> (terminal_test,latex_test)
-    ) data_verif.data_IO.validated_tests;
-
-  data_verif.data_IO.tests_to_check <-
-    List.mapi (fun i (terminal_test,_) ->
-      Process.initialise ();
-      let lexbuf = Lexing.from_string terminal_test in
-      match (data_verif.parsing_function Testing_lexer.token lexbuf) (Load (i+1)) with
-        | RVerify _ -> Config.internal_error "[testing_load_verify.ml >> load_function] It should be a result for loading."
-        | RLoad latex_test -> (terminal_test,latex_test)
-    ) data_verif.data_IO.tests_to_check
+let refresh_html data_verif =
+  refresh_html_tests data_verif data_verif.data_IO.validated_tests;
+  refresh_html_tests data_verif data_verif.data_IO.tests_to_check
 
 let load () =
   preload ();
-  List.iter load_function all_data_verification
+  List.iter refresh_html all_data_verification
 
 (** {3 Other publications} *)
 
@@ -332,7 +333,7 @@ let publish_index () =
       !Config.path_index
       data.data_IO.file
       data.name
-      (List.length data.data_IO.validated_tests)
+      (Hashtbl.length data.data_IO.validated_tests)
   in
 
   let print_to_check_address data =
@@ -340,7 +341,7 @@ let publish_index () =
       !Config.path_index
       data.data_IO.file
       data.name
-      ((List.length data.data_IO.tests_to_check) + (List.length data.data_IO.additional_tests))
+      (Hashtbl.length data.data_IO.tests_to_check)
   in
 
   let line = ref "" in

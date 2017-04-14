@@ -15,11 +15,11 @@ type data_IO =
   {
     scripts : bool;
 
-    mutable validated_tests : (string * html_code) list; (** The tests that have been validated by a user *)
-    mutable tests_to_check : (string * html_code) list; (** The tests that have been produced during previous testing execution but haven't been validated yet. *)
-    mutable additional_tests : (string * html_code) list; (** The tests that are produced during the current execution of DeepSec. *)
+    validated_tests : (string, html_code * int) Hashtbl.t; (** The tests that have been validated by a user *)
+    tests_to_check : (string, html_code * int) Hashtbl.t; (** The tests that have been produced during previous testing execution but haven't been validated yet. *)
+    faulty_tests : (string, html_code * string * html_code * int) Hashtbl.t; (** The tests that have been found faulty during the verification process. *)
 
-    mutable is_being_tested : bool; (** When [is_being_tested] is set to [false], no test is produce for this function *)
+    is_being_tested : bool; (** When [is_being_tested] is set to [false], no test is produce for this function *)
 
     file : string (** Core name of the files that will be generated for this function. *)
   }
@@ -27,8 +27,14 @@ type data_IO =
 (** Preload the tests, validated or not. *)
 val preload : unit -> unit
 
+val preload_tests : data_IO -> unit
+
 (** Publish all the tests, validated or not, i.e. it generates every html and txt files for each tested function. *)
 val publish : unit -> unit
+
+val publish_tests : data_IO -> unit
+
+val publish_faulty_tests :  data_IO -> unit
 
 (** This function updates the testing functions. This must be executed before running running any tests otherwise the tests will not be produced *)
 val update : unit -> unit

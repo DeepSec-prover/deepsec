@@ -968,7 +968,7 @@ module Symbol = struct
     | Testing ->
         let without_tuple = List.filter (fun f -> f.cat <> Tuple) !all_constructors in
         let str_without_tuple = Printf.sprintf "{ %s }" (display_list (display_with_arity Testing) ", " without_tuple) in
-        let str_tuple = Printf.sprintf "{ %s }" (display_list display_tuple ", " !all_tuple) in
+        let str_tuple = Printf.sprintf "{ %s }" (display_list display_tuple ", " (List.sort (fun f1 f2 -> compare f1.arity f2.arity) !all_tuple)) in
         str_without_tuple^" Tuple : "^str_tuple
     | _ ->
         let without_tuple = List.filter (fun f -> f.cat <> Tuple) !all_constructors in

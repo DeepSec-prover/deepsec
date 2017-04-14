@@ -18,7 +18,9 @@ val all_data_verification : data_verification list
 (** {3 Verification of tests} *)
 
 (** [verify_function data] verifies all the tests for the function associated to [data]. *)
-val verify_function : data_verification -> unit
+val verify_tests : data_verification -> unit
+
+
 
 (** [verify_all] verifies all the tests of all the functions. *)
 val verify_all : unit -> unit
@@ -26,6 +28,8 @@ val verify_all : unit -> unit
 (** {3 Loading of tests} *)
 
 val load : unit -> unit
+
+val refresh_html : data_verification -> unit
 
 (** {3 Other publications} *)
 

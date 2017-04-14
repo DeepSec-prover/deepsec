@@ -1,4 +1,4 @@
---Test
+--Test 1:
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_y_0,pk(_x_1)); _x_1], _y_0]; check,[[sign(_y_0,_x_1); vk(_x_1)], _y_0]; dec,[[enc(_y_0,_x_1); _x_1], _y_0]; dest,[[h(_y_0); _x_1], f(_y_0,_x_1);  [g(_y_0,_x_1); _x_1], h(_y_0)]; unblind,[[sign(blind(_y_0,_x_1),_x_0); _x_1], sign(_y_0,_x_0)]]
 _Fst_ord_vars : { _x_0, _y_0, _x_1 }

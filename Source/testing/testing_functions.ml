@@ -86,11 +86,11 @@ type data_IO =
   {
     scripts  : bool;
 
-    mutable validated_tests : (string * html_code) list;
-    mutable tests_to_check : (string * html_code) list;
-    mutable additional_tests : (string * html_code) list;
+    validated_tests : (string, html_code * int) Hashtbl.t;
+    tests_to_check : (string, html_code * int) Hashtbl.t;
+    faulty_tests : (string, html_code * string * html_code * int) Hashtbl.t;
 
-    mutable is_being_tested : bool;
+    is_being_tested : bool;
 
     file : string
   }
@@ -98,27 +98,28 @@ type data_IO =
 let add_test (test_terminal,test_html) data =
   let terminal = produce_test_terminal test_terminal in
 
-  if List.for_all (fun (str,_) -> str <> terminal) data.validated_tests
-    && List.for_all (fun (str,_) -> str <> terminal) data.tests_to_check
-    && List.for_all (fun (str,_) -> str <> terminal) data.additional_tests
+  if not (Hashtbl.mem data.validated_tests terminal)
+    && not (Hashtbl.mem data.tests_to_check terminal)
   then
     begin
-      let nb_tests = 1 + (List.length data.tests_to_check) + (List.length data.additional_tests) in
-      let html = produce_test_latex (test_html nb_tests) in
-      data.additional_tests <- (terminal,html) :: data.additional_tests
+      let nb_test = 1 + (Hashtbl.length data.tests_to_check) in
+      let html = produce_test_latex (test_html nb_test) in
+      Hashtbl.add data.tests_to_check terminal (html,nb_test)
     end
 
 let template_line = "        <!-- The tests -->"
 let next_test = "        <!-- Next test -->"
-let next_test_txt = "--Test"
+let next_test_txt = "--Test "
+let reg_next_test_txt = Str.regexp "--Test \\([0-9]+\\):"
 
 let scripts_loading = "            // Loading the different processes"
 
+let reg_faulty = Str.regexp "          <div id=\"title-sub\">Validated tests"
 
 (**** Publication of tests *****)
 
 let publish_loading_script out =
-  List.iter (fun (_,html_code) -> match html_code with
+  Hashtbl.iter (fun _ (html_code,_) -> match html_code with
     | NoScript _ -> Config.internal_error "[testing_functions.ml >> public_loading_script] There should be some script."
     | Script(_,_,id_l) ->
         List.iter (fun id ->
@@ -136,21 +137,17 @@ let publish_tests_to_check data =
   let out_html = open_out path_html in
   let out_txt = open_out path_txt in
 
-  let acc = ref 1 in
-
-  let print (test_txt,test_latex) =
+  let print test_txt (test_latex,id) =
     Printf.fprintf out_html "%s\n" next_test;
     Printf.fprintf out_html "        <hr class=\"big-separation\">\n";
-    Printf.fprintf out_html "        <p class=\"title-test\"> Test %d -- Validate <input class=\"ValidateButton\" type=\"checkbox\" value=\"%d\" onchange=\"display_command();\"></p>\n" !acc !acc;
+    Printf.fprintf out_html "        <p class=\"title-test\"> Test %d -- Validate <input class=\"ValidateButton\" type=\"checkbox\" value=\"%d\" onchange=\"display_command();\"></p>\n" id id;
     begin match test_latex with
       | NoScript _ when data.scripts -> Config.internal_error "[testing_function >> publish_tests_to_check] No script when there should be."
       | Script(_,_,_) when not data.scripts -> Config.internal_error "[testing_function >> publish_tests_to_check] Presence of a script when there should not be."
       | NoScript str | Script (str,_,_) -> Printf.fprintf out_html "%s" str
     end;
-    Printf.fprintf out_txt "%s\n" next_test_txt;
-    Printf.fprintf out_txt "%s" test_txt;
-
-    acc := !acc + 1
+    Printf.fprintf out_txt "%s%d:\n" next_test_txt id;
+    Printf.fprintf out_txt "%s" test_txt
   in
 
   let open_template = open_in path_template in
@@ -164,10 +161,7 @@ let publish_tests_to_check data =
     line := l
   done;
 
-  let additional_tests = List.rev data.additional_tests in
-
-  List.iter print data.tests_to_check;
-  List.iter print additional_tests;
+  Hashtbl.iter print data.tests_to_check;
 
   close_out out_txt;
 
@@ -182,7 +176,6 @@ let publish_tests_to_check data =
       done;
 
       publish_loading_script out_html data.tests_to_check;
-      publish_loading_script out_html additional_tests;
 
       begin try
         while true do
@@ -196,15 +189,10 @@ let publish_tests_to_check data =
       let path_script = Printf.sprintf "%stesting_data/%s%s.js" !Config.path_index "tests_to_check/" data.file in
       let out_script = open_out path_script in
 
-      List.iter (fun (_,html_code) -> match html_code with
+      Hashtbl.iter (fun _ (html_code,_) -> match html_code with
         | NoScript _ -> Config.internal_error "[testing_function >> publish_tests_to_check] No script when there should be (2)"
         | Script(_,script,_) -> Printf.fprintf out_script "%s\n" script
       ) data.tests_to_check;
-
-      List.iter (fun (_,html_code) -> match html_code with
-        | NoScript _ -> Config.internal_error "[testing_function >> publish_tests_to_check] No script when there should be (3)"
-        | Script(_,script,_) -> Printf.fprintf out_script "%s\n" script
-      ) data.additional_tests;
 
       close_out out_script
     end
@@ -225,22 +213,18 @@ let publish_validated_tests data =
   let out_html = open_out path_html in
   let out_txt = open_out path_txt in
 
-  let acc = ref 1 in
-
-  let print (test_txt,test_latex) =
+  let print test_txt (test_latex,id) =
     Printf.fprintf out_html "%s\n" next_test;
     Printf.fprintf out_html "        <hr class=\"big-separation\">\n";
-    Printf.fprintf out_html "        <p class=\"title-test\"> Test %d</p>\n" !acc;
+    Printf.fprintf out_html "        <p class=\"title-test\"> Test %d</p>\n" id;
     begin match test_latex with
       | NoScript _ when data.scripts -> Config.internal_error "[testing_function >> publish_validated_tests] No script when there should be."
       | Script(_,_,_) when not data.scripts -> Config.internal_error "[testing_function >> publish_validated_tests] Presence of a script when there should not be."
       | NoScript str | Script (str,_,_) -> Printf.fprintf out_html "%s" str
     end;
 
-    Printf.fprintf out_txt "%s\n" next_test_txt;
-    Printf.fprintf out_txt "%s" test_txt;
-
-    acc := !acc + 1
+    Printf.fprintf out_txt "%s%d:\n" next_test_txt id;
+    Printf.fprintf out_txt "%s" test_txt
   in
 
   let open_template = open_in path_template in
@@ -254,7 +238,7 @@ let publish_validated_tests data =
     line := l
   done;
 
-  List.iter print data.validated_tests;
+  Hashtbl.iter print data.validated_tests;
 
   close_out out_txt;
 
@@ -282,11 +266,122 @@ let publish_validated_tests data =
       let path_script = Printf.sprintf "%stesting_data/%s%s.js" !Config.path_index "validated_tests/" data.file in
       let out_script = open_out path_script in
 
-      List.iter (fun (_,html_code) -> match html_code with
+      Hashtbl.iter (fun _ (html_code,_) -> match html_code with
         | NoScript _ -> Config.internal_error "[testing_function >> publish_validated_tests] No script when there should be (2)"
         | Script(_,script,_) ->
             Printf.fprintf out_script "%s\n" script
       ) data.validated_tests;
+
+      close_out out_script
+    end
+  else
+    try
+      while true do
+        let l = input_line open_template in
+        Printf.fprintf out_html "%s\n" l;
+      done
+    with
+      | End_of_file -> close_out out_html
+
+let publish_loading_script_for_faulty out =
+  let publish_script = function
+    | NoScript _ -> Config.internal_error "[testing_functions.ml >> public_loading_script] There should be some script."
+    | Script(_,_,id_l) ->
+        List.iter (fun id ->
+          Printf.fprintf out "            window.loadData%s = function (data) {\n" id;
+          Printf.fprintf out "                DAG.displayGraph(data, jQuery('#dag-name-%s'), jQuery('#dag-%s > svg'));\n" id id;
+          Printf.fprintf out "            };\n\n"
+        ) id_l
+  in
+
+  Hashtbl.iter (fun _ (valid_html_code,_,new_html_code,_) ->
+    publish_script valid_html_code;
+    publish_script new_html_code
+  )
+
+let publish_faulty_tests data =
+  let path_html = Printf.sprintf "%stesting_data/%s%s.html" !Config.path_index "faulty_tests/" data.file
+  and path_txt = Printf.sprintf "%stesting_data/%s%s.txt" !Config.path_index "faulty_tests/" data.file
+  and path_template = Printf.sprintf "%s%s%s.html" !Config.path_html_template "validated_tests/" data.file in
+
+  let out_html = open_out path_html in
+  let out_txt = open_out path_txt in
+
+  let print valid_test_txt (valid_test_latex,new_test_txt,new_test_latex,id) =
+    Printf.fprintf out_html "        <hr class=\"big-separation\">\n";
+    Printf.fprintf out_html "        <p class=\"title-test\"> Original validated test %d</p>\n" id;
+    begin match valid_test_latex with
+      | NoScript _ when data.scripts -> Config.internal_error "[testing_function >> publish_validated_tests] No script when there should be."
+      | Script(_,_,_) when not data.scripts -> Config.internal_error "[testing_function >> publish_validated_tests] Presence of a script when there should not be."
+      | NoScript str | Script (str,_,_) -> Printf.fprintf out_html "%s" str
+    end;
+    Printf.fprintf out_html "        <hr class=\"big-separation\">\n";
+    Printf.fprintf out_html "        <p class=\"title-test\"> New result for the test %d</p>\n" id;
+    begin match new_test_latex with
+      | NoScript _ when data.scripts -> Config.internal_error "[testing_function >> publish_validated_tests] No script when there should be."
+      | Script(_,_,_) when not data.scripts -> Config.internal_error "[testing_function >> publish_validated_tests] Presence of a script when there should not be."
+      | NoScript str | Script (str,_,_) -> Printf.fprintf out_html "%s" str
+    end;
+
+    Printf.fprintf out_txt "Original validated test %d\n" id;
+    Printf.fprintf out_txt "%s\n" valid_test_txt;
+    Printf.fprintf out_txt "New result for the test %d\n" id;
+    Printf.fprintf out_txt "%s\n" new_test_txt;
+  in
+
+  let open_template = open_in path_template in
+
+  let line = ref "" in
+
+  while !line <> template_line do
+    let l = input_line open_template in
+    if l <> template_line
+    then
+      begin
+        if Str.string_match reg_faulty l 0
+        then Printf.fprintf out_html "%s\n" (Str.replace_first reg_faulty "          <div id=\"title-sub\">Faulty tests" l)
+        else Printf.fprintf out_html "%s\n" l
+      end;
+    line := l
+  done;
+
+  Hashtbl.iter print data.faulty_tests;
+
+  close_out out_txt;
+
+  if data.scripts
+  then
+    begin
+      while !line <> scripts_loading do
+        let l = input_line open_template in
+        if l <> scripts_loading
+        then Printf.fprintf out_html "%s\n" l;
+        line := l
+      done;
+
+      publish_loading_script_for_faulty out_html data.faulty_tests;
+
+      begin try
+        while true do
+          let l = input_line open_template in
+          Printf.fprintf out_html "%s\n" l;
+        done
+      with
+        | End_of_file -> close_out out_html
+      end;
+
+      let path_script = Printf.sprintf "%stesting_data/%s%s.js" !Config.path_index "faulty_tests/" data.file in
+      let out_script = open_out path_script in
+
+      let print_script = function
+        | NoScript _ -> Config.internal_error "[testing_function >> publish_validated_tests] No script when there should be (2)"
+        | Script(_,script,_) -> Printf.fprintf out_script "%s\n" script
+      in
+
+      Hashtbl.iter (fun _ (valid_html_code,_,new_html_code,_) ->
+        print_script valid_html_code;
+        print_script new_html_code
+      ) data.faulty_tests;
 
       close_out out_script
     end
@@ -305,7 +400,7 @@ let publish_tests data =
 
 (**** Loading tests ****)
 
-let pre_load_tests data =
+let preload_tests data =
   let path_txt_to_check = Printf.sprintf "%stesting_data/%s%s.txt" !Config.path_index "tests_to_check/" data.file
   and path_txt_checked = Printf.sprintf "%stesting_data/%s%s.txt" !Config.path_index "validated_tests/" data.file in
 
@@ -315,79 +410,114 @@ let pre_load_tests data =
     else NoScript ""
   in
 
-  let sub_load in_txt is_to_check =
+  let sub_load in_txt hash_tbl =
 
     (**** Retreive the txt tests ***)
 
     let line = ref "" in
-    let txt = ref [] in
+    let current_id = ref 0 in
 
     begin try
-      let _ = input_line in_txt in
+      line := input_line in_txt;
+      if Str.string_match reg_next_test_txt !line 0
+      then current_id := int_of_string (Str.matched_group 1 !line)
+      else Config.internal_error "[testing_functions >> pre_load_tests] It should match (1).";
+
       while true do
         let str = ref "" in
         line := input_line in_txt;
 
         try
-          while !line <> next_test_txt do
+          while not (Str.string_match reg_next_test_txt !line 0) do
             str := Printf.sprintf "%s%s\n" !str !line;
             line := input_line in_txt;
           done;
-          txt := !str :: !txt
+
+          Hashtbl.add hash_tbl !str (init_html,!current_id);
+
+          if Str.string_match reg_next_test_txt !line 0
+          then current_id := int_of_string (Str.matched_group 1 !line)
+          else Config.internal_error "[testing_functions >> pre_load_tests] It should match (2).";
         with
-          | End_of_file -> txt := !str :: !txt
+          | End_of_file -> Hashtbl.add hash_tbl !str (init_html,!current_id);
       done
     with
       | End_of_file -> close_in in_txt
     end;
-
-    if is_to_check
-    then data.tests_to_check <- List.fold_left (fun acc t -> (t,init_html)::acc) [] !txt
-    else data.validated_tests <- List.fold_left (fun acc t -> (t,init_html)::acc) [] !txt
   in
 
   begin try
     let in_txt_to_check = open_in path_txt_to_check in
-    sub_load in_txt_to_check true
+    sub_load in_txt_to_check data.tests_to_check
   with
     | Sys_error _ -> ()
   end;
 
   begin try
     let in_txt_checked = open_in path_txt_checked in
-    sub_load in_txt_checked false
+    sub_load in_txt_checked data.validated_tests
   with
     | Sys_error _ -> ()
   end
 
 (***** Validation of tests *****)
 
+exception Found of string
+
+let find_in_hashtbl hash_tbl n =
+  try
+    Hashtbl.iter (fun str (_,id) ->
+      if id = n
+      then raise (Found str)
+    ) hash_tbl;
+    Printf.printf "ERROR : The given list of tests does not correspond to existing tests yet to be validated.\n";
+    exit 0
+  with
+    | Found str -> str
+
 let validate data liste_number =
 
-  let rec search_tests k to_check numbers = match to_check,numbers with
-    | _,[] -> ([],to_check)
-    | [],_ -> Printf.printf "ERROR : The given list of tests does not correspond to existing tests yet to be validated.\n\n";
-        failwith ""
-    | test::q_test, n::q_n when k = n ->
-        let (valid, to_check') = search_tests (k+1) q_test q_n in
-        (test::valid, to_check')
-    | test::q_test , _ ->
-        let (valid, to_check') = search_tests (k+1) q_test numbers in
-        (valid,test::to_check')
+  let init_html =
+    if data.scripts
+    then Script("","",[])
+    else NoScript ""
   in
 
-  let (new_valid, new_to_check) = search_tests 1 data.tests_to_check liste_number in
+  let rec search_tests nb_valid_tests = function
+    | [] -> ()
+    | t::q ->
+        let test_terminal = find_in_hashtbl data.tests_to_check t in
+        Hashtbl.remove data.tests_to_check test_terminal;
+        Config.debug (fun () ->
+          if Hashtbl.mem data.validated_tests test_terminal
+          then Config.internal_error "[testing_functions.ml >> validate_data] There exists a test that is both validated and to be check."
+        );
+        Hashtbl.add data.validated_tests test_terminal (init_html,nb_valid_tests+1);
+        search_tests (nb_valid_tests+1) q
+  in
 
-  data.tests_to_check <- new_to_check;
-  data.validated_tests <- new_valid @ data.validated_tests;
-  publish_tests_to_check data;
-  publish_validated_tests data
+  search_tests (Hashtbl.length data.validated_tests) liste_number
 
 let validate_all_tests data =
-  data.validated_tests <- data.tests_to_check @ data.validated_tests;
-  data.tests_to_check <- [];
-  publish_tests_to_check data;
-  publish_validated_tests data
+  let nb_valid_tests = ref (Hashtbl.length data.validated_tests) in
+
+  let init_html =
+    if data.scripts
+    then Script("","",[])
+    else NoScript ""
+  in
+
+  Hashtbl.iter (fun test_terminal _ ->
+    Config.debug (fun () ->
+      if Hashtbl.mem data.validated_tests test_terminal
+      then Config.internal_error "[testing_functions.ml >> validate_all_data] There exists a test that is both validated and to be check."
+    );
+    Hashtbl.add data.validated_tests test_terminal (init_html,!nb_valid_tests+1);
+    incr nb_valid_tests
+  ) data.tests_to_check;
+
+  Hashtbl.reset data.tests_to_check
+
 
 (**********************************************************
       Generic gathering of names, variables and axioms
@@ -1013,9 +1143,9 @@ let display_constraint_system_set_list out rho id_init l_set = match out with
 let data_IO_Term_Subst_unify =
   {
     scripts = false;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -1107,9 +1237,9 @@ let load_Term_Subst_unify (type a) (type b) i (at:(a,b) atom) (eq_list:((a,b) te
 let data_IO_Term_Subst_is_matchable =
   {
     scripts = false;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -1163,9 +1293,9 @@ let load_Term_Subst_is_matchable (type a) (type b) i (at:(a,b) atom) (list1:(a,b
 let data_IO_Term_Subst_is_extended_by =
   {
     scripts = false;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -1221,9 +1351,9 @@ let load_Term_Subst_is_extended_by (type a) (type b) i (at:(a,b) atom) (subst1:(
 let data_IO_Term_Subst_is_equal_equations =
   {
     scripts = false;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -1279,9 +1409,9 @@ let load_Term_Subst_is_equal_equations (type a) (type b) i (at:(a,b) atom) (subs
 let data_IO_Term_Modulo_syntactic_equations_of_equations =
   {
     scripts = false;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -1342,9 +1472,9 @@ let load_Term_Modulo_syntactic_equations_of_equations i eq_list result =
 let data_IO_Term_Rewrite_rules_normalise =
   {
     scripts = false;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -1396,9 +1526,9 @@ let load_Term_Rewrite_rules_normalise i term result =
 let data_IO_Term_Rewrite_rules_skeletons =
   {
     scripts = false;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -1450,9 +1580,9 @@ let load_Term_Rewrite_rules_skeletons i term f k result =
 let data_IO_Term_Rewrite_rules_generic_rewrite_rules_formula =
   {
     scripts = false;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -1508,9 +1638,9 @@ let load_Term_Rewrite_rules_generic_rewrite_rules_formula i fct skel result =
 let data_IO_Data_structure_Eq_implies =
   {
     scripts = false;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -1566,9 +1696,9 @@ let load_Data_structure_Eq_implies (type a) (type b) i (at:(a,b) atom) (form:(a,
 let data_IO_Data_structure_Tools_partial_consequence =
   {
     scripts = false;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -1625,9 +1755,9 @@ let load_Data_structure_Tools_partial_consequence (type a) (type b) i (at:(a,b) 
 let data_IO_Data_structure_Tools_partial_consequence_additional =
   {
     scripts = false;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -1683,9 +1813,9 @@ let load_Data_structure_Tools_partial_consequence_additional (type a) (type b) i
 let data_IO_Data_structure_Tools_uniform_consequence =
   {
     scripts = false;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -1737,9 +1867,9 @@ let load_Data_structure_Tools_uniform_consequence i sdf df uniset term result =
 let data_IO_Process_of_expansed_process =
   {
     scripts = true;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -1798,9 +1928,9 @@ let load_Process_of_expansed_process i process result =
 let data_IO_Process_next_output =
   {
     scripts = true;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -1880,9 +2010,9 @@ let load_Process_next_output i sem eq process subst result =
 let data_IO_Process_next_input =
   {
     scripts = true;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -1962,9 +2092,9 @@ let load_Process_next_input i sem eq process subst result =
 let data_IO_Constraint_system_mgs =
   {
     scripts = false;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -2017,9 +2147,9 @@ let load_Constraint_system_mgs i csys result =
 let data_IO_Constraint_system_one_mgs =
   {
     scripts = false;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -2080,9 +2210,9 @@ let load_Constraint_system_one_mgs i csys result =
 let data_IO_Constraint_system_simple_of_formula =
   {
     scripts = false;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -2140,9 +2270,9 @@ let load_Constraint_system_simple_of_formula i fct csys form result =
 let data_IO_Constraint_system_simple_of_disequation =
   {
     scripts = false;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -2196,9 +2326,9 @@ let load_Constraint_system_simple_of_disequation i csys diseq result =
 let data_IO_Constraint_system_apply_mgs =
   {
     scripts = false;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -2256,9 +2386,9 @@ let load_Constraint_system_apply_mgs i csys mgs result =
 let data_IO_Constraint_system_apply_mgs_on_formula =
   {
     scripts = false;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -2320,9 +2450,9 @@ let load_Constraint_system_apply_mgs_on_formula i fct csys mgs form result =
 let data_IO_Constraint_system_Rule_sat =
   {
     scripts = false;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -2332,9 +2462,9 @@ let data_IO_Constraint_system_Rule_sat =
 let data_IO_Constraint_system_Rule_sat_disequation =
   {
     scripts = false;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -2344,9 +2474,9 @@ let data_IO_Constraint_system_Rule_sat_disequation =
 let data_IO_Constraint_system_Rule_sat_formula =
   {
     scripts = false;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -2356,9 +2486,9 @@ let data_IO_Constraint_system_Rule_sat_formula =
 let data_IO_Constraint_system_Rule_equality_constructor =
   {
     scripts = false;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -2368,9 +2498,9 @@ let data_IO_Constraint_system_Rule_equality_constructor =
 let data_IO_Constraint_system_Rule_equality =
   {
     scripts = false;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -2380,9 +2510,9 @@ let data_IO_Constraint_system_Rule_equality =
 let data_IO_Constraint_system_Rule_rewrite =
   {
     scripts = false;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -2445,9 +2575,9 @@ let load_Constraint_system_Rule_rules i csys_set result =
 let data_IO_Constraint_system_Rule_normalisation =
   {
     scripts = false;
-    validated_tests = [];
-    tests_to_check = [];
-    additional_tests = [];
+    validated_tests = Hashtbl.create 1000;
+    tests_to_check = Hashtbl.create 100;
+    faulty_tests = Hashtbl.create 10;
 
     is_being_tested = true;
 
@@ -2535,7 +2665,7 @@ let list_data =
     data_IO_Constraint_system_Rule_normalisation
   ]
 
-let preload () = List.iter (fun data -> pre_load_tests data) list_data
+let preload () = List.iter (fun data -> preload_tests data) list_data
 
 let publish () = List.iter (fun data -> publish_tests data) list_data
 

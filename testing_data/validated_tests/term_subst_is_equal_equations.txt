@@ -1,0 +1,11 @@
+--Test 1:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _w_0, _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : { }
+_Input : { _w_0 -> _k_0 }
+_Result : bot
