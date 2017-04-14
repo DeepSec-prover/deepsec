@@ -1377,7 +1377,10 @@ module Subst = struct
             then Config.internal_error "[term.ml >> Subst.create] The substution is not acyclic"
         | Recipe ->
             if var_occurs_or_out_of_world var term
-            then Config.internal_error "[term.ml >> Subst.create] The substution is not acyclic or the types do not corresponds"
+            then
+              ( Printf.printf "Variable = %s and term = %s\n" (Variable.display Testing Recipe ~v_type:true var) (display Testing Recipe term);
+                Config.internal_error "[term.ml >> Subst.create] The substution is not acyclic or the types do not corresponds"
+              )
     );
     [var,term]
 

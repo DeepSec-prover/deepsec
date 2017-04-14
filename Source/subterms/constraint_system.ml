@@ -266,7 +266,8 @@ let add_axiom csys ax t id =
     skeletons_checked = [];
     skeletons_to_check = !new_skeletons_to_check;
     uf = UF.add_deduction csys.uf [Fact.create Fact.Deduction (Fact.create_deduction_fact (of_axiom ax) t) [] []] id;
-    frame = t :: csys.frame
+    frame = t :: csys.frame;
+    size_frame = new_size
   }
 
 let replace_additional_data csys data = { csys with additional_data = data }
@@ -489,6 +490,60 @@ let create frame df eq1 eq2 sdf uf sub1 sub2 uni il1 il2 il3 is1 is2 =
     skeletons_to_check = is2
   }
 
+(**** Display *****)
+
+let display_mgs out ?(rho=None) (subst,v_list) = match out with
+  | Testing -> Printf.sprintf "({%s},%s)"
+      (display_list (Variable.display out ~rho:rho Recipe ~v_type:false) ", " v_list)
+      (Subst.display out ~rho:rho Recipe subst)
+  | _ ->
+      if v_list = []
+      then Subst.display out ~rho:rho Recipe subst
+      else
+        Printf.sprintf "%s %s.%s"
+          (exists out)
+          (display_list (Variable.display out ~rho:rho Recipe ~v_type:true) ", " v_list)
+          (Subst.display out ~rho:rho Recipe subst)
+
+let display_simple out ?(rho=None) ?(hidden=false) ?(id=0) csys = match out with
+  | Testing ->
+      Printf.sprintf "( %s, %s, %s, %s, %s )"
+        (DF.display out ~rho:rho csys.simp_DF)
+        (Eq.display out ~rho:rho Protocol csys.simp_EqFst)
+        (Eq.display out ~rho:rho Recipe csys.simp_EqSnd)
+        (SDF.display out ~rho:rho csys.simp_SDF)
+        (Uniformity_Set.display out ~rho:rho csys.simp_Sub_Cons)
+  | HTML ->
+      let str = ref "" in
+      let id_j = id_class_csys () in
+      let id_s = if id = 0 then "" else "_"^(string_of_int id) in
+      let style =
+        if hidden
+        then " style=\"display:none;\""
+        else ""
+      in
+
+      let link_Df = Printf.sprintf "<a href=\"javascript:show_single('Df%d');\">\\({\\sf D}%s\\)</a>" id_j id_s in
+      let link_Sdf = Printf.sprintf "<a href=\"javascript:show_single('Sdf%d');\">\\({\\sf SDF}%s\\)</a>" id_j id_s in
+      let link_Eq1 = Printf.sprintf "<a href=\"javascript:show_single('Equn%d');\">\\({\\sf E}^1%s\\)</a>" id_j id_s in
+      let link_Eq2 = Printf.sprintf "<a href=\"javascript:show_single('Eqdeux%d');\">\\({\\sf E}^2%s\\)</a>" id_j id_s in
+      let link_Uni = Printf.sprintf "<a href=\"javascript:show_single('Uni%d');\">\\({\\sf R}%s\\)</a>" id_j id_s in
+
+      str := Printf.sprintf "\\( \\mathcal{C}%s =~(\\)%s, %s, %s, %s, %s\\()\\) &nbsp;&nbsp;&nbsp; <a href=\"javascript:show_class('csys%d');\">All</a>\n"
+        id_s link_Df link_Eq1 link_Eq2 link_Sdf link_Uni id_j;
+
+      str := Printf.sprintf "%s            <div class=\"csys\">\n" !str;
+      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Df%d\" class=\"csys%d\"%s>\\({\\sf D}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (DF.display Latex ~rho:rho csys.simp_DF);
+      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Equn%d\" class=\"csys%d\"%s>\\({\\sf E}^1%s = %s\\)</div></div>\n" !str id_j id_j style id_s (Eq.display Latex ~rho:rho Protocol csys.simp_EqFst);
+      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Eqdeux%d\" class=\"csys%d\"%s>\\({\\sf E}^2%s = %s\\)</div></div>\n" !str id_j id_j style id_s (Eq.display Latex ~rho:rho Recipe csys.simp_EqSnd);
+      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Sdf%d\" class=\"csys%d\"%s>\\({\\sf SDF}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (SDF.display Latex ~rho:rho csys.simp_SDF);
+      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Uni%d\" class=\"csys%d\"%s>\\({\\sf R}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (Uniformity_Set.display Latex ~rho:rho csys.simp_Sub_Cons);
+
+      Printf.sprintf "%s            </div>\n" !str
+
+  | _ -> Config.internal_error "[constraint_system.ml >> display] This display mode is not implemented yet."
+
+
 (***** Generators ******)
 
 let substitution_of_mgs (subst,_) = subst
@@ -497,7 +552,6 @@ let is_uniformity_rule_applicable_simple csys =
   Uniformity_Set.exists_pair_with_same_protocol_term csys.simp_Sub_Cons (Eq.implies Recipe csys.simp_EqSnd)
 
 let mgs csys =
-
   let accumulator = ref [] in
 
   let rec apply_rules csys mgs fst_ord_mgs snd_ord_vars =
@@ -512,19 +566,41 @@ let mgs csys =
         | None -> None
         | Some recipe ->
             (* In such a case~\citepaper{Rule}{rule:conseq} is applied *)
-            let subst = Subst.create Recipe x_snd recipe in
-            let csys' = { csys with
-                simp_DF = DF.remove csys.simp_DF x_snd;
-                simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst;
-                simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
-                simp_Sub_Cons = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity
-              }
-            in
+            Config.test (fun () ->
+              if not (Subst.is_unifiable Recipe [ of_variable x_snd , recipe])
+              then Config.internal_error "[constraint_system.ml >> mgs] This should be unifiable (otherwise the previous call of is_uniformity_rule_applicable_simple would have removed the constraint system."
+            );
 
-            let mgs' = Subst.apply subst mgs (fun mgs f -> List.map (fun (x,r) -> x,f r) mgs)
-            and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_snd snd_ord_vars in
+            if is_variable recipe && (Variable.type_of (variable_of recipe) > Variable.type_of x_snd)
+            then
+              let x_r = variable_of recipe in
+              let subst = Subst.create Recipe x_r (of_variable x_snd) in
+              let csys' = { csys with
+                  simp_DF = DF.remove csys.simp_DF x_r;
+                  simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst;
+                  simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
+                  simp_Sub_Cons = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity
+                }
+              in
 
-            Some (csys',mgs',fst_ord_mgs,snd_ord_vars')
+              let mgs' = Subst.apply subst mgs (fun mgs f -> List.map (fun (x,r) -> x,f r) mgs)
+              and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_r snd_ord_vars in
+
+              Some (csys',mgs',fst_ord_mgs,snd_ord_vars')
+            else
+              let subst = Subst.create Recipe x_snd recipe in
+              let csys' = { csys with
+                  simp_DF = DF.remove csys.simp_DF x_snd;
+                  simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst;
+                  simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
+                  simp_Sub_Cons = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity
+                }
+              in
+
+              let mgs' = Subst.apply subst mgs (fun mgs f -> List.map (fun (x,r) -> x,f r) mgs)
+              and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_snd snd_ord_vars in
+
+              Some (csys',mgs',fst_ord_mgs,snd_ord_vars')
     in
 
     let test_not_solved basic_fct =
@@ -659,9 +735,7 @@ let mgs csys =
 exception Found_mgs of (snd_ord_variable * recipe) list * (fst_ord, name) Subst.t * (snd_ord_variable list)  * simple
 
 let one_mgs csys =
-
   let rec apply_rules csys mgs fst_ord_mgs snd_ord_vars =
-
     let test_conseq basic_fct =
       let x_snd = BasicFact.get_snd_ord_variable basic_fct
       and msg = BasicFact.get_protocol_term basic_fct in
@@ -672,19 +746,41 @@ let one_mgs csys =
         | None -> None
         | Some recipe ->
             (* In such a case~\citepaper{Rule}{rule:conseq} is applied *)
-            let subst = Subst.create Recipe x_snd recipe in
-            let csys' = { csys with
-                simp_DF = DF.remove csys.simp_DF x_snd;
-                simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst;
-                simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
-                simp_Sub_Cons = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity
-              }
-            in
+            Config.test (fun () ->
+              if not (Subst.is_unifiable Recipe [ of_variable x_snd , recipe])
+              then Config.internal_error "[constraint_system.ml >> one_mgs] This should be unifiable (otherwise the previous call of is_uniformity_rule_applicable_simple would have removed the constraint system."
+            );
 
-            let mgs' = Subst.apply subst mgs (fun mgs f -> List.map (fun (x,r) -> x,f r) mgs)
-            and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_snd snd_ord_vars in
+            if is_variable recipe && Variable.type_of (variable_of recipe) > Variable.type_of x_snd
+            then
+              let x_r = variable_of recipe in
+              let subst = Subst.create Recipe x_r (of_variable x_snd) in
+              let csys' = { csys with
+                  simp_DF = DF.remove csys.simp_DF x_r;
+                  simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst;
+                  simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
+                  simp_Sub_Cons = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity
+                }
+              in
 
-            Some (csys',mgs',fst_ord_mgs,snd_ord_vars')
+              let mgs' = Subst.apply subst mgs (fun mgs f -> List.map (fun (x,r) -> x,f r) mgs)
+              and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_r snd_ord_vars in
+
+              Some (csys',mgs',fst_ord_mgs,snd_ord_vars')
+            else
+              let subst = Subst.create Recipe x_snd recipe in
+              let csys' = { csys with
+                  simp_DF = DF.remove csys.simp_DF x_snd;
+                  simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst;
+                  simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
+                  simp_Sub_Cons = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity
+                }
+              in
+
+              let mgs' = Subst.apply subst mgs (fun mgs f -> List.map (fun (x,r) -> x,f r) mgs)
+              and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_snd snd_ord_vars in
+
+              Some (csys',mgs',fst_ord_mgs,snd_ord_vars')
     in
 
     let test_not_solved basic_fct =
@@ -1029,59 +1125,6 @@ let get_axioms_simple_with_list csys ax_list =
     result := get_axioms_Term (Fact.get_recipe fct) (fun _ -> true) !result
   );
   !result
-
-(**** Display *****)
-
-let display_mgs out ?(rho=None) (subst,v_list) = match out with
-  | Testing -> Printf.sprintf "({%s},%s)"
-      (display_list (Variable.display out ~rho:rho Recipe ~v_type:false) ", " v_list)
-      (Subst.display out ~rho:rho Recipe subst)
-  | _ ->
-      if v_list = []
-      then Subst.display out ~rho:rho Recipe subst
-      else
-        Printf.sprintf "%s %s.%s"
-          (exists out)
-          (display_list (Variable.display out ~rho:rho Recipe ~v_type:true) ", " v_list)
-          (Subst.display out ~rho:rho Recipe subst)
-
-let display_simple out ?(rho=None) ?(hidden=false) ?(id=0) csys = match out with
-  | Testing ->
-      Printf.sprintf "( %s, %s, %s, %s, %s )"
-        (DF.display out ~rho:rho csys.simp_DF)
-        (Eq.display out ~rho:rho Protocol csys.simp_EqFst)
-        (Eq.display out ~rho:rho Recipe csys.simp_EqSnd)
-        (SDF.display out ~rho:rho csys.simp_SDF)
-        (Uniformity_Set.display out ~rho:rho csys.simp_Sub_Cons)
-  | HTML ->
-      let str = ref "" in
-      let id_j = id_class_csys () in
-      let id_s = if id = 0 then "" else "_"^(string_of_int id) in
-      let style =
-        if hidden
-        then " style=\"display:none;\""
-        else ""
-      in
-
-      let link_Df = Printf.sprintf "<a href=\"javascript:show_single('Df%d');\">\\({\\sf D}%s\\)</a>" id_j id_s in
-      let link_Sdf = Printf.sprintf "<a href=\"javascript:show_single('Sdf%d');\">\\({\\sf SDF}%s\\)</a>" id_j id_s in
-      let link_Eq1 = Printf.sprintf "<a href=\"javascript:show_single('Equn%d');\">\\({\\sf E}^1%s\\)</a>" id_j id_s in
-      let link_Eq2 = Printf.sprintf "<a href=\"javascript:show_single('Eqdeux%d');\">\\({\\sf E}^2%s\\)</a>" id_j id_s in
-      let link_Uni = Printf.sprintf "<a href=\"javascript:show_single('Uni%d');\">\\({\\sf R}%s\\)</a>" id_j id_s in
-
-      str := Printf.sprintf "\\( \\mathcal{C}%s =~(\\)%s, %s, %s, %s, %s\\()\\) &nbsp;&nbsp;&nbsp; <a href=\"javascript:show_class('csys%d');\">All</a>\n"
-        id_s link_Df link_Eq1 link_Eq2 link_Sdf link_Uni id_j;
-
-      str := Printf.sprintf "%s            <div class=\"csys\">\n" !str;
-      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Df%d\" class=\"csys%d\"%s>\\({\\sf D}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (DF.display Latex ~rho:rho csys.simp_DF);
-      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Equn%d\" class=\"csys%d\"%s>\\({\\sf E}^1%s = %s\\)</div></div>\n" !str id_j id_j style id_s (Eq.display Latex ~rho:rho Protocol csys.simp_EqFst);
-      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Eqdeux%d\" class=\"csys%d\"%s>\\({\\sf E}^2%s = %s\\)</div></div>\n" !str id_j id_j style id_s (Eq.display Latex ~rho:rho Recipe csys.simp_EqSnd);
-      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Sdf%d\" class=\"csys%d\"%s>\\({\\sf SDF}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (SDF.display Latex ~rho:rho csys.simp_SDF);
-      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Uni%d\" class=\"csys%d\"%s>\\({\\sf R}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (Uniformity_Set.display Latex ~rho:rho csys.simp_Sub_Cons);
-
-      Printf.sprintf "%s            </div>\n" !str
-
-  | _ -> Config.internal_error "[constraint_system.ml >> display] This display mode is not implemented yet."
 
 (**** Operators *****)
 
