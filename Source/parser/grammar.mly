@@ -27,7 +27,9 @@ open Parser_functions
 %left MID
 %nonassoc BANG
 %left PLUS
-%left ELSE THEN IN
+%left THEN IN
+%left ELSE
+
 %left SEMI
 
 %type <Parser_functions.declaration> main
@@ -92,10 +94,10 @@ free_name_declaration:
 /****** Query ******/
 
 query_declaration:
-  | QUERY TRACEEQ LPAR extended_process COMMA extended_process RPAR
+  | QUERY TRACEEQ LPAR extended_process COMMA extended_process RPAR DOT
       { Trace_Eq($4,$6) }
-  | QUERY OBSEQ LPAR extended_process COMMA extended_process RPAR
-      { Obs_Eq($4,$6)}
+  | QUERY OBSEQ LPAR extended_process COMMA extended_process RPAR DOT
+      { Obs_Eq($4,$6) }
 
 /****** Extended process declaration *******/
 

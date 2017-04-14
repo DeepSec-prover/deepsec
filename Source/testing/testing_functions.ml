@@ -1053,7 +1053,11 @@ let header_terminal_and_latex snd_ord_vars rho gathering =
 
 let test_Term_Subst_unify (type a) (type b) (at:(a,b) atom) (eq_list:((a,b) term * (a,b) term) list) (result:(a, b) Subst.t option) =
   (**** Retreive the names, variables and axioms *****)
-  let gathering = gather_in_subst_option at result (gather_in_pair_list at eq_list (gather_in_signature empty_gathering)) in
+  let gathering_1 = gather_in_signature empty_gathering in
+  let gathering_2 = gather_in_pair_list at eq_list gathering_1 in
+  let gathering_3 = gather_in_subst_option at result gathering_2 in
+
+  let gathering = gathering_3 in
 
   (**** Generate the display renaming ****)
   let rho = Some(generate_display_renaming_for_testing gathering.g_names gathering.g_fst_vars gathering.g_snd_vars) in

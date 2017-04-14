@@ -344,6 +344,13 @@ module Variable = struct
       | Protocol -> ((!linked_variables_fst): (a,b) variable list)
       | Recipe -> ((!linked_variables_snd): (a,b) variable list)
 
+    let rec follow_link = function
+      | Func(f,args) -> Func(f,List.map follow_link args)
+      | Var({link = VLink v;_}) -> Var(v)
+      | Var({link = NoLink; _}) as term -> term
+      | Var _ -> Config.internal_error "[Variable.Renaming >> follow_link] Unexpected link"
+      | term -> term
+
     (****** Generation *******)
 
     let variable_fresh_shortcut = fresh
@@ -1197,6 +1204,10 @@ let retrieve_search (type a) (type b) (at:(a,b) atom) = match at with
 (********** More Access *******)
 
 let get_vars at term =
+  Config.test (fun () ->
+    if retrieve_search at <> []
+    then Config.internal_error "[terml.ml >> get_vars@] Linked variables should be empty."
+  );
 
   let rec explore_term = function
     | Func (_,args) -> List.iter explore_term args
@@ -1222,6 +1233,10 @@ let rec get_names_protocol f_bound = function
   | AxName _ | Var _ -> ()
 
 let get_names_with_list (type a) (type b) (at:(a,b) atom) (term:(a,b) term) f_bound (l:name list) =
+  Config.test (fun () ->
+    if !Name.linked_names <> []
+    then Config.internal_error "[terml.ml get_names_with_list] Linked names should be empty."
+  );
 
   List.iter Name.link_search l;
 
@@ -1242,6 +1257,10 @@ let rec get_vars_term at f_quanti = function
   | AxName _ -> ()
 
 let get_vars_with_list (type a) (type b) (at:(a,b) atom) (term:(a,b) term) f_quantifier (l:(a,b) variable list) =
+  Config.test (fun () ->
+    if retrieve_search at <> []
+    then Config.internal_error "[terml.ml get_vars_with_list] Linked variables should be empty."
+  );
 
   List.iter (link_search at) l;
 
@@ -1438,6 +1457,10 @@ module Subst = struct
   (*********** Access ************)
 
   let get_names_with_list (type a) (type b) (at:(a,b) atom) (subst:(a,b) t) f_bound (l:name list) =
+    Config.test (fun () ->
+      if !Name.linked_names <> []
+      then Config.internal_error "[terml.ml >> Subst.get_names_with_list] Linked names should be empty."
+    );
 
     List.iter Name.link_search l;
 
@@ -1451,6 +1474,10 @@ module Subst = struct
     result
 
   let get_vars_with_list (type a) (type b) (at:(a,b) atom) (subst:(a,b) t) f_quantifier (l:(a,b) variable list) =
+    Config.test (fun () ->
+      if retrieve_search at <> []
+      then Config.internal_error "[terml.ml >> Subst.get_vars_with_list] Linked variables should be empty."
+    );
 
     List.iter (link_search at) l;
 
@@ -1753,6 +1780,11 @@ module Diseq = struct
   let get_vars_with_list (type a) (type b) (at:(a,b) atom) (diseq:(a,b) t) (l:(a,b) variable list) = match diseq with
     | Top | Bot -> l
     | Diseq diseq_l ->
+        Config.test (fun () ->
+          if retrieve_search at <> []
+          then Config.internal_error "[terml.ml >> Diseq.get_vars_with_list] Linked variables should be empty."
+        );
+
         List.iter (link_search at) l;
 
         List.iter (fun (t1,t2) ->
@@ -1771,23 +1803,31 @@ module Diseq = struct
           get_axioms_with_list t2 (fun _ -> true) (get_axioms_with_list t1 (fun _ -> true) acc)
         ) ax_list diseq_l
 
-  let of_substitution at sigma l =
+  let of_substitution (type a) (type b) (at:(a,b) atom) (sigma:(a,b) Subst.t) (l:(a,b) variable list) =
     if sigma = []
-    then Bot
+    then (Bot:(a,b) t)
     else
       begin
-        List.iter (fun v -> link_search at v) l;
+        Config.test (fun () ->
+          if retrieve_search at <> [] ||  Variable.Renaming.retrieve at <> []
+          then Config.internal_error "[terml.ml >> of_substitution] Linked variables should be empty."
+        );
+        List.iter (fun (v:(a,b) variable) ->
+          match at with
+            | Protocol -> let (v':(a,b) variable) = Variable.fresh at Universal Variable.fst_ord_type in Variable.Renaming.link at v v'
+            | Recipe -> let (v':(a,b) variable) = Variable.fresh at Universal (Variable.snd_ord_type (Variable.type_of v)) in Variable.Renaming.link at v v'
+        ) l;
         let diseq = List.fold_left (fun acc (v,t) ->
           if v.link = NoLink
-          then ((Var v),t)::acc
+          then ((Var v),Variable.Renaming.follow_link t)::acc
           else acc
           ) [] sigma
         in
 
-        cleanup_search at;
+        Variable.Renaming.cleanup at;
         if diseq = []
-        then Bot
-        else Diseq diseq
+        then (Bot:(a,b) t)
+        else (Diseq diseq:(a,b) t)
       end
 
   let rec rename_universal_to_existential at = function
@@ -1868,12 +1908,12 @@ module Diseq = struct
         try
           List.iter (fun (t1,t2) -> Subst.unify_term at t1 t2) diseq;
 
-          let linked_variables = Subst.retrieve at in
+          let linked_variables = elim_universal_variables (Subst.retrieve at) in
 
           let result =
             if linked_variables = []
             then Bot
-            else Diseq(elim_universal_variables linked_variables)
+            else Diseq(linked_variables)
           in
 
           Subst.cleanup at;
@@ -1900,6 +1940,10 @@ module Diseq = struct
                 ) (Printf.sprintf " %s " (vee Testing)) diseq
               )
           | _ ->
+              Config.test (fun () ->
+                if retrieve_search at <> []
+                then Config.internal_error "[terml.ml >> Diseq.display] Linked variables should be empty."
+              );
               let rec find_univ_var_term = function
                 | Var v when v.link = FLink -> ()
                 | Var v when v.quantifier = Universal ->
@@ -1922,7 +1966,12 @@ module Diseq = struct
               else Printf.sprintf "%s %s.%s" (forall out) (display_list (Variable.display out ~rho:rho  ~v_type:true at) "," found_vars) (display_list display_single (Printf.sprintf " %s " (vee out)) diseq)
         end
 
-  let create_for_testing l = Diseq l
+  let create_for_testing l =
+    Config.test (fun () ->
+      if l = []
+      then Config.internal_error "[term.ml >> Diseq.create_for_testing] Should only be used for non top and bot disequations"
+    );
+    Diseq l
 
 end
 
@@ -2255,6 +2304,11 @@ module Fact = struct
 
   let get_vars_with_list (type a) (type b) (type c) (at: (a,b) atom) (fct: c t) (form: c formula) f_quanti (v_list: (a,b) variable list) = match at with
     | Protocol ->
+        Config.test (fun () ->
+          if retrieve_search Protocol <> []
+          then Config.internal_error "[terml.ml >> Modulo.get_vars_with_list] Linked variables should be empty."
+        );
+
         List.iter (link_search Protocol) v_list;
 
         List.iter (fun (x,t) ->
@@ -2277,6 +2331,10 @@ module Fact = struct
         cleanup_search Protocol;
         (result: (a,b) variable list)
     | Recipe ->
+        Config.test (fun () ->
+          if retrieve_search at <> []
+          then Config.internal_error "[terml.ml >> Modulo.get_vars_with_list] Linked variables should be empty. (2)"
+        );
         List.iter (link_search Recipe) v_list;
 
         List.iter (fun b_fct ->
@@ -2335,10 +2393,13 @@ module Fact = struct
     | (x,_)::_ when x.quantifier = Universal -> Config.internal_error "[term.ml >> Fact.search_equation_subst] The formula is not normalised. (1)"
     | (_,t)::q -> search_term t; search_equation_subst q
 
-
-
   let universal_variables form =
-
+    Config.test (fun () ->
+      if retrieve_search Protocol <> []
+      then Config.internal_error "[terml.ml >> Fact.universal_variables] Linked variables should be empty.(1)";
+      if retrieve_search Recipe <> []
+      then Config.internal_error "[terml.ml >> Fact.universal_variables] Linked variables should be empty.(2)"
+    );
     search_equation_subst form.equation_subst;
     List.iter (fun b_fct -> link_search Recipe b_fct.BasicFact.var; search_term b_fct.BasicFact.term) form.ded_fact_list;
 
@@ -2355,6 +2416,10 @@ module Fact = struct
     psi.ded_fact_list = [] && psi.equation_subst = []
 
   let is_solved psi =
+    Config.test (fun () ->
+      if retrieve_search Protocol <> []
+      then Config.internal_error "[terml.ml >> Fact.is_solved] Linked variables should be empty.";
+    );
 
     let rec go_through_ded_fact = function
       | [] -> cleanup_search Protocol; true
@@ -2484,7 +2549,12 @@ module Fact = struct
           (Subst.display out ~rho:rho Protocol psi.equation_subst)
     | _ ->
         begin
-
+          Config.test (fun () ->
+            if retrieve_search Protocol <> []
+            then Config.internal_error "[terml.ml >> Fact.display] Linked variables should be empty.(1)";
+            if retrieve_search Recipe <> []
+            then Config.internal_error "[terml.ml >> Fact.display] Linked variables should be empty.(2)"
+          );
           begin match fct with
             | Deduction ->
                 find_univ_var Recipe psi.head.df_recipe;
@@ -2570,13 +2640,16 @@ module Rewrite_rules = struct
 
   let get_vars_with_list l =
     List.fold_left (fun acc f ->
-      match f.cat with
-        | Destructor rw_rules ->
-            List.fold_left (fun acc_1 (arg_l,r) ->
-              let var_arg_l = List.fold_left (fun acc_2 t -> get_vars_with_list Protocol t (fun _ -> true) acc_2) acc_1 arg_l in
-              get_vars_with_list Protocol r (fun _ -> true) var_arg_l
-            ) acc rw_rules
-        | _ -> Config.internal_error "[term.ml >> get_vars_signature] all_destructors should only contain destructors."
+        match f.cat with
+          | Destructor rw_rules ->
+              if Str.string_match Symbol.reg_proj f.name 0
+              then acc
+              else
+                List.fold_left (fun acc_1 (arg_l,r) ->
+                  let var_arg_l = List.fold_left (fun acc_2 t -> get_vars_with_list Protocol t (fun _ -> true) acc_2) acc_1 arg_l in
+                  get_vars_with_list Protocol r (fun _ -> true) var_arg_l
+                ) acc rw_rules
+          | _ -> Config.internal_error "[term.ml >> get_vars_signature] all_destructors should only contain destructors."
     ) l !Symbol.all_destructors
 
   exception Found_normalise of protocol_term
@@ -2650,6 +2723,10 @@ module Rewrite_rules = struct
         if Subst.is_unifiable Protocol [u,Func(f,args)]
         then
           begin
+            Config.test (fun () ->
+              if retrieve_search Protocol <> []
+              then Config.internal_error "[terml.ml >> Rewrite_rules.explore_term] Linked variables should be empty.";
+            );
             List.iter (link_search Protocol) rw_vars;
             let search = search_variables (Func(f,args)) in
             cleanup_search Protocol;
@@ -3267,7 +3344,9 @@ module Tools_General (SDF: SDF) (DF: DF) = struct
       cleanup_search Protocol;
       true
     with
-      | Found -> false
+      | Found ->
+        cleanup_search Protocol;
+        false
 
 end
 
@@ -3611,5 +3690,7 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
       cleanup_search Protocol;
       true
     with
-      | Found -> false
+      | Found ->
+          cleanup_search Protocol;
+          false
 end

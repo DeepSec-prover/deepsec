@@ -131,16 +131,16 @@ let rightarrow = function
   | Latex -> "\\rightarrow"
 
 let langle = function
-  | Terminal | Testing -> "<"
+  | Terminal | Testing -> "("
   | Pretty_Terminal -> "⟨"
   | HTML -> "&#10216;"
-  | Latex -> "\\langle"
+  | Latex -> "\\langle "
 
 let rangle = function
-  | Terminal| Testing  -> ">"
+  | Terminal| Testing  -> ")"
   | Pretty_Terminal -> "⟩"
   | HTML -> "&#10217;"
-  | Latex -> "\\rangle"
+  | Latex -> " \\rangle"
 
 let lcurlybracket = function
   | Terminal | Testing -> "{"

@@ -263,7 +263,9 @@ let rec parse_constructor = function
 let rec parse_tuple = function
   | [] -> ()
   | ar::q ->
-      let _ = Term.Symbol.get_tuple ar in
+      let f = Term.Symbol.get_tuple ar in
+      let get_proj = Term.Symbol.get_projections f in
+      List.iter (fun proj -> Hashtbl.add environment (Term.Symbol.display Display.Testing proj) (Func proj)) get_proj;
       parse_tuple q
 
 let parse_signature (constr,tuple) =

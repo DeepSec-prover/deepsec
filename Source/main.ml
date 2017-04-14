@@ -62,13 +62,16 @@ let _ =
   then print_help ()
   else
     begin
+      Testing_load_verify.load ();
+      Testing_functions.update ();
+
+      Term.Symbol.empty_signature ();
+
       parse_file !path;
 
       if Config.test_activated
       then
         begin
-          Testing_load_verify.load ();
-          Testing_functions.update ();
           try
             excecute_queries !Parser_functions.query_list;
             Testing_functions.publish ();

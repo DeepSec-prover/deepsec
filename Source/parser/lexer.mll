@@ -42,20 +42,21 @@
         Lexing.pos_lnum = pos.Lexing.pos_lnum + 1;
         Lexing.pos_bol = pos.Lexing.pos_cnum
       }
+
 }
 
 rule token = parse
 | "//" [^ '\n']* '\n' { newline lexbuf; token lexbuf } (* Line comment *)
-| "(*" [^ '\n']* "*)" { newline lexbuf; token lexbuf } (* Paragraph comment *)
-| "/*" [^ '\n']* "*/" { newline lexbuf; token lexbuf } (* Paragraph comment *)
 | [' ' '\t'] { token lexbuf } (* Skip blanks *)
 | ['\n'	'\r']	{ newline lexbuf; token lexbuf } (* New line *)
-
+| "/*" { comment_slash lexbuf } (* Paragraph comment *)
+| "(*" { comment_par lexbuf } (* Paragraph comment *)
 (* Main Configuration *)
 | '='   { EQ }
 | '/'   { SLASH }
 | ';'   { SEMI }
 | '.'   { DOT }
+| ','   { COMMA }
 | '|'   { MID }
 | "!^"  { BANG }
 | '+'   { PLUS }
@@ -88,3 +89,13 @@ rule token = parse
     	Printf.printf "Line %d : Syntax Error\n" (pos.Lexing.pos_lnum);
       exit 0
     }
+
+and comment_slash = parse
+    | "*/" { token lexbuf }   (* end of comment; switch back to "token" rule *)
+    | '\n' { newline lexbuf ; comment_slash lexbuf }
+    | _    { comment_slash lexbuf } (* skip comments *)
+
+and comment_par = parse
+    | "*)" { token lexbuf }   (* end of comment; switch back to "token" rule *)
+    | '\n' { newline lexbuf ; comment_par lexbuf }
+    | _    { comment_par lexbuf } (* skip comments *)
