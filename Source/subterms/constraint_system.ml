@@ -1726,7 +1726,7 @@ module Rule = struct
 
   (**** The rule SAT ****)
 
-  let internal_sat csys_set continuation_func =
+  let rec internal_sat csys_set continuation_func =
 
     try
       let rec explore_csys_set prev_csys_set = function
@@ -1741,38 +1741,43 @@ module Rule = struct
 
       let mgs_list = mgs simple_csys in
 
-      let accumulator_diseq = ref [] in
+      if mgs_list =  []
+      then internal_sat other_csys continuation_func
+      else
+        begin
+          let accumulator_diseq = ref [] in
 
-      List.iter (fun ((mgs,l_vars),_,_) ->
-        let diseq = Diseq.of_substitution Recipe mgs l_vars in
+          List.iter (fun ((mgs,l_vars),_,_) ->
+            let diseq = Diseq.of_substitution Recipe mgs l_vars in
 
-        if Diseq.is_bot diseq
-        then Config.internal_error "[constraint_system.ml >> rule_sat] The disequation should not be the bot.";
+            if Diseq.is_bot diseq
+            then Config.internal_error "[constraint_system.ml >> rule_sat] The disequation should not be the bot.";
 
-        accumulator_diseq := diseq :: !accumulator_diseq;
+            accumulator_diseq := diseq :: !accumulator_diseq;
 
-        let new_csys_set = List.fold_left (fun set csys ->
-          try
-            (apply_mgs csys (mgs,l_vars))::set
-          with
-            | Bot -> set
-          ) [] csys_set
-        in
+            let new_csys_set = List.fold_left (fun set csys ->
+              try
+                (apply_mgs csys (mgs,l_vars))::set
+              with
+                | Bot -> set
+              ) [] csys_set
+            in
 
-        continuation_func.positive new_csys_set
-      ) mgs_list;
+            continuation_func.positive new_csys_set
+          ) mgs_list;
 
-      (* Do we necessarily need to chenck the uniformity for the negative part ? *)
-      let negative_csys_set =
-        List.fold_left (fun acc csys ->
-          let csys' = { csys with eqsnd = List.fold_left Eq.wedge csys.eqsnd !accumulator_diseq } in
-          if Uniformity_Set.exists_pair_with_same_protocol_term csys'.sub_cons (Eq.implies Recipe csys'.eqsnd)
-          then acc
-          else csys'::acc
-        ) [] other_csys
-      in
+          (* Do we necessarily need to chenck the uniformity for the negative part ? *)
+          let negative_csys_set =
+            List.fold_left (fun acc csys ->
+              let csys' = { csys with eqsnd = List.fold_left Eq.wedge csys.eqsnd !accumulator_diseq } in
+              if Uniformity_Set.exists_pair_with_same_protocol_term csys'.sub_cons (Eq.implies Recipe csys'.eqsnd)
+              then acc
+              else csys'::acc
+            ) [] other_csys
+          in
 
-      continuation_func.negative negative_csys_set
+          continuation_func.negative negative_csys_set
+        end
     with
       | Rule_Not_applicable -> continuation_func.not_applicable csys_set
 

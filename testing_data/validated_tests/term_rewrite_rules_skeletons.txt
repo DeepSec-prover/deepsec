@@ -119,17 +119,6 @@ _Input : aenc((_x_0,_m_0,pk(_l_0)),pk(_k_0))
 _Input : proj_{1,3}
 _Input : 5
 _Result : { }
---Test 109:
-_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
-_Rewriting_system : [adec,[[aenc(_x_0,pk(_y_0)); _y_0], _x_0]]
-_Fst_ord_vars : { _x_0, _y_0 }
-_Snd_ord_vars : { }
-_Names : { _k_0 }
-_Axioms : { }
-_Input : pk(_k_0)
-_Input : proj_{1,3}
-_Input : 4
-_Result : { }
 --Test 7:
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_y_1,pk(_x_1)); _x_1], _y_1]; check,[[sign(_y_1,_x_1); vk(_x_1)], _y_1]; dec,[[enc(_y_1,_x_1); _x_1], _y_1]; dest,[[h(_y_1); _x_1], f(_y_1,_x_1);  [g(_y_1,_x_1); _x_1], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_1),_x_2); _x_1], sign(_y_1,_x_2)]]
@@ -140,6 +129,17 @@ _Axioms : { }
 _Input : aenc(_y_0,_x_0)
 _Input : dest
 _Input : 5
+_Result : { }
+--Test 109:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_x_0,pk(_y_0)); _y_0], _x_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0 }
+_Axioms : { }
+_Input : pk(_k_0)
+_Input : proj_{1,3}
+_Input : 4
 _Result : { }
 --Test 110:
 _Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
@@ -350,17 +350,6 @@ _Input : pk(_k_0)
 _Input : proj_{1,2}
 _Input : 2
 _Result : { }
---Test 20:
-_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
-_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_1)); _x_1], _y_0]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _z_0, _z_1, _y_1 }
-_Snd_ord_vars : { _Z_1:4, _Z_0:4 }
-_Names : { _k_0, _l_0 }
-_Axioms : { }
-_Input : aenc(_k_0,pk(_l_0))
-_Input : adec
-_Input : 4
-_Result : { (_Z_1, adec(_Z_1,_Z_0), adec(_z_0,_z_1), _Z_0:4 |- _z_1 /\ _Z_1:4 |- _z_0, adec(aenc(_x_0,pk(_y_1)),_y_1) -> _x_0) }
 --Test 18:
 _Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
 _Rewriting_system : [adec,[[aenc(_x_0,pk(_y_0)); _y_0], _x_0]]
@@ -372,6 +361,17 @@ _Input : aenc((_w_0,_m_0,pk(_l_0)),pk(_k_0))
 _Input : proj_{2,3}
 _Input : 5
 _Result : { }
+--Test 20:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_1)); _x_1], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1, _z_0, _z_1, _y_1 }
+_Snd_ord_vars : { _Z_1:4, _Z_0:4 }
+_Names : { _k_0, _l_0 }
+_Axioms : { }
+_Input : aenc(_k_0,pk(_l_0))
+_Input : adec
+_Input : 4
+_Result : { (_Z_1, adec(_Z_1,_Z_0), adec(_z_0,_z_1), _Z_0:4 |- _z_1 /\ _Z_1:4 |- _z_0, adec(aenc(_x_0,pk(_y_1)),_y_1) -> _x_0) }
 --Test 27:
 _Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
 _Rewriting_system : [adec,[[aenc(_x_0,pk(_y_0)); _y_0], _x_0]]
@@ -537,17 +537,6 @@ _Input : pk(_k_0)
 _Input : proj_{2,3}
 _Input : 4
 _Result : { }
---Test 15:
-_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
-_Rewriting_system : [adec,[[aenc(_x_0,pk(_y_0)); _y_0], _x_0]]
-_Fst_ord_vars : { _x_0, _y_0 }
-_Snd_ord_vars : { }
-_Names : { _k_0, _l_0 }
-_Axioms : { }
-_Input : aenc(_l_0,pk(_k_0))
-_Input : proj_{1,2}
-_Input : 4
-_Result : { }
 --Test 14:
 _Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
 _Rewriting_system : [adec,[[aenc(_y_0,pk(_x_1)); _x_1], _y_0]]
@@ -559,6 +548,17 @@ _Input : aenc((_w_0,_k_0,pk(_l_0)),pk(_m_0))
 _Input : adec
 _Input : 5
 _Result : { (_Z_1, adec(_Z_1,_Z_0), adec(_z_0,_z_1), _Z_0:5 |- _z_1 /\ _Z_1:5 |- _z_0, adec(aenc(_x_0,pk(_y_1)),_y_1) -> _x_0) }
+--Test 15:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_x_0,pk(_y_0)); _y_0], _x_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0 }
+_Axioms : { }
+_Input : aenc(_l_0,pk(_k_0))
+_Input : proj_{1,2}
+_Input : 4
+_Result : { }
 --Test 37:
 _Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
 _Rewriting_system : [adec,[[aenc(_x_0,pk(_y_0)); _y_0], _x_0]]
@@ -1032,17 +1032,6 @@ _Input : aenc((_x_0,_m_0,pk(_l_0)),pk(_k_0))
 _Input : proj_{1,2}
 _Input : 5
 _Result : { }
---Test 100:
-_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
-_Rewriting_system : [adec,[[aenc(_x_0,pk(_y_0)); _y_0], _x_0]]
-_Fst_ord_vars : { _x_0, _y_0 }
-_Snd_ord_vars : { }
-_Names : { _a_0 }
-_Axioms : { }
-_Input : _a_0
-_Input : proj_{2,3}
-_Input : 1
-_Result : { }
 --Test 99:
 _Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
 _Rewriting_system : [adec,[[aenc(_x_0,pk(_y_0)); _y_0], _x_0]]
@@ -1053,6 +1042,17 @@ _Axioms : { }
 _Input : pk(_k_0)
 _Input : proj_{2,3}
 _Input : 2
+_Result : { }
+--Test 100:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_x_0,pk(_y_0)); _y_0], _x_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _a_0 }
+_Axioms : { }
+_Input : _a_0
+_Input : proj_{2,3}
+_Input : 1
 _Result : { }
 --Test 103:
 _Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
@@ -1285,28 +1285,6 @@ _Input : _a_0
 _Input : proj_{2,2}
 _Input : 5
 _Result : { }
---Test 117:
-_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
-_Rewriting_system : [adec,[[aenc(_x_0,pk(_y_0)); _y_0], _x_0]]
-_Fst_ord_vars : { _x_0, _y_0 }
-_Snd_ord_vars : { }
-_Names : { _k_0 }
-_Axioms : { }
-_Input : pk(_k_0)
-_Input : proj_{3,3}
-_Input : 3
-_Result : { }
---Test 115:
-_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
-_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_1)); _x_1], _y_0]]
-_Fst_ord_vars : { _x_0, _y_0, _x_1, _z_0, _z_1, _y_1 }
-_Snd_ord_vars : { _Z_1:5, _Z_0:5 }
-_Names : { _k_0, _l_0 }
-_Axioms : { }
-_Input : aenc(_k_0,pk(_l_0))
-_Input : adec
-_Input : 5
-_Result : { (_Z_1, adec(_Z_1,_Z_0), adec(_z_0,_z_1), _Z_0:5 |- _z_1 /\ _Z_1:5 |- _z_0, adec(aenc(_x_0,pk(_y_1)),_y_1) -> _x_0) }
 --Test 12:
 _Signature : { aenc/2, blind/2, enc/2, f/2, g/2, h/1, pk/1, sign/2, vk/1 } Tuple : {  }
 _Rewriting_system : [adec,[[aenc(_y_1,pk(_x_1)); _x_1], _y_1]; check,[[sign(_y_1,_x_1); vk(_x_1)], _y_1]; dec,[[enc(_y_1,_x_1); _x_1], _y_1]; dest,[[h(_y_1); _x_1], f(_y_1,_x_1);  [g(_y_1,_x_1); _x_1], h(_y_1)]; unblind,[[sign(blind(_y_1,_x_1),_x_2); _x_1], sign(_y_1,_x_2)]]
@@ -1318,6 +1296,28 @@ _Input : _y_0
 _Input : dec
 _Input : 2
 _Result : { (_Z_1, dec(_Z_1,_Z_0), dec(_z_0,_z_1), _Z_0:2 |- _z_1 /\ _Z_1:2 |- _z_0, dec(enc(_x_0,_y_2),_y_2) -> _x_0) }
+--Test 115:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_1)); _x_1], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0, _x_1, _z_0, _z_1, _y_1 }
+_Snd_ord_vars : { _Z_1:5, _Z_0:5 }
+_Names : { _k_0, _l_0 }
+_Axioms : { }
+_Input : aenc(_k_0,pk(_l_0))
+_Input : adec
+_Input : 5
+_Result : { (_Z_1, adec(_Z_1,_Z_0), adec(_z_0,_z_1), _Z_0:5 |- _z_1 /\ _Z_1:5 |- _z_0, adec(aenc(_x_0,pk(_y_1)),_y_1) -> _x_0) }
+--Test 117:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_x_0,pk(_y_0)); _y_0], _x_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0 }
+_Axioms : { }
+_Input : pk(_k_0)
+_Input : proj_{3,3}
+_Input : 3
+_Result : { }
 --Test 119:
 _Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
 _Rewriting_system : [adec,[[aenc(_x_0,pk(_y_0)); _y_0], _x_0]]
