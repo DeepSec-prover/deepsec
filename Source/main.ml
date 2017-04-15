@@ -4,7 +4,31 @@
 let print_help () =
   Printf.printf "Name : DeepSec\n";
   Printf.printf "   DEciding Equivalence Properties for SECurity protocols\n\n";
-  Printf.printf "Version 1.0alpha\n\n"
+  Printf.printf "Version 1.0alpha\n\n";
+  Printf.printf "Synopsis :\n";
+  Printf.printf "      deepsec file\n\n";
+  Printf.printf "Testing interface and debug mode:\n";
+  Printf.printf "   A testing interface is available for developer to check any update they provide\n";
+  Printf.printf "   to the code. It can also be used by users to verify more in depth that DeepSec \n";
+  Printf.printf "   is behaving as expacted. To enable this testing interface, DeepSec must be recompile\n";
+  Printf.printf "   as follows.\n\n";
+  Printf.printf "      make testing\n";
+  Printf.printf "      make\n\n";
+  Printf.printf "   WARNING : Using the testing interface will slow down heavely the verification of\n";
+  Printf.printf "   of processes as it generates multiple tests, display them on html pages, etc.\n";
+  Printf.printf "   To disable the testing interface, one should once again compile DeepSec as follows.\n\n";
+  Printf.printf "      make without_testing\n";
+  Printf.printf "      make\n\n";
+  Printf.printf "   Similarly, DeepSec also have a debug mode that verify multiple invariants during\n";
+  Printf.printf "   its execution. It also slows down the verification of processes. To enable the debug\n";
+  Printf.printf "   mode, DeepSec must be compoiled as follows.\n\n";
+  Printf.printf "      make debug\n";
+  Printf.printf "      make\n\n";
+  Printf.printf "   To disable the debug mode, compile DeepSec as follows.\n";
+  Printf.printf "      make without_debug\n";
+  Printf.printf "      make\n\n";
+  Printf.printf "   Remark: The testing interface and debug mode are independant and can be enable at the\n";
+  Printf.printf "   same time by compiling DeepSec with for example: make testing; make debug; make\n"
 
 (******* Parsing *****)
 

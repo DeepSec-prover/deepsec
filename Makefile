@@ -49,6 +49,7 @@ EXE_TESTING_OBJ = $(EXE_TESTING_ML:.ml=.cmx)
 
 .PHONY: clean debug without_debug testing without_testing
 
+
 ### Targets
 
 all: .display_obj $(ALL_OBJ)
@@ -61,10 +62,12 @@ all: .display_obj $(ALL_OBJ)
 	@echo
 	$(OCAMLOPT) -o $(TESTING) $(OCAMLFLAGS) $(EXE_TESTING_OBJ)
 	@echo
+	@grep -q "let debug_activated = false" Source/core_library/config.ml || echo WARNING : Debug mode is activated; echo
+	@grep -q "let test_activated = false" Source/core_library/config.ml || echo WARNING : Testing interface is activated; echo 
 	@echo ----- Some Statistics -----
 	@echo
 	@echo Number of lines in the source code of the program :
-	@find . -name "*.ml" -or -name "*.mli" -or -name "*.mly" -or -name "*.mll" | xargs cat | wc -l
+	find . -name "*.ml" -or -name "*.mli" -or -name "*.mly" -or -name "*.mll" | xargs cat | wc -l
 	@rm -f .display .display_obj
 
 clean:
