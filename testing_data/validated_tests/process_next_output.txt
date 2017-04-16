@@ -1,0 +1,132 @@
+--Test 6:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_x_1,pk(_y_1)); _y_1], _x_1]]
+_Fst_ord_vars : { _x_0, _y_0, _w_0, _w_1, _w_2, _w_3, _x_1, _y_1 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Classic
+_Input : _TraceEq
+_Input : { [ { 1; _Nil } ], [ { (1,2); { }; { } } ] }
+_Input : { _w_3 -> aenc((_m_0,pk(_l_0)),pk(_k_0)), _w_2 -> pk(_l_0), _w_1 -> _m_0, _w_0 -> aenc((_y_0,_x_0),pk(_k_0)) }
+_Result : { }
+--Test 11:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _w_0, _w_1, _w_2, _x_0, _y_0, _w_3 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0, _k_1, _l_1, _m_1, _a_0, _k_2, _l_2 }
+_Axioms : { }
+_Input : _Classic
+_Input : _TraceEq
+_Input : { [ { 1; _Nil };{ 2; _In(_a_0,_w_2,1) };{ 3; _Out(_a_0,aenc((_m_1,pk(_l_1)),pk(_k_1)),2) };{ 4; _New(_m_1,3) };{ 5; _Out(_a_0,aenc((_w_1,_k_2,pk(_k_1)),pk(_l_1)),1) };{ 6; _Out(_a_0,aenc(_k_2,pk(_k_1)),1) };{ 7; _Test(_w_0,pk(_l_1),5,6) };{ 8; _Let((_w_1,_w_0),adec(_w_3,_k_1),7,6) };{ 9; _New(_k_2,8) };{ 10; _In(_a_0,_w_3,9) };{ 11; _Par((4,1),(10,1)) };{ 12; _Out(_a_0,pk(_l_2),11) };{ 13; _Out(_a_0,pk(_k_1),12) };{ 14; _Out(_a_0,pk(_l_1),13) };{ 15; _New(_l_2,14) };{ 16; _New(_k_1,15) };{ 17; _New(_l_1,16) } ], [ { (17,1); { }; { } } ] }
+_Input : { }
+_Result : { { { [ { 1; _Nil };{ 2; _In(_a_0,_w_2,1) };{ 3; _Out(_a_0,aenc((_m_1,pk(_l_1)),pk(_k_1)),2) };{ 4; _New(_m_1,3) };{ 5; _Out(_a_0,aenc((_w_1,_k_2,pk(_k_1)),pk(_l_1)),1) };{ 6; _Out(_a_0,aenc(_k_2,pk(_k_1)),1) };{ 7; _Test(_w_0,pk(_l_1),5,6) };{ 8; _Let((_w_1,_w_0),adec(_w_3,_k_1),7,6) };{ 9; _New(_k_2,8) };{ 10; _In(_a_0,_w_3,9) };{ 11; _Par((4,1),(10,1)) };{ 12; _Out(_a_0,pk(_l_2),11) };{ 13; _Out(_a_0,pk(_k_1),12) } ], [ { (13,1); { }; { _l_2 -> _k_0; _l_1 -> _m_0; _k_1 -> _l_0 } } ] }; { }; top; _a_0; pk(_m_0); [ ] ; { (14,1); { }; { _k_1 -> _l_0; _l_1 -> _m_0; _l_2 -> _k_0 } } ; { _TrNew({ (15,1); { }; { _l_1 -> _m_0; _k_1 -> _l_0 } },{ [ { 1; _Nil };{ 2; _In(_a_0,_w_2,1) };{ 3; _Out(_a_0,aenc((_m_1,pk(_l_1)),pk(_k_1)),2) };{ 4; _New(_m_1,3) };{ 5; _Out(_a_0,aenc((_w_1,_k_2,pk(_k_1)),pk(_l_1)),1) };{ 6; _Out(_a_0,aenc(_k_2,pk(_k_1)),1) };{ 7; _Test(_w_0,pk(_l_1),5,6) };{ 8; _Let((_w_1,_w_0),adec(_w_3,_k_1),7,6) };{ 9; _New(_k_2,8) };{ 10; _In(_a_0,_w_3,9) };{ 11; _Par((4,1),(10,1)) };{ 12; _Out(_a_0,pk(_l_2),11) };{ 13; _Out(_a_0,pk(_k_1),12) };{ 14; _Out(_a_0,pk(_l_1),13) } ], [ { (14,1); { }; { _k_1 -> _l_0; _l_1 -> _m_0; _l_2 -> _k_0 } } ] }), _TrNew({ (16,1); { }; { _l_1 -> _m_0 } },{ [ { 1; _Nil };{ 2; _In(_a_0,_w_2,1) };{ 3; _Out(_a_0,aenc((_m_1,pk(_l_1)),pk(_k_1)),2) };{ 4; _New(_m_1,3) };{ 5; _Out(_a_0,aenc((_w_1,_k_2,pk(_k_1)),pk(_l_1)),1) };{ 6; _Out(_a_0,aenc(_k_2,pk(_k_1)),1) };{ 7; _Test(_w_0,pk(_l_1),5,6) };{ 8; _Let((_w_1,_w_0),adec(_w_3,_k_1),7,6) };{ 9; _New(_k_2,8) };{ 10; _In(_a_0,_w_3,9) };{ 11; _Par((4,1),(10,1)) };{ 12; _Out(_a_0,pk(_l_2),11) };{ 13; _Out(_a_0,pk(_k_1),12) };{ 14; _Out(_a_0,pk(_l_1),13) };{ 15; _New(_l_2,14) } ], [ { (15,1); { }; { _l_1 -> _m_0; _k_1 -> _l_0 } } ] }), _TrNew({ (17,1); { }; { } },{ [ { 1; _Nil };{ 2; _In(_a_0,_w_2,1) };{ 3; _Out(_a_0,aenc((_m_1,pk(_l_1)),pk(_k_1)),2) };{ 4; _New(_m_1,3) };{ 5; _Out(_a_0,aenc((_w_1,_k_2,pk(_k_1)),pk(_l_1)),1) };{ 6; _Out(_a_0,aenc(_k_2,pk(_k_1)),1) };{ 7; _Test(_w_0,pk(_l_1),5,6) };{ 8; _Let((_w_1,_w_0),adec(_w_3,_k_1),7,6) };{ 9; _New(_k_2,8) };{ 10; _In(_a_0,_w_3,9) };{ 11; _Par((4,1),(10,1)) };{ 12; _Out(_a_0,pk(_l_2),11) };{ 13; _Out(_a_0,pk(_k_1),12) };{ 14; _Out(_a_0,pk(_l_1),13) };{ 15; _New(_l_2,14) };{ 16; _New(_k_1,15) } ], [ { (16,1); { }; { _l_1 -> _m_0 } } ] }) } } }
+--Test 5:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_x_2,pk(_y_2)); _y_2], _x_2]]
+_Fst_ord_vars : { _w_0, _w_1, _x_0, _y_0, _w_2, _x_1, _y_1, _w_3, _x_2, _y_2 }
+_Snd_ord_vars : { }
+_Names : { _k_0 }
+_Axioms : { }
+_Input : _Classic
+_Input : _TraceEq
+_Input : { [ { 1; _Nil } ], [ { (1,2); { }; { } } ] }
+_Input : { _w_3 -> aenc((_y_1,_x_1),pk(_k_0)), _w_2 -> aenc((_y_0,_x_0),pk(_k_0)), _w_1 -> _x_1, _w_0 -> _y_1 }
+_Result : { }
+--Test 1:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_x_1,pk(_y_1)); _y_1], _x_1]]
+_Fst_ord_vars : { _x_0, _w_0, _w_1, _w_2, _y_0, _w_3, _x_1, _y_1 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0 }
+_Axioms : { }
+_Input : _Classic
+_Input : _TraceEq
+_Input : { [ { 1; _Nil } ], [ { (1,2); { }; { } } ] }
+_Input : { _w_3 -> aenc((_y_0,pk(_l_0)),pk(_k_0)), _w_2 -> pk(_l_0), _w_1 -> _y_0, _w_0 -> aenc((_x_0,pk(_l_0)),pk(_k_0)) }
+_Result : { }
+--Test 7:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_x_1,pk(_y_1)); _y_1], _x_1]]
+_Fst_ord_vars : { _x_0, _y_0, _w_0, _w_1, _w_2, _w_3, _x_1, _y_1 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Classic
+_Input : _TraceEq
+_Input : { [ { 1; _Nil } ], [ { (1,2); { }; { } } ] }
+_Input : { _w_3 -> aenc((_m_0,pk(_l_0)),pk(_k_0)), _w_2 -> _m_0, _w_1 -> pk(_l_0), _w_0 -> aenc((_y_0,_x_0),pk(_k_0)) }
+_Result : { }
+--Test 10:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_x_1,pk(_y_1)); _y_1], _x_1]]
+_Fst_ord_vars : { _w_0, _x_0, _w_1, _w_2, _y_0, _w_3, _x_1, _y_1 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0 }
+_Axioms : { }
+_Input : _Classic
+_Input : _TraceEq
+_Input : { [ { 1; _Nil } ], [ { (1,2); { }; { } } ] }
+_Input : { _w_3 -> aenc((_y_0,pk(_l_0)),pk(_k_0)), _w_2 -> pk(_l_0), _w_1 -> aenc((_x_0,pk(_l_0)),pk(_k_0)), _w_0 -> _y_0 }
+_Result : { }
+--Test 2:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_x_0,pk(_y_0)); _y_0], _x_0]]
+_Fst_ord_vars : { _x_0, _y_0, _w_0 }
+_Snd_ord_vars : { }
+_Names : { _a_0 }
+_Axioms : { }
+_Input : _Classic
+_Input : _TraceEq
+_Input : { [ { 1; _Nil };{ 2; _In(_a_0,_w_0,1) } ], [ { (1,1); { }; { } };{ (2,1); { }; { } } ] }
+_Input : { }
+_Result : { }
+--Test 8:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_1,pk(_x_2)); _x_2], _y_1]]
+_Fst_ord_vars : { _w_0, _w_1, _x_0, _w_2, _y_0, _x_1, _w_3, _y_1, _x_2 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0 }
+_Axioms : { }
+_Input : _Classic
+_Input : _TraceEq
+_Input : { [ { 1; _Nil } ], [ { (1,2); { }; { } } ] }
+_Input : { _w_3 -> aenc((_x_1,_y_0),pk(_l_0)), _w_2 -> aenc((_x_0,pk(_k_0)),pk(_l_0)), _w_1 -> _y_0, _w_0 -> _x_1 }
+_Result : { }
+--Test 3:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_1,pk(_x_2)); _x_2], _y_1]]
+_Fst_ord_vars : { _w_0, _w_1, _x_0, _y_0, _w_2, _x_1, _w_3, _y_1, _x_2 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0 }
+_Axioms : { }
+_Input : _Classic
+_Input : _TraceEq
+_Input : { [ { 1; _Nil } ], [ { (1,2); { }; { } } ] }
+_Input : { _w_3 -> aenc((_x_1,pk(_l_0)),pk(_k_0)), _w_2 -> aenc((_y_0,_x_0),pk(_k_0)), _w_1 -> pk(_l_0), _w_0 -> _x_1 }
+_Result : { }
+--Test 9:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_1)); _x_1], _y_0]]
+_Fst_ord_vars : { _w_0, _w_1, _w_2, _x_0, _w_3, _y_0, _x_1 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Classic
+_Input : _TraceEq
+_Input : { [ { 1; _Nil } ], [ { (1,2); { }; { } } ] }
+_Input : { _w_3 -> aenc((_x_0,pk(_m_0)),pk(_l_0)), _w_2 -> pk(_m_0), _w_1 -> aenc((_k_0,pk(_m_0)),pk(_l_0)), _w_0 -> _x_0 }
+_Result : { }
+--Test 4:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_x_0,pk(_y_0)); _y_0], _x_0]]
+_Fst_ord_vars : { _w_0, _x_0, _y_0 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Classic
+_Input : _TraceEq
+_Input : { [ { 1; _Nil } ], [ { (1,2); { }; { } } ] }
+_Input : { _w_0 -> aenc((_m_0,pk(_l_0)),pk(_k_0)) }
+_Result : { }

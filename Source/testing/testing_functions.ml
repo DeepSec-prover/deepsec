@@ -945,8 +945,8 @@ let display_next_output_result_testing rho id_rho proc_output_list =
       (display Testing ~rho:rho Protocol output.Process.out_channel)
       (display Testing ~rho:rho Protocol output.Process.out_term)
       (display_term_list Testing Protocol rho output.Process.out_private_channels)
-      (Process.Trace.display_testing rho id_rho output.Process.out_tau_actions)
       (Process.display_action_process_testing rho id_rho action)
+      (Process.Trace.display_testing rho id_rho output.Process.out_tau_actions)
   in
 
   if proc_output_list = []
@@ -1036,8 +1036,8 @@ let display_next_input_result_testing rho id_rho proc_input_list =
       (display Testing ~rho:rho Protocol input.Process.in_channel)
       (Variable.display Testing ~rho:rho Protocol input.Process.in_variable)
       (display_term_list Testing Protocol rho input.Process.in_private_channels)
-      (Process.Trace.display_testing rho id_rho input.Process.in_tau_actions)
       (Process.display_action_process_testing rho id_rho action)
+      (Process.Trace.display_testing rho id_rho input.Process.in_tau_actions)
   in
 
   if proc_input_list = []
@@ -1049,7 +1049,7 @@ let display_next_input_result_HTML rho id_rho id init_process proc_input_list =
   let size_list = List.length proc_input_list in
 
   if size_list = 0
-  then ("No output transitions","",[])
+  then ("No input transitions","",[])
   else
     begin
       let html_script = ref "" in
