@@ -45,14 +45,14 @@ and content_mult =
     mult : int
   }
 
-and symbolic_derivation =
+and action_process =
   {
     content_mult : content_mult;
     var_renaming : (fst_ord, name) Variable.Renaming.t;
-    name_renaming : Name.Renaming.t
+    name_renaming : Name.Renaming.t;
   }
 
-and process = symbolic_derivation list
+and process = action_process list
 
 type id_renaming = int -> int
 
@@ -69,6 +69,8 @@ let fresh_id =
   f
 
 let get_vars_Term = get_vars_with_list
+
+let get_names_Term = get_names_with_list
 
 (******************************************
 ***          Tested function            ***
@@ -490,7 +492,7 @@ let display_content_testing rho id_rho c =
     (id_rho c.id)
     (display_action_testing rho id_rho c.action)
 
-let display_symbolic_derivation_testing rho id_rho symb =
+let display_action_process_testing rho id_rho symb =
   Printf.sprintf "{ %s; %s; %s }"
     (display_content_mult_testing id_rho symb.content_mult)
     (Variable.Renaming.display Testing ~rho:rho Protocol symb.var_renaming)
@@ -523,7 +525,7 @@ let display_process_testing rho id_rho process =
 
   Printf.sprintf "{ [ %s ], [ %s ] }"
     (display_list (display_content_testing rho id_rho) ";" content_list)
-    (display_list (display_symbolic_derivation_testing rho id_rho) ";" process)
+    (display_list (display_action_process_testing rho id_rho) ";" process)
 
 let rec display_expansed_process_testing rho = function
   | Nil -> "_Nil"
@@ -573,7 +575,7 @@ let display_action_HTML rho = function
   | AChoice(_) -> "+"
 
 let display_content_HTML rho id_rho content =
-  Printf.sprintf "            { id: '%d', value: { label: '<p>&nbsp;&nbsp;%s&nbsp;&nbsp;</p>' } },\n" (id_rho content.id) (display_action_HTML rho content.action)
+  Printf.sprintf "            { id: '%d', value: { label: '@<p>%s</p>' } },\n" (id_rho content.id) (display_action_HTML rho content.action)
 
 let display_link_HTML id_rho parent son = function
   | None -> Printf.sprintf "            { u: '%d', v: '%d' },\n" (id_rho parent.id) (id_rho son.id)
@@ -595,45 +597,47 @@ let display_links_from_content_HTML id_rho content = match content.action with
           else display_link_HTML id_rho content c_mult.content (Some (string_of_int c_mult.mult))
         ) "" c_mult_l
 
-let display_renaming_nodes_HTML proc =
+let display_renaming_nodes_HTML highlight proc =
   let acc = ref 1 in
   let acc_rho = ref 1 in
   let str = ref "" in
   List.iter (fun symb ->
+    let tag =
+      if List.exists (fun symb' ->
+        symb.content_mult.content == symb'.content_mult.content && Variable.Renaming.is_equal Protocol symb'.var_renaming symb.var_renaming && Name.Renaming.is_equal symb.name_renaming symb'.name_renaming
+        ) highlight
+      then "!"
+      else "@"
+    in
     if Variable.Renaming.is_identity symb.var_renaming && Name.Renaming.is_identity symb.name_renaming
-    then str := Printf.sprintf "%s            { id: 'rho_%d' },\n" !str !acc
-    else (str := Printf.sprintf "%s            { id: 'rho_%d', value: { label: '<p>&nbsp;&nbsp;rho<sub>%d</sub>&nbsp;&nbsp;</p>' } },\n" !str !acc !acc_rho; incr acc_rho);
+    then str := Printf.sprintf "%s            { id: 'rho_%d' , value: { label: '%s<p>%s</p>' } },\n" !str !acc tag (emptyset HTML)
+    else (str := Printf.sprintf "%s            { id: 'rho_%d', value: { label: '%s<p>rho<sub>%d</sub></p>' } },\n" !str !acc  tag !acc_rho; incr acc_rho);
 
     incr acc
     ) proc;
   !str
 
-let display_renamings_HTML rho proc =
+let display_renamings_HTML rho subst proc =
   let acc_rho = ref 1 in
   let str = ref "" in
+  let all_identity = ref true in
   List.iter (fun symb ->
     match Variable.Renaming.is_identity symb.var_renaming, Name.Renaming.is_identity symb.name_renaming with
       | true, true -> ()
-      | false, true ->
-          str := Printf.sprintf "%s                  <p>rho<sub>%d</sub> = \\(%s\\)</p>\n"
-            !str
-            !acc_rho
-            (Variable.Renaming.display Latex ~rho:rho Protocol symb.var_renaming);
-          incr acc_rho
-      | true, false ->
-          str := Printf.sprintf "%s                  <p>rho<sub>%d</sub> = \\(%s\\)</p>\n"
-            !str
-            !acc_rho
-            (Name.Renaming.display Latex ~rho:rho symb.name_renaming);
-          incr acc_rho
       | _, _ ->
-          str := Printf.sprintf "%s                  <p>rho<sub>%d</sub> = \\(%s\\) and \\(%s\\)</p>\n"
-            !str
-            !acc_rho
-            (Variable.Renaming.display Latex ~rho:rho Protocol symb.var_renaming)
-            (Name.Renaming.display Latex ~rho:rho symb.name_renaming);
+          all_identity := false;
+          let subst_rho_0 = Subst.of_renaming symb.var_renaming in
+          let subst_rho_1 = Subst.compose_restricted subst_rho_0 subst in
+          str := Printf.sprintf "%s                    <div class=\"node-description\">Node rho<sub>%d</sub>:</div>\n" !str !acc_rho;
+          str := Printf.sprintf "%s                    <div>Names : \\(%s\\)</div>\n" !str (Name.Renaming.display Latex ~rho:rho symb.name_renaming);
+          str := Printf.sprintf "%s                    <div>Variables : \\(%s\\)</div>\n" !str (Subst.display Latex ~rho:rho Protocol subst_rho_1);
+
           incr acc_rho
   ) proc;
+
+  if !all_identity
+  then str := Printf.sprintf "%s                    <div class=\"node-description\">No renaming or substitution</div>\n" !str;
+
   !str
 
 let display_renaming_links_HTML id_rho proc =
@@ -650,18 +654,26 @@ let display_renaming_links_HTML id_rho proc =
     ) proc;
   !str
 
-let display_process_HTML ?(rho=None) ?(id_rho=(fun x -> x)) ?(name="Process") id process =
+let display_process_HTML ?(rho=None) ?(id_rho=(fun x -> x)) ?(general_process=None) id process =
 
   let javascript =
-    let list_contents = get_list_of_contents process in
+    let list_contents =
+      match general_process with
+        | None -> get_list_of_contents process
+        | Some proc ->
+            let general_contents = get_list_of_contents proc in
+            let contents = get_list_of_contents process in
+            List.filter (fun cont ->
+              List.exists (fun cont' -> cont.id = cont'.id) contents
+            ) general_contents
+    in
     let str = ref "" in
 
     str := Printf.sprintf "%sloadData%s(\n" !str id;
     str := Printf.sprintf "%s    {\n" !str;
-    str := Printf.sprintf "%s        name: '%s',\n" !str name;
     str := Printf.sprintf "%s        nodes: [\n" !str;
     List.iter (fun c -> str := Printf.sprintf "%s%s" !str (display_content_HTML rho id_rho c)) list_contents;
-    str := Printf.sprintf "%s%s" !str (display_renaming_nodes_HTML process);
+    str := Printf.sprintf "%s%s" !str (display_renaming_nodes_HTML [] process);
     str := Printf.sprintf "%s        ],\n" !str;
     str := Printf.sprintf "%s        links: [\n" !str;
     List.iter (fun c -> str := Printf.sprintf "%s%s" !str (display_links_from_content_HTML id_rho c)) list_contents;
@@ -673,7 +685,6 @@ let display_process_HTML ?(rho=None) ?(id_rho=(fun x -> x)) ?(name="Process") id
   let html =
     let str = ref "" in
 
-    str := Printf.sprintf "%s            <span id=\"dag-name-%s\" class=\"dag-name\"></span>\n" !str id;
     str := Printf.sprintf "%s            <table class=\"processTable\">\n" !str;
     str := Printf.sprintf "%s              <tr class=\"processTableRow\">\n" !str;
     str := Printf.sprintf "%s                <td class=\"processDag\">\n" !str;
@@ -684,7 +695,8 @@ let display_process_HTML ?(rho=None) ?(id_rho=(fun x -> x)) ?(name="Process") id
     str := Printf.sprintf "%s                  </div>\n" !str;
     str := Printf.sprintf "%s                </td>\n" !str;
     str := Printf.sprintf "%s                <td class=\"processRenaming\">\n" !str;
-    str := Printf.sprintf "%s%s" !str (display_renamings_HTML rho process);
+    str := Printf.sprintf "%s                  <div class=\"title-description\">Renamings and substitution of the process</div>\n" !str;
+    str := Printf.sprintf "%s%s" !str (display_renamings_HTML rho Subst.identity process);
     str := Printf.sprintf "%s                </td>\n" !str;
     str := Printf.sprintf "%s              </tr>\n" !str;
     str := Printf.sprintf "%s            </table>\n" !str;
@@ -693,7 +705,13 @@ let display_process_HTML ?(rho=None) ?(id_rho=(fun x -> x)) ?(name="Process") id
 
   (html,javascript)
 
-let display_expansed_process_HTML ?(rho=None) ?(margin_px=15) process =
+let display_expansed_process_HTML ?(rho=None) ?(margin_px=15) ?(subst=Subst.identity) process =
+
+  let apply =
+    if Subst.is_identity subst
+    then (fun t -> Rewrite_rules.normalise t)
+    else (fun t -> Rewrite_rules.normalise (Subst.apply subst t (fun x f -> f x)))
+  in
 
   let line = ref 1 in
 
@@ -711,25 +729,25 @@ let display_expansed_process_HTML ?(rho=None) ?(margin_px=15) process =
     | Nil when prev_in_out -> ""
     | Nil -> str_div margin "0"
     | Output(ch,t,p) ->
-        let str = str_div margin (Printf.sprintf "out(%s,%s);" (display HTML ~rho:rho Protocol ch) (display HTML ~rho:rho Protocol t)) in
+        let str = str_div margin (Printf.sprintf "out(%s,%s);" (display HTML ~rho:rho Protocol (apply ch)) (display HTML ~rho:rho Protocol (apply t))) in
         str^(sub_display_process margin true p)
     | Input(ch,x,p) ->
-        let str = str_div margin (Printf.sprintf "in(%s,%s);" (display HTML ~rho:rho Protocol ch) (Variable.display HTML ~rho:rho Protocol x)) in
+        let str = str_div margin (Printf.sprintf "in(%s,%s);" (display HTML ~rho:rho Protocol (apply ch)) (Variable.display HTML ~rho:rho Protocol x)) in
         str^(sub_display_process margin true p)
     | IfThenElse(t1,t2,p_then,Nil) ->
-        let str = str_div margin (Printf.sprintf "if %s %s %s then" (display HTML ~rho:rho Protocol t1) (eqs HTML) (display HTML ~rho:rho Protocol t2)) in
+        let str = str_div margin (Printf.sprintf "if %s %s %s then" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2))) in
         str^(sub_display_process margin false p_then)
     | IfThenElse(t1,t2,p_then,p_else) ->
-        let str_test = str_div margin (Printf.sprintf "if %s %s %s then" (display HTML ~rho:rho Protocol t1) (eqs HTML) (display HTML ~rho:rho Protocol t2)) in
+        let str_test = str_div margin (Printf.sprintf "if %s %s %s then" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2))) in
         let str_p_then = sub_display_process (margin+1) false p_then in
         let str_else = str_div margin "else" in
         let str_p_else = sub_display_process (margin+1) false p_else in
         str_test ^ str_p_then ^ str_else ^ str_p_else
     | Let(t1,t2,p_then,Nil) ->
-        let str = str_div margin (Printf.sprintf "let %s %s %s in" (display HTML ~rho:rho Protocol t1) (eqs HTML) (display HTML ~rho:rho Protocol t2)) in
+        let str = str_div margin (Printf.sprintf "let %s %s %s in" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2))) in
         str^(sub_display_process margin false p_then)
     | Let(t1,t2,p_then,p_else) ->
-        let str_test = str_div margin (Printf.sprintf "let %s %s %s in" (display HTML ~rho:rho Protocol t1) (eqs HTML) (display HTML ~rho:rho Protocol t2)) in
+        let str_test = str_div margin (Printf.sprintf "let %s %s %s in" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2))) in
         let str_p_then = sub_display_process (margin+1) false p_then in
         let str_else = str_div margin "else" in
         let str_p_else = sub_display_process (margin+1) false p_else in
@@ -863,6 +881,11 @@ module Testing = struct
       in
       add id (AChoice(cont_mult_list))
 
+  let create_action_process ((id,mult),var_rho,name_rho) =
+    let c = find_id id in
+    let cont_mult = { content = c; mult = mult } in
+    { content_mult = cont_mult; var_renaming = var_rho ; name_renaming = name_rho }
+
   let create_process symb_list =
     List.map (fun ((id,mult),var_rho,name_rho) ->
       let c = find_id id in
@@ -904,6 +927,368 @@ module Testing = struct
 
 end
 
+module Trace = struct
+
+  type trace_actions =
+    | TrComm of action_process * action_process * process
+    | TrNew of action_process * process
+    | TrChoice of action_process * process
+    | TrTest of action_process * process
+    | TrLet of action_process * process
+    | TrInput of snd_ord_variable * protocol_term * snd_ord_variable * protocol_term * action_process * process
+    | TrOutput of snd_ord_variable * protocol_term * axiom * protocol_term * action_process * process
+    | TrEavesdrop of snd_ord_variable * protocol_term * axiom * protocol_term * action_process * action_process * process
+
+  type t = trace_actions list
+
+  let empty = []
+
+  let size = List.length
+
+  let add_comm act1 act2 proc trace = TrComm(act1,act2,proc)::trace
+
+  let add_new act proc trace = TrNew(act,proc)::trace
+
+  let add_choice act proc trace = TrChoice(act,proc)::trace
+
+  let add_test act proc trace = TrTest(act,proc)::trace
+
+  let add_let act proc trace = TrLet(act,proc)::trace
+
+  let add_input ch_X ch x_X x action proc trace = TrInput(ch_X,ch,x_X,x,action,proc) :: trace
+
+  let add_output ch_X ch ax t action proc trace = TrOutput(ch_X,ch,ax,t,action,proc) :: trace
+
+  let add_eavesdrop ch_X ch ax t action_in action_out proc trace = TrEavesdrop(ch_X,ch,ax,t,action_in, action_out,proc) :: trace
+
+  let combine tr1 tr2 = tr2 @ tr1
+
+  let get_vars_with_list (type a) (type b) (at: (a,b) atom) trace (v_list: (a,b) variable list)= match at with
+    | Protocol ->
+        ((List.fold_left (fun (acc:(a,b) variable list) -> function
+          | TrComm(_,_,proc)
+          | TrNew(_,proc)
+          | TrChoice(_,proc)
+          | TrTest(_,proc)
+          | TrLet(_,proc) -> List.fold_left (fun (acc':(a,b) variable list) symb -> Variable.Renaming.get_vars_with_list symb.var_renaming acc') acc proc
+          | TrInput(_,ch,_,t,_,proc)
+          | TrOutput(_,ch,_,t,_,proc)
+          | TrEavesdrop(_,ch,_,t,_,_,proc) ->
+              let v_list_1 = get_vars_Term Protocol ch (fun _ -> true) acc in
+              let v_list_2 = get_vars_Term Protocol t (fun _ -> true) v_list_1 in
+              List.fold_left (fun (acc':(a,b) variable list) symb -> Variable.Renaming.get_vars_with_list symb.var_renaming acc') v_list_2 proc
+        ) v_list trace):(a,b) variable list)
+    | Recipe ->
+        ((List.fold_left (fun (acc:(a,b) variable list) -> function
+          | TrComm(_,_,_)
+          | TrNew(_,_)
+          | TrChoice(_,_)
+          | TrTest(_,_)
+          | TrLet(_,_) -> acc
+          | TrInput(ch_X,_,t_X,_,_,_) ->
+              let v_list_1 = get_vars_Term Recipe (of_variable ch_X) (fun _ -> true) acc in
+              get_vars_Term Recipe (of_variable t_X) (fun _ -> true) v_list_1
+          | TrOutput(ch_X,_,_,_,_,_)
+          | TrEavesdrop(ch_X,_,_,_,_,_,_) -> get_vars_Term Recipe (of_variable ch_X) (fun _ -> true) acc
+        ) v_list trace):(a,b) variable list)
+
+  let get_names_with_list trace n_list =
+    List.fold_left (fun acc -> function
+      | TrComm(_,_,proc)
+      | TrNew(_,proc)
+      | TrChoice(_,proc)
+      | TrTest(_,proc)
+      | TrLet(_,proc) -> List.fold_left (fun acc' symb -> Name.Renaming.get_names_with_list symb.name_renaming acc') acc proc
+      | TrInput(_,ch,_,t,_,proc)
+      | TrOutput(_,ch,_,t,_,proc)
+      | TrEavesdrop(_,ch,_,t,_,_,proc) ->
+          let n_list_1 = get_names_Term Protocol ch (fun _ -> true) acc in
+          let n_list_2 = get_names_Term Protocol t (fun _ -> true) n_list_1 in
+          List.fold_left (fun acc' symb -> Name.Renaming.get_names_with_list symb.name_renaming acc') n_list_2 proc
+    ) n_list trace
+
+  let get_axioms_with_list trace ax_list =
+    List.fold_left (fun acc -> function
+      | TrComm(_,_,_)
+      | TrNew(_,_)
+      | TrChoice(_,_)
+      | TrTest(_,_)
+      | TrLet(_,_)
+      | TrInput(_,_,_,_,_,_) -> acc
+      | TrOutput(_,_,ax,_,_,_)
+      | TrEavesdrop(_,_,ax,_,_,_,_) -> ax::acc
+    ) ax_list trace
+
+  let display_actions_testing rho id_rho = function
+    | TrComm(act1,act2,proc) ->
+        Printf.sprintf "_TrComm(%s,%s,%s)"
+          (display_action_process_testing rho id_rho act1)
+          (display_action_process_testing rho id_rho act2)
+          (display_process_testing rho id_rho proc)
+    | TrNew(act1,proc) ->
+        Printf.sprintf "_TrNew(%s,%s)"
+          (display_action_process_testing rho id_rho act1)
+          (display_process_testing rho id_rho proc)
+    | TrChoice(act1,proc) ->
+        Printf.sprintf "_TrChoice(%s,%s)"
+          (display_action_process_testing rho id_rho act1)
+          (display_process_testing rho id_rho proc)
+    | TrTest(act1,proc) ->
+        Printf.sprintf "_TrTest(%s,%s)"
+          (display_action_process_testing rho id_rho act1)
+          (display_process_testing rho id_rho proc)
+    | TrLet(act1,proc) ->
+        Printf.sprintf "_TrLet(%s,%s)"
+          (display_action_process_testing rho id_rho act1)
+          (display_process_testing rho id_rho proc)
+    | TrInput(ch_X,ch,t_X,t,act1,proc) ->
+        Printf.sprintf "_TrInput(%s,%s,%s,%s,%s,%s)"
+          (Variable.display Testing ~rho:rho Recipe ch_X)
+          (display Testing ~rho:rho Protocol ch)
+          (Variable.display Testing ~rho:rho Recipe t_X)
+          (display Testing ~rho:rho Protocol t)
+          (display_action_process_testing rho id_rho act1)
+          (display_process_testing rho id_rho proc)
+    | TrOutput(ch_X,ch,ax,t,act1,proc) ->
+        Printf.sprintf "_TrOutput(%s,%s,%s,%s,%s,%s)"
+          (Variable.display Testing ~rho:rho Recipe ch_X)
+          (display Testing ~rho:rho Protocol ch)
+          (Axiom.display Testing ~rho:rho ax)
+          (display Testing ~rho:rho Protocol t)
+          (display_action_process_testing rho id_rho act1)
+          (display_process_testing rho id_rho proc)
+    | TrEavesdrop(ch_X,ch,ax,t,act1,act2,proc) ->
+        Printf.sprintf "_TrEavesdrop(%s,%s,%s,%s,%s,%s,%s)"
+          (Variable.display Testing ~rho:rho Recipe ch_X)
+          (display Testing ~rho:rho Protocol ch)
+          (Axiom.display Testing ~rho:rho ax)
+          (display Testing ~rho:rho Protocol t)
+          (display_action_process_testing rho id_rho act1)
+          (display_action_process_testing rho id_rho act2)
+          (display_process_testing rho id_rho proc)
+
+  let display_testing rho id_rho trace =
+    Printf.sprintf "{ %s }"
+      (display_list (display_actions_testing rho id_rho) ", " trace)
+
+  let display_HTML ?(rho=None) ?(id_rho=(fun x -> x)) ?(title="Display of the trace") id ?(fst_subst=Subst.identity) ?(snd_subst=Subst.identity) init_process trace =
+
+    let rev_trace = List.rev trace in
+    let size_trace = List.length trace in
+
+    let javascript =
+      let init_content_list = get_list_of_contents init_process in
+
+      let generate_content_list process =
+        let content_list = get_list_of_contents process in
+        List.iter (fun cont -> cont.link <- Found) content_list;
+        let result = List.filter (fun cont -> cont.link = Found)  init_content_list in
+        List.iter (fun cont -> cont.link <- NoLink) content_list;
+        result
+      in
+
+      let print_loading content_list highlight process id =
+        let str = ref "" in
+
+        str := Printf.sprintf "%sloadData%s(\n" !str id;
+        str := Printf.sprintf "%s    {\n" !str;
+        str := Printf.sprintf "%s        nodes: [\n" !str;
+        List.iter (fun cont -> str := Printf.sprintf "%s%s" !str (display_content_HTML rho id_rho cont)) content_list;
+        str := Printf.sprintf "%s%s" !str (display_renaming_nodes_HTML highlight process);
+        str := Printf.sprintf "%s        ],\n" !str;
+        str := Printf.sprintf "%s        links: [\n" !str;
+        List.iter (fun cont -> str := Printf.sprintf "%s%s" !str (display_links_from_content_HTML id_rho cont)) content_list;
+        str := Printf.sprintf "%s%s" !str (display_renaming_links_HTML id_rho process);
+        str := Printf.sprintf "%s        ]\n    }\n);\n\n" !str;
+        !str
+      in
+
+      let js_script = ref (print_loading init_content_list [] init_process (Printf.sprintf "%se1" id)) in
+
+      let rec print_trace counter prev_content_list prev_process = function
+        | [] -> ()
+        | TrComm(symb_in,symb_out,res_proc) :: q
+        | TrEavesdrop(_,_,_,_,symb_in,symb_out,res_proc) :: q ->
+            (* Script of the highlighted action *)
+            js_script := Printf.sprintf "%s%s" !js_script (print_loading prev_content_list [symb_in;symb_out] prev_process (Printf.sprintf "%se%d" id counter));
+            (* Script of the result process *)
+            let content_list = generate_content_list res_proc in
+            js_script := Printf.sprintf "%s%s" !js_script (print_loading content_list [] res_proc (Printf.sprintf "%se%d" id (counter+1)));
+            print_trace (counter + 2) content_list res_proc q
+        | TrNew(symb,res_proc) :: q
+        | TrChoice(symb,res_proc) :: q
+        | TrTest(symb,res_proc) :: q
+        | TrLet(symb,res_proc) :: q
+        | TrInput(_,_,_,_,symb,res_proc) :: q
+        | TrOutput(_,_,_,_,symb,res_proc) :: q ->
+            (* Script of the highlighted action *)
+            js_script := Printf.sprintf "%s%s" !js_script (print_loading prev_content_list [symb] prev_process (Printf.sprintf "%se%d" id counter));
+            (* Script of the result process *)
+            let content_list = generate_content_list res_proc in
+            js_script := Printf.sprintf "%s%s" !js_script (print_loading content_list [] res_proc (Printf.sprintf "%se%d" id (counter+1)));
+            print_trace (counter + 2) content_list res_proc q
+      in
+
+      print_trace 2 init_content_list init_process rev_trace;
+      !js_script
+    in
+
+    let html =
+      let html_script = ref "" in
+
+      let rec print_action_title counter = function
+        | [] -> ()
+        | action :: q ->
+            let desc = match action with
+              | TrComm(_,_,_) -> "Next unobservable action: Internal communication"
+              | TrNew(_,_) -> "Next unobservable action: Fresh name generation"
+              | TrChoice(_,_) -> "Next unobservable action: Non deterministic choice"
+              | TrTest(_,_) -> "Next unobservable action: Equality test"
+              | TrLet(_,_) -> "Next unobservable action: Let evaluation"
+              | TrInput(_,_,_,_,_,_) -> "Next <span class=\"alert\">observable</span> action: Input"
+              | TrOutput(_,_,_,_,_,_) -> "Next <span class=\"alert\">observable</span> action: Output"
+              | TrEavesdrop(_,_,_,_,_,_,_) -> "Next <span class=\"alert\">observable</span> action: Eavesdrop"
+            in
+            html_script := Printf.sprintf "%s                    <span class=\"description-action\" id=\"desc-%se%d\">%s</span>\n" !html_script id counter desc;
+            html_script := Printf.sprintf "%s                    <span class=\"description-action\" id=\"desc-%se%d\">Result</span>\n" !html_script id (counter+1);
+            print_action_title (counter+2) q
+      in
+
+      let rec print_dag = function
+        | 1 -> ()
+        | counter ->
+            print_dag (counter-1);
+            html_script := Printf.sprintf "%s                  <div id=\"dag-%se%d\" class=\"dag\">\n" !html_script id counter;
+            html_script := Printf.sprintf "%s                    <svg height=\"80\">\n" !html_script;
+            html_script := Printf.sprintf "%s                      <g transform=\"translate(20, 20)\"/>\n" !html_script;
+            html_script := Printf.sprintf "%s                    </svg>\n" !html_script;
+            html_script := Printf.sprintf "%s                  </div>\n" !html_script
+      in
+
+      let rec print_renamings counter prev_process = function
+        | [] -> ()
+        | TrComm(_,_,res_proc) :: q
+        | TrNew(_,res_proc) :: q
+        | TrChoice(_,res_proc) :: q
+        | TrTest(_,res_proc) :: q
+        | TrLet(_,res_proc) :: q
+        | TrInput(_,_,_,_,_,res_proc) :: q
+        | TrOutput(_,_,_,_,_,res_proc) :: q
+        | TrEavesdrop(_,_,_,_,_,_,res_proc) :: q->
+            html_script := Printf.sprintf "%s                  <div id=\"renaming-%se%d\" class=\"renaming\">\n%s" !html_script id counter (display_renamings_HTML rho fst_subst prev_process);
+            html_script := Printf.sprintf "%s                  </div>\n" !html_script;
+            html_script := Printf.sprintf "%s                  <div id=\"renaming-%se%d\" class=\"renaming\">\n%s" !html_script id (counter+1) (display_renamings_HTML rho fst_subst res_proc);
+            html_script := Printf.sprintf "%s                  </div>\n" !html_script;
+            print_renamings (counter+2) res_proc q
+      in
+
+      let internal_counter_for_trace = ref 1 in
+
+      let rec print_action_trace counter = function
+        | [] -> ()
+        | TrComm(_,_,_) :: q
+        | TrNew(_,_)::q
+        | TrChoice(_,_)::q
+        | TrTest(_,_)::q
+        | TrLet(_,_)::q -> print_action_trace (counter+2) q
+        | TrInput(ch_X,ch,t_X,t,_,_) :: q ->
+            let ch_recipe, t_recipe = Subst.apply snd_subst (of_variable ch_X, of_variable t_X) (fun (x,y) f -> f x,f y) in
+            let new_ch,new_t = Subst.apply fst_subst (ch,t) (fun (x,y) f -> f x,f y) in
+
+            let str_ch_recipe =
+              if is_axiom ch_recipe && Axiom.index_of (axiom_of ch_recipe) <= 0
+              then ""
+              else Printf.sprintf " (computed by \\(%s\\))" (display Latex ~rho:rho Recipe ch_recipe)
+
+            and str_t_recipe =
+              if is_axiom t_recipe && Axiom.index_of (axiom_of t_recipe) <= 0
+              then ""
+              else Printf.sprintf " (computed by \\(%s\\))" (display Latex ~rho:rho Recipe t_recipe)
+            in
+
+            html_script := Printf.sprintf "%s                  <div id=\"action-%se%d\" class=\"action\">%d. Input of \\(%s\\)%s on the channel \\(%s\\)%s.<div>\n"
+              !html_script id (counter+1) !internal_counter_for_trace
+              (display Latex ~rho:rho Protocol new_t) str_t_recipe
+              (display Latex ~rho:rho Protocol new_ch) str_ch_recipe;
+
+            incr internal_counter_for_trace;
+            print_action_trace (counter+2) q
+        | TrOutput(ch_X,ch,ax,t,_,_) :: q ->
+            let ch_recipe = Subst.apply snd_subst (of_variable ch_X) (fun x f -> f x) in
+            let new_ch,new_t = Subst.apply fst_subst (ch,t) (fun (x,y) f -> f x,f y) in
+
+            let str_ch_recipe =
+              if is_axiom ch_recipe && Axiom.index_of (axiom_of ch_recipe) <= 0
+              then ""
+              else Printf.sprintf " (computed by \\(%s\\))" (display Latex ~rho:rho Recipe ch_recipe)
+            in
+
+            html_script := Printf.sprintf "%s                  <div id=\"action-%se%d\" class=\"action\">%d. Output of \\(%s\\) (refered by \\(%s\\)) on the channel \\(%s\\)%s.<div>\n"
+              !html_script id (counter+1) !internal_counter_for_trace
+              (display Latex ~rho:rho Protocol new_t) (display Latex ~rho:rho Recipe (of_axiom ax))
+              (display Latex ~rho:rho Protocol new_ch) str_ch_recipe;
+
+            incr internal_counter_for_trace;
+            print_action_trace (counter+2) q
+        | TrEavesdrop(ch_X,ch,ax,t,_,_,_) :: q ->
+            let ch_recipe = Subst.apply snd_subst (of_variable ch_X) (fun x f -> f x) in
+            let new_ch,new_t = Subst.apply fst_subst (ch,t) (fun (x,y) f -> f x,f y) in
+
+            let str_ch_recipe =
+              if is_axiom ch_recipe && Axiom.index_of (axiom_of ch_recipe) <= 0
+              then ""
+              else Printf.sprintf " (computed by \\(%s\\))" (display Latex ~rho:rho Recipe ch_recipe)
+            in
+
+            html_script := Printf.sprintf "%s                  <div id=\"action-%se%d\" class=\"action\">%d. Eavesdrop of \\(%s\\) (refered by \\(%s\\)) on the channel \\(%s\\)%s.<div>\n"
+              !html_script id (counter+1) !internal_counter_for_trace
+              (display Latex ~rho:rho Protocol new_t) (display Latex ~rho:rho Recipe (of_axiom ax))
+              (display Latex ~rho:rho Protocol new_ch) str_ch_recipe;
+
+            incr internal_counter_for_trace;
+            print_action_trace (counter+2) q
+      in
+
+      html_script := Printf.sprintf "%s            <table class=\"processTable\">\n" !html_script;
+      html_script := Printf.sprintf "%s              <tr>\n" !html_script;
+      html_script := Printf.sprintf "%s                <td colspan=\"2\">\n" !html_script;
+      html_script := Printf.sprintf "%s                  <div class=\"title-trace\">%s</div>\n" !html_script title;
+      html_script := Printf.sprintf "%s                  <div class=\"link-trace\">\n" !html_script;
+      html_script := Printf.sprintf "%s                    <button id=\"previous-%s\" type=\"button\" onclick=\"javascript:previous('%s');\" disabled>Previous</button>\n" !html_script id id;
+      html_script := Printf.sprintf "%s                    <span class=\"description-action\" id=\"desc-%se1\" style=\"display: inline;\">Initial process</span>\n" !html_script id;
+      print_action_title 2 rev_trace;
+      html_script := Printf.sprintf "%s                    <button id=\"next-%s\" type=\"button\" onclick=\"javascript:next('%s');\">Next</button>\n" !html_script id id;
+      html_script := Printf.sprintf "%s                  </div>\n" !html_script;
+      html_script := Printf.sprintf "%s                </td>\n" !html_script;
+      html_script := Printf.sprintf "%s              </tr>\n" !html_script;
+      html_script := Printf.sprintf "%s              <tr class=\"processTableRow\">\n" !html_script;
+      html_script := Printf.sprintf "%s                <td class=\"processDag\">\n" !html_script;
+      html_script := Printf.sprintf "%s                  <div id=\"dag-%se1\" class=\"dag\" style=\"display:block;\">\n" !html_script id;
+      html_script := Printf.sprintf "%s                    <svg height=\"80\">\n" !html_script;
+      html_script := Printf.sprintf "%s                      <g transform=\"translate(20, 20)\"/>\n" !html_script;
+      html_script := Printf.sprintf "%s                    </svg>\n" !html_script;
+      html_script := Printf.sprintf "%s                  </div>\n" !html_script;
+      print_dag (2*size_trace + 1);
+      html_script := Printf.sprintf "%s                </td>\n" !html_script;
+      html_script := Printf.sprintf "%s                <td class=\"processRenaming\">\n" !html_script;
+      html_script := Printf.sprintf "%s                  <div class=\"title-description\">Renamings and substitution of the process</div>\n" !html_script;
+      html_script := Printf.sprintf "%s                  <div id=\"renaming-%se1\" class=\"renaming\" style=\"display:block;\">\n" !html_script id;
+      html_script := Printf.sprintf "%s%s" !html_script (display_renamings_HTML rho fst_subst init_process);
+      html_script := Printf.sprintf "%s                  </div>\n" !html_script;
+      print_renamings 2 init_process rev_trace;
+      html_script := Printf.sprintf "%s                  <div class=\"subtitle-trace\">Trace</div>\n" !html_script;
+      print_action_trace 2 rev_trace;
+      html_script := Printf.sprintf "%s                </td>\n" !html_script;
+      html_script := Printf.sprintf "%s              </tr>\n" !html_script;
+      html_script := Printf.sprintf "%s            </table>\n" !html_script;
+
+      !html_script
+    in
+
+    (html,javascript)
+end
+
+
 (*******************************************************
 ***        Transition in the classic semantics       ***
 ********************************************************)
@@ -919,13 +1304,18 @@ type equivalence =
   | Trace_Equivalence
   | Observational_Equivalence
 
+(***** Next input and output ******)
+
 type output_gathering =
   {
     out_equations : (fst_ord, name) Subst.t;
     out_disequations : (fst_ord, name) Diseq.t list;
     out_channel : protocol_term;
     out_term : protocol_term;
-    out_private_channels : protocol_term list
+    out_private_channels : protocol_term list;
+
+    out_tau_actions : Trace.t;
+    out_action : action_process option
   }
 
 type input_gathering =
@@ -934,7 +1324,10 @@ type input_gathering =
     in_disequations : (fst_ord, name) Diseq.t list;
     in_channel : protocol_term;
     in_variable : fst_ord_variable;
-    in_private_channels : protocol_term list
+    in_private_channels : protocol_term list;
+
+    in_tau_actions : Trace.t;
+    in_action : action_process option
   }
 
 type eavesdrop_gathering =
@@ -943,7 +1336,10 @@ type eavesdrop_gathering =
     eav_disequations : (fst_ord, name) Diseq.t list;
     eav_channel : protocol_term;
     eav_term : protocol_term;
-    eav_private_channels : protocol_term list
+    eav_private_channels : protocol_term list;
+
+    eav_tau_actions : Trace.t;
+    eav_action : (action_process * action_process) option
   }
 
 let rec add_content_in_proc content mult  v_rho n_rho = function
@@ -963,7 +1359,17 @@ let add_content_mult_in_proc cont_mult_list v_rho n_rho proc =
 
 exception Bot_disequations
 
-let rec next_output_classic_trace_content content v_rho n_rho proc equations disequations f_continuation = match content.action with
+let apply_content_to_tau_action content v_rho n_rho =
+  List.map (function
+    | Trace.TrComm(symb_in,symb_out,proc) -> Trace.TrComm(symb_in, symb_out, add_content_in_proc content 1 v_rho n_rho proc)
+    | Trace.TrNew(symb,proc) -> Trace.TrNew(symb,add_content_in_proc content 1 v_rho n_rho proc)
+    | Trace.TrChoice(symb,proc) -> Trace.TrChoice(symb,add_content_in_proc content 1 v_rho n_rho proc)
+    | Trace.TrTest(symb,proc) -> Trace.TrTest(symb,add_content_in_proc content 1 v_rho n_rho proc)
+    | Trace.TrLet(symb,proc) -> Trace.TrLet(symb,add_content_in_proc content 1 v_rho n_rho proc)
+    | _ -> Config.internal_error "[process.ml >> apply_content_to_tau_action] Unexpected case."
+  )
+
+let rec next_output_classic_trace_content tau_actions content v_rho n_rho proc equations disequations f_continuation = match content.action with
   | ANil -> ()
   | AOut(ch,t,cont) ->
       (* This output is selected *)
@@ -996,13 +1402,22 @@ let rec next_output_classic_trace_content content v_rho n_rho proc equations dis
             let new_ch_2 = Rewrite_rules.normalise new_ch
             and new_t_2 = Rewrite_rules.normalise new_t in
 
-            f_continuation proc' { out_equations = new_equations; out_disequations = new_disequations; out_channel = new_ch_2; out_term = new_t_2 ; out_private_channels = []}
+            if !Config.display_trace
+            then
+              let action = Some ({content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho}) in
+              f_continuation proc' { out_equations = new_equations; out_disequations = new_disequations; out_channel = new_ch_2; out_term = new_t_2 ; out_private_channels = []; out_tau_actions = tau_actions; out_action = action }
+            else f_continuation proc' { out_equations = new_equations; out_disequations = new_disequations; out_channel = new_ch_2; out_term = new_t_2 ; out_private_channels = []; out_tau_actions = []; out_action = None }
           with
           | Bot_disequations -> ()
         ) equations_modulo_list
       with
         | Modulo.Bot -> ()
-        | Modulo.Top -> f_continuation proc' { out_equations = equations; out_disequations = disequations; out_channel = norm_ch; out_term = norm_t ; out_private_channels = []}
+        | Modulo.Top ->
+            if !Config.display_trace
+            then
+              let action = Some ({content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho}) in
+              f_continuation proc' { out_equations = equations; out_disequations = disequations; out_channel = norm_ch; out_term = norm_t ; out_private_channels = []; out_tau_actions = tau_actions; out_action = action }
+            else f_continuation proc' { out_equations = equations; out_disequations = disequations; out_channel = norm_ch; out_term = norm_t ; out_private_channels = []; out_tau_actions = []; out_action = None}
       end;
 
       (* This output may be used for an internal reduction *)
@@ -1025,13 +1440,34 @@ let rec next_output_classic_trace_content content v_rho n_rho proc equations dis
               in
               let new_equations = Subst.compose in_gather.in_equations equations_modulo in
 
-              next_output_classic_trace_content cont v_rho' n_rho' proc' new_equations new_disequations f_continuation
+              if !Config.display_trace
+              then
+                let tau_actions_0 = apply_content_to_tau_action cont v_rho' n_rho' in_gather.in_tau_actions in
+                let tau_actions_1 = match in_gather.in_action with
+                  | None -> Config.internal_error "[process.ml >> next_output] There should be a symbolic action since the gathering mode for tau action is activated (1)"
+                  | Some symb_in ->
+                      let symb_out = {content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho} in
+                      (Trace.TrComm(symb_in,symb_out, add_content_in_proc cont 1 v_rho' n_rho' proc'))::tau_actions_0
+                in
+                next_output_classic_trace_content (tau_actions_1@tau_actions) cont v_rho' n_rho' proc' new_equations new_disequations f_continuation
+              else next_output_classic_trace_content [] cont v_rho' n_rho' proc' new_equations new_disequations f_continuation
             with
             | Bot_disequations -> ()
           ) equations_modulo_list
         with
         | Modulo.Bot -> ()
-        | Modulo.Top -> next_output_classic_trace_content cont v_rho' n_rho' proc' in_gather.in_equations in_gather.in_disequations f_continuation
+        | Modulo.Top ->
+            if !Config.display_trace
+            then
+              let tau_actions_0 = apply_content_to_tau_action cont v_rho' n_rho' in_gather.in_tau_actions in
+              let tau_actions_1 = match in_gather.in_action with
+                | None -> Config.internal_error "[process.ml >> next_output] There should be a symbolic action since the gathering mode for tau action is activated (2)"
+                | Some symb_in ->
+                    let symb_out = {content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho} in
+                    (Trace.TrComm(symb_in,symb_out, add_content_in_proc cont 1 v_rho' n_rho' proc'))::tau_actions_0
+              in
+              next_output_classic_trace_content (tau_actions_1@tau_actions) cont v_rho' n_rho' proc' in_gather.in_equations in_gather.in_disequations f_continuation
+            else next_output_classic_trace_content [] cont v_rho' n_rho' proc' in_gather.in_equations in_gather.in_disequations f_continuation
       )
   | AIn(ch,x,cont) ->
       (* This input may be used for an internal reduction *)
@@ -1059,13 +1495,34 @@ let rec next_output_classic_trace_content content v_rho n_rho proc equations dis
               in
               let new_equations = Subst.compose out_gather.out_equations equations_modulo in
 
-              next_output_classic_trace_content cont new_v_rho new_n_rho proc' new_equations new_disequations f_continuation
+              if !Config.display_trace
+              then
+                let tau_actions_0 = apply_content_to_tau_action cont new_v_rho new_n_rho out_gather.out_tau_actions in
+                let tau_actions_1 = match out_gather.out_action with
+                  | None -> Config.internal_error "[process.ml >> next_output] There should be a symbolic action since the gathering mode for tau action is activated (2)"
+                  | Some symb_out ->
+                      let symb_in = {content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho} in
+                      (Trace.TrComm(symb_in,symb_out,add_content_in_proc cont 1 new_v_rho new_n_rho proc'))::tau_actions_0
+                in
+                next_output_classic_trace_content (tau_actions_1@tau_actions) cont new_v_rho new_n_rho proc' new_equations new_disequations f_continuation
+              else next_output_classic_trace_content [] cont new_v_rho new_n_rho proc' new_equations new_disequations f_continuation
             with
             | Bot_disequations -> ()
           ) equations_modulo_list
         with
           | Modulo.Bot -> ()
-          | Modulo.Top -> next_output_classic_trace_content cont new_v_rho new_n_rho proc' out_gather.out_equations out_gather.out_disequations f_continuation
+          | Modulo.Top ->
+              if !Config.display_trace
+              then
+                let tau_actions_0 = apply_content_to_tau_action cont new_v_rho new_n_rho out_gather.out_tau_actions in
+                let tau_actions_1 = match out_gather.out_action with
+                  | None -> Config.internal_error "[process.ml >> next_output] There should be a symbolic action since the gathering mode for tau action is activated (2)"
+                  | Some symb_out ->
+                      let symb_in = {content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho} in
+                      (Trace.TrComm(symb_in,symb_out,add_content_in_proc cont 1 new_v_rho new_n_rho proc'))::tau_actions_0
+                in
+                next_output_classic_trace_content (tau_actions_1@tau_actions) cont new_v_rho new_n_rho proc' out_gather.out_equations out_gather.out_disequations f_continuation
+              else next_output_classic_trace_content [] cont new_v_rho new_n_rho proc' out_gather.out_equations out_gather.out_disequations f_continuation
       )
   | ATest(t,r,cont_then,cont_else) ->
       let (t',r') = apply_renamings_pair v_rho n_rho (t,r)  in
@@ -1092,14 +1549,25 @@ let rec next_output_classic_trace_content content v_rho n_rho proc equations dis
               ) [] disequations
             in
             let new_equations = Subst.compose equations equations_modulo in
-            next_output_classic_trace_content cont_then new_v_rho_then new_n_rho_then proc new_equations new_disequations f_continuation
+
+            if !Config.display_trace
+            then
+              let symb = { content_mult = { content = content; mult = 1} ; var_renaming = v_rho; name_renaming = n_rho } in
+              let tau_actions_1 = (Trace.TrTest (symb, add_content_in_proc cont_then 1 new_v_rho_then new_n_rho_then proc))::tau_actions in
+              next_output_classic_trace_content tau_actions_1 cont_then new_v_rho_then new_n_rho_then proc new_equations new_disequations f_continuation
+            else next_output_classic_trace_content [] cont_then new_v_rho_then new_n_rho_then proc new_equations new_disequations f_continuation
           with
           | Bot_disequations -> ()
         ) equations_modulo_list
       with
         | Modulo.Bot -> ()
         | Modulo.Top ->
-            next_output_classic_trace_content cont_then new_v_rho_then new_n_rho_then proc equations disequations f_continuation
+            if !Config.display_trace
+            then
+              let symb = { content_mult = { content = content; mult = 1} ; var_renaming = v_rho; name_renaming = n_rho } in
+              let tau_actions_1 = (Trace.TrTest (symb, add_content_in_proc cont_then 1 new_v_rho_then new_n_rho_then proc))::tau_actions in
+              next_output_classic_trace_content tau_actions_1 cont_then new_v_rho_then new_n_rho_then proc equations disequations f_continuation
+            else next_output_classic_trace_content [] cont_then new_v_rho_then new_n_rho_then proc equations disequations f_continuation
       end;
 
       (* Output is in the Else branch *)
@@ -1107,11 +1575,22 @@ let rec next_output_classic_trace_content content v_rho n_rho proc equations dis
       begin try
         let disequations_modulo = Modulo.syntactic_disequations_of_disequations (Modulo.create_disequation new_t new_r) in
         let new_disequations = disequations_modulo @ disequations in
-        next_output_classic_trace_content cont_else new_v_rho_else new_n_rho_else proc equations new_disequations f_continuation
+
+        if !Config.display_trace
+        then
+          let symb = { content_mult = { content = content; mult = 1} ; var_renaming = v_rho; name_renaming = n_rho } in
+          let tau_actions_1 = (Trace.TrTest (symb, add_content_in_proc cont_else 1 new_v_rho_else new_n_rho_else proc))::tau_actions in
+          next_output_classic_trace_content tau_actions_1 cont_else new_v_rho_else new_n_rho_else proc equations new_disequations f_continuation
+        else next_output_classic_trace_content [] cont_else new_v_rho_else new_n_rho_else proc equations new_disequations f_continuation
       with
         | Modulo.Bot -> ()
         | Modulo.Top ->
-            next_output_classic_trace_content cont_else new_v_rho_else new_n_rho_else proc equations disequations f_continuation
+            if !Config.display_trace
+            then
+              let symb = { content_mult = { content = content; mult = 1} ; var_renaming = v_rho; name_renaming = n_rho } in
+              let tau_actions_1 = (Trace.TrTest (symb, add_content_in_proc cont_else 1 new_v_rho_else new_n_rho_else proc))::tau_actions in
+              next_output_classic_trace_content tau_actions_1 cont_else new_v_rho_else new_n_rho_else proc equations disequations f_continuation
+            else next_output_classic_trace_content [] cont_else new_v_rho_else new_n_rho_else proc equations disequations f_continuation
       end
   | ALet(t,r,cont_then,cont_else) ->
       let fresh_variables = Variable.Renaming.not_in_domain v_rho (get_vars_Term Protocol t (fun _ -> true) []) in
@@ -1152,14 +1631,25 @@ let rec next_output_classic_trace_content content v_rho n_rho proc equations dis
               ) [] disequations
             in
             let new_equations = Subst.compose equations equations_modulo in
-            next_output_classic_trace_content cont_then new_v_rho_then new_n_rho_then proc new_equations new_disequations f_continuation
+
+            if !Config.display_trace
+            then
+              let symb = { content_mult = { content = content; mult = 1} ; var_renaming = v_rho; name_renaming = n_rho } in
+              let tau_actions_1 = (Trace.TrLet (symb, add_content_in_proc cont_then 1 new_v_rho_then new_n_rho_then proc))::tau_actions in
+              next_output_classic_trace_content tau_actions_1 cont_then new_v_rho_then new_n_rho_then proc new_equations new_disequations f_continuation
+            else next_output_classic_trace_content [] cont_then new_v_rho_then new_n_rho_then proc new_equations new_disequations f_continuation
           with
           | Bot_disequations -> ()
         ) equations_modulo_list
       with
         | Modulo.Bot -> ()
         | Modulo.Top ->
-            next_output_classic_trace_content cont_then new_v_rho_then new_n_rho_then proc equations disequations f_continuation
+            if !Config.display_trace
+            then
+              let symb = { content_mult = { content = content; mult = 1} ; var_renaming = v_rho; name_renaming = n_rho } in
+              let tau_actions_1 = (Trace.TrLet (symb, add_content_in_proc cont_then 1 new_v_rho_then new_n_rho_then proc))::tau_actions in
+              next_output_classic_trace_content tau_actions_1 cont_then new_v_rho_then new_n_rho_then proc equations disequations f_continuation
+            else next_output_classic_trace_content [] cont_then new_v_rho_then new_n_rho_then proc equations disequations f_continuation
       end;
 
       (* Output is in the Else branch *)
@@ -1167,11 +1657,22 @@ let rec next_output_classic_trace_content content v_rho n_rho proc equations dis
       begin try
         let disequations_modulo = Modulo.syntactic_disequations_of_disequations (Modulo.create_disequation new_t_else new_r_else) in
         let new_disequations = disequations_modulo @ disequations in
-        next_output_classic_trace_content cont_else new_v_rho_else new_n_rho_else proc equations new_disequations f_continuation
+
+        if !Config.display_trace
+        then
+          let symb = { content_mult = { content = content; mult = 1} ; var_renaming = v_rho; name_renaming = n_rho } in
+          let tau_actions_1 = (Trace.TrLet (symb, add_content_in_proc cont_else 1 new_v_rho_else new_n_rho_else proc))::tau_actions in
+          next_output_classic_trace_content tau_actions_1 cont_else new_v_rho_else new_n_rho_else proc equations new_disequations f_continuation
+        else next_output_classic_trace_content [] cont_else new_v_rho_else new_n_rho_else proc equations new_disequations f_continuation
       with
         | Modulo.Bot -> ()
         | Modulo.Top ->
-            next_output_classic_trace_content cont_else new_v_rho_else new_n_rho_else proc equations disequations f_continuation
+            if !Config.display_trace
+            then
+              let symb = { content_mult = { content = content; mult = 1} ; var_renaming = v_rho; name_renaming = n_rho } in
+              let tau_actions_1 = (Trace.TrLet (symb, add_content_in_proc cont_else 1 new_v_rho_else new_n_rho_else proc))::tau_actions in
+              next_output_classic_trace_content tau_actions_1 cont_else new_v_rho_else new_n_rho_else proc equations disequations f_continuation
+            else next_output_classic_trace_content [] cont_else new_v_rho_else new_n_rho_else proc equations disequations f_continuation
       end
   | ANew(n,cont) ->
       let new_n = Name.fresh_from n in
@@ -1179,7 +1680,12 @@ let rec next_output_classic_trace_content content v_rho n_rho proc equations dis
       let new_n_rho = Name.Renaming.restrict n_rho' cont.bound_name
       and new_v_rho = Variable.Renaming.restrict v_rho cont.bound_var in
 
-      next_output_classic_trace_content cont new_v_rho new_n_rho proc equations disequations f_continuation
+      if !Config.display_trace
+      then
+        let symb = { content_mult = { content = content; mult = 1} ; var_renaming = v_rho; name_renaming = n_rho } in
+        let tau_actions_1 = (Trace.TrNew (symb, add_content_in_proc cont 1 new_v_rho new_n_rho proc))::tau_actions in
+        next_output_classic_trace_content tau_actions_1 cont new_v_rho new_n_rho proc equations disequations f_continuation
+      else next_output_classic_trace_content [] cont new_v_rho new_n_rho proc equations disequations f_continuation
   | APar(cont_mult_list) ->
       let rec go_through_mult_list prev = function
         | [] -> ()
@@ -1188,14 +1694,14 @@ let rec next_output_classic_trace_content content v_rho n_rho proc equations dis
             let new_v_rho = Variable.Renaming.restrict v_rho cont_mult.content.bound_var
             and new_n_rho = Name.Renaming.restrict n_rho cont_mult.content.bound_name in
 
-            next_output_classic_trace_content cont_mult.content new_v_rho new_n_rho new_proc equations disequations f_continuation;
+            next_output_classic_trace_content tau_actions cont_mult.content new_v_rho new_n_rho new_proc equations disequations f_continuation;
             go_through_mult_list (cont_mult::prev) q
         | cont_mult::q ->
             let new_proc = add_content_mult_in_proc (({cont_mult with mult = cont_mult.mult - 1}::prev) @ q) v_rho n_rho proc in
             let new_v_rho = Variable.Renaming.restrict v_rho cont_mult.content.bound_var
             and new_n_rho = Name.Renaming.restrict n_rho cont_mult.content.bound_name in
 
-            next_output_classic_trace_content cont_mult.content new_v_rho new_n_rho new_proc equations disequations f_continuation;
+            next_output_classic_trace_content tau_actions cont_mult.content new_v_rho new_n_rho new_proc equations disequations f_continuation;
             go_through_mult_list (cont_mult::prev) q
       in
       go_through_mult_list [] cont_mult_list
@@ -1204,7 +1710,12 @@ let rec next_output_classic_trace_content content v_rho n_rho proc equations dis
         let new_v_rho = Variable.Renaming.restrict v_rho cont_mult.content.bound_var
         and new_n_rho = Name.Renaming.restrict n_rho cont_mult.content.bound_name in
 
-        next_output_classic_trace_content cont_mult.content new_v_rho new_n_rho proc equations disequations f_continuation
+        if !Config.display_trace
+        then
+          let symb = { content_mult = { content = content; mult = 1} ; var_renaming = v_rho; name_renaming = n_rho } in
+          let tau_actions_1 = (Trace.TrChoice (symb, add_content_in_proc cont_mult.content 1 new_v_rho new_n_rho proc))::tau_actions in
+          next_output_classic_trace_content tau_actions_1 cont_mult.content new_v_rho new_n_rho proc equations disequations f_continuation
+        else next_output_classic_trace_content [] cont_mult.content new_v_rho new_n_rho proc equations disequations f_continuation
       ) cont_mult_list
 
 and next_output_classic_trace proc equations disequations f_continuation =
@@ -1213,17 +1724,17 @@ and next_output_classic_trace proc equations disequations f_continuation =
     | symb::q when symb.content_mult.mult = 1 ->
         let new_proc = (prev @ q) in
 
-        next_output_classic_trace_content symb.content_mult.content symb.var_renaming symb.name_renaming new_proc equations disequations f_continuation;
+        next_output_classic_trace_content [] symb.content_mult.content symb.var_renaming symb.name_renaming new_proc equations disequations f_continuation;
         go_through_mult_list (symb::prev) q
     | symb::q ->
         let new_proc = (({symb with content_mult = { symb.content_mult with mult = symb.content_mult.mult - 1}}::prev) @ q) in
 
-        next_output_classic_trace_content symb.content_mult.content symb.var_renaming symb.name_renaming new_proc equations disequations f_continuation;
+        next_output_classic_trace_content [] symb.content_mult.content symb.var_renaming symb.name_renaming new_proc equations disequations f_continuation;
         go_through_mult_list (symb::prev) q
   in
   go_through_mult_list [] proc
 
-and next_input_classic_trace_content content v_rho n_rho proc equations disequations f_continuation = match content.action with
+and next_input_classic_trace_content tau_actions content v_rho n_rho proc equations disequations f_continuation = match content.action with
   | ANil -> ()
   | AIn(ch,x,cont) ->
       (* This input is selected *)
@@ -1256,13 +1767,22 @@ and next_input_classic_trace_content content v_rho n_rho proc equations disequat
             let new_ch_2 = Subst.apply equations_modulo norm_ch (fun x f -> f x) in
             let new_ch_3 = Rewrite_rules.normalise new_ch_2 in
 
-            f_continuation new_proc { in_equations = new_equations; in_disequations = new_disequations; in_channel = new_ch_3; in_variable = new_x ; in_private_channels = []}
+            if !Config.display_trace
+            then
+              let action = Some ({content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho}) in
+              f_continuation new_proc { in_equations = new_equations; in_disequations = new_disequations; in_channel = new_ch_3; in_variable = new_x ; in_private_channels = []; in_tau_actions = tau_actions; in_action = action }
+            else f_continuation new_proc { in_equations = new_equations; in_disequations = new_disequations; in_channel = new_ch_3; in_variable = new_x ; in_private_channels = []; in_tau_actions = []; in_action = None}
           with
           | Bot_disequations -> ()
         ) equations_modulo_list
       with
         | Modulo.Bot -> ()
-        | Modulo.Top -> f_continuation new_proc { in_equations = equations; in_disequations = disequations; in_channel = norm_ch; in_variable = new_x ; in_private_channels = []}
+        | Modulo.Top ->
+            if !Config.display_trace
+            then
+              let action = Some ({content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho}) in
+              f_continuation new_proc { in_equations = equations; in_disequations = disequations; in_channel = norm_ch; in_variable = new_x ; in_private_channels = []; in_tau_actions = tau_actions; in_action = action }
+            else f_continuation new_proc { in_equations = equations; in_disequations = disequations; in_channel = norm_ch; in_variable = new_x ; in_private_channels = []; in_tau_actions = []; in_action = None}
       end;
 
       next_output_classic_trace proc equations disequations (fun proc' out_gather ->
@@ -1283,13 +1803,34 @@ and next_input_classic_trace_content content v_rho n_rho proc equations disequat
               in
               let new_equations = Subst.compose out_gather.out_equations equations_modulo in
 
-              next_input_classic_trace_content cont new_v_rho new_n_rho proc' new_equations new_disequations f_continuation
+              if !Config.display_trace
+              then
+                let tau_actions_0 = apply_content_to_tau_action cont new_v_rho new_n_rho out_gather.out_tau_actions in
+                let tau_actions_1 = match out_gather.out_action with
+                  | None -> Config.internal_error "[process.ml >> next_output] There should be a symbolic action since the gathering mode for tau action is activated (2)"
+                  | Some symb_out ->
+                      let symb_in = {content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho} in
+                      (Trace.TrComm(symb_in,symb_out,add_content_in_proc cont 1 new_v_rho new_n_rho proc'))::tau_actions_0
+                in
+                next_input_classic_trace_content (tau_actions_1@tau_actions) cont new_v_rho new_n_rho proc' new_equations new_disequations f_continuation
+              else next_input_classic_trace_content [] cont new_v_rho new_n_rho proc' new_equations new_disequations f_continuation
             with
             | Bot_disequations -> ()
           ) equations_modulo_list
         with
           | Modulo.Bot -> ()
-          | Modulo.Top -> next_input_classic_trace_content cont new_v_rho new_n_rho proc' out_gather.out_equations out_gather.out_disequations f_continuation
+          | Modulo.Top ->
+              if !Config.display_trace
+              then
+                let tau_actions_0 = apply_content_to_tau_action cont new_v_rho new_n_rho out_gather.out_tau_actions in
+                let tau_actions_1 = match out_gather.out_action with
+                  | None -> Config.internal_error "[process.ml >> next_output] There should be a symbolic action since the gathering mode for tau action is activated (2)"
+                  | Some symb_out ->
+                      let symb_in = {content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho} in
+                      (Trace.TrComm(symb_in,symb_out,add_content_in_proc cont 1 new_v_rho new_n_rho proc'))::tau_actions_0
+                in
+                next_input_classic_trace_content (tau_actions_1@tau_actions) cont new_v_rho new_n_rho proc' out_gather.out_equations out_gather.out_disequations f_continuation
+              else next_input_classic_trace_content [] cont new_v_rho new_n_rho proc' out_gather.out_equations out_gather.out_disequations f_continuation
       )
   | AOut(ch,t,cont) ->
       let ch',t' = apply_renamings_pair v_rho n_rho (ch,t) in
@@ -1315,13 +1856,34 @@ and next_input_classic_trace_content content v_rho n_rho proc equations disequat
               in
               let new_equations = Subst.compose in_gather.in_equations equations_modulo in
 
-              next_input_classic_trace_content cont new_v_rho new_n_rho proc' new_equations new_disequations f_continuation
+              if !Config.display_trace
+              then
+                let tau_actions_0 = apply_content_to_tau_action cont new_v_rho new_n_rho in_gather.in_tau_actions in
+                let tau_actions_1 = match in_gather.in_action with
+                  | None -> Config.internal_error "[process.ml >> next_output] There should be a symbolic action since the gathering mode for tau action is activated (1)"
+                  | Some symb_in ->
+                      let symb_out = {content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho} in
+                      (Trace.TrComm(symb_in,symb_out, add_content_in_proc cont 1 new_v_rho new_n_rho proc'))::tau_actions_0
+                in
+                next_input_classic_trace_content (tau_actions_1@tau_actions) cont new_v_rho new_n_rho proc' new_equations new_disequations f_continuation
+              else next_input_classic_trace_content [] cont new_v_rho new_n_rho proc' new_equations new_disequations f_continuation
             with
             | Bot_disequations -> ()
           ) equations_modulo_list
         with
           | Modulo.Bot -> ()
-          | Modulo.Top -> next_input_classic_trace_content cont new_v_rho new_n_rho proc' in_gather.in_equations in_gather.in_disequations f_continuation
+          | Modulo.Top ->
+              if !Config.display_trace
+              then
+                let tau_actions_0 = apply_content_to_tau_action cont new_v_rho new_n_rho in_gather.in_tau_actions in
+                let tau_actions_1 = match in_gather.in_action with
+                  | None -> Config.internal_error "[process.ml >> next_output] There should be a symbolic action since the gathering mode for tau action is activated (1)"
+                  | Some symb_in ->
+                      let symb_out = {content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho} in
+                      (Trace.TrComm(symb_in,symb_out, add_content_in_proc cont 1 new_v_rho new_n_rho proc'))::tau_actions_0
+                in
+                next_input_classic_trace_content (tau_actions_1@tau_actions) cont new_v_rho new_n_rho proc' in_gather.in_equations in_gather.in_disequations f_continuation
+              else next_input_classic_trace_content [] cont new_v_rho new_n_rho proc' in_gather.in_equations in_gather.in_disequations f_continuation
       )
   | ATest(t,r,cont_then,cont_else) ->
       let (t',r') = apply_renamings_pair v_rho n_rho (t,r)  in
@@ -1348,16 +1910,26 @@ and next_input_classic_trace_content content v_rho n_rho proc equations disequat
               ) [] disequations
             in
             let new_equations = Subst.compose equations equations_modulo in
-            let new_proc = add_content_in_proc cont_else 1 new_v_rho_else new_n_rho_else proc in
-            next_input_classic_trace_content cont_then new_v_rho_then new_n_rho_then new_proc new_equations new_disequations f_continuation
+
+            if !Config.display_trace
+            then
+              let symb = { content_mult = { content = content; mult = 1} ; var_renaming = v_rho; name_renaming = n_rho } in
+              let tau_actions_1 = (Trace.TrTest (symb, add_content_in_proc cont_then 1 new_v_rho_then new_n_rho_then proc))::tau_actions in
+              next_input_classic_trace_content tau_actions_1 cont_then new_v_rho_then new_n_rho_then proc new_equations new_disequations f_continuation
+            else next_input_classic_trace_content [] cont_then new_v_rho_then new_n_rho_then proc new_equations new_disequations f_continuation
+
           with
           | Bot_disequations -> ()
         ) equations_modulo_list
       with
         | Modulo.Bot -> ()
         | Modulo.Top ->
-            let new_proc = add_content_in_proc cont_else 1 new_v_rho_else new_n_rho_else proc in
-            next_input_classic_trace_content cont_then new_v_rho_then new_n_rho_then new_proc equations disequations f_continuation
+            if !Config.display_trace
+            then
+              let symb = { content_mult = { content = content; mult = 1} ; var_renaming = v_rho; name_renaming = n_rho } in
+              let tau_actions_1 = (Trace.TrTest (symb, add_content_in_proc cont_then 1 new_v_rho_then new_n_rho_then proc))::tau_actions in
+              next_input_classic_trace_content tau_actions_1 cont_then new_v_rho_then new_n_rho_then proc equations disequations f_continuation
+            else next_input_classic_trace_content [] cont_then new_v_rho_then new_n_rho_then proc equations disequations f_continuation
       end;
 
       (* Output is in the Else branch *)
@@ -1365,13 +1937,22 @@ and next_input_classic_trace_content content v_rho n_rho proc equations disequat
       begin try
         let disequations_modulo = Modulo.syntactic_disequations_of_disequations (Modulo.create_disequation new_t new_r) in
         let new_disequations = disequations_modulo @ disequations in
-        let new_proc = add_content_in_proc cont_then 1 new_v_rho_then new_n_rho_then proc in
-        next_input_classic_trace_content cont_else new_v_rho_else new_n_rho_else new_proc equations new_disequations f_continuation
+
+        if !Config.display_trace
+        then
+          let symb = { content_mult = { content = content; mult = 1} ; var_renaming = v_rho; name_renaming = n_rho } in
+          let tau_actions_1 = (Trace.TrTest (symb, add_content_in_proc cont_else 1 new_v_rho_else new_n_rho_else proc))::tau_actions in
+          next_input_classic_trace_content tau_actions_1 cont_else new_v_rho_else new_n_rho_else proc equations new_disequations f_continuation
+        else next_input_classic_trace_content [] cont_else new_v_rho_else new_n_rho_else proc equations new_disequations f_continuation
       with
         | Modulo.Bot -> ()
         | Modulo.Top ->
-            let new_proc = add_content_in_proc cont_then 1 new_v_rho_then new_n_rho_then proc in
-            next_input_classic_trace_content cont_else new_v_rho_else new_n_rho_else new_proc equations disequations f_continuation
+            if !Config.display_trace
+            then
+              let symb = { content_mult = { content = content; mult = 1} ; var_renaming = v_rho; name_renaming = n_rho } in
+              let tau_actions_1 = (Trace.TrTest (symb, add_content_in_proc cont_else 1 new_v_rho_else new_n_rho_else proc))::tau_actions in
+              next_input_classic_trace_content tau_actions_1 cont_else new_v_rho_else new_n_rho_else proc equations disequations f_continuation
+            else next_input_classic_trace_content [] cont_else new_v_rho_else new_n_rho_else proc equations disequations f_continuation
       end
   | ALet(t,r,cont_then,cont_else) ->
       let fresh_variables = Variable.Renaming.not_in_domain v_rho (get_vars_Term Protocol t (fun _ -> true) []) in
@@ -1412,14 +1993,25 @@ and next_input_classic_trace_content content v_rho n_rho proc equations disequat
               ) [] disequations
             in
             let new_equations = Subst.compose equations equations_modulo in
-            next_input_classic_trace_content cont_then new_v_rho_then new_n_rho_then proc new_equations new_disequations f_continuation
+
+            if !Config.display_trace
+            then
+              let symb = { content_mult = { content = content; mult = 1} ; var_renaming = v_rho; name_renaming = n_rho } in
+              let tau_actions_1 = (Trace.TrLet (symb, add_content_in_proc cont_then 1 new_v_rho_then new_n_rho_then proc))::tau_actions in
+              next_input_classic_trace_content tau_actions_1 cont_then new_v_rho_then new_n_rho_then proc new_equations new_disequations f_continuation
+            else next_input_classic_trace_content [] cont_then new_v_rho_then new_n_rho_then proc new_equations new_disequations f_continuation
           with
           | Bot_disequations -> ()
         ) equations_modulo_list
       with
         | Modulo.Bot -> ()
         | Modulo.Top ->
-            next_input_classic_trace_content cont_then new_v_rho_then new_n_rho_then proc equations disequations f_continuation
+            if !Config.display_trace
+            then
+              let symb = { content_mult = { content = content; mult = 1} ; var_renaming = v_rho; name_renaming = n_rho } in
+              let tau_actions_1 = (Trace.TrLet (symb, add_content_in_proc cont_then 1 new_v_rho_then new_n_rho_then proc))::tau_actions in
+              next_input_classic_trace_content tau_actions_1 cont_then new_v_rho_then new_n_rho_then proc equations disequations f_continuation
+            else next_input_classic_trace_content [] cont_then new_v_rho_then new_n_rho_then proc equations disequations f_continuation
       end;
 
       (* Output is in the Else branch *)
@@ -1427,11 +2019,22 @@ and next_input_classic_trace_content content v_rho n_rho proc equations disequat
       begin try
         let disequations_modulo = Modulo.syntactic_disequations_of_disequations (Modulo.create_disequation new_t_else new_r_else) in
         let new_disequations = disequations_modulo @ disequations in
-        next_input_classic_trace_content cont_else new_v_rho_else new_n_rho_else proc equations new_disequations f_continuation
+
+        if !Config.display_trace
+        then
+          let symb = { content_mult = { content = content; mult = 1} ; var_renaming = v_rho; name_renaming = n_rho } in
+          let tau_actions_1 = (Trace.TrLet (symb, add_content_in_proc cont_else 1 new_v_rho_else new_n_rho_else proc))::tau_actions in
+          next_input_classic_trace_content tau_actions_1 cont_else new_v_rho_else new_n_rho_else proc equations new_disequations f_continuation
+        else next_input_classic_trace_content [] cont_else new_v_rho_else new_n_rho_else proc equations new_disequations f_continuation
       with
         | Modulo.Bot -> ()
         | Modulo.Top ->
-            next_input_classic_trace_content cont_else new_v_rho_else new_n_rho_else proc equations disequations f_continuation
+            if !Config.display_trace
+            then
+              let symb = { content_mult = { content = content; mult = 1} ; var_renaming = v_rho; name_renaming = n_rho } in
+              let tau_actions_1 = (Trace.TrLet (symb, add_content_in_proc cont_else 1 new_v_rho_else new_n_rho_else proc))::tau_actions in
+              next_input_classic_trace_content tau_actions_1 cont_else new_v_rho_else new_n_rho_else proc equations disequations f_continuation
+            else next_input_classic_trace_content [] cont_else new_v_rho_else new_n_rho_else proc equations disequations f_continuation
       end
   | ANew(n,cont) ->
       let new_n = Name.fresh_from n in
@@ -1439,7 +2042,12 @@ and next_input_classic_trace_content content v_rho n_rho proc equations disequat
       let new_n_rho = Name.Renaming.restrict n_rho' cont.bound_name
       and new_v_rho = Variable.Renaming.restrict v_rho cont.bound_var in
 
-      next_input_classic_trace_content cont new_v_rho new_n_rho proc equations disequations f_continuation
+      if !Config.display_trace
+      then
+        let symb = { content_mult = { content = content; mult = 1} ; var_renaming = v_rho; name_renaming = n_rho } in
+        let tau_actions_1 = (Trace.TrNew (symb, add_content_in_proc cont 1 new_v_rho new_n_rho proc))::tau_actions in
+        next_input_classic_trace_content tau_actions_1 cont new_v_rho new_n_rho proc equations disequations f_continuation
+      else next_input_classic_trace_content [] cont new_v_rho new_n_rho proc equations disequations f_continuation
   | APar(cont_mult_list) ->
       let rec go_through_mult_list prev = function
         | [] -> ()
@@ -1448,14 +2056,14 @@ and next_input_classic_trace_content content v_rho n_rho proc equations disequat
             let new_v_rho = Variable.Renaming.restrict v_rho cont_mult.content.bound_var
             and new_n_rho = Name.Renaming.restrict n_rho cont_mult.content.bound_name in
 
-            next_input_classic_trace_content cont_mult.content new_v_rho new_n_rho new_proc equations disequations f_continuation;
+            next_input_classic_trace_content tau_actions cont_mult.content new_v_rho new_n_rho new_proc equations disequations f_continuation;
             go_through_mult_list (cont_mult::prev) q
         | cont_mult::q ->
             let new_proc = add_content_mult_in_proc (({cont_mult with mult = cont_mult.mult - 1}::prev) @ q) v_rho n_rho proc in
             let new_v_rho = Variable.Renaming.restrict v_rho cont_mult.content.bound_var
             and new_n_rho = Name.Renaming.restrict n_rho cont_mult.content.bound_name in
 
-            next_input_classic_trace_content cont_mult.content new_v_rho new_n_rho new_proc equations disequations f_continuation;
+            next_input_classic_trace_content tau_actions cont_mult.content new_v_rho new_n_rho new_proc equations disequations f_continuation;
             go_through_mult_list (cont_mult::prev) q
       in
       go_through_mult_list [] cont_mult_list
@@ -1464,7 +2072,12 @@ and next_input_classic_trace_content content v_rho n_rho proc equations disequat
         let new_v_rho = Variable.Renaming.restrict v_rho cont_mult.content.bound_var
         and new_n_rho = Name.Renaming.restrict n_rho cont_mult.content.bound_name in
 
-        next_input_classic_trace_content cont_mult.content new_v_rho new_n_rho proc equations disequations f_continuation
+        if !Config.display_trace
+        then
+          let symb = { content_mult = { content = content; mult = 1} ; var_renaming = v_rho; name_renaming = n_rho } in
+          let tau_actions_1 = (Trace.TrChoice (symb, add_content_in_proc cont_mult.content 1 new_v_rho new_n_rho proc))::tau_actions in
+          next_input_classic_trace_content tau_actions_1 cont_mult.content new_v_rho new_n_rho proc equations disequations f_continuation
+        else next_input_classic_trace_content [] cont_mult.content new_v_rho new_n_rho proc equations disequations f_continuation
       ) cont_mult_list
 
 and next_input_classic_trace proc equations disequations f_continuation =
@@ -1473,16 +2086,15 @@ and next_input_classic_trace proc equations disequations f_continuation =
     | symb::q when symb.content_mult.mult = 1 ->
         let new_proc = (prev @ q) in
 
-        next_input_classic_trace_content symb.content_mult.content symb.var_renaming symb.name_renaming new_proc equations disequations f_continuation;
+        next_input_classic_trace_content [] symb.content_mult.content symb.var_renaming symb.name_renaming new_proc equations disequations f_continuation;
         go_through_mult_list (symb::prev) q
     | symb::q ->
         let new_proc = (({symb with content_mult = { symb.content_mult with mult = symb.content_mult.mult - 1}}::prev) @ q) in
 
-        next_input_classic_trace_content symb.content_mult.content symb.var_renaming symb.name_renaming new_proc equations disequations f_continuation;
+        next_input_classic_trace_content [] symb.content_mult.content symb.var_renaming symb.name_renaming new_proc equations disequations f_continuation;
         go_through_mult_list (symb::prev) q
   in
   go_through_mult_list [] proc
-
 
 (*********************************
 ***        Transitions       * ***

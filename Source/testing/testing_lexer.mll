@@ -35,6 +35,15 @@ let _ =
       "_Par", PAR;
       "_Choice", CHOICE;
 
+      "_TrOutput", TROUTPUT;
+      "_TrInput", TRINPUT;
+      "_TrEavesdrop", TREAVESDROP;
+      "_TrComm", TRCOMM;
+      "_TrTest", TRTEST;
+      "_TrLet", TRLET;
+      "_TrNew", TRNEW;
+      "_TrChoice", TRCHOICE;
+
       "_Classic", CLASSIC;
       "_Private", PRIVATE;
       "_Eavesdrop", EAVESDROP;

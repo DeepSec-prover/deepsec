@@ -1,11 +1,6 @@
 open Term
 open Process
 
-type label =
-  | Output of snd_ord_variable * protocol_term * axiom * protocol_term
-  | Input of snd_ord_variable * protocol_term * snd_ord_variable * protocol_term
-  | Eaves of snd_ord_variable * protocol_term * axiom * protocol_term
-
 type origin_process =
   | Left
   | Right
@@ -14,7 +9,7 @@ type symbolic_process =
   {
     current_process : process;
     origin_process : origin_process;
-    trace_processes : (label * process) list;
+    trace : Trace.t;
   }
 
 exception Not_Trace_Equivalent of symbolic_process Constraint_system.t
@@ -41,10 +36,21 @@ let rec apply_transition_and_rules_classic csys_set size_frame =
         let new_csys_2 = Constraint_system.add_basic_fact new_csys_1 ded_fact_ch in
         let new_csys_3 = Constraint_system.add_basic_fact new_csys_2 ded_fact_term in
         let new_csys_4 = Constraint_system.add_disequations Protocol new_csys_3 in_gathering.in_disequations in
+        let trace =
+          match in_gathering.in_action with
+            | None ->
+                Config.debug (fun () ->
+                  if not !Config.display_trace
+                  then Config.internal_error "[equivalence.ml >> apply_transition] There should be an acition when display_trace is activated."
+                );
+                symb_proc.trace
+            | Some action -> Trace.add_input var_X_ch in_gathering.in_channel var_X_var (of_variable in_gathering.in_variable) action proc (Trace.combine symb_proc.trace in_gathering.in_tau_actions)
+        in
+
         let new_csys_5 = Constraint_system.replace_additional_data new_csys_4
           { symb_proc with
             current_process = proc;
-            trace_processes = (Input (var_X_ch,in_gathering.in_channel, var_X_var, (of_variable in_gathering.in_variable)), symb_proc.current_process)::symb_proc.trace_processes
+            trace = trace
           }
         in
 
@@ -101,10 +107,20 @@ let rec apply_transition_and_rules_classic csys_set size_frame =
         let new_csys_2 = Constraint_system.add_basic_fact new_csys_1 ded_fact_ch in
         let new_csys_3 = Constraint_system.add_axiom new_csys_2 axiom (out_gathering.out_term) id_axiom in
         let new_csys_4 = Constraint_system.add_disequations Protocol new_csys_3 out_gathering.out_disequations in
+        let trace = match out_gathering.out_action with
+          | None ->
+              Config.debug (fun () ->
+                if not !Config.display_trace
+                then Config.internal_error "[equivalence.ml >> apply_transition] There should be an acition when display_trace is activated. (2)"
+              );
+              symb_proc.trace
+          | Some action -> Trace.add_output var_X_ch out_gathering.out_channel axiom out_gathering.out_term action proc (Trace.combine symb_proc.trace out_gathering.out_tau_actions)
+        in
+
         let new_csys_5 = Constraint_system.replace_additional_data new_csys_4
           { symb_proc with
             current_process = proc;
-            trace_processes = (Output (var_X_ch,out_gathering.out_channel, axiom, out_gathering.out_term), symb_proc.current_process)::symb_proc.trace_processes
+            trace = trace
           }
         in
 
@@ -177,13 +193,13 @@ let trace_equivalence_classic proc1 proc2 =
     {
       origin_process = Left;
       current_process = proc1;
-      trace_processes = []
+      trace = Trace.empty
     }
   and symb_proc_2 =
     {
       origin_process = Right;
       current_process = proc2;
-      trace_processes = []
+      trace = Trace.empty
     }
   in
 

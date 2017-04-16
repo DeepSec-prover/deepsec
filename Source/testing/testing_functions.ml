@@ -26,7 +26,7 @@ type test_display =
 
 type html_code =
   | NoScript of string
-  | Script of string * string * string list
+  | Script of string * string * (int * int * int option) list
 
 let produce_test_terminal test  =
   let str = ref "" in
@@ -122,10 +122,31 @@ let publish_loading_script out =
   Hashtbl.iter (fun _ (html_code,_) -> match html_code with
     | NoScript _ -> Config.internal_error "[testing_functions.ml >> public_loading_script] There should be some script."
     | Script(_,_,id_l) ->
-        List.iter (fun id ->
-          Printf.fprintf out "            window.loadData%s = function (data) {\n" id;
-          Printf.fprintf out "                DAG.displayGraph(data, jQuery('#dag-name-%s'), jQuery('#dag-%s > svg'));\n" id id;
-          Printf.fprintf out "            };\n\n"
+        List.iter (fun (id,sub_id,trace) ->
+          match trace with
+            |  None ->
+                Printf.fprintf out "        var height_%de%d = 0;" id sub_id;
+                Printf.fprintf out "        var width_%de%d = 0;" id sub_id;
+
+                Printf.fprintf out "        window.loadData%de%de0 = function (data) {\n" id sub_id;
+                Printf.fprintf out "            DAG.displayGraph(data, jQuery('#dag-%de%de0 > svg'), %d, %d, 0);\n" id sub_id id sub_id;
+                Printf.fprintf out "        };\n\n"
+            | Some k ->
+                Printf.fprintf out "        var height_%de%d = 0;" id sub_id;
+                Printf.fprintf out "        var width_%de%d = 0;" id sub_id;
+                Printf.fprintf out "        var counter_%de%d = 1;" id sub_id;
+                Printf.fprintf out "        var max_number_actions_%de%d = %d;" id sub_id k;
+
+                let rec print_window = function
+                  | n when n = k + 1 -> ()
+                  | n ->
+                      Printf.fprintf out "        window.loadData%de%de%d = function (data) {\n" id sub_id n;
+                      Printf.fprintf out "            DAG.displayGraph(data, jQuery('#dag-%de%de%d > svg'), %d, %d, %d);\n" id sub_id n id sub_id n;
+                      Printf.fprintf out "        };\n\n";
+                      print_window (n+1)
+                in
+
+                print_window 1
         ) id_l
   )
 
@@ -287,10 +308,31 @@ let publish_loading_script_for_faulty out =
   let publish_script = function
     | NoScript _ -> Config.internal_error "[testing_functions.ml >> public_loading_script] There should be some script."
     | Script(_,_,id_l) ->
-        List.iter (fun id ->
-          Printf.fprintf out "            window.loadData%s = function (data) {\n" id;
-          Printf.fprintf out "                DAG.displayGraph(data, jQuery('#dag-name-%s'), jQuery('#dag-%s > svg'));\n" id id;
-          Printf.fprintf out "            };\n\n"
+        List.iter (fun (id,sub_id,trace) ->
+          match trace with
+            |  None ->
+                Printf.fprintf out "        var height_%de%d = 0;" id sub_id;
+                Printf.fprintf out "        var width_%de%d = 0;" id sub_id;
+
+                Printf.fprintf out "        window.loadData%de%de0 = function (data) {\n" id sub_id;
+                Printf.fprintf out "            DAG.displayGraph(data, jQuery('#dag-%de%de0 > svg'), %d, %d, 0);\n" id sub_id id sub_id;
+                Printf.fprintf out "        };\n\n"
+            | Some k ->
+                Printf.fprintf out "        var height_%de%d = 0;" id sub_id;
+                Printf.fprintf out "        var width_%de%d = 0;" id sub_id;
+                Printf.fprintf out "        var counter_%de%d = 1;" id sub_id;
+                Printf.fprintf out "        var max_number_actions_%de%d = %d;" id sub_id k;
+
+                let rec print_window = function
+                  | n when n = k + 1 -> ()
+                  | n ->
+                      Printf.fprintf out "        window.loadData%de%de%d = function (data) {\n" id sub_id n;
+                      Printf.fprintf out "            DAG.displayGraph(data, jQuery('#dag-%de%de%d > svg'), %d, %d, %d);\n" id sub_id n id sub_id n;
+                      Printf.fprintf out "        };\n\n";
+                      print_window (n+1)
+                in
+
+                print_window 1
         ) id_l
   in
 
@@ -700,17 +742,27 @@ let gather_in_diseq (type a) (type b) (at:(a,b) atom) (diseq:(a,b) Diseq.t) (gat
       and axioms = Diseq.get_axioms_with_list diseq gather.g_axioms in
       { gather with g_names = names; g_snd_vars = snd_vars; g_axioms = axioms }
 
+let gather_in_trace trace gathering =
+  {
+    g_names = Process.Trace.get_names_with_list trace gathering.g_names;
+    g_fst_vars = Process.Trace.get_vars_with_list Protocol trace gathering.g_fst_vars;
+    g_snd_vars = Process.Trace.get_vars_with_list Recipe trace gathering.g_snd_vars;
+    g_axioms = Process.Trace.get_axioms_with_list trace gathering.g_axioms
+  }
+
 let gather_in_output_gathering out gather =
   let gather_1 = gather_in_subst Protocol out.Process.out_equations gather in
   let gather_2 = List.fold_left (fun acc_gather diseq -> gather_in_diseq Protocol diseq acc_gather) gather_1 out.Process.out_disequations in
   let gather_3 = gather_in_list Protocol out.Process.out_private_channels gather_2 in
-  gather_in_list Protocol [out.Process.out_channel; out.Process.out_term] gather_3
+  let gather_4 = gather_in_list Protocol [out.Process.out_channel; out.Process.out_term] gather_3 in
+  gather_in_trace out.Process.out_tau_actions gather_4
 
 let gather_in_input_gathering input gather =
   let gather_1 = gather_in_subst Protocol input.Process.in_equations gather in
   let gather_2 = List.fold_left (fun acc_gather diseq -> gather_in_diseq Protocol diseq acc_gather) gather_1 input.Process.in_disequations in
   let gather_3 = gather_in_list Protocol input.Process.in_private_channels gather_2 in
-  gather_in_list Protocol [input.Process.in_channel; of_variable input.Process.in_variable] gather_3
+  let gather_4 = gather_in_list Protocol [input.Process.in_channel; of_variable input.Process.in_variable] gather_3 in
+  gather_in_trace input.Process.in_tau_actions gather_4
 
 let gather_in_simple_csys csys gather =
   let names = Constraint_system.get_names_simple_with_list csys gather.g_names
@@ -881,13 +933,20 @@ let display_next_output_result_testing rho id_rho proc_output_list =
   in
 
   let display_elt (proc, output) =
-    Printf.sprintf "{ %s; %s; %s; %s; %s; %s }"
+    let action = match output.Process.out_action with
+      | None -> Config.internal_error "[testing_function.ml >> display_next_output_result_testing] This should not happen during testing."
+      | Some ac -> ac
+    in
+
+    Printf.sprintf "{ %s; %s; %s; %s; %s; %s ; %s ; %s }"
       (Process.display_process_testing rho id_rho proc)
       (display_substitution Testing Protocol rho output.Process.out_equations)
       (display_diseq_list output.Process.out_disequations)
       (display Testing ~rho:rho Protocol output.Process.out_channel)
       (display Testing ~rho:rho Protocol output.Process.out_term)
       (display_term_list Testing Protocol rho output.Process.out_private_channels)
+      (Process.Trace.display_testing rho id_rho output.Process.out_tau_actions)
+      (Process.display_action_process_testing rho id_rho action)
   in
 
   if proc_output_list = []
@@ -899,37 +958,61 @@ let display_diseq_list_latex rho diseq_list =
   then top Latex
   else display_list (Diseq.display Latex ~rho:rho Protocol) (Printf.sprintf " %s " (wedge Latex)) diseq_list
 
-let display_next_output_result_HTML rho proc_output_list =
+let display_next_output_result_HTML rho id_rho id init_process proc_output_list =
+
   let size_list = List.length proc_output_list in
 
   if size_list = 0
-  then "No output transitions"
+  then ("No output transitions","",[])
   else
     begin
-      let str = ref "" in
-      str := Printf.sprintf "%sNumber of output transitions found: %d\n" !str size_list;
-      str := Printf.sprintf "%s            <ul>\n" !str;
-      let acc = ref 1 in
+      let html_script = ref "" in
+      let js_script = ref "" in
+      let id_dag = ref [] in
+
+      html_script := Printf.sprintf "%sNumber of output transitions found: %d\n" !html_script size_list;
+      html_script := Printf.sprintf "%s            <ul>\n" !html_script;
+      let sub_id = ref 1 in
       List.iter (fun (proc,output) ->
-        str := Printf.sprintf "%s              <li>Transition %d:\n" !str !acc;
-        str := Printf.sprintf "%s                <ul>\n" !str;
-        str := Printf.sprintf "%s                  <li>Substitution = \\(%s\\)</li>\n" !str
+        (* HTML PART *)
+        html_script := Printf.sprintf "%s              <li>Transition %d:\n" !html_script !sub_id;
+        html_script := Printf.sprintf "%s                <ul>\n" !html_script;
+        html_script := Printf.sprintf "%s                  <li>Substitution = \\(%s\\)</li>\n" !html_script
           (display_substitution Latex Protocol rho output.Process.out_equations);
-        str := Printf.sprintf "%s                  <li>Disequations = \\(%s\\)</li>\n" !str
+        html_script := Printf.sprintf "%s                  <li>Disequations = \\(%s\\)</li>\n" !html_script
           (display_diseq_list_latex rho output.Process.out_disequations);
-        str := Printf.sprintf "%s                  <li>Channel = \\(%s\\)</li>\n" !str
+        html_script := Printf.sprintf "%s                  <li>Channel = \\(%s\\)</li>\n" !html_script
           (display Latex ~rho:rho Protocol output.Process.out_channel);
-        str := Printf.sprintf "%s                  <li>Term = \\(%s\\)</li>\n" !str
+        html_script := Printf.sprintf "%s                  <li>Term = \\(%s\\)</li>\n" !html_script
           (display Latex ~rho:rho Protocol output.Process.out_term);
-        str := Printf.sprintf "%s                  <li>Private channels = \\(%s\\)</li>\n" !str
+        html_script := Printf.sprintf "%s                  <li>Private channels = \\(%s\\)</li>\n" !html_script
           (display_term_list Latex Protocol rho output.Process.out_private_channels);
-        str := Printf.sprintf "%s                  <li>\n%s                  </li>" !str proc;
-        str := Printf.sprintf "%s                </ul>\n" !str;
-        str := Printf.sprintf "%s              </li>\n" !str;
-        incr acc
+
+        let action = match output.Process.out_action with
+          | None -> Config.internal_error "[testing_function.ml >> display_next_output_result_HTML] The option display trace should always be activated when testing occurs."
+          | Some ac -> ac
+        in
+
+        let fake_X = (Variable.fresh Recipe Free (Variable.snd_ord_type 0)) in
+        let fake_ax = Axiom.create 1 in
+        let trace = Process.Trace.add_output fake_X output.Process.out_channel fake_ax output.Process.out_term action proc output.Process.out_tau_actions in
+
+        let (trace_html,trace_js) = Process.Trace.display_HTML ~rho:rho ~id_rho:id_rho ~title:"Display of the output trace" (Printf.sprintf "%de%d" id !sub_id) ~fst_subst:output.Process.out_equations init_process trace in
+
+        html_script := Printf.sprintf "%s                  <li>%s                  </li>\n" !html_script trace_html;
+        html_script := Printf.sprintf "%s                </ul>\n" !html_script;
+        html_script := Printf.sprintf "%s              </li>\n" !html_script;
+
+        (* JAVASCRIPT PART *)
+        js_script := !js_script ^ trace_js;
+
+        (* GENERATION OF ID *)
+        id_dag := (id,!sub_id,Some(2 * (Process.Trace.size trace) + 1))::!id_dag;
+
+        incr sub_id
       ) proc_output_list;
-      str := Printf.sprintf "%s            </ul>\n" !str;
-      !str
+      html_script := Printf.sprintf "%s            </ul>\n" !html_script;
+      (!html_script,!js_script,!id_dag)
     end
 
 let display_next_input_result_testing rho id_rho proc_input_list =
@@ -941,55 +1024,80 @@ let display_next_input_result_testing rho id_rho proc_input_list =
   in
 
   let display_elt (proc, input) =
-    Printf.sprintf "{ %s; %s; %s; %s; %s; %s }"
+    let action = match input.Process.in_action with
+      | None -> Config.internal_error "[testing_function.ml >> display_next_input_result_testing] This should not happen during testing."
+      | Some ac -> ac
+    in
+
+    Printf.sprintf "{ %s; %s; %s; %s; %s; %s ; %s ; %s }"
       (Process.display_process_testing rho id_rho proc)
       (display_substitution Testing Protocol rho input.Process.in_equations)
       (display_diseq_list input.Process.in_disequations)
       (display Testing ~rho:rho Protocol input.Process.in_channel)
       (Variable.display Testing ~rho:rho Protocol input.Process.in_variable)
       (display_term_list Testing Protocol rho input.Process.in_private_channels)
+      (Process.Trace.display_testing rho id_rho input.Process.in_tau_actions)
+      (Process.display_action_process_testing rho id_rho action)
   in
 
   if proc_input_list = []
   then "{ }"
   else Printf.sprintf "{ %s }" (display_list display_elt "; " proc_input_list)
 
-let display_diseq_list_latex rho diseq_list =
-  if diseq_list = []
-  then top Latex
-  else display_list (Diseq.display Latex ~rho:rho Protocol) (Printf.sprintf " %s " (wedge Latex)) diseq_list
+let display_next_input_result_HTML rho id_rho id init_process proc_input_list =
 
-let display_next_input_result_HTML rho proc_input_list =
   let size_list = List.length proc_input_list in
 
   if size_list = 0
-  then "No input transitions"
+  then ("No output transitions","",[])
   else
     begin
-      let str = ref "" in
-      str := Printf.sprintf "%sNumber of input transitions found: %d\n" !str size_list;
-      str := Printf.sprintf "%s            <ul>\n" !str;
-      let acc = ref 1 in
+      let html_script = ref "" in
+      let js_script = ref "" in
+      let id_dag = ref [] in
+
+      html_script := Printf.sprintf "%sNumber of input transitions found: %d\n" !html_script size_list;
+      html_script := Printf.sprintf "%s            <ul>\n" !html_script;
+      let sub_id = ref 1 in
       List.iter (fun (proc,input) ->
-        str := Printf.sprintf "%s              <li>Transition %d:\n" !str !acc;
-        str := Printf.sprintf "%s                <ul>\n" !str;
-        str := Printf.sprintf "%s                  <li>Substitution = \\(%s\\)</li>\n" !str
+        (* HTML PART *)
+        html_script := Printf.sprintf "%s              <li>Transition %d:\n" !html_script !sub_id;
+        html_script := Printf.sprintf "%s                <ul>\n" !html_script;
+        html_script := Printf.sprintf "%s                  <li>Substitution = \\(%s\\)</li>\n" !html_script
           (display_substitution Latex Protocol rho input.Process.in_equations);
-        str := Printf.sprintf "%s                  <li>Disequations = \\(%s\\)</li>\n" !str
+        html_script := Printf.sprintf "%s                  <li>Disequations = \\(%s\\)</li>\n" !html_script
           (display_diseq_list_latex rho input.Process.in_disequations);
-        str := Printf.sprintf "%s                  <li>Channel = \\(%s\\)</li>\n" !str
+        html_script := Printf.sprintf "%s                  <li>Channel = \\(%s\\)</li>\n" !html_script
           (display Latex ~rho:rho Protocol input.Process.in_channel);
-        str := Printf.sprintf "%s                  <li>Term = \\(%s\\)</li>\n" !str
+        html_script := Printf.sprintf "%s                  <li>Variable = \\(%s\\)</li>\n" !html_script
           (Variable.display Latex ~rho:rho Protocol input.Process.in_variable);
-        str := Printf.sprintf "%s                  <li>Private channels = \\(%s\\)</li>\n" !str
+        html_script := Printf.sprintf "%s                  <li>Private channels = \\(%s\\)</li>\n" !html_script
           (display_term_list Latex Protocol rho input.Process.in_private_channels);
-        str := Printf.sprintf "%s                  <li>\n%s                  </li>" !str proc;
-        str := Printf.sprintf "%s                </ul>\n" !str;
-        str := Printf.sprintf "%s              </li>\n" !str;
-        incr acc
+
+        let action = match input.Process.in_action with
+          | None -> Config.internal_error "[testing_function.ml >> display_next_input_result_HTML] The option display trace should always be activated when testing occurs."
+          | Some ac -> ac
+        in
+
+        let fake_X = (Variable.fresh Recipe Free (Variable.snd_ord_type 0)) in
+        let trace = Process.Trace.add_input fake_X input.Process.in_channel fake_X (of_variable input.Process.in_variable) action proc input.Process.in_tau_actions in
+
+        let (trace_html,trace_js) = Process.Trace.display_HTML ~rho:rho ~id_rho:id_rho ~title:"Display of the input trace" (Printf.sprintf "%de%d" id !sub_id) ~fst_subst:input.Process.in_equations init_process trace in
+
+        html_script := Printf.sprintf "%s                  <li>%s                  </li>\n" !html_script trace_html;
+        html_script := Printf.sprintf "%s                </ul>\n" !html_script;
+        html_script := Printf.sprintf "%s              </li>\n" !html_script;
+
+        (* JAVASCRIPT PART *)
+        js_script := !js_script ^ trace_js;
+
+        (* GENERATION OF ID *)
+        id_dag := (id,!sub_id,Some(2 * (Process.Trace.size trace) + 1))::!id_dag;
+
+        incr sub_id
       ) proc_input_list;
-      str := Printf.sprintf "%s            </ul>\n" !str;
-      !str
+      html_script := Printf.sprintf "%s            </ul>\n" !html_script;
+      (!html_script,!js_script,!id_dag)
     end
 
 let display_mgs_result out rho id (mgs,subst,simple) = match out with
@@ -1895,14 +2003,14 @@ let test_Process_of_expansed_process process result =
 
   let test_latex i =
 
-    let (html_result,script_result) = Process.display_process_HTML ~rho:rho ~id_rho:id_rho ~name:"Result process" (string_of_int i) result in
+    let (html_result,script_result) = Process.display_process_HTML ~rho:rho ~id_rho:id_rho ~general_process:None (Printf.sprintf "%de0e0" i) result in
 
     let test_latex =
       { latex_header with
         inputs = [ (Process.display_expansed_process_HTML ~rho:rho process, Text) ];
         output = ( html_result, Text )
       } in
-    (test_latex, Some(script_result, [(string_of_int i)]))
+    (test_latex, Some(script_result, [(i,0,None)]))
   in
 
   test_terminal, test_latex
@@ -1960,30 +2068,16 @@ let test_Process_next_output sem eq process subst result =
     } in
 
   let test_latex i =
-    let str_id k = Printf.sprintf "%de%d" i k in
-    let id_input = str_id 0 in
-    let (html_input,script_input) = Process.display_process_HTML ~rho:rho ~id_rho:id_rho ~name:"Input Process" id_input process in
-
-    let rec produce_proc_output_list k = function
-      | [] -> ([],[],"")
-      | (proc,output)::q ->
-          let id = (str_id k) in
-          let name = Printf.sprintf "Process %d" k in
-          let (html,script) = Process.display_process_HTML ~rho:rho ~id_rho:id_rho ~name:name id proc in
-          let (rest_l,rest_id, rest_script) = produce_proc_output_list (k+1) q in
-          ((html,output)::rest_l, id::rest_id, (script^"\n"^rest_script))
-    in
-
-    let (proc_output_list,id_result, script_result) = produce_proc_output_list 1 result in
-    let all_script = script_input^"\n"^script_result in
-    let html_result = display_next_output_result_HTML rho proc_output_list in
+    let id_input = Printf.sprintf "%de0e0" i in
+    let (html_input,script_input) = Process.display_process_HTML ~rho:rho ~id_rho:id_rho ~general_process:None id_input process in
+    let (html_result,script_result,ids_result) = display_next_output_result_HTML rho id_rho i process result in
 
     let test_latex =
       { latex_header with
         inputs = [ (display_semantics Terminal sem, Text); (display_equivalence Terminal eq, Text); (html_input, Text); (display_substitution Latex Protocol rho subst, Inline) ];
         output = ( html_result, Text )
       } in
-    (test_latex, Some(all_script, id_input::id_result))
+    (test_latex, Some(script_input ^ script_result, (i,0,None)::ids_result))
   in
 
   test_terminal, test_latex
@@ -2042,30 +2136,16 @@ let test_Process_next_input sem eq process subst result =
     } in
 
   let test_latex i =
-    let str_id k = Printf.sprintf "%de%d" i k in
-    let id_input = str_id 0 in
-    let (html_input,script_input) = Process.display_process_HTML ~rho:rho ~id_rho:id_rho ~name:"Input Process" id_input process in
-
-    let rec produce_proc_input_list k = function
-      | [] -> ([],[],"")
-      | (proc,input)::q ->
-          let id = (str_id k) in
-          let name = Printf.sprintf "Process %d" k in
-          let (html,script) = Process.display_process_HTML ~rho:rho ~id_rho:id_rho ~name:name id proc in
-          let (rest_l,rest_id, rest_script) = produce_proc_input_list (k+1) q in
-          ((html,input)::rest_l, id::rest_id, (script^"\n"^rest_script))
-    in
-
-    let (proc_input_list,id_result, script_result) = produce_proc_input_list 1 result in
-    let all_script = script_input^"\n"^script_result in
-    let html_result = display_next_input_result_HTML rho proc_input_list in
+    let id_input = Printf.sprintf "%de0e0" i in
+    let (html_input,script_input) = Process.display_process_HTML ~rho:rho ~id_rho:id_rho ~general_process:None id_input process in
+    let (html_result,script_result,ids_result) = display_next_input_result_HTML rho id_rho i process result in
 
     let test_latex =
       { latex_header with
         inputs = [ (display_semantics Terminal sem, Text); (display_equivalence Terminal eq, Text); (html_input, Text); (display_substitution Latex Protocol rho subst, Inline) ];
         output = ( html_result, Text )
       } in
-    (test_latex, Some(all_script, id_input::id_result))
+    (test_latex, Some(script_input ^ script_result, (i,0,None)::ids_result))
   in
 
   test_terminal, test_latex

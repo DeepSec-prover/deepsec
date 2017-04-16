@@ -53,6 +53,18 @@ type symbolic_derivation = (int * int) * renaming * renaming
 
 type process = content list * symbolic_derivation list
 
+type action_trace =
+  | TrComm of symbolic_derivation * symbolic_derivation * process
+  | TrNew of symbolic_derivation * process
+  | TrChoice of symbolic_derivation * process
+  | TrTest of symbolic_derivation * process
+  | TrLet of symbolic_derivation * process
+  | TrInput of ident * term * ident * term * symbolic_derivation * process
+  | TrOutput of ident * term * ident * term * symbolic_derivation * process
+  | TrEavesdrop of ident * term * ident * term * symbolic_derivation * symbolic_derivation * process
+
+type trace = action_trace list
+
 type 'a top_bot =
   | Top
   | Bot
@@ -162,9 +174,13 @@ val parse_process : process -> Process.process
 
 val parse_expansed_process : expansed_process -> Process.expansed_process
 
-val parse_output_transition : (process * substitution * diseq list * term * term * term list) list -> (Process.process * Process.output_gathering) list
+val parse_action_process : symbolic_derivation -> Process.action_process
 
-val parse_input_transition : (process * substitution * diseq list * term * ident * term list) list -> (Process.process * Process.input_gathering) list
+val parse_trace : action_trace list -> Process.Trace.t
+
+val parse_output_transition : (process * substitution * diseq list * term * term * term list * symbolic_derivation * trace) list -> (Process.process * Process.output_gathering) list
+
+val parse_input_transition : (process * substitution * diseq list * term * ident * term list * symbolic_derivation * trace) list -> (Process.process * Process.input_gathering) list
 
 type mgs = ident list * substitution
 

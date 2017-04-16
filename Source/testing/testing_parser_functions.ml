@@ -60,6 +60,18 @@ type symbolic_derivation = (int * int) * renaming * renaming
 
 type process = content list * symbolic_derivation list
 
+type action_trace =
+  | TrComm of symbolic_derivation * symbolic_derivation * process
+  | TrNew of symbolic_derivation * process
+  | TrChoice of symbolic_derivation * process
+  | TrTest of symbolic_derivation * process
+  | TrLet of symbolic_derivation * process
+  | TrInput of ident * term * ident * term * symbolic_derivation * process
+  | TrOutput of ident * term * ident * term * symbolic_derivation * process
+  | TrEavesdrop of ident * term * ident * term * symbolic_derivation * symbolic_derivation * process
+
+type trace = action_trace list
+
 type 'a top_bot =
   | Top
   | Bot
@@ -247,7 +259,13 @@ let lookup_axiom (s,line) =
       end
   else error_message line (Printf.sprintf "The identifiant %s is not declared." s)
 
-
+let parse_axiom (s,line) =
+  try
+    match Hashtbl.find environment s with
+      | Axiom ax -> ax
+      | env_elt -> error_message line (Printf.sprintf "The identifiant %s is declared as %s but an axiom is expected." s (display_env_elt_type env_elt))
+  with
+  | _ -> error_message line (Printf.sprintf "The identifiant %s is not declared" s)
 
 (******** Signature ********)
 
@@ -608,8 +626,32 @@ let parse_process (content_list,symb_list) =
 
 (*********** Transition ************)
 
+let parse_action_process (cont,var_rho,n_rho) =
+  Process.Testing.create_action_process (cont,parse_vars_renaming Term.Protocol var_rho, parse_names_renaming n_rho)
+
+let parse_trace trace =
+  List.fold_right (fun action acc_trace ->
+    match action with
+      | TrComm(symb_in,symb_out,proc) ->
+          Process.Trace.add_comm (parse_action_process symb_in) (parse_action_process symb_out) (parse_process proc) acc_trace
+      | TrNew(symb,proc) ->
+          Process.Trace.add_new (parse_action_process symb) (parse_process proc) acc_trace
+      | TrChoice(symb,proc) ->
+          Process.Trace.add_choice (parse_action_process symb) (parse_process proc) acc_trace
+      | TrTest(symb,proc) ->
+          Process.Trace.add_test (parse_action_process symb) (parse_process proc) acc_trace
+      | TrLet(symb,proc) ->
+          Process.Trace.add_let (parse_action_process symb) (parse_process proc) acc_trace
+      | TrInput(ch_X,ch,t_X,t,symb,proc) ->
+          Process.Trace.add_input (parse_snd_var ch_X) (parse_term Term.Protocol ch) (parse_snd_var t_X) (parse_term Term.Protocol t) (parse_action_process symb) (parse_process proc) acc_trace
+      | TrOutput(ch_X,ch,ax,t,symb,proc) ->
+          Process.Trace.add_output (parse_snd_var ch_X) (parse_term Term.Protocol ch) (parse_axiom ax) (parse_term Term.Protocol t) (parse_action_process symb) (parse_process proc) acc_trace
+      | TrEavesdrop(ch_X,ch,ax,t,symb_in,symb_out,proc) ->
+          Process.Trace.add_eavesdrop (parse_snd_var ch_X) (parse_term Term.Protocol ch) (parse_axiom ax) (parse_term Term.Protocol t) (parse_action_process symb_in) (parse_action_process symb_out) (parse_process proc) acc_trace
+  ) trace Process.Trace.empty
+
 let parse_output_transition out_l =
-  List.map (fun (proc, subst, diseq_l, channel, term, term_list) ->
+  List.map (fun (proc, subst, diseq_l, channel, term, term_list, action_process, trace) ->
     let proc' = parse_process proc in
     let subst' = parse_substitution Term.Protocol subst in
     let diseq_l' =
@@ -623,11 +665,21 @@ let parse_output_transition out_l =
     let channel' = parse_term Term.Protocol channel in
     let term' = parse_term Term.Protocol term in
     let term_list' = parse_term_list Term.Protocol term_list in
-    (proc', { Process.out_equations = subst'; Process.out_disequations = diseq_l'; Process.out_channel = channel'; Process.out_term = term'; Process.out_private_channels = term_list'})
+    let action_process' = parse_action_process action_process in
+    let trace' = parse_trace trace in
+    (proc', {
+      Process.out_equations = subst';
+      Process.out_disequations = diseq_l';
+      Process.out_channel = channel';
+      Process.out_term = term';
+      Process.out_private_channels = term_list';
+      Process.out_action = Some (action_process');
+      Process.out_tau_actions = trace'
+    })
   ) out_l
 
 let parse_input_transition out_l =
-  List.map (fun (proc, subst, diseq_l, channel, var, term_list) ->
+  List.map (fun (proc, subst, diseq_l, channel, var, term_list,action_process, trace) ->
     let proc' = parse_process proc in
     let subst' = parse_substitution Term.Protocol subst in
     let diseq_l' =
@@ -641,7 +693,17 @@ let parse_input_transition out_l =
     let channel' = parse_term Term.Protocol channel in
     let var' = parse_fst_var var in
     let term_list' = parse_term_list Term.Protocol term_list in
-    (proc', { Process.in_equations = subst'; Process.in_disequations = diseq_l'; Process.in_channel = channel'; Process.in_variable = var'; Process.in_private_channels = term_list'})
+    let action_process' = parse_action_process action_process in
+    let trace' = parse_trace trace in
+    (proc', {
+      Process.in_equations = subst';
+      Process.in_disequations = diseq_l';
+      Process.in_channel = channel';
+      Process.in_variable = var';
+      Process.in_private_channels = term_list';
+      Process.in_action = Some (action_process');
+      Process.in_tau_actions = trace'
+    })
   ) out_l
 
 (*********** Constraint_system ***********)

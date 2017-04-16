@@ -91,7 +91,7 @@ Renderer.prototype.run = function(graph, svg) {
 
   drawNodes(graph, this._drawNode, svgNodes);
   drawEdgeLabels(graph, this._drawEdgeLabel, svgEdges);
-  
+
   // Now apply the layout function
   var result = runLayout(graph, this._layout);
 
@@ -267,27 +267,38 @@ function addLabel(label, root, marginX, marginY) {
   // Add the rect first so that it appears behind the label
   var rect = root.append("rect");
   var labelSvg = root.append("g");
+  var newlabel;
 
-  if (label[0] === "<") {
-    addForeignObjectLabel(label, labelSvg);
-    // No margin for HTML elements
-    marginX = marginY = 0;
-  } else {
-    addTextLabel(label, labelSvg);
-  }
+  newlabel = label.slice(1);
+  addForeignObjectLabel(newlabel, labelSvg);
+  // No margin for HTML elements
+  marginX = 10;
+  marginY = 0;
 
   var bbox = root.node().getBBox();
 
   labelSvg.attr("transform",
              "translate(" + (-bbox.width / 2) + "," + (-bbox.height / 2) + ")");
 
-  rect
-    .attr("rx", 5)
-    .attr("ry", 5)
-    .attr("x", -(bbox.width / 2 + marginX))
-    .attr("y", -(bbox.height / 2 + marginY))
-    .attr("width", bbox.width + 2 * marginX)
-    .attr("height", bbox.height + 2 * marginY);
+   if (label[0] === "!") {
+     rect
+       .attr("rx", 5)
+       .attr("ry", 5)
+       .attr("x", -(bbox.width / 2 + marginX))
+       .attr("y", -(bbox.height / 2 + marginY))
+       .attr("width", bbox.width + 2 * marginX)
+       .attr("height", bbox.height + 2 * marginY)
+       .attr("style", rect.style + "; fill :#afa");
+   } else {
+     rect
+       .attr("rx", 5)
+       .attr("ry", 5)
+       .attr("x", -(bbox.width / 2 + marginX))
+       .attr("y", -(bbox.height / 2 + marginY))
+       .attr("width", bbox.width + 2 * marginX)
+       .attr("height", bbox.height + 2 * marginY);
+   }
+
 }
 
 function addForeignObjectLabel(label, root) {
@@ -1500,7 +1511,7 @@ exports.max = function(values) {
 exports.all = function(xs, f) {
   for (var i = 0; i < xs.length; ++i) {
     if (!f(xs[i])) {
-      return false; 
+      return false;
     }
   }
   return true;
@@ -1902,7 +1913,7 @@ Digraph.prototype.isDirected = function() {
 /*
  * Returns all successors of the node with the id `u`. That is, all nodes
  * that have the node `u` as their source are returned.
- * 
+ *
  * If no node `u` exists in the graph this function throws an Error.
  *
  * @param {String} u a node id
@@ -1916,7 +1927,7 @@ Digraph.prototype.successors = function(u) {
 /*
  * Returns all predecessors of the node with the id `u`. That is, all nodes
  * that have the node `u` as their target are returned.
- * 
+ *
  * If no node `u` exists in the graph this function throws an Error.
  *
  * @param {String} u a node id

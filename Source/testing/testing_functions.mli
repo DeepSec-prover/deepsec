@@ -5,7 +5,7 @@ open Data_structure
 
 type html_code =
   | NoScript of string
-  | Script of string * string * string list
+  | Script of string * string * (int * int * int option) list
 
 (** The type [data_IO] represents all the informations required by the test manager for each tested function.
     The first three lists represent the different tests and their status. Each test is representing by a pair of string [(str1,str2)] where

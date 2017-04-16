@@ -308,6 +308,7 @@ h3 {
 	border: 0px;
 	padding: 0px 0px 0px 30px;
   vertical-align: top;
+  min-width: 500px;
 }
 
 .expansedTable {
@@ -347,4 +348,56 @@ sup {
 
 .elt_csys {
   margin-top: 7px;
+}
+
+
+/* Description of processes */
+
+.title-description {
+  font-weight: bold;
+  font-size: 18px;
+  margin-left: 10px;
+}
+
+.node-description {
+  margin-top:15px;
+  font-weight: bold;
+}
+
+.subtitle-trace {
+  font-weight: bold;
+  font-size: 18px;
+  margin-left: 10px;
+  margin-top: 50px;
+}
+
+.title-trace {
+  font-weight: bold;
+  font-size: 24px;
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.link-trace {
+  text-align: center;
+  margin-bottom: 15px;
+}
+
+.description-action{
+  font-weight: bold;
+  margin-left: 30px;
+  margin-right: 30px;
+  display: none;
+}
+
+.action {
+  display:none;
+}
+
+.renaming {
+  display:none;
+}
+
+.alert {
+  color: red;
 }

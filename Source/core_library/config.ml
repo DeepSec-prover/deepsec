@@ -22,3 +22,7 @@ let test =
 
 let path_html_template = ref "Source/html_templates/"
 let path_index = ref "./"
+
+(**** Trace display ****)
+
+let display_trace = ref true

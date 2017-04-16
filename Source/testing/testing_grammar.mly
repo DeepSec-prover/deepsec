@@ -35,6 +35,10 @@ open Testing_parser_functions
 %token NEW
 %token PAR CHOICE
 
+/* Trace */
+%token TRCOMM TRNEW TRCHOICE TRTEST
+%token TRLET TRINPUT TROUTPUT TREAVESDROP
+
 /* Semantics and equivalence */
 %token CLASSIC PRIVATE EAVESDROP
 %token TRACEEQ OBSEQ
@@ -1316,8 +1320,8 @@ transition_disequation:
       { $1 }
 
 output_transition:
-  | LCURL process SEMI substitution SEMI transition_disequation SEMI term SEMI term SEMI term_list RCURL
-      { ($2,$4,$6,$8,$10, $12) }
+  | LCURL process SEMI substitution SEMI transition_disequation SEMI term SEMI term SEMI term_list SEMI symbolic_derivation SEMI trace RCURL
+      { ($2,$4,$6,$8,$10,$12,$14,$16) }
 
 input_transition_result:
   | LCURL RCURL
@@ -1332,8 +1336,41 @@ sub_input_transition_result:
       { $1::$3 }
 
 input_transition:
-  | LCURL process SEMI substitution SEMI transition_disequation SEMI term SEMI ident SEMI term_list RCURL
-      { ($2,$4,$6,$8,$10,$12) }
+  | LCURL process SEMI substitution SEMI transition_disequation SEMI term SEMI ident SEMI term_list SEMI symbolic_derivation SEMI trace RCURL
+      { ($2,$4,$6,$8,$10,$12,$14,$16) }
+
+action_trace:
+  | TRCOMM LPAR symbolic_derivation COMMA symbolic_derivation COMMA process RPAR
+      { TrComm($3,$5,$7) }
+  | TRNEW LPAR symbolic_derivation  COMMA process RPAR
+      { TrNew($3,$5) }
+  | TRCHOICE LPAR symbolic_derivation COMMA process RPAR
+      { TrChoice($3,$5) }
+  | TRCHOICE LPAR symbolic_derivation COMMA process RPAR
+      { TrChoice($3,$5) }
+  | TRTEST LPAR symbolic_derivation  COMMA process RPAR
+      { TrTest($3,$5) }
+  | TRLET LPAR symbolic_derivation COMMA process RPAR
+      { TrLet($3,$5) }
+  | TRINPUT LPAR ident COMMA term COMMA ident COMMA term COMMA symbolic_derivation COMMA process RPAR
+      { TrInput($3,$5,$7,$9,$11,$13) }
+  | TROUTPUT LPAR ident COMMA term COMMA ident COMMA term COMMA symbolic_derivation COMMA process RPAR
+      { TrOutput($3,$5,$7,$9,$11,$13) }
+  | TREAVESDROP LPAR ident COMMA term COMMA ident COMMA term COMMA symbolic_derivation COMMA symbolic_derivation COMMA process RPAR
+      { TrEavesdrop($3,$5,$7,$9,$11,$13,$15) }
+
+trace:
+  | LCURL RCURL
+      { [] }
+  | LCURL sub_trace RCURL
+      { $2 }
+
+sub_trace:
+  | action_trace
+      { [$1] }
+  | action_trace COMMA sub_trace
+      { $1::$3 }
+
 
 /********* Constraint systems ***********/
 
