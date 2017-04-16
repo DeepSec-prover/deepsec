@@ -256,6 +256,8 @@ module Variable : sig
 
     (** {4 Operators} *)
 
+    val intersect_domain : ('a, 'b) t -> ('a, 'b) t -> ('a, 'b) domain
+
     (** Generates a domain from a list of variables. *)
     val of_list : ('a, 'b) variable list -> ('a, 'b) domain
 
@@ -369,6 +371,8 @@ module Name :  sig
 
     (** [get_names_with_list] {% $\rho$ %} [l] adds the names in {% $\rho$ %} in the list [l]. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
     val get_names_with_list : t -> name list -> name list
+
+    val intersect_domain : t -> t -> domain
 
     (** {4 Testing} *)
 

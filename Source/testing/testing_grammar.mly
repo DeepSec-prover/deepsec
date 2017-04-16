@@ -1346,8 +1346,6 @@ action_trace:
       { TrNew($3,$5) }
   | TRCHOICE LPAR symbolic_derivation COMMA process RPAR
       { TrChoice($3,$5) }
-  | TRCHOICE LPAR symbolic_derivation COMMA process RPAR
-      { TrChoice($3,$5) }
   | TRTEST LPAR symbolic_derivation  COMMA process RPAR
       { TrTest($3,$5) }
   | TRLET LPAR symbolic_derivation COMMA process RPAR

@@ -60,7 +60,7 @@ val display_process_HTML : ?rho: display_renamings option -> ?id_rho: id_renamin
 
 (** [display_expansed_process_HTML ~rho:rho ~margin:margin p] returns a string corresponding to the HTML code for displaying an expansed process. The argument
     [margin] corresponds to the size in px of an indentation.*)
-val display_expansed_process_HTML : ?rho: display_renamings option -> ?margin_px:int -> ?subst: (fst_ord, name) Subst.t -> expansed_process -> string
+val display_expansed_process_HTML : ?rho: display_renamings option -> ?margin_px:int -> ?hidden:bool -> ?highlight:int list -> ?id:string -> ?subst: (fst_ord, name) Subst.t -> expansed_process -> string
 
 (** {3 Tested function} *)
 

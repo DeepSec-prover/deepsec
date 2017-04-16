@@ -468,6 +468,36 @@ let of_expansed_process ex_proc =
   Config.test (fun () -> !test_of_expansed_process ex_proc result);
   result
 
+let rec expansed_of_content var_subst name_rho content = match content.action with
+  | ANil -> Nil
+  | AOut(ch,t,cont) ->
+      let (ch_1,t_1) = Name.Renaming.apply_on_terms name_rho (ch,t) (fun (x,y) f -> (f x, f y)) in
+      let (ch_2,t_2) = Subst.apply var_subst (ch_1,t_1) (fun (x,y) f -> (f x, f y)) in
+      let (ch_3,t_3) = (Rewrite_rules.normalise ch_2, Rewrite_rules.normalise t_2) in
+      Output(ch_3,t_3,expansed_of_content var_subst name_rho cont)
+  | AIn(ch,x,cont) ->
+      let ch_1 = Name.Renaming.apply_on_terms name_rho ch (fun x f -> f x) in
+      let ch_2 = Subst.apply var_subst ch_1 (fun x f -> f x) in
+      let ch_3 = Rewrite_rules.normalise ch_2 in
+      Input(ch_3,x,expansed_of_content var_subst name_rho cont)
+  | ATest(t,r,cont_then,cont_else) ->
+      let (t_1,r_1) = Name.Renaming.apply_on_terms name_rho (t,r) (fun (x,y) f -> (f x, f y)) in
+      let (t_2,r_2) = Subst.apply var_subst (t_1,r_1) (fun (x,y) f -> (f x, f y)) in
+      let (t_3,r_3) = (Rewrite_rules.normalise t_2, Rewrite_rules.normalise r_2) in
+      IfThenElse(t_3,r_3,expansed_of_content var_subst name_rho cont_then,expansed_of_content var_subst name_rho cont_else)
+  | ALet(t,r,cont_then,cont_else) ->
+      let (t_1,r_1) = Name.Renaming.apply_on_terms name_rho (t,r) (fun (x,y) f -> (f x, f y)) in
+      let (t_2,r_2) = Subst.apply var_subst (t_1,r_1) (fun (x,y) f -> (f x, f y)) in
+      let (t_3,r_3) = (Rewrite_rules.normalise t_2, Rewrite_rules.normalise r_2) in
+      Let(t_3,r_3,expansed_of_content var_subst name_rho cont_then,expansed_of_content var_subst name_rho cont_else)
+  | ANew(n,cont) -> New(n,expansed_of_content var_subst name_rho cont)
+  | APar(cont_mult_list) -> Par(List.map (fun c_mult -> (expansed_of_content var_subst name_rho c_mult.content), c_mult.mult) cont_mult_list)
+  | AChoice(cont_mult_list) -> Choice(List.map (fun c_mult ->
+      if c_mult.mult = 1
+      then expansed_of_content var_subst name_rho c_mult.content
+      else Par [(expansed_of_content var_subst name_rho c_mult.content,c_mult.mult)]
+      ) cont_mult_list)
+
 (****************************************
 ***         Display function         ***
 *****************************************)
@@ -705,7 +735,7 @@ let display_process_HTML ?(rho=None) ?(id_rho=(fun x -> x)) ?(general_process=No
 
   (html,javascript)
 
-let display_expansed_process_HTML ?(rho=None) ?(margin_px=15) ?(subst=Subst.identity) process =
+let display_expansed_process_HTML ?(rho=None) ?(margin_px=15) ?(hidden=false) ?(highlight=[]) ?(id="") ?(subst=Subst.identity) process =
 
   let apply =
     if Subst.is_identity subst
@@ -725,36 +755,57 @@ let display_expansed_process_HTML ?(rho=None) ?(margin_px=15) ?(subst=Subst.iden
     s
   in
 
-  let rec sub_display_process margin prev_in_out = function
+  let rec sub_display_process high margin prev_in_out = function
     | Nil when prev_in_out -> ""
     | Nil -> str_div margin "0"
     | Output(ch,t,p) ->
-        let str = str_div margin (Printf.sprintf "out(%s,%s);" (display HTML ~rho:rho Protocol (apply ch)) (display HTML ~rho:rho Protocol (apply t))) in
-        str^(sub_display_process margin true p)
+        let str =
+          if high <> []
+          then str_div margin (Printf.sprintf "<span class=\"highlight\">out(%s,%s);</span>" (display HTML ~rho:rho Protocol (apply ch)) (display HTML ~rho:rho Protocol (apply t)))
+          else str_div margin (Printf.sprintf "out(%s,%s);" (display HTML ~rho:rho Protocol (apply ch)) (display HTML ~rho:rho Protocol (apply t))) in
+        str^(sub_display_process [] margin true p)
     | Input(ch,x,p) ->
-        let str = str_div margin (Printf.sprintf "in(%s,%s);" (display HTML ~rho:rho Protocol (apply ch)) (Variable.display HTML ~rho:rho Protocol x)) in
-        str^(sub_display_process margin true p)
+        let str =
+          if high <> []
+          then str_div margin (Printf.sprintf "<span class=\"highlight\">in(%s,%s);</span>" (display HTML ~rho:rho Protocol (apply ch)) (Variable.display HTML ~rho:rho Protocol x))
+          else str_div margin (Printf.sprintf "in(%s,%s);" (display HTML ~rho:rho Protocol (apply ch)) (Variable.display HTML ~rho:rho Protocol x)) in
+        str^(sub_display_process [] margin true p)
     | IfThenElse(t1,t2,p_then,Nil) ->
-        let str = str_div margin (Printf.sprintf "if %s %s %s then" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2))) in
-        str^(sub_display_process margin false p_then)
+        let str =
+          if high <> []
+          then str_div margin (Printf.sprintf "<span class=\"highlight\">if %s %s %s then</span>" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2)))
+          else str_div margin (Printf.sprintf "if %s %s %s then" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2))) in
+        str^(sub_display_process [] margin false p_then)
     | IfThenElse(t1,t2,p_then,p_else) ->
-        let str_test = str_div margin (Printf.sprintf "if %s %s %s then" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2))) in
-        let str_p_then = sub_display_process (margin+1) false p_then in
+        let str_test =
+          if high <> []
+          then str_div margin (Printf.sprintf "<span class=\"highlight\">if %s %s %s then</span>" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2)))
+          else str_div margin (Printf.sprintf "if %s %s %s then" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2))) in
+        let str_p_then = sub_display_process [] (margin+1) false p_then in
         let str_else = str_div margin "else" in
-        let str_p_else = sub_display_process (margin+1) false p_else in
+        let str_p_else = sub_display_process [] (margin+1) false p_else in
         str_test ^ str_p_then ^ str_else ^ str_p_else
     | Let(t1,t2,p_then,Nil) ->
-        let str = str_div margin (Printf.sprintf "let %s %s %s in" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2))) in
-        str^(sub_display_process margin false p_then)
+        let str =
+          if high <> []
+          then str_div margin (Printf.sprintf "<span class=\"highlight\">let %s %s %s in</span>" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2)))
+          else str_div margin (Printf.sprintf "let %s %s %s in" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2))) in
+        str^(sub_display_process [] margin false p_then)
     | Let(t1,t2,p_then,p_else) ->
-        let str_test = str_div margin (Printf.sprintf "let %s %s %s in" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2))) in
-        let str_p_then = sub_display_process (margin+1) false p_then in
+        let str_test =
+          if high <> []
+          then str_div margin (Printf.sprintf "<span class=\"highlight\">let %s %s %s in</span>" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2)))
+          else str_div margin (Printf.sprintf "let %s %s %s in" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2))) in
+        let str_p_then = sub_display_process [] (margin+1) false p_then in
         let str_else = str_div margin "else" in
-        let str_p_else = sub_display_process (margin+1) false p_else in
+        let str_p_else = sub_display_process [] (margin+1) false p_else in
         str_test ^ str_p_then ^ str_else ^ str_p_else
     | New(k,p) ->
-        let str = str_div margin (Printf.sprintf "new %s;" (Name.display HTML ~rho:rho k)) in
-        str^(sub_display_process margin false p)
+        let str =
+        if high <> []
+        then str_div margin (Printf.sprintf "<span class=\"highlight\">new %s;</span>" (Name.display HTML ~rho:rho k))
+        else str_div margin (Printf.sprintf "new %s;" (Name.display HTML ~rho:rho k)) in
+        str^(sub_display_process [] margin false p)
     | Par(p_list) ->
         Config.debug (fun () ->
           if p_list = []
@@ -764,14 +815,20 @@ let display_expansed_process_HTML ?(rho=None) ?(margin_px=15) ?(subst=Subst.iden
           | (_,1),[] -> Config.internal_error "[process.ml >> display_expansed_process_HTML] The only case the list in Par contains a single element is if the multiplicity is not 1."
           | (p,n),[] ->
               let str = str_div margin (Printf.sprintf "!<sup>%d</sup>" n) in
-              str^(sub_display_process (margin+1) false p)
+              str^(sub_display_process high (margin+1) false p)
           | (p,n),q_list ->
               let str_begin =
                 if n = 1
                 then str_div margin "("
                 else str_div margin (Printf.sprintf "(&nbsp; !<sup>%d</sup>" n)
               in
-              let str_p = sub_display_process (margin+1) false p in
+
+              let str_p =
+                if List.exists (fun k -> k = 1) high
+                then sub_display_process [1] (margin+1) false p
+                else sub_display_process [] (margin+1) false p
+              in
+              let counter = ref 2 in
               let str_q_list =
                 List.fold_left (fun acc_str (p,n) ->
                   let str_begin =
@@ -779,7 +836,12 @@ let display_expansed_process_HTML ?(rho=None) ?(margin_px=15) ?(subst=Subst.iden
                     then str_div margin ")&nbsp;|&nbsp;("
                     else str_div margin (Printf.sprintf ")&nbsp;|&nbsp;(&nbsp;!<sup>%d</sup>" n)
                   in
-                  let str_p = sub_display_process (margin+1) false p in
+                  let str_p =
+                    if List.exists (fun k -> k = !counter) high
+                    then sub_display_process [1] (margin+1) false p
+                    else sub_display_process [] (margin+1) false p
+                  in
+                  incr counter;
                   acc_str ^ str_begin ^ str_p
                 ) "" q_list
               in
@@ -793,11 +855,14 @@ let display_expansed_process_HTML ?(rho=None) ?(margin_px=15) ?(subst=Subst.iden
         );
 
         let str_begin = str_div margin "(" in
-        let str_p = sub_display_process (margin+1) false (List.hd p_list) in
+        let str_p = sub_display_process [] (margin+1) false (List.hd p_list) in
         let str_q_list =
           List.fold_left (fun acc_str p ->
-            let str_begin = str_div margin ")&nbsp;+&nbsp;(" in
-            let str_p = sub_display_process (margin+1) false p in
+            let str_begin =
+              if high <> []
+              then str_div margin ")&nbsp;<span class=\"highlight\">+</span>&nbsp;("
+              else str_div margin ")&nbsp;+&nbsp;(" in
+            let str_p = sub_display_process [] (margin+1) false p in
             acc_str ^ str_begin ^ str_p
           ) "" (List.tl p_list)
         in
@@ -805,8 +870,15 @@ let display_expansed_process_HTML ?(rho=None) ?(margin_px=15) ?(subst=Subst.iden
         str_begin ^ str_p ^ str_q_list ^ str_end
   in
 
-  Printf.sprintf "          <div class=\"expansedTable\">\n            <div class=\"expansedBody\">\n%s            </div>\n          </div>\n"
-    (sub_display_process 1 false process)
+  if hidden
+  then
+    Printf.sprintf "          <div id=\"expansed%s\" class=\"expansedTable\" style=\"display:none;\">\n            <div class=\"expansedBody\">\n%s            </div>\n          </div>\n"
+      id
+      (sub_display_process highlight 1 false process)
+  else
+    Printf.sprintf "          <div id=\"expansed%s\" class=\"expansedTable\">\n            <div class=\"expansedBody\">\n%s            </div>\n          </div>\n"
+      id
+      (sub_display_process highlight 1 false process)
 
 (*******************************************************
 ***        Transition in the classic semantics       ***
@@ -1070,6 +1142,280 @@ module Trace = struct
   let display_testing rho id_rho trace =
     Printf.sprintf "{ %s }"
       (display_list (display_actions_testing rho id_rho) ", " trace)
+
+  let is_equal_action act1 act2 =
+    act1.content_mult.content == act2.content_mult.content && Variable.Renaming.is_equal Protocol act1.var_renaming act2.var_renaming && Name.Renaming.is_equal act1.name_renaming act2.name_renaming
+
+  let order_son_process_one_action father_process son_process action_process =
+
+    let rec split_father previous = function
+      | [] -> Config.internal_error "[process.ml >> Trace.order_son_process_one_action] This case cannot happend as it would mean we did not find the action process."
+      | action :: q when is_equal_action action action_process ->
+          if action.content_mult.mult = 1
+          then (List.rev previous,q)
+          else (List.rev (({action with content_mult = { action.content_mult with mult = action.content_mult.mult -1 }})::previous), q)
+      | action :: q -> split_father (action::previous) q
+    in
+
+    let (father_left, father_right) = split_father [] father_process in
+    let son_left = List.map (fun action_father -> List.find (is_equal_action action_father) son_process) father_left in
+    let son_right = List.map (fun action_father -> List.find (is_equal_action action_father) son_process) father_right in
+    let son_middle = List.filter (fun action_son -> not (List.exists (is_equal_action action_son) son_left) && not (List.exists (is_equal_action action_son) son_right)) son_process in
+
+    let result = son_left@son_middle@son_right in
+    Config.debug (fun () ->
+      if not (List.for_all (fun action1 -> List.exists (fun action2 -> is_equal_action action1 action2 && action1.content_mult.mult = action2.content_mult.mult) result) son_process)
+        || not (List.for_all (fun action1 -> List.exists (fun action2 -> is_equal_action action1 action2 && action1.content_mult.mult = action2.content_mult.mult) son_process) result)
+      then Config.internal_error "[process.ml >> Trace.order_son_process_one_action] The ordered son is not the same as the son itself."
+    );
+    result
+
+  let next_possible_action action = match action.content_mult.content.action with
+    | AOut(_,_,cont)
+    | AIn(_,_,cont) ->
+        begin match cont.action with
+          | APar l -> l
+          | _ -> [ { content = cont ; mult = 1 } ]
+        end
+    | _ -> Config.internal_error "[process.ml >> Trace.next_possible_action] Only output and input should valid at that point."
+
+  let order_son_process_two_action father_process son_process action_process1 action_process2 =
+
+    let rec split_father_first previous = function
+      | [] -> Config.internal_error "[process.ml >> Trace.order_son_process_one_action] This case cannot happend as it would mean we did not find the action process."
+      | action :: q when is_equal_action action action_process1  ->
+          if action.content_mult.mult = 1
+          then (action_process1,List.rev previous,q)
+          else (action_process1,List.rev (({action with content_mult = { action.content_mult with mult = action.content_mult.mult -1 }})::previous), q)
+      | action :: q when is_equal_action action action_process2  ->
+          if action.content_mult.mult = 1
+          then (action_process2,List.rev previous,q)
+          else (action_process2,List.rev (({action with content_mult = { action.content_mult with mult = action.content_mult.mult -1 }})::previous), q)
+      | action :: q -> split_father_first (action::previous) q
+    in
+
+    let rec split_father_second last_action previous = function
+      | [] -> Config.internal_error "[process.ml >> Trace.order_son_process_one_action] This case cannot happend as it would mean we did not find the action process."
+      | action :: q when is_equal_action action last_action  ->
+          if action.content_mult.mult = 1
+          then (List.rev previous,q)
+          else (List.rev (({action with content_mult = { action.content_mult with mult = action.content_mult.mult -1 }})::previous), q)
+      | action :: q -> split_father_second  last_action (action::previous) q
+    in
+
+    let (action_AB,father_A, rest_father) = split_father_first [] father_process in
+    let action_BC =
+      if is_equal_action action_AB action_process1
+      then action_process2
+      else action_process1
+    in
+    let (father_B,father_C) = split_father_second action_BC [] rest_father in
+
+    let son_A = List.map (fun action_father -> List.find (is_equal_action action_father) son_process) father_A in
+    let son_B = List.map (fun action_father -> List.find (is_equal_action action_father) son_process) father_B in
+    let son_C = List.map (fun action_father -> List.find (is_equal_action action_father) son_process) father_C in
+
+    let next_action_A = next_possible_action action_AB in
+    let son_AB =
+      List.filter (fun action_son ->
+        if not (List.exists (is_equal_action action_son) son_A) &&
+          not (List.exists (is_equal_action action_son) son_B) &&
+          not (List.exists (is_equal_action action_son) son_C) &&
+          List.exists (fun cont_mult -> cont_mult.content == action_son.content_mult.content) next_action_A
+        then
+          let var_domain = Variable.Renaming.intersect_domain action_AB.var_renaming action_son.var_renaming in
+          let var_rho_A = Variable.Renaming.restrict action_AB.var_renaming var_domain in
+          let var_rho_son = Variable.Renaming.restrict action_son.var_renaming var_domain in
+          if Variable.Renaming.is_equal Protocol var_rho_A var_rho_son
+          then
+            let name_domain = Name.Renaming.intersect_domain action_AB.name_renaming action_son.name_renaming in
+            let name_rho_A = Name.Renaming.restrict action_AB.name_renaming name_domain in
+            let name_rho_son = Name.Renaming.restrict action_son.name_renaming name_domain in
+            Name.Renaming.is_equal name_rho_A name_rho_son
+          else false
+        else false
+      ) son_process in
+    let son_BC =
+      List.filter (fun action_son ->
+        not (List.exists (is_equal_action action_son) son_A) &&
+        not (List.exists (is_equal_action action_son) son_B) &&
+        not (List.exists (is_equal_action action_son) son_C) &&
+        not (List.exists (is_equal_action action_son) son_AB)
+      ) son_process
+    in
+    let result = son_A @ son_AB @ son_B @ son_BC @ son_C in
+    Config.debug (fun () ->
+      if not (List.for_all (fun action1 -> List.exists (fun action2 -> is_equal_action action1 action2 && action1.content_mult.mult = action2.content_mult.mult) result) son_process)
+        || not (List.for_all (fun action1 -> List.exists (fun action2 -> is_equal_action action1 action2 && action1.content_mult.mult = action2.content_mult.mult) son_process) result)
+      then Config.internal_error "[process.ml >> Trace.order_son_process_two_action] The ordered son is not the same as the son itself."
+    );
+    result
+
+  let expansed_of_process highlight fst_subst process =
+
+    let rec explore_process k = function
+      | [] -> ([],[])
+      | action::q ->
+          let (h_l,q_l) = explore_process (k+1) q in
+          let expansed = expansed_of_content (Subst.compose (Subst.of_renaming action.var_renaming) fst_subst) action.name_renaming action.content_mult.content in
+          if List.exists (is_equal_action action) highlight
+          then (k::h_l,(expansed,action.content_mult.mult)::q_l)
+          else (h_l,(expansed,action.content_mult.mult)::q_l)
+    in
+
+    let (h_l,expand_l) = explore_process 1 process in
+
+    match expand_l with
+      | [] -> Config.internal_error "[process.ml >> Trace.expansed_of_process] The process should not be empty."
+      | [(p,1)] -> (h_l,p)
+      | _ -> (h_l,Par(expand_l))
+
+  let display_process_as_expansed rho id highlight hidden fst_subst process =
+    let (highlight_int,expansed) = expansed_of_process highlight fst_subst process in
+    display_expansed_process_HTML ~rho:rho ~highlight:highlight_int ~hidden:hidden ~id:id ~subst:fst_subst expansed
+
+  let display_expansed_HTML ?(rho=None) ?(title="Display of the trace") id fst_subst snd_subst init_process trace =
+
+    let rev_trace = List.rev trace in
+
+    let str_id k = Printf.sprintf "%se%d" id k in
+
+    let html_script = ref "" in
+
+    let rec print_action_title counter = function
+      | [] -> ()
+      | action :: q ->
+          let desc = match action with
+            | TrComm(_,_,_) -> "Next unobservable action: Internal communication"
+            | TrNew(_,_) -> "Next unobservable action: Fresh name generation"
+            | TrChoice(_,_) -> "Next unobservable action: Non deterministic choice"
+            | TrTest(_,_) -> "Next unobservable action: Equality test"
+            | TrLet(_,_) -> "Next unobservable action: Let evaluation"
+            | TrInput(_,_,_,_,_,_) -> "Next <span class=\"alert\">observable</span> action: Input"
+            | TrOutput(_,_,_,_,_,_) -> "Next <span class=\"alert\">observable</span> action: Output"
+            | TrEavesdrop(_,_,_,_,_,_,_) -> "Next <span class=\"alert\">observable</span> action: Eavesdrop"
+          in
+          html_script := Printf.sprintf "%s                    <span class=\"description-action\" id=\"desc-%se%d\">%s</span>\n" !html_script id counter desc;
+          html_script := Printf.sprintf "%s                    <span class=\"description-action\" id=\"desc-%se%d\">Result</span>\n" !html_script id (counter+1);
+          print_action_title (counter+2) q
+    in
+
+    let rec print_trace counter prev_process = function
+      | [] -> ()
+      | TrComm(symb_in,symb_out,res_proc) :: q
+      | TrEavesdrop(_,_,_,_,symb_in,symb_out,res_proc) :: q ->
+          (* html of the highlighted action *)
+          html_script := Printf.sprintf "%s%s" !html_script (display_process_as_expansed rho (str_id counter) [symb_in;symb_out] true fst_subst prev_process);
+          (* Script of the result process *)
+          let res_proc' = order_son_process_two_action prev_process res_proc symb_in symb_out in
+          html_script := Printf.sprintf "%s%s" !html_script (display_process_as_expansed rho (str_id (counter+1)) [] true fst_subst res_proc');
+          print_trace (counter + 2) res_proc' q
+      | TrNew(symb,res_proc) :: q
+      | TrChoice(symb,res_proc) :: q
+      | TrTest(symb,res_proc) :: q
+      | TrLet(symb,res_proc) :: q
+      | TrInput(_,_,_,_,symb,res_proc) :: q
+      | TrOutput(_,_,_,_,symb,res_proc) :: q ->
+          (* Script of the highlighted action *)
+          html_script := Printf.sprintf "%s%s" !html_script (display_process_as_expansed rho (str_id counter) [symb] true fst_subst prev_process);
+          (* Script of the result process *)
+          let res_proc' = order_son_process_one_action prev_process res_proc symb in
+          html_script := Printf.sprintf "%s%s" !html_script (display_process_as_expansed rho (str_id (counter+1)) [] true fst_subst res_proc');
+          print_trace (counter + 2) res_proc' q
+    in
+
+    let internal_counter_for_trace = ref 1 in
+
+    let rec print_action_trace counter = function
+      | [] -> ()
+      | TrComm(_,_,_) :: q
+      | TrNew(_,_)::q
+      | TrChoice(_,_)::q
+      | TrTest(_,_)::q
+      | TrLet(_,_)::q -> print_action_trace (counter+2) q
+      | TrInput(ch_X,ch,t_X,t,_,_) :: q ->
+          let ch_recipe, t_recipe = Subst.apply snd_subst (of_variable ch_X, of_variable t_X) (fun (x,y) f -> f x,f y) in
+          let new_ch,new_t = Subst.apply fst_subst (ch,t) (fun (x,y) f -> f x,f y) in
+
+          let str_ch_recipe =
+            if is_axiom ch_recipe && Axiom.index_of (axiom_of ch_recipe) <= 0
+            then ""
+            else Printf.sprintf " (computed by \\(%s\\))" (display Latex ~rho:rho Recipe ch_recipe)
+
+          and str_t_recipe =
+            if is_axiom t_recipe && Axiom.index_of (axiom_of t_recipe) <= 0
+            then ""
+            else Printf.sprintf " (computed by \\(%s\\))" (display Latex ~rho:rho Recipe t_recipe)
+          in
+
+          html_script := Printf.sprintf "%s                  <div id=\"action-%se%d\" class=\"action\">%d. Input of \\(%s\\)%s on the channel \\(%s\\)%s.<div>\n"
+            !html_script id (counter+1) !internal_counter_for_trace
+            (display Latex ~rho:rho Protocol new_t) str_t_recipe
+            (display Latex ~rho:rho Protocol new_ch) str_ch_recipe;
+
+          incr internal_counter_for_trace;
+          print_action_trace (counter+2) q
+      | TrOutput(ch_X,ch,ax,t,_,_) :: q ->
+          let ch_recipe = Subst.apply snd_subst (of_variable ch_X) (fun x f -> f x) in
+          let new_ch,new_t = Subst.apply fst_subst (ch,t) (fun (x,y) f -> f x,f y) in
+
+          let str_ch_recipe =
+            if is_axiom ch_recipe && Axiom.index_of (axiom_of ch_recipe) <= 0
+            then ""
+            else Printf.sprintf " (computed by \\(%s\\))" (display Latex ~rho:rho Recipe ch_recipe)
+          in
+
+          html_script := Printf.sprintf "%s                  <div id=\"action-%se%d\" class=\"action\">%d. Output of \\(%s\\) (refered by \\(%s\\)) on the channel \\(%s\\)%s.<div>\n"
+            !html_script id (counter+1) !internal_counter_for_trace
+            (display Latex ~rho:rho Protocol new_t) (display Latex ~rho:rho Recipe (of_axiom ax))
+            (display Latex ~rho:rho Protocol new_ch) str_ch_recipe;
+
+          incr internal_counter_for_trace;
+          print_action_trace (counter+2) q
+      | TrEavesdrop(ch_X,ch,ax,t,_,_,_) :: q ->
+          let ch_recipe = Subst.apply snd_subst (of_variable ch_X) (fun x f -> f x) in
+          let new_ch,new_t = Subst.apply fst_subst (ch,t) (fun (x,y) f -> f x,f y) in
+
+          let str_ch_recipe =
+            if is_axiom ch_recipe && Axiom.index_of (axiom_of ch_recipe) <= 0
+            then ""
+            else Printf.sprintf " (computed by \\(%s\\))" (display Latex ~rho:rho Recipe ch_recipe)
+          in
+
+          html_script := Printf.sprintf "%s                  <div id=\"action-%se%d\" class=\"action\">%d. Eavesdrop of \\(%s\\) (refered by \\(%s\\)) on the channel \\(%s\\)%s.<div>\n"
+            !html_script id (counter+1) !internal_counter_for_trace
+            (display Latex ~rho:rho Protocol new_t) (display Latex ~rho:rho Recipe (of_axiom ax))
+            (display Latex ~rho:rho Protocol new_ch) str_ch_recipe;
+
+          incr internal_counter_for_trace;
+          print_action_trace (counter+2) q
+    in
+
+    html_script := Printf.sprintf "%s            <table class=\"processTable\">\n" !html_script;
+    html_script := Printf.sprintf "%s              <tr>\n" !html_script;
+    html_script := Printf.sprintf "%s                <td colspan=\"2\">\n" !html_script;
+    html_script := Printf.sprintf "%s                  <div class=\"title-trace\">%s</div>\n" !html_script title;
+    html_script := Printf.sprintf "%s                  <div class=\"link-trace\">\n" !html_script;
+    html_script := Printf.sprintf "%s                    <button id=\"previous-%s\" type=\"button\" onclick=\"javascript:previous_expansed('%s');\" disabled>Previous</button>\n" !html_script id id;
+    html_script := Printf.sprintf "%s                    <span class=\"description-action\" id=\"desc-%se1\" style=\"display: inline;\">Initial process</span>\n" !html_script id;
+    print_action_title 2 rev_trace;
+    html_script := Printf.sprintf "%s                    <button id=\"next-%s\" type=\"button\" onclick=\"javascript:next_expansed('%s');\">Next</button>\n" !html_script id id;
+    html_script := Printf.sprintf "%s                  </div>\n" !html_script;
+    html_script := Printf.sprintf "%s                </td>\n" !html_script;
+    html_script := Printf.sprintf "%s              </tr>\n" !html_script;
+    html_script := Printf.sprintf "%s              <tr class=\"processTableRow\">\n" !html_script;
+    html_script := Printf.sprintf "%s                <td class=\"processDag\">\n" !html_script;
+    html_script := Printf.sprintf "%s%s" !html_script (display_process_as_expansed rho (str_id 1) [] false fst_subst init_process);
+    print_trace 2 init_process rev_trace;
+    html_script := Printf.sprintf "%s                </td>\n" !html_script;
+    html_script := Printf.sprintf "%s                <td class=\"processRenaming\">\n" !html_script;
+    html_script := Printf.sprintf "%s                  <div class=\"subtitle-trace\">Trace</div>\n" !html_script;
+    print_action_trace 2 rev_trace;
+    html_script := Printf.sprintf "%s                </td>\n" !html_script;
+    html_script := Printf.sprintf "%s              </tr>\n" !html_script;
+    html_script := Printf.sprintf "%s            </table>\n" !html_script;
+
+    !html_script
 
   let display_HTML ?(rho=None) ?(id_rho=(fun x -> x)) ?(title="Display of the trace") id ?(fst_subst=Subst.identity) ?(snd_subst=Subst.identity) init_process trace =
 

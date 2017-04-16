@@ -351,7 +351,22 @@ module Variable = struct
       | Var _ -> Config.internal_error "[Variable.Renaming >> follow_link] Unexpected link"
       | term -> term
 
+
     (****** Generation *******)
+
+    let intersect_domain rho_1 rho_2 =
+      List.iter (fun (v,_) -> v.link <- FLink) rho_1;
+
+      let domain =
+        List.fold_left (fun acc (n,_) ->
+          if n.link = FLink
+          then n::acc
+          else acc
+        ) [] rho_2
+      in
+
+      List.iter (fun (v,_) -> v.link <- NoLink) rho_1;
+      domain
 
     let variable_fresh_shortcut = fresh
 
@@ -656,6 +671,18 @@ module Name = struct
 
       List.iter (fun x -> x.link_n <- NNoLink) !result;
       !result
+
+    let intersect_domain rho_1 rho_2 =
+      List.iter (fun (n,_) -> n.link_n <- NLinkSearch) rho_1;
+
+      let domain = List.fold_left (fun acc (n,_) ->
+        if n.link_n = NLinkSearch
+        then n::acc
+        else acc
+      ) [] rho_2 in
+
+      List.iter (fun (n,_) -> n.link_n <- NNoLink) rho_1;
+      domain
 
     (***** Testing *****)
 
