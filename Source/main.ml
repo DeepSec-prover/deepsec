@@ -174,8 +174,12 @@ let _ =
       if not (Sys.file_exists (Printf.sprintf "%stesting_data/tests_to_check" !Config.path_index))
       then Unix.mkdir (Printf.sprintf "%stesting_data/tests_to_check" !Config.path_index) 0o777;
 
-      Testing_load_verify.load ();
-      Testing_functions.update ();
+      if Config.test_activated
+      then
+        begin
+          Testing_load_verify.load ();
+          Testing_functions.update ()
+        end;
 
       Term.Symbol.empty_signature ();
       Sys.chdir current_folder;
