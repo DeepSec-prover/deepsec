@@ -135,10 +135,19 @@ let rec excecute_queries id = function
       excecute_queries (id+1) q
   | _ -> Config.internal_error "Observational_equivalence not implemented"
 
+let extract_path sysargv =
+  let regex_name = Str.regexp "/\\([^/]+\\)" in
+  let pos_start = Str.search_backward regex_name sysargv.(0) ((String.length sysargv.(0)) - 1) in
+  String.sub sysargv.(0) 0 (pos_start + 1)
+
 let _ =
   let path = ref "" in
   let arret = ref false in
   let i = ref 1 in
+
+  let current_folder = Sys.getcwd () in
+  Sys.chdir (extract_path Sys.argv);
+  let folder_deepsec = Sys.getcwd () in
 
   while !i < Array.length Sys.argv && not !arret do
     match (Sys.argv).(!i) with
@@ -169,8 +178,9 @@ let _ =
       Testing_functions.update ();
 
       Term.Symbol.empty_signature ();
-
+      Sys.chdir current_folder;
       parse_file !path;
+      Sys.chdir folder_deepsec;
 
       if Config.test_activated
       then
