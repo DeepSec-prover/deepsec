@@ -65,6 +65,11 @@ val replace_additional_data : 'a t -> 'a -> 'a t
     @raise Internal_error if {% $\forall \sigma', \sigma \neq \Cmgu{\C}\sigma'$. \highdebug %} *)
 val apply_substitution : 'a t -> (fst_ord, name) Subst.t -> 'a t
 
+(** [instantiate_when_solved] {% $\C$ %} consider a constraint system {% $\C$ in solved form and extract a solution
+    from $\C$ by instantiating all second-order variable in $\Df(\C)$ with fresh names.%}
+    @raise Internal_error if {% $\C$ %} is not in solved form. *)
+val instantiate_when_solved : 'a t -> (fst_ord, name) Subst.t * (snd_ord, axiom) Subst.t * name list
+
 (** {3 Scanning} *)
 
 (** [is_solved] {% $\C$ %} returns [true] if {% $\C$ is solved. %}*)

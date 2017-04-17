@@ -28,6 +28,8 @@ val initialise : unit -> unit
 (** [of_expansed_process p] transforms the expansed process [p] in its DAG form. *)
 val of_expansed_process : expansed_process -> process
 
+val expansed_of_process : action_process list -> ?fst_subst:(fst_ord, name) Subst.t -> process -> int list * expansed_process
+
 (** {3 Access} *)
 
 (** [get_names_with_list p f_b l] adds the names in the process [p] whose boundedness satisfies [f_b] in the list [l]. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
@@ -56,7 +58,7 @@ val display_expansed_process_testing : display_renamings option -> expansed_proc
 
 (** [display_process_HTML ~rho:rho ~id_rho:id_rho ~name:name id p] returns a pair of string [(html,javascript)]. The string [html] corresponds to the HTML code that display the SVG for the process. The string [javascrip] corresponds to the data of the DAG.
     The argument [id] represents part of the identifier and name of the html [<div>] that contains the SVG as well as the name variable for the data in the javascript code.  *)
-val display_process_HTML : ?rho: display_renamings option -> ?id_rho: id_renaming -> ?general_process: process option -> string ->  process -> string * string
+val display_process_HTML : ?rho: display_renamings option -> ?renaming:bool -> ?id_rho: id_renaming -> ?general_process: process option -> string ->  process -> string * string
 
 (** [display_expansed_process_HTML ~rho:rho ~margin:margin p] returns a string corresponding to the HTML code for displaying an expansed process. The argument
     [margin] corresponds to the size in px of an indentation.*)
@@ -125,6 +127,8 @@ module Trace : sig
   val get_axioms_with_list : t -> axiom list -> axiom list
 
   val display_testing : display_renamings option -> id_renaming -> t -> string
+
+  val display_expansed_HTML : ?rho: display_renamings option ->  ?title: string -> string ->  ?fst_subst: (fst_ord, name) Subst.t -> ?snd_subst: (snd_ord, axiom) Subst.t -> process -> t -> string
 
   val display_HTML : ?rho: display_renamings option -> ?id_rho: id_renaming -> ?title: string -> string -> ?fst_subst: (fst_ord, name) Subst.t -> ?snd_subst: (snd_ord, axiom) Subst.t -> process -> t -> string * string
 

@@ -39,6 +39,14 @@ module SDF = struct
 
   let cardinal sdf = sdf.size
 
+  let first_entry sdf =
+    try
+      let id,cell = SDF_Map.min_binding sdf.map in
+      cell.fact, id
+    with
+      | Not_found -> Config.internal_error "[Data_structure.ml >> first_entry] Should not apply first entry on an empty SDF."
+
+
   let last_entry sdf =
     try
       let id,cell = SDF_Map.max_binding sdf.map in

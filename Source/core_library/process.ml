@@ -455,6 +455,9 @@ and content_mult_list_of_expansed_int_process_list = function
         | _,_ -> Config.internal_error "[process.ml >> content_of_expansed_process_list] The should not be two the same content in the list."
       end
 
+
+
+
 let of_expansed_process ex_proc =
   initialise ();
   let content = content_of_expansed_process ex_proc in
@@ -497,6 +500,29 @@ let rec expansed_of_content var_subst name_rho content = match content.action wi
       then expansed_of_content var_subst name_rho c_mult.content
       else Par [(expansed_of_content var_subst name_rho c_mult.content,c_mult.mult)]
       ) cont_mult_list)
+
+let is_equal_action act1 act2 =
+    act1.content_mult.content == act2.content_mult.content && Variable.Renaming.is_equal Protocol act1.var_renaming act2.var_renaming && Name.Renaming.is_equal act1.name_renaming act2.name_renaming
+
+
+let expansed_of_process highlight ?(fst_subst=Subst.identity) process =
+
+  let rec explore_process k = function
+    | [] -> ([],[])
+    | action::q ->
+        let (h_l,q_l) = explore_process (k+1) q in
+        let expansed = expansed_of_content (Subst.compose (Subst.of_renaming action.var_renaming) fst_subst) action.name_renaming action.content_mult.content in
+        if List.exists (is_equal_action action) highlight
+        then (k::h_l,(expansed,action.content_mult.mult)::q_l)
+        else (h_l,(expansed,action.content_mult.mult)::q_l)
+  in
+
+  let (h_l,expand_l) = explore_process 1 process in
+
+  match expand_l with
+    | [] -> Config.internal_error "[process.ml >> Trace.expansed_of_process] The process should not be empty."
+    | [(p,1)] -> (h_l,p)
+    | _ -> (h_l,Par(expand_l))
 
 (****************************************
 ***         Display function         ***
@@ -684,7 +710,7 @@ let display_renaming_links_HTML id_rho proc =
     ) proc;
   !str
 
-let display_process_HTML ?(rho=None) ?(id_rho=(fun x -> x)) ?(general_process=None) id process =
+let display_process_HTML ?(rho=None) ?(renaming=true) ?(id_rho=(fun x -> x)) ?(general_process=None) id process =
 
   let javascript =
     let list_contents =
@@ -724,10 +750,14 @@ let display_process_HTML ?(rho=None) ?(id_rho=(fun x -> x)) ?(general_process=No
     str := Printf.sprintf "%s                    </svg>\n" !str;
     str := Printf.sprintf "%s                  </div>\n" !str;
     str := Printf.sprintf "%s                </td>\n" !str;
-    str := Printf.sprintf "%s                <td class=\"processRenaming\">\n" !str;
-    str := Printf.sprintf "%s                  <div class=\"title-description\">Renamings and substitution of the process</div>\n" !str;
-    str := Printf.sprintf "%s%s" !str (display_renamings_HTML rho Subst.identity process);
-    str := Printf.sprintf "%s                </td>\n" !str;
+    if renaming
+    then
+      begin
+        str := Printf.sprintf "%s                <td class=\"processRenaming\">\n" !str;
+        str := Printf.sprintf "%s                  <div class=\"title-description\">Renamings and substitution of the process</div>\n" !str;
+        str := Printf.sprintf "%s%s" !str (display_renamings_HTML rho Subst.identity process);
+        str := Printf.sprintf "%s                </td>\n" !str;
+      end;
     str := Printf.sprintf "%s              </tr>\n" !str;
     str := Printf.sprintf "%s            </table>\n" !str;
     !str
@@ -999,6 +1029,36 @@ module Testing = struct
 
 end
 
+let rec add_content_in_proc content mult  v_rho n_rho = function
+  | [] -> [ { content_mult = { content = content; mult = mult}; var_renaming = v_rho; name_renaming = n_rho } ]
+  | symb::q ->
+      if symb.content_mult.content == content && Variable.Renaming.is_equal Protocol v_rho symb.var_renaming && Name.Renaming.is_equal n_rho symb.name_renaming
+      then { symb with content_mult = { symb.content_mult with mult = symb.content_mult.mult + mult } } :: q
+      else symb :: (add_content_in_proc content mult v_rho n_rho q)
+
+let add_content_mult_in_proc cont_mult_list v_rho n_rho proc =
+  List.fold_left (fun acc cont_mult ->
+    let new_v_rho = Variable.Renaming.restrict v_rho cont_mult.content.bound_var
+    and new_n_rho = Name.Renaming.restrict n_rho cont_mult.content.bound_name in
+
+    add_content_in_proc cont_mult.content cont_mult.mult new_v_rho new_n_rho acc
+  ) proc cont_mult_list
+
+let flatten process =
+  let new_proc = ref [] in
+
+  let rec explore_process = function
+    | [] -> ()
+    | action :: q ->
+        begin match action.content_mult.content.action with
+          | APar (c_mult) -> new_proc := add_content_mult_in_proc c_mult action.var_renaming action.name_renaming !new_proc
+          | _ -> new_proc := add_content_in_proc action.content_mult.content action.content_mult.mult action.var_renaming action.name_renaming !new_proc
+        end;
+        explore_process q
+  in
+  explore_process process;
+  !new_proc
+
 module Trace = struct
 
   type trace_actions =
@@ -1143,8 +1203,6 @@ module Trace = struct
     Printf.sprintf "{ %s }"
       (display_list (display_actions_testing rho id_rho) ", " trace)
 
-  let is_equal_action act1 act2 =
-    act1.content_mult.content == act2.content_mult.content && Variable.Renaming.is_equal Protocol act1.var_renaming act2.var_renaming && Name.Renaming.is_equal act1.name_renaming act2.name_renaming
 
   let order_son_process_one_action father_process son_process action_process =
 
@@ -1251,30 +1309,11 @@ module Trace = struct
     );
     result
 
-  let expansed_of_process highlight fst_subst process =
-
-    let rec explore_process k = function
-      | [] -> ([],[])
-      | action::q ->
-          let (h_l,q_l) = explore_process (k+1) q in
-          let expansed = expansed_of_content (Subst.compose (Subst.of_renaming action.var_renaming) fst_subst) action.name_renaming action.content_mult.content in
-          if List.exists (is_equal_action action) highlight
-          then (k::h_l,(expansed,action.content_mult.mult)::q_l)
-          else (h_l,(expansed,action.content_mult.mult)::q_l)
-    in
-
-    let (h_l,expand_l) = explore_process 1 process in
-
-    match expand_l with
-      | [] -> Config.internal_error "[process.ml >> Trace.expansed_of_process] The process should not be empty."
-      | [(p,1)] -> (h_l,p)
-      | _ -> (h_l,Par(expand_l))
-
   let display_process_as_expansed rho id highlight hidden fst_subst process =
-    let (highlight_int,expansed) = expansed_of_process highlight fst_subst process in
+    let (highlight_int,expansed) = expansed_of_process highlight ~fst_subst:fst_subst process in
     display_expansed_process_HTML ~rho:rho ~highlight:highlight_int ~hidden:hidden ~id:id ~subst:fst_subst expansed
 
-  let display_expansed_HTML ?(rho=None) ?(title="Display of the trace") id fst_subst snd_subst init_process trace =
+  let display_expansed_HTML ?(rho=None) ?(title="Display of the trace") id ?(fst_subst=Subst.identity) ?(snd_subst=Subst.identity) init_process trace =
 
     let rev_trace = List.rev trace in
 
@@ -1307,7 +1346,7 @@ module Trace = struct
           (* html of the highlighted action *)
           html_script := Printf.sprintf "%s%s" !html_script (display_process_as_expansed rho (str_id counter) [symb_in;symb_out] true fst_subst prev_process);
           (* Script of the result process *)
-          let res_proc' = order_son_process_two_action prev_process res_proc symb_in symb_out in
+          let res_proc' = order_son_process_two_action prev_process (flatten res_proc) symb_in symb_out in
           html_script := Printf.sprintf "%s%s" !html_script (display_process_as_expansed rho (str_id (counter+1)) [] true fst_subst res_proc');
           print_trace (counter + 2) res_proc' q
       | TrNew(symb,res_proc) :: q
@@ -1319,7 +1358,7 @@ module Trace = struct
           (* Script of the highlighted action *)
           html_script := Printf.sprintf "%s%s" !html_script (display_process_as_expansed rho (str_id counter) [symb] true fst_subst prev_process);
           (* Script of the result process *)
-          let res_proc' = order_son_process_one_action prev_process res_proc symb in
+          let res_proc' = order_son_process_one_action prev_process (flatten res_proc) symb in
           html_script := Printf.sprintf "%s%s" !html_script (display_process_as_expansed rho (str_id (counter+1)) [] true fst_subst res_proc');
           print_trace (counter + 2) res_proc' q
     in
@@ -1336,6 +1375,7 @@ module Trace = struct
       | TrInput(ch_X,ch,t_X,t,_,_) :: q ->
           let ch_recipe, t_recipe = Subst.apply snd_subst (of_variable ch_X, of_variable t_X) (fun (x,y) f -> f x,f y) in
           let new_ch,new_t = Subst.apply fst_subst (ch,t) (fun (x,y) f -> f x,f y) in
+          let new_ch',new_t' = Rewrite_rules.normalise new_ch, Rewrite_rules.normalise new_t in
 
           let str_ch_recipe =
             if is_axiom ch_recipe && Axiom.index_of (axiom_of ch_recipe) <= 0
@@ -1350,14 +1390,15 @@ module Trace = struct
 
           html_script := Printf.sprintf "%s                  <div id=\"action-%se%d\" class=\"action\">%d. Input of \\(%s\\)%s on the channel \\(%s\\)%s.<div>\n"
             !html_script id (counter+1) !internal_counter_for_trace
-            (display Latex ~rho:rho Protocol new_t) str_t_recipe
-            (display Latex ~rho:rho Protocol new_ch) str_ch_recipe;
+            (display Latex ~rho:rho Protocol new_t') str_t_recipe
+            (display Latex ~rho:rho Protocol new_ch') str_ch_recipe;
 
           incr internal_counter_for_trace;
           print_action_trace (counter+2) q
       | TrOutput(ch_X,ch,ax,t,_,_) :: q ->
           let ch_recipe = Subst.apply snd_subst (of_variable ch_X) (fun x f -> f x) in
           let new_ch,new_t = Subst.apply fst_subst (ch,t) (fun (x,y) f -> f x,f y) in
+          let new_ch',new_t' = Rewrite_rules.normalise new_ch, Rewrite_rules.normalise new_t in
 
           let str_ch_recipe =
             if is_axiom ch_recipe && Axiom.index_of (axiom_of ch_recipe) <= 0
@@ -1367,14 +1408,15 @@ module Trace = struct
 
           html_script := Printf.sprintf "%s                  <div id=\"action-%se%d\" class=\"action\">%d. Output of \\(%s\\) (refered by \\(%s\\)) on the channel \\(%s\\)%s.<div>\n"
             !html_script id (counter+1) !internal_counter_for_trace
-            (display Latex ~rho:rho Protocol new_t) (display Latex ~rho:rho Recipe (of_axiom ax))
-            (display Latex ~rho:rho Protocol new_ch) str_ch_recipe;
+            (display Latex ~rho:rho Protocol new_t') (display Latex ~rho:rho Recipe (of_axiom ax))
+            (display Latex ~rho:rho Protocol new_ch') str_ch_recipe;
 
           incr internal_counter_for_trace;
           print_action_trace (counter+2) q
       | TrEavesdrop(ch_X,ch,ax,t,_,_,_) :: q ->
           let ch_recipe = Subst.apply snd_subst (of_variable ch_X) (fun x f -> f x) in
           let new_ch,new_t = Subst.apply fst_subst (ch,t) (fun (x,y) f -> f x,f y) in
+          let new_ch',new_t' = Rewrite_rules.normalise new_ch, Rewrite_rules.normalise new_t in
 
           let str_ch_recipe =
             if is_axiom ch_recipe && Axiom.index_of (axiom_of ch_recipe) <= 0
@@ -1384,8 +1426,8 @@ module Trace = struct
 
           html_script := Printf.sprintf "%s                  <div id=\"action-%se%d\" class=\"action\">%d. Eavesdrop of \\(%s\\) (refered by \\(%s\\)) on the channel \\(%s\\)%s.<div>\n"
             !html_script id (counter+1) !internal_counter_for_trace
-            (display Latex ~rho:rho Protocol new_t) (display Latex ~rho:rho Recipe (of_axiom ax))
-            (display Latex ~rho:rho Protocol new_ch) str_ch_recipe;
+            (display Latex ~rho:rho Protocol new_t') (display Latex ~rho:rho Recipe (of_axiom ax))
+            (display Latex ~rho:rho Protocol new_ch') str_ch_recipe;
 
           incr internal_counter_for_trace;
           print_action_trace (counter+2) q
@@ -1458,9 +1500,10 @@ module Trace = struct
             (* Script of the highlighted action *)
             js_script := Printf.sprintf "%s%s" !js_script (print_loading prev_content_list [symb_in;symb_out] prev_process (Printf.sprintf "%se%d" id counter));
             (* Script of the result process *)
-            let content_list = generate_content_list res_proc in
-            js_script := Printf.sprintf "%s%s" !js_script (print_loading content_list [] res_proc (Printf.sprintf "%se%d" id (counter+1)));
-            print_trace (counter + 2) content_list res_proc q
+            let res_proc' = flatten res_proc in
+            let content_list = generate_content_list res_proc' in
+            js_script := Printf.sprintf "%s%s" !js_script (print_loading content_list [] res_proc' (Printf.sprintf "%se%d" id (counter+1)));
+            print_trace (counter + 2) content_list res_proc' q
         | TrNew(symb,res_proc) :: q
         | TrChoice(symb,res_proc) :: q
         | TrTest(symb,res_proc) :: q
@@ -1470,9 +1513,10 @@ module Trace = struct
             (* Script of the highlighted action *)
             js_script := Printf.sprintf "%s%s" !js_script (print_loading prev_content_list [symb] prev_process (Printf.sprintf "%se%d" id counter));
             (* Script of the result process *)
-            let content_list = generate_content_list res_proc in
-            js_script := Printf.sprintf "%s%s" !js_script (print_loading content_list [] res_proc (Printf.sprintf "%se%d" id (counter+1)));
-            print_trace (counter + 2) content_list res_proc q
+            let res_proc' = flatten res_proc in
+            let content_list = generate_content_list res_proc' in
+            js_script := Printf.sprintf "%s%s" !js_script (print_loading content_list [] res_proc' (Printf.sprintf "%se%d" id (counter+1)));
+            print_trace (counter + 2) content_list res_proc' q
       in
 
       print_trace 2 init_content_list init_process rev_trace;
@@ -1540,6 +1584,7 @@ module Trace = struct
         | TrInput(ch_X,ch,t_X,t,_,_) :: q ->
             let ch_recipe, t_recipe = Subst.apply snd_subst (of_variable ch_X, of_variable t_X) (fun (x,y) f -> f x,f y) in
             let new_ch,new_t = Subst.apply fst_subst (ch,t) (fun (x,y) f -> f x,f y) in
+            let new_ch',new_t' = Rewrite_rules.normalise new_ch, Rewrite_rules.normalise new_t in
 
             let str_ch_recipe =
               if is_axiom ch_recipe && Axiom.index_of (axiom_of ch_recipe) <= 0
@@ -1554,14 +1599,15 @@ module Trace = struct
 
             html_script := Printf.sprintf "%s                  <div id=\"action-%se%d\" class=\"action\">%d. Input of \\(%s\\)%s on the channel \\(%s\\)%s.<div>\n"
               !html_script id (counter+1) !internal_counter_for_trace
-              (display Latex ~rho:rho Protocol new_t) str_t_recipe
-              (display Latex ~rho:rho Protocol new_ch) str_ch_recipe;
+              (display Latex ~rho:rho Protocol new_t') str_t_recipe
+              (display Latex ~rho:rho Protocol new_ch') str_ch_recipe;
 
             incr internal_counter_for_trace;
             print_action_trace (counter+2) q
         | TrOutput(ch_X,ch,ax,t,_,_) :: q ->
             let ch_recipe = Subst.apply snd_subst (of_variable ch_X) (fun x f -> f x) in
             let new_ch,new_t = Subst.apply fst_subst (ch,t) (fun (x,y) f -> f x,f y) in
+            let new_ch',new_t' = Rewrite_rules.normalise new_ch, Rewrite_rules.normalise new_t in
 
             let str_ch_recipe =
               if is_axiom ch_recipe && Axiom.index_of (axiom_of ch_recipe) <= 0
@@ -1571,14 +1617,15 @@ module Trace = struct
 
             html_script := Printf.sprintf "%s                  <div id=\"action-%se%d\" class=\"action\">%d. Output of \\(%s\\) (refered by \\(%s\\)) on the channel \\(%s\\)%s.<div>\n"
               !html_script id (counter+1) !internal_counter_for_trace
-              (display Latex ~rho:rho Protocol new_t) (display Latex ~rho:rho Recipe (of_axiom ax))
-              (display Latex ~rho:rho Protocol new_ch) str_ch_recipe;
+              (display Latex ~rho:rho Protocol new_t') (display Latex ~rho:rho Recipe (of_axiom ax))
+              (display Latex ~rho:rho Protocol new_ch') str_ch_recipe;
 
             incr internal_counter_for_trace;
             print_action_trace (counter+2) q
         | TrEavesdrop(ch_X,ch,ax,t,_,_,_) :: q ->
             let ch_recipe = Subst.apply snd_subst (of_variable ch_X) (fun x f -> f x) in
             let new_ch,new_t = Subst.apply fst_subst (ch,t) (fun (x,y) f -> f x,f y) in
+            let new_ch',new_t' = Rewrite_rules.normalise new_ch, Rewrite_rules.normalise new_t in
 
             let str_ch_recipe =
               if is_axiom ch_recipe && Axiom.index_of (axiom_of ch_recipe) <= 0
@@ -1588,8 +1635,8 @@ module Trace = struct
 
             html_script := Printf.sprintf "%s                  <div id=\"action-%se%d\" class=\"action\">%d. Eavesdrop of \\(%s\\) (refered by \\(%s\\)) on the channel \\(%s\\)%s.<div>\n"
               !html_script id (counter+1) !internal_counter_for_trace
-              (display Latex ~rho:rho Protocol new_t) (display Latex ~rho:rho Recipe (of_axiom ax))
-              (display Latex ~rho:rho Protocol new_ch) str_ch_recipe;
+              (display Latex ~rho:rho Protocol new_t') (display Latex ~rho:rho Recipe (of_axiom ax))
+              (display Latex ~rho:rho Protocol new_ch') str_ch_recipe;
 
             incr internal_counter_for_trace;
             print_action_trace (counter+2) q
@@ -1688,21 +1735,6 @@ type eavesdrop_gathering =
     eav_action : (action_process * action_process) option
   }
 
-let rec add_content_in_proc content mult  v_rho n_rho = function
-  | [] -> [ { content_mult = { content = content; mult = mult}; var_renaming = v_rho; name_renaming = n_rho } ]
-  | symb::q ->
-      if symb.content_mult.content == content && Variable.Renaming.is_equal Protocol v_rho symb.var_renaming && Name.Renaming.is_equal n_rho symb.name_renaming
-      then { symb with content_mult = { symb.content_mult with mult = symb.content_mult.mult + mult } } :: q
-      else symb :: (add_content_in_proc content mult v_rho n_rho q)
-
-let add_content_mult_in_proc cont_mult_list v_rho n_rho proc =
-  List.fold_left (fun acc cont_mult ->
-    let new_v_rho = Variable.Renaming.restrict v_rho cont_mult.content.bound_var
-    and new_n_rho = Name.Renaming.restrict n_rho cont_mult.content.bound_name in
-
-    add_content_in_proc cont_mult.content cont_mult.mult new_v_rho new_n_rho acc
-  ) proc cont_mult_list
-
 exception Bot_disequations
 
 let apply_content_to_tau_action content v_rho n_rho =
@@ -1725,6 +1757,7 @@ let rec next_output_classic_trace_content tau_actions content v_rho n_rho proc e
       and norm_t = Rewrite_rules.normalise t'' in
       let v_rho' = Variable.Renaming.restrict v_rho cont.bound_var
       and n_rho' = Name.Renaming.restrict n_rho cont.bound_name in
+
 
       let proc' = add_content_in_proc cont 1 v_rho' n_rho' proc in
 

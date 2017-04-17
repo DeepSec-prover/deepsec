@@ -52,17 +52,22 @@ let parse_file path =
 
 (****** Main ******)
 
-let rec excecute_queries = function
+let rec excecute_queries id = function
   | [] -> ()
   | (Process.Trace_Equivalence,exproc1,exproc2)::q ->
       let proc1 = Process.of_expansed_process exproc1 in
       let proc2 = Process.of_expansed_process exproc2 in
 
-      begin match Equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 with
-        | Equivalence.Equivalent -> Printf.printf "Equivalent processes\n"
-        | Equivalence.Not_Equivalent _ -> Printf.printf "Processes not equivalent\n"
+      let result = Equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 in
+
+      Equivalence.publish_trace_equivalence_result id !Process.chosen_semantics proc1 proc2 result;
+
+      begin match result with
+        | Equivalence.Equivalent -> Printf.printf "Equivalent processes : See a summary of the input file on the HTML interface\n"
+        | Equivalence.Not_Equivalent _ -> Printf.printf "Processes not equivalent : See a summary of the input file and the attack trace on the HTML interface\n"
       end;
-      excecute_queries q
+
+      excecute_queries (id+1) q
   | _ -> Config.internal_error "Observational_equivalence not implemented"
 
 let _ =
@@ -86,6 +91,15 @@ let _ =
   then print_help ()
   else
     begin
+      if not (Sys.file_exists (Printf.sprintf "%sresult" !Config.path_index))
+      then Unix.mkdir (Printf.sprintf "%sresult" !Config.path_index) 0o777;
+
+      if not (Sys.file_exists (Printf.sprintf "%stesting_data/faulty_tests" !Config.path_index))
+      then Unix.mkdir (Printf.sprintf "%stesting_data/faulty_tests" !Config.path_index) 0o777;
+
+      if not (Sys.file_exists (Printf.sprintf "%stesting_data/tests_to_check" !Config.path_index))
+      then Unix.mkdir (Printf.sprintf "%stesting_data/tests_to_check" !Config.path_index) 0o777;
+
       Testing_load_verify.load ();
       Testing_functions.update ();
 
@@ -97,7 +111,7 @@ let _ =
       then
         begin
           try
-            excecute_queries !Parser_functions.query_list;
+            excecute_queries 1 !Parser_functions.query_list;
             Testing_functions.publish ();
             Testing_load_verify.publish_index ()
           with
@@ -105,6 +119,6 @@ let _ =
             Testing_functions.publish ();
             Testing_load_verify.publish_index ()
         end
-      else excecute_queries !Parser_functions.query_list
+      else excecute_queries 1 !Parser_functions.query_list
     end;
   exit 0

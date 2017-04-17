@@ -272,6 +272,34 @@ let add_axiom csys ax t id =
 
 let replace_additional_data csys data = { csys with additional_data = data }
 
+let instantiate_when_solved csys =
+  Config.debug (fun () ->
+    if not (is_solved csys)
+    then Config.internal_error "[constraint_system.ml >> instantiate_when_solved] The constraint system should be solved."
+  );
+
+  let smallest_ax_index =
+    let (ded,_) = SDF.first_entry csys.sdf in
+    let recipe = Fact.get_recipe ded in
+    if is_axiom recipe
+    then
+      let ax = axiom_of recipe in
+      Axiom.index_of ax
+    else 0
+  in
+
+  let subst_fst, subst_snd, name_list, _ =
+    DF.fold (fun (acc_fst,acc_snd,acc_name,counter_ax) bfct ->
+      let k = Name.fresh_with_label Public "kI" in
+      let ax = Axiom.of_public_name k counter_ax in
+      let fst = Subst.create Protocol (variable_of (BasicFact.get_protocol_term bfct)) (of_name k) in
+      let snd = Subst.create Recipe (BasicFact.get_snd_ord_variable bfct) (of_axiom ax) in
+      (Subst.compose acc_fst fst, Subst.compose acc_snd snd, k::acc_name, counter_ax - 1)
+    ) (Subst.identity, Subst.identity, [], smallest_ax_index - 1) csys.df
+  in
+
+  (Subst.compose csys.i_subst_fst subst_fst, Subst.compose csys.i_subst_snd subst_snd, name_list)
+
 (******** Display *******)
 
 let display_frame out rho frame =

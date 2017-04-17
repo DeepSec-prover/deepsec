@@ -125,8 +125,8 @@ let publish_loading_script out =
         List.iter (fun (id,sub_id,trace) ->
           match trace with
             |  None ->
-                Printf.fprintf out "        var height_%de%d = 0;" id sub_id;
-                Printf.fprintf out "        var width_%de%d = 0;" id sub_id;
+                Printf.fprintf out "        var height_%de%d = 0;\n" id sub_id;
+                Printf.fprintf out "        var width_%de%d = 0;\n\n" id sub_id;
 
                 Printf.fprintf out "        window.loadData%de%de0 = function (data) {\n" id sub_id;
                 Printf.fprintf out "            DAG.displayGraph(data, jQuery('#dag-%de%de0 > svg'), %d, %d, 0);\n" id sub_id id sub_id;

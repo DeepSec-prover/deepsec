@@ -18,3 +18,5 @@ type result_trace_equivalence =
   | Not_Equivalent of symbolic_process Constraint_system.t
 
 val trace_equivalence : semantics -> process -> process -> result_trace_equivalence
+
+val publish_trace_equivalence_result : int -> semantics -> process -> process -> result_trace_equivalence -> unit

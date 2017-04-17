@@ -15,7 +15,7 @@ OCAMLDOC=ocamldoc
 
 
 ### Compiler options
-INCLUDES_MOD = str.cmxa
+INCLUDES_MOD = str.cmxa unix.cmxa
 INCLUDES = -I $(SOURCE)core_library -I $(SOURCE)subterms -I $(SOURCE)testing -I $(SOURCE)parser
 # Compiler options specific to OCaml version >= 4
 V4OPTIONS=$(if $(shell $(OCAMLOPT) -version | grep '^4'),-bin-annot)
@@ -63,7 +63,7 @@ all: .display_obj $(ALL_OBJ)
 	$(OCAMLOPT) -o $(TESTING) $(OCAMLFLAGS) $(EXE_TESTING_OBJ)
 	@echo
 	@grep -q "let debug_activated = false" Source/core_library/config.ml || echo WARNING : Debug mode is activated; echo
-	@grep -q "let test_activated = false" Source/core_library/config.ml || echo WARNING : Testing interface is activated; echo 
+	@grep -q "let test_activated = false" Source/core_library/config.ml || echo WARNING : Testing interface is activated; echo
 	@echo ----- Some Statistics -----
 	@echo
 	@echo Number of lines in the source code of the program :

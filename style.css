@@ -148,20 +148,10 @@ ul li ul {
   margin-top: 10px;
 }
 
-.title-news {
-  float: left;
-  font-weight: bold;
-}
-.date-news {
-  float: right;
-}
-
-.clear-news {
-    clear: both;
-}
-
 .title-paragraph {
+  margin-top:30px;
   font-weight: bold;
+  font-size:20px;
 }
 
 .big-separation {
@@ -387,6 +377,7 @@ sup {
   font-weight: bold;
   margin-left: 30px;
   margin-right: 30px;
+  width: 400px;
   display: none;
 }
 
@@ -404,4 +395,39 @@ sup {
 
 .highlight {
   color: red;
+}
+
+
+.input-table {
+  margin-top: 30px;
+  display: table;
+}
+
+.input-body {
+  display: table-row-group;
+}
+
+.input-row {
+	display: table-row;
+}
+
+.input-process {
+  display: table-cell;
+}
+
+#process-2 {
+  margin-left: 50px;
+}
+
+
+.input-process-title {
+  display: table-cell;
+  text-align: center;
+  font-size:20px;
+}
+
+.result {
+  margin-top:30px;
+  font-weight: bold;
+  font-size:16px;
 }

@@ -270,10 +270,15 @@ function addLabel(label, root, marginX, marginY) {
   var newlabel;
 
   newlabel = label.slice(1);
-  addForeignObjectLabel(newlabel, labelSvg);
-  // No margin for HTML elements
-  marginX = 10;
-  marginY = 0;
+
+  if(label[0] === "!" || label[0] === "@") {
+    addForeignObjectLabel(newlabel, labelSvg);
+    // No margin for HTML elements
+    marginX = 10;
+    marginY = 0;
+  } else {
+    addTextLabel(label, labelSvg);
+  }
 
   var bbox = root.node().getBBox();
 
