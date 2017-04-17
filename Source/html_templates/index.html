@@ -1,0 +1,121 @@
+<!DOCTYPE HTML>
+
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <title>DeepSec: DEciding EQuivalence Properties in SECcurity protocols</title>
+  <link rel="stylesheet" type="text/css" href="style.css">
+
+
+</head>
+
+<body>
+  <div id="main">
+
+    <!-- The menu -->
+
+    <div id="menu">
+
+      <!-- The links -->
+
+      <div id="menu-text">
+        <ul>
+          <li><a href="index.html">Index</a></li>
+          <li><a href="testing_data/testing.html">Testing interface</a></li>
+        </ul>
+      </div>
+
+    </div>
+
+    <!-- The content -->
+
+
+    <div id="content">
+
+      <div id="content-header">
+
+        <div id="title">
+          <div id="title-main">DeepSec</div>
+          <div id="title-sub">DEciding EQuivalence Properties in SECcurity protocols</div>
+        </div>
+
+      </div>
+
+      <div id="content-text">
+
+        <hr class="big-separation">
+
+        <<p class="generic-text"> DeepSec is a fully automatic verification tool that can check equivalences
+        between processes. </p>
+
+        <p class="generic-text"> Features : DeepSec accepts as inputs processes in an applied-pi calculus like model.
+          It can accept any destructor subterm convergent rewriting system. Finally, DeepSec can verify trace equivalence
+          in the classical semantics, meaning that internal communication are allowed on both public and private channels.
+        </p>
+
+        <div class="generic-text"> In upcoming releases, we plan to implement the following features:
+          <ul>
+            <li> Allowing any destructor convergent rewriting system, not only subterm (although termination will be only guaranteed
+            for subterm convergent rewriting systems).</li>
+            <li> Adding the private semantics where internal communication are only allowed on private channels. Verification should be
+              much faster with this semantics. Notice that this semantics is not equivalent to the classical one.</li>
+            <li> Adding the eavesdrip semantics where internal communication are only allowed on private channels but the attacker
+              can eavesdrop on public channels.</li>
+            <li> Verifying observational equivalence : We will ensure partial correctness for any destructor convergent rewriting system.
+              Moreover, termination will be guaranteed for destructor subterm convergent rewriting system.</li>
+            <li> Implementing DeepSec for destributed computing.</li>
+            <li> A complete documentation for both users (for the syntax of input files accepted by DeepSec) and developpers (for a detailed
+              description of the ml interfaces of the source code).
+          </ul>
+        </div>
+
+        <hr class="big-separation">
+
+        <div class="title-paragraph">Results of the last execution of deepsec</div>
+
+        <!-- Results deepsec -->
+
+        <hr class="big-separation">
+
+        <div class="title-paragraph">Testing interface</div>
+
+        <p class="generic-text"> A testing interface is available for developer to check any update they provide
+            to the code. It can also be used by users to verify more in depth that DeepSec
+            is behaving as expacted. When the testing interface is enabled, every input file given to deepsec will
+            generate new tests that needs to be validated. Once a test a test is validated, it will become part of
+            our regression test suite.
+        </p>
+
+        <p class="generic-text"> An HTML display of the validated tests, tests to check and tests of the regression suite that failed the verification process
+            is available <a href="testing_data/testing.html">here</a>.
+
+        <p>To enable this testing interface, DeepSec must be recompile as follows.</p>
+
+        <xmp>
+        make testing
+        make
+        </xmp>
+
+        <p class="generic-text"> Once compile, a new executable is created <code>test_deepsed</code> that has two main functionalities:
+          <ul>
+            <li> It can verify all the validated tests from the regression test suite</li>
+            <li> It can validate new tests and incorporate them to the regression test suite</li>
+          </ul>
+        </p>
+        <p class="generic-text">
+          WARNING : Using the testing interface will slow down heavely the verification of
+          of processes as it generates multiple tests, display them on html pages, etc.
+          To disable the testing interface, one should once again compile DeepSec as follows.
+        </p>
+
+        <xmp>
+        make without_testing
+        make
+        </xmp>
+
+      </div>
+    </div>
+  </div>
+</body>
+</html>
