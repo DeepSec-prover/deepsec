@@ -9,7 +9,7 @@ body {
   margin-left: auto ;
   margin-right: auto ;
   display: table;
-  min-width: 1200px;
+  min-width: 800px;
 }
 
 /* The Menu */
@@ -146,6 +146,10 @@ li {
 
 ul li ul {
   margin-top: 10px;
+}
+
+.generic-text{
+  width: 600px;
 }
 
 .title-paragraph {

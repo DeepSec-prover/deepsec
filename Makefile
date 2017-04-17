@@ -64,6 +64,12 @@ all: .display_obj $(ALL_OBJ)
 	@echo
 	@grep -q "let debug_activated = false" Source/core_library/config.ml || echo WARNING : Debug mode is activated; echo
 	@grep -q "let test_activated = false" Source/core_library/config.ml || echo WARNING : Testing interface is activated; echo
+	@test -e testing_data || mkdir testing_data
+	@test -e testing_data/validated_tests || mkdir testing_data/validated_tests
+	@test -e testing_data/tests_to_check || mkdir testing_data/tests_to_check
+	@test -e testing_data/faulty_tests || mkdir testing_data/faulty_tests
+	@test -e index.html || cp Source/html_templates/index_init.html index.html
+	@test -e testing_data/testing.html || cp Source/html_templates/testing_init.html testing_data/testing.html
 	@echo ----- Some Statistics -----
 	@echo
 	@echo Number of lines in the source code of the program :

@@ -13,25 +13,32 @@ let data_verification_of_name s =
 
 let verify_function_UI data =
   Printf.printf "Loading the tests...\n";
+  flush_all ();
   preload_tests data.data_IO;
   Printf.printf "Starting verification...\n\n";
+  flush_all ();
   verify_tests data;
   exit 0
 
 let verify_all_UI () =
   Printf.printf "Loading the tests...\n";
+  flush_all ();
   preload ();
   Printf.printf "Starting verification...\n\n";
+  flush_all ();
   verify_all ();
   exit 0
 
 (** [validate_all_UI ()] validates all the tests of all the functions. *)
 let validate_all_UI () =
   Printf.printf "Loading the tests...\n";
+  flush_all ();
   preload ();
   Printf.printf "Validation of all tests...\n";
+  flush_all ();
   List.iter (fun data -> validate_all_tests data.data_IO) all_data_verification;
   Printf.printf "Generation of the html pages...\n";
+  flush_all ();
   List.iter (fun data ->
     refresh_html data;
     publish_tests data.data_IO
@@ -42,10 +49,13 @@ let validate_all_UI () =
 
 let validate_function_UI data numbers =
   Printf.printf "Loading the tests...\n";
+  flush_all ();
   preload ();
   Printf.printf "Validation of the tests...\n";
+  flush_all ();
   validate data.data_IO numbers;
   Printf.printf "Generation of the html pages...\n";
+  flush_all ();
   refresh_html data;
   publish_tests data.data_IO;
   publish_index ();
@@ -54,14 +64,30 @@ let validate_function_UI data numbers =
 
 let validate_function_all_UI data =
   Printf.printf "Loading the tests...\n";
+  flush_all ();
   preload ();
   Printf.printf "Validation of the tests...\n";
+  flush_all ();
   validate_all_tests data.data_IO;
   Printf.printf "Generation of the html pages...\n";
+  flush_all ();
   refresh_html data;
   publish_tests data.data_IO;
   publish_index ();
   Printf.printf "The tests have been successfully validated.\n";
+  exit 0
+
+let refresh_UI () =
+  Printf.printf "Loading the tests...\n";
+  flush_all ();
+  preload ();
+  Printf.printf "Generation of the html pages...\n";
+  flush_all ();
+  List.iter (fun data ->
+    refresh_html data;
+    publish_tests data.data_IO
+  ) all_data_verification;
+  publish_index ();
   exit 0
 
 (**/**)
@@ -90,6 +116,8 @@ let rec create_list = function
 let _ =
   if Array.length Sys.argv = 2 && (Sys.argv).(1) = "verify"
   then verify_all_UI ()
+  else if Array.length Sys.argv = 2 && (Sys.argv).(1) = "refresh"
+  then refresh_UI ()
   else if Array.length Sys.argv = 4 && (Sys.argv).(1) = "verify" &&  (Sys.argv).(2) = "-function"
   then verify_function_UI (data_verification_of_name (Sys.argv).(3))
   else if Array.length Sys.argv = 3 && (Sys.argv).(1) = "validate" && (Sys.argv).(2) = "all"

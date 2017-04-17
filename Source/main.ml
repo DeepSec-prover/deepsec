@@ -1,3 +1,68 @@
+(******* Display index page *******)
+
+let template_result = "        <!-- Results deepsec -->"
+
+let print_index path n =
+  let path_template = Printf.sprintf "%sindex.html" !Config.path_html_template in
+  let path_index = Printf.sprintf "%sindex.html" !Config.path_index in
+
+  let out_html = open_out path_index in
+  let in_template = open_in path_template in
+
+  let line = ref "" in
+
+  while !line <> template_result do
+    let l = input_line in_template in
+    if l <> template_result
+    then
+      begin
+          Printf.fprintf out_html "%s\n" l;
+      end;
+
+    line := l
+  done;
+
+  Printf.fprintf out_html "        <p>Last file run with DeepSec : %s</p>\n\n" path;
+  Printf.fprintf out_html "        <p>This file contained %d quer%s:\n" n (if n > 1 then "ies" else "y ");
+  if n <> 0
+  then
+    begin
+      Printf.fprintf out_html "          <ul>\n";
+      let rec print_queries = function
+        | k when k > n -> ()
+        | k ->
+            Printf.fprintf out_html "            <li>Query %d: <a href=\"result/result_dag_%d.html\">DAG represention</a> / <a href=\"result/result_classic_%d.html\">Classic representation</a></li>\n" k k k;
+            print_queries (k+1)
+      in
+      print_queries 1;
+      Printf.fprintf out_html "          </ul>\n";
+    end;
+
+  try
+    while true do
+      let l = input_line in_template in
+      Printf.fprintf out_html "%s\n" l;
+    done
+  with
+    | End_of_file -> close_in in_template; close_out out_html
+
+(******* CLeanup old results ********)
+
+let cleanup_old_results n =
+  let files_result = Sys.readdir (Printf.sprintf "%sresult" !Config.path_index) in
+
+  let regex_result_js = Str.regexp "result_\\([0-9]+\\).js"
+  and regex_result_classic = Str.regexp "result_classic_\\([0-9]+\\).html"
+  and regex_result_dag = Str.regexp "result_dag_\\([0-9]+\\).html" in
+
+  Array.iter (fun str ->
+    if Str.string_match regex_result_js str 0 || Str.string_match regex_result_classic str 0 || Str.string_match regex_result_dag str 0
+    then
+      if int_of_string (Str.matched_group 1 str) > n
+      then Sys.remove (Printf.sprintf "%sresult/%s" !Config.path_index str)
+      else ()
+    else Sys.remove (Printf.sprintf "%sresult/%s" !Config.path_index str)
+  ) files_result
 
 (******* Help ******)
 
@@ -63,8 +128,8 @@ let rec excecute_queries id = function
       Equivalence.publish_trace_equivalence_result id !Process.chosen_semantics proc1 proc2 result;
 
       begin match result with
-        | Equivalence.Equivalent -> Printf.printf "Equivalent processes : See a summary of the input file on the HTML interface\n"
-        | Equivalence.Not_Equivalent _ -> Printf.printf "Processes not equivalent : See a summary of the input file and the attack trace on the HTML interface\n"
+        | Equivalence.Equivalent -> Printf.printf "Query %d: Equivalent processes : See a summary of the input file on the HTML interface\n" id
+        | Equivalence.Not_Equivalent _ -> Printf.printf "Query %d: Processes not equivalent : See a summary of the input file and the attack trace on the HTML interface\n" id
       end;
 
       excecute_queries (id+1) q
@@ -112,6 +177,9 @@ let _ =
         begin
           try
             excecute_queries 1 !Parser_functions.query_list;
+            let nb_queries = List.length !Parser_functions.query_list in
+            print_index !path nb_queries;
+            cleanup_old_results nb_queries;
             Testing_functions.publish ();
             Testing_load_verify.publish_index ()
           with
@@ -119,6 +187,12 @@ let _ =
             Testing_functions.publish ();
             Testing_load_verify.publish_index ()
         end
-      else excecute_queries 1 !Parser_functions.query_list
+      else
+        begin
+          excecute_queries 1 !Parser_functions.query_list;
+          let nb_queries = List.length !Parser_functions.query_list in
+          print_index !path nb_queries;
+          cleanup_old_results nb_queries
+        end
     end;
   exit 0

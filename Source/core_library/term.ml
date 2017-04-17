@@ -229,8 +229,8 @@ module Variable = struct
     var
 
   let fresh (type a) (type b) (at:(a,b) atom) q (ty:a) = match at with
-    | Protocol -> fresh_with_label q ty "_x"
-    | Recipe -> fresh_with_label q ty "_X"
+    | Protocol -> fresh_with_label q ty "x"
+    | Recipe -> fresh_with_label q ty "X"
 
   let fresh_from var =
     let var = { label = var.label; index = !accumulator; link = NoLink; quantifier = var.quantifier; var_type = var.var_type } in
