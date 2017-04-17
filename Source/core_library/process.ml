@@ -1439,7 +1439,7 @@ module Trace = struct
     html_script := Printf.sprintf "%s                  <div class=\"title-trace\">%s</div>\n" !html_script title;
     html_script := Printf.sprintf "%s                  <div class=\"link-trace\">\n" !html_script;
     html_script := Printf.sprintf "%s                    <button id=\"previous-%s\" type=\"button\" onclick=\"javascript:previous_expansed('%s');\" disabled>Previous</button>\n" !html_script id id;
-    html_script := Printf.sprintf "%s                    <span class=\"description-action\" id=\"desc-%se1\" style=\"display: inline;\">Initial process</span>\n" !html_script id;
+    html_script := Printf.sprintf "%s                    <span class=\"description-action\" id=\"desc-%se1\" style=\"display: inline-block;\">Initial process</span>\n" !html_script id;
     print_action_title 2 rev_trace;
     html_script := Printf.sprintf "%s                    <button id=\"next-%s\" type=\"button\" onclick=\"javascript:next_expansed('%s');\">Next</button>\n" !html_script id id;
     html_script := Printf.sprintf "%s                  </div>\n" !html_script;
@@ -1648,7 +1648,7 @@ module Trace = struct
       html_script := Printf.sprintf "%s                  <div class=\"title-trace\">%s</div>\n" !html_script title;
       html_script := Printf.sprintf "%s                  <div class=\"link-trace\">\n" !html_script;
       html_script := Printf.sprintf "%s                    <button id=\"previous-%s\" type=\"button\" onclick=\"javascript:previous('%s');\" disabled>Previous</button>\n" !html_script id id;
-      html_script := Printf.sprintf "%s                    <span class=\"description-action\" id=\"desc-%se1\" style=\"display: inline;\">Initial process</span>\n" !html_script id;
+      html_script := Printf.sprintf "%s                    <span class=\"description-action\" id=\"desc-%se1\" style=\"display: inline-block;\">Initial process</span>\n" !html_script id;
       print_action_title 2 rev_trace;
       html_script := Printf.sprintf "%s                    <button id=\"next-%s\" type=\"button\" onclick=\"javascript:next('%s');\">Next</button>\n" !html_script id id;
       html_script := Printf.sprintf "%s                  </div>\n" !html_script;

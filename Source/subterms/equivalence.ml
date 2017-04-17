@@ -467,6 +467,11 @@ let publish_trace_equivalence_result id sem proc1 proc2 result =
         Printf.fprintf out_classic "        <script>\n";
         Printf.fprintf out_classic "        var counter_3e0 = 1;\n";
         Printf.fprintf out_classic "        var max_number_actions_3e0 = %d;\n" (2*(Trace.size attack.attack_trace) + 1);
+        Printf.fprintf out_classic "        height_attack = document.getElementById('expansed3e0e1').getBoundingClientRect().height;\n";
+        Printf.fprintf out_classic "        width_attack = document.getElementById('expansed3e0e1').getBoundingClientRect().width + 150;\n";
+        Printf.fprintf out_classic "        for (i = 1; i <= %d; i++) {\n" (2*(Trace.size attack.attack_trace) + 1);
+        Printf.fprintf out_classic "          update_size(i);\n";
+        Printf.fprintf out_classic "        }\n";
         Printf.fprintf out_classic "        </script>\n";
   end;
 

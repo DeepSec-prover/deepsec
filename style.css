@@ -303,7 +303,7 @@ h3 {
 	border: 0px;
 	padding: 0px 0px 0px 30px;
   vertical-align: top;
-  min-width: 500px;
+  width: 500px;
 }
 
 .expansedTable {
