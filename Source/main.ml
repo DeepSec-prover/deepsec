@@ -123,6 +123,8 @@ let rec excecute_queries id = function
       let proc1 = Process.of_expansed_process exproc1 in
       let proc2 = Process.of_expansed_process exproc2 in
 
+      Printf.printf "Executing query %d...\n" id;
+
       let result = Equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 in
 
       Equivalence.publish_trace_equivalence_result id !Process.chosen_semantics proc1 proc2 result;
@@ -177,6 +179,8 @@ let _ =
       if Config.test_activated
       then
         begin
+          Printf.printf "Loading the regression suite...\n";
+          flush_all ();
           Testing_load_verify.load ();
           Testing_functions.update ()
         end;
