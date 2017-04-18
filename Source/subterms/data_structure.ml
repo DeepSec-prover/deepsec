@@ -26,13 +26,24 @@ module SDF = struct
   type cell =
     {
       var_type : int;
-      fact : Fact.deduction
+      fact : Fact.deduction;
+      recipe_ground : bool;
+      protocol_ground : bool
+    }
+
+  type cell_ground =
+    {
+      g_var_type : int;
+      g_fact : Fact.deduction
     }
 
   type t =
     {
+      all_id : int list;
+      last_entry_ground : bool;
       size : int;
-      map : cell SDF_Map.t
+      map : cell SDF_Map.t;
+      map_ground : cell_ground SDF_Map.t
     }
 
   (******* Access ********)
@@ -41,16 +52,21 @@ module SDF = struct
 
   let first_entry sdf =
     try
-      let id,cell = SDF_Map.min_binding sdf.map in
-      cell.fact, id
+      let id,cell = SDF_Map.min_binding sdf.map_ground in
+      cell.g_fact, id
     with
       | Not_found -> Config.internal_error "[Data_structure.ml >> first_entry] Should not apply first entry on an empty SDF."
 
 
   let last_entry sdf =
     try
-      let id,cell = SDF_Map.max_binding sdf.map in
-      cell.fact, id
+      if sdf.last_entry_ground
+      then
+        let id,cell = SDF_Map.max_binding sdf.map_ground in
+        cell.g_fact, id
+      else
+        let id,cell = SDF_Map.max_binding sdf.map in
+        cell.fact, id
     with
       | Not_found -> Config.internal_error "[Data_structure.ml >> last_entry] Should not apply last entry on an empty SDF."
 
@@ -59,31 +75,44 @@ module SDF = struct
     then Config.internal_error "[Data_structure.ml >> last_entry] Should not apply last_entry_id on an empty SDF."
     else sdf.size
 
-  let all_id sdf =
-    let rec make_list = function
-      | 0 -> []
-      | n -> n::(make_list (n-1))
-    in
-    make_list sdf.size
+  let all_id sdf = sdf.all_id
 
   let get sdf id =
     try
-      let cell = SDF_Map.find id sdf.map in
-      cell.fact
+      let cell = SDF_Map.find id sdf.map_ground in
+      cell.g_fact
     with
-      | Not_found -> Config.internal_error "[Data_structure.ml >> get] There is no deduction fact in SDF with this recipe equivalent id."
+      | Not_found ->
+        begin
+          try
+            let cell = SDF_Map.find id sdf.map in
+            cell.fact
+          with
+          | Not_found -> Config.internal_error "[Data_structure.ml >> get] There is no deduction fact in SDF with this recipe equivalent id."
+        end
 
   (******* Iterators ********)
 
   exception Out_of_type
 
   let iter sdf f =
+    SDF_Map.iter (fun _ cell -> f cell.g_fact) sdf.map_ground;
     SDF_Map.iter (fun _ cell -> f cell.fact) sdf.map
 
   let iter_id sdf f =
+    SDF_Map.iter (fun id cell -> f id cell.g_fact) sdf.map_ground;
     SDF_Map.iter (fun id cell -> f id cell.fact) sdf.map
 
   let iter_within_var_type k sdf f =
+    begin try
+      SDF_Map.iter (fun _ cell ->
+        if cell.g_var_type > k
+        then raise Out_of_type
+        else f cell.g_fact
+        ) sdf.map_ground;
+    with
+    | Out_of_type -> ()
+    end;
     try
       SDF_Map.iter (fun _ cell ->
         if cell.var_type > k
@@ -93,68 +122,216 @@ module SDF = struct
     with
     | Out_of_type -> ()
 
-  let map_protocol_term sdf_map f =
-    SDF_Map.map (fun cell ->
-      {cell with fact = Fact.create_deduction_fact (Fact.get_recipe cell.fact) (f (Fact.get_protocol_term cell.fact)) }
-    ) sdf_map
+  let map_protocol_term sdf f =
+    if sdf.last_entry_ground
+    then
+      let (map_ground, map) =
+        SDF_Map.fold (fun i cell (acc_map_ground, acc_map) ->
+          if cell.protocol_ground
+          then (acc_map_ground, SDF_Map.add i cell acc_map)
+          else
+            let t = f (Fact.get_protocol_term cell.fact) in
+            if is_ground t
+            then
+              if cell.recipe_ground
+              then (SDF_Map.add i { g_var_type = cell.var_type; g_fact = Fact.create_deduction_fact (Fact.get_recipe cell.fact) t } acc_map_ground, acc_map)
+              else (acc_map_ground, SDF_Map.add i { cell with protocol_ground = true; fact = Fact.create_deduction_fact (Fact.get_recipe cell.fact) t } acc_map)
+            else (acc_map_ground, SDF_Map.add i { cell with fact = Fact.create_deduction_fact (Fact.get_recipe cell.fact) t } acc_map)
+        ) sdf.map (sdf.map_ground, SDF_Map.empty)
+      in
+      { sdf with map_ground = map_ground; map = map }
+    else
+      let (map_ground, map, last_entry_ground) =
+        SDF_Map.fold (fun i cell (acc_map_ground, acc_map, acc_last_entry_ground) ->
+          if cell.protocol_ground
+          then (acc_map_ground, SDF_Map.add i cell acc_map, acc_last_entry_ground)
+          else
+            let t = f (Fact.get_protocol_term cell.fact) in
+            if is_ground t
+            then
+              if cell.recipe_ground
+              then (SDF_Map.add i { g_var_type = cell.var_type; g_fact = Fact.create_deduction_fact (Fact.get_recipe cell.fact) t } acc_map_ground, acc_map, acc_last_entry_ground || i = sdf.size)
+              else (acc_map_ground, SDF_Map.add i { cell with protocol_ground = true; fact = Fact.create_deduction_fact (Fact.get_recipe cell.fact) t } acc_map, acc_last_entry_ground)
+            else (acc_map_ground, SDF_Map.add i { cell with fact = Fact.create_deduction_fact (Fact.get_recipe cell.fact) t } acc_map, acc_last_entry_ground)
+        ) sdf.map (sdf.map_ground, SDF_Map.empty, false)
+      in
+      { sdf with map_ground = map_ground; map = map; last_entry_ground = last_entry_ground }
 
-  let map_recipe sdf_map f =
-    SDF_Map.map (fun cell ->
-      {cell with fact = Fact.create_deduction_fact (f (Fact.get_recipe cell.fact)) (Fact.get_protocol_term cell.fact) }
-    ) sdf_map
+  let map_recipe sdf f =
+    if sdf.last_entry_ground
+    then
+      let (map_ground, map) =
+        SDF_Map.fold (fun i cell (acc_map_ground, acc_map) ->
+          if cell.recipe_ground
+          then (acc_map_ground, SDF_Map.add i cell acc_map)
+          else
+            let t = f (Fact.get_recipe cell.fact) in
+            if is_ground t
+            then
+              if cell.protocol_ground
+              then (SDF_Map.add i { g_var_type = cell.var_type; g_fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map_ground, acc_map)
+              else (acc_map_ground, SDF_Map.add i { cell with recipe_ground = true; fact = Fact.create_deduction_fact  t (Fact.get_protocol_term cell.fact) } acc_map)
+            else (acc_map_ground, SDF_Map.add i { cell with fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map)
+        ) sdf.map (sdf.map_ground, SDF_Map.empty)
+      in
+      { sdf with map_ground = map_ground; map = map }
+    else
+      let (map_ground, map, last_entry_ground) =
+        SDF_Map.fold (fun i cell (acc_map_ground, acc_map, acc_last_entry_ground) ->
+          if cell.recipe_ground
+          then (acc_map_ground, SDF_Map.add i cell acc_map, acc_last_entry_ground)
+          else
+            let t = f (Fact.get_recipe cell.fact) in
+            if is_ground t
+            then
+              if cell.protocol_ground
+              then (SDF_Map.add i { g_var_type = cell.var_type; g_fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map_ground, acc_map, acc_last_entry_ground || i = sdf.size)
+              else (acc_map_ground, SDF_Map.add i { cell with recipe_ground = true; fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map, acc_last_entry_ground)
+            else (acc_map_ground, SDF_Map.add i { cell with fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map, acc_last_entry_ground)
+        ) sdf.map (sdf.map_ground, SDF_Map.empty, false)
+      in
+      { sdf with map_ground = map_ground; map = map; last_entry_ground = last_entry_ground }
 
   let apply sdf subst_snd subst_fst =
     if Subst.is_identity subst_snd
     then
       if Subst.is_identity subst_fst
       then sdf
-      else { sdf with map = Subst.apply subst_fst sdf.map map_protocol_term }
+      else Subst.apply subst_fst sdf map_protocol_term
     else
       if Subst.is_identity subst_fst
-      then { sdf with map = Subst.apply subst_snd sdf.map map_recipe }
+      then Subst.apply subst_snd sdf map_recipe
       else
-        let sdf_map_1 = Subst.apply subst_snd sdf.map map_recipe in
-        { sdf with map = Subst.apply subst_fst sdf_map_1 map_protocol_term }
+        let sdf_1 = Subst.apply subst_snd sdf map_recipe in
+        Subst.apply subst_fst sdf_1 map_protocol_term
 
   let apply_snd_and_gather sdf subst array_recipe =
-    let map_recipe_gather sdf_map f =
-      SDF_Map.mapi (fun i cell ->
-        let new_recipe = f (Fact.get_recipe cell.fact) in
-        array_recipe.(i-1) <- new_recipe;
-        {cell with fact = Fact.create_deduction_fact new_recipe (Fact.get_protocol_term cell.fact) }
-      ) sdf_map
+    let map_recipe_gather sdf f =
+      if sdf.last_entry_ground
+      then
+        let (map_ground, map) =
+          SDF_Map.fold (fun i cell (acc_map_ground, acc_map) ->
+            if cell.recipe_ground
+            then (acc_map_ground, SDF_Map.add i cell acc_map)
+            else
+              let t = f (Fact.get_recipe cell.fact) in
+              if is_ground t
+              then
+                begin
+                  array_recipe.(i-1) <- (t,true);
+                  if cell.protocol_ground
+                  then (SDF_Map.add i { g_var_type = cell.var_type; g_fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map_ground, acc_map)
+                  else (acc_map_ground, SDF_Map.add i { cell with recipe_ground = true; fact = Fact.create_deduction_fact  t (Fact.get_protocol_term cell.fact) } acc_map)
+                end
+              else
+                begin
+                  array_recipe.(i-1) <- (t,false);
+                  (acc_map_ground, SDF_Map.add i { cell with fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map)
+                end
+          ) sdf.map (sdf.map_ground, SDF_Map.empty)
+        in
+        { sdf with map_ground = map_ground; map = map }
+      else
+        let (map_ground, map, last_entry_ground) =
+          SDF_Map.fold (fun i cell (acc_map_ground, acc_map, acc_last_entry_ground) ->
+            if cell.recipe_ground
+            then (acc_map_ground, SDF_Map.add i cell acc_map, acc_last_entry_ground)
+            else
+              let t = f (Fact.get_recipe cell.fact) in
+              if is_ground t
+              then
+                begin
+                  array_recipe.(i-1) <- (t,true);
+                  if cell.protocol_ground
+                  then (SDF_Map.add i { g_var_type = cell.var_type; g_fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map_ground, acc_map, acc_last_entry_ground || i = sdf.size)
+                  else (acc_map_ground, SDF_Map.add i { cell with recipe_ground = true; fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map, acc_last_entry_ground)
+                end
+              else
+                begin
+                  array_recipe.(i-1) <- (t,false);
+                  (acc_map_ground, SDF_Map.add i { cell with fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map, acc_last_entry_ground)
+                end
+          ) sdf.map (sdf.map_ground, SDF_Map.empty, false)
+        in
+        { sdf with map_ground = map_ground; map = map; last_entry_ground = last_entry_ground }
     in
-    { sdf with map = Subst.apply subst sdf.map map_recipe_gather }
+
+    Subst.apply subst sdf map_recipe_gather
 
   let apply_snd_from_gathering sdf array_recipe =
-    let sdf_map =
-      SDF_Map.mapi (fun i cell ->
-        {cell with fact = Fact.create_deduction_fact array_recipe.(i-1) (Fact.get_protocol_term cell.fact) }
-      ) sdf.map
-    in
-    { sdf with map = sdf_map }
+    if sdf.last_entry_ground
+    then
+      let (map_ground, map) =
+        SDF_Map.fold (fun i cell (acc_map_ground, acc_map) ->
+          if cell.recipe_ground
+          then (acc_map_ground, SDF_Map.add i cell acc_map)
+          else
+            let (t,is_ground) = array_recipe.(i-1) in
+            if is_ground
+            then
+              if cell.protocol_ground
+              then (SDF_Map.add i { g_var_type = cell.var_type; g_fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map_ground, acc_map)
+              else (acc_map_ground, SDF_Map.add i { cell with recipe_ground = true; fact = Fact.create_deduction_fact  t (Fact.get_protocol_term cell.fact) } acc_map)
+            else (acc_map_ground, SDF_Map.add i { cell with fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map)
+        ) sdf.map (sdf.map_ground, SDF_Map.empty)
+      in
+      { sdf with map_ground = map_ground; map = map }
+    else
+      let (map_ground, map, last_entry_ground) =
+        SDF_Map.fold (fun i cell (acc_map_ground, acc_map, acc_last_entry_ground) ->
+          if cell.recipe_ground
+          then (acc_map_ground, SDF_Map.add i cell acc_map, acc_last_entry_ground)
+          else
+            let (t,is_ground) = array_recipe.(i-1) in
+            if is_ground
+            then
+              if cell.protocol_ground
+              then (SDF_Map.add i { g_var_type = cell.var_type; g_fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map_ground, acc_map, acc_last_entry_ground || i = sdf.size)
+              else (acc_map_ground, SDF_Map.add i { cell with recipe_ground = true; fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map, acc_last_entry_ground)
+            else (acc_map_ground, SDF_Map.add i { cell with fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map, acc_last_entry_ground)
+        ) sdf.map (sdf.map_ground, SDF_Map.empty, false)
+      in
+      { sdf with map_ground = map_ground; map = map; last_entry_ground = last_entry_ground }
 
   (******* Testing ********)
 
   exception Found
 
   let exists sdf f =
-    SDF_Map.exists (fun _ cell -> f cell.fact) sdf.map
+    SDF_Map.exists (fun _ cell -> f cell.g_fact) sdf.map_ground || SDF_Map.exists (fun _ cell -> f cell.fact) sdf.map
 
   let exists_within_var_type k sdf f =
-    try
-      SDF_Map.iter (fun _ cell ->
-        if cell.var_type > k
-        then raise Out_of_type
-        else
-          if  f cell.fact
-          then raise Found
-          else ()
-        ) sdf.map;
-      false
-    with
-    | Found -> true
-    | Out_of_type -> false
+    let test_ground =
+      try
+        SDF_Map.iter (fun _ cell ->
+          if cell.g_var_type > k
+          then raise Out_of_type
+          else
+            if  f cell.g_fact
+            then raise Found
+            else ()
+          ) sdf.map_ground;
+        false
+      with
+      | Found -> true
+      | Out_of_type -> false
+    in
+    if test_ground
+    then true
+    else
+      try
+        SDF_Map.iter (fun _ cell ->
+          if cell.var_type > k
+          then raise Out_of_type
+          else
+            if  f cell.fact
+            then raise Found
+            else ()
+          ) sdf.map;
+        false
+      with
+      | Found -> true
+      | Out_of_type -> false
 
   let find sdf f =
     let result = ref None in
@@ -165,13 +342,18 @@ module SDF = struct
         | Some a -> result := Some a; raise Found
       ) sdf.map;
 
+      SDF_Map.iter (fun _ cell -> match f cell.g_fact with
+        | None -> ()
+        | Some a -> result := Some a; raise Found
+      ) sdf.map_ground;
+
       !result
     with
     | Found -> !result
 
   (******* Basic operations *********)
 
-  let empty = { size = 0 ; map = SDF_Map.empty }
+  let empty = { size = 0 ; map = SDF_Map.empty; all_id = []; last_entry_ground = false; map_ground = SDF_Map.empty }
 
   let add sdf fct =
     Config.debug (fun () ->
@@ -184,15 +366,43 @@ module SDF = struct
       then Config.internal_error "[data_structure.ml >> SDF.add] The added deduction fact have a second-order variable with the same type as the recipe itself";
 
       try
-        let (_,cell_max) = SDF_Map.max_binding sdf.map in
-        if cell_max.var_type > k
+        let var_type =
+          if sdf.last_entry_ground
+          then
+            let (_,cell_max) = SDF_Map.max_binding sdf.map_ground in
+            cell_max.g_var_type
+          else
+            let (_,cell_max) = SDF_Map.max_binding sdf.map in
+            cell_max.var_type
+        in
+        if var_type > k
         then Config.internal_error "[data_structure.ml >> SDF.add] The added deduction fact have stricly smaller variable type than some deduction fact of SDF.";
       with
         | Not_found -> ()
     );
+    let r = Fact.get_recipe fct
+    and t = Fact.get_protocol_term fct in
 
-    let k = get_type (Fact.get_recipe fct) in
-    { size = sdf.size + 1 ; map = SDF_Map.add (sdf.size + 1) ({ var_type = k; fact = fct }) sdf.map }
+    let k = get_type r in
+    let recipe_ground = is_ground r
+    and protocol_ground = is_ground t in
+    let new_size = sdf.size + 1 in
+    if recipe_ground && protocol_ground
+    then
+      { sdf with
+        size = new_size;
+        map_ground = SDF_Map.add new_size ({ g_var_type = k; g_fact = fct }) sdf.map_ground;
+        all_id = new_size::sdf.all_id;
+        last_entry_ground = true
+      }
+    else
+      {
+        sdf with
+        size = new_size;
+        map = SDF_Map.add new_size ({ var_type = k; fact = fct ; protocol_ground = protocol_ground; recipe_ground = recipe_ground}) sdf.map;
+        all_id = new_size::sdf.all_id;
+        last_entry_ground = false
+      }
 
   let display out ?(rho = None) ?(per_line = 8) ?(tab = 0) sdf = match out with
     | Testing ->

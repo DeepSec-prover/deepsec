@@ -32,7 +32,9 @@ module SDF : sig
   (** [last_entry] {% $\Solved$ %} returns the last deduction fact added to {% $\Solved$ %} with its recipe equivalent id. *)
   val last_entry : t -> Fact.deduction * id_recipe_equivalent
 
-  (** [first_entry] {% $\Solved$ %} returns the first deduction fact added to {% $\Solved$ %} with its recipe equivalent id. *)
+  (** [first_entry] {% $\Solved$ %} returns the first deduction fact added to {% $\Solved$ %} with its recipe equivalent id.
+
+      WARNING : We assume that the first entry is ground (typically a public name. *)
   val first_entry : t -> Fact.deduction * id_recipe_equivalent
 
   (** [last_entry_id] {% $\Solved$ %} is the same as [let _,id = last_entry] {% $\Solved$ %} [in id] but more efficient. *)
@@ -58,10 +60,10 @@ module SDF : sig
   (** [apply] {% $\Solved$~$\Sigma$~$\sigma$ %} returns the set {% $\Solved\Sigma\sigma$.%}*)
   val apply : t -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t  -> t
 
-  val apply_snd_and_gather : t -> (snd_ord, axiom) Subst.t -> recipe array -> t
+  val apply_snd_and_gather : t -> (snd_ord, axiom) Subst.t -> (recipe * bool) array -> t
 
-  val apply_snd_from_gathering : t -> recipe array -> t
-  
+  val apply_snd_from_gathering : t -> (recipe * bool) array -> t
+
   (** {3 Testing} *)
 
   (** [exists] {% $\Solved$ %} [f] returns [true] iff there exists a deduction fact [psi]  of {% $\Solved$ %}

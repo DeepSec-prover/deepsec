@@ -1943,7 +1943,7 @@ module Rule = struct
               then Config.internal_error "[constraint_system.ml >> internal_sat] If bot then we should not have had some mgs."
             );
 
-            let array_sdf = Array.make (SDF.cardinal csys.sdf) dummy_recipe in
+            let array_sdf = Array.make (SDF.cardinal csys.sdf) (dummy_recipe,false) in
 
             let new_csys_set =
               try
@@ -2037,7 +2037,7 @@ module Rule = struct
           then Config.internal_error "[constraint_system.ml >> internal_sat_disequation] If bot then we should not have had some mgs."
         );
 
-        let array_sdf = Array.make (SDF.cardinal csys.sdf) dummy_recipe in
+        let array_sdf = Array.make (SDF.cardinal csys.sdf) (dummy_recipe,false) in
 
         let new_csys_set =
           try
@@ -2130,7 +2130,7 @@ module Rule = struct
             then Config.internal_error "[constraint_system.ml >> internal_sat_formula] It should not be the identity mgs (otherwise the formula would have been solved)."
           );
 
-          let array_sdf = Array.make (SDF.cardinal one_csys.sdf) dummy_recipe in
+          let array_sdf = Array.make (SDF.cardinal one_csys.sdf) (dummy_recipe,false) in
 
           let positive_csys_set =
             try
@@ -2282,7 +2282,7 @@ module Rule = struct
             let new_eqsnd = Eq.apply Recipe one_csys.eqsnd mgs_csys in
             let new_i_subst_snd = Subst.compose_restricted_generic one_csys.i_subst_snd mgs_csys (fun x -> Variable.quantifier_of x = Free) in
 
-            let array_sdf = Array.make (SDF.cardinal one_csys.sdf) dummy_recipe in
+            let array_sdf = Array.make (SDF.cardinal one_csys.sdf) (dummy_recipe,false) in
 
             let positive_csys_set =
               try
@@ -2424,7 +2424,7 @@ module Rule = struct
             let new_eqsnd = Eq.apply Recipe one_csys.eqsnd mgs in
             let new_i_subst_snd = Subst.compose_restricted_generic one_csys.i_subst_snd mgs (fun x -> Variable.quantifier_of x = Free) in
 
-            let array_sdf = Array.make (SDF.cardinal one_csys.sdf) dummy_recipe in
+            let array_sdf = Array.make (SDF.cardinal one_csys.sdf) (dummy_recipe,false) in
 
             let positive_csys_set =
               try
@@ -2626,7 +2626,7 @@ module Rule = struct
             let new_eqsnd = Eq.apply Recipe one_csys.eqsnd mgs_csys in
             let new_i_subst_snd = Subst.compose_restricted_generic one_csys.i_subst_snd mgs_csys (fun x -> Variable.quantifier_of x = Free) in
 
-            let array_sdf = Array.make (SDF.cardinal one_csys.sdf) dummy_recipe in
+            let array_sdf = Array.make (SDF.cardinal one_csys.sdf) (dummy_recipe,false) in
 
             let positive_csys_set =
               try
