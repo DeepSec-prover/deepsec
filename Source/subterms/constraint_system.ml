@@ -1232,7 +1232,9 @@ let apply_mgs csys (subst_snd,list_var) =
   with
     | Subst.Not_unifiable  -> Config.test (fun () -> test_apply_mgs (unit_t_of csys) (subst_snd,list_var) None); raise Bot
 
-let apply_mgs_new csys new_eqsnd new_i_subst_snd (subst_snd,list_var) =
+let dummy_recipe = of_axiom (Axiom.create 1)
+
+let apply_mgs_and_gather csys sdf_array new_eqsnd new_i_subst_snd (subst_snd,list_var) =
 
   let new_df_1 = List.fold_left (fun df x_snd ->
     let b_fct = BasicFact.create x_snd (of_variable (Variable.fresh Protocol Existential Variable.fst_ord_type)) in
@@ -1241,7 +1243,7 @@ let apply_mgs_new csys new_eqsnd new_i_subst_snd (subst_snd,list_var) =
 
   let new_df_2 = Subst.fold (fun df x _ -> DF.remove df x) new_df_1 subst_snd in
 
-  let new_sdf_1 = SDF.apply csys.sdf subst_snd Subst.identity in
+  let new_sdf_1 = SDF.apply_snd_and_gather csys.sdf subst_snd sdf_array in
 
   let equations =
     Subst.fold (fun eq_l x r ->
@@ -1257,13 +1259,77 @@ let apply_mgs_new csys new_eqsnd new_i_subst_snd (subst_snd,list_var) =
 
   try
     let subst_fst = Subst.unify Protocol equations in
-
-    let new_frame = Subst.apply subst_fst csys.frame (fun l f -> List.map f l)
-    and new_df_3 = DF.apply new_df_2 subst_fst
-    and new_eqfst = Eq.apply Protocol csys.eqfst subst_fst in
+    let new_eqfst = Eq.apply Protocol csys.eqfst subst_fst in
 
     if Eq.is_bot new_eqfst
     then raise Bot;
+
+    let new_frame = Subst.apply subst_fst csys.frame (fun l f -> List.map f l)
+    and new_df_3 = DF.apply new_df_2 subst_fst in
+
+    let new_sdf_2 = SDF.apply new_sdf_1 Subst.identity subst_fst
+    and new_uf_1 = UF.apply csys.uf subst_snd subst_fst
+    and new_i_subst_fst = Subst.compose_restricted_generic csys.i_subst_fst subst_fst (fun x -> Variable.quantifier_of x = Free)
+    and new_sub_cons_1 = Uniformity_Set.apply csys.sub_cons subst_snd subst_fst in
+
+    let new_sub_cons_2 = Subst.fold (fun sub_cons _ r ->
+      match Tools.partial_consequence Recipe new_sdf_2 new_df_3 r with
+        | None -> Config.internal_error "[constraint_system.ml >> apply] The recipe should be consequence."
+        | Some (_,t) -> add_uniformity_subterms sub_cons r t
+      ) new_sub_cons_1 subst_snd in
+
+    let new_csys =
+      { csys with
+        frame = new_frame;
+        df = new_df_3;
+        eqfst = new_eqfst;
+        eqsnd = new_eqsnd;
+        sdf = new_sdf_2;
+        uf = new_uf_1;
+        i_subst_fst = new_i_subst_fst;
+        i_subst_snd = new_i_subst_snd;
+        sub_cons = new_sub_cons_2
+      }
+    in
+
+    if is_uniformity_rule_applicable new_csys
+    then raise Bot
+    else new_csys
+  with
+    | Subst.Not_unifiable  -> raise Bot
+
+let apply_mgs_from_gathering csys sdf_array new_eqsnd new_i_subst_snd (subst_snd,list_var) =
+
+  let new_df_1 = List.fold_left (fun df x_snd ->
+    let b_fct = BasicFact.create x_snd (of_variable (Variable.fresh Protocol Existential Variable.fst_ord_type)) in
+    DF.add df b_fct
+    ) csys.df list_var in
+
+  let new_df_2 = Subst.fold (fun df x _ -> DF.remove df x) new_df_1 subst_snd in
+
+  let new_sdf_1 = SDF.apply_snd_from_gathering csys.sdf sdf_array in
+
+  let equations =
+    Subst.fold (fun eq_l x r ->
+      match DF.get csys.df x with
+        | None -> Config.internal_error "[constraint_system.ml >> apply] The variabes in the domain of the mgs should be variables of the constraint system."
+        | Some b_fct ->
+            begin match Tools.partial_consequence Recipe new_sdf_1 new_df_2 r with
+              | None -> Config.internal_error "[constraint_system.ml >> apply] The substitution is not compatible with the constraint system."
+              | Some (_,t) -> (BasicFact.get_protocol_term b_fct, t)::eq_l
+            end
+      ) [] subst_snd
+  in
+
+  try
+    let subst_fst = Subst.unify Protocol equations in
+    let new_eqfst = Eq.apply Protocol csys.eqfst subst_fst in
+
+    if Eq.is_bot new_eqfst
+    then raise Bot;
+
+    let new_frame = Subst.apply subst_fst csys.frame (fun l f -> List.map f l)
+    and new_df_3 = DF.apply new_df_2 subst_fst in
 
     let new_sdf_2 = SDF.apply new_sdf_1 Subst.identity subst_fst
     and new_uf_1 = UF.apply csys.uf subst_snd subst_fst
@@ -1326,7 +1392,7 @@ let apply_mgs_on_formula (type a) (fct: a Fact.t) csys (subst_snd,list_var) (for
     ) (Subst.equations_of mgu_hyp, b_fct_to_remove) subst_snd
   in
 
-  let new_head = Fact.apply_on_fact fct head subst_snd Subst.identity in
+  let new_head = Fact.apply_snd_ord_on_fact fct head subst_snd in
 
   try
     let result = Fact.create fct new_head new_b_fct_hyp equations in
@@ -1752,9 +1818,12 @@ module Rule = struct
                     let eq_form = Fact.create Fact.Equality head_eq [] [term,term_conseq] in
                     let (_,_,simple_csys) = simple_of_formula Fact.Equality csys eq_form in
 
-                    if mgs simple_csys = []
-                    then csys
-                    else { csys with uf = UF.add_equality csys.uf eq_form new_id_recipe_eq (UF.Consequence_UF id) }
+                    begin try
+                      let _ = one_mgs simple_csys in
+                      { csys with uf = UF.add_equality csys.uf eq_form new_id_recipe_eq (UF.Consequence_UF id) }
+                    with
+                      | Not_found -> csys
+                    end
                   with
                     | Fact.Bot -> csys
                   end
@@ -1874,12 +1943,25 @@ module Rule = struct
               then Config.internal_error "[constraint_system.ml >> internal_sat] If bot then we should not have had some mgs."
             );
 
-            let new_csys_set = List.fold_left (fun set csys ->
+            let array_sdf = Array.make (SDF.cardinal csys.sdf) dummy_recipe in
+
+            let new_csys_set =
               try
-                (apply_mgs_new csys new_eqsnd new_i_subst_snd (mgs,l_vars))::set
+                let csys' = apply_mgs_and_gather csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars) in
+                List.fold_left (fun set csys ->
+                  try
+                    (apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars))::set
+                  with
+                    | Bot -> set
+                  ) [csys'] other_csys
               with
-                | Bot -> set
-              ) [] csys_set
+              | Bot ->
+                  List.fold_left (fun set csys ->
+                    try
+                      (apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars))::set
+                    with
+                      | Bot -> set
+                    ) [] other_csys
             in
 
             continuation_func.positive new_csys_set
@@ -1955,12 +2037,25 @@ module Rule = struct
           then Config.internal_error "[constraint_system.ml >> internal_sat_disequation] If bot then we should not have had some mgs."
         );
 
-        let new_csys_set = List.fold_left (fun set csys ->
+        let array_sdf = Array.make (SDF.cardinal csys.sdf) dummy_recipe in
+
+        let new_csys_set =
           try
-            (apply_mgs_new csys new_eqsnd new_i_subst_snd (mgs,l_vars))::set
+            let csys' = apply_mgs_and_gather csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars) in
+            List.fold_left (fun set csys ->
+              try
+                (apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars))::set
+              with
+                | Bot -> set
+              ) [csys'] other_csys
           with
-            | Bot -> set
-          ) [] other_csys
+          | Bot ->
+              List.fold_left (fun set csys ->
+                try
+                  (apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars))::set
+                with
+                  | Bot -> set
+                ) [] other_csys
         in
 
         continuation_func.positive new_csys_set
@@ -2035,12 +2130,25 @@ module Rule = struct
             then Config.internal_error "[constraint_system.ml >> internal_sat_formula] It should not be the identity mgs (otherwise the formula would have been solved)."
           );
 
-          let positive_csys_set = List.fold_left (fun set csys ->
+          let array_sdf = Array.make (SDF.cardinal one_csys.sdf) dummy_recipe in
+
+          let positive_csys_set =
             try
-              (apply_mgs_new csys new_eqsnd new_i_subst_snd (mgs,l_vars))::set
+              let one_csys' = apply_mgs_and_gather one_csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars) in
+              List.fold_left (fun set csys ->
+                try
+                  (apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars))::set
+                with
+                  | Bot -> set
+                ) [one_csys'] (List.tl csys_set)
             with
-              | Bot -> set
-            ) [] csys_set
+            | Bot ->
+                List.fold_left (fun set csys ->
+                  try
+                    (apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars))::set
+                  with
+                    | Bot -> set
+                  ) [] (List.tl csys_set)
           in
 
           normalisation positive_csys_set continuation_func.positive;
@@ -2174,19 +2282,47 @@ module Rule = struct
             let new_eqsnd = Eq.apply Recipe one_csys.eqsnd mgs_csys in
             let new_i_subst_snd = Subst.compose_restricted_generic one_csys.i_subst_snd mgs_csys (fun x -> Variable.quantifier_of x = Free) in
 
-            let positive_csys_set = List.fold_left (fun set csys ->
+            let array_sdf = Array.make (SDF.cardinal one_csys.sdf) dummy_recipe in
+
+            let positive_csys_set =
               try
-                let csys_1 = apply_mgs_new csys new_eqsnd new_i_subst_snd (mgs_csys,l_vars) in
-                begin try
-                  let form_1 = create_eq_constructor_formula csys_1 id_sdf univ_vars_snd symb in
-                  let form_2 = apply_mgs_on_formula Fact.Equality csys_1 (mgs_form_univ,[]) form_1 in
-                  { csys_1 with uf = UF.add_equality csys_1.uf form_2 id_recipe_eq (UF.Constructor_SDF (id_sdf, symb))} :: set
-                with
-                  | Fact.Bot -> csys_1::set
-                end
+                let one_csys' = apply_mgs_and_gather one_csys array_sdf new_eqsnd new_i_subst_snd (mgs_csys,l_vars) in
+                let one_csys'' =
+                  try
+                    let form_1 = create_eq_constructor_formula one_csys' id_sdf univ_vars_snd symb in
+                    let form_2 = apply_mgs_on_formula Fact.Equality one_csys (mgs_form_univ,[]) form_1 in
+                    { one_csys' with uf = UF.add_equality one_csys'.uf form_2 id_recipe_eq (UF.Constructor_SDF (id_sdf, symb))}
+                  with
+                    | Fact.Bot -> one_csys'
+                in
+                List.fold_left (fun set csys ->
+                  try
+                    let csys_1 = apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs_csys,l_vars) in
+                    begin try
+                      let form_1 = create_eq_constructor_formula csys_1 id_sdf univ_vars_snd symb in
+                      let form_2 = apply_mgs_on_formula Fact.Equality csys_1 (mgs_form_univ,[]) form_1 in
+                      { csys_1 with uf = UF.add_equality csys_1.uf form_2 id_recipe_eq (UF.Constructor_SDF (id_sdf, symb))} :: set
+                    with
+                      | Fact.Bot -> csys_1::set
+                    end
+                  with
+                    | Bot -> set
+                  ) [one_csys''] (List.tl csys_set_1)
               with
-                | Bot -> set
-              ) [] csys_set_1
+              | Bot ->
+                  List.fold_left (fun set csys ->
+                    try
+                      let csys_1 = apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs_csys,l_vars) in
+                      begin try
+                        let form_1 = create_eq_constructor_formula csys_1 id_sdf univ_vars_snd symb in
+                        let form_2 = apply_mgs_on_formula Fact.Equality csys_1 (mgs_form_univ,[]) form_1 in
+                        { csys_1 with uf = UF.add_equality csys_1.uf form_2 id_recipe_eq (UF.Constructor_SDF (id_sdf, symb))} :: set
+                      with
+                        | Fact.Bot -> csys_1::set
+                      end
+                    with
+                      | Bot -> set
+                    ) [] (List.tl csys_set_1)
             in
 
             normalisation positive_csys_set continuation_func.positive;
@@ -2288,28 +2424,74 @@ module Rule = struct
             let new_eqsnd = Eq.apply Recipe one_csys.eqsnd mgs in
             let new_i_subst_snd = Subst.compose_restricted_generic one_csys.i_subst_snd mgs (fun x -> Variable.quantifier_of x = Free) in
 
-            let positive_csys_set = List.fold_left (fun set csys ->
+            let array_sdf = Array.make (SDF.cardinal one_csys.sdf) dummy_recipe in
+
+            let positive_csys_set =
               try
-                let csys_1 = apply_mgs_new csys new_eqsnd new_i_subst_snd (mgs,l_vars) in
-                begin try
-                  let (last_fact,last_id) = SDF.last_entry csys_1.sdf in
+                let one_csys' = apply_mgs_and_gather one_csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars) in
+                let one_csys'' =
+                  try
+                    let (last_fact,last_id) = SDF.last_entry one_csys'.sdf in
 
-                  let fact = SDF.get csys_1.sdf id_sdf in
+                    let fact = SDF.get one_csys'.sdf id_sdf in
 
-                  let term = Fact.get_protocol_term fact in
-                  let last_term = Fact.get_protocol_term last_fact in
+                    let term = Fact.get_protocol_term fact in
+                    let last_term = Fact.get_protocol_term last_fact in
 
-                  let head = Fact.create_equality_fact (Fact.get_recipe fact) (Fact.get_recipe last_fact) in
+                    let head = Fact.create_equality_fact (Fact.get_recipe fact) (Fact.get_recipe last_fact) in
 
-                  let form = Fact.create Fact.Equality head [] [(term,last_term)] in
+                    let form = Fact.create Fact.Equality head [] [(term,last_term)] in
 
-                  { csys_1 with uf = UF.add_equality csys_1.uf form id_recipe_eq (UF.Equality_SDF (last_id, id_sdf))} :: set
-                with
-                  | Fact.Bot -> csys_1::set
-                end
+                    { one_csys' with uf = UF.add_equality one_csys'.uf form id_recipe_eq (UF.Equality_SDF (last_id, id_sdf))}
+                  with
+                    | Fact.Bot -> one_csys'
+                in
+                List.fold_left (fun set csys ->
+                  try
+                    let csys_1 = apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars) in
+                    begin try
+                      let (last_fact,last_id) = SDF.last_entry csys_1.sdf in
+
+                      let fact = SDF.get csys_1.sdf id_sdf in
+
+                      let term = Fact.get_protocol_term fact in
+                      let last_term = Fact.get_protocol_term last_fact in
+
+                      let head = Fact.create_equality_fact (Fact.get_recipe fact) (Fact.get_recipe last_fact) in
+
+                      let form = Fact.create Fact.Equality head [] [(term,last_term)] in
+
+                      { csys_1 with uf = UF.add_equality csys_1.uf form id_recipe_eq (UF.Equality_SDF (last_id, id_sdf))} :: set
+                    with
+                      | Fact.Bot -> csys_1::set
+                    end
+                  with
+                    | Bot -> set
+                  ) [one_csys''] (List.tl csys_set_1)
               with
-                | Bot -> set
-              ) [] csys_set_1
+              | Bot ->
+                  List.fold_left (fun set csys ->
+                    try
+                      let csys_1 = apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars) in
+                      begin try
+                        let (last_fact,last_id) = SDF.last_entry csys_1.sdf in
+
+                        let fact = SDF.get csys_1.sdf id_sdf in
+
+                        let term = Fact.get_protocol_term fact in
+                        let last_term = Fact.get_protocol_term last_fact in
+
+                        let head = Fact.create_equality_fact (Fact.get_recipe fact) (Fact.get_recipe last_fact) in
+
+                        let form = Fact.create Fact.Equality head [] [(term,last_term)] in
+
+                        { csys_1 with uf = UF.add_equality csys_1.uf form id_recipe_eq (UF.Equality_SDF (last_id, id_sdf))} :: set
+                      with
+                        | Fact.Bot -> csys_1::set
+                      end
+                    with
+                      | Bot -> set
+                    ) [] (List.tl csys_set_1)
             in
 
             normalisation positive_csys_set continuation_func.positive;
@@ -2444,25 +2626,66 @@ module Rule = struct
             let new_eqsnd = Eq.apply Recipe one_csys.eqsnd mgs_csys in
             let new_i_subst_snd = Subst.compose_restricted_generic one_csys.i_subst_snd mgs_csys (fun x -> Variable.quantifier_of x = Free) in
 
-            let positive_csys_set = List.fold_left (fun set csys ->
-              try
-                let csys_1 = apply_mgs_new csys new_eqsnd new_i_subst_snd (mgs_csys,l_vars) in
-                let ded_sdf = SDF.get csys_1.sdf id_sdf in
-                let form_list_1 = Rewrite_rules.generic_rewrite_rules_formula ded_sdf skel in
-                let form_list_2 = List.fold_left (fun acc form ->
-                  try
-                    let form_1 = apply_mgs_on_formula Fact.Deduction csys_1 (mgs_form,[]) form in
-                    form_1::acc
-                  with
-                  | Fact.Bot -> acc
-                ) [] form_list_1 in
+            let array_sdf = Array.make (SDF.cardinal one_csys.sdf) dummy_recipe in
 
-                if form_list_2 = []
-                then csys_1::set
-                else { csys_1 with uf = UF.add_deduction csys_1.uf form_list_2 id_recipe_ded } :: set
+            let positive_csys_set =
+              try
+                let one_csys' = apply_mgs_and_gather one_csys array_sdf new_eqsnd new_i_subst_snd (mgs_csys,l_vars) in
+                let one_csys'' =
+                  let ded_sdf = SDF.get one_csys'.sdf id_sdf in
+                  let form_list_1 = Rewrite_rules.generic_rewrite_rules_formula ded_sdf skel in
+                  let form_list_2 = List.fold_left (fun acc form ->
+                    try
+                      let form_1 = apply_mgs_on_formula Fact.Deduction one_csys' (mgs_form,[]) form in
+                      form_1::acc
+                    with
+                    | Fact.Bot -> acc
+                  ) [] form_list_1 in
+
+                  if form_list_2 = []
+                  then one_csys'
+                  else { one_csys' with uf = UF.add_deduction one_csys'.uf form_list_2 id_recipe_ded }
+                in
+                List.fold_left (fun set csys ->
+                  try
+                    let csys_1 = apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs_csys,l_vars) in
+                    let ded_sdf = SDF.get csys_1.sdf id_sdf in
+                    let form_list_1 = Rewrite_rules.generic_rewrite_rules_formula ded_sdf skel in
+                    let form_list_2 = List.fold_left (fun acc form ->
+                      try
+                        let form_1 = apply_mgs_on_formula Fact.Deduction csys_1 (mgs_form,[]) form in
+                        form_1::acc
+                      with
+                      | Fact.Bot -> acc
+                    ) [] form_list_1 in
+
+                    if form_list_2 = []
+                    then csys_1::set
+                    else { csys_1 with uf = UF.add_deduction csys_1.uf form_list_2 id_recipe_ded } :: set
+                  with
+                    | Bot -> set
+                  ) [one_csys''] (List.tl csys_set_1)
               with
-                | Bot -> set
-              ) [] csys_set_1
+              | Bot ->
+                  List.fold_left (fun set csys ->
+                    try
+                      let csys_1 = apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs_csys,l_vars) in
+                      let ded_sdf = SDF.get csys_1.sdf id_sdf in
+                      let form_list_1 = Rewrite_rules.generic_rewrite_rules_formula ded_sdf skel in
+                      let form_list_2 = List.fold_left (fun acc form ->
+                        try
+                          let form_1 = apply_mgs_on_formula Fact.Deduction csys_1 (mgs_form,[]) form in
+                          form_1::acc
+                        with
+                        | Fact.Bot -> acc
+                      ) [] form_list_1 in
+
+                      if form_list_2 = []
+                      then csys_1::set
+                      else { csys_1 with uf = UF.add_deduction csys_1.uf form_list_2 id_recipe_ded } :: set
+                    with
+                      | Bot -> set
+                    ) [] (List.tl csys_set_1)
             in
 
             normalisation positive_csys_set continuation_func.positive;

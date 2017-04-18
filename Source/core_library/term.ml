@@ -2539,29 +2539,62 @@ module Fact = struct
       List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
       raise Bot
 
-  let apply_on_fact (type a) (fct: a t) (fact: a) subst_snd subst_fst = match fct with
-    | Deduction ->
-        let fact_1 =
-          if Subst.is_identity subst_snd
-          then fact
-          else Subst.apply subst_snd fact (fun fact f -> {fact with df_recipe = f fact.df_recipe})
-        in
+  let apply_snd_ord (type a) (fct: a t) (psi: a formula) subst_snd = match fct with
+    | Deduction ->  ({ psi with head = Subst.apply subst_snd psi.head (fun d_fact f -> { d_fact with df_recipe = f d_fact.df_recipe }) }: a formula)
+    | Equality -> ({ psi with head = Subst.apply subst_snd psi.head (fun d_fact f -> { ef_recipe_1 = f d_fact.ef_recipe_1; ef_recipe_2 = f d_fact.ef_recipe_2 }) }: a formula)
 
-        let fact_2 =
-          if Subst.is_identity subst_fst
-          then fact_1
-          else Subst.apply subst_fst fact_1 (fun fact f -> {fact with df_term = f fact.df_term})
-        in
 
-        (fact_2:a)
-    | Equality ->
-        let fact_1 =
-          if Subst.is_identity subst_snd
-          then fact
-          else Subst.apply subst_snd fact (fun fact f -> {ef_recipe_1 = f fact.ef_recipe_1; ef_recipe_2 = f fact.ef_recipe_2})
-        in
+  let apply_fst_ord (type a) (fct: a t) (psi: a formula) subst_fst =
+    Config.debug (fun () ->
+      if List.exists (fun (v,_) -> v.link <> NoLink) subst_fst
+      then Config.internal_error "[term.ml >> Fact.apply_fst_ord] Variables in the domain should not be linked"
+    );
 
-        (fact_1:a)
+    (* Link the variables of the substitution *)
+    List.iter (fun (v,t) -> v.link <- (TLink t)) subst_fst;
+
+    try
+      List.iter (fun (x,t) -> Subst.unify_term Protocol (Var x) t) psi.equation_subst;
+
+      begin match fct with
+        | Deduction ->
+            let head = { psi.head with df_term = Subst.follow_link psi.head.df_term }
+            and ded_fact_list = List.map (fun b_fact -> { b_fact with BasicFact.term = Subst.follow_link b_fact.BasicFact.term }) psi.ded_fact_list
+            and equation_subst = List.map (fun var -> (var,Subst.follow_link (Var var))) (Subst.retrieve Protocol) in
+
+            let psi_1 = { head = head; ded_fact_list = ded_fact_list; equation_subst = equation_subst } in
+
+            Subst.cleanup Protocol;
+
+            (* Unlink the variables of the substitution *)
+            List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
+
+            (* Apply the second-order substitution *)
+
+            (psi_1: a formula)
+
+        | Equality ->
+            let ded_fact_list = List.map (fun b_fact -> { b_fact with BasicFact.term = Subst.follow_link b_fact.BasicFact.term }) psi.ded_fact_list
+            and equation_subst = List.map (fun var -> (var,Subst.follow_link (Var var))) (Subst.retrieve Protocol) in
+
+            let psi_1 = { psi with ded_fact_list = ded_fact_list; equation_subst = equation_subst } in
+
+            Subst.cleanup Protocol;
+
+            (* Unlink the variables of the substitution *)
+            List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
+
+            (psi_1: a formula)
+      end
+    with Subst.Not_unifiable ->
+      Subst.cleanup Protocol;
+      (* Unlink the variables of the substitution *)
+      List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
+      raise Bot
+
+  let apply_snd_ord_on_fact (type a) (fct: a t) (fact: a) subst_snd = match fct with
+    | Deduction -> (Subst.apply subst_snd fact (fun fact f -> {fact with df_recipe = f fact.df_recipe}) : a)
+    | Equality -> (Subst.apply subst_snd fact (fun fact f -> {ef_recipe_1 = f fact.ef_recipe_1; ef_recipe_2 = f fact.ef_recipe_2}) : a)
 
   (********* Display functions *******)
 

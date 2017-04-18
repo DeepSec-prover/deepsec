@@ -104,8 +104,35 @@ module SDF = struct
     ) sdf_map
 
   let apply sdf subst_snd subst_fst =
-    let sdf_1 = Subst.apply subst_snd sdf.map map_recipe in
-    { sdf with map = Subst.apply subst_fst sdf_1 map_protocol_term }
+    if Subst.is_identity subst_snd
+    then
+      if Subst.is_identity subst_fst
+      then sdf
+      else { sdf with map = Subst.apply subst_fst sdf.map map_protocol_term }
+    else
+      if Subst.is_identity subst_fst
+      then { sdf with map = Subst.apply subst_snd sdf.map map_recipe }
+      else
+        let sdf_map_1 = Subst.apply subst_snd sdf.map map_recipe in
+        { sdf with map = Subst.apply subst_fst sdf_map_1 map_protocol_term }
+
+  let apply_snd_and_gather sdf subst array_recipe =
+    let map_recipe_gather sdf_map f =
+      SDF_Map.mapi (fun i cell ->
+        let new_recipe = f (Fact.get_recipe cell.fact) in
+        array_recipe.(i-1) <- new_recipe;
+        {cell with fact = Fact.create_deduction_fact new_recipe (Fact.get_protocol_term cell.fact) }
+      ) sdf_map
+    in
+    { sdf with map = Subst.apply subst sdf.map map_recipe_gather }
+
+  let apply_snd_from_gathering sdf array_recipe =
+    let sdf_map =
+      SDF_Map.mapi (fun i cell ->
+        {cell with fact = Fact.create_deduction_fact array_recipe.(i-1) (Fact.get_protocol_term cell.fact) }
+      ) sdf.map
+    in
+    { sdf with map = sdf_map }
 
   (******* Testing ********)
 
@@ -627,93 +654,113 @@ module UF = struct
   exception Solved_eq of Fact.equality_formula
 
   let apply uf subst_snd subst_fst =
+    let fst_identity = Subst.is_identity subst_fst
+    and snd_identity = Subst.is_identity subst_snd in
 
-    let new_solved_ded_formula, new_unsolved_ded_formula = match uf.solved_ded_formula, uf.unsolved_ded_formula with
-      | None, None -> None, None
-      | Some _, Some _ -> Config.internal_error "[Data_structure.ml >> UF.apply] There can't be deduction facts at the same time solved and unsolved."
-      | Some (id,form), None ->
-          Config.debug (fun () ->
-            try
-              let _ = Fact.apply Fact.Deduction form subst_snd subst_fst in
-              ()
-            with
-              | Fact.Bot -> Config.internal_error "[Data_structure.ml >> UF.apply] Applying a substitution on a solved formula should not result into bot."
-          );
+    if fst_identity && snd_identity
+    then uf
+    else
+      begin
+        let apply_subst_on_ded_formula, apply_subst_on_eq_formula = match fst_identity, snd_identity with
+          | false, false ->
+              (fun (form: Fact.deduction Fact.formula) -> Fact.apply Fact.Deduction form subst_snd subst_fst),
+              (fun (form: Fact.equality Fact.formula) -> Fact.apply Fact.Equality form subst_snd subst_fst)
+          | false, true ->
+              (fun (form: Fact.deduction Fact.formula) -> Fact.apply_fst_ord Fact.Deduction form subst_fst),
+              (fun (form: Fact.equality Fact.formula) -> Fact.apply_fst_ord Fact.Equality form subst_fst)
+          | true, false ->
+              (fun (form: Fact.deduction Fact.formula) -> Fact.apply_snd_ord Fact.Deduction form subst_snd),
+              (fun (form: Fact.equality Fact.formula) -> Fact.apply_snd_ord Fact.Equality form subst_snd)
+          | true, true -> Config.internal_error "[data_structure.ml >> apply] Impossible case"
+        in
 
-          Some (id, Fact.apply Fact.Deduction form subst_snd subst_fst), None
-      | None, Some(id, form_list) ->
-          begin
-            let result_list = ref [] in
-
-            try
-              List.iter (fun form ->
+        let new_solved_ded_formula, new_unsolved_ded_formula = match uf.solved_ded_formula, uf.unsolved_ded_formula with
+          | None, None -> None, None
+          | Some _, Some _ -> Config.internal_error "[Data_structure.ml >> UF.apply] There can't be deduction facts at the same time solved and unsolved."
+          | Some (id,form), None ->
+              Config.debug (fun () ->
                 try
-                  let form_1 = Fact.apply Fact.Deduction form subst_snd subst_fst in
-                  if Fact.is_solved form_1
-                  then raise (Solved_ded form_1)
-                  else result_list := form_1 :: !result_list
+                  let _ = apply_subst_on_ded_formula form in
+                  ()
                 with
-                  | Fact.Bot -> ()
-                ) form_list;
+                  | Fact.Bot -> Config.internal_error "[Data_structure.ml >> UF.apply] Applying a substitution on a solved formula should not result into bot."
+              );
 
-              if !result_list = []
-              then None, None
-              else None, Some (id,!result_list)
+              Some (id, apply_subst_on_ded_formula form), None
+          | None, Some(id, form_list) ->
+              begin
+                let result_list = ref [] in
+
+                try
+                  List.iter (fun form ->
+                    try
+                      let form_1 = apply_subst_on_ded_formula form in
+                      if Fact.is_solved form_1
+                      then raise (Solved_ded form_1)
+                      else result_list := form_1 :: !result_list
+                    with
+                      | Fact.Bot -> ()
+                    ) form_list;
+
+                  if !result_list = []
+                  then None, None
+                  else None, Some (id,!result_list)
+                with
+                  | Solved_ded form -> Some (id, form), None
+              end
+        in
+
+        let filter_function = ref (fun _ -> false) in
+        let additional_solved_eq_formula = ref UF_Map.empty in
+
+        let new_unsolved_eq_formula =
+          UF_Map.mapi (fun id cell ->
+            try
+              let form_1 = apply_subst_on_eq_formula cell.equality in
+              if Fact.is_solved form_1
+              then raise (Solved_eq form_1)
+              else { cell with equality = form_1 }
             with
-              | Solved_ded form -> Some (id, form), None
-          end
-    in
+              | Fact.Bot -> filter_function := (fun x -> id = x || !filter_function x); cell
+              | Solved_eq form ->
+                  filter_function := (fun x -> id = x || !filter_function x);
+                  additional_solved_eq_formula := UF_Map.add id { cell with equality = form} !additional_solved_eq_formula;
+                  { cell with equality = form }
+            ) uf.unsolved_eq_formula
+        in
 
-    let filter_function = ref (fun _ -> false) in
-    let additional_solved_eq_formula = ref UF_Map.empty in
+        let new_unsolved_eq_formula_1 = UF_Map.filter (fun x _ -> not (!filter_function x)) new_unsolved_eq_formula in
 
-    let new_unsolved_eq_formula =
-      UF_Map.mapi (fun id cell ->
-        try
-          let form_1 = Fact.apply Fact.Equality cell.equality subst_snd subst_fst in
-          if Fact.is_solved form_1
-          then raise (Solved_eq form_1)
-          else { cell with equality = form_1 }
-        with
-          | Fact.Bot -> filter_function := (fun x -> id = x || !filter_function x); cell
-          | Solved_eq form ->
-              filter_function := (fun x -> id = x || !filter_function x);
-              additional_solved_eq_formula := UF_Map.add id { cell with equality = form} !additional_solved_eq_formula;
-              { cell with equality = form }
-        ) uf.unsolved_eq_formula
-    in
+        let new_solved_eq_formula =
+          UF_Map.merge (fun _ old_solved new_solved -> match old_solved,new_solved with
+            | Some _, Some _ -> Config.internal_error "[Data_structure.ml >> UF.apply] The two maps should have disjoints keys.(2)"
+            | None, Some cell -> Some cell
+            | Some cell, None ->
+                Config.debug (fun () ->
+                  try
+                    let _ = apply_subst_on_eq_formula cell.equality in
+                    ()
+                  with
+                    | Fact.Bot -> Config.internal_error "[Data_structure.ml >> UF.apply] Applying a substitution on a solved formula should not result into bot.(2)"
+                );
 
-    let new_unsolved_eq_formula_1 = UF_Map.filter (fun x _ -> not (!filter_function x)) new_unsolved_eq_formula in
+                Some ({cell with equality = apply_subst_on_eq_formula cell.equality })
+            | None, None -> None
+            ) uf.solved_eq_formula !additional_solved_eq_formula
+        in
 
-    let new_solved_eq_formula =
-      UF_Map.merge (fun _ old_solved new_solved -> match old_solved,new_solved with
-        | Some _, Some _ -> Config.internal_error "[Data_structure.ml >> UF.apply] The two maps should have disjoints keys.(2)"
-        | None, Some cell -> Some cell
-        | Some cell, None ->
-            Config.debug (fun () ->
-              try
-                let _ = Fact.apply Fact.Equality cell.equality subst_snd subst_fst in
-                ()
-              with
-                | Fact.Bot -> Config.internal_error "[Data_structure.ml >> UF.apply] Applying a substitution on a solved formula should not result into bot.(2)"
-            );
+        Config.debug(fun () ->
+          if UF_Map.cardinal uf.solved_eq_formula + UF_Map.cardinal !additional_solved_eq_formula <> UF_Map.cardinal new_solved_eq_formula
+          then Config.internal_error "[Data_structure.ml >> UF.apply] The sum of the two sets is not a real sum."
+        );
 
-            Some ({cell with equality = Fact.apply Fact.Equality cell.equality subst_snd subst_fst })
-        | None, None -> None
-        ) uf.solved_eq_formula !additional_solved_eq_formula
-    in
-
-    Config.debug(fun () ->
-      if UF_Map.cardinal uf.solved_eq_formula + UF_Map.cardinal !additional_solved_eq_formula <> UF_Map.cardinal new_solved_eq_formula
-      then Config.internal_error "[Data_structure.ml >> UF.apply] The sum of the two sets is not a real sum."
-    );
-
-    {
-      solved_ded_formula = new_solved_ded_formula;
-      solved_eq_formula = new_solved_eq_formula;
-      unsolved_ded_formula = new_unsolved_ded_formula;
-      unsolved_eq_formula = new_unsolved_eq_formula_1
-    }
+        {
+          solved_ded_formula = new_solved_ded_formula;
+          solved_eq_formula = new_solved_eq_formula;
+          unsolved_ded_formula = new_unsolved_ded_formula;
+          unsolved_eq_formula = new_unsolved_eq_formula_1
+        }
+      end
 
   let display_equality_type = function
     | Constructor_SDF (id,f) -> Printf.sprintf "_Const(%d,%s)" id (Symbol.display Testing f)

@@ -58,6 +58,10 @@ module SDF : sig
   (** [apply] {% $\Solved$~$\Sigma$~$\sigma$ %} returns the set {% $\Solved\Sigma\sigma$.%}*)
   val apply : t -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t  -> t
 
+  val apply_snd_and_gather : t -> (snd_ord, axiom) Subst.t -> recipe array -> t
+
+  val apply_snd_from_gathering : t -> recipe array -> t
+  
   (** {3 Testing} *)
 
   (** [exists] {% $\Solved$ %} [f] returns [true] iff there exists a deduction fact [psi]  of {% $\Solved$ %}
