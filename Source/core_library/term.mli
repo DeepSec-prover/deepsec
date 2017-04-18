@@ -570,6 +570,13 @@ module Subst : sig
 
   val split_domain : ('a, 'b) t -> (('a, 'b) variable -> bool) -> ('a, 'b) t * ('a, 'b) t
 
+  val split_domain_on_term : ('a, 'b) t -> (('a, 'b) term -> bool) -> ('a, 'b) t * ('a, 'b) t
+
+  (** [union] {% $\sigma_1$~$\sigma_2$ returns the substitution $\sigma$ such that $\Dom{\sigma} = \Dom{\sigma_1} \cup \Dom{\sigma_2}$ and
+      for all $i= 1,2$, for all $x \in \Dom{\sigma_i}$, $x\sigma = x\sigma_i$.%}
+      @raise Internal_error if {% $\Dom{\sigma_1} \cap \Dom{\sigma_2} \neq \emptyset$.%} *)
+  val union : ('a, 'b) t -> ('a, 'b) t -> ('a, 'b) t
+
   (** [compose] {% $\sigma_1$~$\sigma_2$ returns the substitution $\sigma_1\sigma_2$. %}
       @raise Debug.Internal_error if {% $\Dom{\sigma_1} \cap \Dom{\sigma_2} \neq \emptyset$ or if  the resulting substitution is not acyclic. \highdebug %} *)
   val compose : ('a, 'b) t -> ('a, 'b) t -> ('a, 'b) t

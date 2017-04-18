@@ -53,17 +53,6 @@ _Input : _Protocol
 _Input : { }
 _Input : { _w_2 -> aenc((_w_1,_w_0),pk(_k_0)) }
 _Result : top
---Test 15:
-_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
-_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
-_Fst_ord_vars : { _w_0, _w_1, _x_0, _y_0, _w_2 }
-_Snd_ord_vars : { }
-_Names : { _k_0, _l_0, _m_0 }
-_Axioms : { }
-_Input : _Protocol
-_Input : { _w_2 -> aenc((_k_0,pk(_l_0)),pk(_m_0)) }
-_Input : { _w_2 -> aenc((_k_0,pk(_l_0)),pk(_m_0)), _w_1 -> _k_0, _w_0 -> pk(_l_0) }
-_Result : top
 --Test 14:
 _Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
 _Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
@@ -74,6 +63,17 @@ _Axioms : { }
 _Input : _Protocol
 _Input : { _w_0 -> aenc((_x_1,pk(_k_0)),pk(_l_0)), _w_1 -> pk(_k_0), _w_2 -> _x_1 }
 _Input : { _w_0 -> aenc((_x_1,pk(_k_0)),pk(_l_0)), _w_1 -> pk(_k_0), _w_2 -> _x_1 }
+_Result : top
+--Test 15:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _w_0, _w_1, _x_0, _y_0, _w_2 }
+_Snd_ord_vars : { }
+_Names : { _k_0, _l_0, _m_0 }
+_Axioms : { }
+_Input : _Protocol
+_Input : { _w_2 -> aenc((_k_0,pk(_l_0)),pk(_m_0)) }
+_Input : { _w_2 -> aenc((_k_0,pk(_l_0)),pk(_m_0)), _w_1 -> _k_0, _w_0 -> pk(_l_0) }
 _Result : top
 --Test 13:
 _Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }

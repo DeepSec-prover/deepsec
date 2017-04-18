@@ -1444,6 +1444,16 @@ module Subst = struct
 
   let split_domain subst f = List.partition (fun (x,_) -> f x) subst
 
+  let split_domain_on_term subst f = List.partition (fun (_,t) -> f t) subst
+
+  let union subst1 subst2 =
+    Config.debug (fun () ->
+      if List.exists (fun (x,_) -> List.exists (fun (y,_) -> Variable.is_equal x y) subst2) subst1 ||
+        List.exists (fun (x,_) -> List.exists (fun (y,_) -> Variable.is_equal x y) subst1) subst2
+      then Config.internal_error "[term.ml >> Subst.union] Domain not disjoint."
+    );
+    subst1@subst2
+
   let of_renaming rho = List.map (fun (x,y) -> (x,Var y)) rho
 
   let equations_of subst = List.map (fun (x,t) -> (Var x, t)) subst

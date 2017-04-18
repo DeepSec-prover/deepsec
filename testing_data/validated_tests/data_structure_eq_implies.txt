@@ -322,18 +322,6 @@ _Input : top
 _Input : _X_0
 _Input : _ax_2
 _Result : bot
---Test 1:
-_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
-_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
-_Fst_ord_vars : { _x_0, _y_0 }
-_Snd_ord_vars : { _X_0:4, _W_0:5 }
-_Names : { _a_0 }
-_Axioms : { _ax_0[_a_0], _ax_3, _ax_1 }
-_Input : _Recipe
-_Input : (_W_0 <> _ax_0) /\ (_X_0 <> _ax_3) /\ (_X_0 <> _ax_1)
-_Input : _W_0
-_Input : _ax_0
-_Result : top
 --Test 2:
 _Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
 _Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
@@ -346,6 +334,18 @@ _Input : (_Y_0 <> _ax_1) /\ (_Y_0 <> _ax_3)
 _Input : _X_0
 _Input : _ax_2
 _Result : bot
+--Test 1:
+_Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
+_Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
+_Fst_ord_vars : { _x_0, _y_0 }
+_Snd_ord_vars : { _X_0:4, _W_0:5 }
+_Names : { _a_0 }
+_Axioms : { _ax_0[_a_0], _ax_3, _ax_1 }
+_Input : _Recipe
+_Input : (_W_0 <> _ax_0) /\ (_X_0 <> _ax_3) /\ (_X_0 <> _ax_1)
+_Input : _W_0
+_Input : _ax_0
+_Result : top
 --Test 8:
 _Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
 _Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
@@ -358,11 +358,11 @@ _Input : (_W_0 <> _ax_0) /\ (_W_1 <> aenc((_Z_2,_ax_1),_ax_2)) /\ (_W_1 <> aenc(
 _Input : _W_0
 _Input : _ax_0
 _Result : top
---Test 10:
+--Test 11:
 _Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
 _Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
 _Fst_ord_vars : { _x_0, _y_0 }
-_Snd_ord_vars : { _W_1:3, _Z_2:3, _Z_0:3, _Z_1:3, _W_0:5 }
+_Snd_ord_vars : { _W_1:3, _Z_2:3, _Z_0:3, _Z_1:3, _W_0:4 }
 _Names : { _a_0 }
 _Axioms : { _ax_1, _ax_2, _ax_0[_a_0] }
 _Input : _Recipe
@@ -370,11 +370,11 @@ _Input : (_W_1 <> aenc((_Z_2,_ax_1),_ax_2)) /\ (_W_1 <> aenc((_Z_1,_Z_0),_ax_2))
 _Input : _W_0
 _Input : _ax_0
 _Result : bot
---Test 11:
+--Test 10:
 _Signature : { aenc/2, pk/1 } Tuple : { 2, 3 }
 _Rewriting_system : [adec,[[aenc(_y_0,pk(_x_0)); _x_0], _y_0]]
 _Fst_ord_vars : { _x_0, _y_0 }
-_Snd_ord_vars : { _W_1:3, _Z_2:3, _Z_0:3, _Z_1:3, _W_0:4 }
+_Snd_ord_vars : { _W_1:3, _Z_2:3, _Z_0:3, _Z_1:3, _W_0:5 }
 _Names : { _a_0 }
 _Axioms : { _ax_1, _ax_2, _ax_0[_a_0] }
 _Input : _Recipe
