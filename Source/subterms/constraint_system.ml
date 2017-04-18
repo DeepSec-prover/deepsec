@@ -24,6 +24,8 @@ type 'a t =
     i_subst_fst : (fst_ord, name) Subst.t;
     i_subst_snd : (snd_ord, axiom) Subst.t;
 
+    i_subst_ground_snd : (snd_ord, axiom) Subst.t;
+
     sub_cons : Uniformity_Set.t;
 
     (*** Lists that help determining when the rule equality needs to be applied.
@@ -69,8 +71,8 @@ let get_axioms_Term = get_axioms_with_list
 let get_additional_data csys = csys.additional_data
 
 let get_substitution_solution (type a) (type b) (at: (a,b) atom) csys = match at with
-  | Protocol -> (csys.i_subst_fst: (a,b) Subst.t)
-  | Recipe -> (csys.i_subst_snd: (a,b) Subst.t)
+  | Protocol -> (csys.i_subst_fst : (a,b) Subst.t)
+  | Recipe -> ((Subst.union csys.i_subst_snd csys.i_subst_ground_snd) : (a,b) Subst.t)
 
 let get_vars_with_list (type a) (type b) (at: (a,b) atom) csys (vars_l: (a,b) variable list) =
   let result_vars = ref vars_l in
@@ -100,6 +102,7 @@ let get_vars_with_list (type a) (type b) (at: (a,b) atom) csys (vars_l: (a,b) va
         SDF.iter csys.sdf (fun fct -> result_vars := get_vars_with_list Recipe (Fact.get_recipe fct) (fun _-> true) !result_vars);
         UF.iter Fact.Deduction csys.uf (fun psi -> result_vars := Fact.get_vars_with_list Recipe Fact.Deduction psi (fun _ -> true) !result_vars);
         UF.iter Fact.Equality csys.uf (fun psi -> result_vars := Fact.get_vars_with_list Recipe Fact.Equality psi (fun _ -> true) !result_vars);
+        result_vars := Subst.get_vars_with_list Recipe csys.i_subst_ground_snd (fun _ -> true) !result_vars;
         result_vars := Subst.get_vars_with_list Recipe csys.i_subst_snd (fun _ -> true) !result_vars;
         Uniformity_Set.iter csys.sub_cons (fun r _ -> result_vars := get_vars_with_list Recipe r (fun _ -> true) !result_vars);
         let f = List.iter (fun (_,skel) ->
@@ -170,6 +173,8 @@ let create_from_free_names data axioms_list =
 
     i_subst_fst = Subst.identity;
     i_subst_snd = Subst.identity;
+
+    i_subst_ground_snd = Subst.identity;
 
     sub_cons = Uniformity_Set.empty;
 
@@ -298,7 +303,7 @@ let instantiate_when_solved csys =
     ) (Subst.identity, Subst.identity, [], smallest_ax_index - 1) csys.df
   in
 
-  (Subst.compose csys.i_subst_fst subst_fst, Subst.compose csys.i_subst_snd subst_snd, name_list)
+  (Subst.compose csys.i_subst_fst subst_fst, Subst.union csys.i_subst_ground_snd (Subst.compose csys.i_subst_snd subst_snd), name_list)
 
 (******** Display *******)
 
@@ -506,6 +511,8 @@ let create frame df eq1 eq2 sdf uf sub1 sub2 uni il1 il2 il3 is1 is2 =
 
     i_subst_fst = sub1;
     i_subst_snd = sub2;
+
+    i_subst_ground_snd = Subst.identity;
 
     sub_cons = uni;
 
@@ -1353,6 +1360,19 @@ module Set = struct
     then Config.internal_error "[constraint_system.ml >> Set.choose] The set should not be empty.";
 
     List.hd csys_set
+
+  let optimise_snd_ord_recipes csys_set =
+    if csys_set = []
+    then csys_set
+    else
+      let csys = List.hd csys_set in
+
+      let i_subst_ground_snd, i_subst_snd = Subst.split_domain_on_term csys.i_subst_snd is_ground in
+      let new_i_subst_ground_snd = Subst.union i_subst_ground_snd csys.i_subst_ground_snd in
+
+      List.map (fun csys' ->
+        { csys' with i_subst_snd = i_subst_snd; i_subst_ground_snd = new_i_subst_ground_snd }
+      ) csys_set
 
   let for_all = List.for_all
 

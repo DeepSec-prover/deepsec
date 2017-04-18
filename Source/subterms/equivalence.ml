@@ -17,6 +17,8 @@ exception Not_Trace_Equivalent of symbolic_process Constraint_system.t
 
 let rec apply_transition_and_rules_classic csys_set size_frame =
 
+  let opti_csys_set = Constraint_system.Set.optimise_snd_ord_recipes csys_set in
+
   (*** Generate the set for the next input ***)
 
   let csys_set_for_input = ref Constraint_system.Set.empty in
@@ -59,7 +61,7 @@ let rec apply_transition_and_rules_classic csys_set size_frame =
       with
         | Constraint_system.Bot -> ()
     )
-  ) csys_set;
+  ) opti_csys_set;
 
   (*** Application of the tranformation rules ***)
 
@@ -129,7 +131,7 @@ let rec apply_transition_and_rules_classic csys_set size_frame =
       with
         | Constraint_system.Bot -> ()
     )
-  ) csys_set;
+  ) opti_csys_set;
 
   (*** Application of the tranformation rules ***)
 

@@ -197,6 +197,8 @@ module Set : sig
   (** [add] {% $\C$~$S$ returns $S \cup \{ \C \}$. %}*)
   val add : 'a csys -> 'a t -> 'a t
 
+  val optimise_snd_ord_recipes : 'a t -> 'a t
+
   (** [choose] {% $S$ returns one constraint system in $S$. %}
       @raise Internal_error if the set is empty. *)
   val choose : 'a t -> 'a csys
