@@ -455,9 +455,6 @@ and content_mult_list_of_expansed_int_process_list = function
         | _,_ -> Config.internal_error "[process.ml >> content_of_expansed_process_list] The should not be two the same content in the list."
       end
 
-
-
-
 let of_expansed_process ex_proc =
   initialise ();
   let content = content_of_expansed_process ex_proc in
@@ -1073,9 +1070,9 @@ module Trace = struct
 
   type t = trace_actions list
 
-  let empty = []
+  (*** Generation ****)
 
-  let size = List.length
+  let empty = []
 
   let add_comm act1 act2 proc trace = TrComm(act1,act2,proc)::trace
 
@@ -1094,6 +1091,10 @@ module Trace = struct
   let add_eavesdrop ch_X ch ax t action_in action_out proc trace = TrEavesdrop(ch_X,ch,ax,t,action_in, action_out,proc) :: trace
 
   let combine tr1 tr2 = tr2 @ tr1
+
+  (**** Access ****)
+
+  let size = List.length
 
   let get_vars_with_list (type a) (type b) (at: (a,b) atom) trace (v_list: (a,b) variable list)= match at with
     | Protocol ->
@@ -1203,6 +1204,7 @@ module Trace = struct
     Printf.sprintf "{ %s }"
       (display_list (display_actions_testing rho id_rho) ", " trace)
 
+  (*** Displa functions ***)
 
   let order_son_process_one_action father_process son_process action_process =
 
