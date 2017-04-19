@@ -7,15 +7,17 @@ SOURCE = Source/
 
 # For bytecode compilation, unset NATIVECODE below or run:
 #  make NATIVECODE="" <target>
-
+DEBUG=
 PROFIL=
-OCAMLOPT=$(if $(PROFIL),ocamloptp -p -P f,ocamlopt)
-OCAMLDEP=ocamldep -native
+OCAMLOPT=$(if $(PROFIL),ocamloptp -p -P f,$(if $(DEBUG), ocamlc -g,ocamlopt))
+OCAMLDEP=ocamldep $(if $(DEBUG), ,-native)
 OCAMLDOC=ocamldoc
 
+CMOX= $(if $(DEBUG),cmo,cmx)
+CMXA= $(if $(DEBUG),cma,cmxa)
 
 ### Compiler options
-INCLUDES_MOD = str.cmxa unix.cmxa
+INCLUDES_MOD = str.$(CMXA) unix.$(CMXA)
 INCLUDES = -I $(SOURCE)core_library -I $(SOURCE)subterms -I $(SOURCE)testing -I $(SOURCE)parser
 # Compiler options specific to OCaml version >= 4
 V4OPTIONS=$(if $(shell $(OCAMLOPT) -version | grep '^4'),-bin-annot)
@@ -43,9 +45,9 @@ ALL_ML = $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(SOURCE)main.ml $
 EXE_MAIN_ML = $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(SOURCE)main.ml
 EXE_TESTING_ML = $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(SOURCE)testing/testing.ml
 
-ALL_OBJ = $(ALL_ML:.ml=.cmx)
-EXE_MAIN_OBJ = $(EXE_MAIN_ML:.ml=.cmx)
-EXE_TESTING_OBJ = $(EXE_TESTING_ML:.ml=.cmx)
+ALL_OBJ = $(ALL_ML:.ml=.$(CMOX))
+EXE_MAIN_OBJ = $(EXE_MAIN_ML:.ml=.$(CMOX))
+EXE_TESTING_OBJ = $(EXE_TESTING_ML:.ml=.$(CMOX))
 
 .PHONY: clean debug without_debug testing without_testing
 
@@ -130,9 +132,9 @@ without_testing:
 
 ### Common rules
 
-.SUFFIXES: .ml .mli .cmx .cmi .mll .mly
+.SUFFIXES: .ml .mli .$(CMOX) .cmi .mll .mly
 
-.ml.cmx:
+.ml.$(CMOX):
 	$(OCAMLOPT) $(OCAMLFLAGS) -c $<
 
 .mli.cmi:

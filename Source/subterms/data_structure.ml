@@ -39,6 +39,7 @@ module SDF = struct
 
   type t =
     {
+      first_entry_recipe : recipe option;
       all_id : int list;
       last_entry_ground : bool;
       size : int;
@@ -49,6 +50,10 @@ module SDF = struct
   (******* Access ********)
 
   let cardinal sdf = sdf.size
+
+  let first_entry_recipe sdf = match sdf.first_entry_recipe with
+    | None ->  Config.internal_error "[Data_structure.ml >> first_entry] Should not apply first entry on an empty SDF."
+    | Some r -> r
 
   let first_entry sdf =
     try
@@ -353,7 +358,7 @@ module SDF = struct
 
   (******* Basic operations *********)
 
-  let empty = { size = 0 ; map = SDF_Map.empty; all_id = []; last_entry_ground = false; map_ground = SDF_Map.empty }
+  let empty = { size = 0 ; map = SDF_Map.empty; all_id = []; last_entry_ground = false; map_ground = SDF_Map.empty ; first_entry_recipe = None}
 
   let add sdf fct =
     Config.debug (fun () ->
@@ -387,26 +392,43 @@ module SDF = struct
     let recipe_ground = is_ground r
     and protocol_ground = is_ground t in
     let new_size = sdf.size + 1 in
-    if recipe_ground && protocol_ground
+    if sdf.size = 0
     then
-      { sdf with
-        size = new_size;
-        map_ground = SDF_Map.add new_size ({ g_var_type = k; g_fact = fct }) sdf.map_ground;
-        all_id = new_size::sdf.all_id;
-        last_entry_ground = true
-      }
+      begin
+        Config.debug (fun () ->
+          if k > 0
+          then Config.internal_error "[constraint_system.ml >> add] The first entry should be a public name."
+        );
+          {
+            sdf with
+            size = new_size;
+            map_ground = SDF_Map.add new_size ({ g_var_type = k; g_fact = fct }) sdf.map_ground;
+            all_id = [1];
+            last_entry_ground = true;
+            first_entry_recipe = Some r
+          }
+      end
     else
-      {
-        sdf with
-        size = new_size;
-        map = SDF_Map.add new_size ({ var_type = k; fact = fct ; protocol_ground = protocol_ground; recipe_ground = recipe_ground}) sdf.map;
-        all_id = new_size::sdf.all_id;
-        last_entry_ground = false
-      }
+      if recipe_ground && protocol_ground
+      then
+        { sdf with
+          size = new_size;
+          map_ground = SDF_Map.add new_size ({ g_var_type = k; g_fact = fct }) sdf.map_ground;
+          all_id = new_size::sdf.all_id;
+          last_entry_ground = true;
+        }
+      else
+        {
+          sdf with
+          size = new_size;
+          map = SDF_Map.add new_size ({ var_type = k; fact = fct ; protocol_ground = protocol_ground; recipe_ground = recipe_ground}) sdf.map;
+          all_id = new_size::sdf.all_id;
+          last_entry_ground = false
+        }
 
   let display out ?(rho = None) ?(per_line = 8) ?(tab = 0) sdf = match out with
     | Testing ->
-        if SDF_Map.is_empty sdf.map
+        if sdf.size = 0
         then emptyset Testing
         else
           begin
@@ -419,10 +441,17 @@ module SDF = struct
 
               incr current_number
             ) sdf.map;
+            SDF_Map.iter (fun _ cell ->
+              if !current_number < sdf.size
+              then str := Printf.sprintf "%s%s, " !str (Fact.display_deduction_fact Testing ~rho:rho cell.g_fact)
+              else str := Printf.sprintf "%s%s }" !str (Fact.display_deduction_fact Testing ~rho:rho cell.g_fact);
+
+              incr current_number
+            ) sdf.map_ground;
             !str
           end
     | Latex ->
-        if SDF_Map.is_empty sdf.map
+        if sdf.size = 0
         then emptyset Latex
         else
           begin
@@ -437,10 +466,19 @@ module SDF = struct
 
               incr current_number
             ) sdf.map;
+            SDF_Map.iter (fun _ cell ->
+              if !current_number >= sdf.size
+              then str := Printf.sprintf "%s%s \\end{array}\\right\\}" !str (Fact.display_deduction_fact Latex ~rho:rho cell.g_fact)
+              else if (!current_number / per_line)*per_line = !current_number
+              then str := Printf.sprintf "%s%s,\\\\" !str (Fact.display_deduction_fact Latex ~rho:rho cell.g_fact)
+              else str := Printf.sprintf "%s%s, " !str (Fact.display_deduction_fact Latex ~rho:rho cell.g_fact);
+
+              incr current_number
+            ) sdf.map_ground;
             !str
           end
     | HTML ->
-        if SDF_Map.is_empty sdf.map
+        if sdf.size = 0
         then emptyset HTML
         else
           begin
@@ -455,6 +493,15 @@ module SDF = struct
 
               incr current_number
             ) sdf.map;
+            SDF_Map.iter (fun _ cell ->
+              if !current_number >= sdf.size
+              then str := Printf.sprintf "%s%s</td></tr></table>" !str (Fact.display_deduction_fact HTML ~rho:rho cell.g_fact)
+              else if (!current_number / per_line)*per_line = !current_number
+              then str := Printf.sprintf "%s%s,</td></tr><tr><td>" !str (Fact.display_deduction_fact HTML ~rho:rho cell.g_fact)
+              else str := Printf.sprintf "%s%s, " !str (Fact.display_deduction_fact HTML ~rho:rho cell.g_fact);
+
+              incr current_number
+            ) sdf.map_ground;
             !str
           end
     | _ ->
@@ -471,6 +518,13 @@ module SDF = struct
 
                 incr current_number
               ) sdf.map;
+              SDF_Map.iter (fun _ cell ->
+                if !current_number < sdf.size
+                then str := Printf.sprintf "%s%s; " !str (Fact.display_deduction_fact out ~rho:rho cell.g_fact)
+                else str := Printf.sprintf "%s%s }" !str (Fact.display_deduction_fact out ~rho:rho cell.g_fact);
+
+                incr current_number
+              ) sdf.map_ground;
               !str
           | _ ->
               let tab_str_inside = create_tab (tab+1) in
@@ -485,6 +539,15 @@ module SDF = struct
 
                 incr current_number
               ) sdf.map;
+              SDF_Map.iter (fun _ cell ->
+                if !current_number >= sdf.size
+                then str := Printf.sprintf "%s%s\n%s}\n" !str (Fact.display_deduction_fact out ~rho:rho cell.g_fact) tab_str
+                else if (!current_number / per_line)*per_line = !current_number
+                then str := Printf.sprintf "%s%s,\n%s" !str (Fact.display_deduction_fact out cell.g_fact) tab_str_inside
+                else str := Printf.sprintf "%s%s, "!str (Fact.display_deduction_fact out ~rho:rho cell.g_fact);
+
+                incr current_number
+              ) sdf.map_ground;
               !str
         end
 
@@ -569,9 +632,10 @@ module DF = struct
     let result = ref None in
 
     try
-      DF_Map.iter (fun _ b_fct -> match f b_fct with
+      DF_Map.iter (fun _ b_fct ->
+        match f b_fct with
         | None -> ()
-        | Some a -> result := Some a; raise Found
+        | Some a -> (result := Some a; raise Found)
         ) df;
       !result
     with

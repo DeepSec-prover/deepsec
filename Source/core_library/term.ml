@@ -207,7 +207,7 @@ let display_var_name_for_HTML str index =
       let body = Str.matched_group 1 str in
       let number = Str.matched_group 2 str in
       Printf.sprintf "%s<sub>%s</sub>" body number
-    else Str.global_replace reg_latex_2 "\\_" str
+    else str
   else
     Printf.sprintf "%s<sub>%d</sub>" str index
 
@@ -307,7 +307,7 @@ module Variable = struct
       | Latex ->
           begin match at,v_type with
             | Recipe, true -> Printf.sprintf "%s\\text{:}%d" (display_var_name_for_latex x.label x.index) x.var_type
-            | _ , _ -> (display_var_name_for_latex x.label x.index)
+            | _ , _ -> display_var_name_for_latex x.label x.index
           end
 
   (******* Renaming *******)
@@ -1657,7 +1657,7 @@ module Subst = struct
     | Var(v1),Var(v2) ->
         begin match at with
           | Protocol ->
-              if v1.quantifier = Universal || (v1.quantifier = Existential && v2.quantifier = Free) || Variable.order at v1 v2 < 0
+              if v1.quantifier = Universal || (v1.quantifier = Existential && v2.quantifier = Free) || (v1.quantifier = v2.quantifier && Variable.order at v1 v2 < 0)
               then link at v1 t2
               else link at v2 t1
           | Recipe ->
@@ -1665,7 +1665,7 @@ module Subst = struct
               then link at v2 t1
               else if v1.var_type > v2.var_type
               then link at v1 t2
-              else if v1.quantifier = Universal || (v1.quantifier = Existential && v2.quantifier = Free) || Variable.order at v1 v2 < 0
+              else if v1.quantifier = Universal || (v1.quantifier = Existential && v2.quantifier = Free) || (v1.quantifier = v2.quantifier &&  Variable.order at v1 v2 < 0)
               then link at v1 t2
               else link at v2 t1
         end
@@ -2489,7 +2489,7 @@ module Fact = struct
 
   (********** Modification *********)
 
-  let apply (type a) (fct: a t) (psi: a formula) subst_fst subst_snd =
+  let apply (type a) (fct: a t) (psi: a formula)  (subst_snd : (snd_ord,axiom) Subst.t) (subst_fst : (fst_ord,name) Subst.t) =
     Config.debug (fun () ->
       if List.exists (fun (v,_) -> v.link <> NoLink) subst_fst
       then Config.internal_error "[term.ml >> Fact.apply] Variables in the domain should not be linked"
@@ -2539,7 +2539,7 @@ module Fact = struct
       List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
       raise Bot
 
-  let apply_snd_ord (type a) (fct: a t) (psi: a formula) subst_snd = match fct with
+  let apply_snd_ord (type a) (fct: a t) (psi: a formula) (subst_snd : (snd_ord,axiom) Subst.t) = match fct with
     | Deduction ->  ({ psi with head = Subst.apply subst_snd psi.head (fun d_fact f -> { d_fact with df_recipe = f d_fact.df_recipe }) }: a formula)
     | Equality -> ({ psi with head = Subst.apply subst_snd psi.head (fun d_fact f -> { ef_recipe_1 = f d_fact.ef_recipe_1; ef_recipe_2 = f d_fact.ef_recipe_2 }) }: a formula)
 
@@ -2592,7 +2592,7 @@ module Fact = struct
       List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
       raise Bot
 
-  let apply_snd_ord_on_fact (type a) (fct: a t) (fact: a) subst_snd = match fct with
+  let apply_snd_ord_on_fact (type a) (fct: a t) (fact: a) (subst_snd : (snd_ord,axiom) Subst.t) = match fct with
     | Deduction -> (Subst.apply subst_snd fact (fun fact f -> {fact with df_recipe = f fact.df_recipe}) : a)
     | Equality -> (Subst.apply subst_snd fact (fun fact f -> {ef_recipe_1 = f fact.ef_recipe_1; ef_recipe_2 = f fact.ef_recipe_2}) : a)
 

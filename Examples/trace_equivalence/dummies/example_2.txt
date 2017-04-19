@@ -1,0 +1,8 @@
+free c.
+free a.
+
+let P_1 = in(c,x); out(c,a)| in(c,y); out(c,a).
+
+let P_2 = in(c,x);out(c,a) | in(c,x); out(c,a).
+
+query trace_equiv(P_1,P_2).

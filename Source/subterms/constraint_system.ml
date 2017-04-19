@@ -770,6 +770,7 @@ exception Found_mgs of (snd_ord_variable * recipe) list * (fst_ord, name) Subst.
 
 let one_mgs csys =
   let rec apply_rules csys mgs fst_ord_mgs snd_ord_vars =
+
     let test_conseq basic_fct =
       let x_snd = BasicFact.get_snd_ord_variable basic_fct
       and msg = BasicFact.get_protocol_term basic_fct in
@@ -913,7 +914,8 @@ let one_mgs csys =
           else apply_rules csys' mgs' fst_ord_mgs' snd_ord_vars'
       | None ->
           begin match DF.find csys.simp_DF test_not_solved with
-            | None -> raise (Found_mgs (mgs,fst_ord_mgs,Set_Snd_Ord_Variable.elements snd_ord_vars,csys))
+            | None ->
+                raise (Found_mgs (mgs,fst_ord_mgs,Set_Snd_Ord_Variable.elements snd_ord_vars,csys))
             | Some basic_fct ->
                 SDF.iter_within_var_type (Variable.type_of (BasicFact.get_snd_ord_variable basic_fct)) csys.simp_SDF (apply_res basic_fct);
                 apply_cons basic_fct
@@ -954,10 +956,9 @@ let simple_of csys =
   }
 
 let rec add_uniformity_subterms unif_set recipe term =
-  if is_function recipe
+  if is_function recipe && Symbol.is_constructor (root recipe)
   then
     let symb = root recipe in
-
     if is_function term && Symbol.is_equal symb (root term)
     then
       let unif_set_1 = Uniformity_Set.add unif_set recipe term in
@@ -965,7 +966,8 @@ let rec add_uniformity_subterms unif_set recipe term =
       and args_t = get_args term in
       add_uniformity_subterms_list unif_set_1 args_r args_t
     else Config.internal_error "[constraint_system.ml >> add_uniformity_subterms] The recipe and term given as argument are not consequence."
-  else Uniformity_Set.add unif_set recipe term
+  else
+    Uniformity_Set.add unif_set recipe term
 
 and add_uniformity_subterms_list unif_set recipe_l term_l = match recipe_l, term_l with
   | [],[] -> unif_set
@@ -1907,7 +1909,6 @@ module Rule = struct
   (**** The rule SAT ****)
 
   let rec internal_sat csys_set continuation_func =
-
     try
       let rec explore_csys_set prev_csys_set = function
         | [] -> raise Rule_Not_applicable
@@ -2209,55 +2210,69 @@ module Rule = struct
               let fact = SDF.get csys.sdf id_sdf in
 
               let term = Fact.get_protocol_term fact in
-              let symb = root term in
-              let args = get_args term in
 
-              let univ_vars_snd = Variable.fresh_list Recipe Universal (Variable.snd_ord_type csys.size_frame) (Symbol.get_arity symb) in
+              if is_function term
+              then
+                begin
+                  let symb = root term in
+                  let args = get_args term in
 
-              let b_fct_list = List.map2 (fun x t -> BasicFact.create x t) univ_vars_snd args in
-              let head = Fact.create_equality_fact (Fact.get_recipe fact) (apply_function symb (List.map of_variable univ_vars_snd)) in
+                  let univ_vars_snd = Variable.fresh_list Recipe Universal (Variable.snd_ord_type csys.size_frame) (Symbol.get_arity symb) in
 
-              let form = Fact.create Fact.Equality head b_fct_list [] in
-              let (fst_renaming,snd_renaming,simple_csys) = simple_of_formula Fact.Equality csys form in
+                  let b_fct_list = List.map2 (fun x t -> BasicFact.create x t) univ_vars_snd args in
+                  let head = Fact.create_equality_fact (Fact.get_recipe fact) (apply_function symb (List.map of_variable univ_vars_snd)) in
 
-              Config.debug (fun () ->
-                if not (Variable.Renaming.is_identity fst_renaming)
-                then Config.internal_error "[Constraint_system.ml >> rule_equality_constructor] The renaming should be identity."
-              );
+                  let form = Fact.create Fact.Equality head b_fct_list [] in
+                  let (fst_renaming,snd_renaming,simple_csys) = simple_of_formula Fact.Equality csys form in
 
-              try
-                let ((mgs,l_vars), _, _) = one_mgs simple_csys in
-                (* Need to restrict the mgs  to the variables of the constraint system *)
+                  Config.debug (fun () ->
+                    if not (Variable.Renaming.is_identity fst_renaming)
+                    then Config.internal_error "[Constraint_system.ml >> rule_equality_constructor] The renaming should be identity."
+                  );
 
-                Config.debug (fun () ->
-                  if List.exists (fun x -> Variable.type_of x = csys.size_frame) l_vars
-                  then Config.internal_error "[Constraint_system.ml >> rule_equality_constructor] The list l_vars should not contain second-order variable with the maximal type var."
-                );
+                  try
+                    let ((mgs,l_vars), _, _) = one_mgs simple_csys in
+                    (* Need to restrict the mgs  to the variables of the constraint system *)
+                    Config.debug (fun () ->
+                      if List.exists (fun x -> Variable.type_of x = csys.size_frame) l_vars
+                      then Config.internal_error "[Constraint_system.ml >> rule_equality_constructor] The list l_vars should not contain second-order variable with the maximal type var."
+                    );
 
-                let mgs_csys, mgs_form = Subst.split_domain mgs (fun x -> Variable.type_of x <> csys.size_frame) in
+                    let mgs_csys, mgs_form = Subst.split_domain mgs (fun x -> Variable.type_of x <> csys.size_frame) in
 
-                let mgs_form_univ = Subst.compose_restricted (Subst.of_renaming snd_renaming) mgs_form in
+                    let mgs_form_univ = Subst.compose_restricted (Subst.of_renaming snd_renaming) mgs_form in
 
-                Config.debug (fun () ->
-                  if List.exists (fun x -> not (Subst.is_in_domain mgs x)) univ_vars_snd || Subst.fold (fun b x _ -> b || List.for_all (fun y -> not (Variable.is_equal x y)) univ_vars_snd) false mgs_form_univ
-                  then Config.internal_error "[Constraint_system.ml >> rule_equality_constructor] The list univ_vars_snd should be equal to the domain of the mgs."
-                );
+                    Config.debug (fun () ->
+                      if List.exists (fun x -> not (Subst.is_in_domain mgs_form_univ x)) univ_vars_snd || Subst.fold (fun b x _ -> b || List.for_all (fun y -> not (Variable.is_equal x y)) univ_vars_snd) false mgs_form_univ
+                      then Config.internal_error "[Constraint_system.ml >> rule_equality_constructor] The list univ_vars_snd should be equal to the domain of the mgs."
+                    );
 
-                (Some (mgs_csys, l_vars, id_sdf, mgs_form_univ, univ_vars_snd, symb)), (csys::q_csys_set)@explored_csys_set
-              with
-                | Not_found ->
-                    explore_csys explored_csys_set (
-                      { csys with
-                        equality_constructor_to_checked = List.tl csys.equality_constructor_to_checked;
-                        equality_constructor_checked = id_sdf::csys.equality_constructor_checked
-                      } ::q_csys_set
-                    )
+                    (Some (mgs_csys, l_vars, id_sdf, mgs_form_univ, univ_vars_snd, symb)), (csys::q_csys_set)@explored_csys_set
+                  with
+                    | Not_found ->
+                        explore_csys explored_csys_set (
+                          { csys with
+                            equality_constructor_to_checked = List.tl csys.equality_constructor_to_checked;
+                            equality_constructor_checked = id_sdf::csys.equality_constructor_checked
+                          } ::q_csys_set
+                        )
+                end
+              else
+                explore_csys explored_csys_set (
+                  { csys with
+                    equality_constructor_to_checked = List.tl csys.equality_constructor_to_checked;
+                    equality_constructor_checked = csys.equality_constructor_checked
+                  } ::q_csys_set
+                )
             end
     in
 
     match explore_csys [] csys_set with
       | None, csys_set_1 -> continuation_func.not_applicable csys_set_1
       | Some (mgs_csys, l_vars, id_sdf, mgs_form_univ, univ_vars_snd, symb), csys_set_1 ->
+
+
+
           let id_recipe_eq = fresh_id_recipe_equivalent () in
 
           if Subst.is_identity mgs_csys
@@ -2546,6 +2561,7 @@ module Rule = struct
 
                       begin try
                         List.iter (fun ((mgs,l_vars), fst_subst_mgs, simple_csys_mgs) ->
+
                           let rho_fst_subst_mgs = Subst.compose_restricted (Subst.of_renaming fst_renaming) fst_subst_mgs in
                           let new_preliminary_term = Subst.apply rho_fst_subst_mgs preliminary_term (fun t f -> f t) in
 
@@ -2557,10 +2573,10 @@ module Rule = struct
 
                                 let new_mgs_form =  Subst.compose_restricted (Subst.of_renaming snd_renaming) mgs_form in
 
-                                let eq_name = List.map (fun x -> (x, of_axiom (Axiom.create 0))) l_vars_form in
+                                let eq_name = List.map (fun x -> (x,  SDF.first_entry_recipe simple_csys_mgs.simp_SDF)) l_vars_form in
                                 let eq_name_2 = Subst.fold (fun eq _ r ->
                                   if is_variable r && Variable.type_of (variable_of r) = csys.size_frame
-                                  then (variable_of r, of_axiom (Axiom.create 0))::eq
+                                  then (variable_of r, SDF.first_entry_recipe simple_csys_mgs.simp_SDF)::eq
                                   else eq
                                 ) eq_name new_mgs_form
                                 in
