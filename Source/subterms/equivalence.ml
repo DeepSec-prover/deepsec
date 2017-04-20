@@ -13,24 +13,88 @@ type symbolic_process =
     trace : Trace.t;
   }
 
+(*let completed_trace = Array.make 50 0
+
+let started_trace = Array.make 50 0
+
+let show_trace =
+  let acc = ref 0 in
+  let f () =
+    if (!acc / 10) * 10 = !acc
+    then
+      begin
+        Printf.printf "\n\nCounter:%d\n" !acc;
+        Printf.printf "Started_trace: [";
+        for i = 0 to 30 do
+        Printf.printf "%d; " started_trace.(i);
+        done;
+        Printf.printf "]\nCompleted_trace [";
+        for i = 0 to 30 do
+        Printf.printf "%d; " completed_trace.(i);
+        done;
+        Printf.printf "]\n\n";
+        flush_all ()
+      end;
+    incr acc
+  in
+  f
+
+let start_trace size_symbolic =
+  started_trace.(size_symbolic) <- started_trace.(size_symbolic) + 1;
+  show_trace ()
+
+let complete_trace size_symbolic =
+  completed_trace.(size_symbolic) <- completed_trace.(size_symbolic) + 1;
+  show_trace ()
+
+let counter_process = ref 1
+
+let test_js = open_out "test.js"
+let test_load_js = open_out "test_load.js"
+let test_html = open_out "test_html.html"
+
+
+let print_script () =
+  Printf.fprintf test_load_js "\nvar height_%de0 = 0;\n" !counter_process;
+  Printf.fprintf test_load_js "var width_%de0 = 0;\n" !counter_process;
+  Printf.fprintf test_load_js "window.loadData%de0e0 = function (data) {\n"!counter_process;
+  Printf.fprintf test_load_js "    DAG.displayGraph(data, jQuery('#dag-%de0e0 > svg'), %d, 0, 0);\n"  !counter_process !counter_process;
+  Printf.fprintf test_load_js "};\n"*)
+
 exception Not_Trace_Equivalent of symbolic_process Constraint_system.t
 
-let rec apply_transition_and_rules_classic csys_set size_frame =
+let rec apply_transition_and_rules_classic size_symbolic csys_set size_frame =
+
+  (*start_trace size_symbolic;*)
 
   let opti_csys_set = Constraint_system.Set.optimise_snd_ord_recipes csys_set in
 
   (*** Generate the set for the next input ***)
 
+  (*Printf.printf "Starting generation next input\n";
+  flush_all ();
+*)
   let csys_set_for_input = ref Constraint_system.Set.empty in
 
   let var_X_ch = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
   let var_X_var = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
 
   Constraint_system.Set.iter (fun csys ->
+
     let symb_proc = Constraint_system.get_additional_data csys in
     let fst_subst = Constraint_system.get_substitution_solution Protocol csys in
 
     next_input Classic Trace_Equivalence symb_proc.current_process fst_subst (fun proc in_gathering ->
+      (*let html,js = Process.display_process_HTML (Printf.sprintf "%de0e0" !counter_process) proc in
+      Printf.fprintf test_js "%s\n" js;
+      print_script ();
+      Printf.fprintf test_html "<div>%s</div>\n\n" html;
+      flush_all ();
+      incr counter_process;
+      let _ = read_line () in
+
+      show_trace ();
+      *)
       let ded_fact_ch = BasicFact.create var_X_ch in_gathering.in_channel
       and ded_fact_term = BasicFact.create var_X_var (of_variable in_gathering.in_variable) in
 
@@ -85,7 +149,11 @@ let rec apply_transition_and_rules_classic csys_set size_frame =
       let origin_process = (Constraint_system.get_additional_data csys).origin_process in
       if Constraint_system.Set.for_all (fun csys -> (Constraint_system.get_additional_data csys).origin_process = origin_process) csys_set
       then raise (Not_Trace_Equivalent csys)
-      else apply_transition_and_rules_classic csys_set size_frame
+      else
+        begin
+
+          apply_transition_and_rules_classic (size_symbolic+1) csys_set size_frame
+        end
   in
 
   apply_sat !csys_set_for_input;
@@ -179,8 +247,9 @@ let rec apply_transition_and_rules_classic csys_set size_frame =
       let origin_process = (Constraint_system.get_additional_data csys).origin_process in
       if Constraint_system.Set.for_all (fun csys -> (Constraint_system.get_additional_data csys).origin_process = origin_process) csys_set
       then raise (Not_Trace_Equivalent csys)
-      else apply_transition_and_rules_classic csys_set (size_frame + 1)
+      else apply_transition_and_rules_classic (size_symbolic+1) csys_set (size_frame + 1)
   in
+
 
   apply_sat !csys_set_for_output
 
@@ -205,7 +274,7 @@ let trace_equivalence_classic proc1 proc2 =
       trace = Trace.empty
     }
   in
-
+  
   let free_names_1 = Process.get_names_with_list proc1 (fun b -> b = Public) [] in
   let free_names_2 = Process.get_names_with_list proc2 (fun b -> b = Public) free_names_1 in
 
@@ -220,7 +289,7 @@ let trace_equivalence_classic proc1 proc2 =
   let csys_set_2 = Constraint_system.Set.add csys_2 csys_set_1 in
 
   try
-    apply_transition_and_rules_classic csys_set_2 0;
+    apply_transition_and_rules_classic 0 csys_set_2 0;
     Equivalent
   with
     | Not_Trace_Equivalent csys -> Not_Equivalent csys
@@ -408,6 +477,7 @@ let publish_trace_equivalence_result id sem proc1 proc2 result =
 
   display_process out_dag html_dag_proc_1 html_dag_proc_2;
   display_process out_classic html_classic_proc_1 html_classic_proc_2;
+
 
   begin match attack_op with
     | None ->

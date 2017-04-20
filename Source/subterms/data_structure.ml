@@ -1,5 +1,6 @@
 open Term
 open Display
+open Extension
 
 (************************
 ***       SDF      ***
@@ -829,7 +830,7 @@ module UF = struct
           | Some _, Some _ -> Config.internal_error "[Data_structure.ml >> UF.filter] There can't be deduction facts at the same time solved and unsolved."
           | Some (_,form), None when not (f form) -> { uf with solved_ded_formula = None }
           | None, Some (id,form_list) ->
-              let result = List.filter f form_list in
+              let result = List.filter_unordered f form_list in
               if result = []
               then { uf with unsolved_ded_formula = None }
               else { uf with unsolved_ded_formula = Some (id, result) }

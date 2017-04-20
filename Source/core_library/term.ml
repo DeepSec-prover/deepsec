@@ -1,4 +1,5 @@
 open Display
+open Extension
 
 (************************
 ***       Types       ***
@@ -351,7 +352,6 @@ module Variable = struct
       | Var _ -> Config.internal_error "[Variable.Renaming >> follow_link] Unexpected link"
       | term -> term
 
-
     (****** Generation *******)
 
     let intersect_domain rho_1 rho_2 =
@@ -440,7 +440,7 @@ module Variable = struct
 
     let not_in_domain rho v_list =
       List.iter (fun (v,_) -> v.link <- FLink) rho;
-      let result = List.filter (fun v -> v.link = NoLink) v_list in
+      let result = List.filter_unordered (fun v -> v.link = NoLink) v_list in
       List.iter (fun (v,_) -> v.link <- NoLink) rho;
       result
 
@@ -520,7 +520,7 @@ module Variable = struct
         List.iter (fun (v,_) -> v.link <- NoLink) rho;
         raise exc
 
-    let inverse rho = List.map (fun (x,y) -> (y,x)) rho
+    let inverse rho = List.fold_left (fun acc (x,y) -> (y,x)::acc) [] rho
 
     let rec rename_term : 'a 'b. ('a,'b) atom -> quantifier -> 'a -> ('a,'b) term -> ('a,'b) term = fun (type a) (type b) (at:(a,b) atom) quantifier (ord_type:a) (t:(a,b) term) -> match t with
       | Var(v) ->
@@ -639,7 +639,7 @@ module Name = struct
     let identity = []
 
     let fresh name_list bound =
-      List.map (fun x -> (x, fresh bound)) name_list
+      List.fold_left (fun acc x -> (x, fresh bound)::acc) [] name_list
 
     let compose rho n1 n2 =
       Config.debug (fun () ->
@@ -1454,9 +1454,9 @@ module Subst = struct
     );
     subst1@subst2
 
-  let of_renaming rho = List.map (fun (x,y) -> (x,Var y)) rho
+  let of_renaming rho = List.fold_left (fun acc (x,y) -> (x,Var y)::acc) [] rho
 
-  let equations_of subst = List.map (fun (x,t) -> (Var x, t)) subst
+  let equations_of subst = List.fold_left (fun acc (x,t) -> (Var x, t)::acc) [] subst
 
   let rec apply_on_term term = match term with
     | Func(f,args) -> Func(f, List.map apply_on_term args)
@@ -1539,14 +1539,14 @@ module Subst = struct
     );
 
     let subst = apply subst_2 subst_1 (fun s f ->
-        List.map (fun (x,t) -> (x,f t)) s) in
+        List.fold_left (fun acc (x,t) -> (x,f t)::acc) [] s) in
 
     Config.debug (fun () ->
       if List.exists (fun (x,_) -> List.exists (fun (_,t) -> var_occurs x t) subst) subst
       then Config.internal_error "[term.ml >> Subst.compose] The resulting substution is not acyclic"
     );
 
-    subst @ subst_2
+    List.fold_left (fun acc (x,t) -> (x,t)::acc) subst subst_2
 
   let compose_restricted subst_1 subst_2 =
     Config.debug (fun () ->
@@ -1555,7 +1555,7 @@ module Subst = struct
     );
 
     let subst = apply subst_2 subst_1 (fun s f ->
-        List.map (fun (x,t) -> (x,f t)) s) in
+        List.fold_left (fun acc (x,t) -> (x,f t)::acc) [] s) in
 
     Config.debug (fun () ->
       if List.exists (fun (x,_) -> List.exists (fun (_,t) -> var_occurs x t) subst) subst
@@ -1571,22 +1571,22 @@ module Subst = struct
     );
 
     let subst = apply subst_2 subst_1 (fun s f ->
-        List.map (fun (x,t) -> (x,f t)) s) in
+        List.fold_left (fun acc (x,t) -> (x,f t)::acc) [] s) in
 
     Config.debug (fun () ->
       if List.exists (fun (x,_) -> List.exists (fun (_,t) -> var_occurs x t) subst) subst
       then Config.internal_error "[term.ml >> Subst.compose_restricted_generic] The resulting substution is not acyclic"
     );
 
-    subst @ (List.filter (fun (x,_) -> f x) subst_2)
+    List.fold_left (fun acc (x,t) -> if f x then (x,t)::acc else acc) subst subst_2
 
   let restrict subst f =
-    List.filter (fun (x,_) -> f x) subst
+    List.filter_unordered (fun (x,_) -> f x) subst
 
   let is_extended_by (type a) (type b) (at:(a,b) atom) (subst_1:(a,b) t) (subst_2:(a,b) t) =
 
     let subst = apply subst_2 subst_1 (fun s f ->
-        List.map (fun (x,t) -> (x,f t)) s) in
+        List.fold_left (fun acc (x,t) -> (x,f t)::acc) [] s) in
 
     List.iter (fun (x,t) -> x.link <- TLink t) subst;
 
@@ -1692,7 +1692,7 @@ module Subst = struct
 
     try
       List.iter (fun (t1,t2) -> unify_term at t1 t2) eq_list;
-      let subst = List.map (fun var -> (var,follow_link (Var var))) (retrieve at) in
+      let subst = List.fold_left (fun acc var -> (var,follow_link (Var var))::acc) [] (retrieve at) in
       cleanup at;
       Config.test (fun () -> test_unify at eq_list (Some subst));
       subst
@@ -1917,9 +1917,9 @@ module Diseq = struct
         );
 
 
-        let subst = List.map (fun (t1,t2) -> variable_of t1, rename_universal_to_existential at t2) diseq in
+        let subst = List.fold_left (fun acc (t1,t2) -> (variable_of t1, rename_universal_to_existential at t2)::acc) [] diseq in
 
-        let renaming = List.map (fun var -> (var,Variable.Renaming.apply_variable var)) (Variable.Renaming.retrieve at) in
+        let renaming = List.fold_left (fun acc var -> (var,Variable.Renaming.apply_variable var)::acc) [] (Variable.Renaming.retrieve at) in
         Variable.Renaming.cleanup at;
         subst, renaming
 
@@ -2309,14 +2309,14 @@ module Fact = struct
       begin match fct with
         | Deduction ->
             let new_head = { head with df_term = Subst.follow_link head.df_term }
-            and new_b_fct_list = List.map (fun b_fct -> { b_fct with BasicFact.term = Subst.follow_link b_fct.BasicFact.term}) b_fct_list
+            and new_b_fct_list = List.fold_left  (fun acc b_fct -> { b_fct with BasicFact.term = Subst.follow_link b_fct.BasicFact.term}::acc) [] b_fct_list
             and subst = List.fold_left (fun acc var -> if var.quantifier = Universal then acc else (var,Subst.follow_link (Var var))::acc ) [] (Subst.retrieve Protocol) in
 
             Subst.cleanup Protocol;
             ({ head = new_head; ded_fact_list = new_b_fct_list; equation_subst = subst }: a formula)
         | Equality ->
-            let new_b_fct_list = List.map (fun b_fct -> { b_fct with BasicFact.term = Subst.follow_link b_fct.BasicFact.term}) b_fct_list
-            and subst = List.map (fun var -> (var,Subst.follow_link (Var var))) (Subst.retrieve Protocol) in
+            let new_b_fct_list = List.fold_left (fun acc b_fct -> { b_fct with BasicFact.term = Subst.follow_link b_fct.BasicFact.term}::acc) [] b_fct_list
+            and subst = List.fold_left (fun acc var -> (var,Subst.follow_link (Var var))::acc) [] (Subst.retrieve Protocol) in
             Subst.cleanup Protocol;
             ({ head = head; ded_fact_list = new_b_fct_list; equation_subst = subst }: a formula)
       end
@@ -2504,8 +2504,8 @@ module Fact = struct
       begin match fct with
         | Deduction ->
             let head = { psi.head with df_term = Subst.follow_link psi.head.df_term }
-            and ded_fact_list = List.map (fun b_fact -> { b_fact with BasicFact.term = Subst.follow_link b_fact.BasicFact.term }) psi.ded_fact_list
-            and equation_subst = List.map (fun var -> (var,Subst.follow_link (Var var))) (Subst.retrieve Protocol) in
+            and ded_fact_list = List.fold_left (fun acc b_fact -> { b_fact with BasicFact.term = Subst.follow_link b_fact.BasicFact.term }::acc) [] psi.ded_fact_list
+            and equation_subst = List.fold_left (fun acc var -> (var,Subst.follow_link (Var var))::acc) [] (Subst.retrieve Protocol) in
 
             let psi_1 = { head = head; ded_fact_list = ded_fact_list; equation_subst = equation_subst } in
 
@@ -2519,8 +2519,8 @@ module Fact = struct
             ({ psi_1 with head = Subst.apply subst_snd psi_1.head (fun d_fact f -> { d_fact with df_recipe = f d_fact.df_recipe }) }: a formula)
 
         | Equality ->
-            let ded_fact_list = List.map (fun b_fact -> { b_fact with BasicFact.term = Subst.follow_link b_fact.BasicFact.term }) psi.ded_fact_list
-            and equation_subst = List.map (fun var -> (var,Subst.follow_link (Var var))) (Subst.retrieve Protocol) in
+            let ded_fact_list = List.fold_left (fun acc b_fact -> { b_fact with BasicFact.term = Subst.follow_link b_fact.BasicFact.term }::acc) [] psi.ded_fact_list
+            and equation_subst = List.fold_left (fun acc var -> (var,Subst.follow_link (Var var))::acc) [] (Subst.retrieve Protocol) in
 
             let psi_1 = { psi with ded_fact_list = ded_fact_list; equation_subst = equation_subst } in
 
@@ -2559,8 +2559,8 @@ module Fact = struct
       begin match fct with
         | Deduction ->
             let head = { psi.head with df_term = Subst.follow_link psi.head.df_term }
-            and ded_fact_list = List.map (fun b_fact -> { b_fact with BasicFact.term = Subst.follow_link b_fact.BasicFact.term }) psi.ded_fact_list
-            and equation_subst = List.map (fun var -> (var,Subst.follow_link (Var var))) (Subst.retrieve Protocol) in
+            and ded_fact_list = List.fold_left (fun acc b_fact -> { b_fact with BasicFact.term = Subst.follow_link b_fact.BasicFact.term }::acc) [] psi.ded_fact_list
+            and equation_subst = List.fold_left (fun acc var -> (var,Subst.follow_link (Var var))::acc) [] (Subst.retrieve Protocol) in
 
             let psi_1 = { head = head; ded_fact_list = ded_fact_list; equation_subst = equation_subst } in
 
@@ -2574,8 +2574,8 @@ module Fact = struct
             (psi_1: a formula)
 
         | Equality ->
-            let ded_fact_list = List.map (fun b_fact -> { b_fact with BasicFact.term = Subst.follow_link b_fact.BasicFact.term }) psi.ded_fact_list
-            and equation_subst = List.map (fun var -> (var,Subst.follow_link (Var var))) (Subst.retrieve Protocol) in
+            let ded_fact_list = List.fold_left (fun acc b_fact -> { b_fact with BasicFact.term = Subst.follow_link b_fact.BasicFact.term }::acc) [] psi.ded_fact_list
+            and equation_subst = List.fold_left (fun acc var -> (var,Subst.follow_link (Var var))::acc) [] (Subst.retrieve Protocol) in
 
             let psi_1 = { psi with ded_fact_list = ded_fact_list; equation_subst = equation_subst } in
 
@@ -2834,7 +2834,7 @@ module Rewrite_rules = struct
     | Destructor rw_rules ->
         let accumulator = ref [] in
         let fresh_rw_rules =
-          List.map (fun (lhs,rhs) ->
+          List.fold_left (fun acc (lhs,rhs) ->
             Config.debug (fun () ->
               if !Variable.Renaming.linked_variables_fst <> []
               then Config.internal_error "[term.ml >> Rewrite_rules.skeletons] The list of linked variables for renaming should be empty"
@@ -2844,8 +2844,8 @@ module Rewrite_rules = struct
             let rhs' = Variable.Renaming.rename_term Protocol Existential Variable.fst_ord_type rhs in
 
             Variable.Renaming.cleanup Protocol;
-            (lhs',rhs')
-          ) rw_rules
+            (lhs',rhs')::acc
+          ) [] rw_rules
         in
 
         List.iter (fun (args,r) ->

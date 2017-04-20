@@ -722,7 +722,7 @@ type simple_constraint_system = basic_deduction_fact list * equation list list t
 
 let parse_constraint_system (frame,df,eq1,eq2,sdf,uf,sub1,sub2,uni,il1,il2,il3,is1,is2) =
   Constraint_system.create
-    (parse_term_list Term.Protocol frame)
+    (List.length (parse_term_list Term.Protocol frame))
     (parse_DF df)
     (parse_Eq Term.Protocol eq1)
     (parse_Eq Term.Recipe eq2)
