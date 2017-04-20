@@ -3478,10 +3478,13 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
 
     and mem_term recipe = match recipe with
       | Func(f,args_r) when Symbol.is_constructor f ->
-          begin match mem_list args_r with
-            | None -> None
-            | Some t_l -> Some (Func(f,t_l))
-          end
+          if f.arity = 0
+          then Some (Func(f,[]))
+          else
+            begin match mem_list args_r with
+              | None -> None
+              | Some t_l -> Some (Func(f,t_l))
+            end
       | Func(_,_) | AxName _ -> SDF.find sdf (fun fct -> if is_equal Recipe fct.Fact.df_recipe recipe then Some fct.Fact.df_term else None)
       | Var v -> DF.find_within_var_type (Variable.type_of v) df (fun b_fct -> if Variable.is_equal b_fct.BasicFact.var v then Some b_fct.BasicFact.term else None)
 
@@ -3509,6 +3512,7 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
           end
 
     and mem_term pterm = match pterm with
+      | Func(f,_) when f.arity = 0 -> Some (Func(f,[]))
       | Func(f,args_t) ->
           begin match mem_list args_t with
             | None ->
@@ -3568,10 +3572,13 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
 
     and mem_term recipe = match recipe with
       | Func(f,args_r) when Symbol.is_constructor f ->
-          begin match mem_list args_r with
-            | None -> None
-            | Some t_l -> Some (Func(f,t_l))
-          end
+          if f.arity = 0
+          then Some (Func(f,[]))
+          else
+            begin match mem_list args_r with
+              | None -> None
+              | Some t_l -> Some (Func(f,t_l))
+            end
       | Func(_,_) | AxName _ -> SDF.find sdf (fun fct -> if is_equal Recipe fct.Fact.df_recipe recipe then Some fct.Fact.df_term else None)
       | Var v ->
           begin try
@@ -3605,6 +3612,7 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
           end
 
     and mem_term pterm = match pterm with
+      | Func(f,_) when f.arity = 0 -> Some (Func(f,[]))
       | Func(f,args_t) ->
           begin match mem_list args_t with
             | None ->
@@ -3720,26 +3728,29 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
               end
           end
 
-    and mem_term pterm =
-      match Uni.find_protocol_term uni pterm (fun _ -> true) with
-        | None ->
-            begin match pterm with
-              | Func(f,args_t) ->
-                  begin match mem_list args_t with
-                    | None ->
-                        begin match SDF.find sdf (fun fct -> if is_equal Protocol fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
-                          | None -> DF.find df (fun b_fct -> if is_equal Protocol b_fct.BasicFact.term pterm then Some (Var b_fct.BasicFact.var) else None)
-                          | Some r -> Some r
-                        end
-                    | Some t_r -> Some (Func(f,t_r))
-                  end
-              | _ ->
-                  begin match SDF.find sdf (fun fct -> if is_equal Protocol fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
-                    | None -> DF.find df (fun b_fct -> if is_equal Protocol b_fct.BasicFact.term pterm then Some (Var b_fct.BasicFact.var) else None)
-                    | Some r -> Some r
-                  end
-            end
-        | Some recipe -> Some recipe
+    and mem_term pterm = match pterm with
+      | Func(f,_) when f.arity = 0 -> Some (Func(f,[]))
+      | _ ->
+          begin match Uni.find_protocol_term uni pterm (fun _ -> true) with
+            | None ->
+                begin match pterm with
+                  | Func(f,args_t) ->
+                      begin match mem_list args_t with
+                        | None ->
+                            begin match SDF.find sdf (fun fct -> if is_equal Protocol fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
+                              | None -> DF.find df (fun b_fct -> if is_equal Protocol b_fct.BasicFact.term pterm then Some (Var b_fct.BasicFact.var) else None)
+                              | Some r -> Some r
+                            end
+                        | Some t_r -> Some (Func(f,t_r))
+                      end
+                  | _ ->
+                      begin match SDF.find sdf (fun fct -> if is_equal Protocol fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
+                        | None -> DF.find df (fun b_fct -> if is_equal Protocol b_fct.BasicFact.term pterm then Some (Var b_fct.BasicFact.var) else None)
+                        | Some r -> Some r
+                      end
+                end
+            | Some recipe -> Some recipe
+          end
     in
 
     let result = mem_term term in

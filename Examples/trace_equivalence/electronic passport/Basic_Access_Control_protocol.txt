@@ -57,5 +57,3 @@ let system2(error_mac) =
 
 
 query trace_equiv(system1(Error_6300),system2(Error_6300)).
-
-query trace_equiv(system1(Error_6A80),system2(Error_6A80)).

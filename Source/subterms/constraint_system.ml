@@ -656,40 +656,67 @@ let mgs csys =
       else
         let symb = root term in
         let arity = Symbol.get_arity symb in
-        let args_of_term = get_args term in
 
-        let vars_snd = Variable.fresh_list Recipe Existential (Variable.snd_ord_type (Variable.type_of x_snd)) arity in
-        let vars_snd_as_term = List.map of_variable vars_snd in
+        if arity = 0
+        then
+          begin
+            let recipe = apply_function symb [] in
+            let subst = Subst.create Recipe x_snd recipe in
+            let df_1 = DF.remove csys.simp_DF x_snd in
+            let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity in
+            let csys' =
+              { csys with
+                  simp_DF = df_1;
+                  simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst;
+                  simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
+                  simp_Sub_Cons = sub_cons_1
+              }
+            in
 
-        let recipe = apply_function symb vars_snd_as_term in
-        let subst = Subst.create Recipe x_snd recipe in
-
-        let ded_fact_list = List.map2 BasicFact.create vars_snd args_of_term in
-
-        let df_1 = DF.remove csys.simp_DF x_snd in
-        let df_2 = List.fold_left (fun df b_fct -> DF.add df b_fct) df_1 ded_fact_list in
-
-        let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity in
-        let sub_cons_2 = List.fold_left2 (fun subc x t -> Uniformity_Set.add subc x t) sub_cons_1  vars_snd_as_term args_of_term in
-
-        let csys' = { csys with
-            simp_DF = df_2;
-            simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst;
-            simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
-            simp_Sub_Cons = sub_cons_2
-          }
-        in
-
-        (* Check that eqsnd is not bot and that the normalisation rule for unification is not triggered *)
-
-        if Eq.is_bot csys'.simp_EqSnd || is_uniformity_rule_applicable_simple csys'
-        then ()
+            if Eq.is_bot csys'.simp_EqSnd || is_uniformity_rule_applicable_simple csys'
+            then ()
+            else
+              let mgs' = Subst.apply subst mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
+              and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_snd snd_ord_vars in
+              apply_rules csys' mgs' fst_ord_mgs snd_ord_vars'
+          end
         else
-          let mgs' = Subst.apply subst mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
-          and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_snd snd_ord_vars in
-          let snd_ord_vars'' = List.fold_left (fun set x -> Set_Snd_Ord_Variable.add x set) snd_ord_vars' vars_snd in
+          begin
+            let args_of_term = get_args term in
 
-          apply_rules csys' mgs' fst_ord_mgs snd_ord_vars''
+            let vars_snd = Variable.fresh_list Recipe Existential (Variable.snd_ord_type (Variable.type_of x_snd)) arity in
+            let vars_snd_as_term = List.map of_variable vars_snd in
+
+            let recipe = apply_function symb vars_snd_as_term in
+            let subst = Subst.create Recipe x_snd recipe in
+
+            let ded_fact_list = List.map2 BasicFact.create vars_snd args_of_term in
+
+            let df_1 = DF.remove csys.simp_DF x_snd in
+            let df_2 = List.fold_left (fun df b_fct -> DF.add df b_fct) df_1 ded_fact_list in
+
+            let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity in
+            let sub_cons_2 = List.fold_left2 (fun subc x t -> Uniformity_Set.add subc x t) sub_cons_1  vars_snd_as_term args_of_term in
+
+            let csys' = { csys with
+                simp_DF = df_2;
+                simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst;
+                simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
+                simp_Sub_Cons = sub_cons_2
+              }
+            in
+
+            (* Check that eqsnd is not bot and that the normalisation rule for unification is not triggered *)
+
+            if Eq.is_bot csys'.simp_EqSnd || is_uniformity_rule_applicable_simple csys'
+            then ()
+            else
+              let mgs' = Subst.apply subst mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
+              and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_snd snd_ord_vars in
+              let snd_ord_vars'' = List.fold_left (fun set x -> Set_Snd_Ord_Variable.add x set) snd_ord_vars' vars_snd in
+
+              apply_rules csys' mgs' fst_ord_mgs snd_ord_vars''
+          end
     in
 
 
@@ -701,10 +728,7 @@ let mgs csys =
           else apply_rules csys' mgs' fst_ord_mgs' snd_ord_vars'
       | None ->
           begin match DF.find csys.simp_DF test_not_solved with
-            | None ->
-                if List.exists (fun (_,fst_ord_mgs',_,_) -> Subst.is_equal_equations Protocol fst_ord_mgs fst_ord_mgs') !accumulator
-                then ()
-                else accumulator := (mgs,fst_ord_mgs,Set_Snd_Ord_Variable.elements snd_ord_vars,csys) :: !accumulator
+            | None -> accumulator := (mgs,fst_ord_mgs,Set_Snd_Ord_Variable.elements snd_ord_vars,csys) :: !accumulator
             | Some basic_fct ->
                 SDF.iter_within_var_type (Variable.type_of (BasicFact.get_snd_ord_variable basic_fct)) csys.simp_SDF (apply_res basic_fct);
                 apply_cons basic_fct
@@ -839,38 +863,68 @@ let one_mgs csys =
         let symb = root term in
         let arity = Symbol.get_arity symb in
 
-        let vars_snd = Variable.fresh_list Recipe Existential (Variable.snd_ord_type (Variable.type_of x_snd)) arity in
-        let vars_snd_as_term = List.map of_variable vars_snd in
+        if arity = 0
+        then
+          begin
+            let recipe = apply_function symb [] in
+            let subst = Subst.create Recipe x_snd recipe in
+            let df_1 = DF.remove csys.simp_DF x_snd in
+            let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity in
+            let csys' =
+              { csys with
+                simp_DF = df_1;
+                simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst;
+                simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
+                simp_Sub_Cons = sub_cons_1
+              }
+            in
 
-        let recipe = apply_function symb vars_snd_as_term in
-        let subst = Subst.create Recipe x_snd recipe in
+            (* Check that eqsnd is not bot and that the normalisation rule for unification is not triggered *)
 
-        let ded_fact_list = List.map2 BasicFact.create vars_snd (get_args term) in
+            if Eq.is_bot csys'.simp_EqSnd || is_uniformity_rule_applicable_simple csys'
+            then ()
+            else
+              let mgs' = Subst.apply subst mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
+              and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_snd snd_ord_vars in
 
-        let df_1 = DF.remove csys.simp_DF x_snd in
-        let df_2 = List.fold_left (fun df b_fct -> DF.add df b_fct) df_1 ded_fact_list in
-
-        let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity in
-        let sub_cons_2 = List.fold_left2 (fun subc x t -> Uniformity_Set.add subc x t) sub_cons_1  vars_snd_as_term (get_args term) in
-
-        let csys' = { csys with
-            simp_DF = df_2;
-            simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst;
-            simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
-            simp_Sub_Cons = sub_cons_2
-          }
-        in
-
-        (* Check that eqsnd is not bot and that the normalisation rule for unification is not triggered *)
-
-        if Eq.is_bot csys'.simp_EqSnd || is_uniformity_rule_applicable_simple csys'
-        then ()
+              apply_rules csys' mgs' fst_ord_mgs snd_ord_vars'
+          end
         else
-          let mgs' = Subst.apply subst mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
-          and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_snd snd_ord_vars in
-          let snd_ord_vars'' = List.fold_left (fun set x -> Set_Snd_Ord_Variable.add x set) snd_ord_vars' vars_snd in
+          begin
+            let vars_snd = Variable.fresh_list Recipe Existential (Variable.snd_ord_type (Variable.type_of x_snd)) arity in
+            let vars_snd_as_term = List.map of_variable vars_snd in
 
-          apply_rules csys' mgs' fst_ord_mgs snd_ord_vars''
+            let recipe = apply_function symb vars_snd_as_term in
+            let subst = Subst.create Recipe x_snd recipe in
+
+            let args_term = get_args term in
+            let ded_fact_list = List.map2 BasicFact.create vars_snd args_term in
+
+            let df_1 = DF.remove csys.simp_DF x_snd in
+            let df_2 = List.fold_left (fun df b_fct -> DF.add df b_fct) df_1 ded_fact_list in
+
+            let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity in
+            let sub_cons_2 = List.fold_left2 (fun subc x t -> Uniformity_Set.add subc x t) sub_cons_1  vars_snd_as_term args_term in
+
+            let csys' = { csys with
+                simp_DF = df_2;
+                simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst;
+                simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
+                simp_Sub_Cons = sub_cons_2
+              }
+            in
+
+            (* Check that eqsnd is not bot and that the normalisation rule for unification is not triggered *)
+
+            if Eq.is_bot csys'.simp_EqSnd || is_uniformity_rule_applicable_simple csys'
+            then ()
+            else
+              let mgs' = Subst.apply subst mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
+              and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_snd snd_ord_vars in
+              let snd_ord_vars'' = List.fold_left (fun set x -> Set_Snd_Ord_Variable.add x set) snd_ord_vars' vars_snd in
+
+              apply_rules csys' mgs' fst_ord_mgs snd_ord_vars''
+          end
     in
 
 
@@ -929,10 +983,13 @@ let rec add_uniformity_subterms unif_set recipe term =
     let symb = root recipe in
     if is_function term && Symbol.is_equal symb (root term)
     then
-      let unif_set_1 = Uniformity_Set.add unif_set recipe term in
-      let args_r = get_args recipe
-      and args_t = get_args term in
-      add_uniformity_subterms_list unif_set_1 args_r args_t
+      if Symbol.get_arity symb = 0
+      then Uniformity_Set.add unif_set recipe term
+      else
+        let unif_set_1 = Uniformity_Set.add unif_set recipe term in
+        let args_r = get_args recipe
+        and args_t = get_args term in
+        add_uniformity_subterms_list unif_set_1 args_r args_t
     else Config.internal_error "[constraint_system.ml >> add_uniformity_subterms] The recipe and term given as argument are not consequence."
   else
     Uniformity_Set.add unif_set recipe term
@@ -1035,7 +1092,7 @@ let simple_of_formula (type a) (fct: a Fact.t) csys (form: a Fact.formula) = mat
       let df_1 = List.fold_left DF.add df_0 b_fct_hypothesis_2 in
 
       let sub_cons_1 =
-        if not (is_function recipe_1_2)
+        if not (is_function recipe_1_2) || Symbol.get_arity (root recipe_1_2) = 0
         then sub_cons_0
         else
           let recipe_args = get_args recipe_1_2 in
@@ -1047,7 +1104,7 @@ let simple_of_formula (type a) (fct: a Fact.t) csys (form: a Fact.formula) = mat
       in
 
       let sub_cons_2 =
-        if not (is_function recipe_2_2)
+        if not (is_function recipe_2_2) || Symbol.get_arity (root recipe_2_2) = 0
         then sub_cons_1
         else
           let recipe_args = get_args recipe_2_2 in
@@ -1886,7 +1943,12 @@ module Rule = struct
       let mgs_list = mgs simple_csys in
 
       if mgs_list =  []
-      then internal_sat other_csys continuation_func
+      then
+         begin
+           (*Printf.printf "Input of internal : \n%s" (Set.display HTML csys_set);
+           Printf.printf "Result of internal (mgs_null) : \n%s" (Set.display HTML other_csys);*)
+           internal_sat other_csys continuation_func
+         end
       else
         begin
           let accumulator_diseq = ref [] in
@@ -1920,6 +1982,7 @@ module Rule = struct
                   ) [csys'] other_csys
               with
               | Bot ->
+                  Printf.printf "Can this case happend ?\n";
                   List.fold_left (fun set csys ->
                     try
                       (apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars))::set
@@ -1928,6 +1991,8 @@ module Rule = struct
                     ) [] other_csys
             in
 
+          (*  Printf.printf "Input of internal : \n%s" (Set.display HTML csys_set);
+            Printf.printf "Result of internal (positive) : \n%s" (Set.display HTML new_csys_set);*)
             continuation_func.positive new_csys_set
           ) mgs_list;
 
@@ -1942,6 +2007,9 @@ module Rule = struct
               else csys'::acc
             ) [] other_csys
           in
+
+        (* Printf.printf "Input of internal : \n%s" (Set.display HTML csys_set);
+          Printf.printf "Result of internal (negative) : \n%s" (Set.display HTML negative_csys_set);*)
 
           continuation_func.negative negative_csys_set
         end

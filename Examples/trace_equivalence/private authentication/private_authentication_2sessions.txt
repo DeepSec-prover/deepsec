@@ -50,10 +50,10 @@ let processB(skb,pka) =
 
 let ProcessAB =
   new ska ; new skb ; new skc ; out(c,pk(ska)) ; out(c,pk(skb)) ; out(c,pk(skc));
-  (processA(ska,pk(skb)) | processB(skb,pk(ska)) | processA(ska,pk(skb)) | processB(skb,pk(ska))).
+  (processA(ska,pk(skb)) | processB(skb,pk(ska)) | processA(skc,pk(skb)) | processB(skb,pk(skc))).
 
 let ProcessCB =
  new ska ; new skb ; new skc ; out(c,pk(ska)) ; out(c,pk(skb)) ; out(c,pk(skc));
- ( processA(skc,pk(skb)) | processB(skb,pk(skc)) | processA(ska,pk(skb)) | processB(skb,pk(ska))).
+ ( processA(skc,pk(skb)) | processB(skb,pk(skc)) | processA(skc,pk(skb)) | processB(skb,pk(skc))).
 
 query trace_equiv(ProcessAB,ProcessCB).
