@@ -1823,7 +1823,7 @@ let rec next_output_classic_trace_content tau_actions content v_rho n_rho proc e
 
               if !Config.display_trace
               then
-                let tau_actions_0 = apply_content_to_tau_action cont v_rho' n_rho' in_gather.in_tau_actions in
+                let tau_actions_0 = apply_content_to_tau_action content v_rho n_rho in_gather.in_tau_actions in
                 let tau_actions_1 = match in_gather.in_action with
                   | None -> Config.internal_error "[process.ml >> next_output] There should be a symbolic action since the gathering mode for tau action is activated (1)"
                   | Some symb_in ->
@@ -1840,7 +1840,7 @@ let rec next_output_classic_trace_content tau_actions content v_rho n_rho proc e
         | Modulo.Top ->
             if !Config.display_trace
             then
-              let tau_actions_0 = apply_content_to_tau_action cont v_rho' n_rho' in_gather.in_tau_actions in
+              let tau_actions_0 = apply_content_to_tau_action content v_rho n_rho in_gather.in_tau_actions in
               let tau_actions_1 = match in_gather.in_action with
                 | None -> Config.internal_error "[process.ml >> next_output] There should be a symbolic action since the gathering mode for tau action is activated (2)"
                 | Some symb_in ->
@@ -1878,7 +1878,7 @@ let rec next_output_classic_trace_content tau_actions content v_rho n_rho proc e
 
               if !Config.display_trace
               then
-                let tau_actions_0 = apply_content_to_tau_action cont new_v_rho new_n_rho out_gather.out_tau_actions in
+                let tau_actions_0 = apply_content_to_tau_action content v_rho n_rho out_gather.out_tau_actions in
                 let tau_actions_1 = match out_gather.out_action with
                   | None -> Config.internal_error "[process.ml >> next_output] There should be a symbolic action since the gathering mode for tau action is activated (2)"
                   | Some symb_out ->
@@ -1895,7 +1895,7 @@ let rec next_output_classic_trace_content tau_actions content v_rho n_rho proc e
           | Modulo.Top ->
               if !Config.display_trace
               then
-                let tau_actions_0 = apply_content_to_tau_action cont new_v_rho new_n_rho out_gather.out_tau_actions in
+                let tau_actions_0 = apply_content_to_tau_action content v_rho n_rho out_gather.out_tau_actions in
                 let tau_actions_1 = match out_gather.out_action with
                   | None -> Config.internal_error "[process.ml >> next_output] There should be a symbolic action since the gathering mode for tau action is activated (2)"
                   | Some symb_out ->
@@ -2186,7 +2186,7 @@ and next_input_classic_trace_content tau_actions content v_rho n_rho proc equati
 
               if !Config.display_trace
               then
-                let tau_actions_0 = apply_content_to_tau_action cont new_v_rho new_n_rho out_gather.out_tau_actions in
+                let tau_actions_0 = apply_content_to_tau_action content v_rho n_rho out_gather.out_tau_actions in
                 let tau_actions_1 = match out_gather.out_action with
                   | None -> Config.internal_error "[process.ml >> next_output] There should be a symbolic action since the gathering mode for tau action is activated (2)"
                   | Some symb_out ->
@@ -2203,7 +2203,7 @@ and next_input_classic_trace_content tau_actions content v_rho n_rho proc equati
           | Modulo.Top ->
               if !Config.display_trace
               then
-                let tau_actions_0 = apply_content_to_tau_action cont new_v_rho new_n_rho out_gather.out_tau_actions in
+                let tau_actions_0 = apply_content_to_tau_action content v_rho n_rho out_gather.out_tau_actions in
                 let tau_actions_1 = match out_gather.out_action with
                   | None -> Config.internal_error "[process.ml >> next_output] There should be a symbolic action since the gathering mode for tau action is activated (2)"
                   | Some symb_out ->
@@ -2239,7 +2239,7 @@ and next_input_classic_trace_content tau_actions content v_rho n_rho proc equati
 
               if !Config.display_trace
               then
-                let tau_actions_0 = apply_content_to_tau_action cont new_v_rho new_n_rho in_gather.in_tau_actions in
+                let tau_actions_0 = apply_content_to_tau_action content v_rho n_rho in_gather.in_tau_actions in
                 let tau_actions_1 = match in_gather.in_action with
                   | None -> Config.internal_error "[process.ml >> next_output] There should be a symbolic action since the gathering mode for tau action is activated (1)"
                   | Some symb_in ->

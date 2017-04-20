@@ -1,0 +1,64 @@
+/*
+Needham Schroeder asymmetric Key
+
+*/
+
+free A.
+free B.
+free I.
+free c.
+free c_s.
+free k_I.
+free bad.
+
+fun pk/1.
+fun aenc/2.
+
+reduc adec(aenc(x,pk(y)),y) -> x.
+
+// Description of principal A :
+
+let processA(k_A) =
+  new N_a;
+  out(c,aenc((N_a,A),pk(k_I)));
+  in(c,y);
+  let (n_a,n_I) = adec(y,k_A) in
+  if n_a = N_a then
+  out(c,aenc(n_I,pk(k_I))).
+
+// Description of principal B :
+
+let processB_1(k_B,k_A) =
+  in(c,x);
+  let (n_a,a) = adec(x,k_B) in
+
+  if a = A then
+  new N_b;
+  out(c,aenc((n_a,N_b),pk(k_A)));
+  in(c,y);
+  if adec(y,k_B) = N_b then
+  in(c,z);
+  if z = N_b
+  then out(c_s,bad).
+
+
+let processB_2(k_B,k_A) =
+  in(c,x);
+  let (n_a,a) = adec(x,k_B) in
+
+  if a = A then
+  new N_b;
+  out(c,aenc((n_a,N_b),pk(k_A)));
+  in(c,y);
+  if adec(y,k_B) = N_b then
+  in(c,z).
+
+// Main
+
+let P_1 =
+  new k_A; new k_B; out(c,pk(k_A)); out(c,pk(k_B)); (processA(k_A) | processB_1(k_B,k_A)).
+
+let P_2 =
+  new k_A; new k_B; out(c,pk(k_A)); out(c,pk(k_B)); (processA(k_A) | processB_2(k_B,k_A)).
+
+query trace_equiv(P_1,P_2).
