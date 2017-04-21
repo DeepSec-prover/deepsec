@@ -224,7 +224,7 @@ end
 
 module Rule : sig
 
-  type call_stack |
+  type call_stack =
     | Empty
     | Stack of (call_stack -> unit) * call_stack
 
@@ -237,24 +237,24 @@ module Rule : sig
     }
 
 
-  val normalisation : 'a Set.t -> call_stack ->  ('a Set.t -> call_stack -> unit) -> unit
+  val normalisation : 'a Set.t -> ('a Set.t -> call_stack -> unit) -> call_stack -> unit
 
   (** All the normalisation and transformation rules have the same type. Typically, a rule is a function that takes two arguments
       [S] and [f] where [S] is a set of constraint systems and [f] are continuation functions that each takes a constraint system as argument and return unit.
       A rule typically apply the rules (in the sense of {% those defined in~\citepaper{Section}{sec:normalisation_rule} and~\citepaper{Section}{sec:transformation rules}) %} and then
       apply the functions [f] on each normalised sets obtained by application of the rule depending on how the set of constraint systems was produced by the rule.  *)
 
-  val sat : 'a Set.t -> call_stack -> 'a continuation -> unit
+  val sat : 'a Set.t -> 'a continuation -> unit
 
-  val sat_disequation : 'a Set.t -> call_stack -> 'a continuation -> unit
+  val sat_disequation : 'a Set.t -> 'a continuation -> unit
 
-  val sat_formula : 'a Set.t -> call_stack -> 'a continuation -> unit
+  val sat_formula : 'a Set.t -> 'a continuation -> unit
 
-  val equality_constructor : 'a Set.t -> call_stack -> 'a continuation -> unit
+  val equality_constructor : 'a Set.t -> 'a continuation -> unit
 
-  val equality : 'a Set.t -> call_stack -> 'a continuation -> unit
+  val equality : 'a Set.t -> 'a continuation -> unit
 
-  val rewrite : 'a Set.t -> call_stack -> 'a continuation -> unit
+  val rewrite : 'a Set.t -> 'a continuation -> unit
 
   (**/**)
 

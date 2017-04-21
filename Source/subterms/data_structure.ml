@@ -6,6 +6,8 @@ open Extension
 ***       SDF      ***
 *************************)
 
+  exception Found
+
 type id_recipe_equivalent = int
 
 let accumulator_id_recipe_equivalent = ref 0
@@ -887,6 +889,26 @@ module UF = struct
         then { uf with solved_eq_formula = UF_Map.remove id uf.solved_eq_formula }
         else raise Not_found
 
+  let find_solved_deduction_option uf f = match uf.solved_ded_formula with
+    | None -> None
+    | Some(id,_) ->
+        begin match f id with
+          | None -> None
+          | Some a -> Some a
+        end
+
+  let find_solved_equality_option uf f =
+    let result = ref None in
+    try
+      UF_Map.iter (fun id cell ->
+        match f id cell.eq_type with
+          | None -> ()
+          | Some a -> result := Some a; raise Found
+      ) uf.solved_eq_formula;
+      None
+    with
+      Found -> !result
+
   let iter_solved_deduction_id  uf f = match uf.solved_ded_formula with
     | None -> ()
     | Some(id,form) -> f id form
@@ -1364,7 +1386,7 @@ module Uniformity_Set = struct
 
   (******* Testing ********)
 
-  exception Found
+
 
   let find_protocol_term subc pterm f =
     try
