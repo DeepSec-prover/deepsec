@@ -16,7 +16,7 @@ type symbolic_process =
 
 exception Not_Trace_Equivalent of symbolic_process Constraint_system.t
 
-let rec apply_transition_and_rules_classic size_symbolic csys_set size_frame =
+let rec apply_transition_and_rules_classic csys_set size_frame =
 
 
   let opti_csys_set = Constraint_system.Set.optimise_snd_ord_recipes csys_set in
@@ -29,7 +29,6 @@ let rec apply_transition_and_rules_classic size_symbolic csys_set size_frame =
   let var_X_var = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
 
   Constraint_system.Set.iter (fun csys ->
-
     let symb_proc = Constraint_system.get_additional_data csys in
     let fst_subst = Constraint_system.get_substitution_solution Protocol csys in
 
@@ -88,11 +87,7 @@ let rec apply_transition_and_rules_classic size_symbolic csys_set size_frame =
       let origin_process = (Constraint_system.get_additional_data csys).origin_process in
       if Constraint_system.Set.for_all (fun csys -> (Constraint_system.get_additional_data csys).origin_process = origin_process) csys_set
       then raise (Not_Trace_Equivalent csys)
-      else
-        begin
-
-          apply_transition_and_rules_classic (size_symbolic+1) csys_set size_frame
-        end
+      else apply_transition_and_rules_classic csys_set size_frame
   in
 
   apply_sat !csys_set_for_input;
@@ -186,9 +181,8 @@ let rec apply_transition_and_rules_classic size_symbolic csys_set size_frame =
       let origin_process = (Constraint_system.get_additional_data csys).origin_process in
       if Constraint_system.Set.for_all (fun csys -> (Constraint_system.get_additional_data csys).origin_process = origin_process) csys_set
       then raise (Not_Trace_Equivalent csys)
-      else apply_transition_and_rules_classic (size_symbolic+1) csys_set (size_frame + 1)
+      else apply_transition_and_rules_classic csys_set (size_frame + 1)
   in
-
 
   apply_sat !csys_set_for_output
 
@@ -228,7 +222,7 @@ let trace_equivalence_classic proc1 proc2 =
   let csys_set_2 = Constraint_system.Set.add csys_2 csys_set_1 in
 
   try
-    apply_transition_and_rules_classic 0 csys_set_2 0;
+    apply_transition_and_rules_classic csys_set_2 0;
     Equivalent
   with
     | Not_Trace_Equivalent csys -> Not_Equivalent csys

@@ -1710,7 +1710,7 @@ module Rule = struct
                 ) [] csys_set
               ) f_continuation
           | Elim_eq_ded (id,id_ded) ->
-              normalisation_split_rule  (
+              normalisation_split_rule (
                 List.fold_left (fun acc csys ->
                   let new_uf = UF.remove_solved_id Fact.Equality csys.uf id in
                   { csys with uf = UF.remove_solved_id Fact.Deduction new_uf id_ded} :: acc
