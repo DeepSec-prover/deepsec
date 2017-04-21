@@ -31,6 +31,7 @@ Documentation/Subterms.tex
 Documentation/Testing.tex
 Documentation/main.aux
 
+index.html
 testing_data/tests_to_check/*
 testing_data/testing.html
 testing_data/validated_tests/*.html
