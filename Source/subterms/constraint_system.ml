@@ -1499,11 +1499,15 @@ end
 
 module Rule = struct
 
+  type call_stack =
+    | Empty
+    | Stack of (call_stack -> unit) * call_stack
+
   type 'a continuation =
     {
-      positive : 'a Set.t -> unit;
-      negative : 'a Set.t -> unit;
-      not_applicable : 'a Set.t -> unit
+      positive : 'a Set.t -> call_stack -> unit;
+      negative : 'a Set.t -> call_stack -> unit;
+      not_applicable : 'a Set.t -> call_stack -> unit
     }
 
   (* Tested functions *)
@@ -1579,10 +1583,18 @@ module Rule = struct
 
   (* The rules *)
 
-  exception Found of id_recipe_equivalent
-  exception Partition_eq of id_recipe_equivalent * UF.equality_type
-  exception Elim_eq of id_recipe_equivalent * UF.equality_type
-  exception Elim_eq_ded of id_recipe_equivalent * id_recipe_equivalent
+  type search_split_normalisation =
+    | Partition_eq of id_recipe_equivalent * UF.equality_type
+    | Elim_eq of id_recipe_equivalent * UF.equality_type
+    | Elim_eq_ded of id_recipe_equivalent * id_recipe_equivalent
+
+  let rec explore_result f = function
+    | [] -> None
+    | csys::q ->
+        begin match f csys with
+          | None -> (explore_result [@tailcall]) q
+          | (Some _) as r -> r
+        end
 
   let rec remove_id_from_list id = function
     | [] -> Config.internal_error "[Constraint_system.ml >> remove_id_from_list] The element to remove should be present in the list."
@@ -1608,14 +1620,13 @@ module Rule = struct
         { csys with equality_constructor_to_checked = remove_id_from_list id_sdf csys.equality_constructor_to_checked }
     | _ -> csys
 
-  let rec normalisation_split_rule csys_set f_continuation =
-    let id_explored = ref (fun _ -> false) in
+  let rec normalisation_split_rule csys_set f_continuation call_stack =
+    let id_explored = ref [] in
 
     let explore_uf_ded csys =
-      UF.iter_solved_deduction_id csys.uf (fun id _ ->
-        if !id_explored id
-        then ()
-        else
+      UF.find_solved_deduction_option csys.uf (fun id ->
+        if not (List.exists (fun x -> id = x) !id_explored)
+        then
           begin
             let applicable = ref false in
 
@@ -1629,19 +1640,19 @@ module Rule = struct
             ) csys_set
             in
 
-            id_explored := (fun x -> id = x || !id_explored x);
+            id_explored := id :: !id_explored;
 
             if result && !applicable
-            then raise (Found id)
+            then Some id
+            else None
           end
       )
     in
 
     let explore_uf_eq csys =
-      UF.iter_solved_equality_id csys.uf (fun id _ eq_type ->
-        if !id_explored id
-        then ()
-        else
+      UF.find_solved_equality_option csys.uf (fun id eq_type ->
+        if not (List.exists (fun x -> x = id) !id_explored)
+        then
           begin
             let applicable = ref false in
 
@@ -1655,16 +1666,21 @@ module Rule = struct
             ) csys_set
             in
 
-            id_explored := (fun x -> id = x || !id_explored x);
+            id_explored := id :: !id_explored;
+
+            Config.test (
+              if eq_type <> UF.get_eq_type_solved csys.uf id
+              then Config.internal_error "[Constraint_system.ml >> normalisation_split_rule] Something is weird in the second match below"
+            );
 
             match result, !applicable with
-              | true, true -> raise (Partition_eq (id,eq_type))
+              | true, true -> Some (Partition_eq (id,eq_type))
               | true, false ->
-                  begin match UF.get_eq_type_solved csys.uf id  with
-                    | UF.Consequence_UF id_ded -> raise (Elim_eq_ded (id,id_ded))
-                    | _ -> raise (Elim_eq (id,eq_type))
+                  begin match eq_type with
+                    | UF.Consequence_UF id_ded -> Some (Elim_eq_ded (id,id_ded))
+                    | _ -> Some (Elim_eq (id,eq_type))
                   end
-              | _, _ -> ()
+              | _, _ -> None
           end
       )
     in
@@ -1689,7 +1705,21 @@ module Rule = struct
       (!positive,!negative)
     in
 
-    try
+    match (explore_result [@tailcall]) explore_uf_ded csys_set with
+      | None ->
+          begin match
+            id_explored := (fun _ -> false);
+          end
+      | Some id ->
+          let (pos_csys_set,neg_csys_set) = partition_csys_set Fact.Deduction id None in
+          (normalisation_split_rule [@tailcall]) pos_csys_set f_continuation (Stack ((normalisation_split_rule [@tailcall]) neg_csys_set f_continuation,call_stack));
+
+
+
+
+
+
+
       List.iter explore_uf_ded csys_set;
 
       begin

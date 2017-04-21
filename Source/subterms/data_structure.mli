@@ -215,6 +215,12 @@ module UF : sig
   (** [exists_solved fct UF p] checks if at least one solved [fct] formula in [UF] satisfiy the predicate [p]. *)
   val exists_solved : 'a Fact.t -> t -> ('a Fact.formula -> bool) -> bool
 
+  (** {3 Search} *)
+
+  val find_solved_deduction_option : t -> (id_recipe_equivalent -> 'a option) -> 'a option
+
+  val find_solved_equality_option : t -> (id_recipe_equivalent -> equality_type -> 'a option) -> 'a option
+
   (** {3 Iterators} *)
 
   (** [iter_solved_equality_id UF f] applies [f] to all solved equality formulas in [UF]. [f] also receives the recipe equivalent id of the formula as first argument and its equality type as third argument.
