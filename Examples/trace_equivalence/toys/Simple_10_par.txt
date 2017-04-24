@@ -1,0 +1,41 @@
+// Benchmarks for POR
+// 10 IN.OUT in parallel
+
+// Channels
+free c0.
+free c1.
+free c2.
+free c3.
+free c4.
+free c5.
+free c6.
+free c7.
+free c8.
+free c9.
+
+// Public constant
+free ok.
+let P =
+new n0;
+new n1;
+new n2;
+new n3;
+new n4;
+new n5;
+new n6;
+new n7;
+new n8;
+new n9;
+(( in(c0, x); if x = ok then out(c0, n0) ) |
+( in(c1, x); if x = ok then out(c1, n1) ) |
+( in(c2, x); if x = ok then out(c2, n2) ) |
+( in(c3, x); if x = ok then out(c3, n3) ) |
+( in(c4, x); if x = ok then out(c4, n4) ) |
+( in(c5, x); if x = ok then out(c5, n5) ) |
+( in(c6, x); if x = ok then out(c6, n6) ) |
+( in(c7, x); if x = ok then out(c7, n7) ) |
+( in(c8, x); if x = ok then out(c8, n8) ) |
+( in(c9, x); if x = ok then out(c9, n9) )
+).
+
+query trace_equiv(P,P).

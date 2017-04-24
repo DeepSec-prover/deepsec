@@ -1,0 +1,32 @@
+free c.
+
+fun senc/2.
+fun pk/1.
+
+reduc sdec(senc(x,y),y) -> x.
+
+let process_1 =
+  new k_ab;
+  (
+    (new x; out(c,senc(x,k_ab)); in(c,y); if sdec(y,k_ab) = pk(x) then out(c,c))
+  |
+    (in(c,z);
+    let x = sdec(z,k_ab) in
+    out(c,senc(pk(x),k_ab)))
+  |
+    out(c,k_ab)
+  ).
+
+let process_2 =
+  new k_ab;
+  (
+    (new x; out(c,senc(x,k_ab)); in(c,y); if sdec(y,k_ab) = pk(x) then out(c,c))
+  |
+    in(c,z);
+    let x = sdec(z,k_ab) in
+    out(c,senc(pk(x),k_ab))
+  |
+    new m; out(c,m)
+  ).
+
+query trace_equiv(process_1,process_2).

@@ -1,0 +1,92 @@
+/* Denning Sacco Symmetric Key
+#
+# 1.  A	->	S:  	A, B
+# 2.  S	->	A:  	{B, Kab, {Kab, A}Kbs}Kas
+# 3.  A	->	B:  	{Kab,A}Kbs
+# Strong secrecy of Kab
+# 6.  B      ->     : {m}Kab versus {m}K with K fresh
+*/
+
+free a.
+free b.
+
+free c.
+
+free ok.
+free req.
+free rep.
+
+fun senc/2.
+reduc sdec(senc(x,y),y) -> x.
+
+/*
+#    Description of role A played:
+# - on channel ca
+# - by a with key kas (shared with the server S)
+# - with responder b
+*/
+
+let processA(a,kas,b) =
+  out(c,(a,b));
+  in(c,xa);
+  let (xb,xab,xmb) = sdec(xa,kas) in
+  if xb = b then
+  out(c,xmb).
+
+/*
+#    Description of role B played:
+# - on channel cb
+# - by b with key kbs (shared with the server S)
+# - with initiator a
+*/
+
+let processBreal(b,kbs,a)  =
+  in(c,yb);
+  let (yab,ya)= sdec(yb,kbs) in
+  if ya = a then
+	out(c,senc(ok,yab)).
+
+
+let processBideal(b,kbs,a)  =
+  in(c,yb);
+  let (yab,ya)= sdec(yb,kbs) in
+  if ya = a then
+	new k;
+	out(c,senc(ok,k)).
+
+let processB(b,kbs,a) =
+  in(c,yb);
+  let (yab,ya)= sdec(yb,kbs) in
+  if ya = a then 0.
+
+/*
+#    Description of role S played:
+# - on channel cs
+# - to answer a request coming from a (with key kas)
+# - who wants to communicate with b (with key kbs)
+*/
+
+let processS(a,kas,b,kbs) =
+	in(c,zs);
+	let (za,zb) = zs in
+	if za = a then
+  if zb = b then
+	new kab;
+	out(c,senc((zb,kab,senc((kab,za),kbs)),kas)).
+
+// Main
+
+let Preal =
+  new kas; new kbs; (
+  processA(a,kas,b) |  processBreal(b,kbs,a) | processS(a,kas,b,kbs) |
+  processA(a,kas,b) |  processB(b,kbs,a) | processS(a,kas,b,kbs)
+  ).
+
+
+let Pideal =
+  new kas; new kbs; (
+  processA(a,kas,b) |  processBideal(b,kbs,a) | processS(a,kas,b,kbs) |
+  processA(a,kas,b) |  processB(b,kbs,a) | processS(a,kas,b,kbs)
+  ).
+
+query trace_equiv(Preal,Pideal).
