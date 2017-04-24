@@ -102,7 +102,7 @@ open Testing_parser_functions
 %type <(Testing_parser_functions.parser)> parse_Constraint_system_apply_mgs
 %type <(Testing_parser_functions.parser)> parse_Constraint_system_apply_mgs_on_formula
 
-%type <((unit Constraint_system.Set.t -> unit Constraint_system.Rule.continuation -> unit) -> Testing_parser_functions.parser)> parse_Constraint_system_Rule_rules
+%type <((unit Constraint_system.Set.t -> unit Constraint_system.Rule.continuation -> (unit -> unit) -> unit) -> Testing_parser_functions.parser)> parse_Constraint_system_Rule_rules
 %type <(Testing_parser_functions.parser)> parse_Constraint_system_Rule_normalisation
 
 %%

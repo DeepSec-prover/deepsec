@@ -16,7 +16,7 @@ type symbolic_process =
 
 exception Not_Trace_Equivalent of symbolic_process Constraint_system.t
 
-let rec apply_transition_and_rules_classic csys_set size_frame =
+let rec apply_transition_and_rules_classic csys_set size_frame f_next =
 
 
   let opti_csys_set = Constraint_system.Set.optimise_snd_ord_recipes csys_set in
@@ -67,30 +67,28 @@ let rec apply_transition_and_rules_classic csys_set size_frame =
 
   (*** Application of the tranformation rules ***)
 
-  let rec apply_sat csys_set =
+  let rec in_apply_sat csys_set f_next =
     Constraint_system.Rule.sat csys_set {
-      Constraint_system.Rule.positive = apply_sat;
-      Constraint_system.Rule.negative = apply_sat;
-      Constraint_system.Rule.not_applicable = apply_sat_disequation
-    }
-  and apply_sat_disequation csys_set =
+      Constraint_system.Rule.positive = in_apply_sat;
+      Constraint_system.Rule.negative = in_apply_sat;
+      Constraint_system.Rule.not_applicable = in_apply_sat_disequation
+    } f_next
+  and in_apply_sat_disequation csys_set f_next =
     Constraint_system.Rule.sat_disequation csys_set {
-      Constraint_system.Rule.positive = apply_sat_disequation;
-      Constraint_system.Rule.negative = apply_sat_disequation;
-      Constraint_system.Rule.not_applicable = apply_final_test
-    }
-  and apply_final_test csys_set =
+      Constraint_system.Rule.positive = in_apply_sat_disequation;
+      Constraint_system.Rule.negative = in_apply_sat_disequation;
+      Constraint_system.Rule.not_applicable = in_apply_final_test
+    } f_next
+  and in_apply_final_test csys_set f_next =
     if Constraint_system.Set.is_empty csys_set
-    then ()
+    then f_next ()
     else
       let csys = Constraint_system.Set.choose csys_set in
       let origin_process = (Constraint_system.get_additional_data csys).origin_process in
       if Constraint_system.Set.for_all (fun csys -> (Constraint_system.get_additional_data csys).origin_process = origin_process) csys_set
       then raise (Not_Trace_Equivalent csys)
-      else apply_transition_and_rules_classic csys_set size_frame
+      else apply_transition_and_rules_classic csys_set size_frame f_next
   in
-
-  apply_sat !csys_set_for_input;
 
   (*** Generate the set for the next output ***)
 
@@ -137,54 +135,54 @@ let rec apply_transition_and_rules_classic csys_set size_frame =
 
   (*** Application of the tranformation rules ***)
 
-  let rec apply_sat csys_set =
+  let rec out_apply_sat csys_set f_next =
     Constraint_system.Rule.sat csys_set {
-      Constraint_system.Rule.positive = apply_sat;
-      Constraint_system.Rule.negative = apply_sat;
-      Constraint_system.Rule.not_applicable = apply_sat_disequation
-    }
-  and apply_sat_disequation csys_set =
+      Constraint_system.Rule.positive = out_apply_sat;
+      Constraint_system.Rule.negative = out_apply_sat;
+      Constraint_system.Rule.not_applicable = out_apply_sat_disequation
+    } f_next
+  and out_apply_sat_disequation csys_set f_next =
     Constraint_system.Rule.sat_disequation csys_set {
-      Constraint_system.Rule.positive = apply_sat_disequation;
-      Constraint_system.Rule.negative = apply_sat_disequation;
-      Constraint_system.Rule.not_applicable = (fun csys_set -> Constraint_system.Rule.normalisation csys_set apply_sat_formula)
-    }
-  and apply_sat_formula csys_set =
+      Constraint_system.Rule.positive = out_apply_sat_disequation;
+      Constraint_system.Rule.negative = out_apply_sat_disequation;
+      Constraint_system.Rule.not_applicable = (fun csys_set f_next -> Constraint_system.Rule.normalisation csys_set out_apply_sat_formula f_next)
+    } f_next
+  and out_apply_sat_formula csys_set f_next =
     Constraint_system.Rule.sat_formula csys_set {
-      Constraint_system.Rule.positive = apply_sat_formula;
-      Constraint_system.Rule.negative = apply_sat_formula;
-      Constraint_system.Rule.not_applicable = apply_equality
-    }
-  and apply_equality csys_set =
+      Constraint_system.Rule.positive = out_apply_sat_formula;
+      Constraint_system.Rule.negative = out_apply_sat_formula;
+      Constraint_system.Rule.not_applicable = out_apply_equality
+    } f_next
+  and out_apply_equality csys_set f_next =
     Constraint_system.Rule.equality csys_set {
-      Constraint_system.Rule.positive = apply_sat_formula;
-      Constraint_system.Rule.negative = apply_sat_formula;
-      Constraint_system.Rule.not_applicable = apply_equality_constructor
-    }
-  and apply_equality_constructor csys_set =
+      Constraint_system.Rule.positive = out_apply_sat_formula;
+      Constraint_system.Rule.negative = out_apply_sat_formula;
+      Constraint_system.Rule.not_applicable = out_apply_equality_constructor
+    } f_next
+  and out_apply_equality_constructor csys_set f_next =
     Constraint_system.Rule.equality_constructor csys_set {
-      Constraint_system.Rule.positive = apply_sat_formula;
-      Constraint_system.Rule.negative = apply_sat_formula;
-      Constraint_system.Rule.not_applicable = apply_rewrite
-    }
-  and apply_rewrite csys_set =
+      Constraint_system.Rule.positive = out_apply_sat_formula;
+      Constraint_system.Rule.negative = out_apply_sat_formula;
+      Constraint_system.Rule.not_applicable = out_apply_rewrite
+    } f_next
+  and out_apply_rewrite csys_set f_next =
     Constraint_system.Rule.rewrite csys_set {
-      Constraint_system.Rule.positive = apply_sat_formula;
-      Constraint_system.Rule.negative = apply_sat_formula;
-      Constraint_system.Rule.not_applicable = apply_final_test
-    }
-  and apply_final_test csys_set =
+      Constraint_system.Rule.positive = out_apply_sat_formula;
+      Constraint_system.Rule.negative = out_apply_sat_formula;
+      Constraint_system.Rule.not_applicable = out_apply_final_test
+    } f_next
+  and out_apply_final_test csys_set f_next =
     if Constraint_system.Set.is_empty csys_set
-    then ()
+    then f_next ()
     else
       let csys = Constraint_system.Set.choose csys_set in
       let origin_process = (Constraint_system.get_additional_data csys).origin_process in
       if Constraint_system.Set.for_all (fun csys -> (Constraint_system.get_additional_data csys).origin_process = origin_process) csys_set
       then raise (Not_Trace_Equivalent csys)
-      else apply_transition_and_rules_classic csys_set (size_frame + 1)
+      else apply_transition_and_rules_classic csys_set (size_frame + 1) f_next
   in
 
-  apply_sat !csys_set_for_output
+  out_apply_sat !csys_set_for_output (fun () -> in_apply_sat !csys_set_for_input f_next)
 
 type result_trace_equivalence =
   | Equivalent
@@ -222,7 +220,7 @@ let trace_equivalence_classic proc1 proc2 =
   let csys_set_2 = Constraint_system.Set.add csys_2 csys_set_1 in
 
   try
-    apply_transition_and_rules_classic csys_set_2 0;
+    apply_transition_and_rules_classic csys_set_2 0 (fun () -> ());
     Equivalent
   with
     | Not_Trace_Equivalent csys -> Not_Equivalent csys
