@@ -34,6 +34,11 @@ let processA(a,kas,b) =
  - with initiator a
 */
 
+let processB(b,kbs,a)  =
+  in(c,yb);
+  let (ya,yab)= sdec(yb,kbs) in
+  if ya = a then 0.
+
 let processBreal(b,kbs,a)  =
   in(c,yb);
   let (ya,yab)= sdec(yb,kbs) in
@@ -75,7 +80,7 @@ let Preal =
 let Pideal =
   new kas; new kbs;
 ( processA(a,kas,b) |  processBideal(b,kbs,a) | processS(a,kas,b,kbs) |
-  processA(a,kas,b) |  processBideal(b,kbs,a) | processS(a,kas,b,kbs)
+  processA(a,kas,b) |  processB(b,kbs,a) | processS(a,kas,b,kbs)
 ).
 
 query trace_equiv(Preal,Pideal).

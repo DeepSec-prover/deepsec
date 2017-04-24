@@ -47,6 +47,11 @@ let processA(ca,a,kas,b) =
  - with initiator a
 */
 
+let processB(cb,b,kbs,a)  =
+  in(cb,yb);
+  let (ya,yab)= sdec(yb,kbs) in
+  if ya = a then 0.
+
 let processBreal(cb,b,kbs,a)  =
   in(cb,yb);
   let (ya,yab)= sdec(yb,kbs) in

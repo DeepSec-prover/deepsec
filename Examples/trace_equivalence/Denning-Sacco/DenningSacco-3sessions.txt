@@ -54,6 +54,11 @@ let processBideal(b,kbs,a)  =
 	new k;
 	out(c,senc(ok,k)).
 
+let processB(b,kbs,a) =
+  in(c,yb);
+  let (yab,ya)= sdec(yb,kbs) in
+  if ya = a then 0.
+
 /*
 #    Description of role S played:
 # - on channel cs
@@ -72,12 +77,16 @@ let processS(a,kas,b,kbs) =
 // Main
 
 let Preal =
-  new kas; new kbs;
-  !^3 (processA(a,kas,b) |  processBreal(b,kbs,a) | processS(a,kas,b,kbs)).
+  new kas; new kbs; (
+  processA(a,kas,b) |  processBreal(b,kbs,a) | processS(a,kas,b,kbs) |
+  !^2 (processA(a,kas,b) |  processB(b,kbs,a) | processS(a,kas,b,kbs))
+  ).
 
 
 let Pideal =
-  new kas; new kbs;
-  !^3 (processA(a,kas,b) |  processBideal(b,kbs,a) | processS(a,kas,b,kbs)).
+  new kas; new kbs; (
+  processA(a,kas,b) |  processBideal(b,kbs,a) | processS(a,kas,b,kbs) |
+  !^2 (processA(a,kas,b) |  processB(b,kbs,a) | processS(a,kas,b,kbs))
+  ).
 
 query trace_equiv(Preal,Pideal).

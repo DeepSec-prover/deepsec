@@ -246,8 +246,14 @@ let rec parse_list_argument proc env = function
       in
       generate_proc
   | (var_s,line)::q ->
-      if Env.mem var_s env
-      then error_message line (Printf.sprintf "The identifier %s is already defined." var_s);
+      begin
+        try
+          begin match Env.find var_s env with
+            | ArgVar _ -> error_message line (Printf.sprintf "The identifier %s is already defined as argument of the function" var_s);
+            | _ -> ()
+          end
+        with Not_found -> ()
+      end;
 
       let generate_proc = function
         | [] ->  Config.internal_error "[parser_functions.ml >> parse_list_argument] This case should have been caught at the call (2)."

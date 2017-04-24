@@ -63,6 +63,11 @@ let processBideal(cb,b,kbs,a)  =
 	new k;
 	out(cb,senc(ok,k)).
 
+let processB(cb,b,kbs,a) =
+  in(cb,yb);
+  let (yab,ya)= sdec(yb,kbs) in
+  if ya = a then 0.
+
 /*
 #    Description of role S played:
 # - on channel cs

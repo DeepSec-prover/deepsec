@@ -38,7 +38,7 @@ let processA(ca,ska,pkb) =
  - with the agent with public key pka
 */
 
-let processB cb skb pka =
+let processB(cb,skb,pka) =
   in(cb,yb);
   let (yna,ypka) = adec(yb,skb) in
   new nb;
