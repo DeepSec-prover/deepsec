@@ -1764,41 +1764,42 @@ module Rule = struct
         if !one_is_not_consequence
         then
           (* Addition to SDF -> add to SDF and remove from UF *)
-          let new_csys_set = List.fold_left (fun acc_csys csys ->
-            (* Update of the lists equality_constructor_checked and equality_constructor_to_checked *)
+          let new_csys_set =
+            List.fold_left (fun acc_csys csys ->
+              (* Update of the lists equality_constructor_checked and equality_constructor_to_checked *)
 
-            let id,ded_formula = UF.choose_solved Fact.Deduction csys.uf in
+              let id,ded_formula = UF.choose_solved Fact.Deduction csys.uf in
 
-            Config.debug (fun () ->
-              if not (Fact.is_fact ded_formula)
-              then Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] The formula should be a fact.";
+              Config.debug (fun () ->
+                if not (Fact.is_fact ded_formula)
+                then Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] The formula should be a fact.";
 
-              if csys.equality_constructor_to_checked <> []
-              then Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] All sdf should have been checked when we add a new element to SDF, i.e.  we did not respect the order of rule Sat < Equality < Rew";
+                if csys.equality_constructor_to_checked <> []
+                then Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] All sdf should have been checked when we add a new element to SDF, i.e.  we did not respect the order of rule Sat < Equality < Rew";
 
-              if csys.equality_to_checked <> []
-              then Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] All pair of deduction fact from sdf should have been checked for equalities at that point."
-            );
-            let head = Fact.get_head ded_formula in
+                if csys.equality_to_checked <> []
+                then Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] All pair of deduction fact from sdf should have been checked for equalities at that point."
+              );
+              let head = Fact.get_head ded_formula in
 
-            let new_sdf = SDF.add csys.sdf head in
-            let id_last = SDF.last_entry_id new_sdf in
+              let new_sdf = SDF.add csys.sdf head in
+              let id_last = SDF.last_entry_id new_sdf in
 
-            let new_skeletons =
-              List.fold_left (fun acc f ->
-                List.rev_append (Rewrite_rules.skeletons (Fact.get_protocol_term head) f csys.size_frame) acc
-                ) [] !Symbol.all_destructors
-            in
+              let new_skeletons =
+                List.fold_left (fun acc f ->
+                  List.rev_append (Rewrite_rules.skeletons (Fact.get_protocol_term head) f csys.size_frame) acc
+                  ) [] !Symbol.all_destructors
+              in
 
-            { csys with
-              skeletons_checked = [];
-              skeletons_to_check = List.rev_append csys.skeletons_checked (List.fold_left (fun acc skel -> (id_last,skel)::acc) csys.skeletons_to_check new_skeletons);
-              equality_to_checked = SDF.all_id csys.sdf;
-              equality_constructor_checked = [];
-              equality_constructor_to_checked = id_last::csys.equality_constructor_checked;
-              sdf = new_sdf;
-              uf = UF.remove_solved_id Fact.Deduction csys.uf id
-            } :: acc_csys
+              { csys with
+                skeletons_checked = [];
+                skeletons_to_check = List.rev_append csys.skeletons_checked (List.fold_left (fun acc skel -> (id_last,skel)::acc) csys.skeletons_to_check new_skeletons);
+                equality_to_checked = SDF.all_id csys.sdf;
+                equality_constructor_checked = [];
+                equality_constructor_to_checked = id_last::csys.equality_constructor_checked;
+                sdf = new_sdf;
+                uf = UF.remove_solved_id Fact.Deduction csys.uf id
+              } :: acc_csys
             ) [] csys_set
           in
 
