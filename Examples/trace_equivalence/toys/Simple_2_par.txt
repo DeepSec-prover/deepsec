@@ -1,0 +1,17 @@
+// Benchmarks for POR
+// 2 IN.OUT in parallel
+
+// Channels
+free c0.
+free c1.
+
+// Public constant
+free ok.
+let P =
+new n0;
+new n1;
+(( in(c0, x); if x = ok then out(c0, n0) ) |
+( in(c1, x); if x = ok then out(c1, n1) )
+).
+
+query trace_equiv(P,P).

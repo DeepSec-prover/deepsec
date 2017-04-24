@@ -1,0 +1,98 @@
+/* Wide Mouthed Frog Symmetric Key
+
+ 1.  A	->	S:  	{B, Kab}Kas
+ 2.  S	->	B:  	{A, Kab}Kbs
+ Strong secrecy of Kab
+ 3.  B      ->     : {m}Kab versus {m}K with K fresh
+*/
+
+free a1.
+free b1.
+free a2.
+free b2.
+free a3.
+free b3.
+
+free c.
+free ca1.
+free cb1.
+free cs1.
+free ca2.
+free cb2.
+free cs2.
+free ca3.
+free cb3.
+free cs3.
+
+free ok.
+
+fun senc/2.
+reduc sdec(senc(x,y),y) -> x.
+
+/*
+    Description of role A played:
+ - on channel ca
+ - by a with key kas (shared with the server S)
+ - with responder b
+*/
+
+let processA(ca,a,kas,b) =
+  new kab;
+  out(ca,senc((b,kab),kas)).
+
+/*
+    Description of role B played:
+ - on channel cb
+ - by b with key kbs (shared with the server S)
+ - with initiator a
+*/
+
+let processBreal(cb,b,kbs,a)  =
+  in(cb,yb);
+  let (ya,yab)= sdec(yb,kbs) in
+  if ya = a then
+  out(cb,senc(ok,yab)).
+
+
+let processBideal(cb,b,kbs,a)  =
+  in(cb,yb);
+  let (ya,yab)= sdec(yb,kbs) in
+  if ya = a then
+ 	new k;
+	out(cb,senc(ok,k)).
+
+/*
+    Description of role S played:
+ - on channel cs
+ - to answer a request coming from a (with key kas)
+ - who wants to communicate with b (with key kbs)
+*/
+
+let processS(cs,a,kas,b,kbs) =
+	in(cs,zs);
+	let (zb,zab) = sdec(zs,kas) in
+	if zb =b then
+	out(cs,senc((a,zab),kbs)).
+
+/*
+   			Main
+*/
+
+let Preal =
+  in(c,zz); if zz= ok then
+  new kas1; new kbs1; new kas2; new kbs2; new kas3; new kbs3;
+  ( processA(ca1,a1,kas1,b1) |  processBreal(cb1,b1,kbs1,a1) | processS(cs1,a1,kas1,b1,kbs1) |
+    processA(ca2,a2,kas2,b2) |  processB(cb2,b2,kbs2,a2) | processS(cs2,a2,kas2,b2,kbs2) |
+    processA(ca3,a3,kas3,b3) |  processB(cb3,b3,kbs3,a3) | processS(cs3,a3,kas3,b3,kbs3)
+  ).
+
+
+let Pideal =
+  in(c,zz); if zz= ok then
+  new kas1; new kbs1; new kas2; new kbs2; new kas3; new kbs3;
+  ( processA(ca1,a,kas,b) |  processBideal(cb1,b,kbs,a) | processS(cs1,a,kas,b,kbs) |
+    processA(ca2,a2,kas2,b2) |  processB(cb2,b2,kbs2,a2) | processS(cs2,a2,kas2,b2,kbs2) |
+    processA(ca3,a3,kas3,b3) |  processB(cb3,b3,kbs3,a3) | processS(cs3,a3,kas3,b3,kbs3)
+  ).
+
+query trace_equiv(Preal,Pideal).
