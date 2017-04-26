@@ -8,7 +8,7 @@ fun dg_1/0.
 fun dg_2/0.
 fun dg_3/0.
 
-
+fun ok/0.
 fun senc/2.
 fun sign/2.
 fun vk/1.
@@ -33,16 +33,24 @@ let PApassport(ksenc,ksmac,dg,sod) =
     else 0
   else 0.
 
-let PAreader(ksenc,ksmac)=
+let PAreader(KPrDS,ksenc,ksmac)=
   let menc = senc(read,ksenc) in
   let mmac = mac(menc,ksmac) in
-  out(c, (menc, mmac)).
+  out(c, (menc, mmac));
+  in(c,x);
+  let (xenc, xmac) = x in
+  if xmac = mac(xenc, ksmac) then
+  let (xdg,xsod) = sdec(xenc,ksenc) in
+  let (xhdg, xshdg) = xsod in
+  if xhdg = checksign(xshdg, vk(KPrDS)) then
+  if xhdg = h(xdg)
+  then out(c, ok).
 
 let ePassport(KPrDS,dg) =
   let sod = (h(dg), sign(h(dg),KPrDS)) in
   new ksenc;
   new ksmac;
-  (PAreader(ksenc,ksmac) | PApassport(ksenc,ksmac,dg,sod)).
+  (PAreader(KPrDS,ksenc,ksmac) | PApassport(ksenc,ksmac,dg,sod)).
 
 // Main systems.
 

@@ -51,7 +51,7 @@ let processB(cb,skb,pka) =
 
 let ProcessAB = in(c,zz);
   new ska ; new skb ; new skc ; new ska1; new skb1; new ska2; new skb2;
-  out(c,pk(ska)) ; out(c,pk(skb)) ; out(c,pk(skc));
+  out(c,pk(ska)) ; out(c,pk(skb)) ; out(c,pk(skc)); out(c,pk(ska1)) ; out(c,pk(skb1)) ; out(c,pk(ska2)) ; out(c,pk(skb2)) ;
   ( processA(ca1,ska,pk(skb))  | processB(cb1,skb,pk(ska)) |
     processA(ca2,ska1,pk(skb1))  | processB(cb2,skb1,pk(ska1)) |
     processA(ca3,ska2,pk(skb2))  | processB(cb3,skb2,pk(ska2))
@@ -59,7 +59,7 @@ let ProcessAB = in(c,zz);
 
 let ProcessCB = in(c,zz);
  new ska ; new skb ; new skc ; new ska1; new skb1; new ska2; new skb2;
- out(c,pk(ska)) ; out(c,pk(skb)) ; out(c,pk(skc));
+ out(c,pk(ska)) ; out(c,pk(skb)) ; out(c,pk(skc)); out(c,pk(ska1)) ; out(c,pk(skb1)) ; out(c,pk(ska2)) ; out(c,pk(skb2)) ;
   ( processA(ca1,skc,pk(skb))  | processB(cb1,skb,pk(skc)) |
     processA(ca2,ska1,pk(skb1))  | processB(cb2,skb1,pk(ska1)) |
     processA(ca3,ska2,pk(skb2))  | processB(cb3,skb2,pk(ska2))
