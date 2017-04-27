@@ -37,7 +37,7 @@ let processA(a,kas,b) =
 */
 
 let processB(b,kbs,a)  =
-  in(cb,yb);
+  in(c,yb);
   let (ya,yab)= sdec(yb,kbs) in
   if ya = a then 0.
 

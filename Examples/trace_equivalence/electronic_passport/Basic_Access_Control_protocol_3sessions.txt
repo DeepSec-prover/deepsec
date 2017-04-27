@@ -28,22 +28,22 @@ let passport(k_e,k_m,error_mac) =
   in(c,x);
   if x = get_challenge
   then
-    new n_t;
-    out(c,n_t);
-    in(c,y);
-    let (m_e,m_m) = y in
-
-    (if m_m = mac(m_e,k_m)
-    then
-      let (n_r,n_t_2,k_r) = sdec(m_e,k_e) in
-
-      if n_t_2 = n_t
+  new n_t;
+  out(c,n_t);
+  in(c,y);
+  let (xm_e,xm_m) = y in
+  if xm_m = mac(xm_e,k_m)
+  then
+    let (xn_r,xn_t_2,xk_r) = sdec(xm_e,k_e) in
+      if xn_t_2 = n_t
       then
-	new k_t;
-	let m = senc((n_t,n_r,k_t),k_e) in
-	out(c,(m,mac(m,k_m)))
+        new k_t;
+        let xm = senc((n_t,xn_r,k_t),k_e) in
+         out(c,(xm,mac(xm,k_m)))
+        else out(c,Error_6300)
       else out(c,Error_6300)
-    else out(c,error_mac)).
+    else out(c,error_mac)
+  else out(c,error_mac).
 
 // Unlinkability
 
