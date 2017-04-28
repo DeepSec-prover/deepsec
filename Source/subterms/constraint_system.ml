@@ -1430,40 +1430,55 @@ module Set = struct
   type 'a csys = 'a t
 
   (** The type of set of constraint systems. *)
-  type 'a t = 'a csys list
+  type 'a t =
+    {
+      csys_list : 'a csys list;
+      ded_occurs : bool;
+      eq_occurs : bool
+    }
 
   let unit_t_of (type a) (csys_set: a t) = ((List.fold_left (fun acc csys -> (unit_t_of csys)::acc) [] csys_set): unit t)
 
-  let empty = []
+  let empty =
+    {
+      csys_list = [];
+      ded_occurs = false;
+      eq_occurs = false
+    }
 
-  let size = List.length
+  let size csys_set = List.length csys_set.csys_list
 
-  let add csys csys_set = csys::csys_set
+  let add csys csys_set = { csys_set with csys_list = csys::csys_set.csys_list }
 
   let choose csys_set =
-    if csys_set = []
-    then Config.internal_error "[constraint_system.ml >> Set.choose] The set should not be empty.";
+    Config.debug (fun () ->
+      if csys_set.csys_list = []
+      then Config.internal_error "[constraint_system.ml >> Set.choose] The set should not be empty.";
+    );
 
-    List.hd csys_set
+    List.hd csys_set.csys_list
 
   let optimise_snd_ord_recipes csys_set =
-    if csys_set = []
+    if csys_set.csys_list = []
     then csys_set
     else
-      let csys = List.hd csys_set in
+      let csys = List.hd csys_set.csys_list in
 
       let i_subst_ground_snd, i_subst_snd = Subst.split_domain_on_term csys.i_subst_snd is_ground in
       let new_i_subst_ground_snd = Subst.union i_subst_ground_snd csys.i_subst_ground_snd in
 
-      List.fold_left (fun acc csys' ->
-        { csys' with i_subst_snd = i_subst_snd; i_subst_ground_snd = new_i_subst_ground_snd }::acc
-      ) [] csys_set
+      let csys_list =
+        List.fold_left (fun acc csys' ->
+          { csys' with i_subst_snd = i_subst_snd; i_subst_ground_snd = new_i_subst_ground_snd }::acc
+        ) [] csys_set
+      in
+      { csys_set with csys_list = csys_list }
 
-  let for_all = List.for_all
+  let for_all f csys_set = List.for_all f csys_set.csys_list
 
-  let is_empty csys_set = csys_set = []
+  let is_empty csys_set = csys_set.csys_list = []
 
-  let iter = List.iter
+  let iter f csys_set = List.iter f csys_set.csys_list
 
   let display_initial id size =
 
@@ -1474,19 +1489,19 @@ module Set = struct
     go_through (size-1)
 
   let display out ?(rho=None) ?(id=1) csys_set = match out with
-    | Testing -> Printf.sprintf "{ %s }" (display_list (fun csys -> display Testing ~rho:rho csys) ", " csys_set)
+    | Testing -> Printf.sprintf "{ %s }" (display_list (fun csys -> display Testing ~rho:rho csys) ", " csys_set.csys_list)
     | HTML ->
-        if csys_set = []
+        if csys_set.csys_list = []
         then Printf.sprintf "\\(%s\\)" (emptyset Latex)
         else
           begin
-            let str = ref (Printf.sprintf "\\( \\{ %s \\}\\) with </br>\n" (display_initial id (List.length csys_set))) in
+            let str = ref (Printf.sprintf "\\( \\{ %s \\}\\) with </br>\n" (display_initial id (List.length csys_set.csys_list))) in
 
             str := Printf.sprintf "%s            <ul>\n" !str;
 
             List.iteri (fun i csys ->
               str := Printf.sprintf "%s              <li>%s              </li>\n" !str (display HTML ~rho:rho ~hidden:true ~id:(i+id) csys)
-            ) csys_set;
+            ) csys_set.csys_list;
 
             Printf.sprintf "%s            </ul>\n" !str;
           end
@@ -1615,6 +1630,76 @@ module Rule = struct
         );
         { csys with equality_constructor_to_checked = remove_id_from_list id_sdf csys.equality_constructor_to_checked }
     | _ -> csys
+
+  type 'a continuation_norm_split =
+    {
+      no_split : 'a Set.t -> (unit -> unit) -> unit;
+      split : 'a Set.t -> (unit -> unit) -> unit
+    }
+
+  let partition_csys_set fct eq_type_op csys_set =
+    let positive = ref []
+    and negative = ref []
+
+    match eq_type_op with
+      | None ->
+          List.iter (fun csys ->
+            if UF.solved_occurs Fact.Deduction csys.uf
+            then positive := csys :: !positive
+            else negative := csys :: !negative
+          ) csys_list;
+          Config.debug (fun () ->
+            if List.length !positive = 0 || List.length !negative = 0
+            then Config.internal_error "[Constraint_system.ml >> Rules.partition_csys_set] Partition should be 2 non empty sets."
+          );
+          { csys_set with csys_list = !positive }, { csys_set with csys_list = !negative; ded_occurs = false }
+      | Some eq_type ->
+          List.iter (fun csys ->
+            if UF.solved_occurs Fact.Equality csys.uf
+            then
+              let csys_1 = { csys with uf = UF.remove_solved Fact.Equality csys.uf } in
+              positive := (check_equality_type_when_removing_eq_formula csys_1 eq_type) :: !positive
+            else negative := csys :: !negative
+          ) csys_list;
+          Config.debug (fun () ->
+            if List.length !positive = 0 || List.length !negative = 0
+            then Config.internal_error "[Constraint_system.ml >> Rules.partition_csys_set] Partition should be 2 non empty sets. (2)"
+          );
+          { csys_set with csys_list = !positive; eq_occurs = false }, { csys_set with csys_list = !negative; eq_occurs = false }
+
+  let rec normalisation_split_ded csys_set f_continuation f_next =
+
+    if csys_set.csys_list = [] || not (csys_set.ded_occurs)
+    then (f_continuation.no_split [@tailcall]) csys_set f_next
+    else
+      begin
+        (* Check if the deduction fact is an axiom *)
+        let csys = List.hd csys_set.csys_list in
+
+        match UF.choose_solved_ded_option csys.uf with
+          | Some (form,_) when is_axiom (Fact.get_recipe (Fact.get_head form)) ->
+              (* When an axiom is present then the split rule can never be applied since all constraint system contains such axiom *)
+              (f_continuation.no_split [@tailcall]) csys_set f_next
+          | _ ->
+              (* Possible application of the split rule *)
+              let applicable = ref false in
+
+              let result = List.for_all (fun csys' ->
+                let r = not (UF.unsolved_occurs Fact.Deduction csys'.uf) in
+
+                if r && not (UF.solved_occurs Fact.Deduction csys'.uf)
+                then applicable := true;
+
+                r
+              ) csys_set.csys_list
+              in
+
+              if result && !applicable
+              then
+                let (positive_set,negative_set) = partition_csys_set Fact.Deduction None in
+                (f_continuation.split [@tailcall]) positive_set (fun () -> (f_continuation.split [@tailcall]) negative_set f_next)
+              else (f_continuation.no_split [@tailcall]) csys_set f_next
+      end
 
   let rec normalisation_split_rule csys_set f_continuation f_next =
     let id_explored = ref [] in
