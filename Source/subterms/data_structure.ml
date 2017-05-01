@@ -40,7 +40,6 @@ module SDF = struct
 
   type t =
     {
-      first_entry_recipe : recipe option;
       all_id : int list;
       last_entry_ground : bool;
       size : int;
@@ -51,18 +50,6 @@ module SDF = struct
   (******* Access ********)
 
   let cardinal sdf = sdf.size
-
-  let first_entry_recipe sdf = match sdf.first_entry_recipe with
-    | None ->  Config.internal_error "[Data_structure.ml >> first_entry] Should not apply first entry on an empty SDF."
-    | Some r -> r
-
-  let first_entry sdf =
-    try
-      let id,cell = SDF_Map.min_binding sdf.map_ground in
-      cell.g_fact, id
-    with
-      | Not_found -> Config.internal_error "[Data_structure.ml >> first_entry] Should not apply first entry on an empty SDF."
-
 
   let last_entry sdf =
     try
@@ -359,7 +346,7 @@ module SDF = struct
 
   (******* Basic operations *********)
 
-  let empty = { size = 0 ; map = SDF_Map.empty; all_id = []; last_entry_ground = false; map_ground = SDF_Map.empty ; first_entry_recipe = None}
+  let empty = { size = 0 ; map = SDF_Map.empty; all_id = []; last_entry_ground = false; map_ground = SDF_Map.empty }
 
   let add sdf fct =
     Config.debug (fun () ->
@@ -393,39 +380,22 @@ module SDF = struct
     let recipe_ground = is_ground r
     and protocol_ground = is_ground t in
     let new_size = sdf.size + 1 in
-    if sdf.size = 0
+    if recipe_ground && protocol_ground
     then
-      begin
-        Config.debug (fun () ->
-          if k > 0
-          then Config.internal_error "[constraint_system.ml >> add] The first entry should be a public name."
-        );
-          {
-            sdf with
-            size = new_size;
-            map_ground = SDF_Map.add new_size ({ g_var_type = k; g_fact = fct }) sdf.map_ground;
-            all_id = [1];
-            last_entry_ground = true;
-            first_entry_recipe = Some r
-          }
-      end
+      { sdf with
+        size = new_size;
+        map_ground = SDF_Map.add new_size ({ g_var_type = k; g_fact = fct }) sdf.map_ground;
+        all_id = new_size::sdf.all_id;
+        last_entry_ground = true;
+      }
     else
-      if recipe_ground && protocol_ground
-      then
-        { sdf with
-          size = new_size;
-          map_ground = SDF_Map.add new_size ({ g_var_type = k; g_fact = fct }) sdf.map_ground;
-          all_id = new_size::sdf.all_id;
-          last_entry_ground = true;
-        }
-      else
-        {
-          sdf with
-          size = new_size;
-          map = SDF_Map.add new_size ({ var_type = k; fact = fct ; protocol_ground = protocol_ground; recipe_ground = recipe_ground}) sdf.map;
-          all_id = new_size::sdf.all_id;
-          last_entry_ground = false
-        }
+      {
+        sdf with
+        size = new_size;
+        map = SDF_Map.add new_size ({ var_type = k; fact = fct ; protocol_ground = protocol_ground; recipe_ground = recipe_ground}) sdf.map;
+        all_id = new_size::sdf.all_id;
+        last_entry_ground = false
+      }
 
   let display out ?(rho = None) ?(per_line = 8) ?(tab = 0) sdf = match out with
     | Testing ->

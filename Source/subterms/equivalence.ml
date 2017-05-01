@@ -204,13 +204,8 @@ let trace_equivalence_classic proc1 proc2 =
     }
   in
 
-  let free_names_1 = Process.get_names_with_list proc1 (fun b -> b = Public) [] in
-  let free_names_2 = Process.get_names_with_list proc2 (fun b -> b = Public) free_names_1 in
-
-  let free_axioms = Axiom.of_public_names_list free_names_2 in
-
-  let csys_1 = Constraint_system.create_from_free_names symb_proc_1 free_axioms in
-  let csys_2 = Constraint_system.create_from_free_names symb_proc_2 free_axioms in
+  let csys_1 = Constraint_system.empty symb_proc_1 in
+  let csys_2 = Constraint_system.empty symb_proc_2 in
 
   (**** Generate the initial set ****)
 
@@ -348,23 +343,17 @@ let publish_trace_equivalence_result id sem proc1 proc2 result =
   Printf.fprintf out_dag "        <p> Selected semantics : %s</p>\n\n" str_semantics;
   Printf.fprintf out_classic "        <p> Selected semantics : %s</p>\n\n" str_semantics;
 
-  (* Free names *)
-  let str_free_names = display_list (Name.display Latex ~rho:rho) ", " free_names in
-
-  Printf.fprintf out_dag "        <p> Free names : \\(\\{%s\\}\\)</p>\n\n" str_free_names;
-  Printf.fprintf out_classic "        <p> Free names : \\(\\{%s\\}\\)</p>\n\n" str_free_names;
-
   (* Signature *)
   let str_signature = Symbol.display_signature Latex in
 
-  Printf.fprintf out_dag "        <p> Constructor function symbols : \\(\\{%s\\}\\)</p>\n\n" str_signature;
-  Printf.fprintf out_classic "        <p> Constructor function symbols : \\(\\{%s\\}\\)</p>\n\n" str_signature;
+  Printf.fprintf out_dag "        <p> Constructor function symbols : \\(%s\\)</p>\n\n" str_signature;
+  Printf.fprintf out_classic "        <p> Constructor function symbols : \\(%s\\)</p>\n\n" str_signature;
 
   (* Rewriting system *)
   let str_rewriting_system = Rewrite_rules.display_all_rewrite_rules Latex rho in
 
-  Printf.fprintf out_dag "        <p> Rewriting system : \\(\\{%s\\}\\)</p>\n\n" str_rewriting_system;
-  Printf.fprintf out_classic "        <p> Rewriting system : \\(\\{%s\\}\\)</p>\n\n" str_rewriting_system;
+  Printf.fprintf out_dag "        <p> Rewriting system : \\(%s\\)</p>\n\n<p> Note that for efficiency purpose, all declared public names have been transformed in constant.</p>" str_rewriting_system;
+  Printf.fprintf out_classic "        <p> Rewriting system : \\(%s\\)</p>\n\n<p> Note that for efficiency purpose, all declared public names have been transformed in constant.</p>" str_rewriting_system;
 
   Printf.fprintf out_dag "        <div class=\"title-paragraph\"> Query : Trace equivalence </div>\n\n";
   Printf.fprintf out_classic "        <div class=\"title-paragraph\"> Query : Trace equivalence </div>\n\n";

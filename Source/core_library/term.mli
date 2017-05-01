@@ -85,6 +85,8 @@ val generate_display_renaming_for_testing : name list -> fst_ord_variable list -
 module Symbol : sig
   (** A symbol can be a destructor or a constructor.*)
 
+  val get_constant : unit -> symbol
+
   (** The list of all constructors (included the tupple function symbol) used in the algorithm.*)
   val all_constructors : symbol list ref
 

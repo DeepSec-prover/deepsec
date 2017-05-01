@@ -32,16 +32,6 @@ module SDF : sig
   (** [last_entry] {% $\Solved$ %} returns the last deduction fact added to {% $\Solved$ %} with its recipe equivalent id. *)
   val last_entry : t -> Fact.deduction * id_recipe_equivalent
 
-  (** [first_entry] {% $\Solved$ %} returns the first deduction fact added to {% $\Solved$ %} with its recipe equivalent id.
-
-      WARNING : We assume that the first entry is ground (typically a public name. *)
-  val first_entry_recipe : t -> recipe
-
-  (** [first_entry] {% $\Solved$ %} returns the first deduction fact added to {% $\Solved$ %} with its recipe equivalent id.
-
-      WARNING : We assume that the first entry is ground (typically a public name. *)
-  val first_entry : t -> Fact.deduction * id_recipe_equivalent
-
   (** [last_entry_id] {% $\Solved$ %} is the same as [let _,id = last_entry] {% $\Solved$ %} [in id] but more efficient. *)
   val last_entry_id : t -> id_recipe_equivalent
 

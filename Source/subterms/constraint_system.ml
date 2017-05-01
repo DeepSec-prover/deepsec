@@ -230,15 +230,7 @@ let display out ?(rho=None) ?(hidden=false) ?(id=0) csys = match out with
 
 (********* Generators *********)
 
-let create_from_free_names data axioms_list =
-  Config.debug (fun () ->
-    if not (List.for_all (fun ax -> Axiom.index_of ax <= 0) axioms_list)
-    then Config.internal_error "[contraint_system.ml >> create_from_free_names] All names should be public."
-  );
-
-  let sdf = List.fold_left (fun sdf ax ->
-    SDF.add sdf (Fact.create_deduction_fact (of_axiom ax) (of_name (Axiom.name_of ax)))
-  ) SDF.empty axioms_list in
+let empty data =
 
   {
     additional_data = data;
@@ -250,7 +242,7 @@ let create_from_free_names data axioms_list =
     eqfst = Eq.top;
     eqsnd = Eq.top;
 
-    sdf = sdf;
+    sdf = SDF.empty;
     uf = UF.empty;
 
     i_subst_fst = Subst.identity;
@@ -361,16 +353,6 @@ let instantiate_when_solved csys =
     then Config.internal_error "[constraint_system.ml >> instantiate_when_solved] The constraint system should be solved."
   );
 
-  let smallest_ax_index =
-    let (ded,_) = SDF.first_entry csys.sdf in
-    let recipe = Fact.get_recipe ded in
-    if is_axiom recipe
-    then
-      let ax = axiom_of recipe in
-      Axiom.index_of ax
-    else 0
-  in
-
   let subst_fst, subst_snd, name_list, _ =
     DF.fold (fun (acc_fst,acc_snd,acc_name,counter_ax) bfct ->
       let k = Name.fresh_with_label Public "kI" in
@@ -378,7 +360,7 @@ let instantiate_when_solved csys =
       let fst = Subst.create Protocol (variable_of (BasicFact.get_protocol_term bfct)) (of_name k) in
       let snd = Subst.create Recipe (BasicFact.get_snd_ord_variable bfct) (of_axiom ax) in
       (Subst.compose acc_fst fst, Subst.compose acc_snd snd, k::acc_name, counter_ax - 1)
-    ) (Subst.identity, Subst.identity, [], smallest_ax_index - 1) csys.df
+    ) (Subst.identity, Subst.identity, [], 0) csys.df
   in
 
   (Subst.compose csys.i_subst_fst subst_fst, Subst.union csys.i_subst_ground_snd (Subst.compose csys.i_subst_snd subst_snd), name_list)
@@ -2925,10 +2907,10 @@ module Rule = struct
 
                                       let new_mgs_form =  Subst.compose_restricted (Subst.of_renaming snd_renaming) mgs_form in
 
-                                      let eq_name = List.map (fun x -> (x,  SDF.first_entry_recipe simple_csys_mgs.simp_SDF)) l_vars_form in
+                                      let eq_name = List.map (fun x -> (x,  apply_function (Symbol.get_constant ()) [])) l_vars_form in
                                       let eq_name_2 = Subst.fold (fun eq _ r ->
                                         if is_variable r && Variable.type_of (variable_of r) = csys.size_frame
-                                        then (variable_of r, SDF.first_entry_recipe simple_csys_mgs.simp_SDF)::eq
+                                        then (variable_of r, apply_function (Symbol.get_constant ()) [])::eq
                                         else eq
                                       ) eq_name new_mgs_form
                                       in

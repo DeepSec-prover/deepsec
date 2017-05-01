@@ -54,6 +54,7 @@ type declaration =
 type env_elt =
   | Var of (Term.fst_ord, Term.name) Term.variable
   | Name of Term.name
+  | PublicName of Term.symbol
   | Func of Term.symbol
   | Proc of int * ((Term.fst_ord, Term.name) Term.term list -> Process.expansed_process)
   | ArgVar of (Term.fst_ord, Term.name) Term.term
@@ -72,6 +73,7 @@ let display_env_elt_type = function
   | ArgVar _ -> "an argument of a process"
   | Var _ -> "a variable"
   | Name _ -> "a name"
+  | PublicName _ -> "a public name"
   | Func _ -> "a function"
   | Proc _ -> "a process"
 
@@ -90,8 +92,8 @@ let parse_free_name env (s,line) =
   if Env.mem s env
   then error_message line (Printf.sprintf "The identifier %s is already defined." s);
 
-  let n = Term.Name.fresh_with_label Term.Public s in
-  Env.add s (Name n) env
+  let n = Term.Symbol.new_constructor 0 s in
+  Env.add s (PublicName n) env
 
 (******** Parse terms ********)
 
@@ -101,6 +103,7 @@ let rec parse_term env = function
         match Env.find s env with
           | Var(v) -> Term.of_variable v
           | Name(n) -> Term.of_name n
+          | PublicName(n) -> Term.apply_function n []
           | Func(f) when Term.Symbol.get_arity f = 0 -> Term.apply_function f []
           | ArgVar(t) -> t
           | env_elt -> error_message line (Printf.sprintf "The identifiant %s is declared as %s but a name, a variable or constant is expected." s (display_env_elt_type env_elt))

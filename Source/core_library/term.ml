@@ -862,6 +862,8 @@ end
 module Symbol = struct
   (********* Set of function symbols *********)
 
+  let dummy_constant = ref None
+
   let all_constructors = ref []
 
   let all_destructors = ref []
@@ -923,6 +925,8 @@ module Symbol = struct
     let symb = { name = s; arity = ar; cat = Constructor } in
     all_constructors := List.sort order (symb::!all_constructors);
     number_of_constructors := !number_of_constructors + 1;
+    if ar = 0
+    then dummy_constant := Some symb;
     symb
 
   let new_destructor ar s rw_rules =
@@ -962,6 +966,12 @@ module Symbol = struct
         number_of_destructors := ar + !number_of_destructors;
         symb
       end;;
+
+  let get_constant () = match !dummy_constant with
+    | None ->
+        let c = new_constructor 0 "_c" in
+        c
+    | Some c -> c
 
   (******** Display function *******)
 
@@ -1326,11 +1336,11 @@ let rec display out ?(rho=None) at = function
   | Var(v) -> Variable.display out ~rho:rho at v
   | AxName(axn) -> AxName.display out ~rho:rho at axn
   | Func(f_symb,_) when f_symb.arity = 0 ->
-      Printf.sprintf "%s" f_symb.name
+      Printf.sprintf "%s" (Symbol.display out f_symb)
   | Func(f_symb,args) when f_symb.cat = Tuple ->
       Printf.sprintf "%s%s%s" (langle out) (display_list (display out ~rho:rho at) "," args) (rangle out)
   | Func(f_symb,args) ->
-      Printf.sprintf "%s(%s)" f_symb.name (display_list (display out ~rho:rho at) "," args)
+      Printf.sprintf "%s(%s)" (Symbol.display out f_symb) (display_list (display out ~rho:rho at) "," args)
 
 (*************************************
 ***         Protocol terms         ***
