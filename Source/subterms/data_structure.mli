@@ -299,7 +299,9 @@ module Uniformity_Set : sig
   (** {3 Testing} *)
 
   (** [find_protocol] {% $\Set$~$t$%} [f] returns [Some] {% $\xi$ if $(\xi,t) \in \Set$ %} and [f] {% $\xi$ %} returns [true]. Otherwise it returns [None].*)
-  val find_protocol_term : t -> protocol_term -> (recipe -> bool) -> recipe option
+  val find_protocol_term : t -> protocol_term -> recipe option
+
+  val find_protocol_term_within_multiple : t -> protocol_term -> (recipe -> bool) -> recipe option
 
   (** [exists_pair_with_same_protocol_term] {% $\Set$ %} [f] returns [true] if and only if there exist {% $u, \xi_1,\xi_2$ such that
       $\xi_1 \neq \xi_2$, %} [f] {% $\xi_1$~$\xi_2$ %} returns [true] and {% $(\xi_1,u), (\xi_2,u) \in \Set$. %}*)

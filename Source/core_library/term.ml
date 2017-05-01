@@ -1,5 +1,5 @@
 open Display
-open Extension
+open Extensions
 
 (************************
 ***       Types       ***
@@ -3096,7 +3096,7 @@ module type Uni =
     type t
 
     (** [find_protocol] {% $\Set$~$t$%} [f] returns [Some] {% $\xi$ if $(\xi,t) \in \Set$ %} and [f] {% $\xi$ %} returns [true]. Otherwise it returns [None].*)
-    val find_protocol_term : t -> protocol_term -> (recipe -> bool) -> recipe option
+    val find_protocol_term : t -> protocol_term -> recipe option
 
     (** [iter] {% $\Set$ %} [f] applies the function [f] to all pairs {% $(\xi,t) \in \Set$.
         Warning : The order in which the function [iter] goes through the pairs of $\Set$ is unspecified. %}*)
@@ -3731,7 +3731,7 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
     and mem_term pterm = match pterm with
       | Func(f,_) when f.arity = 0 -> Some (Func(f,[]))
       | _ ->
-          begin match Uni.find_protocol_term uni pterm (fun _ -> true) with
+          begin match Uni.find_protocol_term uni pterm with
             | None ->
                 begin match pterm with
                   | Func(f,args_t) ->

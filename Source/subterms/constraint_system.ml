@@ -1,7 +1,7 @@
 open Term
 open Data_structure
 open Display
-open Extension
+open Extensions
 
 (*************************************
 ***       Constraint systems       ***
@@ -561,7 +561,7 @@ let mgs csys =
 
       let test_on_subterms recipe = not (is_equal Recipe recipe (of_variable x_snd)) in
 
-      match Uniformity_Set.find_protocol_term csys.simp_Sub_Cons msg test_on_subterms with
+      match Uniformity_Set.find_protocol_term_within_multiple csys.simp_Sub_Cons msg test_on_subterms with
         | None -> None
         | Some recipe ->
             (* In such a case~\citepaper{Rule}{rule:conseq} is applied *)
@@ -767,7 +767,7 @@ let one_mgs csys =
 
       let test_on_subterms recipe = not (is_equal Recipe recipe (of_variable x_snd)) in
 
-      match Uniformity_Set.find_protocol_term csys.simp_Sub_Cons msg test_on_subterms with
+      match Uniformity_Set.find_protocol_term_within_multiple csys.simp_Sub_Cons msg test_on_subterms with
         | None -> None
         | Some recipe ->
             (* In such a case~\citepaper{Rule}{rule:conseq} is applied *)

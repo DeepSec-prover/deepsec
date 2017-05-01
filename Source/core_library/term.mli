@@ -1075,7 +1075,7 @@ module type Uni =
     type t
 
     (** [find_protocol] {% $\Set$~$t$%} [f] returns [Some] {% $\xi$ if $(\xi,t) \in \Set$ %} and [f] {% $\xi$ %} returns [true]. Otherwise it returns [None].*)
-    val find_protocol_term : t -> protocol_term -> (recipe -> bool) -> recipe option
+    val find_protocol_term : t -> protocol_term -> recipe option
 
     (** [iter] {% $\Set$ %} [f] applies the function [f] to all pairs {% $(\xi,t) \in \Set$.
         Warning : The order in which the function [iter] goes through the pairs of $\Set$ is unspecified. %}*)
