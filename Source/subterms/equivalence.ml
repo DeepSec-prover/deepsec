@@ -18,7 +18,6 @@ exception Not_Trace_Equivalent of symbolic_process Constraint_system.t
 
 let rec apply_transition_and_rules_classic csys_set size_frame f_next =
 
-
   let opti_csys_set = Constraint_system.Set.optimise_snd_ord_recipes csys_set in
 
   (*** Generate the set for the next input ***)
@@ -96,7 +95,6 @@ let rec apply_transition_and_rules_classic csys_set size_frame f_next =
 
   let var_X_ch = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
   let axiom = Axiom.create (size_frame + 1) in
-  let id_axiom = Data_structure.fresh_id_recipe_equivalent () in
 
   Constraint_system.Set.iter (fun csys ->
     let symb_proc = Constraint_system.get_additional_data csys in
@@ -108,7 +106,7 @@ let rec apply_transition_and_rules_classic csys_set size_frame f_next =
       try
         let new_csys_1 = Constraint_system.apply_substitution csys out_gathering.out_equations in
         let new_csys_2 = Constraint_system.add_basic_fact new_csys_1 ded_fact_ch in
-        let new_csys_3 = Constraint_system.add_axiom new_csys_2 axiom (out_gathering.out_term) id_axiom in
+        let new_csys_3 = Constraint_system.add_axiom new_csys_2 axiom (out_gathering.out_term) in
         let new_csys_4 = Constraint_system.add_disequations Protocol new_csys_3 out_gathering.out_disequations in
         let trace = match out_gathering.out_action with
           | None ->
@@ -145,7 +143,7 @@ let rec apply_transition_and_rules_classic csys_set size_frame f_next =
     Constraint_system.Rule.sat_disequation csys_set {
       Constraint_system.Rule.positive = out_apply_sat_disequation;
       Constraint_system.Rule.negative = out_apply_sat_disequation;
-      Constraint_system.Rule.not_applicable = (fun csys_set f_next -> Constraint_system.Rule.normalisation csys_set out_apply_sat_formula f_next)
+      Constraint_system.Rule.not_applicable = (fun csys_set f_next -> Constraint_system.Rule.normalisation_after_axiom csys_set out_apply_sat_formula f_next)
     } f_next
   and out_apply_sat_formula csys_set f_next =
     Constraint_system.Rule.sat_formula csys_set {
@@ -182,7 +180,7 @@ let rec apply_transition_and_rules_classic csys_set size_frame f_next =
       else apply_transition_and_rules_classic csys_set (size_frame + 1) f_next
   in
 
-  out_apply_sat !csys_set_for_output (fun () -> in_apply_sat !csys_set_for_input f_next)
+  out_apply_sat (Constraint_system.Set.initialise_for_output !csys_set_for_output) (fun () -> in_apply_sat !csys_set_for_input f_next)
 
 type result_trace_equivalence =
   | Equivalent

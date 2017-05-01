@@ -545,25 +545,19 @@ let parse_DF  =
 
 (*********** UF *********)
 
-let parse_equality_type = function
-  | Constructor_SDF(n,ident) -> Data_structure.UF.Constructor_SDF(n,parse_symbol ident)
-  | Equality_SDF(id1,id2) ->  Data_structure.UF.Equality_SDF(id1,id2)
-  | Consequence_UF(id) -> Data_structure.UF.Consequence_UF(id)
-
 let parse_UF (ded_list,eq_list) =
   let uf_0 = Data_structure.UF.empty in
 
   let uf_1 =
-    List.fold_left (fun uf (id,sub_ded_list) ->
+    List.fold_left (fun uf (_,sub_ded_list) ->
       let sub_ded_list' = List.map parse_deduction_formula sub_ded_list in
-      Data_structure.UF.add_deduction uf sub_ded_list' id
+      Data_structure.UF.add_deduction uf sub_ded_list'
     ) uf_0 ded_list
   in
 
-  List.fold_left (fun uf (id,eq_form,eq_type) ->
+  List.fold_left (fun uf (_,eq_form,_) ->
     let eq_form' = parse_formula Term.Fact.Equality eq_form in
-    let eq_type' = parse_equality_type eq_type in
-    Data_structure.UF.add_equality uf eq_form' id eq_type'
+    Data_structure.UF.add_equality uf eq_form'
   ) uf_1 eq_list
 
 (*********** Uniformity_Set *********)

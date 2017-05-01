@@ -49,7 +49,7 @@ val add_basic_fact : 'a t -> BasicFact.t -> 'a t
     $\Phi(\C') = \Phi(\C) \cup \{ \ax_n \rightarrow t\}$ and $\USolved(\C') = \USolved(\C) \cup \\{ \dedfact{\ax_n}{t}\\}$.%}
     Note that the deduction formula added to {% $\USolved$ %} is given [id] as recipe equivalence.
     @raise Internal_error if {% $|\Phi(\C)| \neq n-1$ \highdebug %} *)
-val add_axiom : 'a t -> axiom -> protocol_term -> Data_structure.id_recipe_equivalent -> 'a t
+val add_axiom : 'a t -> axiom -> protocol_term -> 'a t
 
 (** [add_disequations at] {% $\C$ %} [l] where the list [l] is {% $\phi_1$;\ldots; $\phi_n$ %} returns the constraint system
     {% $\C[\Equn \mapsto \Equn \wedge \bigwedge_{i=1}^n \phi_i]\Vnorm$ when %} [at = Protocol] and returns
@@ -199,6 +199,8 @@ module Set : sig
 
   val optimise_snd_ord_recipes : 'a t -> 'a t
 
+  val initialise_for_output : 'a t -> 'a t
+
   (** [choose] {% $S$ returns one constraint system in $S$. %}
       @raise Internal_error if the set is empty. *)
   val choose : 'a t -> 'a csys
@@ -231,6 +233,7 @@ module Rule : sig
       not_applicable : 'a Set.t -> (unit -> unit) -> unit
     }
 
+  val normalisation_after_axiom : 'a Set.t -> ('a Set.t -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
 
   val normalisation : 'a Set.t -> ('a Set.t -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
 
