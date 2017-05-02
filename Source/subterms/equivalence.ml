@@ -13,7 +13,6 @@ type symbolic_process =
     trace : Trace.t;
   }
 
-
 exception Not_Trace_Equivalent of symbolic_process Constraint_system.t
 
 let rec apply_transition_and_rules_classic csys_set size_frame f_next =
@@ -221,7 +220,6 @@ let trace_equivalence_classic proc1 proc2 =
 let trace_equivalence sem = match sem with
   | Classic -> trace_equivalence_classic
   | _ -> Config.internal_error "[equivalence.ml >> trace_equivalence.ml] Trace equivalence for this semantics is not yet implemented."
-
 
 (***** Display ******)
 

@@ -18,7 +18,7 @@ CMXA= $(if $(DEBUG),cma,cmxa)
 
 ### Compiler options
 INCLUDES_MOD = str.$(CMXA) unix.$(CMXA)
-INCLUDES = -I $(SOURCE)core_library -I $(SOURCE)subterms -I $(SOURCE)testing -I $(SOURCE)parser
+INCLUDES = -I $(SOURCE)core_library -I $(SOURCE)subterms -I $(SOURCE)testing -I $(SOURCE)parser -I $(SOURCE)distributed
 # Compiler options specific to OCaml version >= 4
 V4OPTIONS=$(if $(shell $(OCAMLOPT) -version | grep '^4'),-bin-annot)
 OCAMLFLAGS = $(INCLUDES) $(V4OPTIONS) -w Ae $(INCLUDES_MOD)
@@ -34,16 +34,19 @@ CORE_ML = $(CORE_ML_NAME:%.ml=$(SOURCE)core_library/%.ml)
 SUBTERMS_ML_NAME = data_structure.ml constraint_system.ml equivalence.ml
 SUBTERMS_ML = $(SUBTERMS_ML_NAME:%.ml=$(SOURCE)subterms/%.ml)
 
+DISTRIBUTED_ML_NAME = distrib.ml
+DISTRIBUTED_ML = $(DISTRIBUTED_ML_NAME:%.ml=$(SOURCE)distributed/%.ml)
+
 TESTING_ML_NAME = testing_functions.ml testing_parser_functions.ml testing_grammar.ml testing_lexer.ml testing_load_verify.ml
 TESTING_ML = $(TESTING_ML_NAME:%.ml=$(SOURCE)testing/%.ml)
 
 PARSER_ML_NAME = parser_functions.ml grammar.ml lexer.ml
 PARSER_ML = $(PARSER_ML_NAME:%.ml=$(SOURCE)parser/%.ml)
 
-ALL_ML = $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(SOURCE)main.ml $(SOURCE)testing/testing.ml
+ALL_ML = $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)main.ml $(SOURCE)testing/testing.ml
 
-EXE_MAIN_ML = $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(SOURCE)main.ml
-EXE_TESTING_ML = $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(SOURCE)testing/testing.ml
+EXE_MAIN_ML = $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)main.ml
+EXE_TESTING_ML = $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)testing/testing.ml
 
 ALL_OBJ = $(ALL_ML:.ml=.$(CMOX))
 EXE_MAIN_OBJ = $(EXE_MAIN_ML:.ml=.$(CMOX))
