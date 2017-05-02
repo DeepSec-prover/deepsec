@@ -958,7 +958,7 @@ module Set = struct
             match find_option f l with
               | None -> find_option f r
               | r -> r
-              
+
     let rec find_first_aux v0 f = function
         Empty ->
           v0

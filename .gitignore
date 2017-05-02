@@ -38,3 +38,7 @@ testing_data/validated_tests/*.html
 testing_data/validated_tests/*.js
 testing_data/faulty_tests/*
 result
+
+
+Examples/Benchmark/.*
+Examples/Benchmark/bench_*
