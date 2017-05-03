@@ -15,7 +15,7 @@ type symbolic_process =
 
 exception Not_Trace_Equivalent of symbolic_process Constraint_system.t
 
-let rec apply_transition_and_rules_classic csys_set size_frame f_next =
+let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_continuation f_next =
 
   let opti_csys_set = Constraint_system.Set.optimise_snd_ord_recipes csys_set in
 
@@ -85,7 +85,7 @@ let rec apply_transition_and_rules_classic csys_set size_frame f_next =
       let origin_process = (Constraint_system.get_additional_data csys).origin_process in
       if Constraint_system.Set.for_all (fun csys -> (Constraint_system.get_additional_data csys).origin_process = origin_process) csys_set
       then raise (Not_Trace_Equivalent csys)
-      else apply_transition_and_rules_classic csys_set size_frame f_next
+      else f_continuation csys_set size_frame f_next
   in
 
   (*** Generate the set for the next output ***)
@@ -176,10 +176,16 @@ let rec apply_transition_and_rules_classic csys_set size_frame f_next =
       let origin_process = (Constraint_system.get_additional_data csys).origin_process in
       if Constraint_system.Set.for_all (fun csys -> (Constraint_system.get_additional_data csys).origin_process = origin_process) csys_set
       then raise (Not_Trace_Equivalent csys)
-      else apply_transition_and_rules_classic csys_set (size_frame + 1) f_next
+      else f_continuation csys_set (size_frame + 1) f_next
   in
 
   out_apply_sat (Constraint_system.Set.initialise_for_output !csys_set_for_output) (fun () -> in_apply_sat !csys_set_for_input f_next)
+
+
+let apply_one_transition_and_rules_for_trace_equivalence = function
+  | Classic -> apply_one_transition_and_rules_for_trace_in_classic
+  | _ -> Config.internal_error "[equivalence.ml >> apply_one_transition_and_rules_for_trace_equivalence] Trace equivalence for this semantics is not yet implemented."
+
 
 type result_trace_equivalence =
   | Equivalent
@@ -211,15 +217,19 @@ let trace_equivalence_classic proc1 proc2 =
   let csys_set_1 = Constraint_system.Set.add csys_1 Constraint_system.Set.empty in
   let csys_set_2 = Constraint_system.Set.add csys_2 csys_set_1 in
 
+  let rec apply_rules csys_set frame_size f_next =
+    apply_one_transition_and_rules_for_trace_in_classic csys_set frame_size apply_rules f_next
+  in
+
   try
-    apply_transition_and_rules_classic csys_set_2 0 (fun () -> ());
+    apply_rules csys_set_2 0 (fun () -> ());
     Equivalent
   with
     | Not_Trace_Equivalent csys -> Not_Equivalent csys
 
 let trace_equivalence sem = match sem with
   | Classic -> trace_equivalence_classic
-  | _ -> Config.internal_error "[equivalence.ml >> trace_equivalence.ml] Trace equivalence for this semantics is not yet implemented."
+  | _ -> Config.internal_error "[equivalence.ml >> trace_equivalence] Trace equivalence for this semantics is not yet implemented."
 
 (***** Display ******)
 

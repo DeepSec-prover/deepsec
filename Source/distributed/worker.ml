@@ -1,5 +1,5 @@
+open Distributed_equivalence
 
+module DistribEquivalence = Distrib.Distrib(EquivJob)
 
-module DistribEquiv = Distrib.Distrib(Data);;
-
-DistribEquiv.worker_main ()
+let _ = DistribEquivalence.worker_main ()

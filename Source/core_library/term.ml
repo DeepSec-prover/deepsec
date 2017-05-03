@@ -220,6 +220,10 @@ module Variable = struct
 
   let accumulator = ref 0
 
+  let set_up_counter n = accumulator := n
+
+  let get_counter () = !accumulator
+
   let fst_ord_type = NoType
 
   let snd_ord_type n = n
@@ -563,6 +567,10 @@ module Name = struct
 
   let accumulator = ref 0
 
+  let set_up_counter n = accumulator := n
+
+  let get_counter () = !accumulator
+
   let fresh_with_label b n =
     let name = { label_n = n; bound = b; index_n = !accumulator; link_n = NNoLink } in
     accumulator := !accumulator + 1;
@@ -883,6 +891,32 @@ module Symbol = struct
     number_of_constructors :=0;
     number_of_destructors := 0;
     Hashtbl.reset all_projection
+
+  type setting = { all_t : symbol list ; all_p : (int * symbol list) list ; all_c : symbol list ; all_d : symbol list ; nb_c : int ; nb_d : int ; cst : symbol }
+
+  let set_up_signature setting =
+    dummy_constant := Some setting.cst;
+    all_constructors := setting.all_c;
+    all_destructors := setting.all_d;
+    all_tuple := setting.all_t;
+    number_of_constructors := setting.nb_c;
+    number_of_destructors := setting.nb_d;
+    Hashtbl.reset all_projection;
+    List.iter (fun (ar,list_proj) ->
+      let array_proj = Array.of_list list_proj in
+      Hashtbl.add all_projection ar array_proj
+    ) setting.all_p
+
+  let get_settings () =
+    {
+      all_t = !all_tuple;
+      all_p = Hashtbl.fold (fun ar array_proj acc -> (ar,Array.to_list array_proj)::acc) all_projection [];
+      all_c = !all_constructors;
+      all_d = !all_destructors;
+      nb_c = !number_of_constructors;
+      nb_d = !number_of_destructors;
+      cst = (match !dummy_constant with None -> Config.internal_error "[term.ml >> get_setting] A constant should be present" | Some c -> c)
+    }
 
   (********* Symbols functions *********)
 

@@ -10,6 +10,10 @@ module type TASK =
     (** This is the type for the result of one job computation*)
     type result
 
+    type command =
+      | Kill
+      | Continue
+
     (** The function [initialise] will be run only once by the child processes when they are created. *)
     val initialise : shareddata -> unit
 
@@ -20,7 +24,7 @@ module type TASK =
 
     (** Upon receiving a result [r] from a child process, the master process will run [digest r job_l] where [job_l] is the reference toward the list of jobs.
         The purpose of this function is to allow the master process to update the job lists depending of the result it received from the child processes. *)
-    val digest : result -> job list ref -> unit
+    val digest : result -> job list ref -> command
   end
 
 module Distrib = functor (Task:TASK) ->
@@ -84,25 +88,30 @@ struct
 
       let processes_in_Unix_ch = ref (List.map fst processes_in_Unix_out_ch) in
 
-      while !processes_in_Unix_ch <> [] do
-        let (available_in_Unix_ch,_,_) = Unix.select !processes_in_Unix_ch [] [] (-1.) in
+      begin try
+        while !processes_in_Unix_ch <> [] do
+          let (available_in_Unix_ch,_,_) = Unix.select !processes_in_Unix_ch [] [] (-1.) in
 
-      	List.iter (fun in_Unix_ch ->
-      	  let in_ch = Unix.in_channel_of_descr in_Unix_ch in
-      	  let result = input_value in_ch in
-      	  Task.digest result job_list_ref;
 
-      	  if !job_list_ref = []
-      	  then processes_in_Unix_ch := List.filter (fun x -> x <> in_Unix_ch) !processes_in_Unix_ch
-      	  else
-      	    begin
-      	      let out_ch = List.assoc in_Unix_ch processes_in_Unix_out_ch in
-      	      output_value out_ch (List.hd !job_list_ref);
-      	      flush out_ch;
-      	      job_list_ref := List.tl !job_list_ref
-      	    end
-      	) available_in_Unix_ch
-      done;
+            List.iter (fun in_Unix_ch ->
+          	  let in_ch = Unix.in_channel_of_descr in_Unix_ch in
+          	  let result = input_value in_ch in
+          	  match Task.digest result job_list_ref with
+                | Task.Kill -> raise Not_found
+                | Task.Continue ->
+                	  if !job_list_ref = []
+                	  then processes_in_Unix_ch := List.filter (fun x -> x <> in_Unix_ch) !processes_in_Unix_ch
+                	  else
+                	    begin
+                	      let out_ch = List.assoc in_Unix_ch processes_in_Unix_out_ch in
+                	      output_value out_ch (List.hd !job_list_ref);
+                	      flush out_ch;
+                	      job_list_ref := List.tl !job_list_ref
+                	    end
+          	) available_in_Unix_ch
+        done;
+      with Not_found -> ()
+      end;
 
       List.iter (fun x -> ignore (Unix.close_process x)) processes_in_out_ch
 end

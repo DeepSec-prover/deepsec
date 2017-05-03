@@ -42,3 +42,5 @@ result
 
 Examples/Benchmark/.*
 Examples/Benchmark/bench_*
+
+worker

@@ -1,39 +1,26 @@
-(** Distributed computing library *)
+open Equivalence
+open Process
 
-(** This is the module type for a task that need to be computed *)
-module type TASK =
-sig
 
-  (** [shareddata] is a type for data needed by all the computation*)
+module EquivJob : sig
   type shareddata
 
-  (** This is the type of a job *)
   type job
 
-  (** This is the type for the result of one job computation*)
   type result
 
   type command =
     | Kill
     | Continue
 
-  (** The function [initialise] will be run only once by the child processes when they are created. *)
   val initialise : shareddata -> unit
 
-  (** The function [evaluation job] will be run the child processes. The argument [job] is read from the standard input channel, i.e., [stdin]
-      of the child process and the result is output on its standard channel, i.e. [stdout]. Note that for this reasons, it is important
-      that the function [evaluation] never write or read anything respectively on its standard output channel and from its standard input channel. *)
   val evaluation : job -> result
 
-  (** Upon receiving a result [r] from a child process, the master process will run [digest r job_l] where [job_l] is the reference toward the list of jobs.
-      The purpose of this function is to allow the master process to update the job lists depending of the result it received from the child processes. *)
   val digest : result -> job list ref -> command
 end
 
-(** This functor build a module to distribute the computation based on one task*)
-module Distrib : functor (Task : TASK) ->
-sig
-
+module DistribEquivalence : sig
   (** [local_workers n] sets up the number of workers that will be run on the local in parallel on the local machine.
       More specifically, the executable of the worker will be taken in the DeepSec distribution on which the server
       is run. Note that executing [local_workers] multiple times adds up the values, i.e. [local_workers 2; local_workers 5] is
@@ -56,5 +43,9 @@ sig
 
   (** [compute_job shared job_l] launch [!number_of_workers] child processes send them the shared data and distribute the jobs in [job_l].
       When the computation is finished, the server close the child processes. *)
-  val compute_job : Task.shareddata -> Task.job list -> unit
+  val compute_job : EquivJob.shareddata -> EquivJob.job list -> unit
 end
+
+val minimum_nb_of_jobs : int ref
+
+val trace_equivalence : semantics -> process -> process -> result_trace_equivalence * process * process

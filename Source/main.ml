@@ -125,9 +125,21 @@ let rec excecute_queries id = function
 
       Printf.printf "Executing query %d...\n" id;
 
-      let result = Equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 in
-
-      Equivalence.publish_trace_equivalence_result id !Process.chosen_semantics proc1 proc2 result;
+      let result =
+        if !Config.distributed
+        then
+          begin
+            let result,init_proc1, init_proc2 = Distributed_equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 in
+            Equivalence.publish_trace_equivalence_result id !Process.chosen_semantics init_proc1 init_proc2 result;
+            result
+          end
+        else
+          begin
+            let result = Equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 in
+            Equivalence.publish_trace_equivalence_result id !Process.chosen_semantics proc1 proc2 result;
+            result
+          end
+      in
 
       begin match result with
         | Equivalence.Equivalent -> Printf.printf "Query %d: Equivalent processes : See a summary of the input file on the HTML interface\n" id
@@ -143,6 +155,8 @@ let extract_path sysargv =
   String.sub sysargv.(0) 0 (pos_start + 1)
 
 let _ =
+  Distributed_equivalence.DistribEquivalence.local_workers 10;
+
   let path = ref "" in
   let arret = ref false in
   let i = ref 1 in

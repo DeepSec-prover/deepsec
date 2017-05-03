@@ -23,3 +23,5 @@ val path_index : string ref
 (** Indicates whether or not Deepsec should gather informations about the attack trace. It will be faster if
     disabled. *)
 val display_trace : bool ref
+
+val distributed : bool ref
