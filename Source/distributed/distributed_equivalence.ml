@@ -78,15 +78,20 @@ let minimum_nb_of_jobs = ref 100
 let trace_equivalence semantics proc1 proc2 =
 
   let current_jobs = ref [] in
+  let size_current_jobs = ref 0 in
   let tmp_jobs = ref [] in
+  let size_tmp_jobs = ref 0 in
 
   let rec generate_jobs = function
     | [] -> ()
-    | jobs_list when (List.length !tmp_jobs) > !minimum_nb_of_jobs -> tmp_jobs := List.rev_append jobs_list !tmp_jobs
+    | jobs_list when !size_tmp_jobs > !minimum_nb_of_jobs ->
+        tmp_jobs := List.rev_append jobs_list !tmp_jobs;
+        size_tmp_jobs := (List.length jobs_list) + !size_tmp_jobs
     | (csys_set,frame_size)::q ->
         Equivalence.apply_one_transition_and_rules_for_trace_equivalence semantics csys_set frame_size
           (fun csys_set_1 frame_size_1 f_next_1 ->
             tmp_jobs := (csys_set_1,frame_size_1) :: !tmp_jobs;
+            incr size_tmp_jobs;
             f_next_1 ()
           ) (fun () -> generate_jobs q)
   in
@@ -116,14 +121,18 @@ let trace_equivalence semantics proc1 proc2 =
   let csys_set_2 = Constraint_system.Set.add csys_2 csys_set_1 in
 
   current_jobs := [csys_set_2,0];
+  incr size_current_jobs;
+
 
   (**** Generate the initial jobs ****)
 
-  while (List.length !current_jobs) < !minimum_nb_of_jobs && !current_jobs <> [] do
+  while !size_current_jobs < !minimum_nb_of_jobs && !current_jobs <> [] do
     begin try
       generate_jobs !current_jobs;
       current_jobs := !tmp_jobs;
-      tmp_jobs := []
+      size_current_jobs := !size_tmp_jobs;
+      tmp_jobs := [];
+      size_tmp_jobs := 0
     with
       | Equivalence.Not_Trace_Equivalent csys ->
           EquivJob.result_equivalence := EquivJob.Not_Equivalent (csys, proc1, proc2);
