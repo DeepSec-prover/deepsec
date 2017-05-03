@@ -175,7 +175,7 @@ let trace_equivalence semantics proc1 proc2 =
       in
 
       Printf.printf "Starting distributed computing...\n";
-      Printf.printf "Number of jobs generated : %d\n" (List.length jobs_list);
+      Printf.printf "Number of sets of constraint systems generated : %d\n" (List.length jobs_list);
 
       (**** Launch the jobs in parallel ****)
 

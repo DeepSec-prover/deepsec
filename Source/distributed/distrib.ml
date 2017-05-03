@@ -90,8 +90,8 @@ struct
 
       begin try
         while !processes_in_Unix_ch <> [] do
+          Printf.printf "\x0dSets of constraint systems remaining: %d               %!" (List.length !job_list_ref);
           let (available_in_Unix_ch,_,_) = Unix.select !processes_in_Unix_ch [] [] (-1.) in
-
 
             List.iter (fun in_Unix_ch ->
           	  let in_ch = Unix.in_channel_of_descr in_Unix_ch in
@@ -112,6 +112,6 @@ struct
         done;
       with Not_found -> ()
       end;
-
+      Printf.printf "\x0dComputation completed                                   \n";
       List.iter (fun x -> ignore (Unix.close_process x)) processes_in_out_ch
 end
