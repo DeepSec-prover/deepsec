@@ -155,8 +155,6 @@ let extract_path sysargv =
   String.sub sysargv.(0) 0 (pos_start + 1)
 
 let _ =
-  Distributed_equivalence.DistribEquivalence.local_workers 10;
-
   let path = ref "" in
   let arret = ref false in
   let i = ref 1 in
@@ -167,6 +165,19 @@ let _ =
 
   while !i < Array.length Sys.argv && not !arret do
     match (Sys.argv).(!i) with
+      | "-distributed" when not (!i+1 = (Array.length Sys.argv)) ->
+          Config.distributed := true;
+          Distributed_equivalence.DistribEquivalence.local_workers (int_of_string (Sys.argv).(!i+1));
+          i := !i + 2
+      | "-distant_workers" when not (!i+3 = (Array.length Sys.argv)) ->
+          Distributed_equivalence.DistribEquivalence.add_distant_worker (Sys.argv).(!i+1) (Sys.argv).(!i+2) (int_of_string (Sys.argv).(!i+3));
+          i := !i + 4
+      | "-nb_jobs" when not (!i+1 = (Array.length Sys.argv)) ->
+          Distributed_equivalence.minimum_nb_of_jobs := int_of_string (Sys.argv).(!i+1);
+          i := !i + 2
+      | "-no_attack_trace_display" ->
+          Config.display_trace := false;
+          i := !i + 1
       | str_path ->
           if !i = Array.length Sys.argv - 1
           then path := str_path

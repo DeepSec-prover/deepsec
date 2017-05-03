@@ -82,6 +82,7 @@ let trace_equivalence semantics proc1 proc2 =
 
   let rec generate_jobs = function
     | [] -> ()
+    | jobs_list when (List.length !tmp_jobs) > !minimum_nb_of_jobs -> tmp_jobs := List.rev_append jobs_list !tmp_jobs
     | (csys_set,frame_size)::q ->
         Equivalence.apply_one_transition_and_rules_for_trace_equivalence semantics csys_set frame_size
           (fun csys_set_1 frame_size_1 f_next_1 ->
