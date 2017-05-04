@@ -27,12 +27,20 @@ sig
 
   (** Upon receiving a result [r] from a child process, the master process will run [digest r job_l] where [job_l] is the reference toward the list of jobs.
       The purpose of this function is to allow the master process to update the job lists depending of the result it received from the child processes. *)
-  val digest : result -> job list ref -> command
+  val digest : result -> command
+
+  type generated_jobs =
+    | Jobs of job list
+    | Result of result
+
+  val generate_jobs : job -> generated_jobs
 end
 
 (** This functor build a module to distribute the computation based on one task*)
 module Distrib : functor (Task : TASK) ->
 sig
+
+  val minimum_nb_of_jobs : int ref
 
   (** [local_workers n] sets up the number of workers that will be run on the local in parallel on the local machine.
       More specifically, the executable of the worker will be taken in the DeepSec distribution on which the server
@@ -56,5 +64,5 @@ sig
 
   (** [compute_job shared job_l] launch [!number_of_workers] child processes send them the shared data and distribute the jobs in [job_l].
       When the computation is finished, the server close the child processes. *)
-  val compute_job : Task.shareddata -> Task.job list -> unit
+  val compute_job : Task.shareddata -> Task.job -> unit
 end

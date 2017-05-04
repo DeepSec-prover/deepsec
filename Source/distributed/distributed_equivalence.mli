@@ -17,10 +17,19 @@ module EquivJob : sig
 
   val evaluation : job -> result
 
-  val digest : result -> job list ref -> command
+  val digest : result -> command
+
+  type generated_jobs =
+    | Jobs of job list
+    | Result of result
+
+  val generate_jobs : job -> generated_jobs
 end
 
 module DistribEquivalence : sig
+
+  val minimum_nb_of_jobs : int ref
+
   (** [local_workers n] sets up the number of workers that will be run on the local in parallel on the local machine.
       More specifically, the executable of the worker will be taken in the DeepSec distribution on which the server
       is run. Note that executing [local_workers] multiple times adds up the values, i.e. [local_workers 2; local_workers 5] is
@@ -43,9 +52,7 @@ module DistribEquivalence : sig
 
   (** [compute_job shared job_l] launch [!number_of_workers] child processes send them the shared data and distribute the jobs in [job_l].
       When the computation is finished, the server close the child processes. *)
-  val compute_job : EquivJob.shareddata -> EquivJob.job list -> unit
+  val compute_job : EquivJob.shareddata -> EquivJob.job -> unit
 end
-
-val minimum_nb_of_jobs : int ref
 
 val trace_equivalence : semantics -> process -> process -> result_trace_equivalence * process * process

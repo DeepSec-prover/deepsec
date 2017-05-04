@@ -192,7 +192,7 @@ let _ =
           Distributed_equivalence.DistribEquivalence.add_distant_worker (Sys.argv).(!i+1) (Sys.argv).(!i+2) (int_of_string (Sys.argv).(!i+3));
           i := !i + 4
       | "-nb_sets" when not (!i+1 = (Array.length Sys.argv)) ->
-          Distributed_equivalence.minimum_nb_of_jobs := int_of_string (Sys.argv).(!i+1);
+          Distributed_equivalence.DistribEquivalence.minimum_nb_of_jobs := int_of_string (Sys.argv).(!i+1);
           i := !i + 2
       | "-no_display_attack_trace" ->
           Config.display_trace := false;
