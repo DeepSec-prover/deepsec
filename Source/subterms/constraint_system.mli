@@ -39,7 +39,7 @@ val get_axioms_with_list : 'a t -> axiom list -> axiom list
 (** [create_from_free_names data] {% $[\ax_{-n};\ldots; \ax_0]$ returns the contraint system $\C = \ecsys{\emptyset}{\emptyset}{\top}{\top}{\Solved}{\emptyset}{\emptyset}$
     where $\Solved = \\{ \dedfact{\ax_0}{k_0}; \dedfact{\ax_{-1}}{k_1}; \ldots; \dedfact{\ax_{-n}}{k_n} \\}$ where for all $i$, $k_i$ is associated to $\ax_{-i}$. %}
     @raise Internal_error if the names {% $k_0, \ldots, k_n$ are not all public. \highdebug %} *)
-val create_from_free_names : 'a -> axiom list -> 'a t
+val empty : 'a -> 'a t
 
 (** [add_basic_fact] {% $\C$~$\dedfact{\quanti{X}{i}}{t}$ returns the constraint system $\C[ \Df \mapsto \Df \cup \dedfact{\quanti{X}{i}}{t}; \InitInput \mapsto \InitInput \cup \{X\}]$. %}
     @raise Internal_error if {% $t\mguset{\equality{\Equn(\C)}} \neq t$ or $X \in \varsdeux{\C}$. %} *)
@@ -49,7 +49,7 @@ val add_basic_fact : 'a t -> BasicFact.t -> 'a t
     $\Phi(\C') = \Phi(\C) \cup \{ \ax_n \rightarrow t\}$ and $\USolved(\C') = \USolved(\C) \cup \\{ \dedfact{\ax_n}{t}\\}$.%}
     Note that the deduction formula added to {% $\USolved$ %} is given [id] as recipe equivalence.
     @raise Internal_error if {% $|\Phi(\C)| \neq n-1$ \highdebug %} *)
-val add_axiom : 'a t -> axiom -> protocol_term -> Data_structure.id_recipe_equivalent -> 'a t
+val add_axiom : 'a t -> axiom -> protocol_term -> 'a t
 
 (** [add_disequations at] {% $\C$ %} [l] where the list [l] is {% $\phi_1$;\ldots; $\phi_n$ %} returns the constraint system
     {% $\C[\Equn \mapsto \Equn \wedge \bigwedge_{i=1}^n \phi_i]\Vnorm$ when %} [at = Protocol] and returns
@@ -199,6 +199,8 @@ module Set : sig
 
   val optimise_snd_ord_recipes : 'a t -> 'a t
 
+  val initialise_for_output : 'a t -> 'a t
+
   (** [choose] {% $S$ returns one constraint system in $S$. %}
       @raise Internal_error if the set is empty. *)
   val choose : 'a t -> 'a csys
@@ -224,31 +226,33 @@ end
 
 module Rule : sig
 
-  val normalisation : 'a Set.t ->  ('a Set.t -> unit) -> unit
-
   type 'a continuation =
     {
-      positive : 'a Set.t -> unit;
-      negative : 'a Set.t -> unit;
-      not_applicable : 'a Set.t -> unit
+      positive : 'a Set.t -> (unit -> unit) -> unit;
+      negative : 'a Set.t -> (unit -> unit) -> unit;
+      not_applicable : 'a Set.t -> (unit -> unit) -> unit
     }
+
+  val normalisation_after_axiom : 'a Set.t -> ('a Set.t -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
+
+  val normalisation : 'a Set.t -> ('a Set.t -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
 
   (** All the normalisation and transformation rules have the same type. Typically, a rule is a function that takes two arguments
       [S] and [f] where [S] is a set of constraint systems and [f] are continuation functions that each takes a constraint system as argument and return unit.
       A rule typically apply the rules (in the sense of {% those defined in~\citepaper{Section}{sec:normalisation_rule} and~\citepaper{Section}{sec:transformation rules}) %} and then
       apply the functions [f] on each normalised sets obtained by application of the rule depending on how the set of constraint systems was produced by the rule.  *)
 
-  val sat : 'a Set.t -> 'a continuation -> unit
+  val sat : 'a Set.t -> 'a continuation -> (unit -> unit) -> unit
 
-  val sat_disequation : 'a Set.t -> 'a continuation -> unit
+  val sat_disequation : 'a Set.t -> 'a continuation -> (unit -> unit) -> unit
 
-  val sat_formula : 'a Set.t -> 'a continuation -> unit
+  val sat_formula : 'a Set.t -> 'a continuation -> (unit -> unit) -> unit
 
-  val equality_constructor : 'a Set.t -> 'a continuation -> unit
+  val equality_constructor : 'a Set.t -> 'a continuation -> (unit -> unit) -> unit
 
-  val equality : 'a Set.t -> 'a continuation -> unit
+  val equality : 'a Set.t -> 'a continuation -> (unit -> unit) -> unit
 
-  val rewrite : 'a Set.t -> 'a continuation -> unit
+  val rewrite : 'a Set.t -> 'a continuation -> (unit -> unit) -> unit
 
   (**/**)
 

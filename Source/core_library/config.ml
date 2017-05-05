@@ -26,3 +26,5 @@ let path_index = ref "./"
 (**** Trace display ****)
 
 let display_trace = ref true
+
+let distributed = ref false

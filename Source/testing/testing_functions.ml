@@ -2637,11 +2637,11 @@ let apply_Constraint_system_Rule_rules rule csys_set =
   let result_neg = ref [] in
   let result_not = ref [] in
 
-  let f_pos csys_set = result_pos := csys_set :: !result_pos
-  and f_neg csys_set = result_neg := csys_set :: !result_neg
-  and f_not csys_set = result_not := csys_set :: !result_not in
+  let f_pos csys_set _ = result_pos := csys_set :: !result_pos
+  and f_neg csys_set _ = result_neg := csys_set :: !result_neg
+  and f_not csys_set _ = result_not := csys_set :: !result_not in
 
-  rule csys_set { Constraint_system.Rule.positive = f_pos; Constraint_system.Rule.negative = f_neg; Constraint_system.Rule.not_applicable = f_not };
+  rule csys_set { Constraint_system.Rule.positive = f_pos; Constraint_system.Rule.negative = f_neg; Constraint_system.Rule.not_applicable = f_not } (fun () -> ());
 
   let test_terminal,_ = test_Constraint_system_Rule_rules csys_set (!result_pos,!result_neg,!result_not) in
   produce_test_terminal test_terminal
@@ -2700,7 +2700,7 @@ let update_Constraint_system_Rule_normalisation () =
 let apply_Constraint_system_Rule_normalisation csys_set =
   let result = ref [] in
 
-  Constraint_system.Rule.normalisation csys_set (fun set -> result := set::!result);
+  Constraint_system.Rule.normalisation csys_set (fun set _ -> result := set::!result) (fun () -> ());
 
   let test_terminal,_ = test_Constraint_system_Rule_normalisation csys_set !result in
   produce_test_terminal test_terminal

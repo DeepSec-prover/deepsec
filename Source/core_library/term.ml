@@ -1,5 +1,5 @@
 open Display
-open Extension
+open Extensions
 
 (************************
 ***       Types       ***
@@ -219,6 +219,10 @@ let display_var_name_for_HTML str index =
 module Variable = struct
 
   let accumulator = ref 0
+
+  let set_up_counter n = accumulator := n
+
+  let get_counter () = !accumulator
 
   let fst_ord_type = NoType
 
@@ -563,6 +567,10 @@ module Name = struct
 
   let accumulator = ref 0
 
+  let set_up_counter n = accumulator := n
+
+  let get_counter () = !accumulator
+
   let fresh_with_label b n =
     let name = { label_n = n; bound = b; index_n = !accumulator; link_n = NNoLink } in
     accumulator := !accumulator + 1;
@@ -862,6 +870,8 @@ end
 module Symbol = struct
   (********* Set of function symbols *********)
 
+  let dummy_constant = ref None
+
   let all_constructors = ref []
 
   let all_destructors = ref []
@@ -881,6 +891,32 @@ module Symbol = struct
     number_of_constructors :=0;
     number_of_destructors := 0;
     Hashtbl.reset all_projection
+
+  type setting = { all_t : symbol list ; all_p : (int * symbol list) list ; all_c : symbol list ; all_d : symbol list ; nb_c : int ; nb_d : int ; cst : symbol }
+
+  let set_up_signature setting =
+    dummy_constant := Some setting.cst;
+    all_constructors := setting.all_c;
+    all_destructors := setting.all_d;
+    all_tuple := setting.all_t;
+    number_of_constructors := setting.nb_c;
+    number_of_destructors := setting.nb_d;
+    Hashtbl.reset all_projection;
+    List.iter (fun (ar,list_proj) ->
+      let array_proj = Array.of_list list_proj in
+      Hashtbl.add all_projection ar array_proj
+    ) setting.all_p
+
+  let get_settings () =
+    {
+      all_t = !all_tuple;
+      all_p = Hashtbl.fold (fun ar array_proj acc -> (ar,Array.to_list array_proj)::acc) all_projection [];
+      all_c = !all_constructors;
+      all_d = !all_destructors;
+      nb_c = !number_of_constructors;
+      nb_d = !number_of_destructors;
+      cst = (match !dummy_constant with None -> Config.internal_error "[term.ml >> get_setting] A constant should be present" | Some c -> c)
+    }
 
   (********* Symbols functions *********)
 
@@ -923,6 +959,8 @@ module Symbol = struct
     let symb = { name = s; arity = ar; cat = Constructor } in
     all_constructors := List.sort order (symb::!all_constructors);
     number_of_constructors := !number_of_constructors + 1;
+    if ar = 0
+    then dummy_constant := Some symb;
     symb
 
   let new_destructor ar s rw_rules =
@@ -962,6 +1000,12 @@ module Symbol = struct
         number_of_destructors := ar + !number_of_destructors;
         symb
       end;;
+
+  let get_constant () = match !dummy_constant with
+    | None ->
+        let c = new_constructor 0 "_c" in
+        c
+    | Some c -> c
 
   (******** Display function *******)
 
@@ -1326,11 +1370,11 @@ let rec display out ?(rho=None) at = function
   | Var(v) -> Variable.display out ~rho:rho at v
   | AxName(axn) -> AxName.display out ~rho:rho at axn
   | Func(f_symb,_) when f_symb.arity = 0 ->
-      Printf.sprintf "%s" f_symb.name
+      Printf.sprintf "%s" (Symbol.display out f_symb)
   | Func(f_symb,args) when f_symb.cat = Tuple ->
       Printf.sprintf "%s%s%s" (langle out) (display_list (display out ~rho:rho at) "," args) (rangle out)
   | Func(f_symb,args) ->
-      Printf.sprintf "%s(%s)" f_symb.name (display_list (display out ~rho:rho at) "," args)
+      Printf.sprintf "%s(%s)" (Symbol.display out f_symb) (display_list (display out ~rho:rho at) "," args)
 
 (*************************************
 ***         Protocol terms         ***
@@ -3096,7 +3140,7 @@ module type Uni =
     type t
 
     (** [find_protocol] {% $\Set$~$t$%} [f] returns [Some] {% $\xi$ if $(\xi,t) \in \Set$ %} and [f] {% $\xi$ %} returns [true]. Otherwise it returns [None].*)
-    val find_protocol_term : t -> protocol_term -> (recipe -> bool) -> recipe option
+    val find_protocol_term : t -> protocol_term -> recipe option
 
     (** [iter] {% $\Set$ %} [f] applies the function [f] to all pairs {% $(\xi,t) \in \Set$.
         Warning : The order in which the function [iter] goes through the pairs of $\Set$ is unspecified. %}*)
@@ -3731,7 +3775,7 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
     and mem_term pterm = match pterm with
       | Func(f,_) when f.arity = 0 -> Some (Func(f,[]))
       | _ ->
-          begin match Uni.find_protocol_term uni pterm (fun _ -> true) with
+          begin match Uni.find_protocol_term uni pterm with
             | None ->
                 begin match pterm with
                   | Func(f,args_t) ->

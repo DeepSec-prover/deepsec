@@ -1,7 +1,7 @@
 open Term
 open Data_structure
 open Display
-open Extension
+open Extensions
 
 (*************************************
 ***       Constraint systems       ***
@@ -143,162 +143,6 @@ let is_solved csys = Tools.is_df_solved csys.df
 let is_uniformity_rule_applicable csys =
   Uniformity_Set.exists_pair_with_same_protocol_term csys.sub_cons (Eq.implies Recipe csys.eqsnd)
 
-(********* Generators *********)
-
-let create_from_free_names data axioms_list =
-  Config.debug (fun () ->
-    if not (List.for_all (fun ax -> Axiom.index_of ax <= 0) axioms_list)
-    then Config.internal_error "[contraint_system.ml >> create_from_free_names] All names should be public."
-  );
-
-  let sdf = List.fold_left (fun sdf ax ->
-    SDF.add sdf (Fact.create_deduction_fact (of_axiom ax) (of_name (Axiom.name_of ax)))
-  ) SDF.empty axioms_list in
-
-  {
-    additional_data = data;
-
-    size_frame = 0;
-
-    df = DF.empty;
-
-    eqfst = Eq.top;
-    eqsnd = Eq.top;
-
-    sdf = sdf;
-    uf = UF.empty;
-
-    i_subst_fst = Subst.identity;
-    i_subst_snd = Subst.identity;
-
-    i_subst_ground_snd = Subst.identity;
-
-    sub_cons = Uniformity_Set.empty;
-
-    equality_constructor_checked = [];
-    equality_constructor_to_checked = [];
-
-    equality_to_checked = [];
-
-    skeletons_checked = [];
-    skeletons_to_check = []
-  }
-
-let apply_substitution csys subst =
-  Config.debug (fun () ->
-    if not (Subst.is_extended_by Protocol csys.i_subst_fst subst)
-    then Config.internal_error "[constraint_system.ml >> apply_substitution] The  substitution of the constraint system should be extended by the substitution given as argument."
-  );
-
-  let new_df = DF.apply csys.df subst
-  and new_eqfst = Eq.apply Protocol csys.eqfst subst in
-
-  if Eq.is_bot new_eqfst
-  then raise Bot;
-
-  let new_sdf = SDF.apply csys.sdf Subst.identity subst
-  and new_uf = UF.apply csys.uf Subst.identity subst
-  and new_i_subst_fst = Subst.restrict subst (fun x -> Variable.quantifier_of x = Free)
-  and new_sub_cons = Uniformity_Set.apply csys.sub_cons Subst.identity subst in
-
-  let new_csys =
-    { csys with
-      df = new_df;
-      eqfst = new_eqfst;
-      sdf = new_sdf;
-      uf = new_uf;
-      i_subst_fst = new_i_subst_fst;
-      sub_cons = new_sub_cons
-    }
-  in
-
-  if is_uniformity_rule_applicable new_csys
-  then raise Bot
-  else new_csys
-
-let add_basic_fact csys bfct =
-  Config.debug (fun () ->
-    let t = BasicFact.get_protocol_term bfct in
-
-    let t' = Subst.apply csys.i_subst_fst t (fun x f -> f x) in
-
-    if not (is_equal Protocol t t')
-    then Config.internal_error "[constraint_system.ml >> add_basic_fact] The substitution of the constraint system should not instantiate the protocol term of the basic deduction fact."
-  );
-
-  { csys with
-      df = DF.add csys.df bfct;
-      sub_cons = Uniformity_Set.add csys.sub_cons (of_variable (BasicFact.get_snd_ord_variable bfct)) (BasicFact.get_protocol_term bfct)
-  }
-
-let add_disequations (type a) (type b) (at: (a,b) atom) csys (diseq_list: (a,b) Diseq.t list) = match at with
-  | Protocol ->
-      { csys with
-        eqfst = List.fold_left (fun acc diseq -> Eq.wedge acc diseq) csys.eqfst diseq_list
-      }
-  | Recipe ->
-      let new_csys =
-        { csys with
-          eqsnd = List.fold_left (fun acc diseq -> Eq.wedge acc diseq) csys.eqsnd diseq_list
-        }
-      in
-      if is_uniformity_rule_applicable new_csys
-      then raise Bot
-      else new_csys
-
-let add_axiom csys ax t id =
-  Config.debug (fun () ->
-    if csys.size_frame + 1 <> Axiom.index_of ax
-    then Config.internal_error "[constraint_system.ml >> add_axiom] The axiom given as argument should have an index equal to the size of the frame + 1"
-  );
-
-  let new_size = csys.size_frame + 1 in
-
-  let new_skeletons_to_check = ref [] in
-
-  SDF.iter_id csys.sdf (fun id fct ->
-    List.iter (fun f ->
-      new_skeletons_to_check := List.fold_left (fun acc skel -> (id,skel)::acc) !new_skeletons_to_check (Rewrite_rules.skeletons (Fact.get_protocol_term fct) f new_size)
-      ) !Symbol.all_destructors
-  );
-
-  { csys with
-    skeletons_checked = [];
-    skeletons_to_check = !new_skeletons_to_check;
-    uf = UF.add_deduction csys.uf [Fact.create Fact.Deduction (Fact.create_deduction_fact (of_axiom ax) t) [] []] id;
-    size_frame = new_size
-  }
-
-let replace_additional_data csys data = { csys with additional_data = data }
-
-let instantiate_when_solved csys =
-  Config.debug (fun () ->
-    if not (is_solved csys)
-    then Config.internal_error "[constraint_system.ml >> instantiate_when_solved] The constraint system should be solved."
-  );
-
-  let smallest_ax_index =
-    let (ded,_) = SDF.first_entry csys.sdf in
-    let recipe = Fact.get_recipe ded in
-    if is_axiom recipe
-    then
-      let ax = axiom_of recipe in
-      Axiom.index_of ax
-    else 0
-  in
-
-  let subst_fst, subst_snd, name_list, _ =
-    DF.fold (fun (acc_fst,acc_snd,acc_name,counter_ax) bfct ->
-      let k = Name.fresh_with_label Public "kI" in
-      let ax = Axiom.of_public_name k counter_ax in
-      let fst = Subst.create Protocol (variable_of (BasicFact.get_protocol_term bfct)) (of_name k) in
-      let snd = Subst.create Recipe (BasicFact.get_snd_ord_variable bfct) (of_axiom ax) in
-      (Subst.compose acc_fst fst, Subst.compose acc_snd snd, k::acc_name, counter_ax - 1)
-    ) (Subst.identity, Subst.identity, [], smallest_ax_index - 1) csys.df
-  in
-
-  (Subst.compose csys.i_subst_fst subst_fst, Subst.union csys.i_subst_ground_snd (Subst.compose csys.i_subst_snd subst_snd), name_list)
-
 (******** Display *******)
 
 let display_id_skeleton out rho (id,skel) =
@@ -384,6 +228,142 @@ let display out ?(rho=None) ?(hidden=false) ?(id=0) csys = match out with
 
   | _ -> Config.internal_error "[constraint_system.ml >> display] This display mode is not implemented yet."
 
+(********* Generators *********)
+
+let empty data =
+
+  {
+    additional_data = data;
+
+    size_frame = 0;
+
+    df = DF.empty;
+
+    eqfst = Eq.top;
+    eqsnd = Eq.top;
+
+    sdf = SDF.empty;
+    uf = UF.empty;
+
+    i_subst_fst = Subst.identity;
+    i_subst_snd = Subst.identity;
+
+    i_subst_ground_snd = Subst.identity;
+
+    sub_cons = Uniformity_Set.empty;
+
+    equality_constructor_checked = [];
+    equality_constructor_to_checked = [];
+
+    equality_to_checked = [];
+
+    skeletons_checked = [];
+    skeletons_to_check = []
+  }
+
+let apply_substitution csys subst =
+  Config.debug (fun () ->
+    if not (Subst.is_extended_by Protocol csys.i_subst_fst subst)
+    then Config.internal_error "[constraint_system.ml >> apply_substitution] The  substitution of the constraint system should be extended by the substitution given as argument."
+  );
+
+  let new_df = DF.apply csys.df subst
+  and new_eqfst = Eq.apply Protocol csys.eqfst subst in
+
+  if Eq.is_bot new_eqfst
+  then raise Bot;
+
+  let new_sdf = SDF.apply csys.sdf Subst.identity subst
+  and new_uf = UF.apply csys.uf Subst.identity subst
+  and new_i_subst_fst = Subst.restrict subst (fun x -> Variable.quantifier_of x = Free)
+  and new_sub_cons = Uniformity_Set.apply csys.sub_cons Subst.identity subst in
+
+  let new_csys =
+    { csys with
+      df = new_df;
+      eqfst = new_eqfst;
+      sdf = new_sdf;
+      uf = new_uf;
+      i_subst_fst = new_i_subst_fst;
+      sub_cons = new_sub_cons
+    }
+  in
+
+  if is_uniformity_rule_applicable new_csys
+  then raise Bot
+  else new_csys
+
+let add_basic_fact csys bfct =
+  Config.debug (fun () ->
+    let t = BasicFact.get_protocol_term bfct in
+
+    let t' = Subst.apply csys.i_subst_fst t (fun x f -> f x) in
+
+    if not (is_equal Protocol t t')
+    then Config.internal_error "[constraint_system.ml >> add_basic_fact] The substitution of the constraint system should not instantiate the protocol term of the basic deduction fact."
+  );
+
+  { csys with
+      df = DF.add csys.df bfct;
+      sub_cons = Uniformity_Set.add csys.sub_cons (of_variable (BasicFact.get_snd_ord_variable bfct)) (BasicFact.get_protocol_term bfct)
+  }
+
+let add_disequations (type a) (type b) (at: (a,b) atom) csys (diseq_list: (a,b) Diseq.t list) = match at with
+  | Protocol ->
+      { csys with
+        eqfst = List.fold_left (fun acc diseq -> Eq.wedge acc diseq) csys.eqfst diseq_list
+      }
+  | Recipe ->
+      let new_csys =
+        { csys with
+          eqsnd = List.fold_left (fun acc diseq -> Eq.wedge acc diseq) csys.eqsnd diseq_list
+        }
+      in
+      if is_uniformity_rule_applicable new_csys
+      then raise Bot
+      else new_csys
+
+let add_axiom csys ax t =
+  Config.debug (fun () ->
+    if csys.size_frame + 1 <> Axiom.index_of ax
+    then Config.internal_error "[constraint_system.ml >> add_axiom] The axiom given as argument should have an index equal to the size of the frame + 1"
+  );
+
+  let new_size = csys.size_frame + 1 in
+
+  let new_skeletons_to_check = ref [] in
+
+  SDF.iter_id csys.sdf (fun id fct ->
+    List.iter (fun f ->
+      new_skeletons_to_check := List.fold_left (fun acc skel -> (id,skel)::acc) !new_skeletons_to_check (Rewrite_rules.skeletons (Fact.get_protocol_term fct) f new_size)
+      ) !Symbol.all_destructors
+  );
+  { csys with
+    skeletons_checked = [];
+    skeletons_to_check = !new_skeletons_to_check;
+    uf = UF.add_deduction csys.uf [Fact.create Fact.Deduction (Fact.create_deduction_fact (of_axiom ax) t) [] []];
+    size_frame = new_size
+  }
+
+let replace_additional_data csys data = { csys with additional_data = data }
+
+let instantiate_when_solved csys =
+  Config.debug (fun () ->
+    if not (is_solved csys)
+    then Config.internal_error "[constraint_system.ml >> instantiate_when_solved] The constraint system should be solved."
+  );
+
+  let subst_fst, subst_snd, name_list, _ =
+    DF.fold (fun (acc_fst,acc_snd,acc_name,counter_ax) bfct ->
+      let k = Name.fresh_with_label Public "kI" in
+      let ax = Axiom.of_public_name k counter_ax in
+      let fst = Subst.create Protocol (variable_of (BasicFact.get_protocol_term bfct)) (of_name k) in
+      let snd = Subst.create Recipe (BasicFact.get_snd_ord_variable bfct) (of_axiom ax) in
+      (Subst.compose acc_fst fst, Subst.compose acc_snd snd, k::acc_name, counter_ax - 1)
+    ) (Subst.identity, Subst.identity, [], 0) csys.df
+  in
+
+  (Subst.compose csys.i_subst_fst subst_fst, Subst.union csys.i_subst_ground_snd (Subst.compose csys.i_subst_snd subst_snd), name_list)
 
 (*****************************************
 ***       Most general solutions       ***
@@ -563,7 +543,7 @@ let mgs csys =
 
       let test_on_subterms recipe = not (is_equal Recipe recipe (of_variable x_snd)) in
 
-      match Uniformity_Set.find_protocol_term csys.simp_Sub_Cons msg test_on_subterms with
+      match Uniformity_Set.find_protocol_term_within_multiple csys.simp_Sub_Cons msg test_on_subterms with
         | None -> None
         | Some recipe ->
             (* In such a case~\citepaper{Rule}{rule:conseq} is applied *)
@@ -769,7 +749,7 @@ let one_mgs csys =
 
       let test_on_subterms recipe = not (is_equal Recipe recipe (of_variable x_snd)) in
 
-      match Uniformity_Set.find_protocol_term csys.simp_Sub_Cons msg test_on_subterms with
+      match Uniformity_Set.find_protocol_term_within_multiple csys.simp_Sub_Cons msg test_on_subterms with
         | None -> None
         | Some recipe ->
             (* In such a case~\citepaper{Rule}{rule:conseq} is applied *)
@@ -1429,41 +1409,72 @@ module Set = struct
   (** An alias for the type of constraint systems. *)
   type 'a csys = 'a t
 
+  type equality_type =
+    | Constructor_SDF of id_recipe_equivalent * symbol (** [Constructor_SDF (id,f)] represents the formulas generated by the rule {% \Equality on the deduction fact from $\Solved$ %} with recipe equivalent id equal to [id] and with the constructor function symbol [f].*)
+    | Equality_SDF of id_recipe_equivalent * id_recipe_equivalent (** [Equality_SDF (id1,id2)] represents the formulas generated by the rule {% \Equality on the deduction facts from $\Solved$ %} with recipe equivalent ids equal to [id1] and [id2].*)
+    | Consequence_UF
+    | No_equality
+
   (** The type of set of constraint systems. *)
-  type 'a t = 'a csys list
+  type 'a t =
+    {
+      csys_list : 'a csys list;
+      ded_occurs : bool;
+      eq_occurs : equality_type
+    }
 
-  let unit_t_of (type a) (csys_set: a t) = ((List.fold_left (fun acc csys -> (unit_t_of csys)::acc) [] csys_set): unit t)
+  let unit_t_of (type a) (csys_set: a t) = { csys_set with csys_list = (List.fold_left (fun acc csys -> (unit_t_of csys)::acc) [] csys_set.csys_list) }
 
-  let empty = []
+  let empty =
+    {
+      csys_list = [];
+      ded_occurs = false;
+      eq_occurs = No_equality
+    }
 
-  let size = List.length
+  let size csys_set = List.length csys_set.csys_list
 
-  let add csys csys_set = csys::csys_set
+  let add csys csys_set = { csys_set with csys_list = csys::csys_set.csys_list }
 
   let choose csys_set =
-    if csys_set = []
-    then Config.internal_error "[constraint_system.ml >> Set.choose] The set should not be empty.";
+    Config.debug (fun () ->
+      if csys_set.csys_list = []
+      then Config.internal_error "[constraint_system.ml >> Set.choose] The set should not be empty.";
+    );
 
-    List.hd csys_set
+    List.hd csys_set.csys_list
 
   let optimise_snd_ord_recipes csys_set =
-    if csys_set = []
+    if csys_set.csys_list = []
     then csys_set
     else
-      let csys = List.hd csys_set in
+      let csys = List.hd csys_set.csys_list in
 
       let i_subst_ground_snd, i_subst_snd = Subst.split_domain_on_term csys.i_subst_snd is_ground in
       let new_i_subst_ground_snd = Subst.union i_subst_ground_snd csys.i_subst_ground_snd in
 
-      List.fold_left (fun acc csys' ->
-        { csys' with i_subst_snd = i_subst_snd; i_subst_ground_snd = new_i_subst_ground_snd }::acc
-      ) [] csys_set
+      let csys_list =
+        List.fold_left (fun acc csys' ->
+          { csys' with i_subst_snd = i_subst_snd; i_subst_ground_snd = new_i_subst_ground_snd }::acc
+        ) [] csys_set.csys_list
+      in
+      { csys_set with csys_list = csys_list }
 
-  let for_all = List.for_all
+  let initialise_for_output csys_set =
+    { csys_set with ded_occurs = true }
 
-  let is_empty csys_set = csys_set = []
+  let for_all f csys_set = List.for_all f csys_set.csys_list
 
-  let iter = List.iter
+  let is_empty csys_set = csys_set.csys_list = []
+
+  let iter f csys_set = List.iter f csys_set.csys_list
+
+  (*  let display_equality_type = function
+    | Constructor_SDF (id,f) -> Printf.sprintf "_Const(%d,%s)" id (Symbol.display Testing f)
+    | Equality_SDF(id1,id2) -> Printf.sprintf "_Equa(%d,%d)" id1 id2
+    | Consequence_UF -> "_Conseq"
+    | No_equality -> "_NoEq"
+  *)
 
   let display_initial id size =
 
@@ -1474,19 +1485,19 @@ module Set = struct
     go_through (size-1)
 
   let display out ?(rho=None) ?(id=1) csys_set = match out with
-    | Testing -> Printf.sprintf "{ %s }" (display_list (fun csys -> display Testing ~rho:rho csys) ", " csys_set)
+    | Testing -> Printf.sprintf "{ %s }" (display_list (fun csys -> display Testing ~rho:rho csys) ", " csys_set.csys_list)
     | HTML ->
-        if csys_set = []
+        if csys_set.csys_list = []
         then Printf.sprintf "\\(%s\\)" (emptyset Latex)
         else
           begin
-            let str = ref (Printf.sprintf "\\( \\{ %s \\}\\) with </br>\n" (display_initial id (List.length csys_set))) in
+            let str = ref (Printf.sprintf "\\( \\{ %s \\}\\) with </br>\n" (display_initial id (List.length csys_set.csys_list))) in
 
             str := Printf.sprintf "%s            <ul>\n" !str;
 
             List.iteri (fun i csys ->
               str := Printf.sprintf "%s              <li>%s              </li>\n" !str (display HTML ~rho:rho ~hidden:true ~id:(i+id) csys)
-            ) csys_set;
+            ) csys_set.csys_list;
 
             Printf.sprintf "%s            </ul>\n" !str;
           end
@@ -1501,9 +1512,9 @@ module Rule = struct
 
   type 'a continuation =
     {
-      positive : 'a Set.t -> unit;
-      negative : 'a Set.t -> unit;
-      not_applicable : 'a Set.t -> unit
+      positive : 'a Set.t -> (unit -> unit) -> unit;
+      negative : 'a Set.t -> (unit -> unit) -> unit;
+      not_applicable : 'a Set.t -> (unit -> unit) -> unit
     }
 
   (* Tested functions *)
@@ -1542,26 +1553,26 @@ module Rule = struct
 
   let update_test_rewrite f = test_rewrite_unit := f
 
-  let test_rule (type a) (rule : a Set.t -> a continuation -> unit) test_rule (csys_set: a Set.t) (continuation_func: a continuation) =
+  let test_rule (type a) (rule : a Set.t -> a continuation -> (unit -> unit) -> unit) test_rule_function (csys_set: a Set.t) (continuation_func: a continuation) (f_next:unit -> unit) =
     try
       let res_pos = ref ([]:unit Set.t list)
       and res_neg = ref ([]:unit Set.t list)
       and res_not = ref ([]:unit Set.t list) in
 
-      let f_pos (set: a Set.t) =
+      let f_pos (set: a Set.t) f_next =
         res_pos := (Set.unit_t_of set)::!res_pos;
-        continuation_func.positive set
-      and f_neg (set: a Set.t) =
+        continuation_func.positive set f_next
+      and f_neg (set: a Set.t) f_next =
         res_neg := (Set.unit_t_of set)::!res_neg;
-        continuation_func.negative set
-      and f_not (set: a Set.t) =
+        continuation_func.negative set f_next
+      and f_not (set: a Set.t) f_next =
         res_not := (Set.unit_t_of set)::!res_not;
-        continuation_func.not_applicable set
+        continuation_func.not_applicable set f_next
       in
 
-      rule csys_set { positive = f_pos; negative = f_neg ; not_applicable = f_not };
+      rule csys_set { positive = f_pos; negative = f_neg ; not_applicable = f_not } f_next;
 
-      test_rule (Set.unit_t_of csys_set) (!res_pos,!res_neg,!res_not)
+      test_rule_function (Set.unit_t_of csys_set) (!res_pos,!res_neg,!res_not)
     with
       | Config.Internal_error -> raise Config.Internal_error
       | exc ->
@@ -1569,20 +1580,15 @@ module Rule = struct
           and res_neg = ref ([]:unit Set.t list)
           and res_not = ref ([]:unit Set.t list) in
 
-          let f_pos set = res_pos := (Set.unit_t_of set)::!res_pos
-          and f_neg set = res_neg := (Set.unit_t_of set)::!res_neg
-          and f_not set = res_not := (Set.unit_t_of set)::!res_not in
+          let f_pos set _ = res_pos := (Set.unit_t_of set)::!res_pos
+          and f_neg set _ = res_neg := (Set.unit_t_of set)::!res_neg
+          and f_not set _ = res_not := (Set.unit_t_of set)::!res_not in
 
-          rule csys_set { positive = f_pos; negative = f_neg ; not_applicable = f_not };
-          test_rule (Set.unit_t_of csys_set) (!res_pos,!res_neg,!res_not);
+          rule csys_set { positive = f_pos; negative = f_neg ; not_applicable = f_not } f_next;
+          test_rule_function (Set.unit_t_of csys_set) (!res_pos,!res_neg,!res_not);
           raise exc
 
   (* The rules *)
-
-  exception Found of id_recipe_equivalent
-  exception Partition_eq of id_recipe_equivalent * UF.equality_type
-  exception Elim_eq of id_recipe_equivalent * UF.equality_type
-  exception Elim_eq_ded of id_recipe_equivalent * id_recipe_equivalent
 
   let rec remove_id_from_list id = function
     | [] -> Config.internal_error "[Constraint_system.ml >> remove_id_from_list] The element to remove should be present in the list."
@@ -1590,7 +1596,7 @@ module Rule = struct
     | id'::q -> id'::(remove_id_from_list id q)
 
   let check_equality_type_when_removing_eq_formula csys = function
-    | UF.Equality_SDF (id_max_sdf, id_sdf) ->
+    | Set.Equality_SDF (id_max_sdf, id_sdf) ->
         Config.debug (fun () ->
           let (_,id_last_entry) = SDF.last_entry csys.sdf in
           if id_max_sdf <> id_last_entry
@@ -1598,7 +1604,7 @@ module Rule = struct
         );
 
         { csys with equality_to_checked = remove_id_from_list id_sdf csys.equality_to_checked }
-    | UF.Constructor_SDF (id_sdf,symb) ->
+    | Set.Constructor_SDF (id_sdf,symb) ->
         Config.debug (fun () ->
           let fact = SDF.get csys.sdf id_sdf in
 
@@ -1608,304 +1614,532 @@ module Rule = struct
         { csys with equality_constructor_to_checked = remove_id_from_list id_sdf csys.equality_constructor_to_checked }
     | _ -> csys
 
-  let rec normalisation_split_rule csys_set f_continuation =
-    let id_explored = ref (fun _ -> false) in
+  type 'a continuation_norm_split =
+    {
+      no_split : 'a Set.t -> (unit -> unit) -> unit;
+      split : 'a Set.t -> (unit -> unit) -> unit
+    }
 
-    let explore_uf_ded csys =
-      UF.iter_solved_deduction_id csys.uf (fun id _ ->
-        if !id_explored id
-        then ()
-        else
-          begin
-            let applicable = ref false in
+  let partition_csys_set eq_type_op csys_set =
+    let positive = ref []
+    and negative = ref [] in
 
-            let result = List.for_all (fun csys' ->
-              let r = not (UF.is_unsolved Fact.Deduction csys'.uf id) in
+    match eq_type_op with
+      | None ->
+          List.iter (fun csys ->
+            if UF.solved_occurs Fact.Deduction csys.uf
+            then positive := csys :: !positive
+            else negative := csys :: !negative
+          ) csys_set.Set.csys_list;
+          Config.debug (fun () ->
+            if List.length !positive = 0 || List.length !negative = 0
+            then Config.internal_error "[Constraint_system.ml >> Rules.partition_csys_set] Partition should be 2 non empty sets."
+          );
+          { csys_set with Set.csys_list = !positive }, { csys_set with Set.csys_list = !negative; Set.ded_occurs = false }
+      | Some Set.Consequence_UF ->
+          List.iter (fun csys ->
+            if UF.solved_occurs Fact.Equality csys.uf
+            then
+              let new_uf = UF.remove_solved Fact.Equality csys.uf in
+              let csys_1 = { csys with uf = UF.remove_solved Fact.Deduction new_uf } in
+              positive := csys_1 :: !positive
+            else
+              begin
+                Config.debug (fun () ->
+                  if UF.unsolved_occurs Fact.Equality csys.uf
+                  then Config.internal_error "[Constraint_system.ml >> Rules.partition_csys_set] There should not be an unsolved formula"
+                );
+                negative := csys :: !negative
+              end
+          ) csys_set.Set.csys_list;
+          Config.debug (fun () ->
+            if List.length !positive = 0 || List.length !negative = 0
+            then Config.internal_error "[Constraint_system.ml >> Rules.partition_csys_set] Partition should be 2 non empty sets. (2)"
+          );
+          { Set.csys_list = !positive; Set.eq_occurs = Set.No_equality; Set.ded_occurs = false }, { csys_set with Set.csys_list = !negative; Set.eq_occurs = Set.No_equality }
+      | Some eq_type ->
+          List.iter (fun csys ->
+            if UF.solved_occurs Fact.Equality csys.uf
+            then
+              let csys_1 = { csys with uf = UF.remove_solved Fact.Equality csys.uf } in
+              positive := (check_equality_type_when_removing_eq_formula csys_1 eq_type) :: !positive
+            else
+              begin
+                Config.debug (fun () ->
+                  if UF.unsolved_occurs Fact.Equality csys.uf
+                  then Config.internal_error "[Constraint_system.ml >> Rules.partition_csys_set] There should not be an unsolved formula (2)"
+                );
+                negative := csys :: !negative
+              end
+          ) csys_set.Set.csys_list;
+          Config.debug (fun () ->
+            if List.length !positive = 0 || List.length !negative = 0
+            then Config.internal_error "[Constraint_system.ml >> Rules.partition_csys_set] Partition should be 2 non empty sets. (2)"
+          );
+          { csys_set with Set.csys_list = !positive; Set.eq_occurs = Set.No_equality }, { csys_set with Set.csys_list = !negative; Set.eq_occurs = Set.No_equality }
 
-              if r && not (UF.is_solved Fact.Deduction csys'.uf id)
-              then applicable := true;
+  let normalisation_split_ded csys_set f_continuation f_next =
 
-              r
-            ) csys_set
-            in
-
-            id_explored := (fun x -> id = x || !id_explored x);
-
-            if result && !applicable
-            then raise (Found id)
-          end
-      )
-    in
-
-    let explore_uf_eq csys =
-      UF.iter_solved_equality_id csys.uf (fun id _ eq_type ->
-        if !id_explored id
-        then ()
-        else
-          begin
-            let applicable = ref false in
-
-            let result = List.for_all (fun csys' ->
-              let r = not (UF.is_unsolved Fact.Equality csys'.uf id) in
-
-              if r && not (UF.is_solved Fact.Equality csys'.uf id)
-              then applicable := true;
-
-              r
-            ) csys_set
-            in
-
-            id_explored := (fun x -> id = x || !id_explored x);
-
-            match result, !applicable with
-              | true, true -> raise (Partition_eq (id,eq_type))
-              | true, false ->
-                  begin match UF.get_eq_type_solved csys.uf id  with
-                    | UF.Consequence_UF id_ded -> raise (Elim_eq_ded (id,id_ded))
-                    | _ -> raise (Elim_eq (id,eq_type))
-                  end
-              | _, _ -> ()
-          end
-      )
-    in
-
-    let partition_csys_set fct id eq_type_op =
-      let positive = ref []
-      and negative = ref [] in
-
-      List.iter (fun csys ->
-        try
-          let new_csys = match eq_type_op with
-            | Some eq_type ->
-                let csys_1 = check_equality_type_when_removing_eq_formula csys eq_type in
-                { csys_1 with uf = UF.remove_solved_id fct csys_1.uf id }
-            | None -> { csys with uf = UF.remove_solved_id fct csys.uf id }
-          in
-
-          positive := new_csys :: !positive
-        with
-          | Not_found -> negative := csys :: !negative
-        ) csys_set;
-      (!positive,!negative)
-    in
-
-    try
-      List.iter explore_uf_ded csys_set;
-
+    if csys_set.Set.csys_list = [] || not (csys_set.Set.ded_occurs)
+    then (f_continuation.no_split [@tailcall]) csys_set f_next
+    else
       begin
-        try
-          id_explored := (fun _ -> false);
-          List.iter explore_uf_eq csys_set;
-          f_continuation csys_set
-        with
-          | Partition_eq (id,eq_type) ->
-              let (pos_csys_set,neg_csys_set) = partition_csys_set Fact.Equality id (Some eq_type) in
-              normalisation_split_rule pos_csys_set f_continuation;
-              normalisation_split_rule neg_csys_set f_continuation
-          | Elim_eq (id,eq_type) ->
-              normalisation_split_rule (
-                List.fold_left (fun acc csys ->
-                  let csys_1 = check_equality_type_when_removing_eq_formula csys eq_type in
-                  { csys_1 with uf = UF.remove_solved_id Fact.Equality csys_1.uf id} :: acc
-                ) [] csys_set
-              ) f_continuation
-          | Elim_eq_ded (id,id_ded) ->
-              normalisation_split_rule (
-                List.fold_left (fun acc csys ->
-                  let new_uf = UF.remove_solved_id Fact.Equality csys.uf id in
-                  { csys with uf = UF.remove_solved_id Fact.Deduction new_uf id_ded} :: acc
-                ) [] csys_set
-              ) f_continuation
+        (* Check if the deduction fact is an axiom *)
+        let csys = List.hd csys_set.Set.csys_list in
+
+        match UF.choose_solved_option Fact.Deduction csys.uf with
+          | Some form when is_axiom (Fact.get_recipe (Fact.get_head form)) ->
+              (* When an axiom is present then the split rule can never be applied since all constraint system contains such axiom *)
+              (f_continuation.no_split [@tailcall]) csys_set f_next
+          | _ ->
+              (* Possible application of the split rule *)
+              let applicable = ref false in
+
+              let result = List.for_all (fun csys' ->
+                let r = not (UF.unsolved_occurs Fact.Deduction csys'.uf) in
+
+                if r && not (UF.solved_occurs Fact.Deduction csys'.uf)
+                then applicable := true;
+
+                r
+              ) csys_set.Set.csys_list
+              in
+
+              if result && !applicable
+              then
+                let (positive_set,negative_set) = partition_csys_set None csys_set in
+                (f_continuation.split [@tailcall]) positive_set (fun () -> (f_continuation.split [@tailcall]) negative_set f_next)
+              else (f_continuation.no_split [@tailcall]) csys_set f_next
       end
-    with
-      | Found id ->
-          let (pos_csys_set,neg_csys_set) = partition_csys_set Fact.Deduction id None in
-          normalisation_split_rule pos_csys_set f_continuation;
-          normalisation_split_rule neg_csys_set f_continuation
 
-  exception Norm_rule_15_applicable of recipe
+  let normalisation_split_eq csys_set f_continuation f_next =
 
-  type continuation_next =
-    | No_change
-    | SDF_addition
-    | UF_Modification
+    if csys_set.Set.csys_list = [] || csys_set.Set.eq_occurs = Set.No_equality
+    then (f_continuation.no_split [@tailcall]) csys_set f_next
+    else
+      begin
+        let applicable = ref false in
 
+        let result = List.for_all (fun csys ->
+          let r = not (UF.unsolved_occurs Fact.Equality csys.uf) in
 
-  let normalisation_SDF_or_consequence csys_set f_continuation =
+          if r && not (UF.solved_occurs Fact.Equality csys.uf)
+          then applicable := true;
 
-    if List.for_all (fun csys -> UF.exists_solved Fact.Deduction csys.uf (fun _ -> true)) csys_set
-    then
-      let consequence_recipe = ref None in
-      let one_is_not_consequence = ref false in
+          r
+        ) csys_set.Set.csys_list
+        in
 
-      begin try
-        List.iter (fun csys ->
-          let (_,ded_formula) = UF.choose_solved Fact.Deduction csys.uf in
+        match result, !applicable with
+          | true, true ->
+              let (positive_set,negative_set) = partition_csys_set (Some csys_set.Set.eq_occurs) csys_set in
+              (f_continuation.split [@tailcall]) positive_set (fun () -> (f_continuation.split [@tailcall]) negative_set f_next)
+          | true, false ->
+              begin match csys_set.Set.eq_occurs with
+                | Set.Consequence_UF ->
+                    let csys_list =
+                      List.fold_left (fun acc csys ->
+                        let new_uf = UF.remove_solved Fact.Equality csys.uf in
+                        { csys with uf = UF.remove_solved Fact.Deduction new_uf } :: acc
+                      ) [] csys_set.Set.csys_list
+                    in
+                    let csys_set' = { Set.csys_list = csys_list ; Set.eq_occurs = Set.No_equality ; Set.ded_occurs = false } in
+
+                    (f_continuation.no_split [@tailcall]) csys_set' f_next
+                | _ ->
+                    let csys_list =
+                      List.fold_left (fun acc csys ->
+                        let csys_1 = check_equality_type_when_removing_eq_formula csys csys_set.Set.eq_occurs in
+                        { csys_1 with uf = UF.remove_solved Fact.Equality csys_1.uf } :: acc
+                      ) [] csys_set.Set.csys_list
+                    in
+                    let csys_set' = { csys_set with Set.csys_list = csys_list ; Set.eq_occurs = Set.No_equality } in
+
+                    (f_continuation.no_split [@tailcall]) csys_set' f_next
+              end
+          | _, _ -> (f_continuation.no_split [@tailcall]) csys_set f_next
+      end
+
+  type 'a continuation_main_norm_split =
+    {
+      main_no_split : 'a Set.t -> (unit -> unit) -> unit;
+      main_split_ded : 'a Set.t -> (unit -> unit) -> unit;
+      main_split_but_not_ded : 'a Set.t -> (unit -> unit) -> unit
+    }
+
+  let normalisation_split csys_set f_continuation f_next =
+
+    let after_split_ded csys_set_1 f_next_1 =
+      normalisation_split_eq csys_set_1
+        {
+          split = f_continuation.main_split_ded;
+          no_split = f_continuation.main_split_ded
+        }
+        f_next_1
+    in
+
+    let after_no_split_ded csys_set_1 f_next_1 =
+      normalisation_split_eq csys_set_1
+        {
+          split = (fun csys_set_2 f_next_2 -> normalisation_split_ded csys_set_2 { split = f_continuation.main_split_ded; no_split = f_continuation.main_split_but_not_ded } f_next_2);
+          no_split = f_continuation.main_no_split
+        }
+        f_next_1
+    in
+
+    normalisation_split_ded csys_set
+      {
+        split = after_split_ded;
+        no_split = after_no_split_ded
+      }
+      f_next
+
+  type 'a continuation_conseq_norm =
+    {
+      addition : 'a Set.t -> (unit -> unit) -> unit;
+      removal : 'a Set.t -> (unit -> unit) -> unit
+    }
+
+  (* This rule should only be applied if all deduction facts are solved and if there is no equality formula in UF *)
+  let normalisation_SDF_or_consequence csys_set f_continuation f_next =
+    Config.debug (fun () ->
+      if not (List.for_all (fun csys -> UF.solved_occurs Fact.Deduction csys.uf) csys_set.Set.csys_list)
+      then Config.internal_error "[constraint_system.ml >> normalisation_SDF_or_consequence] The deduction formula should be solved.";
+
+      if csys_set.Set.eq_occurs <> Set.No_equality
+      then Config.internal_error "[constraint_system.ml >> normalisation_SDF_or_consequence] There should not be equality formulas";
+
+      if List.exists (fun csys -> UF.solved_occurs Fact.Equality csys.uf || UF.unsolved_occurs Fact.Equality csys.uf) csys_set.Set.csys_list
+      then Config.internal_error "[constraint_system.ml >> normalisation_SDF_or_consequence] There is an equality fact even though it was indicated otherwise.";
+
+      if csys_set.Set.ded_occurs = false
+      then Config.internal_error "[constraint_system.ml >> normalisation_SDF_or_consequence] The rules should only be applied with the presence of deduction formulas.";
+    );
+
+    let consequence_recipe = ref None in
+    let one_is_not_consequence = ref false in
+
+    let rec go_through_csys_set = function
+      | [] -> None
+      | csys::q ->
+          let ded_formula = UF.choose_solved Fact.Deduction csys.uf in
 
           let term = Fact.get_protocol_term (Fact.get_head ded_formula) in
 
           match Tools.uniform_consequence csys.sdf csys.df csys.sub_cons term with
             | None ->
+                one_is_not_consequence := true;
                 begin match !consequence_recipe with
-                  | None -> ()
-                  | Some recipe -> raise (Norm_rule_15_applicable recipe)
-                end;
-
-                one_is_not_consequence := true
+                  | None -> go_through_csys_set q
+                  | Some recipe -> Some recipe
+                end
             | Some recipe ->
                 begin match !consequence_recipe, !one_is_not_consequence  with
-                  | None,false -> consequence_recipe := Some recipe
-                  | None, true -> raise (Norm_rule_15_applicable recipe)
-                  | Some _, true -> Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] This case should not happend (the exception Norm_rule_15_applicable should have already be triggered)."
-                  | _, _ -> ()
+                  | None,false -> consequence_recipe := Some recipe; go_through_csys_set q
+                  | None, true -> Some recipe
+                  | Some _, true -> Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] This case should not happen."
+                  | _, _ -> go_through_csys_set q
                 end
-          ) csys_set;
+    in
 
-        if !one_is_not_consequence
-        then
-          (* Addition to SDF -> add to SDF and remove from UF *)
-          let new_csys_set =
-            List.fold_left (fun acc_csys csys ->
-              (* Update of the lists equality_constructor_checked and equality_constructor_to_checked *)
+    match go_through_csys_set csys_set.Set.csys_list with
+      | None ->
+          if !one_is_not_consequence
+          then
+            (* Addition to SDF -> add to SDF and remove from UF *)
+            let new_csys_list =
+              List.fold_left (fun acc_csys csys ->
+                (* Update of the lists equality_constructor_checked and equality_constructor_to_checked *)
 
-              let id,ded_formula = UF.choose_solved Fact.Deduction csys.uf in
+                let ded_formula = UF.choose_solved Fact.Deduction csys.uf in
+
+                Config.debug (fun () ->
+                  if not (Fact.is_fact ded_formula)
+                  then Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] The formula should be a fact.";
+
+                  if csys.equality_constructor_to_checked <> []
+                  then Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] All sdf should have been checked when we add a new element to SDF, i.e.  we did not respect the order of rule Sat < Equality < Rew";
+
+                  if csys.equality_to_checked <> []
+                  then Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] All pair of deduction fact from sdf should have been checked for equalities at that point."
+                );
+                let head = Fact.get_head ded_formula in
+
+                let new_sdf = SDF.add csys.sdf head in
+                let id_last = SDF.last_entry_id new_sdf in
+
+                let new_skeletons =
+                  List.fold_left (fun acc f ->
+                    List.rev_append (Rewrite_rules.skeletons (Fact.get_protocol_term head) f csys.size_frame) acc
+                    ) [] !Symbol.all_destructors
+                in
+
+                { csys with
+                  skeletons_checked = [];
+                  skeletons_to_check = List.rev_append csys.skeletons_checked (List.fold_left (fun acc skel -> (id_last,skel)::acc) csys.skeletons_to_check new_skeletons);
+                  equality_to_checked = SDF.all_id csys.sdf;
+                  equality_constructor_checked = [];
+                  equality_constructor_to_checked = id_last::csys.equality_constructor_checked;
+                  sdf = new_sdf;
+                  uf = UF.remove_solved Fact.Deduction csys.uf
+                } :: acc_csys
+              ) [] csys_set.Set.csys_list
+            in
+
+            let new_csys_set = { Set.csys_list = new_csys_list; Set.ded_occurs = false ; Set.eq_occurs = Set.No_equality } in
+
+
+            (f_continuation.removal [@tailcall]) new_csys_set f_next
+          else
+            (* All are consequence -> remove from UF *)
+            let new_csys_list =
+              List.fold_left (fun acc csys ->
+                { csys with uf = UF.remove_solved Fact.Deduction csys.uf } :: acc
+              ) [] csys_set.Set.csys_list
+            in
+
+            let new_csys_set = { Set.csys_list = new_csys_list; Set.ded_occurs = false ; Set.eq_occurs = Set.No_equality } in
+
+            (f_continuation.removal [@tailcall]) new_csys_set f_next
+      | Some recipe_conseq ->
+          (* Apply Consequence normalisation rule *)
+
+          let new_csys_list =
+            List.fold_left (fun acc csys ->
+              let ded_formula = UF.choose_solved Fact.Deduction csys.uf in
 
               Config.debug (fun () ->
                 if not (Fact.is_fact ded_formula)
-                then Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] The formula should be a fact.";
-
-                if csys.equality_constructor_to_checked <> []
-                then Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] All sdf should have been checked when we add a new element to SDF, i.e.  we did not respect the order of rule Sat < Equality < Rew";
-
-                if csys.equality_to_checked <> []
-                then Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] All pair of deduction fact from sdf should have been checked for equalities at that point."
+                then Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] The formula should be a fact."
               );
-              let head = Fact.get_head ded_formula in
 
-              let new_sdf = SDF.add csys.sdf head in
-              let id_last = SDF.last_entry_id new_sdf in
-
-              let new_skeletons =
-                List.fold_left (fun acc f ->
-                  List.rev_append (Rewrite_rules.skeletons (Fact.get_protocol_term head) f csys.size_frame) acc
-                  ) [] !Symbol.all_destructors
-              in
-
-              { csys with
-                skeletons_checked = [];
-                skeletons_to_check = List.rev_append csys.skeletons_checked (List.fold_left (fun acc skel -> (id_last,skel)::acc) csys.skeletons_to_check new_skeletons);
-                equality_to_checked = SDF.all_id csys.sdf;
-                equality_constructor_checked = [];
-                equality_constructor_to_checked = id_last::csys.equality_constructor_checked;
-                sdf = new_sdf;
-                uf = UF.remove_solved_id Fact.Deduction csys.uf id
-              } :: acc_csys
-            ) [] csys_set
-          in
-
-          f_continuation SDF_addition new_csys_set
-        else
-          (* All are consequence -> remove from UF *)
-          let new_csys_set = List.fold_left (fun acc csys ->
-            let id,_ = UF.choose_solved Fact.Deduction csys.uf in
-
-            { csys with
-              uf = UF.remove_solved_id Fact.Deduction csys.uf id
-            } :: acc
-            ) [] csys_set
-          in
-
-          f_continuation No_change new_csys_set
-      with
-        | Norm_rule_15_applicable recipe_conseq ->
-          (* Apply rule 15 *)
-          let new_id_recipe_eq = fresh_id_recipe_equivalent () in
-
-          let new_csys_set = List.fold_left (fun acc csys ->
-            let id,ded_formula = UF.choose_solved Fact.Deduction csys.uf in
-
-            Config.debug (fun () ->
-              if not (Fact.is_fact ded_formula)
-              then Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] The formula should be a fact."
-            );
-
-            match Tools.partial_consequence Recipe csys.sdf csys.df recipe_conseq with
-              | None -> Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] The recipe should be consequence."
-              | Some (_,term_conseq) ->
-                  let head = Fact.get_head ded_formula in
-                  let term = Fact.get_protocol_term head in
-                  let recipe = Fact.get_recipe head in
-
-                  begin try
-                    let head_eq = Fact.create_equality_fact recipe recipe_conseq in
-                    let eq_form = Fact.create Fact.Equality head_eq [] [term,term_conseq] in
-                    let (_,_,simple_csys) = simple_of_formula Fact.Equality csys eq_form in
+              match Tools.partial_consequence Recipe csys.sdf csys.df recipe_conseq with
+                | None -> Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] The recipe should be consequence."
+                | Some (_,term_conseq) ->
+                    let head = Fact.get_head ded_formula in
+                    let term = Fact.get_protocol_term head in
+                    let recipe = Fact.get_recipe head in
 
                     begin try
+                      let head_eq = Fact.create_equality_fact recipe recipe_conseq in
+                      let eq_form = Fact.create Fact.Equality head_eq [] [term,term_conseq] in
+                      let (_,_,simple_csys) = simple_of_formula Fact.Equality csys eq_form in
+
                       let _ = one_mgs simple_csys in
-                      { csys with uf = UF.add_equality csys.uf eq_form new_id_recipe_eq (UF.Consequence_UF id) } :: acc
+                      { csys with uf = UF.add_equality csys.uf eq_form } :: acc
                     with
-                      | Not_found -> csys :: acc
+                      | Fact.Bot | Not_found -> csys :: acc
                     end
-                  with
-                    | Fact.Bot -> csys :: acc
-                  end
-            ) [] csys_set
+            ) [] csys_set.Set.csys_list
           in
 
-          f_continuation UF_Modification new_csys_set
-      end
+          let new_csys_set = { Set.csys_list = new_csys_list ; Set.ded_occurs = true; Set.eq_occurs = Set.Consequence_UF } in
+
+          (f_continuation.addition [@tailcall]) new_csys_set f_next
+
+  let normalisation_mgs csys_set f_continuation f_next =
+    if csys_set.Set.csys_list = []
+    then f_continuation csys_set f_next
     else
-      f_continuation No_change csys_set
+      let new_csys_set_1 =
+        if csys_set.Set.ded_occurs
+        then
+          begin
+            match UF.choose_solved_option Fact.Deduction (List.hd csys_set.Set.csys_list).uf with
+              | Some form when is_axiom (Fact.get_recipe (Fact.get_head form)) -> csys_set
+              | _ ->
+                  let ded_occurs = ref false in
 
-  let rec internal_normalisation csys_set f_continuation =
+                  let new_csys_list =
+                    List.fold_left (fun acc_csys csys ->
+                      match UF.choose_solved_option Fact.Deduction csys.uf with
+                        | None ->
+                            let uf_1 = UF.filter Fact.Deduction csys.uf (fun form ->
+                              let _,_,simple_csys = simple_of_formula Fact.Deduction csys form in
+                              try
+                                let _ = one_mgs simple_csys in
+                                true
+                              with
+                                | Not_found -> false
+                              ) in
 
-    (* Application of the normalisation rule 10 from \paper *)
-    let csys_set_1 = List.fold_left (fun acc csys ->
-      let uf_1 = UF.filter Fact.Deduction csys.uf (fun form ->
-        let _,_,simple_csys = simple_of_formula Fact.Deduction csys form in
-        try
-          let _ = one_mgs simple_csys in
-          true
-        with
-          | Not_found -> false
-        )
+                            if not !ded_occurs && UF.unsolved_occurs Fact.Deduction uf_1
+                            then ded_occurs := true;
+
+                            { csys with uf = uf_1 } :: acc_csys
+                        | Some form ->
+                            let sub_cons =
+                              let recipe_head = Fact.get_recipe (Fact.get_head form) in
+                              if is_function recipe_head
+                              then
+                                let recipe_args = get_args recipe_head in
+                                List.fold_left (fun sub_cons r ->
+                                  match Tools.partial_consequence Recipe csys.sdf csys.df r with
+                                    | None -> Config.internal_error "[constraint_system.ml >> normalisation_mgs] The recipe should be consequence."
+                                    | Some (_,t) -> add_uniformity_subterms sub_cons r t
+                                  ) csys.sub_cons recipe_args
+                              else csys.sub_cons
+                            in
+
+                            if Uniformity_Set.exists_pair_with_same_protocol_term sub_cons (Eq.implies Recipe csys.eqsnd)
+                            then { csys with uf = UF.remove_solved Fact.Deduction csys.uf } :: acc_csys
+                            else (ded_occurs := true; csys :: acc_csys)
+                    ) [] csys_set.Set.csys_list
+                  in
+
+                  { csys_set with Set.csys_list = new_csys_list; Set.ded_occurs = !ded_occurs }
+          end
+        else csys_set
       in
-      let uf_2 = UF.filter Fact.Equality uf_1 (fun form ->
-        let _,_,simple_csys = simple_of_formula Fact.Equality csys form in
-        try
-          let _ = one_mgs simple_csys in
-          true
-        with
-          | Not_found -> false
-        )
+
+      let new_csys_set_2 =
+        if new_csys_set_1.Set.eq_occurs = Set.No_equality
+        then new_csys_set_1
+        else
+          begin
+            let eq_occurs = ref false in
+
+            let new_csys_list =
+              List.fold_left (fun acc_csys csys ->
+                match UF.choose_solved_option Fact.Equality csys.uf with
+                  | None ->
+                      begin match UF.choose_unsolved_option Fact.Equality csys.uf with
+                        | None -> csys::acc_csys
+                        | Some form ->
+                            let _,_,simple_csys = simple_of_formula Fact.Equality csys form in
+                            begin try
+                              let _ = one_mgs simple_csys in
+                              eq_occurs := true;
+                              csys :: acc_csys
+                            with
+                              | Not_found -> { csys with uf = UF.remove_unsolved_equality csys.uf } :: acc_csys
+                            end
+                      end
+                  | Some form ->
+                      let head = Fact.get_head form in
+                      let (recipe_1,recipe_2) = Fact.get_both_recipes head in
+
+                      let sub_cons_1 =
+                        if is_function recipe_1
+                        then
+                          let recipe_args = get_args recipe_1 in
+                          List.fold_left (fun sub_cons r ->
+                            match Tools.partial_consequence Recipe csys.sdf csys.df r with
+                              | None -> Config.internal_error "[constraint_system.ml >> normalisation_mgs] The recipe should be consequence."
+                              | Some (_,t) -> add_uniformity_subterms sub_cons r t
+                            ) csys.sub_cons recipe_args
+                        else csys.sub_cons
+                      in
+
+                      let sub_cons_2 =
+                        if is_function recipe_2
+                        then
+                          let recipe_args = get_args recipe_2 in
+                          List.fold_left (fun sub_cons r ->
+                            match Tools.partial_consequence Recipe csys.sdf csys.df r with
+                              | None -> Config.internal_error "[constraint_system.ml >> normalisation_mgs] The recipe should be consequence."
+                              | Some (_,t) -> add_uniformity_subterms sub_cons r t
+                            ) sub_cons_1 recipe_args
+                        else sub_cons_1
+                      in
+
+                      if Uniformity_Set.exists_pair_with_same_protocol_term sub_cons_2 (Eq.implies Recipe csys.eqsnd)
+                      then { csys with uf = UF.remove_solved Fact.Equality csys.uf } :: acc_csys
+                      else (eq_occurs := true; csys :: acc_csys)
+              ) [] new_csys_set_1.Set.csys_list
+            in
+
+            if !eq_occurs
+            then { new_csys_set_1 with Set.csys_list = new_csys_list }
+            else { new_csys_set_1 with Set.csys_list = new_csys_list; Set.eq_occurs = Set.No_equality }
+          end
       in
 
-      { csys with uf = uf_2 } :: acc
-    ) [] csys_set
+      f_continuation new_csys_set_2 f_next
+
+  let rec normalisation_NoEq_Solved_Ded csys_set f_continuation f_next =
+    Config.debug (fun () ->
+      if csys_set.Set.ded_occurs = false && List.exists (fun csys -> UF.solved_occurs Fact.Deduction csys.uf || UF.unsolved_occurs Fact.Deduction csys.uf) csys_set.Set.csys_list
+      then Config.internal_error "[constraint_system.ml >> Rule.normalisation_NoEq_Solved_Ded] Presence of deduction even though it was indicated otherwise.";
+
+      if csys_set.Set.eq_occurs = Set.No_equality && List.exists (fun csys -> UF.solved_occurs Fact.Equality csys.uf || UF.unsolved_occurs Fact.Equality csys.uf) csys_set.Set.csys_list
+      then Config.internal_error "[constraint_system.ml >> Rule.normalisation_NoEq_Solved_Ded] Presence of equality even though it was indicated otherwise."
+    );
+    normalisation_SDF_or_consequence csys_set
+      {
+        addition = (fun csys_set_1 f_next_1 ->
+          normalisation_split_eq csys_set_1
+            {
+              no_split = f_continuation;
+              split = (fun csys_set_2 f_next_2 ->
+                if csys_set_2.Set.ded_occurs
+                then normalisation_NoEq_Solved_Ded csys_set_2 f_continuation f_next_2
+                else f_continuation csys_set_2 f_next_2
+                )
+            } f_next_1
+          );
+        removal = f_continuation
+      } f_next
+
+  let normalisation_without_mgs_check csys_set f_continuation f_next =
+    Config.debug (fun () ->
+      if csys_set.Set.ded_occurs = false && List.exists (fun csys -> UF.solved_occurs Fact.Deduction csys.uf || UF.unsolved_occurs Fact.Deduction csys.uf) csys_set.Set.csys_list
+      then Config.internal_error "[constraint_system.ml >> Rule.normalisation_without_mgs_check] Presence of deduction even though it was indicated otherwise."
+    );
+
+    let apply_if_NoEq_Solved_Ded csys_set_2 f_next_2 =
+      if csys_set_2.Set.csys_list <> [] && csys_set_2.Set.ded_occurs && csys_set_2.Set.eq_occurs = Set.No_equality && List.for_all (fun csys -> UF.solved_occurs Fact.Deduction csys.uf) csys_set_2.Set.csys_list
+      then normalisation_NoEq_Solved_Ded csys_set_2 f_continuation f_next_2
+      else f_continuation csys_set_2 f_next_2
     in
 
-    let rec apply_rest_normalisation csys_set =
-      normalisation_split_rule csys_set (fun csys_set_1 ->
-        normalisation_SDF_or_consequence csys_set_1 (fun changes csys_set_2 ->
-          match changes with
-            | No_change -> f_continuation csys_set_2
-            | SDF_addition -> internal_normalisation csys_set_2 f_continuation
-            | UF_Modification -> apply_rest_normalisation csys_set_2
-        )
-      )
+    let apply_if_NoEq_Ded_occurs csys_set_2 f_next_2 =
+      if csys_set_2.Set.csys_list <> [] && csys_set_2.Set.ded_occurs && csys_set_2.Set.eq_occurs = Set.No_equality
+      then normalisation_NoEq_Solved_Ded csys_set_2 f_continuation f_next_2
+      else f_continuation csys_set_2 f_next_2
     in
 
-    apply_rest_normalisation csys_set_1
 
-  let test_normalisation csys_set f_continuation =
+    if csys_set.Set.eq_occurs = Set.No_equality
+    then
+      normalisation_split_ded csys_set
+        {
+          split =
+            (fun csys_set_1 f_next_1 ->
+              if csys_set_1.Set.csys_list = [] || not (csys_set_1.Set.ded_occurs)
+              then f_continuation csys_set_1 f_next_1
+              else normalisation_NoEq_Solved_Ded csys_set_1 f_continuation f_next_1
+            );
+          no_split = apply_if_NoEq_Solved_Ded
+        }
+        f_next
+    else
+      normalisation_split csys_set
+        {
+          main_split_ded = apply_if_NoEq_Ded_occurs;
+          main_split_but_not_ded = apply_if_NoEq_Solved_Ded;
+          main_no_split = apply_if_NoEq_Solved_Ded
+        } f_next
+
+  let normalisation_after_axiom = normalisation_NoEq_Solved_Ded
+
+  let internal_normalisation csys_set f_continuation f_next =
+
+    Config.debug (fun () ->
+      if csys_set.Set.ded_occurs = false && List.exists (fun csys -> UF.solved_occurs Fact.Deduction csys.uf || UF.unsolved_occurs Fact.Deduction csys.uf) csys_set.Set.csys_list
+      then Config.internal_error "[constraint_system.ml >> Rule.internal_normalisationm] Presence of deduction even though it was indicated otherwise."
+    );
+
+    normalisation_mgs csys_set (fun csys_set_1 f_next_1 -> normalisation_without_mgs_check csys_set_1 f_continuation f_next_1) f_next
+
+  let test_normalisation csys_set f_continuation f_next =
     try
       let res = ref [] in
 
-      internal_normalisation csys_set (fun csys_set' ->
+      internal_normalisation csys_set (fun csys_set' f_next ->
         res := (Set.unit_t_of csys_set'):: !res;
-        f_continuation csys_set'
-      );
+        f_continuation csys_set' f_next
+      ) f_next;
 
       !test_normalisation_unit (Set.unit_t_of csys_set) !res
     with
@@ -1913,9 +2147,9 @@ module Rule = struct
       | exc ->
           let res = ref [] in
 
-          internal_normalisation csys_set (fun csys_set' ->
+          internal_normalisation csys_set (fun csys_set' _ ->
             res := (Set.unit_t_of csys_set')::!res
-          );
+          ) f_next;
 
           !test_normalisation_unit (Set.unit_t_of csys_set) !res;
           raise exc
@@ -1925,235 +2159,235 @@ module Rule = struct
     then test_normalisation
     else internal_normalisation
 
-  exception Rule_Not_applicable
 
   (**** The rule SAT ****)
 
-  let rec internal_sat csys_set continuation_func =
-    try
-      let rec explore_csys_set prev_csys_set = function
-        | [] -> raise Rule_Not_applicable
-        | csys::q when is_solved csys -> explore_csys_set (csys::prev_csys_set) q
-        | csys::q -> (csys, List.rev_append prev_csys_set q)
-      in
+  let rec internal_sat csys_set continuation_func f_next =
 
-      let csys,other_csys = explore_csys_set [] csys_set in
+    let rec explore_csys_set prev_csys_set = function
+      | [] -> None
+      | csys::q when is_solved csys -> (explore_csys_set [@tailcall]) (csys::prev_csys_set) q
+      | csys::q -> Some (csys, List.rev_append prev_csys_set q)
+    in
 
-      let simple_csys = simple_of csys in
+    match explore_csys_set [] csys_set.Set.csys_list with
+      | Some (csys,other_csys) ->
+          let simple_csys = simple_of csys in
 
-      let mgs_list = mgs simple_csys in
+          let mgs_list = mgs simple_csys in
 
-      if mgs_list =  []
-      then
-         begin
-           (*Printf.printf "Input of internal : \n%s" (Set.display HTML csys_set);
-           Printf.printf "Result of internal (mgs_null) : \n%s" (Set.display HTML other_csys);*)
-           internal_sat other_csys continuation_func
-         end
-      else
-        begin
+          if mgs_list =  []
+          then (internal_sat [@tailcall]) { csys_set with Set.csys_list = other_csys } continuation_func f_next
+          else
+            begin
+              let accumulator_diseq = ref [] in
+
+              let new_f_next =
+                List.fold_left (fun acc_f_next ((mgs,l_vars),_,_) ->
+                  let diseq = Diseq.of_substitution Recipe mgs l_vars in
+
+                  if Diseq.is_bot diseq
+                  then Config.internal_error "[constraint_system.ml >> rule_sat] The disequation should not be the bot.";
+
+                  accumulator_diseq := diseq :: !accumulator_diseq;
+
+                  let new_eqsnd = Eq.apply Recipe csys.eqsnd mgs in
+                  let new_i_subst_snd = Subst.compose_restricted_generic csys.i_subst_snd mgs (fun x -> Variable.quantifier_of x = Free) in
+
+                  Config.debug (fun () ->
+                    if Eq.is_bot new_eqsnd
+                    then Config.internal_error "[constraint_system.ml >> internal_sat] If bot then we should not have had some mgs."
+                  );
+
+                  let array_sdf = Array.make (SDF.cardinal csys.sdf) (dummy_recipe,false) in
+
+                  let new_csys_list =
+                    try
+                      let csys' = apply_mgs_and_gather csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars) in
+                      List.fold_left (fun set csys ->
+                        try
+                          (apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars))::set
+                        with
+                          | Bot -> set
+                        ) [csys'] other_csys
+                    with
+                    | Bot ->
+                        List.fold_left (fun set csys ->
+                          try
+                            (apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars))::set
+                          with
+                            | Bot -> set
+                          ) [] other_csys
+                  in
+
+                  let new_csys_set = { csys_set with Set.csys_list = new_csys_list } in
+
+                  (fun () -> (continuation_func.positive [@tailcall]) new_csys_set acc_f_next)
+                ) f_next mgs_list in
+
+
+              let new_eqsnd = List.fold_left Eq.wedge csys.eqsnd !accumulator_diseq in
+
+              (* Do we necessarily need to chenck the uniformity for the negative part ? *)
+              let negative_csys_list =
+                List.fold_left (fun acc csys ->
+                  let csys' = { csys with eqsnd = new_eqsnd } in
+                  if Uniformity_Set.exists_pair_with_same_protocol_term csys'.sub_cons (Eq.implies Recipe csys'.eqsnd)
+                  then acc
+                  else csys'::acc
+                ) [] other_csys
+              in
+
+              let negative_csys_set = { csys_set with Set.csys_list = negative_csys_list } in
+
+              (continuation_func.negative [@tailcall]) negative_csys_set new_f_next
+            end
+    | None -> (continuation_func.not_applicable [@tailcall]) csys_set f_next
+
+  let sat =
+    if Config.test_activated
+    then (fun csys_set continuation_func f_next -> test_rule internal_sat !test_sat_unit csys_set continuation_func f_next)
+    else internal_sat
+
+  (**** The rule SAT Disequation ****)
+
+  let internal_sat_disequation csys_set continuation_func f_next =
+
+    let result_rule = ref [] in
+
+    let rec explore_csys_set prev_csys_set = function
+      | [] -> result_rule := prev_csys_set; None
+      | csys::q when Eq.is_top csys.eqfst -> (explore_csys_set [@tailcall]) (csys::prev_csys_set) q
+      | csys::q ->
+          let diseq_op, eqfst_1 = Eq.extract csys.eqfst in
+
+          let diseq = match diseq_op with
+            | None -> Config.internal_error "[constraint_system.ml >> internal_sat_disequations] The formula should not be bot or top."
+            | Some(diseq) -> diseq
+          in
+          let new_csys = { csys with eqfst = eqfst_1 } in
+
+          let (_,simple_csys) = simple_of_disequation new_csys diseq in
+
+          let mgs_list = mgs simple_csys in
+
+          if mgs_list = []
+          then (explore_csys_set [@tailcall]) prev_csys_set (new_csys::q)
+          else Some(new_csys, List.rev_append prev_csys_set q, mgs_list)
+    in
+
+    match explore_csys_set [] csys_set.Set.csys_list with
+      | Some(csys,other_csys,mgs_list) ->
           let accumulator_diseq = ref [] in
 
-          List.iter (fun ((mgs,l_vars),_,_) ->
-            let diseq = Diseq.of_substitution Recipe mgs l_vars in
+          let new_f_next =
+            List.fold_left (fun acc_f_next ((mgs,l_vars),_,_) ->
+              let diseq = Diseq.of_substitution Recipe mgs l_vars in
 
-            if Diseq.is_bot diseq
-            then Config.internal_error "[constraint_system.ml >> rule_sat] The disequation should not be the bot.";
+              if Diseq.is_bot diseq
+              then Config.internal_error "[constraint_system.ml >> internal_sat_disequations] The disequation should not be the bot.";
 
-            accumulator_diseq := diseq :: !accumulator_diseq;
+              accumulator_diseq := diseq :: !accumulator_diseq;
 
-            let new_eqsnd = Eq.apply Recipe csys.eqsnd mgs in
-            let new_i_subst_snd = Subst.compose_restricted_generic csys.i_subst_snd mgs (fun x -> Variable.quantifier_of x = Free) in
+              let new_eqsnd = Eq.apply Recipe csys.eqsnd mgs in
+              let new_i_subst_snd = Subst.compose_restricted_generic csys.i_subst_snd mgs (fun x -> Variable.quantifier_of x = Free) in
 
-            Config.debug (fun () ->
-              if Eq.is_bot new_eqsnd
-              then Config.internal_error "[constraint_system.ml >> internal_sat] If bot then we should not have had some mgs."
-            );
+              Config.debug (fun () ->
+                if Eq.is_bot new_eqsnd
+                then Config.internal_error "[constraint_system.ml >> internal_sat_disequation] If bot then we should not have had some mgs."
+              );
 
-            let array_sdf = Array.make (SDF.cardinal csys.sdf) (dummy_recipe,false) in
+              let array_sdf = Array.make (SDF.cardinal csys.sdf) (dummy_recipe,false) in
 
-            let new_csys_set =
-              try
-                let csys' = apply_mgs_and_gather csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars) in
-                List.fold_left (fun set csys ->
-                  try
-                    (apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars))::set
-                  with
-                    | Bot -> set
-                  ) [csys'] other_csys
-              with
-              | Bot ->
-                  Printf.printf "Can this case happend ?\n";
+              let new_csys_list =
+                try
+                  let csys' = apply_mgs_and_gather csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars) in
                   List.fold_left (fun set csys ->
                     try
                       (apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars))::set
                     with
                       | Bot -> set
-                    ) [] other_csys
-            in
+                    ) [csys'] other_csys
+                with
+                | Bot ->
+                    List.fold_left (fun set csys ->
+                      try
+                        (apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars))::set
+                      with
+                        | Bot -> set
+                      ) [] other_csys
+              in
 
-          (*  Printf.printf "Input of internal : \n%s" (Set.display HTML csys_set);
-            Printf.printf "Result of internal (positive) : \n%s" (Set.display HTML new_csys_set);*)
-            continuation_func.positive new_csys_set
-          ) mgs_list;
+              let new_csys_set = { csys_set with Set.csys_list = new_csys_list } in
+
+              (fun () -> (continuation_func.positive [@tailcall]) new_csys_set acc_f_next)
+            ) f_next mgs_list
+          in
 
           let new_eqsnd = List.fold_left Eq.wedge csys.eqsnd !accumulator_diseq in
 
-          (* Do we necessarily need to chenck the uniformity for the negative part ? *)
-          let negative_csys_set =
+          let negative_csys_list =
             List.fold_left (fun acc csys ->
               let csys' = { csys with eqsnd = new_eqsnd } in
               if Uniformity_Set.exists_pair_with_same_protocol_term csys'.sub_cons (Eq.implies Recipe csys'.eqsnd)
               then acc
               else csys'::acc
-            ) [] other_csys
+            ) [] (csys::other_csys)
           in
 
-        (* Printf.printf "Input of internal : \n%s" (Set.display HTML csys_set);
-          Printf.printf "Result of internal (negative) : \n%s" (Set.display HTML negative_csys_set);*)
+          let negative_csys_set = { csys_set with Set.csys_list = negative_csys_list } in
 
-          continuation_func.negative negative_csys_set
-        end
-    with
-      | Rule_Not_applicable -> continuation_func.not_applicable csys_set
-
-  let sat =
-    if Config.test_activated
-    then (fun csys_set continuation_func -> test_rule internal_sat !test_sat_unit csys_set continuation_func)
-    else internal_sat
-
-  (**** The rule SAT Disequation ****)
-
-  let internal_sat_disequation csys_set continuation_func =
-
-    let result_rule = ref csys_set in
-
-    try
-      let rec explore_csys_set prev_csys_set = function
-        | [] -> result_rule := prev_csys_set; raise Rule_Not_applicable
-        | csys::q when Eq.is_top csys.eqfst -> explore_csys_set (csys::prev_csys_set) q
-        | csys::q ->
-            let diseq_op, eqfst_1 = Eq.extract csys.eqfst in
-
-            let diseq = match diseq_op with
-              | None -> Config.internal_error "[constraint_system.ml >> internal_sat_disequations] The formula should not be bot or top."
-              | Some(diseq) -> diseq
-            in
-            let new_csys = { csys with eqfst = eqfst_1 } in
-
-            let (_,simple_csys) = simple_of_disequation new_csys diseq in
-
-            let mgs_list = mgs simple_csys in
-
-            if mgs_list = []
-            then explore_csys_set prev_csys_set (new_csys::q)
-            else (new_csys, List.rev_append prev_csys_set q, mgs_list)
-      in
-
-      let (csys,other_csys,mgs_list) = explore_csys_set [] csys_set in
-
-      let accumulator_diseq = ref [] in
-
-      List.iter (fun ((mgs,l_vars),_,_) ->
-        let diseq = Diseq.of_substitution Recipe mgs l_vars in
-
-        if Diseq.is_bot diseq
-        then Config.internal_error "[constraint_system.ml >> internal_sat_disequations] The disequation should not be the bot.";
-
-        accumulator_diseq := diseq :: !accumulator_diseq;
-
-        let new_eqsnd = Eq.apply Recipe csys.eqsnd mgs in
-        let new_i_subst_snd = Subst.compose_restricted_generic csys.i_subst_snd mgs (fun x -> Variable.quantifier_of x = Free) in
-
-        Config.debug (fun () ->
-          if Eq.is_bot new_eqsnd
-          then Config.internal_error "[constraint_system.ml >> internal_sat_disequation] If bot then we should not have had some mgs."
-        );
-
-        let array_sdf = Array.make (SDF.cardinal csys.sdf) (dummy_recipe,false) in
-
-        let new_csys_set =
-          try
-            let csys' = apply_mgs_and_gather csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars) in
-            List.fold_left (fun set csys ->
-              try
-                (apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars))::set
-              with
-                | Bot -> set
-              ) [csys'] other_csys
-          with
-          | Bot ->
-              List.fold_left (fun set csys ->
-                try
-                  (apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars))::set
-                with
-                  | Bot -> set
-                ) [] other_csys
-        in
-
-        continuation_func.positive new_csys_set
-      ) mgs_list;
-
-      let new_eqsnd = List.fold_left Eq.wedge csys.eqsnd !accumulator_diseq in
-
-      let negative_csys_set =
-        List.fold_left (fun acc csys ->
-          let csys' = { csys with eqsnd = new_eqsnd } in
-          if Uniformity_Set.exists_pair_with_same_protocol_term csys'.sub_cons (Eq.implies Recipe csys'.eqsnd)
-          then acc
-          else csys'::acc
-        ) [] (csys::other_csys)
-      in
-
-      continuation_func.negative negative_csys_set
-    with
-      | Rule_Not_applicable -> continuation_func.not_applicable !result_rule
+          (continuation_func.negative [@tailcall]) negative_csys_set new_f_next
+      | None -> (continuation_func.not_applicable [@tailcall]) { csys_set with Set.csys_list = !result_rule } f_next
 
   let sat_disequation =
     if Config.test_activated
-    then (fun csys_set continuation_func -> test_rule internal_sat_disequation !test_sat_disequation_unit csys_set continuation_func)
+    then (fun csys_set continuation_func f_next -> test_rule internal_sat_disequation !test_sat_disequation_unit csys_set continuation_func f_next)
     else internal_sat_disequation
 
   (**** The rule SAT Formula ****)
 
   exception Rule_Sat_Formula_applied of mgs
 
-  let internal_sat_formula csys_set continuation_func =
-    try
-      List.iter (fun csys ->
-        try
-          let (_,form) = UF.choose_unsolved Fact.Deduction csys.uf in
+  let internal_sat_formula csys_set continuation_func f_next =
 
-          let (_,_,simple_csys) = simple_of_formula Fact.Deduction csys form in
+    let is_rule_sat_formula_applicable =
+      try
+        List.iter (fun csys ->
+          match UF.choose_unsolved_option Fact.Deduction csys.uf with
+            | Some form ->
+                let (_,_,simple_csys) = simple_of_formula Fact.Deduction csys form in
 
-          begin
-            try
-              let (mgs,_,_) = one_mgs simple_csys in
-              raise (Rule_Sat_Formula_applied mgs)
-            with
-              | Not_found -> Config.internal_error "[Constraint_system.ml >> internal_sat_formula] The unsolved formula should have at least one most general solution (it should have been removed by the normalisation rules)"
-          end
-        with Not_found ->
-          begin try
-            let (_,form) = UF.choose_unsolved Fact.Equality csys.uf in
+                begin
+                  try
+                    let (mgs,_,_) = one_mgs simple_csys in
+                    raise (Rule_Sat_Formula_applied mgs)
+                  with
+                    | Not_found -> Config.internal_error "[Constraint_system.ml >> internal_sat_formula] The unsolved formula should have at least one most general solution (it should have been removed by the normalisation rules)"
+                end
+            | None ->
+                begin match UF.choose_unsolved_option Fact.Equality csys.uf with
+                  | Some form ->
+                      let (_,_,simple_csys) = simple_of_formula Fact.Equality csys form in
 
-            let (_,_,simple_csys) = simple_of_formula Fact.Equality csys form in
+                      begin
+                        try
+                          let (mgs,_,_) = one_mgs simple_csys in
+                          raise (Rule_Sat_Formula_applied mgs)
+                        with
+                          | Not_found -> Config.internal_error "[Constraint_system.ml >> internal_sat_formula] The unsolved formula should have at least one most general solution (it should have been removed by the normalisation rules) (2)"
+                      end
+                  | None -> ()
+                end
+        ) csys_set.Set.csys_list;
+        None
+      with Rule_Sat_Formula_applied mgs -> Some mgs
+    in
 
-            begin
-              try
-                let (mgs,_,_) = one_mgs simple_csys in
-                raise (Rule_Sat_Formula_applied mgs)
-              with
-                | Not_found -> Config.internal_error "[Constraint_system.ml >> internal_sat_formula] The unsolved formula should have at least one most general solution (it should have been removed by the normalisation rules) (2)"
-            end
-          with Not_found -> ()
-          end
-        ) csys_set;
-
-      continuation_func.not_applicable csys_set
-    with
-      | Rule_Sat_Formula_applied (mgs,l_vars) ->
-          let one_csys = List.hd csys_set in
+    match is_rule_sat_formula_applicable with
+      | None -> (continuation_func.not_applicable [@tailcall]) csys_set f_next
+      | Some (mgs,l_vars) ->
+          let one_csys = List.hd csys_set.Set.csys_list in
 
           let new_eqsnd = Eq.apply Recipe one_csys.eqsnd mgs in
           let new_i_subst_snd = Subst.compose_restricted_generic one_csys.i_subst_snd mgs (fun x -> Variable.quantifier_of x = Free) in
@@ -2165,7 +2399,7 @@ module Rule = struct
 
           let array_sdf = Array.make (SDF.cardinal one_csys.sdf) (dummy_recipe,false) in
 
-          let positive_csys_set =
+          let positive_csys_list =
             try
               let one_csys' = apply_mgs_and_gather one_csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars) in
               List.fold_left (fun set csys ->
@@ -2173,7 +2407,7 @@ module Rule = struct
                   (apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars))::set
                 with
                   | Bot -> set
-                ) [one_csys'] (List.tl csys_set)
+                ) [one_csys'] (List.tl csys_set.Set.csys_list)
             with
             | Bot ->
                 List.fold_left (fun set csys ->
@@ -2181,10 +2415,10 @@ module Rule = struct
                     (apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars))::set
                   with
                     | Bot -> set
-                  ) [] (List.tl csys_set)
+                  ) [] (List.tl csys_set.Set.csys_list)
           in
 
-          normalisation positive_csys_set continuation_func.positive;
+          let positive_csys_set = { csys_set with Set.csys_list = positive_csys_list } in
 
           let diseq = Diseq.of_substitution Recipe mgs l_vars in
 
@@ -2193,20 +2427,22 @@ module Rule = struct
 
           let new_eqsnd = Eq.wedge one_csys.eqsnd diseq in
 
-          let negative_csys_set =
+          let negative_csys_list =
             List.fold_left (fun acc csys ->
               let csys' = { csys with eqsnd = new_eqsnd } in
               if Uniformity_Set.exists_pair_with_same_protocol_term csys'.sub_cons (Eq.implies Recipe csys'.eqsnd)
               then acc
               else csys'::acc
-            ) [] csys_set
+            ) [] csys_set.Set.csys_list
           in
 
-          normalisation negative_csys_set continuation_func.negative
+          let negative_csys_set = { csys_set with Set.csys_list = negative_csys_list } in
+
+          (normalisation [@tailcall]) negative_csys_set continuation_func.negative (fun () -> (normalisation [@tailcall]) positive_csys_set continuation_func.positive f_next)
 
   let sat_formula =
     if Config.test_activated
-    then (fun csys_set continuation_func -> test_rule internal_sat_formula !test_sat_formula_unit csys_set continuation_func)
+    then (fun csys_set continuation_func f_next -> test_rule internal_sat_formula !test_sat_formula_unit csys_set continuation_func f_next)
     else internal_sat_formula
 
   (**** The rule Equality Constructor ****)
@@ -2229,7 +2465,51 @@ module Rule = struct
       else raise Fact.Bot
     else raise Fact.Bot
 
-  let internal_equality_constructor csys_set continuation_func =
+  let add_when_mgs_exists_eq csys form =
+    if Fact.is_solved form
+    then
+      begin
+        let head = Fact.get_head form in
+        let (recipe_1,recipe_2) = Fact.get_both_recipes head in
+
+        let sub_cons_1 =
+          if is_function recipe_1
+          then
+            let recipe_args = get_args recipe_1 in
+            List.fold_left (fun sub_cons r ->
+              match Tools.partial_consequence Recipe csys.sdf csys.df r with
+                | None -> Config.internal_error "[constraint_system.ml >> check_if_mgs_exists_eq] The recipe should be consequence."
+                | Some (_,t) -> add_uniformity_subterms sub_cons r t
+              ) csys.sub_cons recipe_args
+          else csys.sub_cons
+        in
+
+        let sub_cons_2 =
+          if is_function recipe_2
+          then
+            let recipe_args = get_args recipe_2 in
+            List.fold_left (fun sub_cons r ->
+              match Tools.partial_consequence Recipe csys.sdf csys.df r with
+                | None -> Config.internal_error "[constraint_system.ml >> check_if_mgs_exists_eq] The recipe should be consequence."
+                | Some (_,t) -> add_uniformity_subterms sub_cons r t
+              ) sub_cons_1 recipe_args
+          else sub_cons_1
+        in
+
+        if Uniformity_Set.exists_pair_with_same_protocol_term sub_cons_2 (Eq.implies Recipe csys.eqsnd)
+        then csys
+        else { csys with uf = UF.add_equality csys.uf form }
+      end
+    else
+      let _,_,simple_csys = simple_of_formula Fact.Equality csys form in
+      begin try
+        let _ = one_mgs simple_csys in
+        { csys with uf = UF.add_equality csys.uf form }
+      with
+        | Not_found -> csys
+      end
+
+  let internal_equality_constructor csys_set continuation_func f_next =
 
     let rec explore_csys explored_csys_set = function
       | [] -> None, explored_csys_set
@@ -2299,105 +2579,106 @@ module Rule = struct
             end
     in
 
-    match explore_csys [] csys_set with
-      | None, csys_set_1 -> continuation_func.not_applicable csys_set_1
+    match explore_csys [] csys_set.Set.csys_list with
+      | None, csys_set_1 -> (continuation_func.not_applicable [@tailcall]) { csys_set with Set.csys_list = csys_set_1 } f_next
       | Some (mgs_csys, l_vars, id_sdf, mgs_form_univ, univ_vars_snd, symb), csys_set_1 ->
 
-
-
-          let id_recipe_eq = fresh_id_recipe_equivalent () in
-
           if Subst.is_identity mgs_csys
-          then begin
-            Config.debug (fun () ->
-              if l_vars <> []
-              then Config.internal_error "[Constraint_system.ml >> internal_equality] An identity substitution should imply an empty list of created variables"
-            );
-            let positive_csys_set = List.fold_left (fun set csys ->
-              try
-                let form_1 = create_eq_constructor_formula csys id_sdf univ_vars_snd symb in
-                let form_2 = apply_mgs_on_formula Fact.Equality csys (mgs_form_univ,[]) form_1 in
-                { csys with uf = UF.add_equality csys.uf form_2 id_recipe_eq (UF.Constructor_SDF (id_sdf, symb))} :: set
-              with
-                | Fact.Bot -> csys::set
-              ) [] csys_set_1
-            in
-            normalisation positive_csys_set continuation_func.positive
-          end
-          else begin
-            let one_csys = List.hd csys_set_1 in
-            let new_eqsnd = Eq.apply Recipe one_csys.eqsnd mgs_csys in
-            let new_i_subst_snd = Subst.compose_restricted_generic one_csys.i_subst_snd mgs_csys (fun x -> Variable.quantifier_of x = Free) in
+          then
+            begin
+              Config.debug (fun () ->
+                if l_vars <> []
+                then Config.internal_error "[Constraint_system.ml >> internal_equality] An identity substitution should imply an empty list of created variables"
+              );
+              let positive_csys_list = List.fold_left (fun set csys ->
+                try
+                  let form_1 = create_eq_constructor_formula csys id_sdf univ_vars_snd symb in
+                  let form_2 = apply_mgs_on_formula Fact.Equality csys (mgs_form_univ,[]) form_1 in
+                  (add_when_mgs_exists_eq csys form_2):: set
+                with
+                  | Fact.Bot -> csys::set
+                ) [] csys_set_1
+              in
+              let positive_csys_set = { csys_set with Set.eq_occurs = Set.Constructor_SDF(id_sdf, symb) ; Set.csys_list = positive_csys_list } in
+              (normalisation_without_mgs_check [@tailcall]) positive_csys_set continuation_func.positive f_next
+            end
+          else
+            begin
+              let one_csys = List.hd csys_set_1 in
+              let new_eqsnd = Eq.apply Recipe one_csys.eqsnd mgs_csys in
+              let new_i_subst_snd = Subst.compose_restricted_generic one_csys.i_subst_snd mgs_csys (fun x -> Variable.quantifier_of x = Free) in
 
-            let array_sdf = Array.make (SDF.cardinal one_csys.sdf) (dummy_recipe,false) in
+              let array_sdf = Array.make (SDF.cardinal one_csys.sdf) (dummy_recipe,false) in
 
-            let positive_csys_set =
-              try
-                let one_csys' = apply_mgs_and_gather one_csys array_sdf new_eqsnd new_i_subst_snd (mgs_csys,l_vars) in
-                let one_csys'' =
-                  try
-                    let form_1 = create_eq_constructor_formula one_csys' id_sdf univ_vars_snd symb in
-                    let form_2 = apply_mgs_on_formula Fact.Equality one_csys (mgs_form_univ,[]) form_1 in
-                    { one_csys' with uf = UF.add_equality one_csys'.uf form_2 id_recipe_eq (UF.Constructor_SDF (id_sdf, symb))}
-                  with
-                    | Fact.Bot -> one_csys'
-                in
-                List.fold_left (fun set csys ->
-                  try
-                    let csys_1 = apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs_csys,l_vars) in
-                    begin try
-                      let form_1 = create_eq_constructor_formula csys_1 id_sdf univ_vars_snd symb in
-                      let form_2 = apply_mgs_on_formula Fact.Equality csys_1 (mgs_form_univ,[]) form_1 in
-                      { csys_1 with uf = UF.add_equality csys_1.uf form_2 id_recipe_eq (UF.Constructor_SDF (id_sdf, symb))} :: set
+              let positive_csys_list =
+                try
+                  let one_csys' = apply_mgs_and_gather one_csys array_sdf new_eqsnd new_i_subst_snd (mgs_csys,l_vars) in
+                  let one_csys'' =
+                    try
+                      let form_1 = create_eq_constructor_formula one_csys' id_sdf univ_vars_snd symb in
+                      let form_2 = apply_mgs_on_formula Fact.Equality one_csys (mgs_form_univ,[]) form_1 in
+                      add_when_mgs_exists_eq one_csys' form_2
                     with
-                      | Fact.Bot -> csys_1::set
-                    end
-                  with
-                    | Bot -> set
-                  ) [one_csys''] (List.tl csys_set_1)
-              with
-              | Bot ->
+                      | Fact.Bot -> one_csys'
+                  in
                   List.fold_left (fun set csys ->
                     try
                       let csys_1 = apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs_csys,l_vars) in
                       begin try
                         let form_1 = create_eq_constructor_formula csys_1 id_sdf univ_vars_snd symb in
                         let form_2 = apply_mgs_on_formula Fact.Equality csys_1 (mgs_form_univ,[]) form_1 in
-                        { csys_1 with uf = UF.add_equality csys_1.uf form_2 id_recipe_eq (UF.Constructor_SDF (id_sdf, symb))} :: set
+                        (add_when_mgs_exists_eq csys_1 form_2) :: set
                       with
                         | Fact.Bot -> csys_1::set
                       end
                     with
                       | Bot -> set
-                    ) [] (List.tl csys_set_1)
-            in
+                    ) [one_csys''] (List.tl csys_set_1)
+                with
+                | Bot ->
+                    List.fold_left (fun set csys ->
+                      try
+                        let csys_1 = apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs_csys,l_vars) in
+                        begin try
+                          let form_1 = create_eq_constructor_formula csys_1 id_sdf univ_vars_snd symb in
+                          let form_2 = apply_mgs_on_formula Fact.Equality csys_1 (mgs_form_univ,[]) form_1 in
+                          (add_when_mgs_exists_eq csys_1 form_2) :: set
+                        with
+                          | Fact.Bot -> csys_1::set
+                        end
+                      with
+                        | Bot -> set
+                      ) [] (List.tl csys_set_1)
+              in
 
-            normalisation positive_csys_set continuation_func.positive;
+              let positive_csys_set = { csys_set with Set.csys_list = positive_csys_list; eq_occurs = Set.Constructor_SDF(id_sdf, symb) } in
 
-            let diseq = Diseq.of_substitution Recipe mgs_csys l_vars in
+              let diseq = Diseq.of_substitution Recipe mgs_csys l_vars in
 
-            let new_eqsnd = Eq.wedge one_csys.eqsnd diseq in
+              let new_eqsnd = Eq.wedge one_csys.eqsnd diseq in
 
-            let negative_csys_set =
-              List.fold_left (fun acc csys ->
-                let csys' = { csys with eqsnd = new_eqsnd } in
-                if Uniformity_Set.exists_pair_with_same_protocol_term csys'.sub_cons (Eq.implies Recipe csys'.eqsnd)
-                then acc
-                else csys'::acc
-              ) [] csys_set_1
-            in
+              let negative_csys_list =
+                List.fold_left (fun acc csys ->
+                  let csys' = { csys with eqsnd = new_eqsnd } in
+                  if Uniformity_Set.exists_pair_with_same_protocol_term csys'.sub_cons (Eq.implies Recipe csys'.eqsnd)
+                  then acc
+                  else csys'::acc
+                ) [] csys_set_1
+              in
 
-            normalisation negative_csys_set continuation_func.negative
-          end
+              let negative_csys_set = { csys_set with Set.csys_list = negative_csys_list } in
+
+              (normalisation [@tailcall]) negative_csys_set continuation_func.negative (fun () -> (normalisation [@tailcall]) positive_csys_set continuation_func.positive f_next)
+            end
 
   let equality_constructor =
     if Config.test_activated
-    then (fun csys_set continuation_func -> test_rule internal_equality_constructor !test_equality_constructor_unit csys_set continuation_func)
+    then (fun csys_set continuation_func f_next -> test_rule internal_equality_constructor !test_equality_constructor_unit csys_set continuation_func f_next)
     else internal_equality_constructor
 
   (**** The rule Equality ****)
 
-  let internal_equality csys_set continuation_func =
+  let internal_equality csys_set continuation_func f_next =
 
     let rec explore_csys explored_csys_set = function
       | [] -> None, explored_csys_set
@@ -2430,57 +2711,30 @@ module Rule = struct
 
                 Some (mgs, l_vars, id_sdf), List.rev_append (csys::q_csys_set) explored_csys_set
               with
-                | Fact.Bot | Not_found -> explore_csys explored_csys_set ({ csys with equality_to_checked = List.tl csys.equality_to_checked }::q_csys_set)
+                | Fact.Bot | Not_found -> (explore_csys [@tailcall]) explored_csys_set ({ csys with equality_to_checked = List.tl csys.equality_to_checked }::q_csys_set)
             end
     in
 
-    match explore_csys [] csys_set with
-      | None, csys_set_1 -> continuation_func.not_applicable csys_set_1
+    match explore_csys [] csys_set.Set.csys_list with
+      | None, csys_set_1 -> (continuation_func.not_applicable [@tailcall]) { csys_set with Set.csys_list = csys_set_1 } f_next
       | Some (mgs,l_vars, id_sdf), csys_set_1 ->
-          let id_recipe_eq = fresh_id_recipe_equivalent () in
 
           if Subst.is_identity mgs
-          then begin
-            Config.debug (fun () ->
-              if l_vars <> []
-              then Config.internal_error "[Constraint_system.ml >> internal_equality] An identity substitution should imply an empty list of created variables"
-            );
-            let positive_csys_set =
-              List.fold_left (fun set csys ->
-                try
-                  let (last_fact,last_id) = SDF.last_entry csys.sdf in
+          then
+            begin
+              Config.debug (fun () ->
+                if l_vars <> []
+                then Config.internal_error "[Constraint_system.ml >> internal_equality] An identity substitution should imply an empty list of created variables"
+              );
+              let last_id_ref = ref 0 in
 
-                  let fact = SDF.get csys.sdf id_sdf in
-
-                  let term = Fact.get_protocol_term fact in
-                  let last_term = Fact.get_protocol_term last_fact in
-
-                  let head = Fact.create_equality_fact (Fact.get_recipe fact) (Fact.get_recipe last_fact) in
-
-                  let form = Fact.create Fact.Equality head [] [(term,last_term)] in
-
-                  { csys with uf = UF.add_equality csys.uf form id_recipe_eq (UF.Equality_SDF (last_id, id_sdf))} :: set
-                with
-                  | Fact.Bot -> csys::set
-              ) [] csys_set_1
-            in
-            normalisation positive_csys_set continuation_func.positive
-          end
-          else begin
-            let one_csys = List.hd csys_set_1 in
-            let new_eqsnd = Eq.apply Recipe one_csys.eqsnd mgs in
-            let new_i_subst_snd = Subst.compose_restricted_generic one_csys.i_subst_snd mgs (fun x -> Variable.quantifier_of x = Free) in
-
-            let array_sdf = Array.make (SDF.cardinal one_csys.sdf) (dummy_recipe,false) in
-
-            let positive_csys_set =
-              try
-                let one_csys' = apply_mgs_and_gather one_csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars) in
-                let one_csys'' =
+              let positive_csys_list =
+                List.fold_left (fun set csys ->
                   try
-                    let (last_fact,last_id) = SDF.last_entry one_csys'.sdf in
+                    let (last_fact,last_id) = SDF.last_entry csys.sdf in
+                    last_id_ref := last_id;
 
-                    let fact = SDF.get one_csys'.sdf id_sdf in
+                    let fact = SDF.get csys.sdf id_sdf in
 
                     let term = Fact.get_protocol_term fact in
                     let last_term = Fact.get_protocol_term last_fact in
@@ -2489,17 +2743,35 @@ module Rule = struct
 
                     let form = Fact.create Fact.Equality head [] [(term,last_term)] in
 
-                    { one_csys' with uf = UF.add_equality one_csys'.uf form id_recipe_eq (UF.Equality_SDF (last_id, id_sdf))}
+                    (add_when_mgs_exists_eq csys form) :: set
                   with
-                    | Fact.Bot -> one_csys'
-                in
-                List.fold_left (fun set csys ->
-                  try
-                    let csys_1 = apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars) in
-                    begin try
-                      let (last_fact,last_id) = SDF.last_entry csys_1.sdf in
+                    | Fact.Bot -> csys::set
+                ) [] csys_set_1
+              in
 
-                      let fact = SDF.get csys_1.sdf id_sdf in
+              let positive_csys_set = { csys_set with Set.csys_list = positive_csys_list; Set.eq_occurs = Set.Equality_SDF (!last_id_ref, id_sdf) } in
+
+              (normalisation_without_mgs_check [@tailcall]) positive_csys_set continuation_func.positive f_next
+            end
+          else
+            begin
+              let one_csys = List.hd csys_set_1 in
+              let new_eqsnd = Eq.apply Recipe one_csys.eqsnd mgs in
+              let new_i_subst_snd = Subst.compose_restricted_generic one_csys.i_subst_snd mgs (fun x -> Variable.quantifier_of x = Free) in
+
+              let array_sdf = Array.make (SDF.cardinal one_csys.sdf) (dummy_recipe,false) in
+
+              let last_id_ref = ref 0 in
+
+              let positive_csys_list =
+                try
+                  let one_csys' = apply_mgs_and_gather one_csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars) in
+                  let one_csys'' =
+                    try
+                      let (last_fact,last_id) = SDF.last_entry one_csys'.sdf in
+                      last_id_ref := last_id;
+
+                      let fact = SDF.get one_csys'.sdf id_sdf in
 
                       let term = Fact.get_protocol_term fact in
                       let last_term = Fact.get_protocol_term last_fact in
@@ -2508,20 +2780,15 @@ module Rule = struct
 
                       let form = Fact.create Fact.Equality head [] [(term,last_term)] in
 
-                      { csys_1 with uf = UF.add_equality csys_1.uf form id_recipe_eq (UF.Equality_SDF (last_id, id_sdf))} :: set
+                      add_when_mgs_exists_eq one_csys' form
                     with
-                      | Fact.Bot -> csys_1::set
-                    end
-                  with
-                    | Bot -> set
-                  ) [one_csys''] (List.tl csys_set_1)
-              with
-              | Bot ->
+                      | Fact.Bot -> one_csys'
+                  in
                   List.fold_left (fun set csys ->
                     try
                       let csys_1 = apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars) in
                       begin try
-                        let (last_fact,last_id) = SDF.last_entry csys_1.sdf in
+                        let (last_fact,_) = SDF.last_entry csys_1.sdf in
 
                         let fact = SDF.get csys_1.sdf id_sdf in
 
@@ -2532,189 +2799,210 @@ module Rule = struct
 
                         let form = Fact.create Fact.Equality head [] [(term,last_term)] in
 
-                        { csys_1 with uf = UF.add_equality csys_1.uf form id_recipe_eq (UF.Equality_SDF (last_id, id_sdf))} :: set
+                        (add_when_mgs_exists_eq csys_1 form) :: set
                       with
                         | Fact.Bot -> csys_1::set
                       end
                     with
                       | Bot -> set
-                    ) [] (List.tl csys_set_1)
-            in
+                    ) [one_csys''] (List.tl csys_set_1)
+                with
+                | Bot ->
+                    List.fold_left (fun set csys ->
+                      try
+                        let csys_1 = apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars) in
+                        begin try
+                          let (last_fact,last_id) = SDF.last_entry csys_1.sdf in
+                          last_id_ref := last_id;
 
-            normalisation positive_csys_set continuation_func.positive;
+                          let fact = SDF.get csys_1.sdf id_sdf in
 
-            let diseq = Diseq.of_substitution Recipe mgs l_vars in
+                          let term = Fact.get_protocol_term fact in
+                          let last_term = Fact.get_protocol_term last_fact in
 
-            let new_eqsnd = Eq.wedge one_csys.eqsnd diseq in
+                          let head = Fact.create_equality_fact (Fact.get_recipe fact) (Fact.get_recipe last_fact) in
 
-            let negative_csys_set =
-              List.fold_left (fun acc csys ->
-                let csys' = { csys with eqsnd = new_eqsnd } in
-                if Uniformity_Set.exists_pair_with_same_protocol_term csys'.sub_cons (Eq.implies Recipe csys'.eqsnd)
-                then acc
-                else csys'::acc
-              ) [] csys_set_1
-            in
+                          let form = Fact.create Fact.Equality head [] [(term,last_term)] in
 
-            normalisation negative_csys_set continuation_func.negative
-          end
+                          (add_when_mgs_exists_eq csys_1 form) :: set
+                        with
+                          | Fact.Bot -> csys_1::set
+                        end
+                      with
+                        | Bot -> set
+                      ) [] (List.tl csys_set_1)
+              in
+
+              let positive_csys_set = { csys_set with Set.csys_list = positive_csys_list; eq_occurs = Set.Equality_SDF (!last_id_ref, id_sdf) } in
+
+              let diseq = Diseq.of_substitution Recipe mgs l_vars in
+
+              let new_eqsnd = Eq.wedge one_csys.eqsnd diseq in
+
+              let negative_csys_list =
+                List.fold_left (fun acc csys ->
+                  let csys' = { csys with eqsnd = new_eqsnd } in
+                  if Uniformity_Set.exists_pair_with_same_protocol_term csys'.sub_cons (Eq.implies Recipe csys'.eqsnd)
+                  then acc
+                  else csys'::acc
+                ) [] csys_set_1
+              in
+
+              let negative_csys_set = { csys_set with Set.csys_list = negative_csys_list } in
+
+              (normalisation [@tailcall]) negative_csys_set continuation_func.negative (fun () -> (normalisation [@tailcall]) positive_csys_set continuation_func.positive f_next)
+            end
 
   let equality =
     if Config.test_activated
-    then (fun csys_set continuation_func -> test_rule internal_equality !test_equality_unit csys_set continuation_func)
+    then (fun csys_set continuation_func f_next -> test_rule internal_equality !test_equality_unit csys_set continuation_func f_next)
     else internal_equality
 
   (**** The rule Rewrite ****)
 
   exception Rule_rewrite_applicable of mgs * (snd_ord,axiom) Subst.t
 
-  let internal_rewrite csys_set continuation_func =
+  let internal_rewrite csys_set continuation_func f_next =
 
     let rec explore_csys explored_csys_set = function
       | [] -> None, explored_csys_set
       | csys::q_csys_set ->
           if csys.skeletons_to_check = []
-          then explore_csys (csys::explored_csys_set) q_csys_set
+          then (explore_csys [@taicall]) (csys::explored_csys_set) q_csys_set
           else
             begin
               let (id_sdf,skel) = List.hd csys.skeletons_to_check in
               let fact = SDF.get csys.sdf id_sdf in
-              try
-                let form = Rewrite_rules.specific_rewrite_rules_formula fact skel in
 
-                let preliminary_term = Fact.get_protocol_term (Fact.get_head form) in
+              let form_op =
+                try
+                  Some (Rewrite_rules.specific_rewrite_rules_formula fact skel)
+                with
+                | Fact.Bot -> None
+              in
 
-                begin match Tools.partial_consequence Protocol csys.sdf csys.df preliminary_term with
-                  | Some _ -> explore_csys explored_csys_set ({ csys with skeletons_to_check = List.tl csys.skeletons_to_check }::q_csys_set)
-                  | None ->
-                      let (fst_renaming,snd_renaming,simple_csys) = simple_of_formula Fact.Deduction csys form in
+              match form_op with
+                | None -> (explore_csys [@tailcall]) explored_csys_set ({ csys with skeletons_to_check = List.tl csys.skeletons_to_check }::q_csys_set)
+                | Some form ->
+                    let preliminary_term = Fact.get_protocol_term (Fact.get_head form) in
 
-                      let mgs_list = mgs simple_csys in
+                    begin match Tools.partial_consequence Protocol csys.sdf csys.df preliminary_term with
+                      | Some _ -> explore_csys explored_csys_set ({ csys with skeletons_to_check = List.tl csys.skeletons_to_check }::q_csys_set)
+                      | None ->
+                          let (fst_renaming,snd_renaming,simple_csys) = simple_of_formula Fact.Deduction csys form in
 
-                      begin try
-                        List.iter (fun ((mgs,l_vars), fst_subst_mgs, simple_csys_mgs) ->
+                          let mgs_list = mgs simple_csys in
 
-                          let rho_fst_subst_mgs = Subst.compose_restricted (Subst.of_renaming fst_renaming) fst_subst_mgs in
-                          let new_preliminary_term = Subst.apply rho_fst_subst_mgs preliminary_term (fun t f -> f t) in
+                          let is_rule_applicable =
+                            try
+                              List.iter (fun ((mgs,l_vars), fst_subst_mgs, simple_csys_mgs) ->
 
-                          begin match Tools.partial_consequence Protocol simple_csys_mgs.simp_SDF simple_csys_mgs.simp_DF new_preliminary_term with
-                            | Some _ -> ()
+                                let rho_fst_subst_mgs = Subst.compose_restricted (Subst.of_renaming fst_renaming) fst_subst_mgs in
+                                let new_preliminary_term = Subst.apply rho_fst_subst_mgs preliminary_term (fun t f -> f t) in
+
+                                begin match Tools.partial_consequence Protocol simple_csys_mgs.simp_SDF simple_csys_mgs.simp_DF new_preliminary_term with
+                                  | Some _ -> ()
+                                  | None ->
+                                      let mgs_csys,mgs_form = Subst.split_domain mgs (fun x -> Variable.type_of x <> csys.size_frame) in
+                                      let l_vars_csys, l_vars_form = List.partition_unordered (fun x -> Variable.type_of x <> csys.size_frame) l_vars in
+
+                                      let new_mgs_form =  Subst.compose_restricted (Subst.of_renaming snd_renaming) mgs_form in
+
+                                      let eq_name = List.map (fun x -> (x,  apply_function (Symbol.get_constant ()) [])) l_vars_form in
+                                      let eq_name_2 = Subst.fold (fun eq _ r ->
+                                        if is_variable r && Variable.type_of (variable_of r) = csys.size_frame
+                                        then (variable_of r, apply_function (Symbol.get_constant ()) [])::eq
+                                        else eq
+                                      ) eq_name new_mgs_form
+                                      in
+
+                                      let subst_name = Subst.create_multiple Recipe eq_name_2 in
+                                      let new_mgs_form_2 = Subst.compose_restricted new_mgs_form subst_name in
+
+                                      raise (Rule_rewrite_applicable ((mgs_csys,l_vars_csys),new_mgs_form_2))
+                                end
+                              ) mgs_list;
+                              None
+                            with
+                              | Rule_rewrite_applicable (mgs_csys,mgs_form) -> Some (id_sdf, skel, mgs_csys, mgs_form)
+                          in
+
+                          begin match is_rule_applicable with
                             | None ->
-                                let mgs_csys,mgs_form = Subst.split_domain mgs (fun x -> Variable.type_of x <> csys.size_frame) in
-                                let l_vars_csys, l_vars_form = List.partition_unordered (fun x -> Variable.type_of x <> csys.size_frame) l_vars in
-
-                                let new_mgs_form =  Subst.compose_restricted (Subst.of_renaming snd_renaming) mgs_form in
-
-                                let eq_name = List.map (fun x -> (x,  SDF.first_entry_recipe simple_csys_mgs.simp_SDF)) l_vars_form in
-                                let eq_name_2 = Subst.fold (fun eq _ r ->
-                                  if is_variable r && Variable.type_of (variable_of r) = csys.size_frame
-                                  then (variable_of r, SDF.first_entry_recipe simple_csys_mgs.simp_SDF)::eq
-                                  else eq
-                                ) eq_name new_mgs_form
-                                in
-
-                                let subst_name = Subst.create_multiple Recipe eq_name_2 in
-                                let new_mgs_form_2 = Subst.compose_restricted new_mgs_form subst_name in
-
-                                raise (Rule_rewrite_applicable ((mgs_csys,l_vars_csys),new_mgs_form_2))
+                                (explore_csys [@tailcall]) explored_csys_set (
+                                  { csys with
+                                    skeletons_to_check = List.tl csys.skeletons_to_check;
+                                    skeletons_checked = (id_sdf,skel)::csys.skeletons_checked
+                                  }::q_csys_set
+                                )
+                            | _ -> is_rule_applicable, List.rev_append (csys::q_csys_set) explored_csys_set
                           end
-                        ) mgs_list;
-
-                        explore_csys explored_csys_set (
-                          { csys with
-                            skeletons_to_check = List.tl csys.skeletons_to_check;
-                            skeletons_checked = (id_sdf,skel)::csys.skeletons_checked
-                          }::q_csys_set
-                        )
-                      with
-                        | Rule_rewrite_applicable (mgs_csys,mgs_form) -> Some (id_sdf, skel, mgs_csys, mgs_form), List.rev_append (csys::q_csys_set) explored_csys_set
-                      end
-                end
-              with
-                | Fact.Bot -> explore_csys explored_csys_set ({ csys with skeletons_to_check = List.tl csys.skeletons_to_check }::q_csys_set)
+                    end
             end
-
     in
 
-    match explore_csys [] csys_set with
-      | None, csys_set_1 -> continuation_func.not_applicable csys_set_1
+    match explore_csys [] csys_set.Set.csys_list with
+      | None, csys_set_1 -> (continuation_func.not_applicable [@tailcall]) { csys_set with Set.csys_list = csys_set_1 } f_next
       | Some (id_sdf, skel, (mgs_csys,l_vars), mgs_form), csys_set_1 ->
-          let id_recipe_ded = fresh_id_recipe_equivalent () in
 
           if Subst.is_identity mgs_csys
-          then begin
-            Config.debug (fun () ->
-              if l_vars <> []
-              then Config.internal_error "[Constraint_system.ml >> internal_equality] An identity substitution should imply an empty list of created variables"
-            );
-            let positive_csys_set = List.fold_left (fun set csys ->
-              try
-                let ded_sdf = SDF.get csys.sdf id_sdf in
-                let form_list_1 = Rewrite_rules.generic_rewrite_rules_formula ded_sdf skel in
-                let form_list_2 = List.fold_left (fun acc form ->
-                  try
-                    let form_1 = apply_mgs_on_formula Fact.Deduction csys (mgs_form,[]) form in
-                    form_1::acc
-                  with
-                  | Fact.Bot -> acc
-                ) [] form_list_1 in
-
-                if form_list_2 = []
-                then csys::set
-                else { csys with uf = UF.add_deduction csys.uf form_list_2 id_recipe_ded } :: set
-              with
-                | Bot -> set
-              ) [] csys_set_1
-            in
-
-            normalisation positive_csys_set continuation_func.positive
-          end
-          else begin
-            let one_csys = List.hd csys_set_1 in
-            let new_eqsnd = Eq.apply Recipe one_csys.eqsnd mgs_csys in
-            let new_i_subst_snd = Subst.compose_restricted_generic one_csys.i_subst_snd mgs_csys (fun x -> Variable.quantifier_of x = Free) in
-
-            let array_sdf = Array.make (SDF.cardinal one_csys.sdf) (dummy_recipe,false) in
-
-            let positive_csys_set =
-              try
-                let one_csys' = apply_mgs_and_gather one_csys array_sdf new_eqsnd new_i_subst_snd (mgs_csys,l_vars) in
-                let one_csys'' =
-                  let ded_sdf = SDF.get one_csys'.sdf id_sdf in
+          then
+            begin
+              Config.debug (fun () ->
+                if l_vars <> []
+                then Config.internal_error "[Constraint_system.ml >> internal_equality] An identity substitution should imply an empty list of created variables"
+              );
+              let positive_csys_list = List.fold_left (fun set csys ->
+                try
+                  let ded_sdf = SDF.get csys.sdf id_sdf in
                   let form_list_1 = Rewrite_rules.generic_rewrite_rules_formula ded_sdf skel in
                   let form_list_2 = List.fold_left (fun acc form ->
                     try
-                      let form_1 = apply_mgs_on_formula Fact.Deduction one_csys' (mgs_form,[]) form in
+                      let form_1 = apply_mgs_on_formula Fact.Deduction csys (mgs_form,[]) form in
                       form_1::acc
                     with
                     | Fact.Bot -> acc
                   ) [] form_list_1 in
 
                   if form_list_2 = []
-                  then one_csys'
-                  else { one_csys' with uf = UF.add_deduction one_csys'.uf form_list_2 id_recipe_ded }
-                in
-                List.fold_left (fun set csys ->
-                  try
-                    let csys_1 = apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs_csys,l_vars) in
-                    let ded_sdf = SDF.get csys_1.sdf id_sdf in
+                  then csys::set
+                  else { csys with uf = UF.add_deduction csys.uf form_list_2 } :: set
+                with
+                  | Bot -> set
+                ) [] csys_set_1
+              in
+
+              let positive_csys_set = { csys_set with Set.csys_list = positive_csys_list; ded_occurs = true } in
+
+              (normalisation [@tailcall]) positive_csys_set continuation_func.positive f_next
+            end
+          else
+            begin
+              let one_csys = List.hd csys_set_1 in
+              let new_eqsnd = Eq.apply Recipe one_csys.eqsnd mgs_csys in
+              let new_i_subst_snd = Subst.compose_restricted_generic one_csys.i_subst_snd mgs_csys (fun x -> Variable.quantifier_of x = Free) in
+
+              let array_sdf = Array.make (SDF.cardinal one_csys.sdf) (dummy_recipe,false) in
+
+              let positive_csys_list =
+                try
+                  let one_csys' = apply_mgs_and_gather one_csys array_sdf new_eqsnd new_i_subst_snd (mgs_csys,l_vars) in
+                  let one_csys'' =
+                    let ded_sdf = SDF.get one_csys'.sdf id_sdf in
                     let form_list_1 = Rewrite_rules.generic_rewrite_rules_formula ded_sdf skel in
                     let form_list_2 = List.fold_left (fun acc form ->
                       try
-                        let form_1 = apply_mgs_on_formula Fact.Deduction csys_1 (mgs_form,[]) form in
+                        let form_1 = apply_mgs_on_formula Fact.Deduction one_csys' (mgs_form,[]) form in
                         form_1::acc
                       with
                       | Fact.Bot -> acc
                     ) [] form_list_1 in
 
                     if form_list_2 = []
-                    then csys_1::set
-                    else { csys_1 with uf = UF.add_deduction csys_1.uf form_list_2 id_recipe_ded } :: set
-                  with
-                    | Bot -> set
-                  ) [one_csys''] (List.tl csys_set_1)
-              with
-              | Bot ->
+                    then one_csys'
+                    else { one_csys' with uf = UF.add_deduction one_csys'.uf form_list_2 }
+                  in
+
                   List.fold_left (fun set csys ->
                     try
                       let csys_1 = apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs_csys,l_vars) in
@@ -2730,35 +3018,58 @@ module Rule = struct
 
                       if form_list_2 = []
                       then csys_1::set
-                      else { csys_1 with uf = UF.add_deduction csys_1.uf form_list_2 id_recipe_ded } :: set
+                      else { csys_1 with uf = UF.add_deduction csys_1.uf form_list_2 } :: set
                     with
                       | Bot -> set
-                    ) [] (List.tl csys_set_1)
-            in
+                    ) [one_csys''] (List.tl csys_set_1)
+                with
+                | Bot ->
+                    List.fold_left (fun set csys ->
+                      try
+                        let csys_1 = apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs_csys,l_vars) in
+                        let ded_sdf = SDF.get csys_1.sdf id_sdf in
+                        let form_list_1 = Rewrite_rules.generic_rewrite_rules_formula ded_sdf skel in
+                        let form_list_2 = List.fold_left (fun acc form ->
+                          try
+                            let form_1 = apply_mgs_on_formula Fact.Deduction csys_1 (mgs_form,[]) form in
+                            form_1::acc
+                          with
+                          | Fact.Bot -> acc
+                        ) [] form_list_1 in
 
-            normalisation positive_csys_set continuation_func.positive;
+                        if form_list_2 = []
+                        then csys_1::set
+                        else { csys_1 with uf = UF.add_deduction csys_1.uf form_list_2 } :: set
+                      with
+                        | Bot -> set
+                      ) [] (List.tl csys_set_1)
+              in
 
-            let diseq = Diseq.of_substitution Recipe mgs_csys l_vars in
+              let positive_csys_set = { csys_set with Set.csys_list = positive_csys_list; ded_occurs = true } in
 
-            if Diseq.is_bot diseq
-            then Config.internal_error "[constraint_system.ml >> rule_equality_constructor] The disequation should not be the bot.";
+              let diseq = Diseq.of_substitution Recipe mgs_csys l_vars in
 
-            let new_eq_snd = Eq.wedge one_csys.eqsnd diseq in
+              if Diseq.is_bot diseq
+              then Config.internal_error "[constraint_system.ml >> rule_equality_constructor] The disequation should not be the bot.";
 
-            let negative_csys_set =
-              List.fold_left (fun acc csys ->
-                let csys' = { csys with eqsnd = new_eq_snd } in
-                if Uniformity_Set.exists_pair_with_same_protocol_term csys'.sub_cons (Eq.implies Recipe csys'.eqsnd)
-                then acc
-                else csys'::acc
-              ) [] csys_set_1
-            in
+              let new_eq_snd = Eq.wedge one_csys.eqsnd diseq in
 
-            normalisation negative_csys_set continuation_func.negative
-          end
+              let negative_csys_list =
+                List.fold_left (fun acc csys ->
+                  let csys' = { csys with eqsnd = new_eq_snd } in
+                  if Uniformity_Set.exists_pair_with_same_protocol_term csys'.sub_cons (Eq.implies Recipe csys'.eqsnd)
+                  then acc
+                  else csys'::acc
+                ) [] csys_set_1
+              in
+
+              let negative_csys_set = { csys_set with Set.csys_list = negative_csys_list; ded_occurs = false } in
+
+              (normalisation [@tailcall]) negative_csys_set continuation_func.negative (fun () -> (normalisation [@tailcall]) positive_csys_set continuation_func.positive f_next)
+            end
 
   let rewrite =
     if Config.test_activated
-    then (fun csys_set continuation_func -> test_rule internal_rewrite !test_rewrite_unit csys_set continuation_func)
+    then (fun csys_set continuation_func f_next -> test_rule internal_rewrite !test_rewrite_unit csys_set continuation_func f_next)
     else internal_rewrite
 end

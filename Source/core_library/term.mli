@@ -85,6 +85,8 @@ val generate_display_renaming_for_testing : name list -> fst_ord_variable list -
 module Symbol : sig
   (** A symbol can be a destructor or a constructor.*)
 
+  val get_constant : unit -> symbol
+
   (** The list of all constructors (included the tupple function symbol) used in the algorithm.*)
   val all_constructors : symbol list ref
 
@@ -105,6 +107,12 @@ module Symbol : sig
 
   (** Empty the signature from all function symbols (constructor, destructor and tuple) *)
   val empty_signature : unit -> unit
+
+  type setting = { all_t : symbol list ; all_p : (int * symbol list) list ; all_c : symbol list ; all_d : symbol list ; nb_c : int ; nb_d : int ; cst : symbol }
+
+  val set_up_signature : setting -> unit
+
+  val get_settings : unit -> setting
 
   (** {3 Addition} *)
 
@@ -212,6 +220,10 @@ module Variable : sig
 
   (** [display out at x] returns a string displaying the variable [x] depending on the outpout mode [out]. *)
   val display : Display.output -> ?rho: display_renamings option -> ('a, 'b) atom -> ?v_type:bool ->  ('a, 'b) variable -> string
+
+  val set_up_counter : int -> unit
+
+  val get_counter : unit -> int
 
   (** {3 Renaming} *)
 
@@ -342,6 +354,10 @@ module Name :  sig
 
   (** [display n] does not display the boundedness of [n], only its name. *)
   val display : Display.output  -> ?rho:display_renamings option -> name -> string
+
+  val set_up_counter : int -> unit
+
+  val get_counter : unit -> int
 
   (** {3 Renaming} *)
 
@@ -1075,7 +1091,7 @@ module type Uni =
     type t
 
     (** [find_protocol] {% $\Set$~$t$%} [f] returns [Some] {% $\xi$ if $(\xi,t) \in \Set$ %} and [f] {% $\xi$ %} returns [true]. Otherwise it returns [None].*)
-    val find_protocol_term : t -> protocol_term -> (recipe -> bool) -> recipe option
+    val find_protocol_term : t -> protocol_term -> recipe option
 
     (** [iter] {% $\Set$ %} [f] applies the function [f] to all pairs {% $(\xi,t) \in \Set$.
         Warning : The order in which the function [iter] goes through the pairs of $\Set$ is unspecified. %}*)
