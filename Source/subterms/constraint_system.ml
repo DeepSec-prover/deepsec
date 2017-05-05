@@ -1888,6 +1888,7 @@ module Rule = struct
 
             let new_csys_set = { Set.csys_list = new_csys_list; Set.ded_occurs = false ; Set.eq_occurs = Set.No_equality } in
 
+
             (f_continuation.removal [@tailcall]) new_csys_set f_next
           else
             (* All are consequence -> remove from UF *)
