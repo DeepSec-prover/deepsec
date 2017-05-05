@@ -103,6 +103,10 @@ struct
       in
 
       let processes_in_out_ch = create_processes !workers in
+      let nb_processes = List.length processes_in_out_ch in
+
+      if !minimum_nb_of_jobs <= nb_processes
+      then minimum_nb_of_jobs := nb_processes + 1;
 
       let processes_in_Unix_out_ch = List.map (fun (x,y) -> Unix.descr_of_in_channel x,y) processes_in_out_ch in
 
