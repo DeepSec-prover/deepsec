@@ -3,7 +3,7 @@ NAME_PROGRAMME = DeepSec
 
 PATH_SOURCE = ../Source/
 
-INCLUDES = -I $(PATH_SOURCE) -I $(PATH_SOURCE)core_library -I $(PATH_SOURCE)subterms -I $(PATH_SOURCE)testing
+INCLUDES = -I $(PATH_SOURCE) -I $(PATH_SOURCE)core_library -I $(PATH_SOURCE)subterms -I $(PATH_SOURCE)testing -I distributed
 
 
 NAME_STANDARD = Core_library
@@ -18,10 +18,14 @@ NAME_TESTING = Testing
 FILE_TESTING = testing_functions.mli testing_load_verify.mli testing.ml
 PATH_TESTING = $(FILE_TESTING:%= $(PATH_SOURCE)testing/%)
 
+NAME_DISTRIBUTED = Distributed
+FILE_DISTRIBUTED = distrib.mli distributed_equivalence.mli
+PATH_DISTRIBUTED = $(FILE_DISTRIBUTED:%= $(PATH_SOURCE)distributed/%)
+
 
 # Starting Point
 
-main: display standard subterms testing
+main: display standard subterms distributed testing
 	@echo
 	@echo Compilation of the .pdf file :
 	@echo
@@ -52,6 +56,12 @@ testing:
 	@echo Compilation of the $(NAME_TESTING).tex file:
 	@echo
 	ocamldoc.opt -hide $(HIDDEN_MODULE) -latextitle 4,subparagraph -noheader -notrailer -o $(NAME_TESTING).tex -latex $(INCLUDES) $(PATH_TESTING)
+
+distributed:
+	@echo
+	@echo Compilation of the $(NAME_DISTRIBUTED).tex file:
+	@echo
+	ocamldoc.opt -hide $(HIDDEN_MODULE) -latextitle 4,subparagraph -noheader -notrailer -o $(NAME_DISTRIBUTED).tex -latex $(INCLUDES) $(PATH_DISTRIBUTED)
 
 
 # Display

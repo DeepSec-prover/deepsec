@@ -71,8 +71,8 @@ let print_help () =
   Printf.printf "   DEciding Equivalence Properties for SECurity protocols\n\n";
   Printf.printf "Version 1.0alpha\n\n";
   Printf.printf "Synopsis:\n";
-  Printf.printf "      deepsec [-distributed <int>] [-distant_workers <string> <string> <int>] [-nb_jobs <int>]\n\n";
-  Printf.printf "              [-no_attack_trace_display] file\n\n";
+  Printf.printf "      deepsec [-distributed <int>] [-distant_workers <string> <string> <int>] [-nb_sets <int>]\n";
+  Printf.printf "              [-no_display_attack_trace] file\n\n";
   Printf.printf "Options:\n";
   Printf.printf "      -distributed n: Activate the distributed computing with n local workers.\n\n";
   Printf.printf "      -distant_workers machine path n: This option allows you to specify additional worker\n";
@@ -149,20 +149,28 @@ let rec excecute_queries id = function
         then
           begin
             let result,init_proc1, init_proc2 = Distributed_equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 in
-            Equivalence.publish_trace_equivalence_result id !Process.chosen_semantics init_proc1 init_proc2 result;
+            if !Config.display_trace
+            then Equivalence.publish_trace_equivalence_result id !Process.chosen_semantics init_proc1 init_proc2 result;
             result
           end
         else
           begin
             let result = Equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 in
-            Equivalence.publish_trace_equivalence_result id !Process.chosen_semantics proc1 proc2 result;
+            if !Config.display_trace
+            then Equivalence.publish_trace_equivalence_result id !Process.chosen_semantics proc1 proc2 result;
             result
           end
       in
 
       begin match result with
-        | Equivalence.Equivalent -> Printf.printf "Query %d: Equivalent processes : See a summary of the input file on the HTML interface\n" id
-        | Equivalence.Not_Equivalent _ -> Printf.printf "Query %d: Processes not equivalent : See a summary of the input file and the attack trace on the HTML interface\n" id
+        | Equivalence.Equivalent ->
+            if !Config.display_trace
+            then Printf.printf "Query %d: Equivalent processes : See a summary of the input file on the HTML interface.\n" id
+            else Printf.printf "Query %d: Equivalent processes.\n" id
+        | Equivalence.Not_Equivalent _ ->
+            if !Config.display_trace
+            then Printf.printf "Query %d: Processes not equivalent : See a summary of the input file and the attack trace on the HTML interface.\n" id
+            else Printf.printf "Query %d: Processes not equivalent.\n" id
       end;
 
       excecute_queries (id+1) q

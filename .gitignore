@@ -29,6 +29,7 @@ Source/testing/testing_lexer.ml
 Documentation/Core_library.tex
 Documentation/Subterms.tex
 Documentation/Testing.tex
+Documentation/Distributed.tex
 Documentation/main.aux
 
 index.html

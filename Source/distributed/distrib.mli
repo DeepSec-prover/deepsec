@@ -13,6 +13,8 @@ sig
   (** This is the type for the result of one job computation*)
   type result
 
+  (** This is the type return by the digest function. Typically, [Kill] indicates that an attack has been found and
+      so the worker can be killed whereas [Continue] indicates otherwise. *)
   type command =
     | Kill
     | Continue
@@ -29,10 +31,14 @@ sig
       The purpose of this function is to allow the master process to update the job lists depending of the result it received from the child processes. *)
   val digest : result -> command
 
+  (** When a worker is tasked to generate new jobs, it is possible that it already discovers an attack or that it already proved that
+      the sub processes it took as argument are equivalent. In such a case, the worker returns the type [Result res] where [res] is
+      the corresponding result. Otherwise, it returns [Jobs jl] where [jl] is the list of jobs genereated. *)
   type generated_jobs =
     | Jobs of job list
     | Result of result
 
+  (** The function that a worker executes when it is tasked to generate new jobs. *)
   val generate_jobs : job -> generated_jobs
 end
 
@@ -40,6 +46,8 @@ end
 module Distrib : functor (Task : TASK) ->
 sig
 
+  (** Corresponds to the minimum number of jobs initially generated before distribution. Note that this number is necessarily bigger than
+      the number of workers launched. Its initial value is 100. *)
   val minimum_nb_of_jobs : int ref
 
   (** [local_workers n] sets up the number of workers that will be run on the local in parallel on the local machine.
@@ -54,8 +62,8 @@ sig
       Note that it is CRUCIAL that both the local machine and the distant machine have the distribution of DeepSec and Ocaml.
       The argument [n] corresponds to the number of worker that will be launch on [machine].
 
-      Example : [add_distant_worker "my_login@my_distant_server" "path_to_deepsec_on_my_distant_server/deepsec" 3] will run 3 workers on the
-      machine that be accessed via [ssh my_login@my_distant_server] and on which the folder [deepsec] containing the distribution of DeepSec is located at
+      Example : [add_distant_worker "my_login\@my_distant_server" "path_to_deepsec_on_my_distant_server/deepsec" 3] will run 3 workers on the
+      machine that be accessed via [ssh my_login\@my_distant_server] and on which the folder [deepsec] containing the distribution of DeepSec is located at
       [path_to_deepsec_on_my_distant_server/deepsec/]. *)
   val add_distant_worker : string -> string -> int -> unit
 

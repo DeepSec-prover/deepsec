@@ -44,7 +44,7 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
             | None ->
                 Config.debug (fun () ->
                   if not !Config.display_trace
-                  then Config.internal_error "[equivalence.ml >> apply_transition] There should be an acition when display_trace is activated."
+                  then Config.internal_error "[equivalence.ml >> apply_transition] There should be an action when display_trace is activated."
                 );
                 symb_proc.trace
             | Some action -> Trace.add_input var_X_ch in_gathering.in_channel var_X_var (of_variable in_gathering.in_variable) action proc (Trace.combine symb_proc.trace in_gathering.in_tau_actions)
@@ -111,7 +111,7 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
           | None ->
               Config.debug (fun () ->
                 if not !Config.display_trace
-                then Config.internal_error "[equivalence.ml >> apply_transition] There should be an acition when display_trace is activated. (2)"
+                then Config.internal_error "[equivalence.ml >> apply_transition] There should be an action when display_trace is activated. (2)"
               );
               symb_proc.trace
           | Some action -> Trace.add_output var_X_ch out_gathering.out_channel axiom out_gathering.out_term action proc (Trace.combine symb_proc.trace out_gathering.out_tau_actions)
