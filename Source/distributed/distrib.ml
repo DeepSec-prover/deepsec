@@ -49,8 +49,12 @@ struct
     let jobs_between_compact_memory = ref 500
 
     let time_between_round = ref 60.
+    
+    let _ =
+	let sig_handle = Sys.Signal_handle (fun _ -> ignore (exit 0)) in
+	Sys.set_signal Sys.sigterm sig_handle
 
-    (****** Setting up the workers *******)
+    (****** Setting up the workers *******)        
 
     let workers = ref []
 
@@ -70,7 +74,7 @@ struct
         while true do
           let kill_signal = ((input_value stdin): bool) in
           if kill_signal
-          then List.iter (fun pid -> ignore (Unix.kill pid Sys.sigkill)) pid_list
+          then List.iter (fun pid -> ignore (Unix.kill pid Sys.sigterm)) pid_list
           else Config.internal_error "[Distrib.ml] Should receive a true value."
         done
       with
@@ -281,7 +285,7 @@ struct
 
           while !processes_in_Unix_ch <> [] && Unix.time () -. init_timer < !time_between_round do
             let waiting_time = !time_between_round +. init_timer -. Unix.time () in
-            Printf.printf "\x0dSets of constraint systems remaining: %d, time before next round: %ds              %!" !nb_of_jobs (int_of_float waiting_time);
+            Printf.printf "\x0dSets of constraint systems remaining: %d, time before next round: %ds        %!" !nb_of_jobs (int_of_float waiting_time);
             if waiting_time > 0.
             then
               let (available_in_Unix_ch,_,_) = Unix.select !processes_in_Unix_ch [] [] waiting_time in
