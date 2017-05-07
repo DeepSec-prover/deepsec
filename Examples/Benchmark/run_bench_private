@@ -1,0 +1,73 @@
+#!/bin/bash
+
+function run_bench {
+  (ulimit -t 86400 > .tmp; ulimit -H -t > .tmp; ulimit -m 25000000 > .tmp; ulimit -v 25000000 > .tmp; ulimit -H -v > .tmp;
+  { /usr/bin/time -f "Time %E / Memory %Mk" ../../deepsec -semantics Private $3 > .deepsec_tmp$1 ;} 2> .time_tmp$1;
+  time=$(< .time_tmp$1);
+  query_result1=$(grep "Query" .deepsec_tmp$1);
+  query_result2=$(sed '/Query/s/Query \([0-9][0-9]*\): Equivalent processes : See a summary of the input file on the HTML interface/Query \1: Equivalent/' <<< $query_result1);
+  query_result3=$(sed '/Query/s/Query \([0-9][0-9]*\): Processes not equivalent : See a summary of the input file and the attack trace on the HTML interface/Query \1: Not equivalent/' <<< $query_result2);
+  echo "Bench $1 / $2 / Result $query_result3 / $time" >> bench_result.txt;);
+}
+
+echo "Benchmark DeepSec" > bench_result.txt;
+echo "" >> bench_result.txt;
+
+run_bench 1 "** WMF Std: 1s" ../trace_equivalence/WMF/WMF-shared-key-1session.txt
+run_bench 2 "** WMF Std: 2s" ../trace_equivalence/WMF/WMF-shared-key-2sessions.txt
+run_bench 3 "** WMF Std: 2s (same agent)" ../trace_equivalence/WMF/WMF-shared-key-2sessions-same.txt
+run_bench 4 "** WMF Basic: 1s" ../trace_equivalence/WMF/basic_process_version/WMF-shared-key-1session.txt
+run_bench 5 "** WMF Basic: 2s" ../trace_equivalence/WMF/basic_process_version/WMF-shared-key-2sessions.txt
+
+run_bench 7 "** Example 1" ../trace_equivalence/toys/example_1.txt
+run_bench 8 "** Example 2" ../trace_equivalence/toys/example_2.txt
+run_bench 9 "** Example 3" ../trace_equivalence/toys/example_3.txt
+run_bench 10 "** Simple 1 par" ../trace_equivalence/toys/Simple_1_par.txt
+run_bench 11 "** Simple 2 par" ../trace_equivalence/toys/Simple_2_par.txt
+run_bench 12 "** Simple 3 par" ../trace_equivalence/toys/Simple_3_par.txt
+run_bench 13 "** Simple 4 par" ../trace_equivalence/toys/Simple_4_par.txt
+run_bench 14 "** Simple 5 par" ../trace_equivalence/toys/Simple_5_par.txt
+run_bench 15 "** Simple 6 par" ../trace_equivalence/toys/Simple_6_par.txt
+
+run_bench 17 "** PrivAuth Std: 1s" ../trace_equivalence/private_authentication/private_authentication_1session.txt
+run_bench 18 "** PrivAuth Std: 2s (different agents)" ../trace_equivalence/private_authentication/private_authentication_2sessions-diff.txt
+run_bench 19 "** PrivAuth Std: 2s (same agents)" ../trace_equivalence/private_authentication/private_authentication_2sessions-same.txt
+run_bench 22 "** PrivAuth Basic: 1s" ../trace_equivalence/private_authentication/basic_process_version/PrivateAuthentication_1session.txt
+run_bench 23 "** PrivAuth Basic: 2s (different agents)" ../trace_equivalence/private_authentication/basic_process_version/PrivateAuthentication_2sessions-diff.txt
+run_bench 24 "** PrivAuth Basic: 2s (same agents)" ../trace_equivalence/private_authentication/basic_process_version/PrivateAuthentication_2sessions-same.txt
+
+run_bench 28 "** Std: BAC 2s" ../trace_equivalence/electronic_passport/Basic_Access_Control_protocol_2sessions.txt
+run_bench 30 "** Std: PA (Anonymity) 2s" ../trace_equivalence/electronic_passport/Passive_Authentication_Anonymity_2sessions.txt
+run_bench 33 "** Std: PA (Unlinkability) 2s" ../trace_equivalence/electronic_passport/Passive_Authentication_Unlinkability_2sessions.txt
+
+run_bench 36 "** Basic: PA (Anonymity) 1s" ../trace_equivalence/electronic_passport/basic_process_version/Passive_Authentication_1_session.txt
+run_bench 37 "** Basic: PA (Anonymity) 2s" ../trace_equivalence/electronic_passport/basic_process_version/Passive_Authentication_2_sessions.txt
+
+run_bench 40 "** DenningSacco Std: 1s" ../trace_equivalence/denning_sacco/DenningSacco-1session.txt
+run_bench 41 "** DenningSacco Std: 2s" ../trace_equivalence/denning_sacco/DenningSacco-2sessions.txt
+run_bench 43 "** DenningSacco Basic: 1s" ../trace_equivalence/denning_sacco/basic_access_version/DenningSacco-1session.txt
+run_bench 44 "** DenningSacco Basic: 2s" ../trace_equivalence/denning_sacco/basic_access_version/DenningSacco-2sessions.txt
+
+run_bench 6 "** WMF Basic: 3s" ../trace_equivalence/WMF/basic_process_version/WMF-shared-key-3sessions.txt
+run_bench 16 "** Simple 7 par" ../trace_equivalence/toys/Simple_7_par.txt
+
+run_bench 20 "** PrivAuth Std: 3s (different agents)" ../trace_equivalence/private_authentication/private_authentication_3sessions-diff.txt
+run_bench 21 "** PrivAuth Std: 3s (same agents)" ../trace_equivalence/private_authentication/private_authentication_3sessions-same.txt
+
+run_bench 25 "** PrivAuth Basic: 3s (different agents)" ../trace_equivalence/private_authentication/basic_process_version/PrivateAuthentication_3sessions-diff.txt
+run_bench 26 "** PrivAuth Basic: 3s (same agents)" ../trace_equivalence/private_authentication/basic_process_version/PrivateAuthentication_3sessions-same.txt
+run_bench 27 "** PrivAuth Basic: 4s (same agents)" ../trace_equivalence/private_authentication/basic_process_version/PrivateAuthentication_4sessions-same.txt
+
+run_bench 29 "** Std: BAC 3s" ../trace_equivalence/electronic_passport/Basic_Access_Control_protocol_3sessions.txt
+
+run_bench 31 "** Std: PA (Anonymity) 3s" ../trace_equivalence/electronic_passport/Passive_Authentication_Anonymity_3sessions.txt
+run_bench 32 "** Std: PA (Anonymity) 4s" ../trace_equivalence/electronic_passport/Passive_Authentication_Anonymity_4sessions.txt
+
+run_bench 34 "** Std: PA (Unlinkability) 3s" ../trace_equivalence/electronic_passport/Passive_Authentication_Unlinkability_3sessions.txt
+run_bench 35 "** Std: PA (Unlinkability) 4s" ../trace_equivalence/electronic_passport/Passive_Authentication_Unlinkability_4sessions.txt
+
+run_bench 38 "** Basic: PA (Anonymity) 3s" ../trace_equivalence/electronic_passport/basic_process_version/Passive_Authentication_3_sessions.txt
+
+run_bench 42 "** DenningSacco Std: 3s" ../trace_equivalence/denning_sacco/DenningSacco-3sessions.txt
+
+run_bench 45 "** DenningSacco Basic: 3s" ../trace_equivalence/denning_sacco/basic_access_version/DenningSacco-3sessions.txt
