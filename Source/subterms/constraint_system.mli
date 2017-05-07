@@ -57,6 +57,8 @@ val add_axiom : 'a t -> axiom -> protocol_term -> 'a t
     @raise Bot when the resulting constraint system is unsatisfiable. *)
 val add_disequations : ('a, 'b) atom -> 'c t -> ('a, 'b) Diseq.t list -> 'c t
 
+val add_private_channels : 'a t -> protocol_term list -> 'a t
+
 (** Replace the additional data in the constraint system by the one given as argument. *)
 val replace_additional_data : 'a t -> 'a -> 'a t
 
@@ -201,6 +203,8 @@ module Set : sig
 
   val initialise_for_output : 'a t -> 'a t
 
+  val set_private_channels : 'a t -> bool -> 'a t
+
   (** [choose] {% $S$ returns one constraint system in $S$. %}
       @raise Internal_error if the set is empty. *)
   val choose : 'a t -> 'a csys
@@ -243,6 +247,8 @@ module Rule : sig
       apply the functions [f] on each normalised sets obtained by application of the rule depending on how the set of constraint systems was produced by the rule.  *)
 
   val sat : 'a Set.t -> 'a continuation -> (unit -> unit) -> unit
+
+  val sat_private : 'a Set.t -> 'a continuation -> (unit -> unit) -> unit
 
   val sat_disequation : 'a Set.t -> 'a continuation -> (unit -> unit) -> unit
 

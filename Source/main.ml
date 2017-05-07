@@ -72,7 +72,7 @@ let print_help () =
   Printf.printf "Version 1.0alpha\n\n";
   Printf.printf "Synopsis:\n";
   Printf.printf "      deepsec [-distributed <int>] [-distant_workers <string> <string> <int>] [-nb_sets <int>]\n";
-  Printf.printf "              [-no_display_attack_trace] file\n\n";
+  Printf.printf "              [-no_display_attack_trace] [-semantics Classic|Private|Eavesdrop] file\n\n";
   Printf.printf "Options:\n";
   Printf.printf "      -distributed n: Activate the distributed computing with n local workers.\n\n";
   Printf.printf "      -distant_workers machine path n: This option allows you to specify additional worker\n";
@@ -201,6 +201,14 @@ let _ =
           i := !i + 4
       | "-nb_sets" when not (!i+1 = (Array.length Sys.argv)) ->
           Distributed_equivalence.DistribEquivalence.minimum_nb_of_jobs := int_of_string (Sys.argv).(!i+1);
+          i := !i + 2
+      | "-semantics" when not (!i+1 = (Array.length Sys.argv)) ->
+          begin match (Sys.argv).(!i+1) with
+            | "Classic" -> Process.chosen_semantics := Process.Classic
+            | "Private" -> Process.chosen_semantics := Process.Private
+            | "Eavesddrop" -> Process.chosen_semantics := Process.Eavesdrop
+            | _ -> print_help (); arret := true
+          end;
           i := !i + 2
       | "-no_display_attack_trace" ->
           Config.display_trace := false;

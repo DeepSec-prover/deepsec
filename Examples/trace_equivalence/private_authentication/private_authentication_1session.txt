@@ -5,8 +5,6 @@ Private Authentication Protocol
                   {Nb}pub(B) otherwise
 */
 
-set semantics = classic.
-
 fun aenc/2.
 fun pk/1.
 
