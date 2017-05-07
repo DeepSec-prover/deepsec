@@ -46,6 +46,10 @@ end
 module Distrib : functor (Task : TASK) ->
 sig
 
+  val jobs_between_compact_memory : int ref
+
+  val time_between_round : float ref
+
   (** Corresponds to the minimum number of jobs initially generated before distribution. Note that this number is necessarily bigger than
       the number of workers launched. Its initial value is 100. *)
   val minimum_nb_of_jobs : int ref

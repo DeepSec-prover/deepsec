@@ -46,6 +46,10 @@ struct
       | Completed of Task.result
       | JobList of Task.job list
 
+    let jobs_between_compact_memory = ref 500
+
+    let time_between_round = ref 60.
+
     (****** Setting up the workers *******)
 
     let workers = ref []
@@ -88,9 +92,23 @@ struct
 
     let minimum_nb_of_jobs = ref 100
 
-    let compute_job shared job =
+    let rec replace_job in_ch job acc = function
+      | [] -> Config.internal_error "[distrib.ml] There should be an entry in the list"
+      | (in_ch',_)::q when in_ch = in_ch' -> List.rev_append ((in_ch,job)::q) acc
+      | t::q -> replace_job in_ch job (t::acc) q
 
-      let job_list_ref = ref [job] in
+    let rec remove_job in_ch acc = function
+      | [] -> Config.internal_error "[distrib.ml] There should be an entry in the list"
+      | (in_ch',_)::q when in_ch = in_ch' -> List.rev_append q acc
+      | t::q -> remove_job in_ch (t::acc) q
+
+    type completion =
+      | EndRound
+      | EndCompute
+
+    let rec one_round_compute_job shared job_list =
+
+      let job_list_ref = ref job_list in
 
       let rec create_processes = function
         | [] -> []
@@ -112,11 +130,13 @@ struct
 
       let processes_in_Unix_ch = ref (List.map fst processes_in_Unix_out_ch) in
 
-      begin
+      let active_jobs = ref [] in
+
+      let completion =
         try
           (*** Generation of jobs ****)
 
-          Printf.printf "Generation of the jobs...\n%!";
+          Printf.printf "Generation of sets of constraint systems...\n%!";
 
           while List.length !job_list_ref < !minimum_nb_of_jobs do
 
@@ -170,24 +190,27 @@ struct
             job_list_ref := !tmp_job_list
           done;
 
-          let nb_of_jobs = ref (List.length !job_list_ref) in
+          let nb_of_jobs_created = List.length !job_list_ref in
+          let nb_of_jobs = ref nb_of_jobs_created in
 
-          Printf.printf "Number jobs generated: %d\n%!" !nb_of_jobs;
+          Printf.printf "Number of sets of constraint systems generated: %d\n%!" !nb_of_jobs;
 
           (**** Compute the first jobs ****)
 
-          List.iter (fun (_,out_ch) ->
-            Printf.printf "\x0dSets of constraint systems remaining: %d               %!" !nb_of_jobs;
+          List.iter (fun (in_Unix_ch,out_ch) ->
             let job = List.hd !job_list_ref in
             output_value out_ch (Compute job);
             flush out_ch;
+            active_jobs := (in_Unix_ch,job)::!active_jobs;
             job_list_ref := List.tl !job_list_ref;
-            decr nb_of_jobs
           ) processes_in_Unix_out_ch;
 
           (**** Compute the rest of the jobs ****)
 
-          while !processes_in_Unix_ch <> [] do
+          while !job_list_ref <> [] do
+            if ((nb_of_jobs_created - !nb_of_jobs) / !jobs_between_compact_memory) * !jobs_between_compact_memory = (nb_of_jobs_created - !nb_of_jobs)
+            then Gc.compact ();
+
             Printf.printf "\x0dSets of constraint systems remaining: %d               %!" !nb_of_jobs;
 
             let (available_in_Unix_ch,_,_) = Unix.select !processes_in_Unix_ch [] [] (-1.) in
@@ -200,21 +223,77 @@ struct
                 	  begin match Task.digest result with
                       | Task.Kill -> raise Not_found
                       | Task.Continue ->
-                      	  if !job_list_ref = []
-                      	  then processes_in_Unix_ch := List.filter (fun x -> x <> in_Unix_ch) !processes_in_Unix_ch
-                      	  else
-                      	    begin
-                      	      let out_ch = List.assoc in_Unix_ch processes_in_Unix_out_ch in
-                      	      output_value out_ch (Compute (List.hd !job_list_ref));
-                      	      flush out_ch;
+                          if !job_list_ref = []
+                          then
+                            begin
+                              processes_in_Unix_ch := List.filter_unordered (fun x -> x <> in_Unix_ch) !processes_in_Unix_ch;
+                              active_jobs := remove_job in_Unix_ch [] !active_jobs;
                               decr nb_of_jobs;
-                      	      job_list_ref := List.tl !job_list_ref
-                      	    end
+                            end
+                          else
+                            begin
+                              let next_job = List.hd !job_list_ref in
+                          	  let out_ch = List.assoc in_Unix_ch processes_in_Unix_out_ch in
+                          	  output_value out_ch (Compute next_job);
+                          	  flush out_ch;
+                              active_jobs := replace_job in_Unix_ch next_job [] !active_jobs;
+                              decr nb_of_jobs;
+                          	  job_list_ref := List.tl !job_list_ref
+                            end
                     end
           	) available_in_Unix_ch
-          done
-        with Not_found -> ()
-      end;
-      Printf.printf "\x0dComputation completed                                   \n";
-      List.iter (fun x -> ignore (Unix.close_process x)) processes_in_out_ch
+          done;
+
+          (*** No more job available but potentially active jobs ***)
+
+          let init_timer = Unix.time () in
+
+          while !processes_in_Unix_ch <> [] && Unix.time () -. init_timer < !time_between_round do
+            Printf.printf "Sets of constraint systems remaining: %d               %!" !nb_of_jobs;
+
+            let waiting_time = !time_between_round +. init_timer -. Unix.time () in
+            if waiting_time > 0.
+            then
+              let (available_in_Unix_ch,_,_) = Unix.select !processes_in_Unix_ch [] [] waiting_time in
+
+              List.iter (fun in_Unix_ch ->
+            	  let in_ch = Unix.in_channel_of_descr in_Unix_ch in
+                match input_value in_ch with
+                  | JobList _ -> Config.internal_error "[distrib.ml] Should not receive a job list"
+                  | Completed result ->
+                  	  begin match Task.digest result with
+                        | Task.Kill -> raise Not_found
+                        | Task.Continue ->
+                            processes_in_Unix_ch := List.filter_unordered (fun x -> x <> in_Unix_ch) !processes_in_Unix_ch;
+                            active_jobs := remove_job in_Unix_ch [] !active_jobs;
+                            decr nb_of_jobs
+                      end
+            	) available_in_Unix_ch
+            else ()
+          done;
+
+
+          List.iter (fun x -> ignore (Unix.close_process x)) processes_in_out_ch;
+          if !processes_in_Unix_ch = []
+          then
+            begin
+              Printf.printf "\x0dComputation completed                                   \n%!";
+              EndCompute
+            end
+          else
+            begin
+              Printf.printf "\x0dEnd of a round                                      \n%!";
+              EndRound
+            end
+        with Not_found ->
+          Printf.printf "\x0dComputation completed                                   \n%!";
+          List.iter (fun x -> ignore (Unix.close_process x)) processes_in_out_ch;
+          EndCompute
+      in
+
+      match completion with
+        | EndCompute -> ()
+        | EndRound -> one_round_compute_job shared (List.rev_map (fun (_,job) -> job) !active_jobs)
+
+  let compute_job shared job = one_round_compute_job shared [job]
 end
