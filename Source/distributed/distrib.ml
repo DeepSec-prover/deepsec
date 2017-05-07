@@ -249,9 +249,10 @@ struct
           let init_timer = Unix.time () in
 
           while !processes_in_Unix_ch <> [] && Unix.time () -. init_timer < !time_between_round do
-            Printf.printf "Sets of constraint systems remaining: %d               %!" !nb_of_jobs;
+            Printf.printf "\x0dSets of constraint systems remaining: %d               %!" !nb_of_jobs;
 
             let waiting_time = !time_between_round +. init_timer -. Unix.time () in
+            Printf.printf "Time waiting %s" waiting_time;
             if waiting_time > 0.
             then
               let (available_in_Unix_ch,_,_) = Unix.select !processes_in_Unix_ch [] [] waiting_time in
