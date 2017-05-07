@@ -24,23 +24,23 @@ run_bench 33 "** Std: PA (Unlinkability) 2s" ../trace_equivalence/electronic_pas
 run_bench 41 "** DenningSacco Std: 2s" ../trace_equivalence/denning_sacco/DenningSacco-2sessions.txt 1000
 run_bench 44 "** DenningSacco Basic: 2s" ../trace_equivalence/denning_sacco/basic_access_version/DenningSacco-2sessions.txt 500
 
-run_bench 6 "** WMF Basic: 3s" ../trace_equivalence/WMF/basic_process_version/WMF-shared-key-3sessions.txt 2000
-run_bench 16 "** Simple 7 par" ../trace_equivalence/toys/Simple_7_par.txt 4000
+run_bench 6 "** WMF Basic: 3s" ../trace_equivalence/WMF/basic_process_version/WMF-shared-key-3sessions.txt 1000
+run_bench 16 "** Simple 7 par" ../trace_equivalence/toys/Simple_7_par.txt 1000
 
-run_bench 20 "** PrivAuth Std: 3s (different agents)" ../trace_equivalence/private_authentication/private_authentication_3sessions-diff.txt 4000
-run_bench 21 "** PrivAuth Std: 3s (same agents)" ../trace_equivalence/private_authentication/private_authentication_3sessions-same.txt 4000
+run_bench 20 "** PrivAuth Std: 3s (different agents)" ../trace_equivalence/private_authentication/private_authentication_3sessions-diff.txt 1000
+run_bench 21 "** PrivAuth Std: 3s (same agents)" ../trace_equivalence/private_authentication/private_authentication_3sessions-same.txt 1000
 
-run_bench 25 "** PrivAuth Basic: 3s (different agents)" ../trace_equivalence/private_authentication/basic_process_version/PrivateAuthentication_3sessions-diff.txt 4000
-run_bench 26 "** PrivAuth Basic: 3s (same agents)" ../trace_equivalence/private_authentication/basic_process_version/PrivateAuthentication_3sessions-same.txt 4000
+run_bench 25 "** PrivAuth Basic: 3s (different agents)" ../trace_equivalence/private_authentication/basic_process_version/PrivateAuthentication_3sessions-diff.txt 1000
+run_bench 26 "** PrivAuth Basic: 3s (same agents)" ../trace_equivalence/private_authentication/basic_process_version/PrivateAuthentication_3sessions-same.txt 1000
 
-run_bench 29 "** Std: BAC 3s" ../trace_equivalence/electronic_passport/Basic_Access_Control_protocol_3sessions.txt 4000
+run_bench 29 "** Std: BAC 3s" ../trace_equivalence/electronic_passport/Basic_Access_Control_protocol_3sessions.txt 1000
 
-run_bench 31 "** Std: PA (Anonymity) 3s" ../trace_equivalence/electronic_passport/Passive_Authentication_Anonymity_3sessions.txt 4000
+run_bench 31 "** Std: PA (Anonymity) 3s" ../trace_equivalence/electronic_passport/Passive_Authentication_Anonymity_3sessions.txt 1000
 
-run_bench 34 "** Std: PA (Unlinkability) 3s" ../trace_equivalence/electronic_passport/Passive_Authentication_Unlinkability_3sessions.txt 4000
+run_bench 34 "** Std: PA (Unlinkability) 3s" ../trace_equivalence/electronic_passport/Passive_Authentication_Unlinkability_3sessions.txt 1000
 
-run_bench 38 "** Basic: PA (Anonymity) 3s" ../trace_equivalence/electronic_passport/basic_process_version/Passive_Authentication_3_sessions.txt 4000
+run_bench 38 "** Basic: PA (Anonymity) 3s" ../trace_equivalence/electronic_passport/basic_process_version/Passive_Authentication_3_sessions.txt 1000
 
-run_bench 42 "** DenningSacco Std: 3s" ../trace_equivalence/denning_sacco/DenningSacco-3sessions.txt 4000
+run_bench 42 "** DenningSacco Std: 3s" ../trace_equivalence/denning_sacco/DenningSacco-3sessions.txt 1000
 
-run_bench 45 "** DenningSacco Basic: 3s" ../trace_equivalence/denning_sacco/basic_access_version/DenningSacco-3sessions.txt 4000
+run_bench 45 "** DenningSacco Basic: 3s" ../trace_equivalence/denning_sacco/basic_access_version/DenningSacco-3sessions.txt 1000
