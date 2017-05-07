@@ -54,12 +54,28 @@ struct
 
     let workers = ref []
 
-    let local_workers n = workers := ("./worker",n) :: !workers
+    let local_workers n = workers := ("./worker_deepsec", "./manager_deepsec",n) :: !workers
 
     let add_distant_worker machine path n =
       if path.[(String.length path) - 1] = '/'
-      then workers := (Printf.sprintf "ssh %s %sworker" machine path, n) :: !workers
-      else workers := (Printf.sprintf "ssh %s %s/worker" machine path, n) :: !workers
+      then workers := (Printf.sprintf "ssh %s %sworker_deepsec" machine path, Printf.sprintf "ssh %s %smanager_deepsec" machine path, n) :: !workers
+      else workers := (Printf.sprintf "ssh %s %s/worker_deepsec" machine path, Printf.sprintf "ssh %s %s/manager_deepsec" machine path, n) :: !workers
+
+    (****** The manager main function ******)
+
+    let manager_main () =
+      let pid_list = ((input_value stdin): int list) in
+
+      try
+        while true do
+          let kill_signal = ((input_value stdin): bool) in
+          if kill_signal
+          then List.iter (fun pid -> ignore (Unix.kill pid Sys.sigkill)) pid_list
+          else Config.internal_error "[Distrib.ml] Should receive a true value."
+        done
+      with
+        | End_of_file -> ()
+        | x -> raise x
 
     (****** The workers' main function ******)
 
@@ -104,6 +120,12 @@ struct
       | (in_ch',_)::q when in_ch = in_ch' -> List.rev_append q acc
       | t::q -> remove_job in_ch (t::acc) q
 
+    let kill_workers managers =
+      List.iter (fun (_,out_ch) ->
+        output_value out_ch true;
+        flush out_ch
+      ) managers
+
     type completion =
       | EndRound
       | EndCompute
@@ -111,21 +133,25 @@ struct
     let rec one_round_compute_job shared job_list =
 
       let job_list_ref = ref job_list in
-      let pid_list = ref [] in
+      let managers = ref [] in
 
-      let rec create_processes = function
+      let rec create_processes pid_list = function
         | [] -> []
-        | (_,0)::q -> create_processes q
-        | (proc,n)::q ->
-            let (in_ch,out_ch) = Unix.open_process proc in
+        | (_,manager,0)::q ->
+            let (in_ch,out_ch) = Unix.open_process manager in
+            output_value out_ch pid_list;
+            flush out_ch;
+            managers := (in_ch,out_ch) :: !managers;
+            create_processes [] q
+        | (worker,manager,n)::q ->
+            let (in_ch,out_ch) = Unix.open_process worker in
             output_value out_ch shared;
             flush out_ch;
             let pid = ((input_value in_ch):int) in
-            pid_list := pid :: !pid_list;
-            (in_ch,out_ch)::(create_processes ((proc,n-1)::q))
+            (in_ch,out_ch)::(create_processes (pid::pid_list) ((worker,manager,n-1)::q))
       in
 
-      let processes_in_out_ch = create_processes !workers in
+      let processes_in_out_ch = create_processes [] !workers in
       let nb_processes = List.length processes_in_out_ch in
 
       if !minimum_nb_of_jobs <= nb_processes
@@ -276,8 +302,9 @@ struct
             else ()
           done;
 
-          List.iter (fun pid -> Unix.kill pid Sys.sigkill) !pid_list;
+          kill_workers !managers;
           List.iter (fun x -> ignore (Unix.close_process x)) processes_in_out_ch;
+          List.iter (fun x -> ignore (Unix.close_process x)) !managers;
           if !processes_in_Unix_ch = []
           then
             begin
@@ -291,7 +318,8 @@ struct
             end
         with Not_found ->
           Printf.printf "\x0dComputation completed                                                           \n%!";
-          List.iter (fun pid -> Unix.kill pid Sys.sigkill) !pid_list;
+          kill_workers !managers;
+          List.iter (fun x -> ignore (Unix.close_process x)) !managers;
           List.iter (fun x -> ignore (Unix.close_process x)) processes_in_out_ch;
           EndCompute
       in

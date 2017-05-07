@@ -74,6 +74,8 @@ sig
   (** [worker_main ()] is the only function run on child processes. This is an infinite loop and never returns. *)
   val worker_main : unit -> unit
 
+  val manager_main : unit -> unit
+
   (** [compute_job shared job_l] launch [!number_of_workers] child processes send them the shared data and distribute the jobs in [job_l].
       When the computation is finished, the server close the child processes. *)
   val compute_job : Task.shareddata -> Task.job -> unit
