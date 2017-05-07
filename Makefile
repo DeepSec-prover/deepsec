@@ -84,7 +84,7 @@ all: .display_obj $(ALL_OBJ)
 	@echo ----- Some Statistics -----
 	@echo
 	@echo Number of lines in the source code of the program :
-	find . -name "*.ml" -or -name "*.mli" -or -name "*.mly" -or -name "*.mll" | xargs cat | wc -l
+	@find . -name "*.ml" -or -name "*.mli" -or -name "*.mly" -or -name "*.mll" | xargs cat | wc -l
 	@rm -f .display .display_obj
 
 clean:

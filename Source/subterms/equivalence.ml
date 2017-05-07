@@ -187,6 +187,7 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
 
   (*** Generate the set for the next input ***)
 
+  let private_channels_input = ref false in
   let csys_set_for_input = ref Constraint_system.Set.empty in
 
   let var_X_ch = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
@@ -205,7 +206,11 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
         let new_csys_2 = Constraint_system.add_basic_fact new_csys_1 ded_fact_ch in
         let new_csys_3 = Constraint_system.add_basic_fact new_csys_2 ded_fact_term in
         let new_csys_4 = Constraint_system.add_disequations Protocol new_csys_3 in_gathering.in_disequations in
-        let new_csys_5 = Constraint_system.add_private_channels new_csys_4 in_gathering.in_private_channels in
+        let new_csys_5 =
+          if in_gathering.in_private_channels = []
+          then new_csys_4
+          else (private_channels_input := true; Constraint_system.add_private_channels new_csys_4 in_gathering.in_private_channels)
+        in
         let trace =
           match in_gathering.in_action with
             | None ->
@@ -239,7 +244,7 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
       Constraint_system.Rule.not_applicable = in_apply_sat_private_channels
     } f_next
   and in_apply_sat_private_channels csys_set f_next =
-    Constraint_system.Rule.sat csys_set {
+    Constraint_system.Rule.sat_private csys_set {
       Constraint_system.Rule.positive = in_apply_sat_private_channels;
       Constraint_system.Rule.negative = in_apply_sat_private_channels;
       Constraint_system.Rule.not_applicable = in_apply_sat_disequation
@@ -264,6 +269,7 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
   (*** Generate the set for the next output ***)
 
   let csys_set_for_output = ref Constraint_system.Set.empty in
+  let private_channels_output = ref false in
 
   let var_X_ch = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
   let axiom = Axiom.create (size_frame + 1) in
@@ -280,7 +286,11 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
         let new_csys_2 = Constraint_system.add_basic_fact new_csys_1 ded_fact_ch in
         let new_csys_3 = Constraint_system.add_axiom new_csys_2 axiom (out_gathering.out_term) in
         let new_csys_4 = Constraint_system.add_disequations Protocol new_csys_3 out_gathering.out_disequations in
-        let new_csys_5 = Constraint_system.add_private_channels new_csys_4 out_gathering.out_private_channels in
+        let new_csys_5 =
+          if out_gathering.out_private_channels = []
+          then new_csys_4
+          else (private_channels_output := true; Constraint_system.add_private_channels new_csys_4 out_gathering.out_private_channels)
+        in
         let trace = match out_gathering.out_action with
           | None ->
               Config.debug (fun () ->
@@ -313,7 +323,7 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
       Constraint_system.Rule.not_applicable = out_apply_sat_private_channels
     } f_next
   and out_apply_sat_private_channels csys_set f_next =
-    Constraint_system.Rule.sat csys_set {
+    Constraint_system.Rule.sat_private csys_set {
       Constraint_system.Rule.positive = out_apply_sat_private_channels;
       Constraint_system.Rule.negative = out_apply_sat_private_channels;
       Constraint_system.Rule.not_applicable = out_apply_sat_disequation
@@ -359,11 +369,12 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
       else f_continuation csys_set (size_frame + 1) f_next
   in
 
-  out_apply_sat (Constraint_system.Set.initialise_for_output !csys_set_for_output) (fun () -> in_apply_sat !csys_set_for_input f_next)
-
+  out_apply_sat (Constraint_system.Set.initialise_for_output (Constraint_system.Set.set_private_channels !csys_set_for_output !private_channels_output))
+    (fun () -> in_apply_sat (Constraint_system.Set.set_private_channels !csys_set_for_input !private_channels_input) f_next)
 
 let apply_one_transition_and_rules_for_trace_equivalence = function
   | Classic -> apply_one_transition_and_rules_for_trace_in_classic
+  | Private -> apply_one_transition_and_rules_for_trace_in_private
   | _ -> Config.internal_error "[equivalence.ml >> apply_one_transition_and_rules_for_trace_equivalence] Trace equivalence for this semantics is not yet implemented."
 
 
@@ -407,8 +418,45 @@ let trace_equivalence_classic proc1 proc2 =
   with
     | Not_Trace_Equivalent csys -> Not_Equivalent csys
 
+let trace_equivalence_private proc1 proc2 =
+
+  (*** Generate the initial constraint systems ***)
+
+  let symb_proc_1 =
+    {
+      origin_process = Left;
+      current_process = proc1;
+      trace = Trace.empty
+    }
+  and symb_proc_2 =
+    {
+      origin_process = Right;
+      current_process = proc2;
+      trace = Trace.empty
+    }
+  in
+
+  let csys_1 = Constraint_system.empty symb_proc_1 in
+  let csys_2 = Constraint_system.empty symb_proc_2 in
+
+  (**** Generate the initial set ****)
+
+  let csys_set_1 = Constraint_system.Set.add csys_1 Constraint_system.Set.empty in
+  let csys_set_2 = Constraint_system.Set.add csys_2 csys_set_1 in
+
+  let rec apply_rules csys_set frame_size f_next =
+    apply_one_transition_and_rules_for_trace_in_private csys_set frame_size apply_rules f_next
+  in
+
+  try
+    apply_rules csys_set_2 0 (fun () -> ());
+    Equivalent
+  with
+    | Not_Trace_Equivalent csys -> Not_Equivalent csys
+
 let trace_equivalence sem = match sem with
   | Classic -> trace_equivalence_classic
+  | Private -> trace_equivalence_private
   | _ -> Config.internal_error "[equivalence.ml >> trace_equivalence] Trace equivalence for this semantics is not yet implemented."
 
 (***** Display ******)

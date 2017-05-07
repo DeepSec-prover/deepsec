@@ -15,6 +15,8 @@ type 'a t =
 
     df : DF.t;
 
+    private_channels : protocol_term list;
+
     eqfst : (fst_ord, name) Eq.t;
     eqsnd : (snd_ord, axiom) Eq.t;
 
@@ -239,6 +241,8 @@ let empty data =
 
     df = DF.empty;
 
+    private_channels = [];
+
     eqfst = Eq.top;
     eqsnd = Eq.top;
 
@@ -264,7 +268,10 @@ let empty data =
 let apply_substitution csys subst =
   Config.debug (fun () ->
     if not (Subst.is_extended_by Protocol csys.i_subst_fst subst)
-    then Config.internal_error "[constraint_system.ml >> apply_substitution] The  substitution of the constraint system should be extended by the substitution given as argument."
+    then Config.internal_error "[constraint_system.ml >> apply_substitution] The  substitution of the constraint system should be extended by the substitution given as argument.";
+
+    if csys.private_channels <> []
+    then Config.internal_error "[constraint_system.ml >> apply_substitution] The private channels should be added after applying the substitution."
   );
 
   let new_df = DF.apply csys.df subst
@@ -365,6 +372,13 @@ let instantiate_when_solved csys =
 
   (Subst.compose csys.i_subst_fst subst_fst, Subst.union csys.i_subst_ground_snd (Subst.compose csys.i_subst_snd subst_snd), name_list)
 
+let add_private_channels csys pr_ch_l =
+  Config.debug (fun () ->
+    if csys.private_channels <> []
+    then Config.internal_error "[constraint_system.ml >> add_private_channels] The current list should be empty."
+  );
+  { csys with private_channels = pr_ch_l }
+
 (*****************************************
 ***       Most general solutions       ***
 ******************************************)
@@ -449,6 +463,8 @@ let create size_frame df eq1 eq2 sdf uf sub1 sub2 uni il1 il2 il3 is1 is2 =
     size_frame = size_frame;
 
     df = df;
+
+    private_channels = [];
 
     eqfst = eq1;
     eqsnd = eq2;
@@ -1128,6 +1144,19 @@ let simple_of_disequation csys diseq =
   Config.test (fun () -> test_simple_of_disequation csys diseq result);
   result
 
+let simple_of_private csys ch =
+
+  let xsnd = Variable.fresh Recipe Existential (Variable.snd_ord_type (csys.size_frame + 1)) in
+  let b_fct = BasicFact.create xsnd ch in
+
+  {
+    simp_DF = DF.add csys.df b_fct;
+    simp_EqFst = csys.eqfst;
+    simp_EqSnd = csys.eqsnd;
+    simp_SDF = csys.sdf;
+    simp_Sub_Cons = Uniformity_Set.add csys.sub_cons (of_variable xsnd) ch
+  }
+
 (***** Access *****)
 
 let get_vars_simple_with_list (type a) (type b) (at: (a,b) atom) csys (vars_l: (a,b) variable list) =
@@ -1420,7 +1449,8 @@ module Set = struct
     {
       csys_list : 'a csys list;
       ded_occurs : bool;
-      eq_occurs : equality_type
+      eq_occurs : equality_type;
+      set_private_channels : bool
     }
 
   let unit_t_of (type a) (csys_set: a t) = { csys_set with csys_list = (List.fold_left (fun acc csys -> (unit_t_of csys)::acc) [] csys_set.csys_list) }
@@ -1429,7 +1459,8 @@ module Set = struct
     {
       csys_list = [];
       ded_occurs = false;
-      eq_occurs = No_equality
+      eq_occurs = No_equality;
+      set_private_channels = false
     }
 
   let size csys_set = List.length csys_set.csys_list
@@ -1446,7 +1477,7 @@ module Set = struct
 
   let optimise_snd_ord_recipes csys_set =
     if csys_set.csys_list = []
-    then csys_set
+    then { csys_set with set_private_channels = false }
     else
       let csys = List.hd csys_set.csys_list in
 
@@ -1458,10 +1489,13 @@ module Set = struct
           { csys' with i_subst_snd = i_subst_snd; i_subst_ground_snd = new_i_subst_ground_snd }::acc
         ) [] csys_set.csys_list
       in
-      { csys_set with csys_list = csys_list }
+      { csys_set with csys_list = csys_list; set_private_channels = false }
 
   let initialise_for_output csys_set =
     { csys_set with ded_occurs = true }
+
+  let set_private_channels csys_set pr_ch =
+    { csys_set with set_private_channels = pr_ch }
 
   let for_all f csys_set = List.for_all f csys_set.csys_list
 
@@ -1656,7 +1690,7 @@ module Rule = struct
             if List.length !positive = 0 || List.length !negative = 0
             then Config.internal_error "[Constraint_system.ml >> Rules.partition_csys_set] Partition should be 2 non empty sets. (2)"
           );
-          { Set.csys_list = !positive; Set.eq_occurs = Set.No_equality; Set.ded_occurs = false }, { csys_set with Set.csys_list = !negative; Set.eq_occurs = Set.No_equality }
+          { csys_set with Set.csys_list = !positive; Set.eq_occurs = Set.No_equality; Set.ded_occurs = false }, { csys_set with Set.csys_list = !negative; Set.eq_occurs = Set.No_equality }
       | Some eq_type ->
           List.iter (fun csys ->
             if UF.solved_occurs Fact.Equality csys.uf
@@ -1743,7 +1777,7 @@ module Rule = struct
                         { csys with uf = UF.remove_solved Fact.Deduction new_uf } :: acc
                       ) [] csys_set.Set.csys_list
                     in
-                    let csys_set' = { Set.csys_list = csys_list ; Set.eq_occurs = Set.No_equality ; Set.ded_occurs = false } in
+                    let csys_set' = { csys_set with Set.csys_list = csys_list ; Set.eq_occurs = Set.No_equality ; Set.ded_occurs = false } in
 
                     (f_continuation.no_split [@tailcall]) csys_set' f_next
                 | _ ->
@@ -1886,7 +1920,7 @@ module Rule = struct
               ) [] csys_set.Set.csys_list
             in
 
-            let new_csys_set = { Set.csys_list = new_csys_list; Set.ded_occurs = false ; Set.eq_occurs = Set.No_equality } in
+            let new_csys_set = { csys_set with Set.csys_list = new_csys_list; Set.ded_occurs = false ; Set.eq_occurs = Set.No_equality } in
 
 
             (f_continuation.removal [@tailcall]) new_csys_set f_next
@@ -1898,7 +1932,7 @@ module Rule = struct
               ) [] csys_set.Set.csys_list
             in
 
-            let new_csys_set = { Set.csys_list = new_csys_list; Set.ded_occurs = false ; Set.eq_occurs = Set.No_equality } in
+            let new_csys_set = { csys_set with Set.csys_list = new_csys_list; Set.ded_occurs = false ; Set.eq_occurs = Set.No_equality } in
 
             (f_continuation.removal [@tailcall]) new_csys_set f_next
       | Some recipe_conseq ->
@@ -1933,7 +1967,7 @@ module Rule = struct
             ) [] csys_set.Set.csys_list
           in
 
-          let new_csys_set = { Set.csys_list = new_csys_list ; Set.ded_occurs = true; Set.eq_occurs = Set.Consequence_UF } in
+          let new_csys_set = { csys_set with Set.csys_list = new_csys_list ; Set.ded_occurs = true; Set.eq_occurs = Set.Consequence_UF } in
 
           (f_continuation.addition [@tailcall]) new_csys_set f_next
 
@@ -2248,6 +2282,101 @@ module Rule = struct
     if Config.test_activated
     then (fun csys_set continuation_func f_next -> test_rule internal_sat !test_sat_unit csys_set continuation_func f_next)
     else internal_sat
+
+  (**** The rule SAT Private ****)
+
+  let internal_sat_private csys_set continuation_func f_next =
+    if csys_set.Set.set_private_channels
+    then
+      let result_rule = ref [] in
+
+      let rec explore_csys_set prev_csys_set = function
+        | [] -> result_rule := prev_csys_set; None
+        | csys::q when csys.private_channels = [] -> (explore_csys_set [@tailcall]) (csys::prev_csys_set) q
+        | csys::q ->
+            let ch = List.hd csys.private_channels in
+
+            let simple_csys = simple_of_private csys ch in
+
+            let exists_mgs =
+              try
+                let ((mgs,l_vars),_,_) = one_mgs simple_csys in
+                let mgs_csys,_ = Subst.split_domain mgs (fun x -> Variable.type_of x <> csys.size_frame + 1) in
+                let l_vars_csys = List.filter_unordered (fun x -> Variable.type_of x <> csys.size_frame + 1) l_vars in
+                Some (mgs_csys, l_vars_csys)
+              with Not_found -> None
+            in
+
+            begin match exists_mgs with
+              | None ->
+                  let new_csys = { csys with private_channels = List.tl csys.private_channels} in
+                  (explore_csys_set [@tailcall]) prev_csys_set (new_csys::q)
+              | Some mgs -> Some(csys, List.rev_append prev_csys_set q, mgs)
+            end
+      in
+
+      match explore_csys_set [] csys_set.Set.csys_list with
+        | Some(csys,other_csys,(mgs,l_vars)) ->
+            let diseq = Diseq.of_substitution Recipe mgs l_vars in
+
+            if Diseq.is_bot diseq
+            then Config.internal_error "[constraint_system.ml >> internal_sat_private] The disequation should not be the bot.";
+
+            let new_eqsnd = Eq.apply Recipe csys.eqsnd mgs in
+            let new_i_subst_snd = Subst.compose_restricted_generic csys.i_subst_snd mgs (fun x -> Variable.quantifier_of x = Free) in
+
+            Config.debug (fun () ->
+              if Eq.is_bot new_eqsnd
+              then Config.internal_error "[constraint_system.ml >> internal_sat_disequation] If bot then we should not have had some mgs."
+            );
+
+            let positive_csys_set =
+              if other_csys = []
+              then { csys_set with Set.csys_list = [] }
+              else
+                let one_csys = List.hd other_csys in
+                let array_sdf = Array.make (SDF.cardinal one_csys.sdf) (dummy_recipe,false) in
+
+                let new_csys_list =
+                  try
+                    let csys' = apply_mgs_and_gather one_csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars) in
+                    List.fold_left (fun set csys ->
+                      try
+                        (apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars))::set
+                      with
+                        | Bot -> set
+                      ) [csys'] (List.tl other_csys)
+                  with
+                  | Bot ->
+                      List.fold_left (fun set csys ->
+                        try
+                          (apply_mgs_from_gathering csys array_sdf new_eqsnd new_i_subst_snd (mgs,l_vars))::set
+                        with
+                          | Bot -> set
+                        ) [] (List.tl other_csys)
+                in
+
+                { csys_set with Set.csys_list = new_csys_list }
+            in
+
+            let new_eqsnd = Eq.wedge csys.eqsnd diseq in
+
+            let negative_csys_list =
+              List.fold_left (fun acc csys ->
+                let csys' = { csys with eqsnd = new_eqsnd } in
+                if Uniformity_Set.exists_pair_with_same_protocol_term csys'.sub_cons (Eq.implies Recipe csys'.eqsnd)
+                then acc
+                else csys'::acc
+              ) [] (csys::other_csys)
+            in
+
+            let negative_csys_set = { csys_set with Set.csys_list = negative_csys_list } in
+
+            (continuation_func.positive [@tailcall]) positive_csys_set (fun () -> (continuation_func.negative [@tailcall]) negative_csys_set f_next)
+        | None -> (continuation_func.not_applicable [@tailcall]) { csys_set with Set.csys_list = !result_rule } f_next
+    else (continuation_func.not_applicable [@tailcall]) csys_set f_next
+
+  let sat_private = internal_sat_private
 
   (**** The rule SAT Disequation ****)
 
