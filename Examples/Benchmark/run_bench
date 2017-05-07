@@ -2,7 +2,7 @@
 
 function run_bench {
   (ulimit -t 86400 > .tmp; ulimit -H -t > .tmp; ulimit -m 25000000 > .tmp; ulimit -v 25000000 > .tmp; ulimit -H -v > .tmp;
-  { /usr/bin/time -f "Time %E / Memory %Mk" ../../deepsec $3 > .deepsec_tmp$1 ;} 2> .time_tmp$1;
+  { /usr/bin/time -f "Time %E / Memory %Mk" ../../deepsec -semantics Classic $3 > .deepsec_tmp$1 ;} 2> .time_tmp$1;
   time=$(< .time_tmp$1);
   query_result1=$(grep "Query" .deepsec_tmp$1);
   query_result2=$(sed '/Query/s/Query \([0-9][0-9]*\): Equivalent processes : See a summary of the input file on the HTML interface/Query \1: Equivalent/' <<< $query_result1);
