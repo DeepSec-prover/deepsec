@@ -46,6 +46,10 @@ end
 module Distrib : functor (Task : TASK) ->
 sig
 
+  val jobs_between_compact_memory : int ref
+
+  val time_between_round : float ref
+
   (** Corresponds to the minimum number of jobs initially generated before distribution. Note that this number is necessarily bigger than
       the number of workers launched. Its initial value is 100. *)
   val minimum_nb_of_jobs : int ref
@@ -69,6 +73,8 @@ sig
 
   (** [worker_main ()] is the only function run on child processes. This is an infinite loop and never returns. *)
   val worker_main : unit -> unit
+
+  val manager_main : unit -> unit
 
   (** [compute_job shared job_l] launch [!number_of_workers] child processes send them the shared data and distribute the jobs in [job_l].
       When the computation is finished, the server close the child processes. *)

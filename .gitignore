@@ -44,4 +44,5 @@ result
 Examples/Benchmark/.*
 Examples/Benchmark/bench_*
 
-worker
+worker_deepsec
+manager_deepsec
