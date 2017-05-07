@@ -49,12 +49,12 @@ struct
     let jobs_between_compact_memory = ref 500
 
     let time_between_round = ref 60.
-    
-    let _ =
-	let sig_handle = Sys.Signal_handle (fun _ -> ignore (exit 0)) in
-	Sys.set_signal Sys.sigterm sig_handle
 
-    (****** Setting up the workers *******)        
+    let _ =
+      let sig_handle = Sys.Signal_handle (fun _ -> ignore (exit 0)) in
+    	Sys.set_signal Sys.sigterm sig_handle
+
+    (****** Setting up the workers *******)
 
     let workers = ref []
 
