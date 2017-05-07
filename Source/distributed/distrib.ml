@@ -109,6 +109,7 @@ struct
     let rec one_round_compute_job shared job_list =
 
       let job_list_ref = ref job_list in
+      let pid_list = ref [] in
 
       let rec create_processes = function
         | [] -> []
@@ -117,6 +118,8 @@ struct
             let (in_ch,out_ch) = Unix.open_process proc in
             output_value out_ch shared;
             flush out_ch;
+            let pid = ((input_value in_ch):int) in
+            pid_list := pid :: !pid_list;
             (in_ch,out_ch)::(create_processes ((proc,n-1)::q))
       in
 
@@ -211,7 +214,7 @@ struct
             if ((nb_of_jobs_created - !nb_of_jobs) / !jobs_between_compact_memory) * !jobs_between_compact_memory = (nb_of_jobs_created - !nb_of_jobs)
             then Gc.compact ();
 
-            Printf.printf "\x0dSets of constraint systems remaining: %d               %!" !nb_of_jobs;
+            Printf.printf "\x0dSets of constraint systems remaining: %d                                      %!" !nb_of_jobs;
 
             let (available_in_Unix_ch,_,_) = Unix.select !processes_in_Unix_ch [] [] (-1.) in
 
@@ -249,10 +252,8 @@ struct
           let init_timer = Unix.time () in
 
           while !processes_in_Unix_ch <> [] && Unix.time () -. init_timer < !time_between_round do
-            Printf.printf "\x0dSets of constraint systems remaining: %d               %!" !nb_of_jobs;
-
             let waiting_time = !time_between_round +. init_timer -. Unix.time () in
-            Printf.printf "Time waiting %s" waiting_time;
+            Printf.printf "\x0dSets of constraint systems remaining: %d, time before next round: %ds              %!" !nb_of_jobs (int_of_float waiting_time);
             if waiting_time > 0.
             then
               let (available_in_Unix_ch,_,_) = Unix.select !processes_in_Unix_ch [] [] waiting_time in
@@ -273,21 +274,22 @@ struct
             else ()
           done;
 
-
+          List.iter (fun pid -> Unix.kill pid Sys.sigkill) !pid_list;
           List.iter (fun x -> ignore (Unix.close_process x)) processes_in_out_ch;
           if !processes_in_Unix_ch = []
           then
             begin
-              Printf.printf "\x0dComputation completed                                   \n%!";
+              Printf.printf "\x0dComputation completed                                                      \n%!";
               EndCompute
             end
           else
             begin
-              Printf.printf "\x0dEnd of a round                                      \n%!";
+              Printf.printf "\x0dEnd of a round                                                              \n%!";
               EndRound
             end
         with Not_found ->
-          Printf.printf "\x0dComputation completed                                   \n%!";
+          Printf.printf "\x0dComputation completed                                                           \n%!";
+          List.iter (fun pid -> Unix.kill pid Sys.sigkill) !pid_list;
           List.iter (fun x -> ignore (Unix.close_process x)) processes_in_out_ch;
           EndCompute
       in
