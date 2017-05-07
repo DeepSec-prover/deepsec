@@ -66,6 +66,7 @@ struct
     let worker_main () =
       let shared = ((input_value stdin):Task.shareddata) in
       Task.initialise shared;
+      output_value stdout (Unix.getpid ());
 
       try
         while true do
