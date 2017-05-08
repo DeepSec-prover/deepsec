@@ -1,0 +1,105 @@
+/* Yahalom
+ Summary: Distribution of a fresh symmetric shared key by a trusted server
+ and mutual authentication.
+
+ 1.  A	->      B:	A, Na
+ 2.  B	->	S:  	B, {A, Na, Nb}Kbs
+ 3.  S	->	A:  	{B, Kab, Na, Nb}Kas, {A, Kab}Kbs
+ 4.  A	->	B:      {A, Kab}Kbs, {Nb}Kab
+ Strong secrecy of Kab
+ 3.  B      ->     : {m}Kab versus {m}K with K fresh
+*/
+
+free a.
+free b.
+free c.
+free ok.
+
+fun senc/2.
+reduc sdec(senc(x,y),y) -> x.
+
+/*
+    Description of role A played:
+ - on channel ca
+ - by a with key kas (shared with the server S)
+ - with responder b
+*/
+
+let processA(a,b,kas) =
+  new na;
+  out(c, (a, na));
+  in(c, xa);
+  let (xas, xbs) = xa in
+  let (xb, xkab, xna, xnb) = sdec(xas, kas) in
+  if xna = na then
+  if xb = b then
+  out(c, (xbs, senc(xnb, xkab))).
+
+/*
+    Description of role B played:
+ - on channel cb
+ - by b with key kbs (shared with the server S)
+ - with initiator a
+*/
+
+let processBreal(a,b,kbs) =
+  new nb;
+  in(c, yb);
+  let (ya, yna) = yb in
+  if ya = a then
+  out(c, (b, senc((a, yna, nb), kbs)));
+  in(c, zb);
+  let (zbs, zab) = zb in
+  let (za, zkab) = sdec(zbs, kbs) in
+  let znb = sdec(zab, zkab) in
+  if znb = nb then
+  out(c, senc(ok, zkab)).
+
+let processBideal(a,b,kbs) =
+  new nb;
+  new n;
+  in(c, yb);
+  let (ya, yna) = yb in
+  if ya = a then
+  out(c, (b, senc((a, yna, nb), kbs)));
+  in(c, zb);
+  let (zbs, zab) = zb in
+  let (za, zkab) = sdec(zbs, kbs) in
+  let znb = sdec(zab, zkab) in
+  if znb = nb then
+  out(c, senc(n, zkab)).
+
+
+/*
+    Description of role S played:
+ - on channel cs
+ - to answer a request coming from a (with key kas)
+ - who wants to communicate with b (with key kbs)
+*/
+
+let processS(a,b,kas,kbs) =
+  new kab;
+  in(c, zs);
+  let (zb, zbs) = zs in
+  let (za, zna, znb) = sdec(zbs, kbs) in
+  if zb = b then
+  if za = a then
+  out(c, (senc((b, kab, zna, znb), kas), senc((a, kab), kbs))).
+
+/*
+  			Main
+*/
+
+let Preal =
+  new kas; new kbs; !^2 (
+    processA(a,b,kas) |  processBreal(a,b,kbs) | processS(a,b,kas,kbs)
+  ).
+
+
+let Pideal =
+  new kas; new kbs; (
+    processA(a,b,kas) |  processBideal(a,b,kbs) | processS(a,b,kas,kbs) |
+    processS(a,b,kas,kbs) | processA(a,b,kas) | processBreal(a,b,kbs)
+  ).
+
+query trace_equiv(Preal, Pideal).

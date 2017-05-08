@@ -983,7 +983,7 @@ module Symbol = struct
       List.find (fun symb -> symb.arity = ar) !all_tuple
     with Not_found ->
       begin
-        let symb = { name = "tuple"; arity = ar; cat = Tuple } in
+        let symb = { name = (Printf.sprintf "tuple%d" ar); arity = ar; cat = Tuple } in
         all_constructors := List.sort order (symb::!all_constructors);
         all_tuple := symb::!all_tuple;
         number_of_constructors := !number_of_constructors + 1;

@@ -1760,7 +1760,6 @@ let rec next_output_classic_trace_content tau_actions content v_rho n_rho proc e
       let v_rho' = Variable.Renaming.restrict v_rho cont.bound_var
       and n_rho' = Name.Renaming.restrict n_rho cont.bound_name in
 
-
       let proc' = add_content_in_proc cont 1 v_rho' n_rho' proc in
 
       begin try
