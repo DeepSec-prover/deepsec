@@ -223,7 +223,6 @@ struct
             ) available_in_Unix_ch
           done;
 
-          Printf.printf "Temporary Job list = %d\n%!" (List.length !tmp_job_list);
           if !tmp_job_list = []
           then continue_computing := false;
 

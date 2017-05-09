@@ -3118,6 +3118,13 @@ module type SDF_Sub =
     val exists : t -> (Fact.deduction -> bool) -> bool
 
     val find : t -> (Fact.deduction -> 'a option) -> 'a option
+
+    type marked_result =
+      | Not_in_SDF
+      | Marked of protocol_term
+      | Unmarked of protocol_term * t
+
+    val find_term_and_mark : t -> recipe -> marked_result
   end
 
 module type DF =
@@ -3129,6 +3136,8 @@ module type DF =
     val find_within_var_type : int -> t -> (BasicFact.t -> 'a option) -> 'a option
 
     val find : t -> (BasicFact.t -> 'a option) -> 'a option
+
+    val find_term : t -> snd_ord_variable -> protocol_term option
 
     val iter : t -> (BasicFact.t -> unit) -> unit
   end
@@ -3145,6 +3154,10 @@ module type Uni =
     (** [iter] {% $\Set$ %} [f] applies the function [f] to all pairs {% $(\xi,t) \in \Set$.
         Warning : The order in which the function [iter] goes through the pairs of $\Set$ is unspecified. %}*)
     val iter : t -> (recipe -> protocol_term -> unit) -> unit
+
+    val add: t -> recipe -> protocol_term -> t
+
+    val exists : t -> recipe -> protocol_term -> bool
   end
 
 module Tools_General (SDF: SDF) (DF: DF) = struct
@@ -3530,7 +3543,7 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
               | Some t_l -> Some (Func(f,t_l))
             end
       | Func(_,_) | AxName _ -> SDF.find sdf (fun fct -> if is_equal Recipe fct.Fact.df_recipe recipe then Some fct.Fact.df_term else None)
-      | Var v -> DF.find_within_var_type (Variable.type_of v) df (fun b_fct -> if Variable.is_equal b_fct.BasicFact.var v then Some b_fct.BasicFact.term else None)
+      | Var v -> DF.find_term df v
 
     in
 
@@ -3629,7 +3642,7 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
             let b_fct = List.find (fun b_fct -> Variable.is_equal v b_fct.BasicFact.var) b_fct_list in
             Some b_fct.BasicFact.term
           with
-            | Not_found -> DF.find_within_var_type (Variable.type_of v) df (fun b_fct -> if Variable.is_equal b_fct.BasicFact.var v then Some b_fct.BasicFact.term else None)
+            | Not_found -> DF.find_term df v
           end
 
     in
@@ -3828,66 +3841,54 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
           if args_r = []
           then (Func(f,[]),Uni.add uniset recipe (Func(f,[])),sdf)
           else
-            let (args_t,uniset_1,sdf_1) = explore_recipe_list (uniset,sdf) args_r in
+            let (args_t,uniset_1,sdf_1) = explore_recipe_list uniset sdf args_r in
             let t = Func(f,args_t) in
             (t,Uni.add uniset_1 recipe t,sdf_1)
-      | Func(f,args_r) ->
+      | Func(_,args_r) as r->
           (* Destructor case *)
-          begin match SDF.find_and_mark sdf (fun fct -> is_equal Recipe fct.Fact.df_recipe recipe) with
-            | Not_in_SDF  -> Config.debug "[term.ml >> Tools.add_in_uniset]"
-            | Marked t -> (t,uniset,sdf)
-            | Unmarked (t,sdf_1) ->
-                let uniset_1 = Uni.add uniset recipe t in
-                let (args_t,uniset_2,sdf_2) = explore_recipe_list (uniset_1,sdf_1) args_r in
-                
+          begin match SDF.find_term_and_mark sdf r with
+            | SDF.Not_in_SDF  -> Config.internal_error "[term.ml >> Tools.add_in_uniset] The recipe should be consequence (1)."
+            | SDF.Marked t ->
+                Config.debug (fun () ->
+                  if not (Uni.exists uniset r t)
+                  then Config.internal_error "[term.ml >> Tools.add_in_uniset] The pair of recipe / term should already be in uniset (1)."
+                );
+                (t,uniset,sdf)
+            | SDF.Unmarked (t,sdf_1) ->
+                let uniset_1 = Uni.add uniset r t in
+                let (_,uniset_2,sdf_2) = explore_recipe_list uniset_1 sdf_1 args_r in
+                (t,uniset_2,sdf_2)
           end
-          if was_marked
-          then
+      | AxName _ as r ->
+          (* Axiom *)
+          begin match SDF.find_term_and_mark sdf r with
+            | SDF.Not_in_SDF  -> Config.internal_error "[term.ml >> Tools.add_in_uniset] The recipe should be consequence (2)."
+            | SDF.Marked t ->
+                Config.debug (fun () ->
+                  if not (Uni.exists uniset r t)
+                  then Config.internal_error "[term.ml >> Tools.add_in_uniset] The pair of recipe / term should already be in uniset (2)."
+                );
+                (t,uniset,sdf)
+            | SDF.Unmarked (t,sdf_1) ->
+                let uniset_1 = Uni.add uniset r t in
+                (t,uniset_1,sdf_1)
+          end
+      | Var v as r ->
+          begin match DF.find_term df v with
+            | Some t -> (t,Uni.add uniset r t,sdf)
+            | None -> Config.internal_error "[term.ml >> Tools.add_in_uniset] The second-order variable should be in DF."
+          end
 
 
+    and explore_recipe_list uniset sdf = function
+      | [] -> ([],uniset,sdf)
+      | r::q ->
+          let (t,uniset_1,sdf_1) = explore_recipe uniset sdf r in
+          let (q_t,uniset_2,sdf_2) = explore_recipe_list uniset_1 sdf_1 q in
+          (t::q_t,uniset_2,sdf_2)
 
+    in
 
-
-
-
-
-
-    let partial_mem_additional_recipe sdf df b_fct_list recipe =
-
-      let rec mem_list = function
-        | [] -> Config.internal_error "[term.ml >> Consequence_Subterm.partial_mem_recipe] The list should not be empty"
-        | [r] ->
-            begin match mem_term r with
-              | None -> None
-              | Some t -> Some [t]
-            end
-        | r::q_r ->
-            begin match mem_term r with
-              | None -> None
-              | Some t ->
-                begin match mem_list q_r with
-                  | None -> None
-                  | Some (l_t) -> Some(t::l_t)
-                end
-            end
-
-      and mem_term recipe = match recipe with
-        | Func(f,args_r) when Symbol.is_constructor f ->
-            if f.arity = 0
-            then Some (Func(f,[]))
-            else
-              begin match mem_list args_r with
-                | None -> None
-                | Some t_l -> Some (Func(f,t_l))
-              end
-        | Func(_,_) | AxName _ -> SDF.find sdf (fun fct -> if is_equal Recipe fct.Fact.df_recipe recipe then Some fct.Fact.df_term else None)
-        | Var v ->
-            begin try
-              let b_fct = List.find (fun b_fct -> Variable.is_equal v b_fct.BasicFact.var) b_fct_list in
-              Some b_fct.BasicFact.term
-            with
-              | Not_found -> DF.find_within_var_type (Variable.type_of v) df (fun b_fct -> if Variable.is_equal b_fct.BasicFact.var v then Some b_fct.BasicFact.term else None)
-            end
-
-      in
+    let (_,uniset_1,sdf_1) = explore_recipe uniset sdf recipe in
+    (uniset_1,sdf_1)
 end

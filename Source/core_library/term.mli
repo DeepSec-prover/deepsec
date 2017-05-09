@@ -1061,6 +1061,13 @@ module type SDF_Sub =
     (** [find] {% $\Solved$ %} [f] returns [f psi] where [psi] is the a deductin fact of {% $\Solved$ %}
         such that [f psi] is not [None], when such [psi] exists. Otherwise, it returns [None]. *)
     val find : t -> (Fact.deduction -> 'a option) -> 'a option
+
+    type marked_result =
+      | Not_in_SDF
+      | Marked of protocol_term
+      | Unmarked of protocol_term * t
+
+    val find_term_and_mark : t -> recipe -> marked_result
   end
 
 module type DF =
@@ -1079,6 +1086,8 @@ module type DF =
         such that [f ded] is not [None], when such [ded] exists. Otherwise, it returns [None]. *)
     val find : t -> (BasicFact.t -> 'a option) -> 'a option
 
+    val find_term : t -> snd_ord_variable -> protocol_term option
+
     (** [iter] {% $\Df$ %} [f] returns [f] {% $\dedfact{\xi_1}{t_1}$%}[; ... ; f] {% $\dedfact{\xi_n}{t_n}$ where $\Df = \\{ \dedfact{\xi_i}{t_i} \\}_{i=1}^n$.
         Warning : The order in which the function [iter] goes through the elements of the set $\Df$ is unspecified. %}*)
     val iter : t -> (BasicFact.t -> unit) -> unit
@@ -1096,6 +1105,10 @@ module type Uni =
     (** [iter] {% $\Set$ %} [f] applies the function [f] to all pairs {% $(\xi,t) \in \Set$.
         Warning : The order in which the function [iter] goes through the pairs of $\Set$ is unspecified. %}*)
     val iter : t -> (recipe -> protocol_term -> unit) -> unit
+
+    val add : t -> recipe -> protocol_term -> t
+
+    val exists : t -> recipe -> protocol_term -> bool
   end
 
 module Tools_General :
@@ -1146,6 +1159,8 @@ module Tools_Subterm :
 
     (** [is_df_solved DF] returns [true] if and only if all basic deduction facts in [DF] have distinct variables as right hand terms. *)
     val is_df_solved : DF.t -> bool
+
+    val add_in_uniset : Uni.t -> SDF.t -> DF.t -> recipe -> Uni.t * SDF.t
 
     (** {3 Tested functions} *)
 

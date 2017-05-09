@@ -84,7 +84,7 @@ module Map = struct
     val find_first_opt: (key -> bool) -> 'a t -> (key * 'a) option
     val find_last: (key -> bool) -> 'a t -> key * 'a
     val find_last_opt: (key -> bool) -> 'a t -> (key * 'a) option
-    val find_and_replace : (key -> 'a -> bool) -> ('a -> 'a) -> ('a * 'a t) option
+    val find_and_replace : (key -> 'a -> bool) -> ('a -> 'a) -> 'a t -> ('a * 'a t) option
     val map: ('a -> 'b) -> 'a t -> 'b t
     val mapi: (key -> 'a -> 'b) -> 'a t -> 'b t
   end
@@ -256,6 +256,21 @@ module Map = struct
           let c = Ord.compare x v in
           if c = 0 then Some d
           else find_opt x (if c < 0 then l else r)
+
+    let rec find_and_replace p f = function
+      | Empty -> None
+      | Node {l; v; d; r; h } ->
+          if p v d
+          then Some(d,Node { l; v; d = f d; r; h })
+          else
+            begin match find_and_replace p f l with
+              | None ->
+                  begin match find_and_replace p f r with
+                    | None -> None
+                    | Some(res,map) -> Some(res,Node {l;v;d;r = map; h})
+                  end
+              | Some(res,map) -> Some(res,Node{l=map; v; d; r; h})
+            end
 
     let rec mem x = function
         Empty ->

@@ -29,13 +29,15 @@ module SDF = struct
       var_type : int;
       fact : Fact.deduction;
       recipe_ground : bool;
-      protocol_ground : bool
+      protocol_ground : bool;
+      marked_uniset : bool
     }
 
   type cell_ground =
     {
       g_var_type : int;
-      g_fact : Fact.deduction
+      g_fact : Fact.deduction;
+      g_marked_uniset : bool
     }
 
   type t =
@@ -127,7 +129,7 @@ module SDF = struct
             if is_ground t
             then
               if cell.recipe_ground
-              then (SDF_Map.add i { g_var_type = cell.var_type; g_fact = Fact.create_deduction_fact (Fact.get_recipe cell.fact) t } acc_map_ground, acc_map)
+              then (SDF_Map.add i { g_var_type = cell.var_type; g_fact = Fact.create_deduction_fact (Fact.get_recipe cell.fact) t ; g_marked_uniset = cell.marked_uniset } acc_map_ground, acc_map)
               else (acc_map_ground, SDF_Map.add i { cell with protocol_ground = true; fact = Fact.create_deduction_fact (Fact.get_recipe cell.fact) t } acc_map)
             else (acc_map_ground, SDF_Map.add i { cell with fact = Fact.create_deduction_fact (Fact.get_recipe cell.fact) t } acc_map)
         ) sdf.map (sdf.map_ground, SDF_Map.empty)
@@ -143,7 +145,7 @@ module SDF = struct
             if is_ground t
             then
               if cell.recipe_ground
-              then (SDF_Map.add i { g_var_type = cell.var_type; g_fact = Fact.create_deduction_fact (Fact.get_recipe cell.fact) t } acc_map_ground, acc_map, acc_last_entry_ground || i = sdf.size)
+              then (SDF_Map.add i { g_var_type = cell.var_type; g_fact = Fact.create_deduction_fact (Fact.get_recipe cell.fact) t ; g_marked_uniset = cell.marked_uniset } acc_map_ground, acc_map, acc_last_entry_ground || i = sdf.size)
               else (acc_map_ground, SDF_Map.add i { cell with protocol_ground = true; fact = Fact.create_deduction_fact (Fact.get_recipe cell.fact) t } acc_map, acc_last_entry_ground)
             else (acc_map_ground, SDF_Map.add i { cell with fact = Fact.create_deduction_fact (Fact.get_recipe cell.fact) t } acc_map, acc_last_entry_ground)
         ) sdf.map (sdf.map_ground, SDF_Map.empty, false)
@@ -162,7 +164,7 @@ module SDF = struct
             if is_ground t
             then
               if cell.protocol_ground
-              then (SDF_Map.add i { g_var_type = cell.var_type; g_fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map_ground, acc_map)
+              then (SDF_Map.add i { g_var_type = cell.var_type; g_fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) ; g_marked_uniset = cell.marked_uniset } acc_map_ground, acc_map)
               else (acc_map_ground, SDF_Map.add i { cell with recipe_ground = true; fact = Fact.create_deduction_fact  t (Fact.get_protocol_term cell.fact) } acc_map)
             else (acc_map_ground, SDF_Map.add i { cell with fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map)
         ) sdf.map (sdf.map_ground, SDF_Map.empty)
@@ -178,7 +180,7 @@ module SDF = struct
             if is_ground t
             then
               if cell.protocol_ground
-              then (SDF_Map.add i { g_var_type = cell.var_type; g_fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map_ground, acc_map, acc_last_entry_ground || i = sdf.size)
+              then (SDF_Map.add i { g_var_type = cell.var_type; g_fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) ; g_marked_uniset = cell.marked_uniset } acc_map_ground, acc_map, acc_last_entry_ground || i = sdf.size)
               else (acc_map_ground, SDF_Map.add i { cell with recipe_ground = true; fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map, acc_last_entry_ground)
             else (acc_map_ground, SDF_Map.add i { cell with fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map, acc_last_entry_ground)
         ) sdf.map (sdf.map_ground, SDF_Map.empty, false)
@@ -213,7 +215,7 @@ module SDF = struct
                 begin
                   array_recipe.(i-1) <- (t,true);
                   if cell.protocol_ground
-                  then (SDF_Map.add i { g_var_type = cell.var_type; g_fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map_ground, acc_map)
+                  then (SDF_Map.add i { g_var_type = cell.var_type; g_fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) ; g_marked_uniset = cell.marked_uniset } acc_map_ground, acc_map)
                   else (acc_map_ground, SDF_Map.add i { cell with recipe_ground = true; fact = Fact.create_deduction_fact  t (Fact.get_protocol_term cell.fact) } acc_map)
                 end
               else
@@ -236,7 +238,7 @@ module SDF = struct
                 begin
                   array_recipe.(i-1) <- (t,true);
                   if cell.protocol_ground
-                  then (SDF_Map.add i { g_var_type = cell.var_type; g_fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map_ground, acc_map, acc_last_entry_ground || i = sdf.size)
+                  then (SDF_Map.add i { g_var_type = cell.var_type; g_fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) ; g_marked_uniset = cell.marked_uniset } acc_map_ground, acc_map, acc_last_entry_ground || i = sdf.size)
                   else (acc_map_ground, SDF_Map.add i { cell with recipe_ground = true; fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map, acc_last_entry_ground)
                 end
               else
@@ -263,7 +265,7 @@ module SDF = struct
             if is_ground
             then
               if cell.protocol_ground
-              then (SDF_Map.add i { g_var_type = cell.var_type; g_fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map_ground, acc_map)
+              then (SDF_Map.add i { g_var_type = cell.var_type; g_fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) ; g_marked_uniset = cell.marked_uniset } acc_map_ground, acc_map)
               else (acc_map_ground, SDF_Map.add i { cell with recipe_ground = true; fact = Fact.create_deduction_fact  t (Fact.get_protocol_term cell.fact) } acc_map)
             else (acc_map_ground, SDF_Map.add i { cell with fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map)
         ) sdf.map (sdf.map_ground, SDF_Map.empty)
@@ -279,7 +281,7 @@ module SDF = struct
             if is_ground
             then
               if cell.protocol_ground
-              then (SDF_Map.add i { g_var_type = cell.var_type; g_fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map_ground, acc_map, acc_last_entry_ground || i = sdf.size)
+              then (SDF_Map.add i { g_var_type = cell.var_type; g_fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) ; g_marked_uniset = cell.marked_uniset } acc_map_ground, acc_map, acc_last_entry_ground || i = sdf.size)
               else (acc_map_ground, SDF_Map.add i { cell with recipe_ground = true; fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map, acc_last_entry_ground)
             else (acc_map_ground, SDF_Map.add i { cell with fact = Fact.create_deduction_fact t (Fact.get_protocol_term cell.fact) } acc_map, acc_last_entry_ground)
         ) sdf.map (sdf.map_ground, SDF_Map.empty, false)
@@ -344,6 +346,22 @@ module SDF = struct
     with
     | Found -> !result
 
+  type marked_result =
+    | Not_in_SDF
+    | Marked of protocol_term
+    | Unmarked of protocol_term * t
+
+  let find_term_and_mark sdf recipe =
+    match SDF_Map.find_and_replace (fun _ cell -> is_equal Recipe recipe (Fact.get_recipe cell.fact)) (fun cell -> { cell with marked_uniset = true }) sdf.map with
+      | None ->
+          begin match SDF_Map.find_and_replace (fun _ g_cell -> is_equal Recipe recipe (Fact.get_recipe g_cell.g_fact)) (fun g_cell -> { g_cell with g_marked_uniset = true }) sdf.map_ground with
+            | None -> Not_in_SDF
+            | Some (g_cell,_) when g_cell.g_marked_uniset -> Marked (Fact.get_protocol_term g_cell.g_fact)
+            | Some (g_cell,sdf_g_map) -> Unmarked (Fact.get_protocol_term g_cell.g_fact, { sdf with map_ground = sdf_g_map })
+          end
+      | Some (cell,_) when cell.marked_uniset -> Marked (Fact.get_protocol_term cell.fact)
+      | Some (cell,sdf_map) -> Unmarked (Fact.get_protocol_term cell.fact, { sdf with map = sdf_map })
+
   (******* Basic operations *********)
 
   let empty = { size = 0 ; map = SDF_Map.empty; all_id = []; last_entry_ground = false; map_ground = SDF_Map.empty }
@@ -384,7 +402,7 @@ module SDF = struct
     then
       { sdf with
         size = new_size;
-        map_ground = SDF_Map.add new_size ({ g_var_type = k; g_fact = fct }) sdf.map_ground;
+        map_ground = SDF_Map.add new_size ({ g_var_type = k; g_fact = fct; g_marked_uniset = false }) sdf.map_ground;
         all_id = new_size::sdf.all_id;
         last_entry_ground = true;
       }
@@ -392,7 +410,7 @@ module SDF = struct
       {
         sdf with
         size = new_size;
-        map = SDF_Map.add new_size ({ var_type = k; fact = fct ; protocol_ground = protocol_ground; recipe_ground = recipe_ground}) sdf.map;
+        map = SDF_Map.add new_size ({ var_type = k; fact = fct ; protocol_ground = protocol_ground; recipe_ground = recipe_ground; marked_uniset = false}) sdf.map;
         all_id = new_size::sdf.all_id;
         last_entry_ground = false
       }
@@ -611,6 +629,10 @@ module DF = struct
       !result
     with
       | Found -> !result
+
+  let find_term df x_snd = match DF_Map.find_opt x_snd df with
+    | None -> None
+    | Some bfact -> Some(BasicFact.get_protocol_term bfact)
 
   let find_within_var_type k df f =
     let result = ref None in
@@ -1227,6 +1249,14 @@ module Uniformity_Set = struct
     Subterm.iter (fun term recipe -> f recipe term) uniset.single
 
   (******* Testing ********)
+
+  let exists uniset recipe term = match Subterm.find_opt term uniset.single with
+    | None ->
+        begin match Subterm.find_opt term uniset.multiple with
+          | None -> false
+          | Some r_set -> Recipe_Set.exists (is_equal Recipe recipe) r_set
+        end
+    | Some r -> is_equal Recipe recipe r
 
   let find_protocol_term uniset pterm =
     try

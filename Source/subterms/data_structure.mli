@@ -288,6 +288,8 @@ module Uniformity_Set : sig
 
   (** {3 Testing} *)
 
+  val exists : t -> recipe -> protocol_term -> bool
+
   (** [find_protocol] {% $\Set$~$t$%} [f] returns [Some] {% $\xi$ if $(\xi,t) \in \Set$ %} and [f] {% $\xi$ %} returns [true]. Otherwise it returns [None].*)
   val find_protocol_term : t -> protocol_term -> recipe option
 
@@ -335,6 +337,9 @@ module Tools : sig
 
   (** [is_df_solved DF] returns [true] if and only if all basic deduction facts in [DF] have distinct variables as right hand terms. *)
   val is_df_solved : DF.t -> bool
+
+  val add_in_uniset : Uniformity_Set.t -> SDF.t -> DF.t -> recipe -> Uniformity_Set.t * SDF.t
+
 
   (** {3 Tested functions} *)
 

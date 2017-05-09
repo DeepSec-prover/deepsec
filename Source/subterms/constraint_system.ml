@@ -3,9 +3,6 @@ open Data_structure
 open Display
 open Extensions
 
-let log_line = ref 1
-let log = open_out (Printf.sprintf "LogConstraintSystem%d.txt" (Unix.getpid ()))
-
 (*************************************
 ***       Constraint systems       ***
 **************************************)
@@ -338,9 +335,6 @@ let add_axiom csys ax t =
     if csys.size_frame + 1 <> Axiom.index_of ax
     then Config.internal_error "[constraint_system.ml >> add_axiom] The axiom given as argument should have an index equal to the size of the frame + 1"
   );
-
-  Printf.fprintf log "%d add_axiom\n%!" !log_line;
-  incr log_line;
 
   let new_size = csys.size_frame + 1 in
 
@@ -979,74 +973,6 @@ let simple_of csys =
     simp_Sub_Cons = csys.sub_cons
   }
 
-let rec add_uniformity_subterms uniset sdf df recipe =
-
-  let rec add_recipe_term uniset recipe term =
-    if is_function recipe && Symbol.is_constructor (root recipe)
-    then
-      let symb = root recipe in
-      if is_function term && Symbol.is_equal symb (root term)
-      then
-        if Symbol.get_arity symb = 0
-        then Uniformity_Set.add unifset recipe term
-        else
-          let uniset_1 = Uniformity_Set.add unif_set recipe term in
-          let args_r = get_args recipe
-          and args_t = get_args term in
-          add_from_root_constructor_list uniset_1 args_r args_t
-      else Config.internal_error "[constraint_system.ml >> add_uniformity_subterms] The recipe and term given as argument are not consequence."
-    else if is_variable recipe
-    then Uniformity_Set.add uniset recipe term
-    else add_from_sdf uniset recipe term
-
-  and add_recipe_term_list uniset recipe_l term_l = match recipe_l, term_l with
-    | [],[] -> unif_set
-    | [],_ | _,[] -> Config.internal_error "[constraint_system.ml >> add_uniformity_subterms] Both lists should have the same size."
-    | r::q_r,t::q_t ->
-        add_recipe_term_list (add_recipe_term unif_set r t) q_r q_t
-
-  and add_from_sdf uniset recipe term =
-    let uniset_1 = Uniformity_Set.add unif_set recipe term in
-
-    let args_r = get_args recipe in
-    List.fold_left (fun acc_uniset r ->
-      match Tools.partial_consequence Recipe sdf df r with
-        | None -> Config.internal_error "[constraint_system.ml >> add_uniformity_subterms] The recipe should be consequence. (2)"
-        | Some (_,t) -> add_recipe_term acc_uniset r t
-    ) uniset_1 args_r
-
-  in
-
-  match Tools.partial_consequence Recipe sdf df recipe with
-    | None -> Config.internal_error "[constraint_system.ml >> add_uniformity_subterms] The recipe should be consequence."
-    | Some (_,t) -> add_recipe_term uniset recipe t
-
-
-
-
-let rec add_uniformity_subterms unif_set sdf df recipe =
-  if is_function recipe && Symbol.is_constructor (root recipe)
-  then
-    let symb = root recipe in
-    if is_function term && Symbol.is_equal symb (root term)
-    then
-      if Symbol.get_arity symb = 0
-      then Uniformity_Set.add unif_set recipe term
-      else
-        let unif_set_1 = Uniformity_Set.add unif_set recipe term in
-        let args_r = get_args recipe
-        and args_t = get_args term in
-        add_uniformity_subterms_list unif_set_1 args_r args_t
-    else Config.internal_error "[constraint_system.ml >> add_uniformity_subterms] The recipe and term given as argument are not consequence."
-  else
-    Uniformity_Set.add unif_set recipe term
-
-and add_uniformity_subterms_list unif_set recipe_l term_l = match recipe_l, term_l with
-  | [],[] -> unif_set
-  | [],_ | _,[] -> Config.internal_error "[constraint_system.ml >> add_uniformity_subterms_list] Both lists should have the same size."
-  | r::q_r,t::q_t ->
-      add_uniformity_subterms_list (add_uniformity_subterms unif_set r t) q_r q_t
-
 let simple_of_formula (type a) (fct: a Fact.t) csys (form: a Fact.formula) = match fct with
   | Fact.Deduction ->
       let fst_univ, snd_univ = Fact.universal_variables form in
@@ -1080,29 +1006,17 @@ let simple_of_formula (type a) (fct: a Fact.t) csys (form: a Fact.formula) = mat
       and sub_cons_0 = Uniformity_Set.apply csys.sub_cons Subst.identity mgu_hypothesis_2 in
 
       let df_1 = List.fold_left DF.add df_0 b_fct_hypothesis_2 in
-      let sub_cons_1 =
-        if not (is_function recipe_head_2)
-        then sub_cons_0
-        else
-          let _ =
-            Config.debug (fun () ->
-              if Symbol.get_arity (root recipe_head_2) = 0
-              then Config.internal_error "[constraint_system.ml >> simple_of_formula] The head should not be a constant"
-            )
-          in
-          let recipe_args = get_args recipe_head_2 in
-          List.fold_left (fun sub_cons r ->
-            match Tools.partial_consequence Recipe sdf_0 df_1 r with
-              | None -> Config.internal_error "[constraint_system.ml >> simple_of_constraint_system_and_formula] The recipe should be consequence."
-              | Some (_,t) -> add_uniformity_subterms sub_cons r t
-            ) sub_cons_0 recipe_args
+      let (sub_cons_1,sdf_1) =
+        if is_function recipe_head_2 && Symbol.get_arity (root recipe_head_2) > 0
+        then List.fold_left (fun (acc_sub_cons_1,acc_sdf_1) r -> Tools.add_in_uniset acc_sub_cons_1 acc_sdf_1 df_1 r) (sub_cons_0,sdf_0) (get_args recipe_head_2)
+        else (sub_cons_0,sdf_0)
       in
 
       let simple_csys = {
         simp_DF = df_1;
         simp_EqFst = eqfst_0;
         simp_EqSnd = csys.eqsnd;
-        simp_SDF = sdf_0;
+        simp_SDF = sdf_1;
         simp_Sub_Cons = sub_cons_1
       } in
 
@@ -1144,35 +1058,23 @@ let simple_of_formula (type a) (fct: a Fact.t) csys (form: a Fact.formula) = mat
 
       let df_1 = List.fold_left DF.add df_0 b_fct_hypothesis_2 in
 
-      let sub_cons_1 =
-        if not (is_function recipe_1_2) || Symbol.get_arity (root recipe_1_2) = 0
-        then sub_cons_0
-        else
-          let recipe_args = get_args recipe_1_2 in
-          List.fold_left (fun sub_cons r ->
-            match Tools.partial_consequence Recipe sdf_0 df_1 r with
-              | None -> Config.internal_error "[constraint_system.ml >> simple_of_constraint_system_and_formula] The recipe should be consequence."
-              | Some (_,t) -> add_uniformity_subterms sub_cons r t
-            ) sub_cons_0 recipe_args
+      let (sub_cons_1,sdf_1) =
+        if is_function recipe_1_2 && Symbol.get_arity (root recipe_1_2) > 0
+        then List.fold_left (fun (acc_sub_cons_1,acc_sdf_1) r -> Tools.add_in_uniset acc_sub_cons_1 acc_sdf_1 df_1 r) (sub_cons_0,sdf_0) (get_args recipe_1_2)
+        else (sub_cons_0,sdf_0)
       in
 
-      let sub_cons_2 =
-        if not (is_function recipe_2_2) || Symbol.get_arity (root recipe_2_2) = 0
-        then sub_cons_1
-        else
-          let recipe_args = get_args recipe_2_2 in
-          List.fold_left (fun sub_cons r ->
-            match Tools.partial_consequence Recipe sdf_0 df_1 r with
-              | None -> Config.internal_error "[constraint_system.ml >> simple_of_constraint_system_and_formula] The recipe should be consequence."
-              | Some (_,t) -> add_uniformity_subterms sub_cons r t
-            ) sub_cons_1 recipe_args
+      let (sub_cons_2,sdf_2) =
+        if is_function recipe_2_2 && Symbol.get_arity (root recipe_2_2) > 0
+        then List.fold_left (fun (acc_sub_cons_1,acc_sdf_1) r -> Tools.add_in_uniset acc_sub_cons_1 acc_sdf_1 df_1 r) (sub_cons_1,sdf_1) (get_args recipe_2_2)
+        else (sub_cons_1,sdf_1)
       in
 
       let simple_csys = {
         simp_DF = df_1;
         simp_EqFst = eqfst_0;
         simp_EqSnd = csys.eqsnd;
-        simp_SDF = sdf_0;
+        simp_SDF = sdf_2;
         simp_Sub_Cons = sub_cons_2
       } in
 
@@ -1298,18 +1200,25 @@ let apply_mgs csys (subst_snd,list_var) =
     and new_i_subst_snd = Subst.compose_restricted_generic csys.i_subst_snd subst_snd (fun x -> Variable.quantifier_of x = Free)
     and new_sub_cons_1 = Uniformity_Set.apply csys.sub_cons subst_snd subst_fst in
 
-    let new_sub_cons_2 = Subst.fold (fun sub_cons _ r ->
-      match Tools.partial_consequence Recipe new_sdf_2 new_df_3 r with
-        | None -> Config.internal_error "[constraint_system.ml >> apply] The recipe should be consequence."
-        | Some (_,t) -> add_uniformity_subterms sub_cons r t
-      ) new_sub_cons_1 subst_snd in
+    let (new_sub_cons_2,new_sdf_3) =
+      Subst.fold (fun (acc_sub_cons,acc_sdf) _ r ->
+        Config.debug (fun () ->
+          match Tools.partial_consequence Recipe acc_sdf new_df_3 r with
+            | None -> Config.internal_error "[constraint_system.ml >> apply] The recipe should be consequence."
+            | Some (_,t) when Uniformity_Set.exists acc_sub_cons r t -> ()
+            | _ -> Config.internal_error "[constraint_system.ml >> apply] The pair of recipe/term should already be in the uniformity set."
+        );
+        if is_function r && Symbol.get_arity (root r) > 0
+        then List.fold_left (fun (acc_sub_cons_1,acc_sdf_1) r -> Tools.add_in_uniset acc_sub_cons_1 acc_sdf_1 new_df_3 r) (acc_sub_cons,acc_sdf) (get_args r)
+        else (acc_sub_cons,acc_sdf)
+      ) (new_sub_cons_1,new_sdf_2) subst_snd in
 
     let new_csys =
       { csys with
         df = new_df_3;
         eqfst = new_eqfst;
         eqsnd = new_eqsnd;
-        sdf = new_sdf_2;
+        sdf = new_sdf_3;
         uf = new_uf_1;
         i_subst_fst = new_i_subst_fst;
         i_subst_snd = new_i_subst_snd;
@@ -1362,18 +1271,25 @@ let apply_mgs_and_gather csys sdf_array new_eqsnd new_i_subst_snd (subst_snd,lis
     and new_i_subst_fst = Subst.compose_restricted_generic csys.i_subst_fst subst_fst (fun x -> Variable.quantifier_of x = Free)
     and new_sub_cons_1 = Uniformity_Set.apply csys.sub_cons subst_snd subst_fst in
 
-    let new_sub_cons_2 = Subst.fold (fun sub_cons _ r ->
-      match Tools.partial_consequence Recipe new_sdf_2 new_df_3 r with
-        | None -> Config.internal_error "[constraint_system.ml >> apply] The recipe should be consequence."
-        | Some (_,t) -> add_uniformity_subterms sub_cons r t
-      ) new_sub_cons_1 subst_snd in
+    let (new_sub_cons_2,new_sdf_3) =
+      Subst.fold (fun (acc_sub_cons,acc_sdf) _ r ->
+        Config.debug (fun () ->
+          match Tools.partial_consequence Recipe acc_sdf new_df_3 r with
+            | None -> Config.internal_error "[constraint_system.ml >> apply] The recipe should be consequence."
+            | Some (_,t) when Uniformity_Set.exists acc_sub_cons r t -> ()
+            | _ -> Config.internal_error "[constraint_system.ml >> apply] The pair of recipe/term should already be in the uniformity set."
+        );
+        if is_function r && Symbol.get_arity (root r) > 0
+        then List.fold_left (fun (acc_sub_cons_1,acc_sdf_1) r -> Tools.add_in_uniset acc_sub_cons_1 acc_sdf_1 new_df_3 r) (acc_sub_cons,acc_sdf) (get_args r)
+        else (acc_sub_cons,acc_sdf)
+      ) (new_sub_cons_1,new_sdf_2) subst_snd in
 
     let new_csys =
       { csys with
         df = new_df_3;
         eqfst = new_eqfst;
         eqsnd = new_eqsnd;
-        sdf = new_sdf_2;
+        sdf = new_sdf_3;
         uf = new_uf_1;
         i_subst_fst = new_i_subst_fst;
         i_subst_snd = new_i_subst_snd;
@@ -1424,18 +1340,25 @@ let apply_mgs_from_gathering csys sdf_array new_eqsnd new_i_subst_snd (subst_snd
     and new_i_subst_fst = Subst.compose_restricted_generic csys.i_subst_fst subst_fst (fun x -> Variable.quantifier_of x = Free)
     and new_sub_cons_1 = Uniformity_Set.apply csys.sub_cons subst_snd subst_fst in
 
-    let new_sub_cons_2 = Subst.fold (fun sub_cons _ r ->
-      match Tools.partial_consequence Recipe new_sdf_2 new_df_3 r with
-        | None -> Config.internal_error "[constraint_system.ml >> apply] The recipe should be consequence."
-        | Some (_,t) -> add_uniformity_subterms sub_cons r t
-      ) new_sub_cons_1 subst_snd in
+    let (new_sub_cons_2,new_sdf_3) =
+      Subst.fold (fun (acc_sub_cons,acc_sdf) _ r ->
+        Config.debug (fun () ->
+          match Tools.partial_consequence Recipe acc_sdf new_df_3 r with
+            | None -> Config.internal_error "[constraint_system.ml >> apply] The recipe should be consequence."
+            | Some (_,t) when Uniformity_Set.exists acc_sub_cons r t -> ()
+            | _ -> Config.internal_error "[constraint_system.ml >> apply] The pair of recipe/term should already be in the uniformity set."
+        );
+        if is_function r && Symbol.get_arity (root r) > 0
+        then List.fold_left (fun (acc_sub_cons_1,acc_sdf_1) r -> Tools.add_in_uniset acc_sub_cons_1 acc_sdf_1 new_df_3 r) (acc_sub_cons,acc_sdf) (get_args r)
+        else (acc_sub_cons,acc_sdf)
+      ) (new_sub_cons_1,new_sdf_2) subst_snd in
 
     let new_csys =
       { csys with
         df = new_df_3;
         eqfst = new_eqfst;
         eqsnd = new_eqsnd;
-        sdf = new_sdf_2;
+        sdf = new_sdf_3;
         uf = new_uf_1;
         i_subst_fst = new_i_subst_fst;
         i_subst_snd = new_i_subst_snd;
@@ -1809,9 +1732,6 @@ module Rule = struct
       end
 
   let normalisation_split_eq csys_set f_continuation f_next =
-    Printf.fprintf log "Line %d Normalisation split Set of constraint system %s \n%!" !log_line (Set.display HTML csys_set);
-    incr log_line;
-
     if csys_set.Set.csys_list = [] || csys_set.Set.eq_occurs = Set.No_equality
     then (f_continuation.no_split [@tailcall]) csys_set f_next
     else
@@ -1919,9 +1839,6 @@ module Rule = struct
       then Config.internal_error "[constraint_system.ml >> normalisation_SDF_or_consequence] The rules should only be applied with the presence of deduction formulas.";
     );
 
-    Printf.fprintf log "Line %d Normalisation SDF Set of constraint system %s \n%!" !log_line (Set.display HTML csys_set);
-    incr log_line;
-
     let consequence_recipe = ref None in
     let one_is_not_consequence = ref false in
 
@@ -1950,8 +1867,6 @@ module Rule = struct
 
     match go_through_csys_set csys_set.Set.csys_list with
       | None ->
-          Printf.fprintf log "Line %d No recipe was found \n%!" !log_line;
-          incr log_line;
           if !one_is_not_consequence
           then
             (* Addition to SDF -> add to SDF and remove from UF *)
@@ -2012,9 +1927,6 @@ module Rule = struct
       | Some recipe_conseq ->
           (* Apply Consequence normalisation rule *)
 
-          Printf.fprintf log "Line %d Recipe was found %s \n%!" !log_line (Term.display Latex Recipe recipe_conseq);
-          incr log_line;
-
           let new_csys_list =
             List.fold_left (fun acc csys ->
               let ded_formula = UF.choose_solved Fact.Deduction csys.uf in
@@ -2045,9 +1957,6 @@ module Rule = struct
           in
 
           let new_csys_set = { csys_set with Set.csys_list = new_csys_list ; Set.ded_occurs = true; Set.eq_occurs = Set.Consequence_UF } in
-
-          Printf.fprintf log "Line %d Resulting Normalisation SDF Set of constraint system %s \n%!" !log_line (Set.display HTML new_csys_set);
-          incr log_line;
 
           (f_continuation.addition [@tailcall]) new_csys_set f_next
 
@@ -2087,11 +1996,8 @@ module Rule = struct
                               if is_function recipe_head
                               then
                                 let recipe_args = get_args recipe_head in
-                                List.fold_left (fun sub_cons r ->
-                                  match Tools.partial_consequence Recipe csys.sdf csys.df r with
-                                    | None -> Config.internal_error "[constraint_system.ml >> normalisation_mgs] The recipe should be consequence."
-                                    | Some (_,t) -> add_uniformity_subterms sub_cons r t
-                                  ) csys.sub_cons recipe_args
+                                let sub_cons',_ = List.fold_left (fun (acc_sub_cons,acc_sdf) r -> Tools.add_in_uniset acc_sub_cons acc_sdf csys.df r) (csys.sub_cons,csys.sdf) recipe_args in
+                                sub_cons'
                               else csys.sub_cons
                             in
 
@@ -2130,31 +2036,23 @@ module Rule = struct
                             end
                       end
                   | Some form ->
-
                       let head = Fact.get_head form in
                       let (recipe_1,recipe_2) = Fact.get_both_recipes head in
 
-                      let sub_cons_1 =
+                      let sub_cons_1,sdf_1 =
                         if is_function recipe_1 && Symbol.get_arity (root recipe_1) <> 0
                         then
                           let recipe_args = get_args recipe_1 in
-                          List.fold_left (fun sub_cons r ->
-                            match Tools.partial_consequence Recipe csys.sdf csys.df r with
-                              | None -> Config.internal_error "[constraint_system.ml >> normalisation_mgs] The recipe should be consequence."
-                              | Some (_,t) -> add_uniformity_subterms sub_cons r t
-                            ) csys.sub_cons recipe_args
-                        else csys.sub_cons
+                          List.fold_left (fun (acc_sub_cons,acc_sdf) r -> Tools.add_in_uniset acc_sub_cons acc_sdf csys.df r) (csys.sub_cons,csys.sdf) recipe_args
+                        else csys.sub_cons, csys.sdf
                       in
 
                       let sub_cons_2 =
                         if is_function recipe_2 && Symbol.get_arity (root recipe_2) <> 0
                         then
                           let recipe_args = get_args recipe_2 in
-                          List.fold_left (fun sub_cons r ->
-                            match Tools.partial_consequence Recipe csys.sdf csys.df r with
-                              | None -> Config.internal_error "[constraint_system.ml >> normalisation_mgs] The recipe should be consequence."
-                              | Some (_,t) -> add_uniformity_subterms sub_cons r t
-                            ) sub_cons_1 recipe_args
+                          let sub_cons',_ = List.fold_left (fun (acc_sub_cons,acc_sdf) r -> Tools.add_in_uniset acc_sub_cons acc_sdf csys.df r) (sub_cons_1,sdf_1) recipe_args in
+                          sub_cons'
                         else sub_cons_1
                       in
 
@@ -2682,27 +2580,20 @@ module Rule = struct
         let head = Fact.get_head form in
         let (recipe_1,recipe_2) = Fact.get_both_recipes head in
 
-        let sub_cons_1 =
+        let sub_cons_1,sdf_1 =
           if is_function recipe_1
           then
             let recipe_args = get_args recipe_1 in
-            List.fold_left (fun sub_cons r ->
-              match Tools.partial_consequence Recipe csys.sdf csys.df r with
-                | None -> Config.internal_error "[constraint_system.ml >> check_if_mgs_exists_eq] The recipe should be consequence."
-                | Some (_,t) -> add_uniformity_subterms sub_cons r t
-              ) csys.sub_cons recipe_args
-          else csys.sub_cons
+            List.fold_left (fun (acc_sub_cons,acc_sdf) r -> Tools.add_in_uniset acc_sub_cons acc_sdf csys.df r) (csys.sub_cons,csys.sdf) recipe_args
+          else csys.sub_cons, csys.sdf
         in
 
         let sub_cons_2 =
           if is_function recipe_2
           then
             let recipe_args = get_args recipe_2 in
-            List.fold_left (fun sub_cons r ->
-              match Tools.partial_consequence Recipe csys.sdf csys.df r with
-                | None -> Config.internal_error "[constraint_system.ml >> check_if_mgs_exists_eq] The recipe should be consequence."
-                | Some (_,t) -> add_uniformity_subterms sub_cons r t
-              ) sub_cons_1 recipe_args
+            let sub_cons',_ = List.fold_left (fun (acc_sub_cons,acc_sdf) r -> Tools.add_in_uniset acc_sub_cons acc_sdf csys.df r) (sub_cons_1,sdf_1) recipe_args in
+            sub_cons'
           else sub_cons_1
         in
 
@@ -3075,12 +2966,7 @@ module Rule = struct
   let internal_rewrite csys_set continuation_func f_next =
     Config.debug (fun () ->
       if csys_set.Set.ded_occurs
-      then
-        begin
-          Printf.fprintf log "Line %d Internal Rewrite Set of constraint system %s \n%!" !log_line (Set.display HTML csys_set);
-          incr log_line;
-          Config.internal_error "[constraint_system.ml >> internal_rewrite] There should not be any deduction formula in UF"
-        end;
+      then Config.internal_error "[constraint_system.ml >> internal_rewrite] There should not be any deduction formula in UF";
 
       if csys_set.Set.eq_occurs <> Set.No_equality
       then Config.internal_error "[constraint_system.ml >> internal_rewrite] There should not be any equality formula in UF";
@@ -3194,12 +3080,7 @@ module Rule = struct
 
                   if form_list_2 = []
                   then csys::set
-                  else
-                    let _ =
-                      Printf.fprintf log "%d rewrite\n%!" !log_line;
-                      incr log_line
-                    in
-                    { csys with uf = UF.add_deduction csys.uf form_list_2 } :: set
+                  else { csys with uf = UF.add_deduction csys.uf form_list_2 } :: set
                 with
                   | Bot -> set
                 ) [] csys_set_1
@@ -3233,12 +3114,7 @@ module Rule = struct
 
                     if form_list_2 = []
                     then one_csys'
-                    else
-                      let _ =
-                        Printf.fprintf log "%d rewrite (2)\n%!" !log_line;
-                        incr log_line
-                      in
-                      { one_csys' with uf = UF.add_deduction one_csys'.uf form_list_2 }
+                    else { one_csys' with uf = UF.add_deduction one_csys'.uf form_list_2 }
                   in
 
                   List.fold_left (fun set csys ->
@@ -3256,12 +3132,7 @@ module Rule = struct
 
                       if form_list_2 = []
                       then csys_1::set
-                      else
-                        let _ =
-                          Printf.fprintf log "%d rewrite (3)\n%!" !log_line;
-                          incr log_line
-                        in
-                        { csys_1 with uf = UF.add_deduction csys_1.uf form_list_2 } :: set
+                      else { csys_1 with uf = UF.add_deduction csys_1.uf form_list_2 } :: set
                     with
                       | Bot -> set
                     ) [one_csys''] (List.tl csys_set_1)
@@ -3282,12 +3153,7 @@ module Rule = struct
 
                         if form_list_2 = []
                         then csys_1::set
-                        else
-                          let _ =
-                            Printf.fprintf log "%d rewrite 4\n%!" !log_line;
-                            incr log_line
-                          in
-                          { csys_1 with uf = UF.add_deduction csys_1.uf form_list_2 } :: set
+                        else { csys_1 with uf = UF.add_deduction csys_1.uf form_list_2 } :: set
                       with
                         | Bot -> set
                       ) [] (List.tl csys_set_1)

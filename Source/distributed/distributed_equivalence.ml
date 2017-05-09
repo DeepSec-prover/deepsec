@@ -73,9 +73,6 @@ struct
     | Jobs of job list
     | Result of result
 
-  let log = open_out (Printf.sprintf "Log%d.txt" (Unix.getpid ()))
-
-
   let generate_jobs job =
     Variable.set_up_counter job.variable_counter;
     Name.set_up_counter job.name_counter;
@@ -95,7 +92,6 @@ struct
       let job_list = ref [] in
       Equivalence.apply_one_transition_and_rules_for_trace_equivalence job.chosen_semantics job.csys_set job.frame_size
         (fun csys_set_1 frame_size_1 f_next_1 ->
-          Printf.fprintf log "Nb of job = %d and size of csys_set =%d \n%!" (List.length !job_list) (Constraint_system.Set.size csys_set_1);
           job_list := { job with csys_set = csys_set_1; frame_size = frame_size_1; variable_counter = Variable.get_counter (); name_counter = Name.get_counter () } :: !job_list;
           f_next_1 ()
         )
