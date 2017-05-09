@@ -1,10 +1,10 @@
-exception Internal_error
+exception Internal_error of string
 
-let debug_activated = false
+let debug_activated = true
 
 let internal_error msg =
   Printf.printf "Internal error : %s\nPlease report the bug to vincent.cheval@loria.fr with the input file and output\n" msg;
-  raise Internal_error
+  raise (Internal_error msg)
 
 let debug =
   if debug_activated

@@ -1,6 +1,6 @@
 (** Initial configuration of the program *)
 
-exception Internal_error
+exception Internal_error of string
 
 (** [internal_error s] displays the error message [s] plus some other information.
     @raise Internal_error after displaying the message. *)

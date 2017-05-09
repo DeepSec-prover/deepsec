@@ -84,6 +84,7 @@ module Map = struct
     val find_first_opt: (key -> bool) -> 'a t -> (key * 'a) option
     val find_last: (key -> bool) -> 'a t -> key * 'a
     val find_last_opt: (key -> bool) -> 'a t -> (key * 'a) option
+    val find_and_replace : (key -> 'a -> bool) -> ('a -> 'a) -> ('a * 'a t) option
     val map: ('a -> 'b) -> 'a t -> 'b t
     val mapi: (key -> 'a -> 'b) -> 'a t -> 'b t
   end

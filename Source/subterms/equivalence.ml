@@ -13,6 +13,9 @@ type symbolic_process =
     trace : Trace.t;
   }
 
+let log_line = ref 1
+let log = open_out (Printf.sprintf "LogEquivalence%d.txt" (Unix.getpid ()))
+
 exception Not_Trace_Equivalent of symbolic_process Constraint_system.t
 
 let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_continuation f_next =
@@ -20,6 +23,9 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
   let opti_csys_set = Constraint_system.Set.optimise_snd_ord_recipes csys_set in
 
   (*** Generate the set for the next input ***)
+
+  Printf.fprintf log "%d Starting generation of next input\n%!" !log_line;
+  incr log_line;
 
   let csys_set_for_input = ref Constraint_system.Set.empty in
 
@@ -63,6 +69,9 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
     )
   ) opti_csys_set;
 
+  Printf.fprintf log "%d Next input calulated, size =%d \n%!" !log_line (Constraint_system.Set.size !csys_set_for_input);
+  incr log_line;
+
   (*** Application of the tranformation rules ***)
 
   let rec in_apply_sat csys_set f_next =
@@ -89,6 +98,9 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
   in
 
   (*** Generate the set for the next output ***)
+
+  Printf.fprintf log "%d Starting generation of next output \n%!" !log_line;
+  incr log_line;
 
   let csys_set_for_output = ref Constraint_system.Set.empty in
 
@@ -130,45 +142,62 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
     )
   ) opti_csys_set;
 
+  Printf.fprintf log "%d Next output calulated, size = %d \n%!" !log_line (Constraint_system.Set.size !csys_set_for_output);
+  incr log_line;
+
   (*** Application of the tranformation rules ***)
 
   let rec out_apply_sat csys_set f_next =
+    Printf.fprintf log "%d Enter sat\n%!" !log_line;
+    incr log_line;
     Constraint_system.Rule.sat csys_set {
       Constraint_system.Rule.positive = out_apply_sat;
       Constraint_system.Rule.negative = out_apply_sat;
       Constraint_system.Rule.not_applicable = out_apply_sat_disequation
     } f_next
   and out_apply_sat_disequation csys_set f_next =
+    Printf.fprintf log "%d Enter sat_disequation\n%!" !log_line;
+    incr log_line;
     Constraint_system.Rule.sat_disequation csys_set {
       Constraint_system.Rule.positive = out_apply_sat_disequation;
       Constraint_system.Rule.negative = out_apply_sat_disequation;
       Constraint_system.Rule.not_applicable = (fun csys_set f_next -> Constraint_system.Rule.normalisation_after_axiom csys_set out_apply_sat_formula f_next)
     } f_next
   and out_apply_sat_formula csys_set f_next =
+    Printf.fprintf log "%d Enter sat_formula\n%!" !log_line;
+    incr log_line;
     Constraint_system.Rule.sat_formula csys_set {
       Constraint_system.Rule.positive = out_apply_sat_formula;
       Constraint_system.Rule.negative = out_apply_sat_formula;
       Constraint_system.Rule.not_applicable = out_apply_equality
     } f_next
   and out_apply_equality csys_set f_next =
+    Printf.fprintf log "%d Enter equality\n%!" !log_line;
+    incr log_line;
     Constraint_system.Rule.equality csys_set {
       Constraint_system.Rule.positive = out_apply_sat_formula;
       Constraint_system.Rule.negative = out_apply_sat_formula;
       Constraint_system.Rule.not_applicable = out_apply_equality_constructor
     } f_next
   and out_apply_equality_constructor csys_set f_next =
+    Printf.fprintf log "%d Enter equality_constructor\n%!" !log_line;
+    incr log_line;
     Constraint_system.Rule.equality_constructor csys_set {
       Constraint_system.Rule.positive = out_apply_sat_formula;
       Constraint_system.Rule.negative = out_apply_sat_formula;
       Constraint_system.Rule.not_applicable = out_apply_rewrite
     } f_next
   and out_apply_rewrite csys_set f_next =
+    Printf.fprintf log "%d Enter rewrite\n%!" !log_line;
+    incr log_line;
     Constraint_system.Rule.rewrite csys_set {
       Constraint_system.Rule.positive = out_apply_sat_formula;
       Constraint_system.Rule.negative = out_apply_sat_formula;
       Constraint_system.Rule.not_applicable = out_apply_final_test
     } f_next
   and out_apply_final_test csys_set f_next =
+    Printf.fprintf log "%d Enter final\n%!" !log_line;
+    incr log_line;
     if Constraint_system.Set.is_empty csys_set
     then f_next ()
     else

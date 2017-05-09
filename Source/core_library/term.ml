@@ -3801,8 +3801,6 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
     Config.test (fun () -> !test_uniform_consequence sdf df uni term result);
     result
 
-
-
   let is_df_solved df =
     try
       DF.iter df (fun b_fct ->
@@ -3821,4 +3819,75 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
       | Found ->
           cleanup_search Protocol;
           false
+
+  let add_in_uniset uniset sdf df recipe =
+
+    let rec explore_recipe uniset sdf = function
+      | Func(f,args_r) when Symbol.is_constructor f ->
+          (* Constructor case *)
+          if args_r = []
+          then (Func(f,[]),Uni.add uniset recipe (Func(f,[])),sdf)
+          else
+            let (args_t,uniset_1,sdf_1) = explore_recipe_list (uniset,sdf) args_r in
+            let t = Func(f,args_t) in
+            (t,Uni.add uniset_1 recipe t,sdf_1)
+      | Func(f,args_r) ->
+          (* Destructor case *)
+          begin match SDF.find_and_mark sdf (fun fct -> is_equal Recipe fct.Fact.df_recipe recipe) with
+            | Not_in_SDF  -> Config.debug "[term.ml >> Tools.add_in_uniset]"
+            | Marked t -> (t,uniset,sdf)
+            | Unmarked (t,sdf_1) ->
+                let uniset_1 = Uni.add uniset recipe t in
+                let (args_t,uniset_2,sdf_2) = explore_recipe_list (uniset_1,sdf_1) args_r in
+                
+          end
+          if was_marked
+          then
+
+
+
+
+
+
+
+
+
+    let partial_mem_additional_recipe sdf df b_fct_list recipe =
+
+      let rec mem_list = function
+        | [] -> Config.internal_error "[term.ml >> Consequence_Subterm.partial_mem_recipe] The list should not be empty"
+        | [r] ->
+            begin match mem_term r with
+              | None -> None
+              | Some t -> Some [t]
+            end
+        | r::q_r ->
+            begin match mem_term r with
+              | None -> None
+              | Some t ->
+                begin match mem_list q_r with
+                  | None -> None
+                  | Some (l_t) -> Some(t::l_t)
+                end
+            end
+
+      and mem_term recipe = match recipe with
+        | Func(f,args_r) when Symbol.is_constructor f ->
+            if f.arity = 0
+            then Some (Func(f,[]))
+            else
+              begin match mem_list args_r with
+                | None -> None
+                | Some t_l -> Some (Func(f,t_l))
+              end
+        | Func(_,_) | AxName _ -> SDF.find sdf (fun fct -> if is_equal Recipe fct.Fact.df_recipe recipe then Some fct.Fact.df_term else None)
+        | Var v ->
+            begin try
+              let b_fct = List.find (fun b_fct -> Variable.is_equal v b_fct.BasicFact.var) b_fct_list in
+              Some b_fct.BasicFact.term
+            with
+              | Not_found -> DF.find_within_var_type (Variable.type_of v) df (fun b_fct -> if Variable.is_equal b_fct.BasicFact.var v then Some b_fct.BasicFact.term else None)
+            end
+
+      in
 end
