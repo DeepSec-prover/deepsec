@@ -1,0 +1,107 @@
+/*
+A, B, S :  principal
+Na, Nb : fresh numbers
+Kas, Kbs, Kab :   key
+
+1.   A -> B : A, Na
+2.   B -> S : {1, A, Na, Nb}Kbs
+3.   S -> A : {2, B, Kab, Na, Nb}Kas
+4.   S -> B : {3, A, Kab}Kbs
+5.   A -> B : {4, A, B, S, Nb}Kab
+*/
+
+//Channels :
+
+free ca1.
+free ca2.
+free cb1.
+free cb2.
+free cs1.
+free cs2.
+
+//Public data :
+free a.
+free b.
+free s.
+free m1.
+free m2.
+
+//Tags :
+free c1.
+free c2.
+free c3.
+free c4.
+
+fun senc/2.
+reduc sdec(senc(x,y),y) -> x.
+
+// A role :
+
+let A(ca,a,b,kas) =
+  in(ca,xinit);
+  new na;
+  out(ca,(a,na));
+  in(ca,x0);
+  let (xc2,xb,xkab,xna,xnb) = sdec(x0,kas) in
+  if (xc2,xb,xna) = (c2,b,na) then
+  out(ca,senc((c4,a,b,s,xnb),xkab)).
+
+// Role B :
+
+let BP(cb,b,a,kbs) =
+  in(cb,y0);
+  let (ya,yna) = y0 in
+  if ya = a then
+  new nb;
+  out(cb,senc((c1,a,yna,nb),kbs));
+  in(cb,y1);
+  let (y2,y3) = y1 in
+  let (yc3,yaa,ykab) = sdec(y2,kbs) in
+  if (yc3,yaa) = (c3,a) then
+  let (yc4,yaaa,ybb,yss,ynb) = sdec(y3,ykab) in
+  if (yc4,yaaa,ybb,yss,ynb) = (c4,a,b,s,nb) then
+  out(cb,senc(m1,ykab)).
+
+let BQ(cb,b,a,kbs) =
+  in(cb,y0);
+  let (ya,yna) = y0 in
+  if ya = a then
+  new nb;
+  out(cb,senc((c1,a,yna,nb),kbs));
+  in(cb,y1);
+  let (y2,y3) = y1 in
+  let (yc3,yaa,ykab) = sdec(y2,kbs) in
+  if (yc3,yaa) = (c3,a) then
+  let (yc4,yaaa,ybb,yss,ynb) = sdec(y3,ykab) in
+  if (yc4,yaaa,ybb,yss,ynb) = (c4,a,b,s,nb) then
+  new k;
+  out(cb,senc(m2,k)).
+
+
+// S Role :
+
+let S(cs,a,b,kas,kbs) =
+  in(cs,z0);
+  let (zc1,za,zna,znb) = sdec(z0,kbs) in
+  if (zc1,za) = (c1,a) then
+  new kab;
+  out(cs,(senc((c2,b,kab,zna,znb),kas),senc((c3,a,kab),kbs)) ).
+
+
+// Protocols :
+
+let P =
+  new kas; new kbs; (
+    A(ca1,a,b,kas) | S(cs1,a,b,kas,kbs) | BP(cb1,b,a,kbs) |
+    A(ca2,a,b,kas) | S(cs2,a,b,kas,kbs) | BP(cb2,b,a,kbs)
+  ).
+
+
+let Q =
+new kas; new kbs; (
+  A(ca1,a,b,kas) | S(cs1,a,b,kas,kbs) | BQ(cb1,b,a,kbs) |
+  A(ca2,a,b,kas) | S(cs2,a,b,kas,kbs) | BQ(cb2,b,a,kbs)
+).
+
+
+query trace_equiv(P,Q).

@@ -1,0 +1,62 @@
+
+free c1.
+free c2.
+free c3.
+free c4.
+free c5.
+free c6.
+free c7.
+free c8.
+free c9.
+free c10.
+free c11.
+free c12.
+free c13.
+free c14.
+free c15.
+free yes.
+free no.
+
+fun senc/2.
+reduc sdec(senc(x,y),y) -> x.
+
+let A(c1,toka1,tokb1,k1) =
+  in(c1,xinit);
+  out(c1,senc(toka1,k1));
+  out(c1,senc(tokb1,k1)).
+
+let B(c2,k1) =
+  in(c2,y0);
+  let y1 = sdec(y0,k1) in
+  out(c2,y1).
+
+let Y(c3,toka1,tokb1) =
+  in(c3,z0);
+  if z0 = toka1 then
+  in(c3,z1);
+  if z1 = tokb1 then
+  out(c3,yes).
+
+let N(c3,toka1,tokb1) =
+  in(c3,z0);
+  if z0 = toka1 then
+  in(c3,z1);
+  if z1 = tokb1 then
+  out(c3,no).
+
+
+let P0(c1,c2,c3) =
+  new toka1 ; new tokb1 ; new k1 ;
+  ( A(c1,toka1,tokb1,k1) | B(c2,k1) | Y(c3,toka1,tokb1) ).
+
+let Q0(c1,c2,c3) =
+  new toka1 ; new tokb1 ; new k1 ;
+  ( A(c1,toka1,tokb1,k1) | B(c2,k1) | N(c3,toka1,tokb1) ).
+
+let P =
+  P0(c1,c2,c3) | P0(c4,c5,c6) | P0(c7,c8,c9) | P0(c10,c11,c12) | P0(c13,c14,c15).
+
+let Q =
+  Q0(c1,c2,c3) | Q0(c4,c5,c6) | Q0(c7,c8,c9) | Q0(c10,c11,c12) | Q0(c13,c14,c15).
+
+query trace_equiv(P,Q).

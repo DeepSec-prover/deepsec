@@ -2683,7 +2683,6 @@ module Rule = struct
     match explore_csys [] csys_set.Set.csys_list with
       | None, csys_set_1 -> (continuation_func.not_applicable [@tailcall]) { csys_set with Set.csys_list = csys_set_1 } f_next
       | Some (mgs_csys, l_vars, id_sdf, mgs_form_univ, univ_vars_snd, symb), csys_set_1 ->
-
           if Subst.is_identity mgs_csys
           then
             begin
@@ -2706,6 +2705,7 @@ module Rule = struct
           else
             begin
               let one_csys = List.hd csys_set_1 in
+
               let new_eqsnd = Eq.apply Recipe one_csys.eqsnd mgs_csys in
               let new_i_subst_snd = Subst.compose_restricted_generic one_csys.i_subst_snd mgs_csys (fun x -> Variable.quantifier_of x = Free) in
 
@@ -2717,7 +2717,7 @@ module Rule = struct
                   let one_csys'' =
                     try
                       let form_1 = create_eq_constructor_formula one_csys' id_sdf univ_vars_snd symb in
-                      let form_2 = apply_mgs_on_formula Fact.Equality one_csys (mgs_form_univ,[]) form_1 in
+                      let form_2 = apply_mgs_on_formula Fact.Equality one_csys' (mgs_form_univ,[]) form_1 in
                       add_when_mgs_exists_eq one_csys' form_2
                     with
                       | Fact.Bot -> one_csys'

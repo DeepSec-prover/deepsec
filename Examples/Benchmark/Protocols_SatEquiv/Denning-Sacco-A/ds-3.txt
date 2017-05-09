@@ -1,0 +1,75 @@
+/*
+ Denning Sacco symmetric key
+  A -> S : A, B
+  S -> A : {B, Kab, {Kab,A}Kbs }Kas
+  A -> B : {Kab, A }Kbs
+
+
+ Secrecy of the key Kab (from the point of view of A)
+ encoded as a combination of key usability and “which key-concealing”
+ A -> : {m1}Kab vs {m2}K with K fresh and m1/m2 public constants
+
+
+ Scenario: simple
+ one session for each role, each played by an honest agent
+*/
+
+
+free a.
+free b.
+
+free m1.
+free m2.
+free c1.
+free c2.
+
+free ca.
+free cb.
+free cs.
+
+fun senc/2.
+reduc sdec(senc(x,y),y) -> x.
+
+let A1(ca,a,b,kas) =
+ in(ca,xinit);
+ new na;
+ out(ca, (a,b));
+ in(ca,xenc);
+ let (x1,x2,x3) = sdec(xenc,kas) in
+ if x1 = b then
+ out(ca, x3);
+ out(ca,senc(m1,x2)).
+
+let A2(ca,a,b,kas) =
+ in(ca,xinit);
+ new na;
+ out(ca, (a,b));
+ in(ca,xenc);
+ let (x1,x2,x3) = sdec(xenc,kas) in
+ if x1 =b then
+ out(ca, x3);
+ new k;
+ out(ca,senc(m2,k)).
+
+let S(cs,a,b,kas,kbs) =
+ in(cs, y);
+ let (y1,y2) = y in
+ if (y1,y2) = (a,b) then
+ new kab;
+ out(cs, senc((b,kab,senc((kab,a),kbs)),kas)).
+
+let B(cb,b,a,kbs) =
+ in(cb,z);
+ let (z1,z2) = sdec(z,kbs) in 0.
+
+let P =
+ new kas; new kbs;
+ (A1(ca,a,b,kas) | S(cs,a,b,kas,kbs) | B(cb,b,a,kbs)).
+
+
+let Q =
+ new kas; new kbs;
+ (A2(ca,a,b,kas) | S(cs,a,b,kas,kbs) | B(cb,b,a,kbs)).
+
+
+query trace_equiv(P,Q).
