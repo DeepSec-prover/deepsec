@@ -13,6 +13,22 @@ function run_bench {
 echo "Benchmark DeepSec" > bench_result.txt;
 echo "" >> bench_result.txt;
 
+run_bench 1 "** WMF Std: 1s" ../trace_equivalence/WMF/WMF-shared-key-1session.txt 100
+run_bench 2 "** WMF Std: 2s" ../trace_equivalence/WMF/WMF-shared-key-2sessions.txt 100
+run_bench 3 "** WMF Std: 2s (same agent)" ../trace_equivalence/WMF/WMF-shared-key-2sessions-same.txt 100
+run_bench 4 "** WMF Basic: 1s" ../trace_equivalence/WMF/basic_process_version/WMF-shared-key-1session.txt 100
+run_bench 5 "** WMF Basic: 2s" ../trace_equivalence/WMF/basic_process_version/WMF-shared-key-2sessions.txt 100
+
+run_bench 7 "** Example 1" ../trace_equivalence/toys/example_1.txt 100
+run_bench 8 "** Example 2" ../trace_equivalence/toys/example_2.txt 100
+run_bench 9 "** Example 3" ../trace_equivalence/toys/example_3.txt 100
+
+run_bench 10 "** Simple 1 par" ../trace_equivalence/toys/Simple_1_par.txt 100
+run_bench 11 "** Simple 2 par" ../trace_equivalence/toys/Simple_2_par.txt 100
+run_bench 12 "** Simple 3 par" ../trace_equivalence/toys/Simple_3_par.txt 100
+run_bench 13 "** Simple 4 par" ../trace_equivalence/toys/Simple_4_par.txt 100
+run_bench 14 "** Simple 5 par" ../trace_equivalence/toys/Simple_5_par.txt 100
+
 run_bench 15 "** Simple 6 par" ../trace_equivalence/toys/Simple_6_par.txt 1000
 
 run_bench 18 "** PrivAuth Std: 2s (different agents)" ../trace_equivalence/private_authentication/private_authentication_2sessions-diff.txt 100
