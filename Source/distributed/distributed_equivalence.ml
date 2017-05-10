@@ -1,7 +1,6 @@
 open Term
 open Process
 
-
 module EquivJob =
 struct
   type shareddata = unit

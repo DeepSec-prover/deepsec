@@ -3835,7 +3835,7 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
 
   let add_in_uniset uniset sdf df recipe =
 
-    let rec explore_recipe uniset sdf = function
+    let rec explore_recipe uniset sdf recipe = match recipe with
       | Func(f,args_r) when Symbol.is_constructor f ->
           (* Constructor case *)
           if args_r = []
@@ -3844,38 +3844,39 @@ module Tools_Subterm (SDF: SDF_Sub) (DF: DF) (Uni : Uni) = struct
             let (args_t,uniset_1,sdf_1) = explore_recipe_list uniset sdf args_r in
             let t = Func(f,args_t) in
             (t,Uni.add uniset_1 recipe t,sdf_1)
-      | Func(_,args_r) as r->
+      | Func(_,args_r) ->
           (* Destructor case *)
-          begin match SDF.find_term_and_mark sdf r with
+          begin match SDF.find_term_and_mark sdf recipe with
             | SDF.Not_in_SDF  -> Config.internal_error "[term.ml >> Tools.add_in_uniset] The recipe should be consequence (1)."
             | SDF.Marked t ->
                 Config.debug (fun () ->
-                  if not (Uni.exists uniset r t)
+                  if not (Uni.exists uniset recipe t)
                   then Config.internal_error "[term.ml >> Tools.add_in_uniset] The pair of recipe / term should already be in uniset (1)."
                 );
                 (t,uniset,sdf)
             | SDF.Unmarked (t,sdf_1) ->
-                let uniset_1 = Uni.add uniset r t in
+                let uniset_1 = Uni.add uniset recipe t in
                 let (_,uniset_2,sdf_2) = explore_recipe_list uniset_1 sdf_1 args_r in
                 (t,uniset_2,sdf_2)
           end
-      | AxName _ as r ->
+      | AxName _ ->
           (* Axiom *)
-          begin match SDF.find_term_and_mark sdf r with
+          begin match SDF.find_term_and_mark sdf recipe with
             | SDF.Not_in_SDF  -> Config.internal_error "[term.ml >> Tools.add_in_uniset] The recipe should be consequence (2)."
             | SDF.Marked t ->
                 Config.debug (fun () ->
-                  if not (Uni.exists uniset r t)
+                  if not (Uni.exists uniset recipe t)
                   then Config.internal_error "[term.ml >> Tools.add_in_uniset] The pair of recipe / term should already be in uniset (2)."
                 );
                 (t,uniset,sdf)
             | SDF.Unmarked (t,sdf_1) ->
-                let uniset_1 = Uni.add uniset r t in
+                let uniset_1 = Uni.add uniset recipe t in
                 (t,uniset_1,sdf_1)
           end
-      | Var v as r ->
+      | Var v ->
           begin match DF.find_term df v with
-            | Some t -> (t,Uni.add uniset r t,sdf)
+            | Some t ->
+                (t,Uni.add uniset recipe t,sdf)
             | None -> Config.internal_error "[term.ml >> Tools.add_in_uniset] The second-order variable should be in DF."
           end
 

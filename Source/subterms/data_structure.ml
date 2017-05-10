@@ -1168,121 +1168,6 @@ module Uniformity_Set = struct
       multiple : Recipe_Set.t Subterm.t
     }
 
-  (***** Generation ******)
-
-  let empty =
-    {
-      single = Subterm.empty;
-      multiple = Subterm.empty
-    }
-
-  let add uniset recipe pterm =
-    try
-      let recipe_single = Subterm.find pterm uniset.single in
-      if is_equal Recipe recipe_single recipe
-      then uniset
-      else
-        { single = Subterm.remove pterm uniset.single; multiple = Subterm.add pterm (Recipe_Set.of_list [recipe; recipe_single]) uniset.multiple }
-    with
-      | Not_found -> { uniset with multiple = Subterm.add_or_replace pterm (Recipe_Set.singleton recipe) (fun set_recipe -> Recipe_Set.add recipe set_recipe) uniset.multiple }
-
-  let map_recipe uniset f =
-    let single =  ref (Subterm.map (fun r -> f r) uniset.single) in
-    let multiple = ref Subterm.empty in
-
-    Subterm.iter (fun pterm set_recipe ->
-      let set_recipe' =
-        Recipe_Set.fold (fun r acc_set ->
-          Recipe_Set.add (f r) acc_set
-          ) set_recipe Recipe_Set.empty
-      in
-      if Recipe_Set.is_singleton set_recipe'
-      then single := Subterm.add pterm (Recipe_Set.choose_optimised set_recipe') !single
-      else multiple := Subterm.add pterm set_recipe' !multiple
-    ) uniset.multiple;
-
-    { single = !single; multiple = !multiple }
-
-  let map_protocol_term uniset f =
-    let single = ref Subterm.empty
-    and multiple = ref Subterm.empty in
-
-    Subterm.iter (fun pterm recipe_single ->
-      let pterm' = f pterm in
-      try
-        let recipe_single',single' = Subterm.remove_exception pterm' !single in
-        single := single';
-        multiple := Subterm.add pterm' (Recipe_Set.of_list [recipe_single'; recipe_single]) !multiple
-      with
-        | Not_found -> single := Subterm.add pterm' recipe_single !single
-    ) uniset.single;
-
-    Subterm.iter (fun pterm recipe_set ->
-      let pterm' = f pterm in
-      try
-        let recipe_single',single' = Subterm.remove_exception pterm' !single in
-        single := single';
-        multiple := Subterm.add pterm' (Recipe_Set.add recipe_single' recipe_set) !multiple
-      with
-        | Not_found -> multiple := Subterm.add_or_replace pterm' recipe_set (fun recipe_set' -> Recipe_Set.union recipe_set' recipe_set) !multiple
-    ) uniset.multiple;
-
-    { single = !single; multiple = !multiple }
-
-  let apply uniset subst_snd subst_fst =
-    let snd_applied =
-      if Subst.is_identity subst_snd
-      then uniset
-      else Subst.apply subst_snd uniset map_recipe
-    in
-
-    if Subst.is_identity subst_fst
-    then snd_applied
-    else Subst.apply subst_fst snd_applied map_protocol_term
-
-  (******* Iterators ********)
-
-  let iter uniset f =
-    Subterm.iter (fun term recipe_set ->
-      Recipe_Set.iter (fun recipe -> f recipe term) recipe_set
-    ) uniset.multiple;
-    Subterm.iter (fun term recipe -> f recipe term) uniset.single
-
-  (******* Testing ********)
-
-  let exists uniset recipe term = match Subterm.find_opt term uniset.single with
-    | None ->
-        begin match Subterm.find_opt term uniset.multiple with
-          | None -> false
-          | Some r_set -> Recipe_Set.exists (is_equal Recipe recipe) r_set
-        end
-    | Some r -> is_equal Recipe recipe r
-
-  let find_protocol_term uniset pterm =
-    try
-      let recipe = Subterm.find pterm uniset.single in
-      Some recipe
-    with
-      | Not_found ->
-          begin try
-            let set_recipe = Subterm.find pterm uniset.multiple in
-            Some (Recipe_Set.choose_optimised set_recipe)
-          with
-            | Not_found -> None
-          end
-
-  let find_protocol_term_within_multiple uniset pterm f =
-    try
-      let set_recipe = Subterm.find pterm uniset.multiple in
-      Recipe_Set.find_option f set_recipe
-    with
-      | Not_found -> None
-
-  let exists_pair_with_same_protocol_term uniset f =
-    Subterm.exists (fun _ set_recipe ->
-      Recipe_Set.exists_distinct_pair f set_recipe
-      ) uniset.multiple
-
   (******* Display *******)
 
   let display out ?(rho = None) ?(per_line = 8) ?(tab = 0) uniset = match out with
@@ -1422,6 +1307,123 @@ module Uniformity_Set = struct
               ) uniset.single;
               !str
         end
+
+  (***** Generation ******)
+
+  let empty =
+    {
+      single = Subterm.empty;
+      multiple = Subterm.empty
+    }
+
+  let add uniset recipe pterm =
+    try
+      let recipe_single = Subterm.find pterm uniset.single in
+      if is_equal Recipe recipe_single recipe
+      then uniset
+      else
+        { single = Subterm.remove pterm uniset.single; multiple = Subterm.add pterm (Recipe_Set.of_list [recipe; recipe_single]) uniset.multiple }
+    with
+      | Not_found -> { uniset with multiple = Subterm.add_or_replace pterm (Recipe_Set.singleton recipe) (fun set_recipe -> Recipe_Set.add recipe set_recipe) uniset.multiple }
+
+  let map_recipe uniset f =
+    let single =  ref (Subterm.map (fun r -> f r) uniset.single) in
+    let multiple = ref Subterm.empty in
+
+    Subterm.iter (fun pterm set_recipe ->
+      let set_recipe' =
+        Recipe_Set.fold (fun r acc_set ->
+          Recipe_Set.add (f r) acc_set
+          ) set_recipe Recipe_Set.empty
+      in
+      if Recipe_Set.is_singleton set_recipe'
+      then single := Subterm.add pterm (Recipe_Set.choose_optimised set_recipe') !single
+      else multiple := Subterm.add pterm set_recipe' !multiple
+    ) uniset.multiple;
+
+    { single = !single; multiple = !multiple }
+
+  let map_protocol_term uniset f =
+    let single = ref Subterm.empty
+    and multiple = ref Subterm.empty in
+
+    Subterm.iter (fun pterm recipe_single ->
+      let pterm' = f pterm in
+      try
+        let recipe_single',single' = Subterm.remove_exception pterm' !single in
+        single := single';
+        multiple := Subterm.add pterm' (Recipe_Set.of_list [recipe_single'; recipe_single]) !multiple
+      with
+        | Not_found -> single := Subterm.add pterm' recipe_single !single
+    ) uniset.single;
+
+    Subterm.iter (fun pterm recipe_set ->
+      let pterm' = f pterm in
+      try
+        let recipe_single',single' = Subterm.remove_exception pterm' !single in
+        single := single';
+        multiple := Subterm.add pterm' (Recipe_Set.add recipe_single' recipe_set) !multiple
+      with
+        | Not_found -> multiple := Subterm.add_or_replace pterm' recipe_set (fun recipe_set' -> Recipe_Set.union recipe_set' recipe_set) !multiple
+    ) uniset.multiple;
+
+    { single = !single; multiple = !multiple }
+
+  let apply uniset subst_snd subst_fst =
+    let snd_applied =
+      if Subst.is_identity subst_snd
+      then uniset
+      else Subst.apply subst_snd uniset map_recipe
+    in
+
+    if Subst.is_identity subst_fst
+    then snd_applied
+    else Subst.apply subst_fst snd_applied map_protocol_term
+
+  (******* Iterators ********)
+
+  let iter uniset f =
+    Subterm.iter (fun term recipe_set ->
+      Recipe_Set.iter (fun recipe -> f recipe term) recipe_set
+    ) uniset.multiple;
+    Subterm.iter (fun term recipe -> f recipe term) uniset.single
+
+  (******* Testing ********)
+
+  let exists uniset recipe term = match Subterm.find_opt term uniset.single with
+    | None ->
+        begin match Subterm.find_opt term uniset.multiple with
+          | None -> false
+          | Some r_set -> Recipe_Set.exists (is_equal Recipe recipe) r_set
+        end
+    | Some r -> is_equal Recipe recipe r
+
+  let find_protocol_term uniset pterm =
+    try
+      let recipe = Subterm.find pterm uniset.single in
+      Some recipe
+    with
+      | Not_found ->
+          begin try
+            let set_recipe = Subterm.find pterm uniset.multiple in
+            Some (Recipe_Set.choose_optimised set_recipe)
+          with
+            | Not_found -> None
+          end
+
+  let find_protocol_term_within_multiple uniset pterm f =
+    try
+      let set_recipe = Subterm.find pterm uniset.multiple in
+      Recipe_Set.find_option f set_recipe
+    with
+      | Not_found -> None
+
+  let exists_pair_with_same_protocol_term uniset f =
+    Subterm.exists (fun _ set_recipe ->
+      Recipe_Set.exists_distinct_pair f set_recipe
+      ) uniset.multiple
+
+
 end
 
 (*****************************************
