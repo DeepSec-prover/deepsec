@@ -2112,7 +2112,6 @@ module Rule = struct
       else f_continuation csys_set_2 f_next_2
     in
 
-
     if csys_set.Set.eq_occurs = Set.No_equality
     then
       normalisation_split_ded csys_set
@@ -2683,6 +2682,7 @@ module Rule = struct
     match explore_csys [] csys_set.Set.csys_list with
       | None, csys_set_1 -> (continuation_func.not_applicable [@tailcall]) { csys_set with Set.csys_list = csys_set_1 } f_next
       | Some (mgs_csys, l_vars, id_sdf, mgs_form_univ, univ_vars_snd, symb), csys_set_1 ->
+
           if Subst.is_identity mgs_csys
           then
             begin
