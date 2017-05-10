@@ -33,7 +33,6 @@ reduc sdec(senc(x,y),y) -> x.
 
 let A(ca,a,b,kas) =
   new kab;
-  in(ca,z);
   out(ca, (a, senc((b,kab),kas))).
 
 let S(cs,a,b,kas,kbs) =

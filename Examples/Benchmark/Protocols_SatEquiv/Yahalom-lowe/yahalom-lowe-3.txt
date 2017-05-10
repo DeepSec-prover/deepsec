@@ -35,7 +35,6 @@ reduc sdec(senc(x,y),y) -> x.
 // A role :
 
 let A(ca,a,b,kas) =
-  in(ca,xinit);
   new na;
   out(ca,(a,na));
   in(ca,x0);

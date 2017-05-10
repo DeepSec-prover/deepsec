@@ -39,13 +39,12 @@ reduc sdec(senc(x,y),y) -> x.
 let A(ca,a,b,kas) =
   new m ;
   new na ;
-  in(ca,xinit);
   out(ca,(m,a,b,senc((c1,na,m,a,b),kas)));
   in(ca,x0);
   let (xmm,xsenc) = x0 in
   let (xc3,xna,xkab) = sdec(xsenc,kas) in
   if (xmm,xc3,xna) = (m,c3,na) then
-  out(ca,ok).
+  0.
 
 let BP(cb,b,a,kbs) =
   in(cb,yinit);

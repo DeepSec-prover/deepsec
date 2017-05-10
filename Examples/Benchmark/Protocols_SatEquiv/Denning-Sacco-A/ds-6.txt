@@ -34,8 +34,6 @@ fun senc/2.
 reduc sdec(senc(x,y),y) -> x.
 
 let A1(ca,a,b,kas) =
- in(ca,xinit);
- new na;
  out(ca, (a,b));
  in(ca,xenc);
  let (x1,x2,x3) = sdec(xenc,kas) in
@@ -44,8 +42,6 @@ let A1(ca,a,b,kas) =
  out(ca,senc(m1,x2)).
 
 let A2(ca,a,b,kas) =
- in(ca,xinit);
- new na;
  out(ca, (a,b));
  in(ca,xenc);
  let (x1,x2,x3) = sdec(xenc,kas) in
@@ -55,12 +51,10 @@ let A2(ca,a,b,kas) =
  out(ca,senc(m2,k)).
 
 let A(ca,a,b,kas) =
- in(ca,xinit);
- new na;
  out(ca, (a,b));
  in(ca,xenc);
  let (x1,x2,x3) = sdec(xenc,kas) in
- if x1 =b then
+ if x1 = b then
  out(ca, x3).
 
 let S(cs,a,b,kas,kbs) =

@@ -15,7 +15,6 @@ fun senc/2.
 reduc sdec(senc(x,y),y) -> x.
 
 let A(c1,toka1,tokb1,k1) =
- in(c1,xinit);
  out(c1,senc(toka1,k1));
  out(c1,senc(tokb1,k1)).
 
