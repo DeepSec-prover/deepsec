@@ -18,19 +18,19 @@ run_bench 5 "Needham-Schroeder 3" Needham-Schroeder/ns-3.txt 100
 run_bench 10 "Otway-Rees 3" Otway-Rees/or-tagged-3.txt 100
 run_bench 12 "Toy 1" Toy/token-1.txt 100
 run_bench 13 "Toy 2" Toy/token-2.txt 100
-run_bench 16 "WMF 3" Wide_Mouth-Frog/wmf-without-timestamps-3.txt 100
-run_bench 20 "Yahalom-lowe 3" Yahalow-lowe/yahalom-lowe-3.txt 100
-run_bench 24 "Yahalom-Paulson 3" Yahalow-Paulson/yahalom-paulson-3.txt 100
+run_bench 16 "WMF 3" Wide-Mouth-Frog/wmf-without-timestamps-3.txt 100
+run_bench 20 "Yahalom-lowe 3" Yahalom-lowe/yahalom-lowe-3.txt 100
+run_bench 24 "Yahalom-Paulson 3" Yahalom-Paulson/yahalom-paulson-3.txt 100
 
 
 run_bench 2 "DenningSacco 6" Denning-Sacco-A/ds-6.txt 4000
 run_bench 7 "Needham-Schroeder 6" Needham-Schroeder/ns-6.txt 4000
 run_bench 11 "Otway-Rees 6" Otway-Rees/or-tagged-6.txt 5000
 run_bench 14 "Toy 3" Toy/token-3.txt 5000
-run_bench 17 "WMF 6" Wide_Mouth-Frog/wmf-without-timestamps-6.txt 500
-run_bench 18 "WMF 7" Wide_Mouth-Frog/wmf-without-timestamps-7.txt 1000
-run_bench 21 "Yahalom-lowe 6" Yahalow-lowe/yahalom-lowe-6.txt 5000
-run_bench 25 "Yahalom-Paulson 6" Yahalow-Paulson/yahalom-paulson-6.txt 6000
+run_bench 17 "WMF 6" Wide-Mouth-Frog/wmf-without-timestamps-6.txt 500
+run_bench 18 "WMF 7" Wide-Mouth-Frog/wmf-without-timestamps-7.txt 1000
+run_bench 21 "Yahalom-lowe 6" Yahalom-lowe/yahalom-lowe-6.txt 5000
+run_bench 25 "Yahalom-Paulson 6" Yahalom-Paulson/yahalom-paulson-6.txt 6000
 
 
 run_bench 3 "DenningSacco 7" Denning-Sacco-A/ds-7.txt 7000
@@ -40,6 +40,6 @@ run_bench 8 "Needham-Schroeder 7" Needham-Schroeder/ns-7.txt 7000
 
 run_bench 9 "Needham-Schroeder 10" Needham-Schroeder/ns-7.txt 12000
 run_bench 15 "Toy 4" Toy/token-4.txt 10000
-run_bench 19 "WMF 10" Wide_Mouth-Frog/wmf-without-timestamps-10.txt 7000
-run_bench 22 "Yahalom-lowe 7" Yahalow-lowe/yahalom-lowe-7.txt 10000
-run_bench 23 "Yahalom-lowe 10" Yahalow-lowe/yahalom-lowe-10.txt 15000
+run_bench 19 "WMF 10" Wide-Mouth-Frog/wmf-without-timestamps-10.txt 7000
+run_bench 22 "Yahalom-lowe 7" Yahalom-lowe/yahalom-lowe-7.txt 10000
+run_bench 23 "Yahalom-lowe 10" Yahalom-lowe/yahalom-lowe-10.txt 15000
