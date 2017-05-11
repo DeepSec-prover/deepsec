@@ -1897,13 +1897,28 @@ module Rule = struct
                     ) [] !Symbol.all_destructors
                 in
 
+                let (sub_cons_1,new_sdf_1) =
+                  let recipe_head = Fact.get_recipe head in
+                  if is_function recipe_head
+                  then
+                    let recipe_args = get_args recipe_head in
+                    List.fold_left (fun (acc_sub_cons,acc_sdf) r -> Tools.add_in_uniset acc_sub_cons acc_sdf csys.df r) (csys.sub_cons,new_sdf) recipe_args
+                  else csys.sub_cons, new_sdf
+                in
+
+                Config.debug (fun () ->
+                  if Uniformity_Set.exists_pair_with_same_protocol_term sub_cons_1 (Eq.implies Recipe csys.eqsnd)
+                  then Config.internal_error "[constraint_system.ml >> normalisation_SDF_or_consequence] The uniformity check should not occur when adding an element to SDF."
+                );
+
                 { csys with
                   skeletons_checked = [];
                   skeletons_to_check = List.rev_append csys.skeletons_checked (List.fold_left (fun acc skel -> (id_last,skel)::acc) csys.skeletons_to_check new_skeletons);
                   equality_to_checked = SDF.all_id csys.sdf;
                   equality_constructor_checked = [];
                   equality_constructor_to_checked = id_last::csys.equality_constructor_checked;
-                  sdf = new_sdf;
+                  sdf = new_sdf_1;
+                  sub_cons = sub_cons_1;
                   uf = UF.remove_solved Fact.Deduction csys.uf
                 } :: acc_csys
               ) [] csys_set.Set.csys_list
