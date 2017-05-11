@@ -24,11 +24,11 @@ run_bench 24 "Yahalom-Paulson 3" Yahalom-Paulson/yahalom-paulson-3.txt 100
 
 run_bench 2 "DenningSacco 6" Denning-Sacco-A/ds-6.txt 4000
 run_bench 7 "Needham-Schroeder 6" Needham-Schroeder/ns-6.txt 4000
-run_bench 11 "Otway-Rees 6" Otway-Rees/or-tagged-6.txt 5000
-run_bench 14 "Toy 3" Toy/token-3.txt 5000
 run_bench 17 "WMF 6" Wide-Mouth-Frog/wmf-without-timestamps-6.txt 500
+run_bench 14 "Toy 3" Toy/token-3.txt 5000
 run_bench 18 "WMF 7" Wide-Mouth-Frog/wmf-without-timestamps-7.txt 1000
 run_bench 21 "Yahalom-lowe 6" Yahalom-lowe/yahalom-lowe-6.txt 5000
+run_bench 11 "Otway-Rees 6" Otway-Rees/or-tagged-6.txt 5000
 run_bench 25 "Yahalom-Paulson 6" Yahalom-Paulson/yahalom-paulson-6.txt 6000
 
 run_bench 3 "DenningSacco 7" Denning-Sacco-A/ds-7.txt 7000
