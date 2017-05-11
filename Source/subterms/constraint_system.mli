@@ -72,6 +72,8 @@ val apply_substitution : 'a t -> (fst_ord, name) Subst.t -> 'a t
     @raise Internal_error if {% $\C$ %} is not in solved form. *)
 val instantiate_when_solved : 'a t -> (fst_ord, name) Subst.t * (snd_ord, axiom) Subst.t * name list
 
+val nb_of_test_consequence : 'a t -> int
+
 (** {3 Scanning} *)
 
 (** [is_solved] {% $\C$ %} returns [true] if {% $\C$ is solved. %}*)

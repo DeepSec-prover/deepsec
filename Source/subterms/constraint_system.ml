@@ -145,6 +145,21 @@ let is_solved csys = Tools.is_df_solved csys.df
 let is_uniformity_rule_applicable csys =
   Uniformity_Set.exists_pair_with_same_protocol_term csys.sub_cons (Eq.implies Recipe csys.eqsnd)
 
+let nb_of_test_consequence csys =
+  let nb_test = ref 0 in
+
+  SDF.iter_unmarked csys.sdf (fun id fact ->
+    let sdf_remove = SDF.remove csys.sdf id in
+    let term = Fact.get_protocol_term fact in
+    match Tools.partial_consequence Protocol sdf_remove csys.df term with
+      | None -> ()
+      | Some _ -> incr nb_test
+  );
+  
+  !nb_test
+
+
+
 (******** Display *******)
 
 let display_id_skeleton out rho (id,skel) =

@@ -49,6 +49,10 @@ module SDF : sig
   (** [iter_id] {% $\Solved$ %} [g] applies the function [g] on every deduction fact [psi] of {% $\Solved$ %}. *)
   val iter_id : t -> (id_recipe_equivalent -> Fact.deduction -> unit) -> unit
 
+  val iter_unmarked : t -> (id_recipe_equivalent -> Fact.deduction -> unit) -> unit
+
+  val remove : t -> id_recipe_equivalent -> t
+
   (** [iter_within_var_type k] {% $\Solved$ %} [f g] applies the function [g] on every deduction fact [psi] of {% $\SetRestr{\Solved}{k}$. %} *)
   val iter_within_var_type : int -> t -> (Fact.deduction -> unit) -> unit
 

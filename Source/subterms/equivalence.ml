@@ -15,9 +15,27 @@ type symbolic_process =
 
 exception Not_Trace_Equivalent of symbolic_process Constraint_system.t
 
+let number_test = ref 0
+let number_nodes_affected = ref 0
+
 let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_continuation f_next =
 
   let opti_csys_set = Constraint_system.Set.optimise_snd_ord_recipes csys_set in
+
+  Config.debug (fun () ->
+    if Constraint_system.Set.is_empty opti_csys_set
+    then ()
+    else
+      let csys = Constraint_system.Set.choose opti_csys_set in
+      let nb_test = Constraint_system.nb_of_test_consequence csys in
+      if nb_test <> 0
+      then
+        begin
+          incr number_nodes_affected;
+          number_test := nb_test + !number_test;
+          Printf.printf "Number of nodes affected: %d /// Number of element SDF fitting the conditions: %d\n%!" !number_nodes_affected !number_test
+        end
+  );
 
   (*** Generate the set for the next input ***)
 
@@ -184,6 +202,21 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
 let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_continuation f_next =
 
   let opti_csys_set = Constraint_system.Set.optimise_snd_ord_recipes csys_set in
+
+  Config.debug (fun () ->
+    if Constraint_system.Set.is_empty opti_csys_set
+    then ()
+    else
+      let csys = Constraint_system.Set.choose opti_csys_set in
+      let nb_test = Constraint_system.nb_of_test_consequence csys in
+      if nb_test <> 0
+      then
+        begin
+          incr number_nodes_affected;
+          number_test := nb_test + !number_test;
+          Printf.printf "Number of nodes affected: %d /// Number of element SDF fitting the conditions: %d\n%!" !number_nodes_affected !number_test
+        end
+  );
 
   (*** Generate the set for the next input ***)
 
@@ -454,9 +487,15 @@ let trace_equivalence_private proc1 proc2 =
   with
     | Not_Trace_Equivalent csys -> Not_Equivalent csys
 
-let trace_equivalence sem = match sem with
-  | Classic -> trace_equivalence_classic
-  | Private -> trace_equivalence_private
+let trace_equivalence sem proc1 proc2 = match sem with
+  | Classic ->
+      let r = trace_equivalence_classic proc1 proc2 in
+      Printf.printf "Number of nodes affected: %d /// Number of element SDF fitting the conditions: %d\n%!" !number_nodes_affected !number_test;
+      r
+  | Private ->
+      let r = trace_equivalence_private proc1 proc2 in
+      Printf.printf "Number of nodes affected: %d /// Number of element SDF fitting the conditions: %d\n%!" !number_nodes_affected !number_test;
+      r
   | _ -> Config.internal_error "[equivalence.ml >> trace_equivalence] Trace equivalence for this semantics is not yet implemented."
 
 (***** Display ******)

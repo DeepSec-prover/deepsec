@@ -98,6 +98,16 @@ module SDF = struct
     SDF_Map.iter (fun id cell -> f id cell.g_fact) sdf.map_ground;
     SDF_Map.iter (fun id cell -> f id cell.fact) sdf.map
 
+  let iter_unmarked sdf f =
+    SDF_Map.iter (fun id cell -> if not cell.g_marked_uniset then f id cell.g_fact) sdf.map_ground;
+    SDF_Map.iter (fun id cell -> if not cell.marked_uniset then f id cell.fact) sdf.map
+
+  let remove sdf id =
+    { sdf with
+      map = SDF_Map.remove id sdf.map;
+      map_ground = SDF_Map.remove id sdf.map_ground
+    }
+
   let iter_within_var_type k sdf f =
     begin try
       SDF_Map.iter (fun _ cell ->
