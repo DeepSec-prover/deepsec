@@ -218,6 +218,11 @@ let display_var_name_for_HTML str index =
   else
     Printf.sprintf "%s<sub>%d</sub>" str index
 
+let rec is_ground_debug term = match term.term with
+  | Var _ -> false
+  | Func(_,args) -> List.for_all is_ground_debug args
+  | _ -> true
+
 (************************************
 ***            Variables          ***
 *************************************)
@@ -362,6 +367,11 @@ module Variable = struct
       | Recipe -> ((!linked_variables_snd): (a,b) variable list)
 
     let rec follow_link term =
+      Config.debug (fun () ->
+        if term.ground <> is_ground_debug term
+        then Config.internal_error "[term.ml >> Variable.follow_link] Conflict with ground."
+      );
+
       if term.ground
       then term
       else
@@ -490,6 +500,10 @@ module Variable = struct
       | _ -> Config.internal_error "[term.ml >> Variable.Renaming.apply_variable] Unexpected link"
 
     let rec apply_term term =
+      Config.debug (fun () ->
+        if term.ground <> is_ground_debug term
+        then Config.internal_error "[term.ml >> Variable.apply_term] Conflict with ground."
+      );
       if term.ground
       then term
       else
@@ -552,20 +566,24 @@ module Variable = struct
         end
 
     let rec rename_term : 'a 'b. ('a,'b) atom -> quantifier -> 'a -> ('a,'b) term -> ('a,'b) term = fun (type a) (type b) (at:(a,b) atom) quantifier (ord_type:a) (t:(a,b) term) ->
+      Config.debug (fun () ->
+        if t.ground <> is_ground_debug t
+        then Config.internal_error "[term.ml >> Variable.rename_term] Conflict with ground."
+      );
       if t.ground
       then t
       else
         match t.term with
           | Var(v) ->
               begin match v.link with
-                | VLink(v') -> { t with term = Var(v') }
+                | VLink(v') -> { term = Var(v') ; ground = false }
                 | NoLink ->
                     let v' = variable_fresh_shortcut at quantifier ord_type in
                     link at v v';
-                    { t with term = Var(v') }
+                    { term = Var(v'); ground = false }
                 | _ -> Config.internal_error "[term.ml >> Subst.Renaming.rename] Unexpected link"
               end
-          | Func(f,args) -> { t with term = Func(f, List.map (rename_term at quantifier ord_type) args) }
+          | Func(f,args) -> { term = Func(f, List.map (rename_term at quantifier ord_type) args) ; ground = false }
           | _ -> t
 
     (******** Display *********)
@@ -1136,7 +1154,12 @@ let axiom_of term = match term.term with
 let apply_function symbol list_sons =
   Config.debug (fun () ->
     if (List.length list_sons) <> symbol.arity
-    then Config.internal_error (Printf.sprintf "[term.ml >> apply_function] The function %s has arity %d but is given %d terms" symbol.name symbol.arity (List.length list_sons))
+    then Config.internal_error (Printf.sprintf "[term.ml >> apply_function] The function %s has arity %d but is given %d terms" symbol.name symbol.arity (List.length list_sons));
+
+    List.iter (fun term ->
+      if term.ground <> is_ground_debug term
+      then Config.internal_error "[term.ml >> Variable.follow_link] Conflict with ground."
+    ) list_sons
   );
   let ground = List.for_all (fun t -> t.ground) list_sons in
   { term = Func(symbol,list_sons); ground = ground }
@@ -1190,6 +1213,10 @@ let rec no_axname term = match term.term with
 
 (* In the function var_occurs and name_occurs, we go through the TLink when there is one. *)
 let rec var_occurs var term =
+  Config.debug (fun () ->
+    if term.ground <> is_ground_debug term
+    then Config.internal_error "[term.ml >> var_occurs] Conflict with ground."
+  );
   if term.ground
   then false
   else
@@ -1201,16 +1228,17 @@ let rec var_occurs var term =
 
 (* [var_occurs_or_wrong_type] {% $\quanti{X}{i}$ $\xi$ %} returns [true] iff {% $X \in \varsdeux{\xi}$ or $\xi \not\in \T(\F,\AX_i \cup \Xdeux_i)$. %} *)
 let rec var_occurs_or_out_of_world (var:snd_ord_variable) (r:recipe) =
-  if r.ground
-  then false
-  else
-    match r.term with
-      | Var(v) when Variable.is_equal v var -> true
-      | Var({link = TLink t; _}) -> var_occurs_or_out_of_world var t
-      | Var(v) when v.var_type > var.var_type -> true
-      | AxName(ax) when ax.id_axiom > var.var_type -> true
-      | Func(_,args) -> List.exists (var_occurs_or_out_of_world var) args
-      | _ -> false
+  Config.debug (fun () ->
+    if r.ground <> is_ground_debug r
+    then Config.internal_error "[term.ml >> var_occurs_or_out_of_world] Conflict with ground."
+  );
+  match r.term with
+    | Var(v) when Variable.is_equal v var -> true
+    | Var({link = TLink t; _}) -> var_occurs_or_out_of_world var t
+    | Var(v) when v.var_type > var.var_type -> true
+    | AxName(ax) when ax.id_axiom > var.var_type -> true
+    | Func(_,args) -> List.exists (var_occurs_or_out_of_world var) args
+    | _ -> false
 
 let rec quantified_var_occurs quantifier term =
   if term.ground
@@ -1297,7 +1325,7 @@ let retrieve_search (type a) (type b) (at:(a,b) atom) = match at with
 let get_vars at term =
   Config.test (fun () ->
     if retrieve_search at <> []
-    then Config.internal_error "[terml.ml >> get_vars@] Linked variables should be empty."
+    then Config.internal_error "[terml.ml >> get_vars] Linked variables should be empty."
   );
 
   let rec explore_term term =
