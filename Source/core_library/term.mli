@@ -459,12 +459,6 @@ val apply_function : symbol -> ('a, 'b) term list -> ('a, 'b) term
     @raise Debug.Internal_error if {% $\rootsymb{t} \not\in \F$. %} *)
 val root : ('a, 'b) term -> symbol
 
-(** [nth_args t i] returns the [i]{^ th} argument of the  term [t].
-    Note that the index [i] start with 1 and not 0. For example, if [t] is the term {% $f(t_1,\ldots t_n)$ %}
-    then [nth_args t i] returns the term {% $t_i$ %}.
-    @raise Debug.Internal_error if {% $\rootsymb{t} \not\in \F$ %} or [t] is a constant or if [i] is not between {% $1$ and $n$. %}*)
-val nth_args : ('a, 'b) term -> int -> ('a, 'b) term
-
 (** [get_args t] returns the list of argument of the term [t]. For example, if [t] is the term {% $f(t_1,\ldots t_n)$ %}
     then [get_args t] returns the list of element {% $t_1,\ldots,t_n$ %}.
     @raise Debug.Internal_error if {% $\rootsymb{t} \not\in \F$ or if $t$ is a constant. %} *)
@@ -525,35 +519,6 @@ val is_function : ('a, 'b) term -> bool
 (** [is_constructor t] returns [true] iff {% $t \in \T(\Fc, \Xun \cup \Npriv)$ when $t$ is a protocol term and
     $t \in \T(\Fc, \Xdeux \cup \AX)$ when $t$ is a recipe. %} *)
 val is_constructor : ('a, 'b) term -> bool
-
-(** {3 Iterators} *)
-
-(** [fold_left_args f acc t] is [f (...(f (f acc t1) t2) ...) tn] if [t] is
-    the term {% $g(t_1,...,t_n)$ %} for some function symbol {% $g$ %}.
-    @raise Debug.Internal_error if {% $\rootsymb{t} \not\in \F$. %} *)
-val fold_left_args : ('c -> ('a, 'b) term -> 'c) -> 'c -> ('a, 'b) term -> 'c
-
-(** [fold_right_args f t acc] is [f t1 (f t2 (...(f tn acc)...))] if [t] is
-    the term {% $g(t_1,...,t_n)$ %} for some function symbol {% $g$ %}.
-    @raise Debug.Internal_error if {% $\rootsymb{t} \not\in \F$. %} *)
-val fold_right_args : (('a, 'b) term -> 'c -> 'c) -> ('a, 'b) term -> 'c -> 'c
-
-(** [map_args f t] is the list [[f t1; ...; f tn]] if [t] is
-    the term {% $g(t_1,...,t_n)$ %} for some function symbol {% $g$ %}.
-    @raise Debug.Internal_error if {% $\rootsymb{t} \not\in \F$. %} *)
-val map_args : (('a, 'b) term -> 'c) -> ('a, 'b) term -> 'c list
-
-(** [fold_left_args2 f acc t l] is [f (...(f (f acc t_1 e_1) t_2 e_2) ...) tn e_n] if [t] is
-    the term {% $g(t_1,...,t_n)$ %} for some function symbol {% $g$ %}
-    and [l] is the list [[e_1;...;e_n]].
-    @raise Debug.Internal_error if {% $\rootsymb{t} \not\in \F$. %}
-    @raise Debug.Internal_error if the arity of {% $\rootsymb{t}$ %} differs from [List.length l]. {% \highdebug %} *)
-val fold_left_args2 : ('c -> ('a, 'b) term -> 'd -> 'c) -> 'c -> ('a, 'b) term -> 'd list -> 'c
-
-(** [fold_left_args3 f acc t_1 t_2] is [f (...(f (f acc u_1 v_1) u_2 v_2) ...) u_n v_n] if [t_1] and [t_2] are
-    the terms {% $g(u_1,...,u_n)$ %} and {% $g(v_1,...,v_n)$ %} for some function symbol {% $g$. %}
-    @raise Debug.Internal_error if {% $\rootsymb{t_1} \not\in \F$ or $\rootsymb{t_2} \not\in \F$ or $\rootsymb{t_2} = \rootsymb{t_1}$. %} *)
-val fold_left_args3 : ('e -> ('a, 'b) term -> ('c, 'd) term -> 'e) -> 'e -> ('a, 'b) term -> ('c, 'd) term  -> 'e
 
 (** {3 Display} *)
 
@@ -1043,20 +1008,6 @@ module type SDF =
 
     type t
 
-    (** [exists] {% $\Solved$ %} [f] returns [true] iff there exists a solved deduction formula [psi]  of {% $\Solved$ %}
-        such that [f psi] returns [true]. *)
-    val exists : t -> (Fact.deduction_formula -> bool) -> bool
-
-    (** [find_first] {% $\Solved$ %} [f] returns [f psi] where [psi] is the first solved deduction formula of {% $\Solved$ %}
-        (from left to right) such that [f psi] is not [None], when such [psi] exists. Otherwise, it returns [None]. *)
-    val find_first : t -> (Fact.deduction_formula -> 'a option) -> 'a option
-  end
-
-module type SDF_Sub =
-  sig
-
-    type t
-
     (** [exists] {% $\Solved$ %} [f] returns [true] iff there exists a deduction fact [psi]  of {% $\Solved$ %}
         such that [f psi] returns [true]. *)
     val exists : t -> (Fact.deduction -> bool) -> bool
@@ -1114,30 +1065,8 @@ module type Uni =
     val exists : t -> recipe -> protocol_term -> bool
   end
 
-module Tools_General :
-  functor (SDF : SDF) (DF : DF) ->
-    sig
-
-    (** [consequence k] {% $\Solved$~$\Df$ %} [o_psi] {% $\xi$~$t$ %} returns [true] iff one of the following properties holds: {%
-        \begin{itemize}
-          \item %} [o_psi = None] {% and $(\xi,t) \in \Consequence{\Solved \cup \SetRestr{\Df}{k}}$
-          \item %} [o_psi = Some(]{% $\psi$%}[)] {% and $\psi = (\clause{S}{H}{\varphi})$ and $(\xi,t) \in \Consequence{\Solved \cup \SetRestr{\Df}{k} \cup \varphi}$
-        \end{itemize} %}*)
-    val consequence : int -> SDF.t -> DF.t -> 'a Fact.formula option -> recipe -> protocol_term -> bool
-
-    (** [partial_consequence] is related to [consequence]. When [at = Protocol] (resp. [Recipe]), [partial_consequence at k] {% $\Solved$~$\Df$ %} [o_psi] {% $t$ (resp. $\xi$)
-        \begin{itemize}
-        \item %} returns [None] if {% for all $\xi$ (resp. for all $t$),%} [mem k] {% $\Solved$~$\Df$ %} [o_psi] {% $\xi$~$t$ %} returns [false]; {% otherwise
-        \item %} returns [Some(]{% $\xi$%}[)] (resp. [Some(]{% $t$%}[)]) such that [mem k] {% $\Solved$~$\Df$ %} [o_psi] {% $\xi$~$t$ %} returns [true]. {%
-        \end{itemize} %}*)
-    val partial_consequence : ('a, 'b) atom -> int -> SDF.t -> DF.t -> 'c Fact.formula option  -> ('a, 'b) term -> (recipe * protocol_term) option
-
-    (** [is_df_solved DF] returns [true] if and only if all basic deduction facts in [DF] have distinct variables as right hand terms. *)
-    val is_df_solved : DF.t -> bool
-  end
-
 module Tools_Subterm :
-  functor (SDF : SDF_Sub) (DF : DF) (Uni : Uni)->
+  functor (SDF : SDF) (DF : DF) (Uni : Uni)->
     sig
 
     (** {3 Consequence} *)
