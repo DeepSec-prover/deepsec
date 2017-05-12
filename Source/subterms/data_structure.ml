@@ -376,10 +376,12 @@ module SDF = struct
 
   let empty = { size = 0 ; map = SDF_Map.empty; all_id = []; last_entry_ground = false; map_ground = SDF_Map.empty }
 
-  let add sdf fct =
+  let add sdf var_type fct =
     Config.debug (fun () ->
       let recipe = Fact.get_recipe fct in
       let k = get_type recipe in
+      if k <> var_type
+      then Config.internal_error "[Data_structure.ml >> add] An element added to SDF should always have the same var type as the size of the frame.";
 
       let vars_snd = get_vars Recipe recipe in
 
@@ -404,7 +406,6 @@ module SDF = struct
     let r = Fact.get_recipe fct
     and t = Fact.get_protocol_term fct in
 
-    let k = get_type r in
     let recipe_ground = is_ground r
     and protocol_ground = is_ground t in
     let new_size = sdf.size + 1 in
@@ -412,7 +413,7 @@ module SDF = struct
     then
       { sdf with
         size = new_size;
-        map_ground = SDF_Map.add new_size ({ g_var_type = k; g_fact = fct; g_marked_uniset = false }) sdf.map_ground;
+        map_ground = SDF_Map.add new_size ({ g_var_type = var_type; g_fact = fct; g_marked_uniset = false }) sdf.map_ground;
         all_id = new_size::sdf.all_id;
         last_entry_ground = true;
       }
@@ -420,7 +421,7 @@ module SDF = struct
       {
         sdf with
         size = new_size;
-        map = SDF_Map.add new_size ({ var_type = k; fact = fct ; protocol_ground = protocol_ground; recipe_ground = recipe_ground; marked_uniset = false}) sdf.map;
+        map = SDF_Map.add new_size ({ var_type = var_type; fact = fct ; protocol_ground = protocol_ground; recipe_ground = recipe_ground; marked_uniset = false}) sdf.map;
         all_id = new_size::sdf.all_id;
         last_entry_ground = false
       }

@@ -145,21 +145,6 @@ let is_solved csys = Tools.is_df_solved csys.df
 let is_uniformity_rule_applicable csys =
   Uniformity_Set.exists_pair_with_same_protocol_term csys.sub_cons (Eq.implies Recipe csys.eqsnd)
 
-let nb_of_test_consequence csys =
-  let nb_test = ref 0 in
-
-  SDF.iter_unmarked csys.sdf (fun id fact ->
-    let sdf_remove = SDF.remove csys.sdf id in
-    let term = Fact.get_protocol_term fact in
-    match Tools.partial_consequence Protocol sdf_remove csys.df term with
-      | None -> ()
-      | Some _ -> incr nb_test
-  );
-
-  !nb_test
-
-
-
 (******** Display *******)
 
 let display_id_skeleton out rho (id,skel) =
@@ -727,7 +712,6 @@ let mgs csys =
               apply_rules csys' mgs' fst_ord_mgs snd_ord_vars''
           end
     in
-
 
     match DF.find csys.simp_DF test_conseq with
       | Some (csys',mgs', fst_ord_mgs', snd_ord_vars') ->
@@ -1496,13 +1480,6 @@ module Set = struct
 
   let iter f csys_set = List.iter f csys_set.csys_list
 
-  (*  let display_equality_type = function
-    | Constructor_SDF (id,f) -> Printf.sprintf "_Const(%d,%s)" id (Symbol.display Testing f)
-    | Equality_SDF(id1,id2) -> Printf.sprintf "_Equa(%d,%d)" id1 id2
-    | Consequence_UF -> "_Conseq"
-    | No_equality -> "_NoEq"
-  *)
-
   let display_initial id size =
 
     let rec go_through = function
@@ -1901,7 +1878,7 @@ module Rule = struct
                 );
                 let head = Fact.get_head ded_formula in
 
-                let new_sdf = SDF.add csys.sdf head in
+                let new_sdf = SDF.add csys.sdf csys.size_frame head in
                 let id_last = SDF.last_entry_id new_sdf in
 
                 let new_skeletons =

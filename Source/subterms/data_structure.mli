@@ -22,7 +22,7 @@ module SDF : sig
       @raise Debug.Internal_error if {% $\xi \in \Tdeux_k \setminus \Tdeux_{k-1}$ for some $k$ and there exists $\dedfact{\zeta}{v} \in \Solved$ s.t.
       $\zeta \in \Tdeux_{k'} \setminus \Tdeux_{k'-1}$ for some $k' > k$. \highdebug %}
       @raise Debug.Internal_error if {% $\xi \in \Tdeux_k \setminus \Tdeux_{k-1}$ for some $k$ and there exists $X \in \Xdeuxi{k} \cap \varsdeux{\xi}$. \highdebug %} *)
-  val add : t -> Fact.deduction ->  t
+  val add : t -> int -> Fact.deduction ->  t
 
   (** {3 Access} *)
 

@@ -533,7 +533,7 @@ let parse_Eq at form = match form with
 
 let parse_SDF  =
   List.fold_left (fun acc ded ->
-    Data_structure.SDF.add acc (parse_deduction_fact ded)
+    Data_structure.SDF.add acc 0 (parse_deduction_fact ded)
   ) Data_structure.SDF.empty
 
 (*********** DF *********)
