@@ -277,15 +277,16 @@ module Variable : sig
     (** [restict] {% $\rho$~$d$% returns the renaming $\SubRestr{\rho}{x \in \Dom{\rho} \cap d}$. %}*)
     val restrict : ('a, 'b) t -> ('a, 'b) domain -> ('a, 'b) t
 
-    (** [inverse] {% $\rho$ returns $\rho^{-1}$. %}*)
-    val inverse : ('a, 'b) t -> ('a, 'b) t
-
     (** [apply] {% $\rho$ %} [elt map_elt] applies the renaming {% $\rho$ %} on the element [elt]. The function
-        [map_elt] should map the variables contained in the element [elt] on which {% $\rho$ %} should be applied. *)
+        [map_elt] should map the variables contained in the element [elt] on which {% $\rho$ %} should be applied.
+
+        WARNING: The function [map_elt] should not raise an uncaught exception.*)
     val apply : ('a, 'b) t -> 'c -> ('c -> (('a, 'b) variable -> ('a, 'b) variable) -> 'c) -> 'c
 
     (** [apply_on_terms] {% $\rho$ %} [elt map_elt] applies the renaming {% $\rho$ %} on the element [elt]. The function
-        [map_elt] should map the terms contained in the element [elt] on which {% $\rho$ %} should be applied. *)
+        [map_elt] should map the terms contained in the element [elt] on which {% $\rho$ %} should be applied.
+
+        WARNING: The function [map_elt] should not raise an uncaught exception.*)
     val apply_on_terms : ('a, 'b) t -> 'c -> ('c -> (('a, 'b) term -> ('a, 'b) term) -> 'c) -> 'c
 
     (** {4 Display} *)
@@ -997,6 +998,8 @@ module Rewrite_rules : sig
       from~\citepaper{Section}{sec:transformation rules} where it is define as a set that contains all possible renaming.%}
       @raise Internal_error when [f] is not a destructor. *)
   val skeletons : protocol_term -> symbol -> int -> skeleton list
+
+  val rename_skeletons : skeleton -> snd_ord -> skeleton
 
   (** The function [skeletons] will be used for the application of the rule {% \Rew. However, we use it
       in a different but equivalent way than in~\paper. Typically, in~\paper, to apply the rule \Rew,

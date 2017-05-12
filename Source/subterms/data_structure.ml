@@ -1380,6 +1380,7 @@ module Uniformity_Set = struct
     { single = !single; multiple = !multiple }
 
   let apply uniset subst_snd subst_fst =
+
     let snd_applied =
       if Subst.is_identity subst_snd
       then uniset
@@ -1432,7 +1433,6 @@ module Uniformity_Set = struct
     Subterm.exists (fun _ set_recipe ->
       Recipe_Set.exists_distinct_pair f set_recipe
       ) uniset.multiple
-
 
 end
 

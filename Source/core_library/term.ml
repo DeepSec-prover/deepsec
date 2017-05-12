@@ -46,6 +46,7 @@ type symbol_cat =
 and symbol =
   {
     name : string;
+    index_s : int;
     arity : int;
     cat : symbol_cat
   }
@@ -230,7 +231,7 @@ module Variable = struct
 
   let fresh_with_label q ty s =
     let var = { label = s; index = !accumulator; link = NoLink; quantifier = q; var_type = ty } in
-    accumulator := !accumulator + 1;
+    incr accumulator;
     var
 
   let fresh (type a) (type b) (at:(a,b) atom) q (ty:a) = match at with
@@ -242,9 +243,12 @@ module Variable = struct
     accumulator := !accumulator + 1;
     var
 
-  let rec fresh_list at q ty = function
-    | 0 -> []
-    | n -> (fresh at q ty)::(fresh_list at q ty (n-1))
+  let fresh_list at q ty n =
+    let rec tail_fresh acc = function
+      | 0 -> acc
+      | n -> tail_fresh ((fresh at q ty)::acc) (n-1)
+    in
+    tail_fresh [] n
 
   let rec fresh_term_list at q ty = function
     | 0 -> []
@@ -377,7 +381,7 @@ module Variable = struct
     let identity = []
 
     let fresh at vars_list quanti =
-      List.map (fun x -> (x, fresh at quanti x.var_type)) vars_list
+      List.rev_map (fun x -> (x, fresh at quanti x.var_type)) vars_list
 
     let compose rho v1 v2 =
       Config.debug (fun () ->
@@ -410,35 +414,38 @@ module Variable = struct
       List.iter (fun x -> x.link <- NoLink) !result;
       !result
 
-
-    (******* Testting *******)
+    (******* Testing *******)
 
     let is_identity rho = rho = []
 
     let is_equal at rho_1 rho_2 =
-      List.iter (fun (v,v') -> link at v v') rho_1;
 
-      let test_1 =
-        List.for_all (fun (v,v') ->
-          match v.link with
-            | VLink v'' when is_equal v' v'' -> true
-            | _ -> false
-        ) rho_2 in
+      let rec link_and_size = function
+        | [],[] -> true
+        | [],_ | _,[] -> false
+        | (v,v')::q_1, _::q_2 ->
+            link at v v';
+            link_and_size (q_1,q_2)
+      in
 
-      cleanup at;
+      if link_and_size (rho_1,rho_2)
+      then
+        begin
+          let result =
+            List.for_all (fun (v,v') ->
+              match v.link with
+                | VLink v'' when is_equal v' v'' -> true
+                | _ -> false
+            ) rho_2 in
 
-      List.iter (fun (v,v') -> link at v v') rho_2;
-
-      let test_2 =
-        List.for_all (fun (v,_) ->
-          match v.link with
-            | VLink _ -> true
-            | _ -> false
-        ) rho_1 in
-
-      cleanup at;
-
-      test_1 && test_2
+            cleanup at;
+            result
+        end
+      else
+        begin
+          cleanup at;
+          false
+        end
 
     (******* Operators ********)
 
@@ -481,50 +488,52 @@ module Variable = struct
       | term -> term
 
     let apply rho elt f_map_elt =
-      Config.debug (fun () ->
-        if List.exists (fun (v,_) -> v.link <> NoLink) rho
-        then Config.internal_error "[term.ml >> Variable.Renaming.apply] Variables in the domain should not be linked"
-      );
+      if rho = []
+      then elt
+      else
+        begin
+          Config.debug (fun () ->
+            if List.exists (fun (v,_) -> v.link <> NoLink) rho
+            then Config.internal_error "[term.ml >> Variable.Renaming.apply] Variables in the domain should not be linked"
+          );
 
-      (* Link the variables of the renaming *)
-      List.iter (fun (v,v') -> v.link <- (VLink v')) rho;
+          (* Link the variables of the renaming *)
+          let f_cleanup =
+            List.fold_left (fun f_acc (v,v') -> v.link <- (VLink v'); (fun () -> v.link <- NoLink; f_acc ())) (fun () -> ()) rho
+          in
 
-      try
-        (* Apply the renaming on the element *)
-        let new_elt = f_map_elt elt apply_variable in
+          (* Apply the renaming on the element *)
+          let new_elt = f_map_elt elt apply_variable in
 
-        (* Unlink the variables of the renaming *)
-        List.iter (fun (v,_) -> v.link <- NoLink) rho;
+          (* Unlink the variables of the renaming *)
+          f_cleanup ();
 
-        new_elt
-      with exc ->
-        (* Unlink the variables of the renaming *)
-        List.iter (fun (v,_) -> v.link <- NoLink) rho;
-        raise exc
+          new_elt
+        end
 
     let apply_on_terms rho elt f_map_elt =
-      Config.debug (fun () ->
-        if List.exists (fun (v,_) -> v.link <> NoLink) rho
-        then Config.internal_error "[term.ml >> Variable.Renaming.apply] Variables in the domain should not be linked"
-      );
+      if rho = []
+      then elt
+      else
+        begin
+          Config.debug (fun () ->
+            if List.exists (fun (v,_) -> v.link <> NoLink) rho
+            then Config.internal_error "[term.ml >> Variable.Renaming.apply] Variables in the domain should not be linked"
+          );
 
-      (* Link the variables of the renaming *)
-      List.iter (fun (v,v') -> v.link <- (VLink v')) rho;
+          (* Link the variables of the renaming *)
+          let f_cleanup =
+            List.fold_left (fun f_acc (v,v') -> v.link <- (VLink v'); (fun () -> v.link <- NoLink; f_acc ())) (fun () -> ()) rho
+          in
 
-      try
-        (* Apply the renaming on the element *)
-        let new_elt = f_map_elt elt apply_term in
+          (* Apply the renaming on the element *)
+          let new_elt = f_map_elt elt apply_term in
 
-        (* Unlink the variables of the renaming *)
-        List.iter (fun (v,_) -> v.link <- NoLink) rho;
+          (* Unlink the variables of the renaming *)
+          f_cleanup ();
 
-        new_elt
-      with exc ->
-        (* Unlink the variables of the renaming *)
-        List.iter (fun (v,_) -> v.link <- NoLink) rho;
-        raise exc
-
-    let inverse rho = List.fold_left (fun acc (x,y) -> (y,x)::acc) [] rho
+          new_elt
+        end
 
     let rec rename_term : 'a 'b. ('a,'b) atom -> quantifier -> 'a -> ('a,'b) term -> ('a,'b) term = fun (type a) (type b) (at:(a,b) atom) quantifier (ord_type:a) (t:(a,b) term) -> match t with
       | Var(v) ->
@@ -554,7 +563,6 @@ module Variable = struct
       if subst = []
       then emptyset out
       else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list display_element "; " subst) (rcurlybracket out)
-
 
   end
 end
@@ -697,22 +705,33 @@ module Name = struct
     let is_identity rho = rho = []
 
     let is_equal rho_1 rho_2 =
-      let length_1 = ref 0
-      and length_2 = ref 0 in
 
-      List.iter (fun (n,n') -> link n n'; length_1 := !length_1 + 1) rho_1;
+      let rec link_and_size = function
+        | [],[] -> true
+        | [],_ | _,[] -> false
+        | (n,n')::q_1, _::q_2 ->
+            link n n';
+            link_and_size (q_1,q_2)
+      in
 
-      let test =
-        List.for_all (fun (n,n') ->
-          match n.link_n with
-            | NLink n'' when is_equal n' n'' -> length_2 := !length_2 + 1; true
-            | _ -> false
-        ) rho_2 in
+      if link_and_size (rho_1,rho_2)
+      then
+        begin
+          let result =
+            List.for_all (fun (n,n') ->
+              match n.link_n with
+                | NLink n'' when is_equal n' n'' -> true
+                | _ -> false
+            ) rho_2 in
 
-      cleanup ();
-
-      (* Important to do the length test after the test on names *)
-      test && !length_1 = !length_2
+            cleanup ();
+            result
+        end
+      else
+        begin
+          cleanup ();
+          false
+        end
 
     (***** Operators *****)
 
@@ -752,18 +771,14 @@ module Name = struct
       (* Link the names of the renaming *)
       List.iter (fun (n,n') -> n.link_n <- (NLink n')) rho;
 
-      try
-        (* Apply the renaming on the element *)
-        let new_elt = f_map_elt elt apply_term in
+      (* Apply the renaming on the element *)
+      let new_elt = f_map_elt elt apply_term in
 
-        (* Unlink the variables of the renaming *)
-        List.iter (fun (n,_) -> n.link_n <- NNoLink) rho;
+      (* Unlink the variables of the renaming *)
+      List.iter (fun (n,_) -> n.link_n <- NNoLink) rho;
 
-        new_elt
-      with exc ->
-        (* Unlink the variables of the renaming *)
-        List.iter (fun (n,_) -> n.link_n <- NNoLink) rho;
-        raise exc
+      new_elt
+
 
     let display_domain out ?(rho=None) domain =
       if domain = []
@@ -870,6 +885,8 @@ end
 module Symbol = struct
   (********* Set of function symbols *********)
 
+  let accumulator_nb_symb = ref 0
+
   let dummy_constant = ref None
 
   let all_constructors = ref []
@@ -939,7 +956,7 @@ module Symbol = struct
 
   let get_arity sym = sym.arity
 
-  let order sym_1 sym_2 = compare sym_1.name sym_2.name
+  let order sym_1 sym_2 = compare sym_1.index_s sym_2.index_s
 
   (********* Tuple ************)
 
@@ -956,7 +973,8 @@ module Symbol = struct
   (********* Addition ************)
 
   let new_constructor ar s =
-    let symb = { name = s; arity = ar; cat = Constructor } in
+    let symb = { name = s; arity = ar; cat = Constructor; index_s = !accumulator_nb_symb } in
+    incr accumulator_nb_symb;
     all_constructors := List.sort order (symb::!all_constructors);
     number_of_constructors := !number_of_constructors + 1;
     if ar = 0
@@ -964,7 +982,8 @@ module Symbol = struct
     symb
 
   let new_destructor ar s rw_rules =
-    let symb = { name = s; arity = ar; cat = Destructor rw_rules } in
+    let symb = { name = s; arity = ar; cat = Destructor rw_rules; index_s = !accumulator_nb_symb } in
+    incr accumulator_nb_symb;
     all_destructors := List.sort order (symb::!all_destructors);
     number_of_destructors := !number_of_destructors + 1;
     symb
@@ -972,18 +991,24 @@ module Symbol = struct
   let new_projection tuple_symb i =
     let args = Variable.fresh_term_list Protocol Existential Variable.fst_ord_type tuple_symb.arity in
     let x = List.nth args i in
-    {
-      name = (Printf.sprintf "proj_{%d,%d}" (i+1) tuple_symb.arity);
-      arity = 1;
-      cat = Destructor([([Func(tuple_symb,args)],x)])
-    }
+    let symb =
+      {
+        name = (Printf.sprintf "proj_{%d,%d}" (i+1) tuple_symb.arity);
+        arity = 1;
+        cat = Destructor([([Func(tuple_symb,args)],x)]);
+        index_s = !accumulator_nb_symb
+      }
+    in
+    incr accumulator_nb_symb;
+    symb
 
   let get_tuple ar =
     try
       List.find (fun symb -> symb.arity = ar) !all_tuple
     with Not_found ->
       begin
-        let symb = { name = (Printf.sprintf "tuple%d" ar); arity = ar; cat = Tuple } in
+        let symb = { name = (Printf.sprintf "tuple%d" ar); arity = ar; cat = Tuple; index_s = !accumulator_nb_symb } in
+        incr accumulator_nb_symb;
         all_constructors := List.sort order (symb::!all_constructors);
         all_tuple := symb::!all_tuple;
         number_of_constructors := !number_of_constructors + 1;
@@ -1127,9 +1152,9 @@ let rec order at t1 t2 = match t1,t2 with
   | AxName n1, AxName n2 -> AxName.order at n1 n2
   | Func(f1,args1), Func(f2,args2) ->
       let ord = Symbol.order f1 f2 in
-      if ord <> 0
-      then ord
-      else order_list at args1 args2
+      if ord = 0
+      then order_list at args1 args2
+      else ord
   | Var _, _ -> -1
   | AxName _, Var _ -> 1
   | AxName _, _ -> -1
@@ -1140,9 +1165,9 @@ and order_list at l1 l2 = match l1, l2 with
   | [],_ | _,[] -> Config.internal_error "[terms.ml >> order_list] The lists should be of equal size."
   | t1::q1, t2::q2 ->
       let ord = order at t1 t2 in
-      if ord <> 0
-      then ord
-      else order_list at q1 q2
+      if ord = 0
+      then order_list at q1 q2
+      else ord
 
 (********* Scanning Functions *********)
 
@@ -1496,7 +1521,7 @@ module Subst = struct
         List.exists (fun (x,_) -> List.exists (fun (y,_) -> Variable.is_equal x y) subst1) subst2
       then Config.internal_error "[term.ml >> Subst.union] Domain not disjoint."
     );
-    subst1@subst2
+    List.rev_append subst1 subst2
 
   let of_renaming rho = List.fold_left (fun acc (x,y) -> (x,Var y)::acc) [] rho
 
@@ -1513,26 +1538,26 @@ module Subst = struct
     | _ -> term
 
   let apply subst elt f_iter_elt =
-    Config.debug (fun () ->
-      if List.exists (fun (v,_) -> v.link <> NoLink) subst
-      then Config.internal_error "[term.ml >> Subst.apply_substitution] Variables in the domain should not be linked"
-    );
+    if subst = []
+    then elt
+    else
+      begin
+        Config.debug (fun () ->
+          if List.exists (fun (v,_) -> v.link <> NoLink) subst
+          then Config.internal_error "[term.ml >> Subst.apply_substitution] Variables in the domain should not be linked"
+        );
 
-    (* Link the variables of the substitution *)
-    List.iter (fun (v,t) -> v.link <- (TLink t)) subst;
+        (* Link the variables of the substitution *)
+        List.iter (fun (v,t) -> v.link <- (TLink t)) subst;
 
-    try
-      (* Apply the substitution on the element *)
-      let new_elt = f_iter_elt elt apply_on_term in
+        (* Apply the substitution on the element *)
+        let new_elt = f_iter_elt elt apply_on_term in
 
-      (* Unlink the variables of the substitution *)
-      List.iter (fun (v,_) -> v.link <- NoLink) subst;
+        (* Unlink the variables of the substitution *)
+        List.iter (fun (v,_) -> v.link <- NoLink) subst;
 
-      new_elt
-    with exc ->
-      (* Unlink the variables of the substitution *)
-      List.iter (fun (v,_) -> v.link <- NoLink) subst;
-      raise exc
+        new_elt
+      end
 
   (*********** Iterators ************)
 
@@ -1582,15 +1607,20 @@ module Subst = struct
       then Config.internal_error "[term.ml >> Subst.compose] The substutions do not have the disjoint domain"
     );
 
-    let subst = apply subst_2 subst_1 (fun s f ->
-        List.fold_left (fun acc (x,t) -> (x,f t)::acc) [] s) in
+    match subst_1 = [], subst_2 = [] with
+      | true, true -> []
+      | true, false -> subst_2
+      | false, true -> subst_1
+      | false, false ->
+          let subst = apply subst_2 subst_1 (fun s f ->
+              List.fold_left (fun acc (x,t) -> (x,f t)::acc) [] s) in
 
-    Config.debug (fun () ->
-      if List.exists (fun (x,_) -> List.exists (fun (_,t) -> var_occurs x t) subst) subst
-      then Config.internal_error "[term.ml >> Subst.compose] The resulting substution is not acyclic"
-    );
+          Config.debug (fun () ->
+            if List.exists (fun (x,_) -> List.exists (fun (_,t) -> var_occurs x t) subst) subst
+            then Config.internal_error "[term.ml >> Subst.compose] The resulting substution is not acyclic"
+          );
 
-    List.fold_left (fun acc (x,t) -> (x,t)::acc) subst subst_2
+          List.fold_left (fun acc (x,t) -> (x,t)::acc) subst subst_2
 
   let compose_restricted subst_1 subst_2 =
     Config.debug (fun () ->
@@ -1598,15 +1628,20 @@ module Subst = struct
       then Config.internal_error "[term.ml >> Subst.compose_restricted] The substutions do not have the disjoint domain"
     );
 
-    let subst = apply subst_2 subst_1 (fun s f ->
-        List.fold_left (fun acc (x,t) -> (x,f t)::acc) [] s) in
+    if subst_1 = []
+    then subst_1
+    else
+      begin
+        let subst = apply subst_2 subst_1 (fun s f ->
+            List.fold_left (fun acc (x,t) -> (x,f t)::acc) [] s) in
 
-    Config.debug (fun () ->
-      if List.exists (fun (x,_) -> List.exists (fun (_,t) -> var_occurs x t) subst) subst
-      then Config.internal_error "[term.ml >> Subst.compose_restricted] The resulting substution is not acyclic"
-    );
+        Config.debug (fun () ->
+          if List.exists (fun (x,_) -> List.exists (fun (_,t) -> var_occurs x t) subst) subst
+          then Config.internal_error "[term.ml >> Subst.compose_restricted] The resulting substution is not acyclic"
+        );
 
-    subst
+        subst
+      end
 
   let compose_restricted_generic subst_1 subst_2 f =
     Config.debug (fun () ->
@@ -1614,18 +1649,22 @@ module Subst = struct
       then Config.internal_error "[term.ml >> Subst.compose_restricted_generic] The substutions do not have the disjoint domain"
     );
 
-    let subst = apply subst_2 subst_1 (fun s f ->
-        List.fold_left (fun acc (x,t) -> (x,f t)::acc) [] s) in
+    if subst_1 = []
+    then  List.fold_left (fun acc (x,t) -> if f x then (x,t)::acc else acc) [] subst_2
+    else
+      begin
+        let subst = apply subst_2 subst_1 (fun s f ->
+            List.fold_left (fun acc (x,t) -> (x,f t)::acc) [] s) in
 
-    Config.debug (fun () ->
-      if List.exists (fun (x,_) -> List.exists (fun (_,t) -> var_occurs x t) subst) subst
-      then Config.internal_error "[term.ml >> Subst.compose_restricted_generic] The resulting substution is not acyclic"
-    );
+        Config.debug (fun () ->
+          if List.exists (fun (x,_) -> List.exists (fun (_,t) -> var_occurs x t) subst) subst
+          then Config.internal_error "[term.ml >> Subst.compose_restricted_generic] The resulting substution is not acyclic"
+        );
 
-    List.fold_left (fun acc (x,t) -> if f x then (x,t)::acc else acc) subst subst_2
+        List.fold_left (fun acc (x,t) -> if f x then (x,t)::acc else acc) subst subst_2
+      end
 
-  let restrict subst f =
-    List.filter_unordered (fun (x,_) -> f x) subst
+  let restrict subst f = List.filter_unordered (fun (x,_) -> f x) subst
 
   let is_extended_by (type a) (type b) (at:(a,b) atom) (subst_1:(a,b) t) (subst_2:(a,b) t) =
 
@@ -1967,10 +2006,14 @@ module Diseq = struct
         Variable.Renaming.cleanup at;
         subst, renaming
 
-  let rec elim_universal_variables = function
-    | [] -> []
-    | v::q when v.quantifier = Universal -> elim_universal_variables q
-    | v::q -> ((Var v), Subst.follow_link (Var v))::(elim_universal_variables q)
+  let elim_universal_variables var_list =
+
+    let rec explore acc = function
+      | [] -> acc
+      | v::q when v.quantifier = Universal -> explore acc q
+      | v::q -> explore (((Var v), Subst.follow_link (Var v))::acc) q
+    in
+    explore [] var_list
 
   let apply_and_normalise at subst = function
     | Top -> Top
@@ -2185,7 +2228,7 @@ module Modulo = struct
                 begin try
                   Subst.unify_term Protocol t1' t2';
                   let saved_linked_variables_from_unify = !Subst.linked_variables_fst in
-                  Subst.linked_variables_fst := !Subst.linked_variables_fst @ saved_linked_variables;
+                  Subst.linked_variables_fst := List.rev_append !Subst.linked_variables_fst saved_linked_variables;
 
                   begin try
                     next_f ();
@@ -2242,7 +2285,7 @@ module Modulo = struct
         begin try
           Subst.unify_term Protocol t1' t2';
           let saved_linked_variables_from_unify = !Subst.linked_variables_fst in
-          Subst.linked_variables_fst := !Subst.linked_variables_fst @ saved_linked_variables;
+          Subst.linked_variables_fst := List.rev_append !Subst.linked_variables_fst saved_linked_variables;
 
           let disequations = Diseq.elim_universal_variables !Subst.linked_variables_fst in
 
@@ -2350,20 +2393,26 @@ module Fact = struct
 
     try
       List.iter (fun (t1,t2) -> Subst.unify_term Protocol t1 t2) equations;
-      begin match fct with
-        | Deduction ->
-            let new_head = { head with df_term = Subst.follow_link head.df_term }
-            and new_b_fct_list = List.fold_left  (fun acc b_fct -> { b_fct with BasicFact.term = Subst.follow_link b_fct.BasicFact.term}::acc) [] b_fct_list
-            and subst = List.fold_left (fun acc var -> if var.quantifier = Universal then acc else (var,Subst.follow_link (Var var))::acc ) [] (Subst.retrieve Protocol) in
 
-            Subst.cleanup Protocol;
-            ({ head = new_head; ded_fact_list = new_b_fct_list; equation_subst = subst }: a formula)
-        | Equality ->
-            let new_b_fct_list = List.fold_left (fun acc b_fct -> { b_fct with BasicFact.term = Subst.follow_link b_fct.BasicFact.term}::acc) [] b_fct_list
-            and subst = List.fold_left (fun acc var -> (var,Subst.follow_link (Var var))::acc) [] (Subst.retrieve Protocol) in
-            Subst.cleanup Protocol;
-            ({ head = head; ded_fact_list = new_b_fct_list; equation_subst = subst }: a formula)
-      end
+      if Subst.retrieve Protocol = []
+      then ({ head = head ; ded_fact_list = b_fct_list; equation_subst = []} : a formula)
+      else
+        begin match fct with
+          | Deduction ->
+
+              let new_head = { head with df_term = Subst.follow_link head.df_term }
+              and new_b_fct_list = List.fold_left  (fun acc b_fct -> { b_fct with BasicFact.term = Subst.follow_link b_fct.BasicFact.term}::acc) [] b_fct_list
+              and subst = List.fold_left (fun acc var -> if var.quantifier = Universal then acc else (var,Subst.follow_link (Var var))::acc ) [] (Subst.retrieve Protocol) in
+
+              Subst.cleanup Protocol;
+              ({ head = new_head; ded_fact_list = new_b_fct_list; equation_subst = subst }: a formula)
+          | Equality ->
+              let new_b_fct_list = List.fold_left (fun acc b_fct -> { b_fct with BasicFact.term = Subst.follow_link b_fct.BasicFact.term}::acc) [] b_fct_list
+              and subst = List.fold_left (fun acc var -> (var,Subst.follow_link (Var var))::acc) [] (Subst.retrieve Protocol) in
+
+              Subst.cleanup Protocol;
+              ({ head = head; ded_fact_list = new_b_fct_list; equation_subst = subst }: a formula)
+        end
     with Subst.Not_unifiable -> Subst.cleanup Protocol; raise Bot
 
   let create_for_testing head b_fct_list subst =
@@ -2909,6 +2958,41 @@ module Rewrite_rules = struct
         Config.test (fun () -> !test_skeletons u f k !accumulator);
         !accumulator
     | _ -> Config.internal_error "[term.ml >> Rewrite_rules.skeletons] The function symbol should be a destructor."
+
+  let rename_skeletons skel v_type =
+
+    let rec rename_recipe = function
+      | Var(v) ->
+          begin match v.link with
+            | VLink(v') -> Var(v')
+            | NoLink ->
+                let v' = Variable.fresh Recipe v.quantifier v_type in
+                Variable.Renaming.link Recipe v v';
+                Var(v')
+            | _ -> Config.internal_error "[term.ml >> Rewrite_rules.rename_skeletons] Unexpected link"
+          end
+      | Func(f,args) -> Func(f,List.map rename_recipe args)
+      | r -> r
+    in
+
+    let rename_var v = match v.link with
+      | VLink(v') -> v'
+      | NoLink ->
+          let v' = Variable.fresh Recipe v.quantifier v_type in
+          Variable.Renaming.link Recipe v v';
+          v'
+      | _ -> Config.internal_error "[term.ml >> Rewrite_rules.rename_skeletons] Unexpected link (2)"
+    in
+
+    let skel' =
+      { skel with
+        variable_at_position = rename_var skel.variable_at_position;
+        recipe = rename_recipe skel.recipe;
+        basic_deduction_facts = List.fold_left (fun acc bfct -> { bfct with BasicFact.var = rename_var bfct.BasicFact.var}::acc) [] skel.basic_deduction_facts
+      }
+    in
+    Variable.Renaming.cleanup Recipe;
+    skel'
 
   let rec explore_list x_snd = function
     | [] -> Config.internal_error "[term.ml >> Rewrite_rules.explore_list] The list should not be empty"

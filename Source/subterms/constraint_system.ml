@@ -155,7 +155,7 @@ let nb_of_test_consequence csys =
       | None -> ()
       | Some _ -> incr nb_test
   );
-  
+
   !nb_test
 
 
@@ -348,21 +348,19 @@ let add_disequations (type a) (type b) (at: (a,b) atom) csys (diseq_list: (a,b) 
 let add_axiom csys ax t =
   Config.debug (fun () ->
     if csys.size_frame + 1 <> Axiom.index_of ax
-    then Config.internal_error "[constraint_system.ml >> add_axiom] The axiom given as argument should have an index equal to the size of the frame + 1"
+    then Config.internal_error "[constraint_system.ml >> add_axiom] The axiom given as argument should have an index equal to the size of the frame + 1";
+
+    if csys.skeletons_to_check <> []
+    then Config.internal_error "[constraint_system.ml >> add_axiom] All skeletons should have been checked."
   );
 
   let new_size = csys.size_frame + 1 in
 
-  let new_skeletons_to_check = ref [] in
+  let var_type = Variable.snd_ord_type new_size in
 
-  SDF.iter_id csys.sdf (fun id fct ->
-    List.iter (fun f ->
-      new_skeletons_to_check := List.fold_left (fun acc skel -> (id,skel)::acc) !new_skeletons_to_check (Rewrite_rules.skeletons (Fact.get_protocol_term fct) f new_size)
-      ) !Symbol.all_destructors
-  );
   { csys with
     skeletons_checked = [];
-    skeletons_to_check = !new_skeletons_to_check;
+    skeletons_to_check = List.fold_left (fun acc (id,skel) -> (id,Rewrite_rules.rename_skeletons skel var_type)::acc) [] csys.skeletons_checked;
     uf = UF.add_deduction csys.uf [Fact.create Fact.Deduction (Fact.create_deduction_fact (of_axiom ax) t) [] []];
     size_frame = new_size
   }
@@ -3005,8 +3003,6 @@ module Rule = struct
           UF.solved_occurs Fact.Deduction csys.uf || UF.unsolved_occurs Fact.Deduction csys.uf) csys_set.Set.csys_list
       then Config.internal_error "[constraint_system.ml >> internal_rewrite] Conflict with the ded_occurs parameter."
     );
-
-
 
     let rec explore_csys explored_csys_set = function
       | [] -> None, explored_csys_set
