@@ -1170,7 +1170,16 @@ let apply_mgs csys (subst_snd,list_var) =
 
 let dummy_recipe = of_axiom (Axiom.create 1)
 
-let apply_mgs_and_gather csys sdf_array new_eqsnd ded_ref eq_ref new_i_subst_snd (subst_snd,list_var) =
+type data_shared =
+  {
+    share_sdf : (recipe * bool) array;
+    share_eqsnd : (snd_ord, axiom) Eq.t;
+    share_ded : recipe option ref;
+    share_eq : Fact.equality option ref;
+    share_i_subst_snd : (snd_ord, axiom) Subst.t
+  }
+
+let apply_mgs_and_gather csys data_shared (subst_snd,list_var) =
 
   let new_df_1 = List.fold_left (fun df x_snd ->
     let b_fct = BasicFact.create x_snd (of_variable (Variable.fresh Protocol Existential Variable.fst_ord_type)) in
@@ -1179,7 +1188,7 @@ let apply_mgs_and_gather csys sdf_array new_eqsnd ded_ref eq_ref new_i_subst_snd
 
   let new_df_2 = Subst.fold (fun df x _ -> DF.remove df x) new_df_1 subst_snd in
 
-  let new_sdf_1 = SDF.apply_snd_and_gather csys.sdf subst_snd sdf_array in
+  let new_sdf_1 = SDF.apply_snd_and_gather csys.sdf subst_snd data_shared.share_sdf in
 
   let equations =
     Subst.fold (fun eq_l x r ->
@@ -1203,7 +1212,7 @@ let apply_mgs_and_gather csys sdf_array new_eqsnd ded_ref eq_ref new_i_subst_snd
     let new_df_3 = DF.apply new_df_2 subst_fst in
 
     let new_sdf_2 = SDF.apply new_sdf_1 Subst.identity subst_fst
-    and new_uf_1 = UF.apply_with_gathering csys.uf subst_snd subst_fst ded_ref eq_ref
+    and new_uf_1 = UF.apply_with_gathering csys.uf subst_snd subst_fst data_shared.share_ded data_shared.share_eq
     and new_i_subst_fst = Subst.compose_restricted_generic csys.i_subst_fst subst_fst (fun x -> Variable.quantifier_of x = Free)
     and new_sub_cons_1 = Uniformity_Set.apply csys.sub_cons subst_snd subst_fst in
 
@@ -1224,11 +1233,11 @@ let apply_mgs_and_gather csys sdf_array new_eqsnd ded_ref eq_ref new_i_subst_snd
       { csys with
         df = new_df_3;
         eqfst = new_eqfst;
-        eqsnd = new_eqsnd;
+        eqsnd = data_shared.share_eqsnd;
         sdf = new_sdf_3;
         uf = new_uf_1;
         i_subst_fst = new_i_subst_fst;
-        i_subst_snd = new_i_subst_snd;
+        i_subst_snd = data_shared.share_i_subst_snd;
         sub_cons = new_sub_cons_2
       }
     in
@@ -1239,7 +1248,7 @@ let apply_mgs_and_gather csys sdf_array new_eqsnd ded_ref eq_ref new_i_subst_snd
   with
     | Subst.Not_unifiable  -> raise Bot
 
-let apply_mgs_from_gathering csys sdf_array new_eqsnd ded_ref eq_ref new_i_subst_snd (subst_snd,list_var) =
+let apply_mgs_from_gathering csys data_shared (subst_snd,list_var) =
 
   let new_df_1 = List.fold_left (fun df x_snd ->
     let b_fct = BasicFact.create x_snd (of_variable (Variable.fresh Protocol Existential Variable.fst_ord_type)) in
@@ -1248,7 +1257,7 @@ let apply_mgs_from_gathering csys sdf_array new_eqsnd ded_ref eq_ref new_i_subst
 
   let new_df_2 = Subst.fold (fun df x _ -> DF.remove df x) new_df_1 subst_snd in
 
-  let new_sdf_1 = SDF.apply_snd_from_gathering csys.sdf sdf_array in
+  let new_sdf_1 = SDF.apply_snd_from_gathering csys.sdf data_shared.share_sdf in
 
   let equations =
     Subst.fold (fun eq_l x r ->
@@ -1272,7 +1281,7 @@ let apply_mgs_from_gathering csys sdf_array new_eqsnd ded_ref eq_ref new_i_subst
     let new_df_3 = DF.apply new_df_2 subst_fst in
 
     let new_sdf_2 = SDF.apply new_sdf_1 Subst.identity subst_fst
-    and new_uf_1 = UF.apply_with_gathering csys.uf subst_snd subst_fst ded_ref eq_ref
+    and new_uf_1 = UF.apply_with_gathering csys.uf subst_snd subst_fst data_shared.share_ded data_shared.share_eq
     and new_i_subst_fst = Subst.compose_restricted_generic csys.i_subst_fst subst_fst (fun x -> Variable.quantifier_of x = Free)
     and new_sub_cons_1 = Uniformity_Set.apply csys.sub_cons subst_snd subst_fst in
 
@@ -1293,11 +1302,11 @@ let apply_mgs_from_gathering csys sdf_array new_eqsnd ded_ref eq_ref new_i_subst
       { csys with
         df = new_df_3;
         eqfst = new_eqfst;
-        eqsnd = new_eqsnd;
+        eqsnd = data_shared.share_eqsnd;
         sdf = new_sdf_3;
         uf = new_uf_1;
         i_subst_fst = new_i_subst_fst;
-        i_subst_snd = new_i_subst_snd;
+        i_subst_snd = data_shared.share_i_subst_snd;
         sub_cons = new_sub_cons_2
       }
     in
@@ -2155,17 +2164,22 @@ module Rule = struct
                     then Config.internal_error "[constraint_system.ml >> internal_sat] If bot then we should not have had some mgs."
                   );
 
-                  let array_sdf = Array.make (SDF.cardinal csys.sdf) (dummy_recipe,false) in
-
-                  let ded_ref = ref None
-                  and eq_ref = ref None in
+                  let data_shared =
+                    {
+                      share_sdf = (Array.make (SDF.cardinal csys.sdf) (dummy_recipe,false));
+                      share_eqsnd = new_eqsnd;
+                      share_ded = ref None;
+                      share_eq = ref None;
+                      share_i_subst_snd = new_i_subst_snd
+                    }
+                  in
 
                   let new_csys_list =
                     try
-                      let csys' = apply_mgs_and_gather csys array_sdf new_eqsnd ded_ref eq_ref new_i_subst_snd (mgs,l_vars) in
+                      let csys' = apply_mgs_and_gather csys data_shared (mgs,l_vars) in
                       List.fold_left (fun set csys ->
                         try
-                          (apply_mgs_from_gathering csys array_sdf new_eqsnd ded_ref eq_ref new_i_subst_snd (mgs,l_vars))::set
+                          (apply_mgs_from_gathering csys data_shared (mgs,l_vars))::set
                         with
                           | Bot -> set
                         ) [csys'] other_csys
@@ -2173,7 +2187,7 @@ module Rule = struct
                     | Bot ->
                         List.fold_left (fun set csys ->
                           try
-                            (apply_mgs_from_gathering csys array_sdf new_eqsnd ded_ref eq_ref new_i_subst_snd (mgs,l_vars))::set
+                            (apply_mgs_from_gathering csys data_shared (mgs,l_vars))::set
                           with
                             | Bot -> set
                           ) [] other_csys
@@ -2255,22 +2269,28 @@ module Rule = struct
               then Config.internal_error "[constraint_system.ml >> internal_sat_disequation] If bot then we should not have had some mgs."
             );
 
-            let ded_ref = ref None
-            and eq_ref = ref None in
-
             let positive_csys_set =
               if other_csys = []
               then { csys_set with Set.csys_list = [] }
               else
                 let one_csys = List.hd other_csys in
-                let array_sdf = Array.make (SDF.cardinal one_csys.sdf) (dummy_recipe,false) in
+
+                let data_shared =
+                  {
+                    share_sdf = (Array.make (SDF.cardinal csys.sdf) (dummy_recipe,false));
+                    share_eqsnd = new_eqsnd;
+                    share_ded = ref None;
+                    share_eq = ref None;
+                    share_i_subst_snd = new_i_subst_snd
+                  }
+                in
 
                 let new_csys_list =
                   try
-                    let csys' = apply_mgs_and_gather one_csys array_sdf new_eqsnd ded_ref eq_ref new_i_subst_snd (mgs,l_vars) in
+                    let csys' = apply_mgs_and_gather one_csys data_shared (mgs,l_vars) in
                     List.fold_left (fun set csys ->
                       try
-                        (apply_mgs_from_gathering csys array_sdf new_eqsnd ded_ref eq_ref new_i_subst_snd (mgs,l_vars))::set
+                        (apply_mgs_from_gathering csys data_shared (mgs,l_vars))::set
                       with
                         | Bot -> set
                       ) [csys'] (List.tl other_csys)
@@ -2278,7 +2298,7 @@ module Rule = struct
                   | Bot ->
                       List.fold_left (fun set csys ->
                         try
-                          (apply_mgs_from_gathering csys array_sdf new_eqsnd ded_ref eq_ref new_i_subst_snd (mgs,l_vars))::set
+                          (apply_mgs_from_gathering csys data_shared (mgs,l_vars))::set
                         with
                           | Bot -> set
                         ) [] (List.tl other_csys)
@@ -2354,17 +2374,22 @@ module Rule = struct
                 then Config.internal_error "[constraint_system.ml >> internal_sat_disequation] If bot then we should not have had some mgs."
               );
 
-              let array_sdf = Array.make (SDF.cardinal csys.sdf) (dummy_recipe,false) in
-
-              let ded_ref = ref None
-              and eq_ref = ref None in
+              let data_shared =
+                {
+                  share_sdf = (Array.make (SDF.cardinal csys.sdf) (dummy_recipe,false));
+                  share_eqsnd = new_eqsnd;
+                  share_ded = ref None;
+                  share_eq = ref None;
+                  share_i_subst_snd = new_i_subst_snd
+                }
+              in
 
               let new_csys_list =
                 try
-                  let csys' = apply_mgs_and_gather csys array_sdf new_eqsnd ded_ref eq_ref new_i_subst_snd (mgs,l_vars) in
+                  let csys' = apply_mgs_and_gather csys data_shared (mgs,l_vars) in
                   List.fold_left (fun set csys ->
                     try
-                      (apply_mgs_from_gathering csys array_sdf new_eqsnd ded_ref eq_ref new_i_subst_snd (mgs,l_vars))::set
+                      (apply_mgs_from_gathering csys data_shared (mgs,l_vars))::set
                     with
                       | Bot -> set
                     ) [csys'] other_csys
@@ -2372,7 +2397,7 @@ module Rule = struct
                 | Bot ->
                     List.fold_left (fun set csys ->
                       try
-                        (apply_mgs_from_gathering csys array_sdf new_eqsnd ded_ref eq_ref new_i_subst_snd (mgs,l_vars))::set
+                        (apply_mgs_from_gathering csys data_shared (mgs,l_vars))::set
                       with
                         | Bot -> set
                       ) [] other_csys
@@ -2457,17 +2482,22 @@ module Rule = struct
             then Config.internal_error "[constraint_system.ml >> internal_sat_formula] It should not be the identity mgs (otherwise the formula would have been solved)."
           );
 
-          let array_sdf = Array.make (SDF.cardinal one_csys.sdf) (dummy_recipe,false) in
-
-          let ded_ref = ref None
-          and eq_ref = ref None in
+          let data_shared =
+            {
+              share_sdf = (Array.make (SDF.cardinal one_csys.sdf) (dummy_recipe,false));
+              share_eqsnd = new_eqsnd;
+              share_ded = ref None;
+              share_eq = ref None;
+              share_i_subst_snd = new_i_subst_snd
+            }
+          in
 
           let positive_csys_list =
             try
-              let one_csys' = apply_mgs_and_gather one_csys array_sdf new_eqsnd ded_ref eq_ref new_i_subst_snd (mgs,l_vars) in
+              let one_csys' = apply_mgs_and_gather one_csys data_shared (mgs,l_vars) in
               List.fold_left (fun set csys ->
                 try
-                  (apply_mgs_from_gathering csys array_sdf new_eqsnd ded_ref eq_ref new_i_subst_snd (mgs,l_vars))::set
+                  (apply_mgs_from_gathering csys data_shared (mgs,l_vars))::set
                 with
                   | Bot -> set
                 ) [one_csys'] (List.tl csys_set.Set.csys_list)
@@ -2475,7 +2505,7 @@ module Rule = struct
             | Bot ->
                 List.fold_left (fun set csys ->
                   try
-                    (apply_mgs_from_gathering csys array_sdf new_eqsnd ded_ref eq_ref new_i_subst_snd (mgs,l_vars))::set
+                    (apply_mgs_from_gathering csys data_shared (mgs,l_vars))::set
                   with
                     | Bot -> set
                   ) [] (List.tl csys_set.Set.csys_list)
@@ -2665,14 +2695,19 @@ module Rule = struct
               let new_eqsnd = Eq.apply Recipe one_csys.eqsnd mgs_csys in
               let new_i_subst_snd = Subst.compose_restricted_generic one_csys.i_subst_snd mgs_csys (fun x -> Variable.quantifier_of x = Free) in
 
-              let array_sdf = Array.make (SDF.cardinal one_csys.sdf) (dummy_recipe,false) in
-
-              let ded_ref = ref None
-              and eq_ref = ref None in
+              let data_shared =
+                {
+                  share_sdf = (Array.make (SDF.cardinal one_csys.sdf) (dummy_recipe,false));
+                  share_eqsnd = new_eqsnd;
+                  share_ded = ref None;
+                  share_eq = ref None;
+                  share_i_subst_snd = new_i_subst_snd
+                }
+              in
 
               let positive_csys_list =
                 try
-                  let one_csys' = apply_mgs_and_gather one_csys array_sdf new_eqsnd ded_ref eq_ref new_i_subst_snd (mgs_csys,l_vars) in
+                  let one_csys' = apply_mgs_and_gather one_csys data_shared (mgs_csys,l_vars) in
                   let one_csys'' =
                     try
                       let form_1 = create_eq_constructor_formula one_csys' id_sdf univ_vars_snd symb in
@@ -2683,7 +2718,7 @@ module Rule = struct
                   in
                   List.fold_left (fun set csys ->
                     try
-                      let csys_1 = apply_mgs_from_gathering csys array_sdf new_eqsnd ded_ref eq_ref new_i_subst_snd (mgs_csys,l_vars) in
+                      let csys_1 = apply_mgs_from_gathering csys data_shared (mgs_csys,l_vars) in
                       begin try
                         let form_1 = create_eq_constructor_formula csys_1 id_sdf univ_vars_snd symb in
                         let form_2 = apply_mgs_on_formula Fact.Equality csys_1 (mgs_form_univ,[]) form_1 in
@@ -2698,7 +2733,7 @@ module Rule = struct
                 | Bot ->
                     List.fold_left (fun set csys ->
                       try
-                        let csys_1 = apply_mgs_from_gathering csys array_sdf new_eqsnd ded_ref eq_ref new_i_subst_snd (mgs_csys,l_vars) in
+                        let csys_1 = apply_mgs_from_gathering csys data_shared (mgs_csys,l_vars) in
                         begin try
                           let form_1 = create_eq_constructor_formula csys_1 id_sdf univ_vars_snd symb in
                           let form_2 = apply_mgs_on_formula Fact.Equality csys_1 (mgs_form_univ,[]) form_1 in
@@ -2819,16 +2854,21 @@ module Rule = struct
               let new_eqsnd = Eq.apply Recipe one_csys.eqsnd mgs in
               let new_i_subst_snd = Subst.compose_restricted_generic one_csys.i_subst_snd mgs (fun x -> Variable.quantifier_of x = Free) in
 
-              let array_sdf = Array.make (SDF.cardinal one_csys.sdf) (dummy_recipe,false) in
-
               let last_id_ref = ref 0 in
 
-              let ded_ref = ref None
-              and eq_ref = ref None in
+              let data_shared =
+                {
+                  share_sdf = (Array.make (SDF.cardinal one_csys.sdf) (dummy_recipe,false));
+                  share_eqsnd = new_eqsnd;
+                  share_ded = ref None;
+                  share_eq = ref None;
+                  share_i_subst_snd = new_i_subst_snd
+                }
+              in
 
               let positive_csys_list =
                 try
-                  let one_csys' = apply_mgs_and_gather one_csys array_sdf new_eqsnd ded_ref eq_ref new_i_subst_snd (mgs,l_vars) in
+                  let one_csys' = apply_mgs_and_gather one_csys data_shared (mgs,l_vars) in
                   let one_csys'' =
                     try
                       let (last_fact,last_id) = SDF.last_entry one_csys'.sdf in
@@ -2849,7 +2889,7 @@ module Rule = struct
                   in
                   List.fold_left (fun set csys ->
                     try
-                      let csys_1 = apply_mgs_from_gathering csys array_sdf new_eqsnd ded_ref eq_ref new_i_subst_snd (mgs,l_vars) in
+                      let csys_1 = apply_mgs_from_gathering csys data_shared (mgs,l_vars) in
                       begin try
                         let (last_fact,_) = SDF.last_entry csys_1.sdf in
 
@@ -2873,7 +2913,7 @@ module Rule = struct
                 | Bot ->
                     List.fold_left (fun set csys ->
                       try
-                        let csys_1 = apply_mgs_from_gathering csys array_sdf new_eqsnd ded_ref eq_ref new_i_subst_snd (mgs,l_vars) in
+                        let csys_1 = apply_mgs_from_gathering csys data_shared (mgs,l_vars) in
                         begin try
                           let (last_fact,last_id) = SDF.last_entry csys_1.sdf in
                           last_id_ref := last_id;
@@ -3056,14 +3096,19 @@ module Rule = struct
               let new_eqsnd = Eq.apply Recipe one_csys.eqsnd mgs_csys in
               let new_i_subst_snd = Subst.compose_restricted_generic one_csys.i_subst_snd mgs_csys (fun x -> Variable.quantifier_of x = Free) in
 
-              let array_sdf = Array.make (SDF.cardinal one_csys.sdf) (dummy_recipe,false) in
-
-              let ded_ref = ref None
-              and eq_ref = ref None in
+              let data_shared =
+                {
+                  share_sdf = (Array.make (SDF.cardinal one_csys.sdf) (dummy_recipe,false));
+                  share_eqsnd = new_eqsnd;
+                  share_ded = ref None;
+                  share_eq = ref None;
+                  share_i_subst_snd = new_i_subst_snd
+                }
+              in
 
               let positive_csys_list =
                 try
-                  let one_csys' = apply_mgs_and_gather one_csys array_sdf new_eqsnd ded_ref eq_ref new_i_subst_snd (mgs_csys,l_vars) in
+                  let one_csys' = apply_mgs_and_gather one_csys data_shared (mgs_csys,l_vars) in
                   let one_csys'' =
                     let ded_sdf = SDF.get one_csys'.sdf id_sdf in
                     let form_list_1 = Rewrite_rules.generic_rewrite_rules_formula ded_sdf skel in
@@ -3082,7 +3127,7 @@ module Rule = struct
 
                   List.fold_left (fun set csys ->
                     try
-                      let csys_1 = apply_mgs_from_gathering csys array_sdf new_eqsnd ded_ref eq_ref new_i_subst_snd (mgs_csys,l_vars) in
+                      let csys_1 = apply_mgs_from_gathering csys data_shared (mgs_csys,l_vars) in
                       let ded_sdf = SDF.get csys_1.sdf id_sdf in
                       let form_list_1 = Rewrite_rules.generic_rewrite_rules_formula ded_sdf skel in
                       let form_list_2 = List.fold_left (fun acc form ->
@@ -3103,7 +3148,7 @@ module Rule = struct
                 | Bot ->
                     List.fold_left (fun set csys ->
                       try
-                        let csys_1 = apply_mgs_from_gathering csys array_sdf new_eqsnd ded_ref eq_ref new_i_subst_snd (mgs_csys,l_vars) in
+                        let csys_1 = apply_mgs_from_gathering csys data_shared (mgs_csys,l_vars) in
                         let ded_sdf = SDF.get csys_1.sdf id_sdf in
                         let form_list_1 = Rewrite_rules.generic_rewrite_rules_formula ded_sdf skel in
                         let form_list_2 = List.fold_left (fun acc form ->
