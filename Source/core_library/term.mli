@@ -935,6 +935,14 @@ module Fact : sig
 
   val apply_snd_ord_on_fact : 'a t -> 'a -> (snd_ord, axiom) Subst.t -> 'a
 
+  val apply_ded_with_gathering : deduction formula -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t -> recipe option ref -> deduction formula
+
+  val apply_eq_with_gathering : equality formula -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t -> equality option ref -> equality formula
+
+  val apply_snd_ord_ded_with_gathering : deduction formula -> (snd_ord, axiom) Subst.t -> recipe option ref -> deduction formula
+
+  val apply_snd_ord_eq_with_gathering : equality formula -> (snd_ord, axiom) Subst.t ->  equality option ref -> equality formula
+
   (** {3 Display functions} *)
 
   val display_deduction_fact : Display.output -> ?rho:display_renamings option -> deduction -> string

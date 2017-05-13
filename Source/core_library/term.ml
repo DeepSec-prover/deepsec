@@ -2738,7 +2738,6 @@ module Fact = struct
     | Deduction ->  ({ psi with head = Subst.apply subst_snd psi.head (fun d_fact f -> { d_fact with df_recipe = f d_fact.df_recipe }) }: a formula)
     | Equality -> ({ psi with head = Subst.apply subst_snd psi.head (fun d_fact f -> { ef_recipe_1 = f d_fact.ef_recipe_1; ef_recipe_2 = f d_fact.ef_recipe_2 }) }: a formula)
 
-
   let apply_fst_ord (type a) (fct: a t) (psi: a formula) subst_fst =
     Config.debug (fun () ->
       if List.exists (fun (v,_) -> v.link <> NoLink) subst_fst
@@ -2790,6 +2789,105 @@ module Fact = struct
   let apply_snd_ord_on_fact (type a) (fct: a t) (fact: a) (subst_snd : (snd_ord,axiom) Subst.t) = match fct with
     | Deduction -> (Subst.apply subst_snd fact (fun fact f -> {fact with df_recipe = f fact.df_recipe}) : a)
     | Equality -> (Subst.apply subst_snd fact (fun fact f -> {ef_recipe_1 = f fact.ef_recipe_1; ef_recipe_2 = f fact.ef_recipe_2}) : a)
+
+  let apply_ded_with_gathering psi subst_snd subst_fst ded_ref =
+    Config.debug (fun () ->
+      if List.exists (fun (v,_) -> v.link <> NoLink) subst_fst
+      then Config.internal_error "[term.ml >> Fact.apply_ded_with_gathering] Variables in the domain should not be linked"
+    );
+
+    (* Link the variables of the substitution *)
+    List.iter (fun (v,t) -> v.link <- (TLink t)) subst_fst;
+
+    try
+      List.iter (fun (x,t) -> Subst.unify_term Protocol ({ term = Var x; ground = false }) t) psi.equation_subst;
+
+      let head = { psi.head with df_term = Subst.follow_link psi.head.df_term }
+      and ded_fact_list = List.fold_left (fun acc b_fact -> { b_fact with BasicFact.pterm = Subst.follow_link b_fact.BasicFact.pterm }::acc) [] psi.ded_fact_list
+      and equation_subst = List.fold_left (fun acc var -> (var,Subst.follow_link_var var)::acc) [] (Subst.retrieve Protocol) in
+
+      let psi_1 = { head = head; ded_fact_list = ded_fact_list; equation_subst = equation_subst } in
+
+      Subst.cleanup Protocol;
+
+      (* Unlink the variables of the substitution *)
+      List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
+
+      (* Apply the second-order substitution *)
+
+      begin match !ded_ref with
+        | None ->
+            { psi_1 with
+              head =
+                Subst.apply subst_snd psi_1.head (fun d_fact f ->
+                  let recipe = f d_fact.df_recipe in
+                  ded_ref := Some recipe;
+                  { d_fact with df_recipe = recipe }
+                )
+            }
+        | Some recipe -> { psi_1 with head = { psi_1.head with df_recipe = recipe} }
+      end
+    with Subst.Not_unifiable ->
+      Subst.cleanup Protocol;
+      (* Unlink the variables of the substitution *)
+      List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
+      raise Bot
+
+  let apply_eq_with_gathering psi subst_snd subst_fst eq_ref =
+    Config.debug (fun () ->
+      if List.exists (fun (v,_) -> v.link <> NoLink) subst_fst
+      then Config.internal_error "[term.ml >> Fact.apply] Variables in the domain should not be linked"
+    );
+
+    (* Link the variables of the substitution *)
+    List.iter (fun (v,t) -> v.link <- (TLink t)) subst_fst;
+
+    try
+      List.iter (fun (x,t) -> Subst.unify_term Protocol ({ term = Var x; ground = false }) t) psi.equation_subst;
+
+      let ded_fact_list = List.fold_left (fun acc b_fact -> { b_fact with BasicFact.pterm = Subst.follow_link b_fact.BasicFact.pterm }::acc) [] psi.ded_fact_list
+      and equation_subst = List.fold_left (fun acc var -> (var,Subst.follow_link_var var)::acc) [] (Subst.retrieve Protocol) in
+
+      let psi_1 = { psi with ded_fact_list = ded_fact_list; equation_subst = equation_subst } in
+
+      Subst.cleanup Protocol;
+
+      (* Unlink the variables of the substitution *)
+      List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
+
+      (* Apply the second-order substitution *)
+
+      begin match !eq_ref with
+        | None ->
+            let head = Subst.apply subst_snd psi_1.head (fun d_fact f -> { ef_recipe_1 = f d_fact.ef_recipe_1; ef_recipe_2 = f d_fact.ef_recipe_2 }) in
+            eq_ref := Some head;
+            { psi_1 with head = head }
+        | Some head -> { psi_1 with head = head }
+      end
+    with Subst.Not_unifiable ->
+      Subst.cleanup Protocol;
+      (* Unlink the variables of the substitution *)
+      List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
+      raise Bot
+
+  let apply_snd_ord_ded_with_gathering psi subst_snd ded_ref = match !ded_ref with
+    | None ->
+        let head =
+          Subst.apply subst_snd psi.head (fun d_fact f ->
+            let recipe = f d_fact.df_recipe in
+            ded_ref := Some recipe;
+            { d_fact with df_recipe = recipe }
+          )
+        in
+        { psi with head = head }
+    | Some recipe -> { psi with head = { psi.head with df_recipe = recipe } }
+
+  let apply_snd_ord_eq_with_gathering psi subst_snd eq_ref = match !eq_ref with
+    | None ->
+        let head = Subst.apply subst_snd psi.head (fun d_fact f -> { ef_recipe_1 = f d_fact.ef_recipe_1; ef_recipe_2 = f d_fact.ef_recipe_2 }) in
+        eq_ref := Some head;
+        { psi with head = head }
+    | Some head -> { psi with head = head }
 
   (********* Display functions *******)
 

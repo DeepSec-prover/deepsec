@@ -169,6 +169,8 @@ module UF : sig
       and~\citepaper{Rule}{rule:Removal of unsolved formula}. %} *)
   val apply : t -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t  -> t
 
+  val apply_with_gathering : t -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t -> recipe option ref -> Fact.equality option ref -> t
+
   (** [filter fct UF p] returns the set with all the [fct] formulas in [UF] that satisfy predicate [p]. *)
   val filter : 'a Fact.t -> t -> ('a Fact.formula -> bool) -> t
 

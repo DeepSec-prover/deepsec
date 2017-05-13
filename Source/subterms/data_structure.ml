@@ -1010,6 +1010,89 @@ module UF = struct
         { ded_formula = new_ded_formula ; eq_formula = new_eq_formula }
       end
 
+  let apply_with_gathering uf subst_snd subst_fst ded_ref eq_ref =
+    let fst_identity = Subst.is_identity subst_fst
+    and snd_identity = Subst.is_identity subst_snd in
+
+    if fst_identity && snd_identity
+    then uf
+    else
+      begin
+        let apply_subst_on_ded_formula, apply_subst_on_eq_formula = match fst_identity, snd_identity with
+          | false, false ->
+              (fun (form: Fact.deduction Fact.formula) -> Fact.apply_ded_with_gathering form subst_snd subst_fst ded_ref),
+              (fun (form: Fact.equality Fact.formula) -> Fact.apply_eq_with_gathering form subst_snd subst_fst eq_ref)
+          | false, true ->
+              (fun (form: Fact.deduction Fact.formula) -> Fact.apply_fst_ord Fact.Deduction form subst_fst),
+              (fun (form: Fact.equality Fact.formula) -> Fact.apply_fst_ord Fact.Equality form subst_fst)
+          | true, false ->
+              (fun (form: Fact.deduction Fact.formula) -> Fact.apply_snd_ord_ded_with_gathering form subst_snd ded_ref),
+              (fun (form: Fact.equality Fact.formula) -> Fact.apply_snd_ord_eq_with_gathering form subst_snd eq_ref)
+          | true, true -> Config.internal_error "[data_structure.ml >> apply] Impossible case"
+        in
+
+        let new_ded_formula = match uf.ded_formula with
+          | DedNone -> DedNone
+          | DedSolved form ->
+              Config.debug (fun () ->
+                try
+                  let _ = apply_subst_on_ded_formula form in
+                  ()
+                with
+                  | Fact.Bot -> Config.internal_error "[Data_structure.ml >> UF.apply] Applying a substitution on a solved formula should not result into bot."
+              );
+
+              DedSolved (apply_subst_on_ded_formula form)
+          | DedUnsolved form_list ->
+              begin
+                let result_list = ref [] in
+
+                try
+                  List.iter (fun form ->
+                    try
+                      let form_1 = apply_subst_on_ded_formula form in
+                      if Fact.is_solved form_1
+                      then raise (Solved_ded form_1)
+                      else result_list := form_1 :: !result_list
+                    with
+                      | Fact.Bot -> ()
+                    ) form_list;
+
+                  if !result_list = []
+                  then DedNone
+                  else DedUnsolved !result_list
+                with
+                  | Solved_ded form -> DedSolved form
+              end
+        in
+
+        let new_eq_formula = match uf.eq_formula with
+          | EqNone -> EqNone
+          | EqSolved form ->
+              Config.debug (fun () ->
+                try
+                  let _ = apply_subst_on_eq_formula form in
+                  ()
+                with
+                  | Fact.Bot -> Config.internal_error "[Data_structure.ml >> UF.apply] Applying a substitution on a solved formula should not result into bot.(2)"
+              );
+
+              EqSolved(apply_subst_on_eq_formula form)
+          | EqUnsolved form ->
+              begin
+                try
+                  let form_1 = apply_subst_on_eq_formula form in
+                  if Fact.is_solved form_1
+                  then EqSolved form_1
+                  else EqUnsolved form_1
+                with
+                  | Fact.Bot -> EqNone
+              end
+        in
+
+        { ded_formula = new_ded_formula ; eq_formula = new_eq_formula }
+      end
+
   let gather_deduction_formula uf = match uf.ded_formula with
     | DedNone -> []
     | DedSolved form -> [form]
