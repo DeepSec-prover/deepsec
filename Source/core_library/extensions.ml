@@ -65,6 +65,7 @@ module Map = struct
     val equal: ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
     val iter: (key -> 'a -> unit) -> 'a t -> unit
     val fold: (key -> 'a -> 'b -> 'b) -> 'a t -> 'b -> 'b
+    val tail_iter_until : ('a -> (unit -> unit) -> unit) -> ('a -> bool) -> 'a t -> (unit -> unit) -> unit
     val for_all: (key -> 'a -> bool) -> 'a t -> bool
     val exists: (key -> 'a -> bool) -> 'a t -> bool
     val filter: (key -> 'a -> bool) -> 'a t -> 'a t
@@ -176,6 +177,15 @@ module Map = struct
           let c = Ord.compare x v in
           if c = 0 then d
           else find x (if c < 0 then l else r)
+
+    let rec replace x f = function
+      | Empty -> raise Not_found
+      | Node {l; v; d; r; h} ->
+          let c = Ord.compare x v in
+          if c = 0 then Node {l; v; d = f d; r; h}
+          else if c < 0
+          then Node {l = replace x f l; v; d; r; h}
+          else Node {l; v; d; r = replace x f r; h} 
 
     let rec find_first_aux v0 d0 f = function
         Empty ->
@@ -382,6 +392,18 @@ module Map = struct
         Empty -> accu
       | Node {l; v; d; r; _} ->
           fold f r (f v d (fold f l accu))
+
+    let rec tail_iter_until f f_stop m f_next = match m with
+      | Empty -> f_next ()
+      | Node {l; d; r; _} ->
+          (tail_iter_until [@tailcall]) f f_stop l (fun () ->
+            if f_stop d
+            then (f_next [@tailcall]) ()
+            else
+              (f [@tailcall]) d (fun () ->
+                (tail_iter_until [@tailcall]) f f_stop r f_next
+              )
+          )
 
     let rec for_all p = function
         Empty -> true
@@ -623,6 +645,7 @@ module Set = struct
     val find_last: (elt -> bool) -> t -> elt
     val find_last_opt: (elt -> bool) -> t -> elt option
     val of_list: elt list -> t
+    val choose_and_apply: (elt -> elt -> unit) -> t -> unit
   end
 
   module Make(Ord: OrderedType) =
@@ -1118,5 +1141,10 @@ module Set = struct
           exists (fun v' -> p v' v) l ||
           exists (fun v' -> p v v') r ||
           exists_distinct_pair p r
+
+    let choose_and_apply f = function
+      | Empty -> Config.internal_error "[extensions.ml >> Set.choose_and_apply] The set should not be empty."
+      | Node{l;v;r;_} -> iter (f v) l; iter (f v) r
+
   end
 end

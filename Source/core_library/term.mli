@@ -608,6 +608,8 @@ module Subst : sig
       *)
   val apply : ('a, 'b) t -> 'c -> ('c -> (('a, 'b) term -> ('a, 'b) term) -> 'c) -> 'c
 
+  val apply_generalised : ('a, 'b) t -> 'c -> ('c -> (('a, 'b) term -> ('a, 'b) term) -> 'd) -> 'd
+
   (* [fold f elt] {% $\sigma$ %} returns [f (... (f (f elt] {% $x_1$~$t_1$%}[)] {% $x_2$~$t_2$%}[) ...)]{% $x_n$~$t_n$ where $\sigma = \{ x_i \rightarrow t_i \}_{i=1}^n$.
     Note that the order of the variables in $\sigma$ is unspecified. %}*)
   val fold : ('c -> ('a, 'b) variable -> ('a, 'b) term -> 'c) -> 'c -> ('a, 'b) t -> 'c

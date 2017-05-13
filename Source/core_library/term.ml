@@ -1599,6 +1599,23 @@ module Subst = struct
         new_elt
       end
 
+  let apply_generalised subst elt f_iter_elt =
+    Config.debug (fun () ->
+      if List.exists (fun (v,_) -> v.link <> NoLink) subst
+      then Config.internal_error "[term.ml >> Subst.apply_substitution] Variables in the domain should not be linked"
+    );
+
+    (* Link the variables of the substitution *)
+    List.iter (fun (v,t) -> v.link <- (TLink t)) subst;
+
+    (* Apply the substitution on the element *)
+    let new_elt = f_iter_elt elt apply_on_term in
+
+    (* Unlink the variables of the substitution *)
+    List.iter (fun (v,_) -> v.link <- NoLink) subst;
+
+    new_elt
+
   (*********** Iterators ************)
 
   let fold f elt subst = List.fold_left (fun e (x,t) -> f e x t) elt subst

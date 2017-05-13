@@ -56,6 +56,8 @@ module SDF : sig
   (** [iter_within_var_type k] {% $\Solved$ %} [f g] applies the function [g] on every deduction fact [psi] of {% $\SetRestr{\Solved}{k}$. %} *)
   val iter_within_var_type : int -> t -> (Fact.deduction -> unit) -> unit
 
+  val tail_iter_within_var_type : int -> t -> (Fact.deduction -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
+
   (** [apply] {% $\Solved$~$\Sigma$~$\sigma$ %} returns the set {% $\Solved\Sigma\sigma$.%}*)
   val apply : t -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t  -> t
 
@@ -289,6 +291,8 @@ module Uniformity_Set : sig
   (** [iter] {% $\Set$ %} [f] applies the function [f] to all pairs {% $(\xi,t) \in \Set$.
       Warning : The order in which the function [iter] goes through the pairs of $\Set$ is unspecified. %}*)
   val iter : t -> (recipe -> protocol_term -> unit) -> unit
+
+  val unify_multiple_opt : t -> ((snd_ord, axiom) Subst.t * t) option
 
   (** {3 Testing} *)
 

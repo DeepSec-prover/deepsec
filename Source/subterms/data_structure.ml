@@ -127,6 +127,10 @@ module SDF = struct
     with
     | Out_of_type -> ()
 
+  let tail_iter_within_var_type k sdf f f_next =
+    SDF_Map.tail_iter_until (fun cell f_next_1 -> f cell.g_fact f_next_1) (fun cell -> cell.g_var_type > k) sdf.map_ground
+      (fun () -> SDF_Map.tail_iter_until (fun cell f_next_1 -> f cell.fact f_next_1) (fun cell -> cell.var_type > k) sdf.map f_next)
+
   let map_protocol_term sdf f =
     if sdf.last_entry_ground
     then
@@ -1330,15 +1334,21 @@ module Uniformity_Set = struct
   let add uniset recipe pterm =
     try
       let recipe_single = Subterm.find pterm uniset.single in
-      if is_equal Recipe recipe_single recipe
+      let new_recipe_set = Recipe_Set.of_list [recipe; recipe_single] in
+      if Recipe_Set.is_singleton new_recipe_set
       then uniset
-      else
-        { single = Subterm.remove pterm uniset.single; multiple = Subterm.add pterm (Recipe_Set.of_list [recipe; recipe_single]) uniset.multiple }
+      else { single = Subterm.remove pterm uniset.single; multiple = Subterm.add pterm new_recipe_set uniset.multiple }
     with
-      | Not_found -> { uniset with multiple = Subterm.add_or_replace pterm (Recipe_Set.singleton recipe) (fun set_recipe -> Recipe_Set.add recipe set_recipe) uniset.multiple }
+      | Not_found ->
+          begin
+            try
+              { uniset with multiple = Subterm.replace pterm (fun set_recipe -> Recipe_Set.add recipe set_recipe) uniset.multiple }
+            with
+            | Not_found -> { uniset with single = Subterm.add pterm recipe uniset.single }
+          end
 
   let map_recipe uniset f =
-    let single =  ref (Subterm.map (fun r -> f r) uniset.single) in
+    let single = ref (Subterm.map (fun r -> f r) uniset.single) in
     let multiple = ref Subterm.empty in
 
     Subterm.iter (fun pterm set_recipe ->
@@ -1362,8 +1372,14 @@ module Uniformity_Set = struct
       let pterm' = f pterm in
       try
         let recipe_single',single' = Subterm.remove_exception pterm' !single in
-        single := single';
-        multiple := Subterm.add pterm' (Recipe_Set.of_list [recipe_single'; recipe_single]) !multiple
+        let new_recipe_set = Recipe_Set.of_list [recipe_single'; recipe_single] in
+
+        if not (Recipe_Set.is_singleton new_recipe_set)
+        then
+          begin
+            single := single';
+            multiple := Subterm.add pterm' new_recipe_set !multiple
+          end
       with
         | Not_found -> single := Subterm.add pterm' recipe_single !single
     ) uniset.single;
@@ -1430,11 +1446,47 @@ module Uniformity_Set = struct
     with
       | Not_found -> None
 
+  let unify_multiple_opt uniset =
+    Config.debug (fun () ->
+      Subterm.iter (fun _ set_recipe ->
+        if Recipe_Set.is_singleton set_recipe || Recipe_Set.is_empty set_recipe
+        then Config.internal_error "[data_structure.ml >> unify_multiple_opt] There should not be singletons or empty sets."
+      ) uniset.multiple
+    );
+    if Subterm.is_empty uniset.multiple
+    then Some(Subst.identity,uniset)
+    else
+      begin
+        let list_of_equations = ref [] in
+
+        Subterm.iter (fun _ set_recipe ->
+          Recipe_Set.choose_and_apply (fun r1 r2 -> list_of_equations := (r1,r2) :: !list_of_equations) set_recipe
+        ) uniset.multiple;
+
+        try
+          let subst = Subst.unify Recipe !list_of_equations in
+          Config.debug (fun () ->
+            if Subst.is_identity subst
+            then Config.internal_error "[data_structure.ml >> unify_multiple_opt] The substitution can't be the identity."
+          );
+          let uniset_single =
+            Subst.apply_generalised subst uniset.multiple (fun uni_m f ->
+              Subterm.fold (fun term recipe_set uni_s ->
+                let r = f (Recipe_Set.choose recipe_set) in
+                Subterm.add term r uni_s
+              ) uni_m (Subterm.map f uniset.single)
+            )
+          in
+          let uniset' = { single = uniset_single; multiple = Subterm.empty } in
+          Some (subst,uniset')
+        with
+          | Subst.Not_unifiable -> None
+      end
+
   let exists_pair_with_same_protocol_term uniset f =
     Subterm.exists (fun _ set_recipe ->
       Recipe_Set.exists_distinct_pair f set_recipe
       ) uniset.multiple
-
 end
 
 (*****************************************
