@@ -1790,7 +1790,7 @@ let update_Data_structure_Eq_implies () =
   )
 
 let apply_Data_structure_Eq_implies (type a) (type b) (at:(a,b) atom) (form:(a,b) Eq.t) (term1:(a,b) term) (term2:(a,b) term) =
-  let result = Eq.implies at form term1 term2 in
+  let result = Eq.implies at form [] in
 
   let test_terminal,_ = test_Data_structure_Eq_implies at form term1 term2 result in
   produce_test_terminal test_terminal

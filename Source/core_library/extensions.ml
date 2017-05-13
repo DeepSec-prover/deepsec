@@ -58,6 +58,9 @@ module Map = struct
     val singleton: key -> 'a -> 'a t
     val remove: key -> 'a t -> 'a t
     val remove_exception: key -> 'a t -> 'a * 'a t
+
+    val add_or_remove : key -> 'a -> ('a -> bool) -> 'a t -> 'a t
+
     val merge:
           (key -> 'a option -> 'b option -> 'c option) -> 'a t -> 'b t -> 'c t
     val union: (key -> 'a -> 'a -> 'a option) -> 'a t -> 'a t -> 'a t
@@ -185,7 +188,7 @@ module Map = struct
           if c = 0 then Node {l; v; d = f d; r; h}
           else if c < 0
           then Node {l = replace x f l; v; d; r; h}
-          else Node {l; v; d; r = replace x f r; h} 
+          else Node {l; v; d; r = replace x f r; h}
 
     let rec find_first_aux v0 d0 f = function
         Empty ->
@@ -332,6 +335,24 @@ module Map = struct
             let ll = remove x l in if l == ll then m else bal ll v d r
           else
             let rr = remove x r in if r == rr then m else bal l v d rr
+
+    let rec add_or_remove x data f = function
+      | Empty ->
+          Node{l=Empty; v=x; d=data; r=Empty; h=1}
+      | Node {l; v; d; r; _} as m ->
+          let c = Ord.compare x v in
+          if c = 0
+          then
+            if f d
+            then merge l r
+            else m
+          else if c < 0
+          then
+            let ll = add_or_remove x data f l in
+            if l == ll then m else bal ll v d r
+          else
+            let rr = add_or_remove x data f r in
+            if r == rr then m else bal l v d rr
 
     let rec remove_exception x = function
         Empty ->
@@ -508,6 +529,16 @@ module Map = struct
           let r' = filter p r in
           if pvd then if l==l' && r==r' then m else join l' v d r'
           else concat l' r'
+
+    let rec map_or_remove f f_remove = function
+      | Empty -> Empty
+      | Node {l; v; d; r; _} ->
+          let ll = map_or_remove f f_remove l in
+          let rr = map_or_remove f f_remove r in
+          let dd = f d in
+          if f_remove v dd
+          then concat ll rr
+          else join ll v dd rr
 
     let rec partition p = function
         Empty -> (Empty, Empty)

@@ -1062,9 +1062,9 @@ module Eq = struct
 
   let test_implies_Recipe : ((snd_ord, axiom) t -> (snd_ord, axiom) term -> (snd_ord, axiom) term -> bool -> unit) ref = ref (fun _ _ _ _ -> ())
 
-  let test_implies (type a) (type b) (at:(a,b) atom) (form: (a,b) t) (term1:(a,b) term) (term2:(a,b) term) (res:bool) = match at with
+  (*let test_implies (type a) (type b) (at:(a,b) atom) (form: (a,b) t) (term1:(a,b) term) (term2:(a,b) term) (res:bool) = match at with
     | Protocol -> !test_implies_Protocol form term1 term2 res
-    | Recipe -> !test_implies_Recipe form term1 term2 res
+    | Recipe -> !test_implies_Recipe form term1 term2 res*)
 
   let update_test_implies (type a) (type b) (at:(a,b) atom) (f: (a, b) t -> (a, b) term -> (a, b) term -> bool -> unit) = match at with
     | Protocol -> test_implies_Protocol := f
@@ -1129,17 +1129,12 @@ module Eq = struct
         with
         | Is_Bot -> Bot
 
-  let implies at form t1 t2 =
+  let implies at form term_list =
     try
-      let subst = Subst.unify at [(t1,t2)] in
-
-      let res = apply at form subst = Bot in
-      Config.test (fun () -> test_implies at form t1 t2 res);
-      res
+      let subst = Subst.unify at term_list in
+      apply at form subst = Bot
     with
-      | Subst.Not_unifiable ->
-          Config.test (fun () -> test_implies at form t1 t2 true);
-          true
+      | Subst.Not_unifiable -> true
 
   let extract = function
     | Top -> None, Top
@@ -1179,7 +1174,10 @@ module Uniformity_Set = struct
 
   type t =
     {
-      single : recipe Subterm.t;
+      gterm_grecipe : recipe Subterm.t;
+      gterm_recipe : recipe Subterm.t;
+      term_grecipe : recipe Subterm.t;
+      term_recipe : recipe Subterm.t;
       multiple : Recipe_Set.t Subterm.t
     }
 
@@ -1187,7 +1185,12 @@ module Uniformity_Set = struct
 
   let display out ?(rho = None) ?(per_line = 8) ?(tab = 0) uniset = match out with
     | Testing ->
-        if Subterm.is_empty uniset.single && Subterm.is_empty uniset.multiple
+        if
+          Subterm.is_empty uniset.gterm_grecipe &&
+          Subterm.is_empty uniset.gterm_recipe &&
+          Subterm.is_empty uniset.term_grecipe &&
+          Subterm.is_empty uniset.term_recipe &&
+          Subterm.is_empty uniset.multiple
         then emptyset Testing
         else
           begin
@@ -1197,7 +1200,10 @@ module Uniformity_Set = struct
                 elements := (recipe,term) :: !elements
               ) recipe_set
             ) uniset.multiple;
-            Subterm.iter (fun term recipe -> (recipe,term) :: !elements) uniset.single;
+            Subterm.iter (fun term recipe -> (recipe,term) :: !elements) uniset.gterm_grecipe;
+            Subterm.iter (fun term recipe -> (recipe,term) :: !elements) uniset.gterm_recipe;
+            Subterm.iter (fun term recipe -> (recipe,term) :: !elements) uniset.term_recipe;
+            Subterm.iter (fun term recipe -> (recipe,term) :: !elements) uniset.term_grecipe;
             let sorted_elements = List.sort (fun (r1,_) (r2,_) -> order Recipe r1 r2) !elements in
 
             let s = List.length sorted_elements in
@@ -1213,25 +1219,20 @@ module Uniformity_Set = struct
             !str
           end
     | Latex ->
-        if Subterm.is_empty uniset.single && Subterm.is_empty uniset.multiple
+        if
+          Subterm.is_empty uniset.gterm_grecipe &&
+          Subterm.is_empty uniset.gterm_recipe &&
+          Subterm.is_empty uniset.term_grecipe &&
+          Subterm.is_empty uniset.term_recipe &&
+          Subterm.is_empty uniset.multiple
         then emptyset Latex
         else
           begin
-            let s = Subterm.fold (fun _ recipe_set acc -> (Recipe_Set.cardinal recipe_set) + acc) uniset.multiple (Subterm.cardinal uniset.single) in
+            let s = Subterm.fold (fun _ recipe_set acc -> (Recipe_Set.cardinal recipe_set) + acc) uniset.multiple ((Subterm.cardinal uniset.gterm_grecipe) + (Subterm.cardinal uniset.gterm_recipe) + (Subterm.cardinal uniset.term_grecipe) + (Subterm.cardinal uniset.term_recipe)) in
             let str = ref "\\left\\{ \\begin{array}{l} " in
             let current_number = ref 1 in
-            Subterm.iter (fun term recipe_set ->
-              Recipe_Set.iter (fun recipe ->
-                if !current_number >= s
-                then str := Printf.sprintf "%s(%s,%s) \\end{array}\\right\\}" !str (display Latex ~rho:rho Recipe recipe) (display Latex ~rho:rho Protocol term)
-                else if (!current_number / per_line)*per_line = !current_number
-                then str := Printf.sprintf "%s(%s,%s),\\\\" !str (display Latex ~rho:rho Recipe recipe) (display Latex ~rho:rho Protocol term)
-                else str := Printf.sprintf "%s(%s,%s), " !str(display Latex ~rho:rho Recipe recipe) (display Latex ~rho:rho Protocol term);
 
-                incr current_number
-              ) recipe_set
-            ) uniset.multiple;
-            Subterm.iter (fun term recipe ->
+            let f_display term recipe =
               if !current_number >= s
               then str := Printf.sprintf "%s(%s,%s) \\end{array}\\right\\}" !str (display Latex ~rho:rho Recipe recipe) (display Latex ~rho:rho Protocol term)
               else if (!current_number / per_line)*per_line = !current_number
@@ -1239,29 +1240,33 @@ module Uniformity_Set = struct
               else str := Printf.sprintf "%s(%s,%s), " !str(display Latex ~rho:rho Recipe recipe) (display Latex ~rho:rho Protocol term);
 
               incr current_number
-            ) uniset.single;
+            in
+
+            Subterm.iter (fun term recipe_set ->
+              Recipe_Set.iter (fun recipe -> f_display term recipe) recipe_set
+            ) uniset.multiple;
+            Subterm.iter f_display uniset.gterm_grecipe;
+            Subterm.iter f_display uniset.gterm_recipe;
+            Subterm.iter f_display uniset.term_grecipe;
+            Subterm.iter f_display uniset.term_recipe;
+
             !str
           end
     | HTML ->
-        if Subterm.is_empty uniset.single && Subterm.is_empty uniset.multiple
+        if
+          Subterm.is_empty uniset.gterm_grecipe &&
+          Subterm.is_empty uniset.gterm_recipe &&
+          Subterm.is_empty uniset.term_grecipe &&
+          Subterm.is_empty uniset.term_recipe &&
+          Subterm.is_empty uniset.multiple
         then emptyset HTML
         else
           begin
-            let s = Subterm.fold (fun _ recipe_set acc -> (Recipe_Set.cardinal recipe_set) + acc) uniset.multiple (Subterm.cardinal uniset.single) in
+            let s = Subterm.fold (fun _ recipe_set acc -> (Recipe_Set.cardinal recipe_set) + acc) uniset.multiple ((Subterm.cardinal uniset.gterm_grecipe) + (Subterm.cardinal uniset.gterm_recipe) + (Subterm.cardinal uniset.term_grecipe) + (Subterm.cardinal uniset.term_recipe)) in
             let str = ref "<table class=\"uniformset\"><tr><td>" in
             let current_number = ref 1 in
-            Subterm.iter (fun term recipe_set ->
-              Recipe_Set.iter (fun recipe ->
-                if !current_number >= s
-                then str := Printf.sprintf "%s(%s,%s)</td></tr></table>" !str (display HTML ~rho:rho Recipe recipe) (display HTML ~rho:rho Protocol term)
-                else if (!current_number / per_line)*per_line = !current_number
-                then str := Printf.sprintf "%s(%s,%s),</td></tr><tr><td>" !str (display HTML ~rho:rho Recipe recipe) (display HTML ~rho:rho Protocol term)
-                else str := Printf.sprintf "%s(%s,%s), " !str (display HTML ~rho:rho Recipe recipe) (display HTML ~rho:rho Protocol term);
 
-                incr current_number
-              ) recipe_set
-            ) uniset.multiple;
-            Subterm.iter (fun term recipe ->
+            let f_display term recipe =
               if !current_number >= s
               then str := Printf.sprintf "%s(%s,%s)</td></tr></table>" !str (display HTML ~rho:rho Recipe recipe) (display HTML ~rho:rho Protocol term)
               else if (!current_number / per_line)*per_line = !current_number
@@ -1269,57 +1274,63 @@ module Uniformity_Set = struct
               else str := Printf.sprintf "%s(%s,%s), " !str (display HTML ~rho:rho Recipe recipe) (display HTML ~rho:rho Protocol term);
 
               incr current_number
-            ) uniset.single;
+            in
+
+            Subterm.iter (fun term recipe_set ->
+              Recipe_Set.iter (fun recipe -> f_display term recipe) recipe_set
+            ) uniset.multiple;
+            Subterm.iter f_display uniset.gterm_grecipe;
+            Subterm.iter f_display uniset.gterm_recipe;
+            Subterm.iter f_display uniset.term_grecipe;
+            Subterm.iter f_display uniset.term_recipe;
             !str
           end
     | _ ->
         let tab_str = create_tab tab in
-        begin match Subterm.fold (fun _ recipe_set acc -> (Recipe_Set.cardinal recipe_set) + acc) uniset.multiple (Subterm.cardinal uniset.single) with
+        begin match Subterm.fold (fun _ recipe_set acc -> (Recipe_Set.cardinal recipe_set) + acc) uniset.multiple ((Subterm.cardinal uniset.gterm_grecipe) + (Subterm.cardinal uniset.gterm_recipe) + (Subterm.cardinal uniset.term_grecipe) + (Subterm.cardinal uniset.term_recipe)) with
           | 0 -> "{}"
           | s when s <= per_line ->
               let str = ref "{ " in
               let current_number = ref 1 in
-              Subterm.iter (fun term recipe_set ->
-                Recipe_Set.iter (fun recipe ->
-                  if !current_number < s
-                  then str := Printf.sprintf "%s(%s,%s); " !str (display out ~rho:rho Recipe recipe) (display out ~rho:rho Protocol term)
-                  else str := Printf.sprintf "%s(%s,%s) }" !str (display out ~rho:rho Recipe recipe) (display out ~rho:rho Protocol term);
 
-                  incr current_number
-                ) recipe_set
-              ) uniset.multiple;
-              Subterm.iter (fun term recipe ->
+              let f_display term recipe =
                 if !current_number < s
                 then str := Printf.sprintf "%s(%s,%s); " !str (display out ~rho:rho Recipe recipe) (display out ~rho:rho Protocol term)
                 else str := Printf.sprintf "%s(%s,%s) }" !str (display out ~rho:rho Recipe recipe) (display out ~rho:rho Protocol term);
 
                 incr current_number
-              ) uniset.single;
+              in
+
+              Subterm.iter (fun term recipe_set ->
+                Recipe_Set.iter (fun recipe -> f_display term recipe) recipe_set
+              ) uniset.multiple;
+              Subterm.iter f_display uniset.gterm_grecipe;
+              Subterm.iter f_display uniset.gterm_recipe;
+              Subterm.iter f_display uniset.term_grecipe;
+              Subterm.iter f_display uniset.term_recipe;
               !str
           | s ->
               let tab_str_inside = create_tab (tab+1) in
               let str = ref (Printf.sprintf "\n%s{\n%s" tab_str tab_str_inside) in
               let current_number = ref 1 in
+
+              let f_display term recipe =
+                if !current_number >= s
+                then str := Printf.sprintf "%s(%s,%s)\n%s}\n" !str (display out ~rho:rho Recipe recipe) (display out ~rho:rho Protocol term) tab_str
+                else if (!current_number / per_line)*per_line = !current_number
+                then str := Printf.sprintf "%s(%s,%s),\n%s" !str (display out ~rho:rho Recipe recipe) (display out ~rho:rho Protocol term) tab_str_inside
+                else str := Printf.sprintf "%s(%s,%s), "!str (display out ~rho:rho Recipe recipe) (display out ~rho:rho Protocol term);
+
+                incr current_number
+              in
+
               Subterm.iter (fun term recipe_set ->
-                Recipe_Set.iter (fun recipe ->
-                  if !current_number >= s
-                  then str := Printf.sprintf "%s(%s,%s)\n%s}\n" !str (display out ~rho:rho Recipe recipe) (display out ~rho:rho Protocol term) tab_str
-                  else if (!current_number / per_line)*per_line = !current_number
-                  then str := Printf.sprintf "%s(%s,%s),\n%s" !str (display out ~rho:rho Recipe recipe) (display out ~rho:rho Protocol term) tab_str_inside
-                  else str := Printf.sprintf "%s(%s,%s), "!str (display out ~rho:rho Recipe recipe) (display out ~rho:rho Protocol term);
-
-                  incr current_number
-                ) recipe_set
+                Recipe_Set.iter (fun recipe -> f_display term recipe) recipe_set
               ) uniset.multiple;
-              Subterm.iter (fun term recipe ->
-                  if !current_number >= s
-                  then str := Printf.sprintf "%s(%s,%s)\n%s}\n" !str (display out ~rho:rho Recipe recipe) (display out ~rho:rho Protocol term) tab_str
-                  else if (!current_number / per_line)*per_line = !current_number
-                  then str := Printf.sprintf "%s(%s,%s),\n%s" !str (display out ~rho:rho Recipe recipe) (display out ~rho:rho Protocol term) tab_str_inside
-                  else str := Printf.sprintf "%s(%s,%s), "!str (display out ~rho:rho Recipe recipe) (display out ~rho:rho Protocol term);
-
-                  incr current_number
-              ) uniset.single;
+              Subterm.iter f_display uniset.gterm_grecipe;
+              Subterm.iter f_display uniset.gterm_recipe;
+              Subterm.iter f_display uniset.term_grecipe;
+              Subterm.iter f_display uniset.term_recipe;
               !str
         end
 
@@ -1327,86 +1338,348 @@ module Uniformity_Set = struct
 
   let empty =
     {
-      single = Subterm.empty;
+      gterm_grecipe = Subterm.empty;
+      gterm_recipe = Subterm.empty;
+      term_grecipe = Subterm.empty;
+      term_recipe = Subterm.empty;
       multiple = Subterm.empty
     }
 
   let add uniset recipe pterm =
     try
-      let recipe_single = Subterm.find pterm uniset.single in
-      let new_recipe_set = Recipe_Set.of_list [recipe; recipe_single] in
-      if Recipe_Set.is_singleton new_recipe_set
-      then uniset
-      else { single = Subterm.remove pterm uniset.single; multiple = Subterm.add pterm new_recipe_set uniset.multiple }
+      { uniset with multiple = Subterm.replace pterm (fun recipe_set -> Recipe_Set.add recipe recipe_set)  uniset.multiple }
     with
       | Not_found ->
-          begin
-            try
-              { uniset with multiple = Subterm.replace pterm (fun set_recipe -> Recipe_Set.add recipe set_recipe) uniset.multiple }
-            with
-            | Not_found -> { uniset with single = Subterm.add pterm recipe uniset.single }
+          let multiple_ref = ref uniset.multiple in
+          let singleton = Recipe_Set.singleton recipe in
+
+          let f_remove_test recipe' =
+            let recipe_set = Recipe_Set.add recipe' singleton in
+            if Recipe_Set.is_singleton recipe_set
+            then false
+            else (multiple_ref := Subterm.add pterm recipe_set !multiple_ref; true)
+          in
+
+          begin match is_ground pterm, is_ground recipe with
+            | true,true ->
+                begin try
+                  let recipe', map = Subterm.remove_exception pterm uniset.gterm_recipe in
+                  multiple_ref := Subterm.add pterm (Recipe_Set.add recipe' (Recipe_Set.singleton recipe)) !multiple_ref;
+                  { uniset with gterm_recipe = map ; multiple = !multiple_ref }
+                with Not_found ->
+                  let single = Subterm.add_or_remove pterm recipe f_remove_test uniset.gterm_grecipe in
+                  { uniset with multiple = !multiple_ref; gterm_grecipe = single }
+                end
+            | true,false ->
+                begin try
+                  let recipe', map = Subterm.remove_exception pterm uniset.gterm_grecipe in
+                  multiple_ref := Subterm.add pterm (Recipe_Set.add recipe' (Recipe_Set.singleton recipe)) !multiple_ref;
+                  { uniset with gterm_grecipe = map ; multiple = !multiple_ref }
+                with Not_found ->
+                  let single = Subterm.add_or_remove pterm recipe f_remove_test uniset.gterm_recipe in
+                  { uniset with multiple = !multiple_ref; gterm_recipe = single }
+                end
+            | false, true ->
+                begin try
+                  let recipe', map = Subterm.remove_exception pterm uniset.term_recipe in
+                  multiple_ref := Subterm.add pterm (Recipe_Set.add recipe' (Recipe_Set.singleton recipe)) !multiple_ref;
+                  { uniset with term_recipe = map ; multiple = !multiple_ref }
+                with Not_found ->
+                  let single = Subterm.add_or_remove pterm recipe f_remove_test uniset.term_grecipe in
+                  { uniset with multiple = !multiple_ref; term_grecipe = single }
+                end
+            | false, false ->
+                begin try
+                  let recipe', map = Subterm.remove_exception pterm uniset.term_grecipe in
+                  multiple_ref := Subterm.add pterm (Recipe_Set.add recipe' (Recipe_Set.singleton recipe)) !multiple_ref;
+                  { uniset with term_grecipe = map ; multiple = !multiple_ref }
+                with Not_found ->
+                  let single = Subterm.add_or_remove pterm recipe f_remove_test uniset.term_recipe in
+                  { uniset with multiple = !multiple_ref; term_recipe = single }
+                end
           end
 
   let map_recipe uniset f =
-    let single = ref (Subterm.map (fun r -> f r) uniset.single) in
+    let gterm_grecipe_ref = ref uniset.gterm_grecipe
+    and term_grecipe_ref = ref uniset.term_grecipe in
+
+    let gterm_recipe_ref = ref
+      (Subterm.map_or_remove f (fun pterm recipe ->
+        if is_ground recipe
+        then (gterm_grecipe_ref := Subterm.add pterm recipe !gterm_grecipe_ref; true)
+        else false
+      ) uniset.gterm_recipe)
+    in
+    let term_recipe_ref = ref
+      (Subterm.map_or_remove f (fun pterm recipe ->
+        if is_ground recipe
+        then (term_grecipe_ref := Subterm.add pterm recipe !term_grecipe_ref; true)
+        else false
+      ) uniset.term_recipe)
+    in
+
+    let multiple =
+      Subterm.map_or_remove (Recipe_Set.map f) (fun pterm recipe_set ->
+        if Recipe_Set.is_singleton recipe_set
+        then
+          let recipe = Recipe_Set.choose_optimised recipe_set in
+          match is_ground pterm, is_ground recipe with
+            | true,true -> gterm_grecipe_ref := Subterm.add pterm recipe !gterm_grecipe_ref; true
+            | true,false -> gterm_recipe_ref := Subterm.add pterm recipe !gterm_recipe_ref; true
+            | false,true -> term_grecipe_ref := Subterm.add pterm recipe !term_grecipe_ref; true
+            | false, false -> term_recipe_ref := Subterm.add pterm recipe !term_recipe_ref; true
+        else false
+      ) uniset.multiple
+    in
+
+    {
+      gterm_grecipe = !gterm_grecipe_ref;
+      gterm_recipe = !gterm_recipe_ref;
+      term_grecipe = !term_grecipe_ref;
+      term_recipe = !term_recipe_ref;
+      multiple = multiple
+    }
+
+  let map_protocol uniset f =
+    let gterm_grecipe = ref uniset.gterm_grecipe in
+    let gterm_recipe = ref uniset.gterm_recipe in
+    let term_grecipe = ref Subterm.empty in
+    let term_recipe = ref Subterm.empty in
     let multiple = ref Subterm.empty in
 
-    Subterm.iter (fun pterm set_recipe ->
-      let set_recipe' =
-        Recipe_Set.fold (fun r acc_set ->
-          Recipe_Set.add (f r) acc_set
-          ) set_recipe Recipe_Set.empty
-      in
-      if Recipe_Set.is_singleton set_recipe'
-      then single := Subterm.add pterm (Recipe_Set.choose_optimised set_recipe') !single
-      else multiple := Subterm.add pterm set_recipe' !multiple
-    ) uniset.multiple;
-
-    { single = !single; multiple = !multiple }
-
-  let map_protocol_term uniset f =
-    let single = ref Subterm.empty
-    and multiple = ref Subterm.empty in
-
-    Subterm.iter (fun pterm recipe_single ->
-      let pterm' = f pterm in
+    let try_add_in_multi pterm recipe f_next =
       try
-        let recipe_single',single' = Subterm.remove_exception pterm' !single in
-        let new_recipe_set = Recipe_Set.of_list [recipe_single'; recipe_single] in
-
-        if not (Recipe_Set.is_singleton new_recipe_set)
-        then
-          begin
-            single := single';
-            multiple := Subterm.add pterm' new_recipe_set !multiple
-          end
+        multiple := Subterm.replace pterm (fun recipe_set -> Recipe_Set.add recipe recipe_set) !multiple
       with
-        | Not_found -> single := Subterm.add pterm' recipe_single !single
-    ) uniset.single;
+        | Not_found -> f_next ()
+    in
+
+    let check_in_opposite pterm recipe map_ref f_next =
+      try
+        let recipe', map = Subterm.remove_exception pterm !map_ref in
+        multiple := Subterm.add pterm (Recipe_Set.add recipe' (Recipe_Set.singleton recipe)) !multiple;
+        map_ref := map
+      with
+        | Not_found -> f_next ()
+    in
+
+    let f_remove_test pterm recipe_1 recipe_2 =
+      let recipe_set = Recipe_Set.add recipe_2 (Recipe_Set.singleton recipe_1) in
+      if Recipe_Set.is_singleton recipe_set
+      then false
+      else (multiple := Subterm.add pterm recipe_set !multiple; true)
+    in
+
+    Subterm.iter (fun pterm recipe ->
+      let pterm' = f pterm in
+
+      try_add_in_multi pterm' recipe (fun () ->
+        if is_ground pterm'
+        then
+          check_in_opposite pterm' recipe gterm_recipe (fun () ->
+            gterm_grecipe := Subterm.add_or_remove pterm' recipe (f_remove_test pterm' recipe) !gterm_grecipe
+          )
+        else
+          check_in_opposite pterm' recipe term_recipe (fun () ->
+            term_grecipe := Subterm.add_or_remove pterm' recipe (f_remove_test pterm' recipe) !term_grecipe
+          )
+      )
+    ) uniset.term_grecipe;
+
+    Subterm.iter (fun pterm recipe ->
+      let pterm' = f pterm in
+
+      try_add_in_multi pterm' recipe (fun () ->
+        if is_ground pterm'
+        then
+          check_in_opposite pterm' recipe gterm_grecipe (fun () ->
+            gterm_recipe := Subterm.add_or_remove pterm' recipe (f_remove_test pterm' recipe) !gterm_recipe
+          )
+        else
+          check_in_opposite pterm' recipe term_grecipe (fun () ->
+            term_recipe := Subterm.add_or_remove pterm' recipe (f_remove_test pterm' recipe) !term_recipe
+          )
+      )
+    ) uniset.term_recipe;
+
+    let check_map map_ref pterm recipe_set f_next =
+      try
+        let recipe, map = Subterm.remove_exception pterm !map_ref in
+        map_ref := map;
+        multiple := Subterm.add pterm (Recipe_Set.add recipe recipe_set) !multiple
+      with
+        | Not_found -> f_next ()
+    in
 
     Subterm.iter (fun pterm recipe_set ->
       let pterm' = f pterm in
-      try
-        let recipe_single',single' = Subterm.remove_exception pterm' !single in
-        single := single';
-        multiple := Subterm.add pterm' (Recipe_Set.add recipe_single' recipe_set) !multiple
-      with
-        | Not_found -> multiple := Subterm.add_or_replace pterm' recipe_set (fun recipe_set' -> Recipe_Set.union recipe_set' recipe_set) !multiple
+      if is_ground pterm'
+      then
+        check_map gterm_recipe pterm' recipe_set (fun () ->
+          check_map gterm_grecipe pterm' recipe_set (fun () ->
+            multiple := Subterm.add_or_replace pterm' recipe_set (fun recipe_set' -> Recipe_Set.union recipe_set' recipe_set) !multiple
+          )
+        )
+      else
+        check_map term_recipe pterm' recipe_set (fun () ->
+          check_map term_grecipe pterm' recipe_set (fun () ->
+            multiple := Subterm.add_or_replace pterm' recipe_set (fun recipe_set' -> Recipe_Set.union recipe_set' recipe_set) !multiple
+          )
+        )
     ) uniset.multiple;
 
-    { single = !single; multiple = !multiple }
+    {
+      gterm_grecipe = !gterm_grecipe;
+      gterm_recipe = !gterm_recipe;
+      term_grecipe = !term_grecipe;
+      term_recipe = !term_recipe;
+      multiple = !multiple
+    }
 
-  let apply uniset subst_snd subst_fst =
+  let map_protocol_recipe uniset f_protocol f_recipe =
+    let gterm_grecipe = ref uniset.gterm_grecipe in
 
-    let snd_applied =
-      if Subst.is_identity subst_snd
-      then uniset
-      else Subst.apply subst_snd uniset map_recipe
+    let term_grecipe = ref Subterm.empty in
+    let term_recipe = ref Subterm.empty in
+    let multiple = ref Subterm.empty in
+
+    let gterm_recipe = ref
+      (Subterm.map_or_remove f_recipe (fun pterm recipe ->
+        if is_ground recipe
+        then (gterm_grecipe := Subterm.add pterm recipe !gterm_grecipe; true)
+        else false
+      ) uniset.gterm_recipe)
     in
 
-    if Subst.is_identity subst_fst
-    then snd_applied
-    else Subst.apply subst_fst snd_applied map_protocol_term
+    let try_add_in_multi pterm recipe f_next =
+      try
+        multiple := Subterm.replace pterm (fun recipe_set -> Recipe_Set.add recipe recipe_set) !multiple
+      with
+        | Not_found -> f_next ()
+    in
+
+    let check_in_opposite pterm recipe map_ref f_next =
+      try
+        let recipe', map = Subterm.remove_exception pterm !map_ref in
+        multiple := Subterm.add pterm (Recipe_Set.add recipe' (Recipe_Set.singleton recipe)) !multiple;
+        map_ref := map
+      with
+        | Not_found -> f_next ()
+    in
+
+    let f_remove_test pterm recipe_1 recipe_2 =
+      let recipe_set = Recipe_Set.add recipe_2 (Recipe_Set.singleton recipe_1) in
+      if Recipe_Set.is_singleton recipe_set
+      then false
+      else (multiple := Subterm.add pterm recipe_set !multiple; true)
+    in
+
+    Subterm.iter (fun pterm recipe ->
+      let pterm' = f_protocol pterm in
+
+      try_add_in_multi pterm' recipe (fun () ->
+        if is_ground pterm'
+        then
+          check_in_opposite pterm' recipe gterm_recipe (fun () ->
+            gterm_grecipe := Subterm.add_or_remove pterm' recipe (f_remove_test pterm' recipe) !gterm_grecipe
+          )
+        else
+          check_in_opposite pterm' recipe term_recipe (fun () ->
+            term_grecipe := Subterm.add_or_remove pterm' recipe (f_remove_test pterm' recipe) !term_grecipe
+          )
+      )
+    ) uniset.term_grecipe;
+
+    Subterm.iter (fun pterm recipe ->
+      let pterm' = f_protocol pterm in
+      let recipe' = f_recipe recipe in
+
+      try_add_in_multi pterm' recipe' (fun () ->
+        match is_ground pterm', is_ground recipe' with
+          | true, true ->
+              check_in_opposite pterm' recipe' gterm_recipe (fun () ->
+                gterm_grecipe := Subterm.add_or_remove pterm' recipe' (f_remove_test pterm' recipe') !gterm_grecipe
+              )
+          | true, false ->
+              check_in_opposite pterm' recipe' gterm_grecipe (fun () ->
+                gterm_recipe := Subterm.add_or_remove pterm' recipe' (f_remove_test pterm' recipe') !gterm_recipe
+              )
+          | false, true ->
+              check_in_opposite pterm' recipe' term_recipe (fun () ->
+                term_grecipe := Subterm.add_or_remove pterm' recipe' (f_remove_test pterm' recipe') !term_grecipe
+              )
+          | false, false ->
+              check_in_opposite pterm' recipe' term_grecipe (fun () ->
+                term_recipe := Subterm.add_or_remove pterm' recipe' (f_remove_test pterm' recipe') !term_recipe
+              )
+      )
+    ) uniset.term_recipe;
+
+    let check_map map_ref pterm recipe_set f_next =
+      try
+        let recipe, map = Subterm.remove_exception pterm !map_ref in
+        map_ref := map;
+        multiple := Subterm.add pterm (Recipe_Set.add recipe recipe_set) !multiple
+      with
+      | Not_found -> f_next ()
+    in
+
+    Subterm.iter (fun pterm recipe_set ->
+      let pterm' = f_protocol pterm in
+      let recipe_set' = Recipe_Set.map f_recipe recipe_set in
+
+      if Recipe_Set.is_singleton recipe_set'
+      then
+        let recipe = Recipe_Set.choose_optimised recipe_set' in
+
+        try_add_in_multi pterm' recipe (fun () ->
+          match is_ground pterm' , is_ground recipe with
+            | true,true ->
+                check_in_opposite pterm' recipe gterm_recipe (fun () ->
+                  gterm_grecipe := Subterm.add_or_remove pterm' recipe (f_remove_test pterm' recipe) !gterm_grecipe
+                )
+            | true, false ->
+                check_in_opposite pterm' recipe gterm_grecipe (fun () ->
+                  gterm_recipe := Subterm.add_or_remove pterm' recipe (f_remove_test pterm' recipe) !gterm_recipe
+                )
+            | false, true ->
+                check_in_opposite pterm' recipe term_recipe (fun () ->
+                  term_grecipe := Subterm.add_or_remove pterm' recipe (f_remove_test pterm' recipe) !term_grecipe
+                )
+            | false, false ->
+                check_in_opposite pterm' recipe term_grecipe (fun () ->
+                  term_recipe := Subterm.add_or_remove pterm' recipe (f_remove_test pterm' recipe) !term_recipe
+                )
+        )
+      else
+        if is_ground pterm'
+        then
+          check_map gterm_recipe pterm' recipe_set' (fun () ->
+            check_map gterm_grecipe pterm' recipe_set' (fun () ->
+              multiple := Subterm.add_or_replace pterm' recipe_set' (fun recipe_set'' -> Recipe_Set.union recipe_set'' recipe_set') !multiple
+            )
+          )
+        else
+          check_map term_recipe pterm' recipe_set' (fun () ->
+            check_map term_grecipe pterm' recipe_set' (fun () ->
+              multiple := Subterm.add_or_replace pterm' recipe_set' (fun recipe_set'' -> Recipe_Set.union recipe_set'' recipe_set') !multiple
+            )
+          )
+    ) uniset.multiple;
+
+    {
+      gterm_grecipe = !gterm_grecipe;
+      gterm_recipe = !gterm_recipe;
+      term_grecipe = !term_grecipe;
+      term_recipe = !term_recipe;
+      multiple = !multiple
+    }
+
+  let apply uniset subst_snd subst_fst = match Subst.is_identity subst_fst, Subst.is_identity subst_snd with
+    | true, true -> uniset
+    | true, false -> Subst.apply subst_snd uniset map_recipe
+    | false, true -> Subst.apply subst_fst uniset map_protocol
+    | false, false -> Subst.apply_both subst_fst subst_snd uniset map_protocol_recipe
 
   (******* Iterators ********)
 
@@ -1414,37 +1687,66 @@ module Uniformity_Set = struct
     Subterm.iter (fun term recipe_set ->
       Recipe_Set.iter (fun recipe -> f recipe term) recipe_set
     ) uniset.multiple;
-    Subterm.iter (fun term recipe -> f recipe term) uniset.single
+    Subterm.iter (fun term recipe -> f recipe term) uniset.gterm_grecipe;
+    Subterm.iter (fun term recipe -> f recipe term) uniset.gterm_recipe;
+    Subterm.iter (fun term recipe -> f recipe term) uniset.term_grecipe;
+    Subterm.iter (fun term recipe -> f recipe term) uniset.term_recipe
 
   (******* Testing ********)
 
-  let exists uniset recipe term = match Subterm.find_opt term uniset.single with
-    | None ->
-        begin match Subterm.find_opt term uniset.multiple with
-          | None -> false
-          | Some r_set -> Recipe_Set.exists (is_equal Recipe recipe) r_set
-        end
-    | Some r -> is_equal Recipe recipe r
+  let exists uniset recipe term =
+    if is_ground term
+    then
+      match Subterm.find_opt term uniset.gterm_grecipe with
+        | None ->
+            begin match Subterm.find_opt term uniset.gterm_recipe with
+              | None ->
+                  begin match Subterm.find_opt term uniset.multiple with
+                    | None -> false
+                    | Some r_set -> Recipe_Set.exists (is_equal Recipe recipe) r_set
+                  end
+              | Some r -> is_equal Recipe recipe r
+            end
+        | Some r -> is_equal Recipe recipe r
+    else
+      match Subterm.find_opt term uniset.term_grecipe with
+        | None ->
+            begin match Subterm.find_opt term uniset.term_recipe with
+              | None ->
+                  begin match Subterm.find_opt term uniset.multiple with
+                    | None -> false
+                    | Some r_set -> Recipe_Set.exists (is_equal Recipe recipe) r_set
+                  end
+              | Some r -> is_equal Recipe recipe r
+            end
+        | Some r -> is_equal Recipe recipe r
 
   let find_protocol_term uniset pterm =
-    try
-      let recipe = Subterm.find pterm uniset.single in
-      Some recipe
-    with
-      | Not_found ->
-          begin try
-            let set_recipe = Subterm.find pterm uniset.multiple in
-            Some (Recipe_Set.choose_optimised set_recipe)
-          with
-            | Not_found -> None
-          end
-
-  let find_protocol_term_within_multiple uniset pterm f =
-    try
-      let set_recipe = Subterm.find pterm uniset.multiple in
-      Recipe_Set.find_option f set_recipe
-    with
-      | Not_found -> None
+    if is_ground pterm
+    then
+      match Subterm.find_opt pterm uniset.gterm_grecipe with
+        | None ->
+            begin match Subterm.find_opt pterm uniset.gterm_recipe with
+              | None ->
+                  begin match Subterm.find_opt pterm uniset.multiple with
+                    | None -> None
+                    | Some set_recipe -> Some (Recipe_Set.choose_optimised set_recipe)
+                  end
+              | r -> r
+            end
+        | r -> r
+    else
+      match Subterm.find_opt pterm uniset.term_grecipe with
+        | None ->
+            begin match Subterm.find_opt pterm uniset.term_recipe with
+              | None ->
+                  begin match Subterm.find_opt pterm uniset.multiple with
+                    | None -> None
+                    | Some set_recipe -> Some (Recipe_Set.choose_optimised set_recipe)
+                  end
+              | r -> r
+            end
+        | r -> r
 
   let unify_multiple_opt uniset =
     Config.debug (fun () ->
@@ -1469,24 +1771,44 @@ module Uniformity_Set = struct
             if Subst.is_identity subst
             then Config.internal_error "[data_structure.ml >> unify_multiple_opt] The substitution can't be the identity."
           );
-          let uniset_single =
-            Subst.apply_generalised subst uniset.multiple (fun uni_m f ->
-              Subterm.fold (fun term recipe_set uni_s ->
-                let r = f (Recipe_Set.choose recipe_set) in
-                Subterm.add term r uni_s
-              ) uni_m (Subterm.map f uniset.single)
+          let new_uniset =
+            Subst.apply subst uniset (fun uni f ->
+              let gterm_grecipe_ref = ref uni.gterm_grecipe
+              and term_grecipe_ref = ref uni.term_grecipe
+              and gterm_recipe_ref = ref (Subterm.map f uni.gterm_recipe)
+              and term_recipe_ref = ref (Subterm.map f uni.term_recipe) in
+
+              Subterm.iter (fun pterm recipe_set ->
+                let recipe = f (Recipe_Set.choose recipe_set) in
+                match is_ground pterm, is_ground recipe with
+                  | true, true -> gterm_grecipe_ref := Subterm.add pterm recipe !gterm_grecipe_ref
+                  | true, false -> gterm_recipe_ref := Subterm.add pterm recipe !gterm_recipe_ref
+                  | false, true -> term_grecipe_ref := Subterm.add pterm recipe !term_grecipe_ref
+                  | false, false -> term_recipe_ref := Subterm.add pterm recipe !term_recipe_ref
+              ) uni.multiple;
+
+              {
+                gterm_grecipe = !gterm_grecipe_ref;
+                gterm_recipe = !gterm_recipe_ref;
+                term_grecipe = !term_grecipe_ref;
+                term_recipe = !term_recipe_ref;
+                multiple = Subterm.empty
+              }
             )
           in
-          let uniset' = { single = uniset_single; multiple = Subterm.empty } in
-          Some (subst,uniset')
+          Some (subst,new_uniset)
         with
           | Subst.Not_unifiable -> None
       end
 
   let exists_pair_with_same_protocol_term uniset f =
-    Subterm.exists (fun _ set_recipe ->
-      Recipe_Set.exists_distinct_pair f set_recipe
-      ) uniset.multiple
+    let list_of_equations = ref [] in
+
+    Subterm.iter (fun _ set_recipe ->
+      Recipe_Set.choose_and_apply (fun r1 r2 -> list_of_equations := (r1,r2) :: !list_of_equations) set_recipe
+    ) uniset.multiple;
+
+    f !list_of_equations
 end
 
 (*****************************************

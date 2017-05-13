@@ -256,7 +256,7 @@ module Eq : sig
   val is_top : ('a, 'b) t -> bool
 
   (** [implies at] {% $\phi$~$t_1$~$t_2$ returns true if and only if $\phi \Rightarrow t_1 \neqs t_2$ is a tautology.%}*)
-  val implies : ('a, 'b) atom -> ('a, 'b) t -> ('a, 'b) term -> ('a, 'b) term -> bool
+  val implies : ('a, 'b) atom -> ('a, 'b) t -> (('a, 'b) term * ('a, 'b) term) list -> bool
 
   (** {3 Display} *)
 
@@ -301,11 +301,9 @@ module Uniformity_Set : sig
   (** [find_protocol] {% $\Set$~$t$%} [f] returns [Some] {% $\xi$ if $(\xi,t) \in \Set$ %} and [f] {% $\xi$ %} returns [true]. Otherwise it returns [None].*)
   val find_protocol_term : t -> protocol_term -> recipe option
 
-  val find_protocol_term_within_multiple : t -> protocol_term -> (recipe -> bool) -> recipe option
-
   (** [exists_pair_with_same_protocol_term] {% $\Set$ %} [f] returns [true] if and only if there exist {% $u, \xi_1,\xi_2$ such that
       $\xi_1 \neq \xi_2$, %} [f] {% $\xi_1$~$\xi_2$ %} returns [true] and {% $(\xi_1,u), (\xi_2,u) \in \Set$. %}*)
-  val exists_pair_with_same_protocol_term : t -> (recipe -> recipe -> bool) -> bool
+  val exists_pair_with_same_protocol_term : t -> ((recipe * recipe) list-> bool) -> bool
 
   (** {3 Display} *)
 

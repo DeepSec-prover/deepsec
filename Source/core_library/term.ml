@@ -1599,6 +1599,26 @@ module Subst = struct
         new_elt
       end
 
+  let apply_both (subst_1:(fst_ord,name) t) (subst_2:(snd_ord,axiom) t) elt f_iter_elt =
+    Config.debug (fun () ->
+      if List.exists (fun (v,_) -> v.link <> NoLink) subst_1 || List.exists (fun (v,_) -> v.link <> NoLink) subst_2
+      then Config.internal_error "[term.ml >> Subst.apply_substitution] Variables in the domain should not be linked"
+    );
+
+    (* Link the variables of the substitution *)
+    List.iter (fun (v,t) -> v.link <- (TLink t)) subst_1;
+    List.iter (fun (v,t) -> v.link <- (TLink t)) subst_2;
+
+    (* Apply the substitution on the element *)
+    let new_elt = f_iter_elt elt apply_on_term apply_on_term in
+
+    (* Unlink the variables of the substitution *)
+    List.iter (fun (v,_) -> v.link <- NoLink) subst_1;
+    List.iter (fun (v,_) -> v.link <- NoLink) subst_2;
+
+    new_elt
+
+
   let apply_generalised subst elt f_iter_elt =
     Config.debug (fun () ->
       if List.exists (fun (v,_) -> v.link <> NoLink) subst
