@@ -15,6 +15,7 @@ type symbolic_process =
 
 exception Not_Trace_Equivalent of symbolic_process Constraint_system.t
 
+
 let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_continuation f_next =
 
   let opti_csys_set = Constraint_system.Set.optimise_snd_ord_recipes csys_set in
@@ -454,9 +455,9 @@ let trace_equivalence_private proc1 proc2 =
   with
     | Not_Trace_Equivalent csys -> Not_Equivalent csys
 
-let trace_equivalence sem = match sem with
-  | Classic -> trace_equivalence_classic
-  | Private -> trace_equivalence_private
+let trace_equivalence sem proc1 proc2 = match sem with
+  | Classic -> trace_equivalence_classic proc1 proc2
+  | Private -> trace_equivalence_private proc1 proc2
   | _ -> Config.internal_error "[equivalence.ml >> trace_equivalence] Trace equivalence for this semantics is not yet implemented."
 
 (***** Display ******)

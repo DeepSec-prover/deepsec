@@ -22,7 +22,7 @@ module SDF : sig
       @raise Debug.Internal_error if {% $\xi \in \Tdeux_k \setminus \Tdeux_{k-1}$ for some $k$ and there exists $\dedfact{\zeta}{v} \in \Solved$ s.t.
       $\zeta \in \Tdeux_{k'} \setminus \Tdeux_{k'-1}$ for some $k' > k$. \highdebug %}
       @raise Debug.Internal_error if {% $\xi \in \Tdeux_k \setminus \Tdeux_{k-1}$ for some $k$ and there exists $X \in \Xdeuxi{k} \cap \varsdeux{\xi}$. \highdebug %} *)
-  val add : t -> Fact.deduction ->  t
+  val add : t -> int -> Fact.deduction ->  t
 
   (** {3 Access} *)
 
@@ -49,8 +49,14 @@ module SDF : sig
   (** [iter_id] {% $\Solved$ %} [g] applies the function [g] on every deduction fact [psi] of {% $\Solved$ %}. *)
   val iter_id : t -> (id_recipe_equivalent -> Fact.deduction -> unit) -> unit
 
+  val iter_unmarked : t -> (id_recipe_equivalent -> Fact.deduction -> unit) -> unit
+
+  val remove : t -> id_recipe_equivalent -> t
+
   (** [iter_within_var_type k] {% $\Solved$ %} [f g] applies the function [g] on every deduction fact [psi] of {% $\SetRestr{\Solved}{k}$. %} *)
   val iter_within_var_type : int -> t -> (Fact.deduction -> unit) -> unit
+
+  val tail_iter_within_var_type : int -> t -> (Fact.deduction -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
 
   (** [apply] {% $\Solved$~$\Sigma$~$\sigma$ %} returns the set {% $\Solved\Sigma\sigma$.%}*)
   val apply : t -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t  -> t
@@ -163,6 +169,8 @@ module UF : sig
       and~\citepaper{Rule}{rule:Removal of unsolved formula}. %} *)
   val apply : t -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t  -> t
 
+  val apply_with_gathering : t -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t -> recipe option ref -> Fact.equality option ref -> t
+
   (** [filter fct UF p] returns the set with all the [fct] formulas in [UF] that satisfy predicate [p]. *)
   val filter : 'a Fact.t -> t -> ('a Fact.formula -> bool) -> t
 
@@ -250,7 +258,7 @@ module Eq : sig
   val is_top : ('a, 'b) t -> bool
 
   (** [implies at] {% $\phi$~$t_1$~$t_2$ returns true if and only if $\phi \Rightarrow t_1 \neqs t_2$ is a tautology.%}*)
-  val implies : ('a, 'b) atom -> ('a, 'b) t -> ('a, 'b) term -> ('a, 'b) term -> bool
+  val implies : ('a, 'b) atom -> ('a, 'b) t -> (('a, 'b) term * ('a, 'b) term) list -> bool
 
   (** {3 Display} *)
 
@@ -286,6 +294,8 @@ module Uniformity_Set : sig
       Warning : The order in which the function [iter] goes through the pairs of $\Set$ is unspecified. %}*)
   val iter : t -> (recipe -> protocol_term -> unit) -> unit
 
+  val unify_multiple_opt : t -> ((snd_ord, axiom) Subst.t * t) option
+
   (** {3 Testing} *)
 
   val exists : t -> recipe -> protocol_term -> bool
@@ -293,11 +303,9 @@ module Uniformity_Set : sig
   (** [find_protocol] {% $\Set$~$t$%} [f] returns [Some] {% $\xi$ if $(\xi,t) \in \Set$ %} and [f] {% $\xi$ %} returns [true]. Otherwise it returns [None].*)
   val find_protocol_term : t -> protocol_term -> recipe option
 
-  val find_protocol_term_within_multiple : t -> protocol_term -> (recipe -> bool) -> recipe option
-
   (** [exists_pair_with_same_protocol_term] {% $\Set$ %} [f] returns [true] if and only if there exist {% $u, \xi_1,\xi_2$ such that
       $\xi_1 \neq \xi_2$, %} [f] {% $\xi_1$~$\xi_2$ %} returns [true] and {% $(\xi_1,u), (\xi_2,u) \in \Set$. %}*)
-  val exists_pair_with_same_protocol_term : t -> (recipe -> recipe -> bool) -> bool
+  val exists_pair_with_same_protocol_term : t -> ((recipe * recipe) list-> bool) -> bool
 
   (** {3 Display} *)
 

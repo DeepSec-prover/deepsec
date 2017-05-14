@@ -277,15 +277,16 @@ module Variable : sig
     (** [restict] {% $\rho$~$d$% returns the renaming $\SubRestr{\rho}{x \in \Dom{\rho} \cap d}$. %}*)
     val restrict : ('a, 'b) t -> ('a, 'b) domain -> ('a, 'b) t
 
-    (** [inverse] {% $\rho$ returns $\rho^{-1}$. %}*)
-    val inverse : ('a, 'b) t -> ('a, 'b) t
-
     (** [apply] {% $\rho$ %} [elt map_elt] applies the renaming {% $\rho$ %} on the element [elt]. The function
-        [map_elt] should map the variables contained in the element [elt] on which {% $\rho$ %} should be applied. *)
+        [map_elt] should map the variables contained in the element [elt] on which {% $\rho$ %} should be applied.
+
+        WARNING: The function [map_elt] should not raise an uncaught exception.*)
     val apply : ('a, 'b) t -> 'c -> ('c -> (('a, 'b) variable -> ('a, 'b) variable) -> 'c) -> 'c
 
     (** [apply_on_terms] {% $\rho$ %} [elt map_elt] applies the renaming {% $\rho$ %} on the element [elt]. The function
-        [map_elt] should map the terms contained in the element [elt] on which {% $\rho$ %} should be applied. *)
+        [map_elt] should map the terms contained in the element [elt] on which {% $\rho$ %} should be applied.
+
+        WARNING: The function [map_elt] should not raise an uncaught exception.*)
     val apply_on_terms : ('a, 'b) t -> 'c -> ('c -> (('a, 'b) term -> ('a, 'b) term) -> 'c) -> 'c
 
     (** {4 Display} *)
@@ -458,12 +459,6 @@ val apply_function : symbol -> ('a, 'b) term list -> ('a, 'b) term
     @raise Debug.Internal_error if {% $\rootsymb{t} \not\in \F$. %} *)
 val root : ('a, 'b) term -> symbol
 
-(** [nth_args t i] returns the [i]{^ th} argument of the  term [t].
-    Note that the index [i] start with 1 and not 0. For example, if [t] is the term {% $f(t_1,\ldots t_n)$ %}
-    then [nth_args t i] returns the term {% $t_i$ %}.
-    @raise Debug.Internal_error if {% $\rootsymb{t} \not\in \F$ %} or [t] is a constant or if [i] is not between {% $1$ and $n$. %}*)
-val nth_args : ('a, 'b) term -> int -> ('a, 'b) term
-
 (** [get_args t] returns the list of argument of the term [t]. For example, if [t] is the term {% $f(t_1,\ldots t_n)$ %}
     then [get_args t] returns the list of element {% $t_1,\ldots,t_n$ %}.
     @raise Debug.Internal_error if {% $\rootsymb{t} \not\in \F$ or if $t$ is a constant. %} *)
@@ -524,35 +519,6 @@ val is_function : ('a, 'b) term -> bool
 (** [is_constructor t] returns [true] iff {% $t \in \T(\Fc, \Xun \cup \Npriv)$ when $t$ is a protocol term and
     $t \in \T(\Fc, \Xdeux \cup \AX)$ when $t$ is a recipe. %} *)
 val is_constructor : ('a, 'b) term -> bool
-
-(** {3 Iterators} *)
-
-(** [fold_left_args f acc t] is [f (...(f (f acc t1) t2) ...) tn] if [t] is
-    the term {% $g(t_1,...,t_n)$ %} for some function symbol {% $g$ %}.
-    @raise Debug.Internal_error if {% $\rootsymb{t} \not\in \F$. %} *)
-val fold_left_args : ('c -> ('a, 'b) term -> 'c) -> 'c -> ('a, 'b) term -> 'c
-
-(** [fold_right_args f t acc] is [f t1 (f t2 (...(f tn acc)...))] if [t] is
-    the term {% $g(t_1,...,t_n)$ %} for some function symbol {% $g$ %}.
-    @raise Debug.Internal_error if {% $\rootsymb{t} \not\in \F$. %} *)
-val fold_right_args : (('a, 'b) term -> 'c -> 'c) -> ('a, 'b) term -> 'c -> 'c
-
-(** [map_args f t] is the list [[f t1; ...; f tn]] if [t] is
-    the term {% $g(t_1,...,t_n)$ %} for some function symbol {% $g$ %}.
-    @raise Debug.Internal_error if {% $\rootsymb{t} \not\in \F$. %} *)
-val map_args : (('a, 'b) term -> 'c) -> ('a, 'b) term -> 'c list
-
-(** [fold_left_args2 f acc t l] is [f (...(f (f acc t_1 e_1) t_2 e_2) ...) tn e_n] if [t] is
-    the term {% $g(t_1,...,t_n)$ %} for some function symbol {% $g$ %}
-    and [l] is the list [[e_1;...;e_n]].
-    @raise Debug.Internal_error if {% $\rootsymb{t} \not\in \F$. %}
-    @raise Debug.Internal_error if the arity of {% $\rootsymb{t}$ %} differs from [List.length l]. {% \highdebug %} *)
-val fold_left_args2 : ('c -> ('a, 'b) term -> 'd -> 'c) -> 'c -> ('a, 'b) term -> 'd list -> 'c
-
-(** [fold_left_args3 f acc t_1 t_2] is [f (...(f (f acc u_1 v_1) u_2 v_2) ...) u_n v_n] if [t_1] and [t_2] are
-    the terms {% $g(u_1,...,u_n)$ %} and {% $g(v_1,...,v_n)$ %} for some function symbol {% $g$. %}
-    @raise Debug.Internal_error if {% $\rootsymb{t_1} \not\in \F$ or $\rootsymb{t_2} \not\in \F$ or $\rootsymb{t_2} = \rootsymb{t_1}$. %} *)
-val fold_left_args3 : ('e -> ('a, 'b) term -> ('c, 'd) term -> 'e) -> 'e -> ('a, 'b) term -> ('c, 'd) term  -> 'e
 
 (** {3 Display} *)
 
@@ -641,6 +607,10 @@ module Subst : sig
       done by applying [apply_substitution subst term_c (fun (t1,t2) f -> (t1, f t2))].
       *)
   val apply : ('a, 'b) t -> 'c -> ('c -> (('a, 'b) term -> ('a, 'b) term) -> 'c) -> 'c
+
+  val apply_both : (fst_ord, name) t -> (snd_ord, axiom) t -> 'a -> ('a  -> ((fst_ord, name) term -> (fst_ord, name) term) -> ((snd_ord, axiom) term -> (snd_ord, axiom) term) -> 'a) -> 'a
+
+  val apply_generalised : ('a, 'b) t -> 'c -> ('c -> (('a, 'b) term -> ('a, 'b) term) -> 'd) -> 'd
 
   (* [fold f elt] {% $\sigma$ %} returns [f (... (f (f elt] {% $x_1$~$t_1$%}[)] {% $x_2$~$t_2$%}[) ...)]{% $x_n$~$t_n$ where $\sigma = \{ x_i \rightarrow t_i \}_{i=1}^n$.
     Note that the order of the variables in $\sigma$ is unspecified. %}*)
@@ -965,6 +935,14 @@ module Fact : sig
 
   val apply_snd_ord_on_fact : 'a t -> 'a -> (snd_ord, axiom) Subst.t -> 'a
 
+  val apply_ded_with_gathering : deduction formula -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t -> recipe option ref -> deduction formula
+
+  val apply_eq_with_gathering : equality formula -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t -> equality option ref -> equality formula
+
+  val apply_snd_ord_ded_with_gathering : deduction formula -> (snd_ord, axiom) Subst.t -> recipe option ref -> deduction formula
+
+  val apply_snd_ord_eq_with_gathering : equality formula -> (snd_ord, axiom) Subst.t ->  equality option ref -> equality formula
+
   (** {3 Display functions} *)
 
   val display_deduction_fact : Display.output -> ?rho:display_renamings option -> deduction -> string
@@ -997,6 +975,8 @@ module Rewrite_rules : sig
       from~\citepaper{Section}{sec:transformation rules} where it is define as a set that contains all possible renaming.%}
       @raise Internal_error when [f] is not a destructor. *)
   val skeletons : protocol_term -> symbol -> int -> skeleton list
+
+  val rename_skeletons : skeleton -> snd_ord -> skeleton
 
   (** The function [skeletons] will be used for the application of the rule {% \Rew. However, we use it
       in a different but equivalent way than in~\paper. Typically, in~\paper, to apply the rule \Rew,
@@ -1036,20 +1016,6 @@ end
 (** {2 Tools} *)
 
 module type SDF =
-  sig
-
-    type t
-
-    (** [exists] {% $\Solved$ %} [f] returns [true] iff there exists a solved deduction formula [psi]  of {% $\Solved$ %}
-        such that [f psi] returns [true]. *)
-    val exists : t -> (Fact.deduction_formula -> bool) -> bool
-
-    (** [find_first] {% $\Solved$ %} [f] returns [f psi] where [psi] is the first solved deduction formula of {% $\Solved$ %}
-        (from left to right) such that [f psi] is not [None], when such [psi] exists. Otherwise, it returns [None]. *)
-    val find_first : t -> (Fact.deduction_formula -> 'a option) -> 'a option
-  end
-
-module type SDF_Sub =
   sig
 
     type t
@@ -1111,30 +1077,8 @@ module type Uni =
     val exists : t -> recipe -> protocol_term -> bool
   end
 
-module Tools_General :
-  functor (SDF : SDF) (DF : DF) ->
-    sig
-
-    (** [consequence k] {% $\Solved$~$\Df$ %} [o_psi] {% $\xi$~$t$ %} returns [true] iff one of the following properties holds: {%
-        \begin{itemize}
-          \item %} [o_psi = None] {% and $(\xi,t) \in \Consequence{\Solved \cup \SetRestr{\Df}{k}}$
-          \item %} [o_psi = Some(]{% $\psi$%}[)] {% and $\psi = (\clause{S}{H}{\varphi})$ and $(\xi,t) \in \Consequence{\Solved \cup \SetRestr{\Df}{k} \cup \varphi}$
-        \end{itemize} %}*)
-    val consequence : int -> SDF.t -> DF.t -> 'a Fact.formula option -> recipe -> protocol_term -> bool
-
-    (** [partial_consequence] is related to [consequence]. When [at = Protocol] (resp. [Recipe]), [partial_consequence at k] {% $\Solved$~$\Df$ %} [o_psi] {% $t$ (resp. $\xi$)
-        \begin{itemize}
-        \item %} returns [None] if {% for all $\xi$ (resp. for all $t$),%} [mem k] {% $\Solved$~$\Df$ %} [o_psi] {% $\xi$~$t$ %} returns [false]; {% otherwise
-        \item %} returns [Some(]{% $\xi$%}[)] (resp. [Some(]{% $t$%}[)]) such that [mem k] {% $\Solved$~$\Df$ %} [o_psi] {% $\xi$~$t$ %} returns [true]. {%
-        \end{itemize} %}*)
-    val partial_consequence : ('a, 'b) atom -> int -> SDF.t -> DF.t -> 'c Fact.formula option  -> ('a, 'b) term -> (recipe * protocol_term) option
-
-    (** [is_df_solved DF] returns [true] if and only if all basic deduction facts in [DF] have distinct variables as right hand terms. *)
-    val is_df_solved : DF.t -> bool
-  end
-
 module Tools_Subterm :
-  functor (SDF : SDF_Sub) (DF : DF) (Uni : Uni)->
+  functor (SDF : SDF) (DF : DF) (Uni : Uni)->
     sig
 
     (** {3 Consequence} *)
