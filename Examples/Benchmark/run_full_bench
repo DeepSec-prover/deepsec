@@ -1,7 +1,7 @@
 #!/bin/bash
 
 function run_SatEquiv {
-  (ulimit -t 259200 > .tmp; ulimit -H -t > .tmp; ulimit -m 200000000 > .tmp; ulimit -v 200000000 > .tmp; ulimit -H -v > .tmp;
+  (ulimit -t 86400 > .tmp; ulimit -H -t > .tmp; ulimit -m 200000000 > .tmp; ulimit -v 200000000 > .tmp; ulimit -H -v > .tmp;
   { /usr/bin/time -f "Time %E / Memory %Mk" ../../deepsec -semantics Private -distributed 35 -distant_workers grenade deepsec 23 -nb_sets $4 Protocols_SatEquiv/$3 > .deepsec_tmp$1 ;} 2> .time_tmp$1;
   time=$(< .time_tmp$1);
   query_result1=$(grep "Query" .deepsec_tmp$1);
@@ -11,7 +11,7 @@ function run_SatEquiv {
 }
 
 function run_DeepSec {
-  (ulimit -t 259200 > .tmp; ulimit -H -t > .tmp; ulimit -m 200000000 > .tmp; ulimit -v 200000000 > .tmp; ulimit -H -v > .tmp;
+  (ulimit -t 86400 > .tmp; ulimit -H -t > .tmp; ulimit -m 200000000 > .tmp; ulimit -v 200000000 > .tmp; ulimit -H -v > .tmp;
   { /usr/bin/time -f "Time %E / Memory %Mk" ../../deepsec -semantics Private -distributed 35 -distant_workers grenade deepsec 23 -nb_sets $4 ../trace_equivalence/$3 > .deepsec_tmp$1 ;} 2> .time_tmp$1;
   time=$(< .time_tmp$1);
   query_result1=$(grep "Query" .deepsec_tmp$1);
