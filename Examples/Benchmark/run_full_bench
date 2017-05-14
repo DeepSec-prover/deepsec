@@ -78,7 +78,6 @@ run_DeepSec 41 "** Simple 7 par" toys/Simple_7_par.txt 4000
 run_SatEquiv 2 "DenningSacco 6" Denning-Sacco-A/ds-6.txt 4000
 run_SatEquiv 7 "Needham-Schroeder 6" Needham-Schroeder/ns-6.txt 4000
 run_SatEquiv 17 "WMF 6" Wide-Mouth-Frog/wmf-without-timestamps-6.txt 500
-run_SatEquiv 14 "Toy 3" Toy/token-3.txt 5000
 
 run_DeepSec 45 "** PrivAuth Std: 3s (different agents)" private_authentication/private_authentication_3sessions-diff.txt 3000
 run_DeepSec 46 "** PrivAuth Std: 3s (same agents)" private_authentication/private_authentication_3sessions-same.txt 3000
@@ -103,6 +102,7 @@ run_SatEquiv 21 "Yahalom-lowe 6" Yahalom-lowe/yahalom-lowe-6.txt 5000
 run_SatEquiv 11 "Otway-Rees 6" Otway-Rees/or-tagged-6.txt 5000
 run_SatEquiv 25 "Yahalom-Paulson 6" Yahalom-Paulson/yahalom-paulson-6.txt 6000
 
+run_SatEquiv 14 "Toy 3" Toy/token-3.txt 5000
 run_SatEquiv 3 "DenningSacco 7" Denning-Sacco-A/ds-7.txt 7000
 run_SatEquiv 4 "DenningSacco 10" Denning-Sacco-A/ds-7.txt 12000
 run_SatEquiv 8 "Needham-Schroeder 7" Needham-Schroeder/ns-7.txt 7000
