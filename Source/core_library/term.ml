@@ -939,17 +939,21 @@ module Symbol = struct
 
   let all_projection = Hashtbl.create 7
 
+  let special_constructor = Hashtbl.create 7
+
   let empty_signature () =
     all_constructors := [];
     all_destructors := [];
     all_tuple := [];
     number_of_constructors :=0;
     number_of_destructors := 0;
-    Hashtbl.reset all_projection
+    Hashtbl.reset all_projection;
+    Hashtbl.reset special_constructor
 
   type setting = { all_t : symbol list ; all_p : (int * symbol list) list ; all_c : symbol list ; all_d : symbol list ; nb_c : int ; nb_d : int ; cst : symbol }
 
   let set_up_signature setting =
+    accumulator_nb_symb := setting.nb_c + setting.nb_d;
     dummy_constant := Some setting.cst;
     all_constructors := setting.all_c;
     all_destructors := setting.all_d;
@@ -957,6 +961,7 @@ module Symbol = struct
     number_of_constructors := setting.nb_c;
     number_of_destructors := setting.nb_d;
     Hashtbl.reset all_projection;
+    Hashtbl.reset special_constructor;
     List.iter (fun (ar,list_proj) ->
       let array_proj = Array.of_list list_proj in
       Hashtbl.add all_projection ar array_proj
@@ -1063,6 +1068,15 @@ module Symbol = struct
         number_of_destructors := ar + !number_of_destructors;
         symb
       end;;
+
+  let get_fresh_constant n =
+    try
+      Hashtbl.find special_constructor n
+    with
+    | Not_found ->
+        let c = { name = "__dummy_c"; arity = 0; cat = Constructor; index_s = !accumulator_nb_symb } in
+        incr accumulator_nb_symb;
+        c
 
   let get_constant () = match !dummy_constant with
     | None ->
@@ -1743,6 +1757,21 @@ module Subst = struct
 
   let restrict subst f = List.filter_unordered (fun (x,_) -> f x) subst
 
+  let restrict_list subst l =
+    List.iter (link_search Protocol) l;
+
+    let subst' =
+      List.fold_left (fun acc (x,t) ->
+        match x.link with
+          | FLink -> (x,t)::acc
+          | NoLink -> acc
+          | _ -> Config.internal_error "[term.ml >> Subst.restrict_list] Unexpected link"
+      ) [] subst
+    in
+
+    cleanup_search Protocol;
+    subst'
+
   let is_extended_by (type a) (type b) (at:(a,b) atom) (subst_1:(a,b) t) (subst_2:(a,b) t) =
 
     let subst = apply subst_2 subst_1 (fun s f ->
@@ -2021,6 +2050,8 @@ module Diseq = struct
   let of_substitution (type a) (type b) (at:(a,b) atom) (sigma:(a,b) Subst.t) (l:(a,b) variable list) =
     if sigma = []
     then (Bot:(a,b) t)
+    else if l = []
+    then (Diseq (Subst.equations_of sigma):(a,b) t)
     else
       begin
         Config.test (fun () ->
@@ -3210,6 +3241,45 @@ module Rewrite_rules = struct
     in
     Variable.Renaming.cleanup Recipe;
     skel'
+
+  let rename_skeletons_with_basic_facts skel ded_facts v_type =
+
+    let rec rename_recipe term = match term.term with
+      | Var(v) ->
+          begin match v.link with
+            | VLink(v') -> { term with term = Var(v') }
+            | NoLink ->
+                let v' = Variable.fresh Recipe v.quantifier v_type in
+                Variable.Renaming.link Recipe v v';
+                { term with term = Var(v') }
+            | _ -> Config.internal_error "[term.ml >> Rewrite_rules.rename_skeletons] Unexpected link"
+          end
+      | Func(f,args) -> {term with term = Func(f,List.map rename_recipe args)}
+      | _ -> term
+    in
+
+    let rename_var v = match v.link with
+      | VLink(v') -> v'
+      | NoLink ->
+          let v' = Variable.fresh Recipe v.quantifier v_type in
+          Variable.Renaming.link Recipe v v';
+          v'
+      | _ -> Config.internal_error "[term.ml >> Rewrite_rules.rename_skeletons] Unexpected link (2)"
+    in
+
+
+    let skel' =
+      { skel with
+        variable_at_position = rename_var skel.variable_at_position;
+        recipe = rename_recipe skel.recipe;
+        basic_deduction_facts = List.fold_left (fun acc bfct -> { bfct with BasicFact.var = rename_var bfct.BasicFact.var}::acc) [] skel.basic_deduction_facts
+      }
+    in
+
+    let ded_facts' = List.fold_left (fun acc bfct -> { bfct with BasicFact.var = rename_var bfct.BasicFact.var}::acc) [] ded_facts in
+
+    Variable.Renaming.cleanup Recipe;
+    skel',ded_facts'
 
   let rec explore_list x_snd = function
     | [] -> Config.internal_error "[term.ml >> Rewrite_rules.explore_list] The list should not be empty"

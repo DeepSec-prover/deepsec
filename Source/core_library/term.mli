@@ -87,6 +87,8 @@ module Symbol : sig
 
   val get_constant : unit -> symbol
 
+  val get_fresh_constant : int -> symbol
+
   (** The list of all constructors (included the tupple function symbol) used in the algorithm.*)
   val all_constructors : symbol list ref
 
@@ -574,6 +576,8 @@ module Subst : sig
       restricted to the variables $x$ such that $\ffun$~$x$ %} = [true].*)
   val restrict : ('a, 'b) t -> (('a, 'b) variable -> bool) -> ('a, 'b) t
 
+  val restrict_list : (fst_ord, name) t -> (fst_ord, name) variable list -> (fst_ord, name) t
+
   (** {3 Access} *)
 
   (** [get_vars_with_list at s f_q l] adds the variables in [s] whose quantifier satisfies [f_q] in the list [l]. The addition of a variable as the union of sets, i.e. there is no dupplicate in the resulting list. *)
@@ -977,6 +981,8 @@ module Rewrite_rules : sig
   val skeletons : protocol_term -> symbol -> int -> skeleton list
 
   val rename_skeletons : skeleton -> snd_ord -> skeleton
+
+  val rename_skeletons_with_basic_facts : skeleton -> BasicFact.t list -> snd_ord -> skeleton * BasicFact.t list
 
   (** The function [skeletons] will be used for the application of the rule {% \Rew. However, we use it
       in a different but equivalent way than in~\paper. Typically, in~\paper, to apply the rule \Rew,

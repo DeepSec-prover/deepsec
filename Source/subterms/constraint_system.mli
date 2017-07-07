@@ -260,6 +260,8 @@ module Rule : sig
 
   val rewrite : 'a Set.t -> 'a continuation -> (unit -> unit) -> unit
 
+  val rewrite_EQ : 'a Set.t -> 'a continuation -> (unit -> unit) -> unit
+
   (**/**)
 
   val update_test_normalisation : (unit Set.t -> unit Set.t list -> unit) -> unit

@@ -7,6 +7,23 @@ open Extensions
 ***       Constraint systems       ***
 **************************************)
 
+type skeleton_EQ =
+  {
+    skeleton : Rewrite_rules.skeleton;
+    ded_facts : BasicFact.t list; (* Does not include the deduction fact corresponding to the position of the skeleton*)
+    fst_subst : (fst_ord, name) Subst.t;
+    diseq : (fst_ord, name) Diseq.t list
+  }
+
+(*
+let display_skeleton_EQ skel =
+  Printf.sprintf "<p><ul><li>Skeleton = %s</li><li>ded_facts = %s</li><li>Subst = %s</li><li>Diseq = %s</li></ul></p>"
+    (Rewrite_rules.display_skeleton HTML skel.skeleton)
+    (display_list (BasicFact.display HTML) ", " skel.ded_facts)
+    (Subst.display HTML Protocol skel.fst_subst)
+    (display_list (Diseq.display HTML Protocol) ", " skel.diseq)
+*)
+
 type 'a t =
   {
     additional_data : 'a;
@@ -49,7 +66,11 @@ type 'a t =
     equality_to_checked : Data_structure.id_recipe_equivalent list;
 
     skeletons_checked : (Data_structure.id_recipe_equivalent * Rewrite_rules.skeleton) list;
-    skeletons_to_check : (Data_structure.id_recipe_equivalent * Rewrite_rules.skeleton) list
+    skeletons_to_check : (Data_structure.id_recipe_equivalent * Rewrite_rules.skeleton) list;
+
+    (* Note that in the following skeleton*)
+    skeletons_checked_EQ : (Data_structure.id_recipe_equivalent * skeleton_EQ) list;
+    skeletons_to_check_EQ : (Data_structure.id_recipe_equivalent * skeleton_EQ) list
   }
 
 module Ordered_Snd_Ord_Variable = struct
@@ -61,6 +82,64 @@ module Ordered_Snd_Ord_Variable = struct
 end
 
 exception Bot
+
+(******** Functions for skeleton_EQ *********)
+
+let refresh_skeleton_EQ skel var_type =
+  let (new_skeleton, new_ded_facts) = Rewrite_rules.rename_skeletons_with_basic_facts skel.skeleton skel.ded_facts var_type in
+
+  { skel with
+    skeleton = new_skeleton;
+    ded_facts = new_ded_facts
+  }
+
+let create_skeleton_EQ sdf_term skel =
+  let vars_sdf = get_vars Protocol sdf_term in
+
+  let (f,args,_) = skel.Rewrite_rules.rewrite_rule in
+  let vars = get_vars Protocol skel.Rewrite_rules.p_term in
+  let fst_renaming = Variable.Renaming.fresh Protocol vars Existential in
+
+  let x_fst = ref None in
+
+  let new_p_term, new_ded_facts =
+    Variable.Renaming.apply_on_terms
+      fst_renaming
+      (skel.Rewrite_rules.p_term,skel.Rewrite_rules.basic_deduction_facts)
+      (fun (t,ded_facts) f ->
+        f t,
+        List.fold_left (fun acc bfct ->
+          if Variable.is_equal (BasicFact.get_snd_ord_variable bfct) skel.Rewrite_rules.variable_at_position
+          then (x_fst := Some (f (BasicFact.get_protocol_term bfct)); acc)
+          else (BasicFact.create (BasicFact.get_snd_ord_variable bfct) (f (BasicFact.get_protocol_term bfct)))::acc
+        ) [] ded_facts
+      )
+  in
+
+  match !x_fst with
+    | None -> Config.internal_error "[Constraint_system.ml >> create_skeleton_EQ] Unexpected case"
+    | Some x ->
+        let equations = [(x,sdf_term); (new_p_term, apply_function f args)] in
+        begin
+          try
+            let subst = Subst.unify Protocol equations in
+            let ded_facts =
+              Subst.apply subst new_ded_facts (fun bfct_l f ->
+                List.fold_left (fun acc bfct ->
+                  (BasicFact.create (BasicFact.get_snd_ord_variable bfct) (f (BasicFact.get_protocol_term bfct)))::acc
+                ) [] bfct_l
+              )
+            in
+            let subst' = Subst.restrict_list subst vars_sdf in
+            Some {
+              skeleton = skel;
+              ded_facts = ded_facts;
+              fst_subst = subst';
+              diseq = []
+            }
+          with
+            | Subst.Not_unifiable -> None
+        end
 
 (******** Access functions ********)
 
@@ -262,7 +341,10 @@ let empty data =
     equality_to_checked = [];
 
     skeletons_checked = [];
-    skeletons_to_check = []
+    skeletons_to_check = [];
+
+    skeletons_to_check_EQ = [];
+    skeletons_checked_EQ = []
   }
 
 let apply_substitution csys subst =
@@ -336,7 +418,10 @@ let add_axiom csys ax t =
     then Config.internal_error "[constraint_system.ml >> add_axiom] The axiom given as argument should have an index equal to the size of the frame + 1";
 
     if csys.skeletons_to_check <> []
-    then Config.internal_error "[constraint_system.ml >> add_axiom] All skeletons should have been checked."
+    then Config.internal_error "[constraint_system.ml >> add_axiom] All skeletons should have been checked.";
+
+    if csys.skeletons_to_check_EQ <> []
+    then Config.internal_error "[constraint_system.ml >> add_axiom] All skeletons_EQ should have been checked."
   );
 
   let new_size = csys.size_frame + 1 in
@@ -347,7 +432,9 @@ let add_axiom csys ax t =
     skeletons_checked = [];
     skeletons_to_check = List.fold_left (fun acc (id,skel) -> (id,Rewrite_rules.rename_skeletons skel var_type)::acc) [] csys.skeletons_checked;
     uf = UF.add_deduction csys.uf [Fact.create Fact.Deduction (Fact.create_deduction_fact (of_axiom ax) t) [] []];
-    size_frame = new_size
+    size_frame = new_size;
+    skeletons_checked_EQ = [];
+    skeletons_to_check_EQ = List.fold_left (fun acc (id,skel) -> (id,refresh_skeleton_EQ skel var_type)::acc) [] csys.skeletons_checked_EQ
   }
 
 let replace_additional_data csys data = { csys with additional_data = data }
@@ -483,7 +570,10 @@ let create size_frame df eq1 eq2 sdf uf sub1 sub2 uni il1 il2 il3 is1 is2 =
     equality_to_checked = il3;
 
     skeletons_checked = is1;
-    skeletons_to_check = is2
+    skeletons_to_check = is2;
+
+    skeletons_to_check_EQ = [];
+    skeletons_checked_EQ = []
   }
 
 (**** Display *****)
@@ -1052,6 +1142,56 @@ let simple_of_private csys ch =
     simp_Sub_Cons = Uniformity_Set.add csys.sub_cons (of_variable xsnd) ch
   }
 
+let simple_of_skeleton_EQ csys id_sdf skeleton =
+
+  let snd_univ = List.fold_left (fun acc ded -> (BasicFact.get_snd_ord_variable ded)::acc) [] skeleton.ded_facts in
+
+  let mgu_hypothesis = skeleton.fst_subst
+  and b_fct_hypothesis = skeleton.ded_facts
+  and diseq_hypothesis = skeleton.diseq in
+
+  let ded_sdf = SDF.get csys.sdf id_sdf in
+  let recipe_sdf = Fact.get_recipe ded_sdf in
+  let subst_head = Subst.create Recipe skeleton.skeleton.Rewrite_rules.variable_at_position recipe_sdf in
+  let recipe_head = Subst.apply subst_head skeleton.skeleton.Rewrite_rules.recipe (fun t f -> f t) in
+
+  let snd_renaming = Variable.Renaming.fresh Recipe snd_univ Existential in
+
+  let b_fct_hypothesis_2, recipe_head_2 =
+    Variable.Renaming.apply_on_terms snd_renaming (b_fct_hypothesis,recipe_head) (fun (l,r) f ->
+      List.fold_left (fun acc b_fct ->
+        let v = of_variable (BasicFact.get_snd_ord_variable b_fct) in
+        let v' = variable_of (f v) in
+        (BasicFact.create v' (BasicFact.get_protocol_term b_fct))::acc
+        ) [] l,
+      f r
+      )
+  in
+
+  let df_0 = DF.apply csys.df mgu_hypothesis
+  and eqfst_0 = Eq.apply Protocol csys.eqfst mgu_hypothesis
+  and sdf_0 = SDF.apply csys.sdf Subst.identity mgu_hypothesis
+  and sub_cons_0 = Uniformity_Set.apply csys.sub_cons Subst.identity mgu_hypothesis in
+
+  let eqfst_1 = List.fold_left Eq.wedge eqfst_0 diseq_hypothesis in
+
+  let df_1 = List.fold_left DF.add df_0 b_fct_hypothesis_2 in
+  let (sub_cons_1,sdf_1) =
+    if is_function recipe_head_2 && Symbol.get_arity (root recipe_head_2) > 0
+    then List.fold_left (fun (acc_sub_cons_1,acc_sdf_1) r -> Tools.add_in_uniset acc_sub_cons_1 acc_sdf_1 df_1 r) (sub_cons_0,sdf_0) (get_args recipe_head_2)
+    else (sub_cons_0,sdf_0)
+  in
+
+  let simple_csys = {
+    simp_DF = df_1;
+    simp_EqFst = eqfst_1;
+    simp_EqSnd = csys.eqsnd;
+    simp_SDF = sdf_1;
+    simp_Sub_Cons = sub_cons_1
+  } in
+
+  (snd_renaming, simple_csys)
+
 (***** Access *****)
 
 let get_vars_simple_with_list (type a) (type b) (at: (a,b) atom) csys (vars_l: (a,b) variable list) =
@@ -1179,6 +1319,47 @@ type data_shared =
     share_i_subst_snd : (snd_ord, axiom) Subst.t
   }
 
+let apply_subst_on_skeleton_EQ subst skel_list =
+  List.fold_left (fun acc (id_sdf,skel) ->
+    let equations1 = Subst.equations_of skel.fst_subst in
+    let equations2 = Subst.equations_of subst in
+    let equations3 = List.rev_append equations1 equations2 in
+
+    try
+      let new_fst_subst = Subst.unify Protocol equations3 in
+
+      let new_ded_fact =
+        Subst.apply new_fst_subst skel.ded_facts (fun ded_l f ->
+          List.fold_left (fun acc1 ded ->
+            let ded1 = BasicFact.create (BasicFact.get_snd_ord_variable ded) (f (BasicFact.get_protocol_term ded)) in
+            ded1::acc1
+          ) [] ded_l
+        )
+      in
+
+      let new_diseq =
+        List.fold_left (fun acc1 diseq ->
+          let diseq1 = Diseq.apply_and_normalise Protocol new_fst_subst diseq in
+
+          if Diseq.is_top diseq1
+          then acc1
+          else if Diseq.is_bot diseq1
+          then raise Subst.Not_unifiable
+          else diseq1::acc1
+        ) [] skel.diseq
+      in
+
+      let new_skel =
+        { skel with
+          ded_facts = new_ded_fact;
+          fst_subst = new_fst_subst;
+          diseq = new_diseq
+        }
+      in
+      (id_sdf,new_skel)::acc
+    with Subst.Not_unifiable -> acc
+  ) [] skel_list
+
 let apply_mgs_and_gather csys data_shared (subst_snd,list_var) =
 
   let new_df_1 = List.fold_left (fun df x_snd ->
@@ -1209,6 +1390,9 @@ let apply_mgs_and_gather csys data_shared (subst_snd,list_var) =
     if Eq.is_bot new_eqfst
     then raise Bot;
 
+    let new_skeletons_to_check_EQ = apply_subst_on_skeleton_EQ subst_fst csys.skeletons_to_check_EQ
+    and new_skeletons_checked_EQ = apply_subst_on_skeleton_EQ subst_fst csys.skeletons_checked_EQ in
+
     let new_df_3 = DF.apply new_df_2 subst_fst in
 
     let new_sdf_2 = SDF.apply new_sdf_1 Subst.identity subst_fst
@@ -1238,7 +1422,9 @@ let apply_mgs_and_gather csys data_shared (subst_snd,list_var) =
         uf = new_uf_1;
         i_subst_fst = new_i_subst_fst;
         i_subst_snd = data_shared.share_i_subst_snd;
-        sub_cons = new_sub_cons_2
+        sub_cons = new_sub_cons_2;
+        skeletons_checked_EQ = new_skeletons_checked_EQ;
+        skeletons_to_check_EQ = new_skeletons_to_check_EQ
       }
     in
 
@@ -1278,6 +1464,9 @@ let apply_mgs_from_gathering csys data_shared (subst_snd,list_var) =
     if Eq.is_bot new_eqfst
     then raise Bot;
 
+    let new_skeletons_to_check_EQ = apply_subst_on_skeleton_EQ subst_fst csys.skeletons_to_check_EQ
+    and new_skeletons_checked_EQ = apply_subst_on_skeleton_EQ subst_fst csys.skeletons_checked_EQ in
+
     let new_df_3 = DF.apply new_df_2 subst_fst in
 
     let new_sdf_2 = SDF.apply new_sdf_1 Subst.identity subst_fst
@@ -1307,7 +1496,9 @@ let apply_mgs_from_gathering csys data_shared (subst_snd,list_var) =
         uf = new_uf_1;
         i_subst_fst = new_i_subst_fst;
         i_subst_snd = data_shared.share_i_subst_snd;
-        sub_cons = new_sub_cons_2
+        sub_cons = new_sub_cons_2;
+        skeletons_checked_EQ = new_skeletons_checked_EQ;
+        skeletons_to_check_EQ = new_skeletons_to_check_EQ
       }
     in
 
@@ -1777,9 +1968,6 @@ module Rule = struct
       then Config.internal_error "[constraint_system.ml >> normalisation_SDF_or_consequence] The rules should only be applied with the presence of deduction formulas.";
     );
 
-    let consequence_recipe = ref None in
-    let one_is_not_consequence = ref false in
-
     let rec go_through_csys_set = function
       | [] -> None
       | csys::q ->
@@ -1788,25 +1976,12 @@ module Rule = struct
           let term = Fact.get_protocol_term (Fact.get_head ded_formula) in
 
           match Tools.uniform_consequence csys.sdf csys.df csys.sub_cons term with
-            | None ->
-                one_is_not_consequence := true;
-                begin match !consequence_recipe with
-                  | None -> go_through_csys_set q
-                  | Some recipe -> Some recipe
-                end
-            | Some recipe ->
-                begin match !consequence_recipe, !one_is_not_consequence  with
-                  | None,false -> consequence_recipe := Some recipe; go_through_csys_set q
-                  | None, true -> Some recipe
-                  | Some _, true -> Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] This case should not happen."
-                  | _, _ -> go_through_csys_set q
-                end
+            | None -> go_through_csys_set q
+            | Some recipe -> Some recipe
     in
 
     match go_through_csys_set csys_set.Set.csys_list with
       | None ->
-          if !one_is_not_consequence
-          then
             (* Addition to SDF -> add to SDF and remove from UF *)
             let new_csys_list =
               List.fold_left (fun acc_csys csys ->
@@ -1822,7 +1997,10 @@ module Rule = struct
                   then Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] All sdf should have been checked when we add a new element to SDF, i.e.  we did not respect the order of rule Sat < Equality < Rew";
 
                   if csys.equality_to_checked <> []
-                  then Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] All pair of deduction fact from sdf should have been checked for equalities at that point."
+                  then Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] All pair of deduction fact from sdf should have been checked for equalities at that point.";
+
+                  if csys.skeletons_checked_EQ <> []
+                  then Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] No skeletons_EQ should have been checked when we had a SDF."
                 );
                 let head = Fact.get_head ded_formula in
 
@@ -1833,6 +2011,14 @@ module Rule = struct
                   List.fold_left (fun acc f ->
                     List.rev_append (Rewrite_rules.skeletons (Fact.get_protocol_term head) f csys.size_frame) acc
                     ) [] !Symbol.all_destructors
+                in
+
+                let new_skeletons_EQ =
+                  List.fold_left (fun acc skel ->
+                    match create_skeleton_EQ (Fact.get_protocol_term head) skel with
+                      | None -> acc
+                      | Some skel_eq -> (id_last,skel_eq)::acc
+                  ) csys.skeletons_to_check_EQ new_skeletons
                 in
 
                 let (sub_cons_1,new_sdf_1) =
@@ -1852,6 +2038,8 @@ module Rule = struct
                 { csys with
                   skeletons_checked = [];
                   skeletons_to_check = List.rev_append csys.skeletons_checked (List.fold_left (fun acc skel -> (id_last,skel)::acc) csys.skeletons_to_check new_skeletons);
+                  skeletons_checked_EQ = [];
+                  skeletons_to_check_EQ = new_skeletons_EQ;
                   equality_to_checked = SDF.all_id csys.sdf;
                   equality_constructor_checked = [];
                   equality_constructor_to_checked = id_last::csys.equality_constructor_checked;
@@ -1864,17 +2052,6 @@ module Rule = struct
 
             let new_csys_set = { csys_set with Set.csys_list = new_csys_list; Set.ded_occurs = false ; Set.eq_occurs = Set.No_equality } in
 
-
-            (f_continuation.removal [@tailcall]) new_csys_set f_next
-          else
-            (* All are consequence -> remove from UF *)
-            let new_csys_list =
-              List.fold_left (fun acc csys ->
-                { csys with uf = UF.remove_solved Fact.Deduction csys.uf } :: acc
-              ) [] csys_set.Set.csys_list
-            in
-
-            let new_csys_set = { csys_set with Set.csys_list = new_csys_list; Set.ded_occurs = false ; Set.eq_occurs = Set.No_equality } in
 
             (f_continuation.removal [@tailcall]) new_csys_set f_next
       | Some recipe_conseq ->
@@ -3194,4 +3371,213 @@ module Rule = struct
     if Config.test_activated
     then (fun csys_set continuation_func f_next -> test_rule internal_rewrite !test_rewrite_unit csys_set continuation_func f_next)
     else internal_rewrite
+
+
+  (**** The rule Rewrite EQ ****)
+
+  (* Todo LIST :
+      - Apply first ord substitution on skeleton
+      - Refresh sleketon when we change frame
+      - Creation of skeleton EQ
+  *)
+
+  let internal_rewrite_EQ csys_set continuation_func f_next =
+
+    let rec explore_csys explored_csys_set = function
+      | [] -> None, explored_csys_set
+      | csys::q_csys_set ->
+          if csys.skeletons_to_check_EQ = []
+          then (explore_csys [@taicall]) (csys::explored_csys_set) q_csys_set
+          else
+            begin
+              let (id_sdf,skel) = List.hd csys.skeletons_to_check_EQ in
+
+              let (snd_renaming, simple_csys) = simple_of_skeleton_EQ csys id_sdf skel in
+
+              let is_rule_applicable =
+                try
+                  let ((mgs,l_vars), fst_subst_mgs, _) = one_mgs simple_csys in
+                  (* Need to add the disequations corresponding to the mgs in the list of skeleton *)
+
+                  let mgs_csys,mgs_form = Subst.split_domain mgs (fun x -> Variable.type_of x <> csys.size_frame) in
+                  let l_vars_csys, l_vars_form = List.partition_unordered (fun x -> Variable.type_of x <> csys.size_frame) l_vars in
+
+                  let new_mgs_form =  Subst.compose_restricted (Subst.of_renaming snd_renaming) mgs_form in
+
+                  let eq_name = List.map (fun x -> (x,  apply_function (Symbol.get_constant ()) [])) l_vars_form in
+                  let (_,eq_name_2) = Subst.fold (fun (n,eq) _ r ->
+                    if is_variable r && Variable.type_of (variable_of r) = csys.size_frame
+                    then (n+1,(variable_of r, apply_function (Symbol.get_fresh_constant (n+1)) [])::eq)
+                    else (n,eq)
+                  ) (0,eq_name) new_mgs_form
+                  in
+
+                  let subst_name = Subst.create_multiple Recipe eq_name_2 in
+                  let new_mgs_form_2 = Subst.compose_restricted new_mgs_form subst_name in
+                  Some ((mgs_csys,l_vars_csys),new_mgs_form_2,fst_subst_mgs)
+                with
+                  | Not_found -> None
+                      (* No MGS exists -> We can consider the skeleton as checked. *)
+              in
+
+              match is_rule_applicable with
+                | None -> (explore_csys [@tailcall]) explored_csys_set (
+                    { csys with
+                      skeletons_to_check_EQ = List.tl csys.skeletons_to_check_EQ;
+                      skeletons_checked_EQ = (id_sdf,skel)::csys.skeletons_checked_EQ
+                    }::q_csys_set)
+                | Some (mgs,mgs_form,fst_subst_mgs) ->
+                    let new_diseq = Diseq.of_substitution Protocol fst_subst_mgs [] in
+                    let new_csys =
+                      if Diseq.is_bot new_diseq
+                      then
+                        { csys with
+                          skeletons_to_check_EQ = (List.tl csys.skeletons_to_check_EQ);
+                        }
+                      else
+                        { csys with
+                          skeletons_to_check_EQ = (id_sdf,{skel with diseq = new_diseq::skel.diseq})::(List.tl csys.skeletons_to_check_EQ);
+                        }
+                    in
+                    Some (id_sdf,skel.skeleton,mgs,mgs_form), List.rev_append (new_csys::q_csys_set) explored_csys_set
+
+            end
+    in
+
+    match explore_csys [] csys_set.Set.csys_list with
+      | None, csys_set_1 -> (continuation_func.not_applicable [@tailcall]) { csys_set with Set.csys_list = csys_set_1 } f_next
+      | Some (id_sdf, skel, (mgs_csys,l_vars), mgs_form), csys_set_1 ->
+
+          if Subst.is_identity mgs_csys
+          then
+            begin
+              Config.debug (fun () ->
+                if l_vars <> []
+                then Config.internal_error "[Constraint_system.ml >> internal_equality] An identity substitution should imply an empty list of created variables"
+              );
+              let positive_csys_list = List.fold_left (fun set csys ->
+                try
+                  let ded_sdf = SDF.get csys.sdf id_sdf in
+                  let form_list_1 = Rewrite_rules.generic_rewrite_rules_formula ded_sdf skel in
+                  let form_list_2 = List.fold_left (fun acc form ->
+                    try
+                      let form_1 = apply_mgs_on_formula Fact.Deduction csys (mgs_form,[]) form in
+                      form_1::acc
+                    with
+                    | Fact.Bot -> acc
+                  ) [] form_list_1 in
+
+                  if form_list_2 = []
+                  then csys::set
+                  else { csys with uf = UF.add_deduction csys.uf form_list_2 } :: set
+                with
+                  | Bot -> set
+                ) [] csys_set_1
+              in
+
+              let positive_csys_set = { csys_set with Set.csys_list = positive_csys_list; ded_occurs = true } in
+
+              (normalisation [@tailcall]) positive_csys_set continuation_func.positive f_next
+            end
+          else
+            begin
+              let one_csys = List.hd csys_set_1 in
+              let new_eqsnd = Eq.apply Recipe one_csys.eqsnd mgs_csys in
+              let new_i_subst_snd = Subst.compose_restricted_generic one_csys.i_subst_snd mgs_csys (fun x -> Variable.quantifier_of x = Free) in
+
+              let data_shared =
+                {
+                  share_sdf = (Array.make (SDF.cardinal one_csys.sdf) (dummy_recipe,false));
+                  share_eqsnd = new_eqsnd;
+                  share_ded = ref None;
+                  share_eq = ref None;
+                  share_i_subst_snd = new_i_subst_snd
+                }
+              in
+
+              let positive_csys_list =
+                try
+                  let one_csys' = apply_mgs_and_gather one_csys data_shared (mgs_csys,l_vars) in
+                  let one_csys'' =
+                    let ded_sdf = SDF.get one_csys'.sdf id_sdf in
+                    let form_list_1 = Rewrite_rules.generic_rewrite_rules_formula ded_sdf skel in
+                    let form_list_2 = List.fold_left (fun acc form ->
+                      try
+                        let form_1 = apply_mgs_on_formula Fact.Deduction one_csys' (mgs_form,[]) form in
+                        form_1::acc
+                      with
+                      | Fact.Bot -> acc
+                    ) [] form_list_1 in
+
+                    if form_list_2 = []
+                    then one_csys'
+                    else { one_csys' with uf = UF.add_deduction one_csys'.uf form_list_2 }
+                  in
+
+                  List.fold_left (fun set csys ->
+                    try
+                      let csys_1 = apply_mgs_from_gathering csys data_shared (mgs_csys,l_vars) in
+                      let ded_sdf = SDF.get csys_1.sdf id_sdf in
+                      let form_list_1 = Rewrite_rules.generic_rewrite_rules_formula ded_sdf skel in
+                      let form_list_2 = List.fold_left (fun acc form ->
+                        try
+                          let form_1 = apply_mgs_on_formula Fact.Deduction csys_1 (mgs_form,[]) form in
+                          form_1::acc
+                        with
+                        | Fact.Bot -> acc
+                      ) [] form_list_1 in
+
+                      if form_list_2 = []
+                      then csys_1::set
+                      else { csys_1 with uf = UF.add_deduction csys_1.uf form_list_2 } :: set
+                    with
+                      | Bot -> set
+                    ) [one_csys''] (List.tl csys_set_1)
+                with
+                | Bot ->
+                    List.fold_left (fun set csys ->
+                      try
+                        let csys_1 = apply_mgs_from_gathering csys data_shared (mgs_csys,l_vars) in
+                        let ded_sdf = SDF.get csys_1.sdf id_sdf in
+                        let form_list_1 = Rewrite_rules.generic_rewrite_rules_formula ded_sdf skel in
+                        let form_list_2 = List.fold_left (fun acc form ->
+                          try
+                            let form_1 = apply_mgs_on_formula Fact.Deduction csys_1 (mgs_form,[]) form in
+                            form_1::acc
+                          with
+                          | Fact.Bot -> acc
+                        ) [] form_list_1 in
+
+                        if form_list_2 = []
+                        then csys_1::set
+                        else { csys_1 with uf = UF.add_deduction csys_1.uf form_list_2 } :: set
+                      with
+                        | Bot -> set
+                      ) [] (List.tl csys_set_1)
+              in
+
+              let positive_csys_set = { csys_set with Set.csys_list = positive_csys_list; ded_occurs = true } in
+
+              let diseq = Diseq.of_substitution Recipe mgs_csys l_vars in
+
+              if Diseq.is_bot diseq
+              then Config.internal_error "[constraint_system.ml >> rule_equality_constructor] The disequation should not be the bot.";
+
+              let new_eq_snd = Eq.wedge one_csys.eqsnd diseq in
+
+              let negative_csys_list =
+                List.fold_left (fun acc csys ->
+                  let csys' = { csys with eqsnd = new_eq_snd } in
+                  if Uniformity_Set.exists_pair_with_same_protocol_term csys'.sub_cons (Eq.implies Recipe csys'.eqsnd)
+                  then acc
+                  else csys'::acc
+                ) [] csys_set_1
+              in
+
+              let negative_csys_set = { csys_set with Set.csys_list = negative_csys_list; ded_occurs = false } in
+
+              (normalisation [@tailcall]) negative_csys_set continuation_func.negative (fun () -> (normalisation [@tailcall]) positive_csys_set continuation_func.positive f_next)
+            end
+
+  let rewrite_EQ = internal_rewrite_EQ
 end
