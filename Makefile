@@ -113,19 +113,19 @@ without_debug:
 	@echo
 	@echo To complete the compilation, you should run make
 
-testing:
-	@echo Prepare the compilation of deepsec for generating tests
-	@sed /test_activated/s/false/true/ Source/core_library/config.ml > .tmp.ml
-	@mv .tmp.ml Source/core_library/config.ml
-	@echo
-	@echo To complete the compilation, you should run make
+#testing:
+#	@echo Prepare the compilation of deepsec for generating tests
+#	@sed /test_activated/s/false/true/ Source/core_library/config.ml > .tmp.ml
+#	@mv .tmp.ml Source/core_library/config.ml
+#	@echo
+#	@echo To complete the compilation, you should run make
 
-without_testing:
-	@echo Prepare the compilation of deepsec to run without generation of tests
-	@sed /test_activated/s/true/false/ Source/core_library/config.ml > .tmp.ml
-	@mv .tmp.ml Source/core_library/config.ml
-	@echo
-	@echo To complete the compilation, you should run make
+#without_testing:
+#	@echo Prepare the compilation of deepsec to run without generation of tests
+#	@sed /test_activated/s/true/false/ Source/core_library/config.ml > .tmp.ml
+#	@mv .tmp.ml Source/core_library/config.ml
+#	@echo
+#	@echo To complete the compilation, you should run make
 
 .display:
 	@echo ----------------------------------------------
