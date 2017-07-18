@@ -77,7 +77,7 @@ let print_help () =
   Printf.printf "      deepsec [-distributed <int>] [-distant_workers <string> <string> <int>] [-nb_sets <int>]\n";
   Printf.printf "              [-no_display_attack_trace] [-semantics Classic|Private|Eavesdrop] file\n\n";
   Printf.printf "Options:\n";
-  Printf.printf "      -deepsec_dir p: Specify path to deepsec directory.\n\n";
+  Printf.printf "      -deepsec_dir p: Specify (absolute) path to deepsec directory.\n\n";
   Printf.printf "      -out_dir p: Specify path to the output directory.\n\n";  
   Printf.printf "      -distributed n: Activate the distributed computing with n local workers.\n\n";
   Printf.printf "      -distant_workers machine path n: This option allows you to specify additional worker\n";
@@ -234,7 +234,12 @@ let _ =
 	    Not_found -> Printf.printf "Environment variable DEEPSEC_DIR not defined and -deepsec_dir not specified on command line\n"; exit 1
 	)
     end;
-  
+
+  if Filename.is_relative !Config.path_deepsec then 
+    begin
+      Printf.printf "The path to the deepsec directory must be absolute. Please redefine the DEEPSEC_DIR environment variable or the command line parameter -deepsec_dir.\n";
+      exit 1
+    end;
   if !arret || !path = ""
   then print_help ()
   else
