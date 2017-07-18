@@ -237,8 +237,11 @@ let _ =
 
   if Filename.is_relative !Config.path_deepsec then 
     begin
-      Printf.printf "The path to the deepsec directory must be absolute. Please redefine the DEEPSEC_DIR environment variable or the command line parameter -deepsec_dir.\n";
-      exit 1
+      (* convert to absolute path *)
+      let save_current_dir=Sys.getcwd () in
+      Sys.chdir !Config.path_deepsec;
+      Config.path_deepsec:=Sys.getcwd ();
+      Sys.chdir save_current_dir;
     end;
   if !arret || !path = ""
   then print_help ()
