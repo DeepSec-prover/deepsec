@@ -1,28 +1,48 @@
 (******* Display index page *******)
 
-let template_result = "        <!-- Results deepsec -->"
 
 let print_index path n =
-  let path_template = Printf.sprintf "%sindex.html" !Config.path_html_template in
-  let path_index = Printf.sprintf "%sindex.html" !Config.path_index in
 
+  let path_index = Filename.concat !Config.path_index "index.html" in
+  let path_index_old = Filename.concat !Config.path_index "index_old.html" in
+
+  let initial_index = not (Sys.file_exists path_index) in
+  let path_template =
+    if initial_index then
+      Filename.concat !Config.path_html_template "index.html"
+    else
+      begin
+	Sys.rename path_index path_index_old;
+	path_index_old
+      end
+  in
+  
   let out_html = open_out path_index in
   let in_template = open_in path_template in
 
-  let line = ref "" in
+  let template_result = "<!-- Results deepsec -->" in 
+  let template_stylesheet = "<!-- Stylesheet deepsec -->" in
 
+  let line = ref (input_line in_template) in  
+  if initial_index then
+    begin
+      while !line <> template_stylesheet do
+	Printf.fprintf out_html "%s\n" !line;
+	line := input_line in_template
+      done;
+      line := input_line in_template;
+
+      Printf.fprintf out_html " <link rel=\"stylesheet\" type=\"text/css\" href=\"%s\">\n" (Filename.concat (Filename.concat !Config.path_deepsec "Style") "style.css");
+    end;
+  
   while !line <> template_result do
-    let l = input_line in_template in
-    if l <> template_result
-    then
-      begin
-          Printf.fprintf out_html "%s\n" l;
-      end;
-
-    line := l
+    Printf.fprintf out_html "%s\n" !line;
+    line := input_line in_template
   done;
-
-  Printf.fprintf out_html "        <p>Last file run with DeepSec : %s</p>\n\n" path;
+  Printf.fprintf out_html "%s\n" !line; (* print template_stylesheet *)
+  Printf.fprintf out_html "        <p>File run with DeepSec : %s</p>\n\n" path;
+  let time = Unix.localtime (Unix.time ()) in 
+  Printf.fprintf out_html "        <p> on %s </p>\n\n" (Display.mkDate time); 
   Printf.fprintf out_html "        <p>This file contained %d quer%s:\n" n (if n > 1 then "ies" else "y ");
   if n <> 0
   then
@@ -31,7 +51,7 @@ let print_index path n =
       let rec print_queries = function
         | k when k > n -> ()
         | k ->
-            Printf.fprintf out_html "            <li>Query %d: <a href=\"result/result_dag_%d.html\">DAG represention</a> / <a href=\"result/result_classic_%d.html\">Classic representation</a></li>\n" k k k;
+            Printf.fprintf out_html "            <li>Query %d: <a href=\"result/result_dag_%d_%s.html\">DAG represention</a> / <a href=\"result/result_classic_%d_%s.html\">Classic representation</a></li>\n" k k !Config.tmp_file k !Config.tmp_file;
             print_queries (k+1)
       in
       print_queries 1;
@@ -44,25 +64,8 @@ let print_index path n =
       Printf.fprintf out_html "%s\n" l;
     done
   with
-    | End_of_file -> close_in in_template; close_out out_html
-
-(******* CLeanup old results ********)
-
-let cleanup_old_results n =
-  let files_result = Sys.readdir (Printf.sprintf "%sresult" !Config.path_index) in
-
-  let regex_result_js = Str.regexp "result_\\([0-9]+\\).js"
-  and regex_result_classic = Str.regexp "result_classic_\\([0-9]+\\).html"
-  and regex_result_dag = Str.regexp "result_dag_\\([0-9]+\\).html" in
-
-  Array.iter (fun str ->
-    if Str.string_match regex_result_js str 0 || Str.string_match regex_result_classic str 0 || Str.string_match regex_result_dag str 0
-    then
-      if int_of_string (Str.matched_group 1 str) > n
-      then Sys.remove (Printf.sprintf "%sresult/%s" !Config.path_index str)
-      else ()
-    else Sys.remove (Printf.sprintf "%sresult/%s" !Config.path_index str)
-  ) files_result
+  | End_of_file ->
+    close_in in_template; close_out out_html; if not initial_index then Sys.remove path_index_old
 
 (******* Help ******)
 
@@ -74,6 +77,8 @@ let print_help () =
   Printf.printf "      deepsec [-distributed <int>] [-distant_workers <string> <string> <int>] [-nb_sets <int>]\n";
   Printf.printf "              [-no_display_attack_trace] [-semantics Classic|Private|Eavesdrop] file\n\n";
   Printf.printf "Options:\n";
+  Printf.printf "      -deepsec_dir p: Specify path to deepsec directory.\n\n";
+  Printf.printf "      -out_dir p: Specify path to the output directory.\n\n";  
   Printf.printf "      -distributed n: Activate the distributed computing with n local workers.\n\n";
   Printf.printf "      -distant_workers machine path n: This option allows you to specify additional worker\n";
   Printf.printf "         that are not located in the DeepSec distribution of the server and that will be\n";
@@ -176,20 +181,12 @@ let rec excecute_queries id = function
       excecute_queries (id+1) q
   | _ -> Config.internal_error "Observational_equivalence not implemented"
 
-let extract_path sysargv =
-  let regex_name = Str.regexp "/\\([^/]+\\)" in
-  let pos_start = Str.search_backward regex_name sysargv.(0) ((String.length sysargv.(0)) - 1) in
-  String.sub sysargv.(0) 0 (pos_start + 1)
-
+    
 let _ =
   let path = ref "" in
   let arret = ref false in
-  let i = ref 1 in
-
-  let current_folder = Sys.getcwd () in
-  Sys.chdir (extract_path Sys.argv);
-  let folder_deepsec = Sys.getcwd () in
-
+  let i = ref 1 in  
+  
   while !i < Array.length Sys.argv && not !arret do
     match (Sys.argv).(!i) with
       | "-distributed" when not (!i+1 = (Array.length Sys.argv)) ->
@@ -212,43 +209,67 @@ let _ =
           i := !i + 2
       | "-no_display_attack_trace" ->
           Config.display_trace := false;
-          i := !i + 1
+        i := !i + 1
+      | "-deepsec_dir" when not (!i+1 = (Array.length Sys.argv)) ->
+	Config.path_deepsec := (Sys.argv).(!i+1);
+	i := !i + 2
+      | "-out_dir" when not (!i+1 = (Array.length Sys.argv)) ->
+	Config.path_index := (Sys.argv).(!i+1);
+	i := !i + 2
       | str_path ->
           if !i = Array.length Sys.argv - 1
           then path := str_path
           else arret := true;
           i := !i + 1
   done;
-
+  
   if Array.length Sys.argv <= 1
   then arret := true;
 
+  if !Config.path_deepsec = "" then
+    begin
+      Config.path_deepsec:=
+	(
+	  try Sys.getenv "DEEPSEC_DIR" with 
+	    Not_found -> Printf.printf "Environment variable DEEPSEC_DIR not defined and -deepsec_dir not specified on command line\n"; exit 1
+	)
+    end;
+  
   if !arret || !path = ""
   then print_help ()
   else
     begin
-      if not (Sys.file_exists (Printf.sprintf "%sresult" !Config.path_index))
-      then Unix.mkdir (Printf.sprintf "%sresult" !Config.path_index) 0o777;
+      Config.path_html_template := ( Filename.concat (Filename.concat (!Config.path_deepsec) "Source") "html_templates/" ); 
+      
+      if !Config.path_index= "" then  Config.path_index:= Filename.dirname !path; (*default location for results is the folder of the input file*)
 
-      if not (Sys.file_exists (Printf.sprintf "%stesting_data/faulty_tests" !Config.path_index))
-      then Unix.mkdir (Printf.sprintf "%stesting_data/faulty_tests" !Config.path_index) 0o777;
+      let create_if_not_exist dir_name =
+	if not (Sys.file_exists dir_name) then Unix.mkdir (dir_name) 0o770
+      in
 
-      if not (Sys.file_exists (Printf.sprintf "%stesting_data/tests_to_check" !Config.path_index))
-      then Unix.mkdir (Printf.sprintf "%stesting_data/tests_to_check" !Config.path_index) 0o777;
-
+      let path_result = (Filename.concat !Config.path_index "result") in
+      create_if_not_exist path_result;
+      let prefix = "result_classic_1_" and suffix = ".html" in
+      let tmp = Filename.basename (Filename.temp_file ~temp_dir:path_result prefix suffix) in
+      let len_tmp = String.length tmp
+      and len_prefix = String.length prefix
+      and len_suffix = String.length suffix in
+      Config.tmp_file:= String.sub tmp (len_prefix) ( len_tmp - ( len_prefix + len_suffix ) );
+      
       if Config.test_activated
       then
         begin
           Printf.printf "Loading the regression suite...\n";
           flush_all ();
+	  let testing_data_dir = (Filename.concat !Config.path_deepsec "testing_data") in
+	  create_if_not_exist testing_data_dir;
+	  create_if_not_exist (Filename.concat testing_data_dir "tests_to_check");
           Testing_load_verify.load ();
           Testing_functions.update ()
         end;
 
       Term.Symbol.empty_signature ();
-      Sys.chdir current_folder;
       parse_file !path;
-      Sys.chdir folder_deepsec;
 
       if Config.test_activated
       then
@@ -257,7 +278,6 @@ let _ =
             excecute_queries 1 !Parser_functions.query_list;
             let nb_queries = List.length !Parser_functions.query_list in
             print_index !path nb_queries;
-            cleanup_old_results nb_queries;
             Testing_functions.publish ();
             Testing_load_verify.publish_index ()
           with
@@ -270,7 +290,6 @@ let _ =
           excecute_queries 1 !Parser_functions.query_list;
           let nb_queries = List.length !Parser_functions.query_list in
           print_index !path nb_queries;
-          cleanup_old_results nb_queries
         end
     end;
   exit 0

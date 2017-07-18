@@ -20,8 +20,10 @@ let test =
 
 (**** Testing *****)
 
-let path_html_template = ref "Source/html_templates/"
-let path_index = ref "./"
+let path_deepsec = ref ""
+let path_html_template = ref ""
+let path_index = ref (Filename.current_dir_name)
+let tmp_file = ref ""
 
 (**** Trace display ****)
 

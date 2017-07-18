@@ -322,8 +322,9 @@ let template_line_validated = "            <!-- Validated_tests -->"
 let template_line_to_check = "            <!-- Tests_to_check -->"
 
 let publish_index () =
-  let path_html = Printf.sprintf "%stesting_data/testing.html" !Config.path_index
-  and path_template = Printf.sprintf "%stesting.html" !Config.path_html_template in
+  let path_testing_data = (Filename.concat !Config.path_deepsec "testing_data") in 
+  let path_html = (Filename.concat path_testing_data "testing.html")
+  and path_template = (Filename.concat !Config.path_html_template "testing.html") in
 
   let out_html = open_out path_html in
   let open_template = open_in path_template in

@@ -114,6 +114,14 @@ let rec create_list = function
   | k -> (int_of_string (Sys.argv).(k))::(create_list (k+1))
 
 let _ =
+  let create_if_not_exist dir_name =
+    if not (Sys.file_exists dir_name) then Unix.mkdir (dir_name) 0o770
+  in
+  let testing_data_dir = (Filename.concat !Config.path_deepsec "testing_data") in
+  create_if_not_exist testing_data_dir;
+  create_if_not_exist (Filename.concat testing_data_dir "faulty_tests");
+  create_if_not_exist (Filename.concat testing_data_dir "tests_to_check");
+	  
   if Array.length Sys.argv = 2 && (Sys.argv).(1) = "verify"
   then verify_all_UI ()
   else if Array.length Sys.argv = 2 && (Sys.argv).(1) = "refresh"

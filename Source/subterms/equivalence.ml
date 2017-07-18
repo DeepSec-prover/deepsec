@@ -507,13 +507,14 @@ type attack =
     names_attacker : name list
   }
 
-let template_line = "        <!-- Content of the file -->"
 
 let publish_trace_equivalence_result id sem proc1 proc2 result =
-  let path_template = Printf.sprintf "%sresult.html" !Config.path_html_template in
-  let path_result_dag = Printf.sprintf "%sresult/result_dag_%d.html" !Config.path_index id in
-  let path_result_classic = Printf.sprintf "%sresult/result_classic_%d.html" !Config.path_index id in
-  let path_javascript = Printf.sprintf "%sresult/result_%d.js" !Config.path_index id in
+  let path_scripts = Filename.concat !Config.path_deepsec "Scripts" in
+  let path_style = Filename.concat !Config.path_deepsec "Style" in
+  let path_template = Filename.concat !Config.path_html_template "result.html" in
+  let path_result_dag = Filename.concat ( Filename.concat !Config.path_index  "result") (Printf.sprintf "result_dag_%d_%s.html" id !Config.tmp_file) in
+  let path_result_classic = Filename.concat ( Filename.concat !Config.path_index "result") (Printf.sprintf "result_classic_%d_%s.html" id !Config.tmp_file)  in
+  let path_javascript = Filename.concat  ( Filename.concat !Config.path_index "result") (Printf.sprintf "result_%d_%s.js" id !Config.tmp_file) in
 
   let out_js = open_out path_javascript in
   let out_dag = open_out path_result_dag in
@@ -523,20 +524,34 @@ let publish_trace_equivalence_result id sem proc1 proc2 result =
   let free_names_1 = Process.get_names_with_list proc1 (fun b -> b = Public) [] in
   let free_names = Process.get_names_with_list proc2 (fun b -> b = Public) free_names_1 in
 
-  let line = ref "" in
+  let template_stylesheet = "<!-- Stylesheet deepsec -->" in
+  let template_script = "<!-- Script deepsec -->" in
+  let template_line = "<!-- Content of the file -->" in
+
+  
+  let line = ref (input_line in_template) in
+  while !line <> template_stylesheet do
+    Printf.fprintf out_dag "%s\n" !line;
+    Printf.fprintf out_classic "%s\n" !line;
+    line := input_line in_template
+  done;
+  Printf.fprintf out_dag " <link rel=\"stylesheet\" type=\"text/css\" href=\"%s\">\n" (Filename.concat path_style "style.css");
+  Printf.fprintf out_classic " <link rel=\"stylesheet\" type=\"text/css\" href=\"%s\">\n" (Filename.concat path_style "style.css");
+
+  while !line <> template_script do
+    Printf.fprintf out_dag "%s\n" !line;
+    Printf.fprintf out_classic "%s\n" !line;
+    line := input_line in_template
+  done;
+  Printf.fprintf out_dag "  <script src=\"%s\"></script>\n" (Filename.concat path_scripts "scripts.js");
+  Printf.fprintf out_classic " <script src=\"%s\"></script>\n" (Filename.concat path_scripts "scripts.js");
 
   while !line <> template_line do
-    let l = input_line in_template in
-    if l <> template_line
-    then
-      begin
-          Printf.fprintf out_dag "%s\n" l;
-          Printf.fprintf out_classic "%s\n" l;
-      end;
-
-    line := l
+    Printf.fprintf out_dag "%s\n" !line;
+    Printf.fprintf out_classic "%s\n" !line;
+    line := input_line in_template
   done;
-
+  
   (* Attack selection when there is one *)
 
   let attack_op = match result with
@@ -607,8 +622,8 @@ let publish_trace_equivalence_result id sem proc1 proc2 result =
   Printf.fprintf out_dag "        <div class=\"title-paragraph\"> Query : Trace equivalence </div>\n\n";
   Printf.fprintf out_classic "        <div class=\"title-paragraph\"> Query : Trace equivalence </div>\n\n";
 
-  Printf.fprintf out_dag "        <p>To see the processes in classic representation instead of the DAG one, click <a href=\"result_classic_%d.html\">here</a>.</p>\n\n" id;
-  Printf.fprintf out_classic "        <p>To see the processes in DAG representation instead of the classic one, click <a href=\"result_dag_%d.html\">here</a>.</p>\n\n" id;
+  Printf.fprintf out_dag "        <p>To see the processes in classic representation instead of the DAG one, click <a href=\"result_classic_%d_%s.html\">here</a>.</p>\n\n" id !Config.tmp_file;
+  Printf.fprintf out_classic "        <p>To see the processes in DAG representation instead of the classic one, click <a href=\"result_dag_%d_%s.html\">here</a>.</p>\n\n" id !Config.tmp_file;
 
   (* The processes  *)
 
@@ -652,12 +667,12 @@ let publish_trace_equivalence_result id sem proc1 proc2 result =
         Printf.fprintf out_classic "        <div class=\"result\">Result : The processes are equivalent</div>\n";
 
         (* Specific for Dag display *)
-        Printf.fprintf out_dag "\n        <script src=\"../Scripts/jquery-1.10.2.js\"></script>\n";
-        Printf.fprintf out_dag "\n        <script src=\"../Scripts/d3.v3.js\"></script>\n";
-        Printf.fprintf out_dag "\n        <script src=\"../Scripts/dagre-d3.js\"></script>\n";
-        Printf.fprintf out_dag "\n        <script src=\"../Scripts/display_process.js\"></script>\n\n";
+        Printf.fprintf out_dag "\n        <script src=\"%s\"></script>\n" (Filename.concat path_scripts "jquery-1.10.2.js");
+        Printf.fprintf out_dag "\n        <script src=\"%s\"></script>\n" (Filename.concat path_scripts "d3.v3.js");
+        Printf.fprintf out_dag "\n        <script src=\"%s\"></script>\n" (Filename.concat path_scripts "dagre-d3.js");
+        Printf.fprintf out_dag "\n        <script src=\"%s\"></script>\n\n" (Filename.concat path_scripts "display_process.js");
 
-        Printf.fprintf out_dag "\n        <script>loaddata('result_%d.js');</script>\n" id;
+        Printf.fprintf out_dag "\n        <script>loaddata('result_%d_%s.js');</script>\n" id !Config.tmp_file;
         Printf.fprintf out_dag "\n        <script>\n";
         publish_loading_script out_dag 1 None;
         publish_loading_script out_dag 2 None;
@@ -690,12 +705,12 @@ let publish_trace_equivalence_result id sem proc1 proc2 result =
         Printf.fprintf out_classic "%s" html_classic_attack;
 
         (* Specific for Dag display *)
-        Printf.fprintf out_dag "        <script src=\"../Scripts/jquery-1.10.2.js\"></script>\n";
-        Printf.fprintf out_dag "        <script src=\"../Scripts/d3.v3.js\"></script>\n";
-        Printf.fprintf out_dag "        <script src=\"../Scripts/dagre-d3.js\"></script>\n";
-        Printf.fprintf out_dag "        <script src=\"../Scripts/display_process.js\"></script>\n\n";
+        Printf.fprintf out_dag "        <script src=\"%s\"></script>\n" (Filename.concat path_scripts "jquery-1.10.2.js") ;
+        Printf.fprintf out_dag "        <script src=\"%s\"></script>\n" (Filename.concat path_scripts "d3.v3.js");
+        Printf.fprintf out_dag "        <script src=\"%s\"></script>\n" (Filename.concat path_scripts "dagre-d3.js");
+        Printf.fprintf out_dag "        <script src=\"%s\"></script>\n\n" (Filename.concat path_scripts "display_process.js");
 
-        Printf.fprintf out_dag "        <script>loaddata('result_%d.js');</script>\n" id;
+        Printf.fprintf out_dag "        <script>loaddata('result_%d_%s.js');</script>\n" id !Config.tmp_file;
         Printf.fprintf out_dag "        <script>\n";
         publish_loading_script out_dag 1 None;
         publish_loading_script out_dag 2 None;

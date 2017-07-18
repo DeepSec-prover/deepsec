@@ -31,7 +31,41 @@ let create_tab k =
     then Config.internal_error "[display.ml >> create_tab] The number of tabs cannot be negative."
   );
   internal_create_tab k
-
+    
+let mkDate t =
+  let weekday d =
+    match d with
+    | 0 -> "Sun"
+    | 1 -> "Mon"
+    | 2 -> "Tue"
+    | 3 -> "Wed"
+    | 4 -> "Thu"
+    | 5 -> "Fri"
+    | 6 -> "Sat"
+    | _ -> Config.internal_error "[display.ml >> mkDate] Weekday must be in [0..6]."
+  in
+  let month m =
+    match m with
+    | 0 -> "Jan"
+    | 1 -> "Feb"
+    | 2 -> "Mar"
+    | 3 -> "Apr"
+    | 4 -> "May"
+    | 5 -> "Jun"
+    | 6 -> "Jul"
+    | 7 -> "Aug"
+    | 8 -> "Sep"
+    | 9 -> "Oct"
+    |10 -> "Nov"
+    |11 -> "Dec"
+    | _ -> Config.internal_error "[display.ml >> mkDate] Month must be in [0..11]."
+  in
+  let d = Printf.sprintf "%s, %s %i %i at %i:%i:%i"
+    (weekday t.Unix.tm_wday) (month t.Unix.tm_mon) t.Unix.tm_mday (1900 + t.Unix.tm_year)
+    t.Unix.tm_hour t.Unix.tm_min t.Unix.tm_sec in
+  d
+    
+    
 (**** Special character ****)
 
 let neqi = function
