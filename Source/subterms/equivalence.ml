@@ -474,29 +474,6 @@ let trace_equivalence sem proc1 proc2 = match sem with
 
 (***** Display ******)
 
-let publish_loading_script out id trace_op =
-  Printf.fprintf out "        var height_%de0 = 0;\n" id;
-  Printf.fprintf out "        var width_%de0 = 0;\n" id;
-
-  match trace_op with
-    | None ->
-        Printf.fprintf out "        window.loadData%de0e0 = function (data) {\n" id;
-        Printf.fprintf out "            DAG.displayGraph(data, jQuery('#dag-%de0e0 > svg'), %d, 0, 0);\n" id id;
-        Printf.fprintf out "        };\n\n"
-    | Some trace ->
-        let nb_max_action = 2*(Process.Trace.size trace) + 2 in
-        Printf.fprintf out "        var counter_%de0 = 1;\n" id;
-        Printf.fprintf out "        var max_number_actions_%de0 = %d;\n" id (nb_max_action - 1);
-        let rec print_window = function
-          | n when n = nb_max_action -> ()
-          | n ->
-              Printf.fprintf out "        window.loadData%de0e%d = function (data) {\n" id n;
-              Printf.fprintf out "            DAG.displayGraph(data, jQuery('#dag-%de0e%d > svg'), %d, 0, %d);\n" id n id n;
-              Printf.fprintf out "        };\n\n";
-              print_window (n+1)
-        in
-        print_window 1
-
 type attack =
   {
     fst_subst : (fst_ord, name) Subst.t;
@@ -508,17 +485,15 @@ type attack =
   }
 
 
-let publish_trace_equivalence_result id sem proc1 proc2 result =
+let publish_trace_equivalence_result id sem proc1 proc2 result runtime =
   let path_scripts = Filename.concat !Config.path_deepsec "Scripts" in
   let path_style = Filename.concat !Config.path_deepsec "Style" in
   let path_template = Filename.concat !Config.path_html_template "result.html" in
-  let path_result_dag = Filename.concat ( Filename.concat !Config.path_index  "result") (Printf.sprintf "result_dag_%d_%s.html" id !Config.tmp_file) in
-  let path_result_classic = Filename.concat ( Filename.concat !Config.path_index "result") (Printf.sprintf "result_classic_%d_%s.html" id !Config.tmp_file)  in
+  let path_result = Filename.concat ( Filename.concat !Config.path_index "result") (Printf.sprintf "result_query_%d_%s.html" id !Config.tmp_file)  in
   let path_javascript = Filename.concat  ( Filename.concat !Config.path_index "result") (Printf.sprintf "result_%d_%s.js" id !Config.tmp_file) in
 
   let out_js = open_out path_javascript in
-  let out_dag = open_out path_result_dag in
-  let out_classic = open_out path_result_classic in
+  let out_result = open_out path_result in
   let in_template = open_in path_template in
 
   let free_names_1 = Process.get_names_with_list proc1 (fun b -> b = Public) [] in
@@ -531,24 +506,19 @@ let publish_trace_equivalence_result id sem proc1 proc2 result =
   
   let line = ref (input_line in_template) in
   while !line <> template_stylesheet do
-    Printf.fprintf out_dag "%s\n" !line;
-    Printf.fprintf out_classic "%s\n" !line;
+    Printf.fprintf out_result "%s\n" !line;
     line := input_line in_template
   done;
-  Printf.fprintf out_dag " <link rel=\"stylesheet\" type=\"text/css\" href=\"%s\">\n" (Filename.concat path_style "style.css");
-  Printf.fprintf out_classic " <link rel=\"stylesheet\" type=\"text/css\" href=\"%s\">\n" (Filename.concat path_style "style.css");
+  Printf.fprintf out_result " <link rel=\"stylesheet\" type=\"text/css\" href=\"%s\">\n" (Filename.concat path_style "style.css");
 
   while !line <> template_script do
-    Printf.fprintf out_dag "%s\n" !line;
-    Printf.fprintf out_classic "%s\n" !line;
+    Printf.fprintf out_result "%s\n" !line;
     line := input_line in_template
   done;
-  Printf.fprintf out_dag "  <script src=\"%s\"></script>\n" (Filename.concat path_scripts "scripts.js");
-  Printf.fprintf out_classic " <script src=\"%s\"></script>\n" (Filename.concat path_scripts "scripts.js");
+  Printf.fprintf out_result " <script src=\"%s\"></script>\n" (Filename.concat path_scripts "scripts.js");
 
   while !line <> template_line do
-    Printf.fprintf out_dag "%s\n" !line;
-    Printf.fprintf out_classic "%s\n" !line;
+    Printf.fprintf out_result "%s\n" !line;
     line := input_line in_template
   done;
   
@@ -557,20 +527,20 @@ let publish_trace_equivalence_result id sem proc1 proc2 result =
   let attack_op = match result with
     | Equivalent -> None
     | Not_Equivalent csys ->
-        let trace = (Constraint_system.get_additional_data csys).trace in
-        let (fst_subst,snd_subst,names) = Constraint_system.instantiate_when_solved csys in
-        let id_proc,proc = match (Constraint_system.get_additional_data csys).origin_process with
-          | Left -> 1,proc1
-          | Right -> 2,proc2
-        in
-        Some {
-          fst_subst = fst_subst;
-          snd_subst = snd_subst;
-          attack_trace = trace;
-          names_attacker = names;
-          attack_process_id = id_proc;
-          attack_process = proc
-        }
+      let trace = (Constraint_system.get_additional_data csys).trace in
+      let (fst_subst,snd_subst,names) = Constraint_system.instantiate_when_solved csys in
+      let id_proc,proc = match (Constraint_system.get_additional_data csys).origin_process with
+        | Left -> 1,proc1
+        | Right -> 2,proc2
+      in
+      Some {
+        fst_subst = fst_subst;
+        snd_subst = snd_subst;
+        attack_trace = trace;
+        names_attacker = names;
+        attack_process_id = id_proc;
+        attack_process = proc
+      }
   in
 
   (* Gather variables and names *)
@@ -581,8 +551,8 @@ let publish_trace_equivalence_result id sem proc1 proc2 result =
   let fst_vars = match attack_op with
     | None -> fst_vars_3
     | Some(attack) ->
-        let fst_vars_4 = Process.Trace.get_vars_with_list Protocol attack.attack_trace fst_vars_3 in
-        Subst.get_vars_with_list Protocol attack.fst_subst (fun _ -> true) fst_vars_4
+      let fst_vars_4 = Process.Trace.get_vars_with_list Protocol attack.attack_trace fst_vars_3 in
+      Subst.get_vars_with_list Protocol attack.fst_subst (fun _ -> true) fst_vars_4
   in
 
   let names_1 = Process.get_names_with_list proc1 (fun _ -> true) free_names in
@@ -590,9 +560,9 @@ let publish_trace_equivalence_result id sem proc1 proc2 result =
   let names = match attack_op with
     | None -> names_2
     | Some(attack) ->
-        let names_3 = Process.Trace.get_names_with_list attack.attack_trace names_2 in
+      let names_3 = Process.Trace.get_names_with_list attack.attack_trace names_2 in
         (* The names of the attacker should be included in that substitution *)
-        Subst.get_names_with_list Protocol attack.fst_subst (fun _ -> true) names_3
+      Subst.get_names_with_list Protocol attack.fst_subst (fun _ -> true) names_3
   in
 
   let rho = Some(generate_display_renaming names fst_vars []) in
@@ -604,27 +574,35 @@ let publish_trace_equivalence_result id sem proc1 proc2 result =
     | Eavesdrop -> "Eavesdrop (Internal communication on private channel + eavesdrop allowed on public channels)"
   in
 
-  Printf.fprintf out_dag "        <p> Selected semantics : %s</p>\n\n" str_semantics;
-  Printf.fprintf out_classic "        <p> Selected semantics : %s</p>\n\n" str_semantics;
+  Printf.fprintf out_result "        <p> Selected semantics : %s</p>\n\n" str_semantics;
 
   (* Signature *)
   let str_signature = Symbol.display_signature Latex in
 
-  Printf.fprintf out_dag "        <p> Constructor function symbols : \\(%s\\)</p>\n\n" str_signature;
-  Printf.fprintf out_classic "        <p> Constructor function symbols : \\(%s\\)</p>\n\n" str_signature;
+  Printf.fprintf out_result "        <p> Constructor function symbols : \\(%s\\)</p>\n\n" str_signature;
 
   (* Rewriting system *)
   let str_rewriting_system = Rewrite_rules.display_all_rewrite_rules Latex rho in
+  Printf.fprintf out_result "        <p> Rewriting system : \\(%s\\)</p>\n\n<p> Note that for efficiency purpose, all declared public names have been transformed in constant.</p>" str_rewriting_system;
 
-  Printf.fprintf out_dag "        <p> Rewriting system : \\(%s\\)</p>\n\n<p> Note that for efficiency purpose, all declared public names have been transformed in constant.</p>" str_rewriting_system;
-  Printf.fprintf out_classic "        <p> Rewriting system : \\(%s\\)</p>\n\n<p> Note that for efficiency purpose, all declared public names have been transformed in constant.</p>" str_rewriting_system;
+  Printf.fprintf out_result "        <div class=\"title-paragraph\"> Query : Trace equivalence </div>\n\n";
 
-  Printf.fprintf out_dag "        <div class=\"title-paragraph\"> Query : Trace equivalence </div>\n\n";
-  Printf.fprintf out_classic "        <div class=\"title-paragraph\"> Query : Trace equivalence </div>\n\n";
+  Printf.fprintf out_result "        <div class=\"result\">Running time : %s </div>\n" (Display.mkRuntime runtime);
 
-  Printf.fprintf out_dag "        <p>To see the processes in classic representation instead of the DAG one, click <a href=\"result_classic_%d_%s.html\">here</a>.</p>\n\n" id !Config.tmp_file;
-  Printf.fprintf out_classic "        <p>To see the processes in DAG representation instead of the classic one, click <a href=\"result_dag_%d_%s.html\">here</a>.</p>\n\n" id !Config.tmp_file;
-
+  begin match attack_op with
+  | None ->
+    Printf.fprintf out_result "        <div class=\"result\">Result : The processes are equivalent</div>\n";
+  | Some attack ->
+    Printf.fprintf out_result "        <div class=\"result\">Result : The processes are not equivalent. An attack trace has been found on Process %d</div>\n\n" attack.attack_process_id;
+    
+    let str_attacker_names = match attack.names_attacker with
+      | [] -> Printf.sprintf "        <p>For this attack, the attacker does not generate any fresh name.</p>\n\n"
+      | [k] -> Printf.sprintf "        <p>For this attack, the attacker generates one fresh name : \\(%s\\)</p>\n\n" (Name.display Latex ~rho:rho k)
+      | _ -> Printf.sprintf "        <p>For this attack, the attacker generates some fresh names : \\(\\{%s\\}\\)</p>\n\n" (display_list (Name.display Latex ~rho:rho) ", " attack.names_attacker)
+    in
+    Printf.fprintf out_result "%s" str_attacker_names;
+    
+    
   (* The processes  *)
 
   let display_process out str_proc_1 str_proc_2 =
@@ -646,96 +624,43 @@ let publish_trace_equivalence_result id sem proc1 proc2 result =
     Printf.fprintf out "        </div>\n";
   in
 
-  let (html_dag_proc_1,js_proc_1) = Process.display_process_HTML ~rho:rho ~renaming:false "1e0e0" proc1 in
-  let (html_dag_proc_2,js_proc_2) = Process.display_process_HTML ~rho:rho ~renaming:false "2e0e0" proc2 in
-
-  Printf.fprintf out_js "%s%s" js_proc_1 js_proc_2;
-
   let (_,expansed_proc_1) = Process.expansed_of_process [] proc1 in
   let (_,expansed_proc_2) = Process.expansed_of_process [] proc2 in
 
   let html_classic_proc_1 = Process.display_expansed_process_HTML ~rho:rho ~id:"1" expansed_proc_1 in
   let html_classic_proc_2 = Process.display_expansed_process_HTML ~rho:rho ~id:"2" expansed_proc_2 in
 
-  display_process out_dag html_dag_proc_1 html_dag_proc_2;
-  display_process out_classic html_classic_proc_1 html_classic_proc_2;
+  display_process out_result html_classic_proc_1 html_classic_proc_2;
 
 
-  begin match attack_op with
-    | None ->
-        Printf.fprintf out_dag "        <div class=\"result\">Result : The processes are equivalent</div>\n";
-        Printf.fprintf out_classic "        <div class=\"result\">Result : The processes are equivalent</div>\n";
+  Printf.fprintf out_result "        <div class=\"small-separation\"> </div>\n";
+    
+  let html_attack =
+    Trace.display_expansed_HTML ~rho:rho ~title:"Display of the attack trace" "3e0" ~fst_subst:attack.fst_subst ~snd_subst:attack.snd_subst attack.attack_process attack.attack_trace in
+    
+  close_out out_js;
 
-        (* Specific for Dag display *)
-        Printf.fprintf out_dag "\n        <script src=\"%s\"></script>\n" (Filename.concat path_scripts "jquery-1.10.2.js");
-        Printf.fprintf out_dag "\n        <script src=\"%s\"></script>\n" (Filename.concat path_scripts "d3.v3.js");
-        Printf.fprintf out_dag "\n        <script src=\"%s\"></script>\n" (Filename.concat path_scripts "dagre-d3.js");
-        Printf.fprintf out_dag "\n        <script src=\"%s\"></script>\n\n" (Filename.concat path_scripts "display_process.js");
-
-        Printf.fprintf out_dag "\n        <script>loaddata('result_%d_%s.js');</script>\n" id !Config.tmp_file;
-        Printf.fprintf out_dag "\n        <script>\n";
-        publish_loading_script out_dag 1 None;
-        publish_loading_script out_dag 2 None;
-        Printf.fprintf out_dag "\n        </script>\n";
-    | Some attack ->
-        Printf.fprintf out_dag "        <div class=\"result\">Result : The processes are not equivalent. An attack trace has been found on Process %d</div>\n\n" attack.attack_process_id;
-        Printf.fprintf out_classic "        <div class=\"result\">Result : The processes are not equivalent. An attack trace has been found on Process %d</div>\n\n" attack.attack_process_id;
-
-        Printf.fprintf out_dag "        <div class=\"small-separation\"> </div>\n";
-        Printf.fprintf out_classic "        <div class=\"small-separation\"> </div>\n";
-
-        let str_attacker_names = match attack.names_attacker with
-          | [] -> Printf.sprintf "        <p>For this attack, the attacker does not generate any fresh name.</p>\n\n"
-          | [k] -> Printf.sprintf "        <p>For this attack, the attacker generates one fresh name : \\(%s\\)</p>\n\n" (Name.display Latex ~rho:rho k)
-          | _ -> Printf.sprintf "        <p>For this attack, the attacker generates some fresh names : \\(\\{%s\\}\\)</p>\n\n" (display_list (Name.display Latex ~rho:rho) ", " attack.names_attacker)
-        in
-        Printf.fprintf out_dag "%s" str_attacker_names;
-        Printf.fprintf out_classic "%s" str_attacker_names;
-
-        let (html_dag_attack,js_attack) =
-          Trace.display_HTML ~rho:rho ~title:"Display of the attack trace" "3e0" ~fst_subst:attack.fst_subst ~snd_subst:attack.snd_subst attack.attack_process attack.attack_trace in
-        let html_classic_attack =
-          Trace.display_expansed_HTML ~rho:rho ~title:"Display of the attack trace" "3e0" ~fst_subst:attack.fst_subst ~snd_subst:attack.snd_subst attack.attack_process attack.attack_trace in
-
-        Printf.fprintf out_js "%s" js_attack;
-
-        close_out out_js;
-
-        Printf.fprintf out_dag "%s" html_dag_attack;
-        Printf.fprintf out_classic "%s" html_classic_attack;
-
-        (* Specific for Dag display *)
-        Printf.fprintf out_dag "        <script src=\"%s\"></script>\n" (Filename.concat path_scripts "jquery-1.10.2.js") ;
-        Printf.fprintf out_dag "        <script src=\"%s\"></script>\n" (Filename.concat path_scripts "d3.v3.js");
-        Printf.fprintf out_dag "        <script src=\"%s\"></script>\n" (Filename.concat path_scripts "dagre-d3.js");
-        Printf.fprintf out_dag "        <script src=\"%s\"></script>\n\n" (Filename.concat path_scripts "display_process.js");
-
-        Printf.fprintf out_dag "        <script>loaddata('result_%d_%s.js');</script>\n" id !Config.tmp_file;
-        Printf.fprintf out_dag "        <script>\n";
-        publish_loading_script out_dag 1 None;
-        publish_loading_script out_dag 2 None;
-        publish_loading_script out_dag 3 (Some attack.attack_trace);
-        Printf.fprintf out_dag "        </script>\n";
-
-        (* Specific for Classic display *)
-        Printf.fprintf out_classic "        <script>\n";
-        Printf.fprintf out_classic "        var counter_3e0 = 1;\n";
-        Printf.fprintf out_classic "        var max_number_actions_3e0 = %d;\n" (2*(Trace.size attack.attack_trace) + 1);
-        Printf.fprintf out_classic "        height_attack = document.getElementById('expansed3e0e1').getBoundingClientRect().height;\n";
-        Printf.fprintf out_classic "        width_attack = document.getElementById('expansed3e0e1').getBoundingClientRect().width + 150;\n";
-        Printf.fprintf out_classic "        for (i = 1; i <= %d; i++) {\n" (2*(Trace.size attack.attack_trace) + 1);
-        Printf.fprintf out_classic "          update_size(i);\n";
-        Printf.fprintf out_classic "        }\n";
-        Printf.fprintf out_classic "        </script>\n";
+  Printf.fprintf out_result "%s" html_attack;
+  
+  Printf.fprintf out_result "        <script>\n";
+  Printf.fprintf out_result "        var counter_3e0 = 1;\n";
+  Printf.fprintf out_result "        var max_number_actions_3e0 = %d;\n" (2*(Trace.size attack.attack_trace) + 1);
+  Printf.fprintf out_result "        height_attack = document.getElementById('expansed3e0e1').getBoundingClientRect().height;\n";
+  Printf.fprintf out_result "        width_attack = document.getElementById('expansed3e0e1').getBoundingClientRect().width + 150;\n";
+  Printf.fprintf out_result "        for (i = 1; i <= %d; i++) {\n" (2*(Trace.size attack.attack_trace) + 1);
+  Printf.fprintf out_result "          update_size(i);\n";
+  Printf.fprintf out_result "        }\n";
+  Printf.fprintf out_result "        </script>\n";
   end;
 
+  Printf.fprintf out_result "        <div class=\"small-separation\"> </div>\n";
+  
   (* Complete the file *)
 
   try
     while true do
       let l = input_line in_template in
-      Printf.fprintf out_dag "%s\n" l;
-      Printf.fprintf out_classic "%s\n" l;
+      Printf.fprintf out_result "%s\n" l;
     done
   with
-    | End_of_file -> close_in in_template; close_out out_dag; close_out out_classic
+  | End_of_file -> close_in in_template; close_out out_result

@@ -1,7 +1,7 @@
 (******* Display index page *******)
 
 
-let print_index path n =
+let print_index path n res_list =
 
   let path_index = Filename.concat !Config.path_index "index.html" in
   let path_index_old = Filename.concat !Config.path_index "index_old.html" in
@@ -49,15 +49,23 @@ let print_index path n =
     begin
       Printf.fprintf out_html "          <ul>\n";
       let rec print_queries = function
-        | k when k > n -> ()
-        | k ->
-            Printf.fprintf out_html "            <li>Query %d: <a href=\"result/result_dag_%d_%s.html\">DAG represention</a> / <a href=\"result/result_classic_%d_%s.html\">Classic representation</a></li>\n" k k !Config.tmp_file k !Config.tmp_file;
-            print_queries (k+1)
+        | (k, _) when k > n -> ()
+        | (k, (res,rt)::tl) ->
+          Printf.fprintf out_html
+	    "            <li>Query %d:</br>\n Result: the processes are %s</br>\n \nRunning time: %s (%s)</br>\n<a href=\"result/result_query_%d_%s.html\">Details</a></li>\n"
+	    k
+	    (match res with | Equivalence.Equivalent -> "equivalent" | Equivalence.Not_Equivalent _ -> "not equivalent")
+	    (Display.mkRuntime rt)
+	    (if !Config.distributed then "Workers: "^(Distributed_equivalence.DistribEquivalence.display_workers ()) else "Not distributed") 
+	    k !Config.tmp_file;
+          print_queries ((k+1), tl)
+	| (_ , _) -> failwith "Number of queries and number of results differ"
       in
-      print_queries 1;
+      print_queries (1, res_list);
       Printf.fprintf out_html "          </ul>\n";
     end;
-
+  if not initial_index then Printf.fprintf out_html "        <hr class=\"small-separation\"></br>\n";
+  
   try
     while true do
       let l = input_line in_template in
@@ -137,48 +145,53 @@ let parse_file path =
       | Failure msg -> Printf.printf "%s\n" msg; exit 0
       | End_of_file -> () in
 
+  Parser_functions.query_list := List.rev !Parser_functions.query_list; (*putting queries in the same order as in the file *)
   close_in channel_in
 
 (****** Main ******)
 
+let start_time = ref (Unix.time ())
+    
 let rec excecute_queries id = function
-  | [] -> ()
+  | [] -> []
   | (Process.Trace_Equivalence,exproc1,exproc2)::q ->
-      let proc1 = Process.of_expansed_process exproc1 in
-      let proc2 = Process.of_expansed_process exproc2 in
+    start_time :=  (Unix.time ());
+    let proc1 = Process.of_expansed_process exproc1 in
+    let proc2 = Process.of_expansed_process exproc2 in
+    
+    Printf.printf "Executing query %d...\n" id;
+    
+    let result =
+      if !Config.distributed
+      then
+        begin
+          let result,init_proc1, init_proc2 = Distributed_equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 in
+	  let running_time = ( Unix.time () -. !start_time ) in
+          if !Config.display_trace
+          then Equivalence.publish_trace_equivalence_result id !Process.chosen_semantics init_proc1 init_proc2 result running_time;
+          (result, running_time)
+        end
+      else
+        begin
+          let result = Equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 in
+	  let running_time = ( Unix.time () -. !start_time ) in
+          if !Config.display_trace
+          then Equivalence.publish_trace_equivalence_result id !Process.chosen_semantics proc1 proc2 result running_time;
+          (result, running_time)
+        end
+    in
 
-      Printf.printf "Executing query %d...\n" id;
-
-      let result =
-        if !Config.distributed
-        then
-          begin
-            let result,init_proc1, init_proc2 = Distributed_equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 in
-            if !Config.display_trace
-            then Equivalence.publish_trace_equivalence_result id !Process.chosen_semantics init_proc1 init_proc2 result;
-            result
-          end
-        else
-          begin
-            let result = Equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 in
-            if !Config.display_trace
-            then Equivalence.publish_trace_equivalence_result id !Process.chosen_semantics proc1 proc2 result;
-            result
-          end
-      in
-
-      begin match result with
-        | Equivalence.Equivalent ->
-            if !Config.display_trace
-            then Printf.printf "Query %d: Equivalent processes : See a summary of the input file on the HTML interface.\n" id
-            else Printf.printf "Query %d: Equivalent processes.\n" id
-        | Equivalence.Not_Equivalent _ ->
-            if !Config.display_trace
-            then Printf.printf "Query %d: Processes not equivalent : See a summary of the input file and the attack trace on the HTML interface.\n" id
-            else Printf.printf "Query %d: Processes not equivalent.\n" id
-      end;
-
-      excecute_queries (id+1) q
+    begin match result with
+    | (Equivalence.Equivalent, _) ->
+      if !Config.display_trace
+      then Printf.printf "Query %d: Equivalent processes : See a summary of the input file on the HTML interface.\n" id
+      else Printf.printf "Query %d: Equivalent processes.\n" id
+    | (Equivalence.Not_Equivalent _, _) ->
+      if !Config.display_trace
+      then Printf.printf "Query %d: Processes not equivalent : See a summary of the input file and the attack trace on the HTML interface.\n" id
+      else Printf.printf "Query %d: Processes not equivalent.\n" id
+    end;
+    result::(excecute_queries (id+1) q)
   | _ -> Config.internal_error "Observational_equivalence not implemented"
 
     
@@ -194,6 +207,7 @@ let _ =
           Distributed_equivalence.DistribEquivalence.local_workers (int_of_string (Sys.argv).(!i+1));
           i := !i + 2
       | "-distant_workers" when not (!i+3 = (Array.length Sys.argv)) ->
+          Config.distributed := true;
           Distributed_equivalence.DistribEquivalence.add_distant_worker (Sys.argv).(!i+1) (Sys.argv).(!i+2) (int_of_string (Sys.argv).(!i+3));
           i := !i + 4
       | "-nb_sets" when not (!i+1 = (Array.length Sys.argv)) ->
@@ -257,7 +271,7 @@ let _ =
 
       let path_result = (Filename.concat !Config.path_index "result") in
       create_if_not_exist path_result;
-      let prefix = "result_classic_1_" and suffix = ".html" in
+      let prefix = "result_query_1_" and suffix = ".html" in
       let tmp = Filename.basename (Filename.temp_file ~temp_dir:path_result prefix suffix) in
       let len_tmp = String.length tmp
       and len_prefix = String.length prefix
@@ -283,9 +297,9 @@ let _ =
       then
         begin
           try
-            excecute_queries 1 !Parser_functions.query_list;
+            let l = excecute_queries 1 !Parser_functions.query_list in
             let nb_queries = List.length !Parser_functions.query_list in
-            print_index !path nb_queries;
+            print_index !path nb_queries l;
             Testing_functions.publish ();
             Testing_load_verify.publish_index ()
           with
@@ -295,9 +309,9 @@ let _ =
         end
       else
         begin
-          excecute_queries 1 !Parser_functions.query_list;
+          let l = excecute_queries 1 !Parser_functions.query_list in
           let nb_queries = List.length !Parser_functions.query_list in
-          print_index !path nb_queries;
+          print_index !path nb_queries l;
         end
     end;
   exit 0

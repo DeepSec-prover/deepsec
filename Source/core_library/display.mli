@@ -11,7 +11,10 @@ type output =
 
 (** Format date given Unix.tm structure **)
 val mkDate : Unix.tm -> string
- 
+
+(** Format runtime given number of seconds as a float **)
+val mkRuntime : float -> string 
+  
 (** Generic display of a list. [display_list f_elt c [e1;...;en]] will return the string [(f_elt e1)^c^...^c^(f_elt en)].*)
 val display_list : ('a -> string) -> string -> 'a list -> string
 

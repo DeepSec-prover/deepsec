@@ -1,5 +1,5 @@
 open Extensions
-
+  
 (** This is the module type for a task that need to be computed *)
 module type TASK =
   sig
@@ -36,8 +36,9 @@ module type TASK =
   end
 
 module Distrib = functor (Task:TASK) ->
-struct
 
+
+struct
     type request =
       | Compute of Task.job
       | Generate of Task.job
@@ -46,6 +47,10 @@ struct
       | Completed of Task.result
       | JobList of Task.job list
 
+    type host =
+    | Local
+    | Distant of (string * string)
+    
     let jobs_between_compact_memory = ref 500
 
     let time_between_round = ref 60.
@@ -55,16 +60,26 @@ struct
     	Sys.set_signal Sys.sigterm sig_handle
 
     (****** Setting up the workers *******)
-
+	  
     let workers = ref []
 
-    let local_workers n = workers := ("./worker_deepsec", "./manager_deepsec",n) :: !workers
+    let local_workers n = workers := (Local,n) :: !workers
+    let add_distant_worker machine path n = workers := (Distant(machine,path),n) :: !workers
 
-    let add_distant_worker machine path n =
-      if path.[(String.length path) - 1] = '/'
-      then workers := (Printf.sprintf "ssh %s %sworker_deepsec" machine path, Printf.sprintf "ssh %s %smanager_deepsec" machine path, n) :: !workers
-      else workers := (Printf.sprintf "ssh %s %s/worker_deepsec" machine path, Printf.sprintf "ssh %s %s/manager_deepsec" machine path, n) :: !workers
-
+    let display_workers () = 
+      let display_worker (h,n) =
+	let m = 
+	  match h with
+	  | Local -> "localhost"
+	  | Distant(mach, _) -> mach
+	in
+	(string_of_int n)^(" on "^m)
+      in
+      if (List.length !workers) = 0 then 
+	"not distributed"
+      else 
+	List.fold_left (fun a h -> a^(", "^(display_worker h)) ) (display_worker (List.hd !workers)) (List.tl !workers)
+         
     (****** The manager main function ******)
 
     let manager_main () =
@@ -141,18 +156,31 @@ struct
 
       let rec create_processes pid_list = function
         | [] -> []
-        | (_,manager,0)::q ->
-            let (in_ch,out_ch) = Unix.open_process manager in
-            output_value out_ch pid_list;
-            flush out_ch;
-            managers := (in_ch,out_ch) :: !managers;
-            create_processes [] q
-        | (worker,manager,n)::q ->
-            let (in_ch,out_ch) = Unix.open_process worker in
-            output_value out_ch shared;
-            flush out_ch;
-            let pid = ((input_value in_ch):int) in
-            (in_ch,out_ch)::(create_processes (pid::pid_list) ((worker,manager,n-1)::q))
+        | (host,0)::q ->
+	  let manager =
+	    match host with
+	    | Local -> Filename.concat !Config.path_deepsec "manager_deepsec"
+	    | Distant(machine,path) ->  Printf.sprintf "ssh %s %s%smanager_deepsec" machine path (if path.[(String.length path) - 1] = '/' then "" else "/")
+	  (* Printf.sprintf "ssh %s %s" machine (Filename.concat path "manager_deepsec") *)
+	  in
+          let (in_ch,out_ch) = Unix.open_process manager in
+          output_value out_ch pid_list;
+          flush out_ch;
+          managers := (in_ch,out_ch) :: !managers;
+          create_processes [] q
+        | (host,n)::q ->
+	  let worker =
+	    match host with
+	    | Local -> Filename.concat !Config.path_deepsec "worker_deepsec"
+	    | Distant(machine, path) ->
+	      Printf.sprintf "ssh %s %s%sworker_deepsec" machine path (if path.[(String.length path) - 1] = '/' then "" else "/")
+	  (* Printf.sprintf "ssh %s %s" machine (Filename.concat path "worker_deepsec") *)
+	  in
+          let (in_ch,out_ch) = Unix.open_process worker in
+          output_value out_ch shared;
+          flush out_ch;
+          let pid = ((input_value in_ch):int) in
+          (in_ch,out_ch)::(create_processes (pid::pid_list) ((host,n-1)::q))
       in
 
       let processes_in_out_ch = create_processes [] !workers in
