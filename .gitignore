@@ -25,6 +25,7 @@ Source/testing/testing_grammar.ml
 Source/testing/testing_grammar.mli
 Source/testing/testing_grammar.output
 Source/testing/testing_lexer.ml
+Source/core_library/config.ml
 
 Documentation/Core_library.tex
 Documentation/Subterms.tex
