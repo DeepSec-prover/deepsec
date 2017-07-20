@@ -402,3 +402,9 @@ let parse_one_declaration = function
   | FreeName ident -> environment := parse_free_name !environment ident
   | Query (query,line) -> parse_query !environment line query
   | ExtendedProcess(id,var_list,proc) -> environment := parse_process_declaration !environment id var_list proc
+
+let reset_parser () =
+  environment := (Env.empty:env_elt Env.t);
+  query_list := [];
+  
+    

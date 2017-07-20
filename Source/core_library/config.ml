@@ -11,6 +11,8 @@ let debug =
   then fun f -> f ()
   else fun _ -> ()
 
+(**** Testing *****)
+
 let test_activated = false
 
 let test =
@@ -18,7 +20,12 @@ let test =
   then fun f -> f ()
   else fun _ -> ()
 
-(**** Testing *****)
+(**** Version ****)
+
+let version = ref "1.0alpha"
+let git_commit = ref "b3bce7210f8c27f785d6da27ba964d7a2e71e206"
+    
+(**** Paths ****)
 
 let path_deepsec = ref ""
 let path_html_template = ref ""

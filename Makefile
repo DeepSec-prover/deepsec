@@ -13,6 +13,8 @@ OCAMLOPT=$(if $(PROFIL),ocamloptp -p -P f,$(if $(DEBUG), ocamlc -g,ocamlopt))
 OCAMLDEP=ocamldep $(if $(DEBUG), ,-native)
 OCAMLDOC=ocamldoc
 
+GITCOMMIT:= $(shell Source/get-git-commit)
+
 CMOX= $(if $(DEBUG),cmo,cmx)
 CMXA= $(if $(DEBUG),cma,cmxa)
 
@@ -61,7 +63,7 @@ EXE_MANAGER_OBJ = $(EXE_MANAGER_ML:.ml=.$(CMOX))
 
 ### Targets
 
-all: .display_obj $(ALL_OBJ)
+all: .display_obj config.ml $(ALL_OBJ)
 	@echo
 	@echo The main executable:
 	@echo
@@ -89,6 +91,9 @@ all: .display_obj $(ALL_OBJ)
 	@echo Number of lines in the source code of the program :
 	@find . -name "*.ml" -or -name "*.mli" -or -name "*.mly" -or -name "*.mll" | xargs cat | wc -l
 	@rm -f .display .display_obj
+
+config.ml:
+	@sed -e 's/GITCOMMIT/$(GITCOMMIT)/g' -e's/VERSION/$(VERSION)/g' < Source/core_library/config.ml.in > Source/core_library/config.ml
 
 clean:
 	@echo ----- Clean $(NAME_PROGRAMME) -----
