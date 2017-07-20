@@ -22,8 +22,8 @@ let test =
 
 (**** Version ****)
 
-let version = ref "1.0alpha"
-let git_commit = ref "b3bce7210f8c27f785d6da27ba964d7a2e71e206"
+let version = ref "VERSION"
+let git_commit = ref "GITCOMMIT"
     
 (**** Paths ****)
 
