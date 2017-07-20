@@ -98,6 +98,7 @@ config.ml:
 clean:
 	@echo ----- Clean $(NAME_PROGRAMME) -----
 	rm -f $(EXECUTABLE) $(TESTING) worker_deepsec manager_deepsec
+	rm -f $(SOURCE)core_library/config.ml
 	rm -f *~ *.cm[ioxt] *.cmti *.o
 	rm -f */*~ */*.cm[ioxt] */*.cmti */*.o
 	rm -f */*/*~ */*/*.cm[ioxt] */*/*.cmti */*/*.o */*/*.output
@@ -165,7 +166,7 @@ without_testing:
 
 ### Dependencies
 
-.depend: .display $(CORE_ML) $(GENERATED_SOURCES)
+.depend: .display config.ml $(CORE_ML) $(GENERATED_SOURCES)
 	@echo
 	@echo The Dependencies
 	@echo

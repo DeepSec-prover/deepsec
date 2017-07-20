@@ -16,14 +16,14 @@ let print_index path n res_list =
 	path_index_old
       end
   in
-  
+
   let out_html = open_out path_index in
   let in_template = open_in path_template in
 
-  let template_result = "<!-- Results deepsec -->" in 
+  let template_result = "<!-- Results deepsec -->" in
   let template_stylesheet = "<!-- Stylesheet deepsec -->" in
 
-  let line = ref (input_line in_template) in  
+  let line = ref (input_line in_template) in
   if initial_index then
     begin
       while !line <> template_stylesheet do
@@ -34,15 +34,15 @@ let print_index path n res_list =
 
       Printf.fprintf out_html " <link rel=\"stylesheet\" type=\"text/css\" href=\"%s\">\n" (Filename.concat (Filename.concat !Config.path_deepsec "Style") "style.css");
     end;
-  
+
   while !line <> template_result do
     Printf.fprintf out_html "%s\n" !line;
     line := input_line in_template
   done;
   Printf.fprintf out_html "%s\n" !line; (* print template_stylesheet *)
   Printf.fprintf out_html "        <p>File run with DeepSec : %s</p>\n\n" path;
-  let time = Unix.localtime (Unix.time ()) in 
-  Printf.fprintf out_html "        <p> on %s </p>\n\n" (Display.mkDate time); 
+  let time = Unix.localtime (Unix.time ()) in
+  Printf.fprintf out_html "        <p> on %s </p>\n\n" (Display.mkDate time);
   Printf.fprintf out_html "        <p>This file contained %d quer%s:\n" n (if n > 1 then "ies" else "y ");
   if n <> 0
   then
@@ -56,7 +56,7 @@ let print_index path n res_list =
 	    k
 	    (match res with | Equivalence.Equivalent -> "equivalent" | Equivalence.Not_Equivalent _ -> "not equivalent")
 	    (Display.mkRuntime rt)
-	    (if !Config.distributed then "Workers: "^(Distributed_equivalence.DistribEquivalence.display_workers ()) else "Not distributed") 
+	    (if !Config.distributed then "Workers: "^(Distributed_equivalence.DistribEquivalence.display_workers ()) else "Not distributed")
 	    k !Config.tmp_file;
           print_queries ((k+1), tl)
 	| (_ , _) -> failwith "Number of queries and number of results differ"
@@ -65,7 +65,7 @@ let print_index path n res_list =
       Printf.fprintf out_html "          </ul>\n";
     end;
   if not initial_index then Printf.fprintf out_html "        <hr class=\"small-separation\"></br>\n";
-  
+
   try
     while true do
       let l = input_line in_template in
@@ -99,16 +99,16 @@ let parse_file path =
 (****** Main ******)
 
 let start_time = ref (Unix.time ())
-    
+
 let rec excecute_queries id = function
   | [] -> []
   | (Process.Trace_Equivalence,exproc1,exproc2)::q ->
     start_time :=  (Unix.time ());
     let proc1 = Process.of_expansed_process exproc1 in
     let proc2 = Process.of_expansed_process exproc2 in
-    
+
     Printf.printf "Executing query %d...\n" id;
-    
+
     let result =
       if !Config.distributed
       then
@@ -148,12 +148,12 @@ let process_file path =
     begin
       Config.path_deepsec:=
 	(
-	  try Sys.getenv "DEEPSEC_DIR" with 
+	  try Sys.getenv "DEEPSEC_DIR" with
 	    Not_found -> Printf.printf "Environment variable DEEPSEC_DIR not defined and -deepsec_dir not specified on command line\n"; exit 1
 	)
     end;
 
-  if Filename.is_relative !Config.path_deepsec then 
+  if Filename.is_relative !Config.path_deepsec then
     begin
       (* convert to absolute path *)
       let save_current_dir=Sys.getcwd () in
@@ -163,8 +163,8 @@ let process_file path =
     end;
 
     begin
-      Config.path_html_template := ( Filename.concat (Filename.concat (!Config.path_deepsec) "Source") "html_templates/" ); 
-      
+      Config.path_html_template := ( Filename.concat (Filename.concat (!Config.path_deepsec) "Source") "html_templates/" );
+
       if !Config.path_index= "" then  Config.path_index:= Filename.dirname path; (*default location for results is the folder of the input file*)
 
       let create_if_not_exist dir_name =
@@ -179,7 +179,7 @@ let process_file path =
       and len_prefix = String.length prefix
       and len_suffix = String.length suffix in
       Config.tmp_file:= String.sub tmp (len_prefix) ( len_tmp - ( len_prefix + len_suffix ) );
-      
+
       if Config.test_activated
       then
         begin
@@ -217,11 +217,11 @@ let process_file path =
         end
     end;
     Parser_functions.reset_parser ()
-    
+
 let _ =
-  
+
   let set_semantics sem =
-    match sem with 
+    match sem with
     | "Classic" -> Process.chosen_semantics := Process.Classic
     | "Private" -> Process.chosen_semantics := Process.Private
     | "Eavesddrop" -> Process.chosen_semantics := Process.Eavesdrop
@@ -255,7 +255,7 @@ let _ =
     );
     (
       "-semantics",
-      Arg.Symbol(["Classic";"Private";"Eavesddrop"],set_semantics),
+      Arg.Symbol(["Classic";"Private"],set_semantics),
       " Specify semantics of the process calculus."
     );
     (
@@ -274,4 +274,3 @@ let _ =
 
   Arg.parse (Arg.align speclist) (fun file -> process_file file) usage_msg;
   exit 0
-    
