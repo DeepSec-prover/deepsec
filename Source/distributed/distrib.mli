@@ -46,6 +46,13 @@ end
 module Distrib : functor (Task : TASK) ->
 sig
 
+  (** Type hosts for specifying worker locations *)
+  type host
+  
+  val workers : (host * int) list ref
+    
+  val display_workers : unit -> string
+    
   val jobs_between_compact_memory : int ref
 
   val time_between_round : float ref

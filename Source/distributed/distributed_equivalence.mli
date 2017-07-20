@@ -46,6 +46,8 @@ end
 
 module DistribEquivalence : sig
 
+  val display_workers : unit -> string
+    
   (** Corresponds to the minimum number of jobs initially generated before distribution. Note that this number is necessarily bigger than
       the number of workers launched. Its initial value is 100. *)
   val minimum_nb_of_jobs : int ref

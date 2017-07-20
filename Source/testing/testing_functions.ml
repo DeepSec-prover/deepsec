@@ -151,10 +151,13 @@ let publish_loading_script out =
   )
 
 let publish_tests_to_check data =
-  let path_html = Printf.sprintf "%stesting_data/%s%s.html" !Config.path_index "tests_to_check/" data.file
-  and path_txt = Printf.sprintf "%stesting_data/%s%s.txt" !Config.path_index "tests_to_check/" data.file
-  and path_template = Printf.sprintf "%s%s%s.html" !Config.path_html_template "tests_to_check/" data.file in
+  let path_testing_data = (Filename.concat !Config.path_deepsec "testing_data") in 
+  let path_tests_to_check = (Filename.concat path_testing_data "tests_to_check") in
 
+  let path_html = (Filename.concat path_tests_to_check (Printf.sprintf "%s.html" data.file))
+  and path_txt =  (Filename.concat path_tests_to_check (Printf.sprintf "%s.txt"  data.file))
+  and path_template = ( Filename.concat (Filename.concat !Config.path_html_template "tests_to_check") (Printf.sprintf "%s.html" data.file) ) in
+  
   let out_html = open_out path_html in
   let out_txt = open_out path_txt in
 
@@ -207,7 +210,7 @@ let publish_tests_to_check data =
         | End_of_file -> close_out out_html
       end;
 
-      let path_script = Printf.sprintf "%stesting_data/%s%s.js" !Config.path_index "tests_to_check/" data.file in
+      let path_script = (Filename.concat path_tests_to_check (Printf.sprintf "%s.js" data.file) ) in
       let out_script = open_out path_script in
 
       Hashtbl.iter (fun _ (html_code,_) -> match html_code with
@@ -227,9 +230,12 @@ let publish_tests_to_check data =
       | End_of_file -> close_out out_html
 
 let publish_validated_tests data =
-  let path_html = Printf.sprintf "%stesting_data/%s%s.html" !Config.path_index "validated_tests/" data.file
-  and path_txt = Printf.sprintf "%stesting_data/%s%s.txt" !Config.path_index "validated_tests/" data.file
-  and path_template = Printf.sprintf "%s%s%s.html" !Config.path_html_template "validated_tests/" data.file in
+  let path_validated_tests = (Filename.concat (Filename.concat !Config.path_deepsec "testing_data") "validated_tests") in
+
+  let path_html = (Filename.concat path_validated_tests (Printf.sprintf "%s.html" data.file))
+  and path_txt =  (Filename.concat path_validated_tests (Printf.sprintf "%s.txt"  data.file))
+  and path_template = ( Filename.concat (Filename.concat !Config.path_html_template "validated_tests") (Printf.sprintf "%s.html" data.file) ) in
+
 
   let out_html = open_out path_html in
   let out_txt = open_out path_txt in
@@ -284,7 +290,7 @@ let publish_validated_tests data =
         | End_of_file -> close_out out_html
       end;
 
-      let path_script = Printf.sprintf "%stesting_data/%s%s.js" !Config.path_index "validated_tests/" data.file in
+      let path_script = (Filename.concat path_validated_tests (Printf.sprintf "%s.js" data.file)) in
       let out_script = open_out path_script in
 
       Hashtbl.iter (fun _ (html_code,_) -> match html_code with
@@ -342,9 +348,12 @@ let publish_loading_script_for_faulty out =
   )
 
 let publish_faulty_tests data =
-  let path_html = Printf.sprintf "%stesting_data/%s%s.html" !Config.path_index "faulty_tests/" data.file
-  and path_txt = Printf.sprintf "%stesting_data/%s%s.txt" !Config.path_index "faulty_tests/" data.file
-  and path_template = Printf.sprintf "%s%s%s.html" !Config.path_html_template "validated_tests/" data.file in
+
+  let path_faulty_tests = (Filename.concat (Filename.concat !Config.path_deepsec "testing_data") "faulty_tests") in
+
+  let path_html = (Filename.concat path_faulty_tests (Printf.sprintf "%s.html" data.file))
+  and path_txt =  (Filename.concat path_faulty_tests (Printf.sprintf "%s.txt"  data.file))
+  and path_template = ( Filename.concat (Filename.concat !Config.path_html_template "validated_tests") (Printf.sprintf "%s.html" data.file) ) in
 
   let out_html = open_out path_html in
   let out_txt = open_out path_txt in
@@ -412,7 +421,7 @@ let publish_faulty_tests data =
         | End_of_file -> close_out out_html
       end;
 
-      let path_script = Printf.sprintf "%stesting_data/%s%s.js" !Config.path_index "faulty_tests/" data.file in
+      let path_script = (Filename.concat path_faulty_tests (Printf.sprintf "%s.js" data.file)) in
       let out_script = open_out path_script in
 
       let print_script = function
@@ -443,8 +452,12 @@ let publish_tests data =
 (**** Loading tests ****)
 
 let preload_tests data =
-  let path_txt_to_check = Printf.sprintf "%stesting_data/%s%s.txt" !Config.path_index "tests_to_check/" data.file
-  and path_txt_checked = Printf.sprintf "%stesting_data/%s%s.txt" !Config.path_index "validated_tests/" data.file in
+  let path_testing_data = (Filename.concat !Config.path_deepsec "testing_data") in 
+  let path_tests_to_check = (Filename.concat path_testing_data "tests_to_check") in
+  let path_validated_tests = (Filename.concat path_testing_data "validated_tests") in
+
+  let path_txt_to_check = (Filename.concat path_tests_to_check  (Printf.sprintf "%s.txt" data.file)  )
+  and path_txt_checked = (Filename.concat path_validated_tests (Printf.sprintf "%s.txt" data.file)  ) in
 
   let init_html =
     if data.scripts

@@ -27,4 +27,4 @@ type result_trace_equivalence =
 
 val trace_equivalence : semantics -> process -> process -> result_trace_equivalence
 
-val publish_trace_equivalence_result : int -> semantics -> process -> process -> result_trace_equivalence -> unit
+val publish_trace_equivalence_result : int -> semantics -> process -> process -> result_trace_equivalence -> float -> unit

@@ -47,7 +47,8 @@
 
 rule token = parse
 | "//" [^ '\n']* '\n' { newline lexbuf; token lexbuf } (* Line comment *)
-| [' ' '\t'] { token lexbuf } (* Skip blanks *)
+| [' ' '\t' ] { token lexbuf } (* Skip blanks *)
+| "\xC2\xA0" { token lexbuf }
 | ['\n'	'\r']	{ newline lexbuf; token lexbuf } (* New line *)
 | "/*" { comment_slash lexbuf } (* Paragraph comment *)
 | "(*" { comment_par lexbuf } (* Paragraph comment *)
