@@ -30,7 +30,7 @@ OCAMLFLAGS = $(INCLUDES) $(V4OPTIONS) -w Ae $(INCLUDES_MOD)
 GENERATED_SOURCES_NAME = testing/testing_grammar.ml testing/testing_lexer.ml testing/testing_grammar.mli parser/grammar.ml parser/lexer.ml parser/grammar.mli
 GENERATED_SOURCES = $(GENERATED_SOURCES_NAME:%=$(SOURCE)%)
 
-CORE_ML_NAME = config.ml extensions.ml display.ml term.ml process.ml
+CORE_ML_NAME = extensions.ml display.ml term.ml process.ml
 CORE_ML = $(CORE_ML_NAME:%.ml=$(SOURCE)core_library/%.ml)
 
 SUBTERMS_ML_NAME = data_structure.ml constraint_system.ml equivalence.ml
@@ -45,12 +45,12 @@ TESTING_ML = $(TESTING_ML_NAME:%.ml=$(SOURCE)testing/%.ml)
 PARSER_ML_NAME = parser_functions.ml grammar.ml lexer.ml
 PARSER_ML = $(PARSER_ML_NAME:%.ml=$(SOURCE)parser/%.ml)
 
-ALL_ML = $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)main.ml $(SOURCE)testing/testing.ml $(SOURCE)distributed/worker.ml $(SOURCE)distributed/manager.ml
+ALL_ML = $(SOURCE)core_library/config.ml $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)main.ml $(SOURCE)testing/testing.ml $(SOURCE)distributed/worker.ml $(SOURCE)distributed/manager.ml
 
-EXE_MAIN_ML = $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)main.ml
-EXE_TESTING_ML = $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)testing/testing.ml
-EXE_WORKER_ML = $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)distributed/worker.ml
-EXE_MANAGER_ML = $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)distributed/manager.ml
+EXE_MAIN_ML = $(SOURCE)core_library/config.ml $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)main.ml
+EXE_TESTING_ML = $(SOURCE)core_library/config.ml $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)testing/testing.ml
+EXE_WORKER_ML = $(SOURCE)core_library/config.ml $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)distributed/worker.ml
+EXE_MANAGER_ML = $(SOURCE)core_library/config.ml $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)distributed/manager.ml
 
 ALL_OBJ = $(ALL_ML:.ml=.$(CMOX))
 EXE_MAIN_OBJ = $(EXE_MAIN_ML:.ml=.$(CMOX))
@@ -63,7 +63,8 @@ EXE_MANAGER_OBJ = $(EXE_MANAGER_ML:.ml=.$(CMOX))
 
 ### Targets
 
-all: .display_obj config.ml $(ALL_OBJ)
+all: .display_obj $(ALL_OBJ)
+	@sed -e 's/GITCOMMIT/$(GITCOMMIT)/g' -e's/VERSION/$(VERSION)/g' < Source/core_library/config.ml.in > Source/core_library/config.ml
 	@echo
 	@echo The main executable:
 	@echo
@@ -92,8 +93,6 @@ all: .display_obj config.ml $(ALL_OBJ)
 	@find . -name "*.ml" -or -name "*.mli" -or -name "*.mly" -or -name "*.mll" | xargs cat | wc -l
 	@rm -f .display .display_obj
 
-config.ml:
-	@sed -e 's/GITCOMMIT/$(GITCOMMIT)/g' -e's/VERSION/$(VERSION)/g' < Source/core_library/config.ml.in > Source/core_library/config.ml
 
 clean:
 	@echo ----- Clean $(NAME_PROGRAMME) -----
@@ -166,10 +165,11 @@ without_debug:
 
 ### Dependencies
 
-.depend: .display config.ml $(CORE_ML) $(GENERATED_SOURCES)
+.depend: .display $(CORE_ML) $(GENERATED_SOURCES)
 	@echo
 	@echo The Dependencies
 	@echo
+	@sed -e 's/GITCOMMIT/$(GITCOMMIT)/g' -e's/VERSION/$(VERSION)/g' < Source/core_library/config.ml.in > Source/core_library/config.ml
 	$(OCAMLDEP) $(INCLUDES) $(ALL_ML) $(GENERATED_SOURCES) > .depend
 
 -include .depend
