@@ -59,43 +59,6 @@ classical one.</li>
 
         <hr class="big-separation">
 
-        <div class="title-paragraph">Testing interface</div>
-
-        <p class="generic-text"> A testing interface is available for developer to check any update they provide
-            to the code. It can also be used by users to verify more in depth that DeepSec
-            is behaving as expacted. When the testing interface is enabled, every input file given to deepsec will
-            generate new tests that needs to be validated. Once a test a test is validated, it will become part of
-            our regression test suite.
-        </p>
-
-        <p class="generic-text"> An HTML display of the validated tests, tests to check and tests of the regression suite that failed the verification process
-            is available <a href="testing_data/testing.html">here</a>.
-
-        <p>To enable this testing interface, DeepSec must be recompile as follows.</p>
-
-        <xmp>
-        make testing
-        make
-        </xmp>
-
-        <p class="generic-text"> Once compile, a new executable is created <code>test_deepsed</code> that has two main functionalities:
-          <ul>
-            <li> It can verify all the validated tests from the regression test suite</li>
-            <li> It can validate new tests and incorporate them to the regression test suite</li>
-          </ul>
-        </p>
-        <p class="generic-text">
-          WARNING : Using the testing interface will slow down heavely the verification of
-          of processes as it generates multiple tests, display them on html pages, etc.
-          To disable the testing interface, one should once again compile DeepSec as follows.
-        </p>
-
-        <xmp>
-        make without_testing
-        make
-        </xmp>
-
-      </div>
     </div>
   </div>
 </body>
