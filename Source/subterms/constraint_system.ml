@@ -2563,13 +2563,13 @@ module Rule = struct
 
               let new_csys_list =
                 try
-                  let csys' = apply_mgs_and_gather csys data_shared (mgs,l_vars) in
+                  let csys' = apply_mgs_and_gather (List.hd other_csys) data_shared (mgs,l_vars) in
                   List.fold_left (fun set csys ->
                     try
                       (apply_mgs_from_gathering csys data_shared (mgs,l_vars))::set
                     with
                       | Bot -> set
-                    ) [csys'] other_csys
+                    ) [csys'] (List.tl other_csys)
                 with
                 | Bot ->
                     List.fold_left (fun set csys ->
@@ -2577,7 +2577,7 @@ module Rule = struct
                         (apply_mgs_from_gathering csys data_shared (mgs,l_vars))::set
                       with
                         | Bot -> set
-                      ) [] other_csys
+                      ) [] (List.tl other_csys)
               in
 
               let new_csys_set = { csys_set with Set.csys_list = new_csys_list } in
