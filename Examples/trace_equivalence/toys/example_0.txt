@@ -1,0 +1,11 @@
+free c.
+          
+fun sign/2.
+fun vk/1.
+reduc check(sign(x,y),vk(y)) -> x.
+
+let P_1 = new a; new b; new k; out(c,a); out(c,b); out(c,vk(k)); out(c,sign(a,k)).
+
+let P_2 = new a; new b; new k; out(c,a); out(c,b); out(c,vk(k)); out(c,sign(b,k)).
+
+query trace_equiv(P_1,P_2).
