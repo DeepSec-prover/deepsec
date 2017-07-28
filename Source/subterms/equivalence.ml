@@ -502,7 +502,6 @@ let publish_trace_equivalence_result id sem proc1 proc2 result runtime =
   let template_stylesheet = "<!-- Stylesheet deepsec -->" in
   let template_script = "<!-- Script deepsec -->" in
   let template_line = "<!-- Content of the file -->" in
-
   
   let line = ref (input_line in_template) in
   while !line <> template_stylesheet do
@@ -589,20 +588,6 @@ let publish_trace_equivalence_result id sem proc1 proc2 result runtime =
 
   Printf.fprintf out_result "        <div class=\"result\">Running time : %s </div>\n" (Display.mkRuntime runtime);
 
-  begin match attack_op with
-  | None ->
-    Printf.fprintf out_result "        <div class=\"result\">Result : The processes are equivalent</div>\n";
-  | Some attack ->
-    Printf.fprintf out_result "        <div class=\"result\">Result : The processes are not equivalent. An attack trace has been found on Process %d</div>\n\n" attack.attack_process_id;
-    
-    let str_attacker_names = match attack.names_attacker with
-      | [] -> Printf.sprintf "        <p>For this attack, the attacker does not generate any fresh name.</p>\n\n"
-      | [k] -> Printf.sprintf "        <p>For this attack, the attacker generates one fresh name : \\(%s\\)</p>\n\n" (Name.display Latex ~rho:rho k)
-      | _ -> Printf.sprintf "        <p>For this attack, the attacker generates some fresh names : \\(\\{%s\\}\\)</p>\n\n" (display_list (Name.display Latex ~rho:rho) ", " attack.names_attacker)
-    in
-    Printf.fprintf out_result "%s" str_attacker_names;
-    
-    
   (* The processes  *)
 
   let display_process out str_proc_1 str_proc_2 =
@@ -623,36 +608,46 @@ let publish_trace_equivalence_result id sem proc1 proc2 result runtime =
     Printf.fprintf out "          </div>\n";
     Printf.fprintf out "        </div>\n";
   in
-
   let (_,expansed_proc_1) = Process.expansed_of_process [] proc1 in
   let (_,expansed_proc_2) = Process.expansed_of_process [] proc2 in
-
-  let html_classic_proc_1 = Process.display_expansed_process_HTML ~rho:rho ~id:"1" expansed_proc_1 in
-  let html_classic_proc_2 = Process.display_expansed_process_HTML ~rho:rho ~id:"2" expansed_proc_2 in
-
-  display_process out_result html_classic_proc_1 html_classic_proc_2;
-
-
-  Printf.fprintf out_result "        <div class=\"small-separation\"> </div>\n";
     
-  let html_attack =
-    Trace.display_expansed_HTML ~rho:rho ~title:"Display of the attack trace" "3e0" ~fst_subst:attack.fst_subst ~snd_subst:attack.snd_subst attack.attack_process attack.attack_trace in
-    
-  close_out out_js;
-
-  Printf.fprintf out_result "%s" html_attack;
+  let html_proc_1 = Process.display_expansed_process_HTML ~rho:rho ~id:"1" expansed_proc_1 in
+  let html_proc_2 = Process.display_expansed_process_HTML ~rho:rho ~id:"2" expansed_proc_2 in
   
-  Printf.fprintf out_result "        <script>\n";
-  Printf.fprintf out_result "        var counter_3e0 = 1;\n";
-  Printf.fprintf out_result "        var max_number_actions_3e0 = %d;\n" (2*(Trace.size attack.attack_trace) + 1);
-  Printf.fprintf out_result "        height_attack = document.getElementById('expansed3e0e1').getBoundingClientRect().height;\n";
-  Printf.fprintf out_result "        width_attack = document.getElementById('expansed3e0e1').getBoundingClientRect().width + 150;\n";
-  Printf.fprintf out_result "        for (i = 1; i <= %d; i++) {\n" (2*(Trace.size attack.attack_trace) + 1);
-  Printf.fprintf out_result "          update_size(i);\n";
-  Printf.fprintf out_result "        }\n";
-  Printf.fprintf out_result "        </script>\n";
-  end;
+  begin match attack_op with
+  | None ->
+    Printf.fprintf out_result "        <div class=\"result\">Result : The processes are equivalent</div>\n";
+    display_process out_result html_proc_1 html_proc_2;
+  | Some attack ->
+    Printf.fprintf out_result "        <div class=\"result\">Result : The processes are not equivalent. An attack trace has been found on Process %d</div>\n\n" attack.attack_process_id;
+    
+    let str_attacker_names = match attack.names_attacker with
+      | [] -> Printf.sprintf "        <p>For this attack, the attacker does not generate any fresh name.</p>\n\n"
+      | [k] -> Printf.sprintf "        <p>For this attack, the attacker generates one fresh name : \\(%s\\)</p>\n\n" (Name.display Latex ~rho:rho k)
+      | _ -> Printf.sprintf "        <p>For this attack, the attacker generates some fresh names : \\(\\{%s\\}\\)</p>\n\n" (display_list (Name.display Latex ~rho:rho) ", " attack.names_attacker)
+    in
+    Printf.fprintf out_result "%s" str_attacker_names;
+    display_process out_result html_proc_1 html_proc_2;
 
+    Printf.fprintf out_result "        <div class=\"small-separation\"> </div>\n";
+    
+    let html_attack =
+      Trace.display_expansed_HTML ~rho:rho ~title:"Display of the attack trace" "3e0" ~fst_subst:attack.fst_subst ~snd_subst:attack.snd_subst attack.attack_process attack.attack_trace in
+    
+    close_out out_js;
+    
+    Printf.fprintf out_result "%s" html_attack;
+    Printf.fprintf out_result "        <script>\n";
+    Printf.fprintf out_result "        var counter_3e0 = 1;\n";
+    Printf.fprintf out_result "        var max_number_actions_3e0 = %d;\n" (2*(Trace.size attack.attack_trace) + 1);
+    Printf.fprintf out_result "        height_attack = document.getElementById('expansed3e0e1').getBoundingClientRect().height;\n";
+    Printf.fprintf out_result "        width_attack = document.getElementById('expansed3e0e1').getBoundingClientRect().width + 150;\n";
+    Printf.fprintf out_result "        for (i = 1; i <= %d; i++) {\n" (2*(Trace.size attack.attack_trace) + 1);
+    Printf.fprintf out_result "          update_size(i);\n";
+    Printf.fprintf out_result "        }\n";
+    Printf.fprintf out_result "        </script>\n";
+  end;
+  
   Printf.fprintf out_result "        <div class=\"small-separation\"> </div>\n";
   
   (* Complete the file *)
