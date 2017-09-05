@@ -246,7 +246,10 @@ let _ =
      Arg.Int( fun i -> Config.distributed := true; Distributed_equivalence.DistribEquivalence.local_workers i),
      "<n> Activate the distributed computing with n local workers");
     ("-distant_workers",
-     Arg.Tuple([Arg.Set_string(dist_host); Arg.Set_string(dist_path); Arg.Int( fun i -> Distributed_equivalence.DistribEquivalence.add_distant_worker !dist_host !dist_path i)]),
+     Arg.Tuple(
+       [Arg.Set_string(dist_host);
+	Arg.Set_string(dist_path);
+	Arg.Int( fun i -> Config.distributed := true; Distributed_equivalence.DistribEquivalence.add_distant_worker !dist_host !dist_path i)]),
      "<host><path><n> Activate n workers on <host> with <path> specifying the directory of deepsec.\nExample: -distant_workers my_login@my_host deepsec_path_on_my_host 25"
     );
     ("-nb_sets",
