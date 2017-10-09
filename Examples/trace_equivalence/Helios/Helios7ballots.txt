@@ -55,7 +55,7 @@ let Outcome(prv_ch,skE,x1,x2) =
   (* We check that we have 7 votes and that x1 and x2 are in check1 and check2 respectively. *)
   if nb_vote = s(s(s(s(s(s(s(zero))))))) then
   let z_test1 = is_in_7(x1,check1) in
-  let z_test2 = is_in_7(x2,check1) in
+  let z_test2 = is_in_7(x2,check2) in
 
   (* We check the replayed Ballot *)
   if vote1 = vote2
@@ -76,11 +76,11 @@ let VoteAssociation(prv_ch,vote1,vote2,vote3,check1,check2,nb_vote) =
   let (yid, yblob, yzkp) = x in
   if checkzkp(yzkp, yblob) = zkpok then
   if yid = id1
-  then out(prv_ch,(yblob,vote2,vote3,cons(check1,yblob),cons(check1,zero),s(nb_vote)))
+  then out(prv_ch,(yblob,vote2,vote3,cons(check1,yblob),cons(check2,zero),s(nb_vote)))
   else if yid = id2
-  then out(prv_ch,(vote1,yblob,vote3,cons(check1,zero),cons(check1,yblob),s(nb_vote)))
+  then out(prv_ch,(vote1,yblob,vote3,cons(check1,zero),cons(check2,yblob),s(nb_vote)))
   else if yid = id3
-  then out(prv_ch,(vote1,vote2,yblob,cons(check1,zero),cons(check1,zero),s(nb_vote)))
+  then out(prv_ch,(vote1,vote2,yblob,cons(check1,zero),cons(check2,zero),s(nb_vote)))
   else 0.
 
 let SubTally(prv_ch,x1,x2) =
@@ -90,10 +90,10 @@ let SubTally(prv_ch,x1,x2) =
   (* We first check that there is enough ballot left for the voter to check correctly. *)
   if nb_vote = s(s(s(s(s(s(zero))))))  (* Test if nb_vote = 6 *)
   then
-    let z_test1 = is_in_7(x1,check1) in (* Test if x1 is in the set check1 *)
+    let z_test1 = is_in_7(x1,cons(check1,zero)) in (* Test if x1 is in the set check1. We apply the function on cons(check1,zero) to ensure the set is of size 7. *)
       VoteAssociation(prv_ch,vote1,vote2,vote3,check1,check2,nb_vote)
     else
-      let z_test2 = is_in_7(x2,check2) in (* Test if x1 is in the set check2 *)
+      let z_test2 = is_in_7(x2,cons(check2,zero)) in (* Test if x2 is in the set check2 *)
         VoteAssociation(prv_ch,vote1,vote2,vote3,check1,check2,nb_vote)
       else 0
   else
@@ -112,17 +112,24 @@ let Tally(auth1,auth2,skE) =
 let P =
   new auth1;
   new auth2;
-  new auth3;
   new skE;
   out(c,pk(skE));
   (V(auth1,id1,yes,skE) | V(auth2,id2,no,skE) | Tally(auth1,auth2,skE)).
 
-let Q =
+let Q1 =
   new auth1;
   new auth2;
-  new auth3;
+  new skE;
+  out(c,pk(skE));
+  (V(auth1,id1,no,skE) | V(auth2,id2,yes,skE) | Tally(auth1,auth2,skE)).
+
+let Q2 =
+  new auth1;
+  new auth2;
   new skE;
   out(c,pk(skE));
   (V(auth1,id1,no,skE) | V(auth2,id2,no,skE) | Tally(auth1,auth2,skE)).
 
-query trace_equiv(P,Q).
+query trace_equiv(P,Q1).
+
+query trace_equiv(P,Q2).
