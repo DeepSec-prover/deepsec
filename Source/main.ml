@@ -142,15 +142,14 @@ let rec excecute_queries id = function
     result::(excecute_queries (id+1) q)
   | _ -> Config.internal_error "Observational_equivalence not implemented"
 
-
 let process_file path =
   if !Config.path_deepsec = "" then
     begin
       Config.path_deepsec:=
-	(
-	  try Sys.getenv "DEEPSEC_DIR" with
-	    Not_found -> Printf.printf "Environment variable DEEPSEC_DIR not defined and -deepsec_dir not specified on command line\n"; exit 1
-	)
+      	(
+      	  try Sys.getenv "DEEPSEC_DIR" with
+      	    Not_found -> Printf.printf "Environment variable DEEPSEC_DIR not defined and -deepsec_dir not specified on command line\n"; exit 1
+      	)
     end;
 
   if Filename.is_relative !Config.path_deepsec then
@@ -162,61 +161,62 @@ let process_file path =
       Sys.chdir save_current_dir;
     end;
 
-    begin
-      Config.path_html_template := ( Filename.concat (Filename.concat (!Config.path_deepsec) "Source") "html_templates/" );
+  begin
+    Config.path_html_template := ( Filename.concat (Filename.concat (!Config.path_deepsec) "Source") "html_templates/" );
 
-      if !Config.path_index= "" then  Config.path_index:= Filename.dirname path; (*default location for results is the folder of the input file*)
+    if !Config.path_index= "" then  Config.path_index:= Filename.dirname path; (*default location for results is the folder of the input file*)
 
-      let create_if_not_exist dir_name =
-	if not (Sys.file_exists dir_name) then Unix.mkdir (dir_name) 0o770
-      in
+    let create_if_not_exist dir_name =
+    if not (Sys.file_exists dir_name) then Unix.mkdir (dir_name) 0o770
+    in
 
-      let path_result = (Filename.concat !Config.path_index "result") in
-      create_if_not_exist path_result;
-      let prefix = "result_query_1_" and suffix = ".html" in
-      let tmp = Filename.basename (Filename.temp_file ~temp_dir:path_result prefix suffix) in
-      let len_tmp = String.length tmp
-      and len_prefix = String.length prefix
-      and len_suffix = String.length suffix in
-      Config.tmp_file:= String.sub tmp (len_prefix) ( len_tmp - ( len_prefix + len_suffix ) );
+    let path_result = (Filename.concat !Config.path_index "result") in
+    create_if_not_exist path_result;
+    let prefix = "result_query_1_" and suffix = ".html" in
+    let tmp = Filename.basename (Filename.temp_file ~temp_dir:path_result prefix suffix) in
+    let len_tmp = String.length tmp
+    and len_prefix = String.length prefix
+    and len_suffix = String.length suffix in
+    Config.tmp_file:= String.sub tmp (len_prefix) ( len_tmp - ( len_prefix + len_suffix ) );
 
-      if Config.test_activated
-      then
-        begin
-          Printf.printf "Loading the regression suite...\n";
-          flush_all ();
-	  let testing_data_dir = (Filename.concat !Config.path_deepsec "testing_data") in
-	  create_if_not_exist testing_data_dir;
-	  create_if_not_exist (Filename.concat testing_data_dir "tests_to_check");
-          Testing_load_verify.load ();
-          Testing_functions.update ()
-        end;
+    if Config.test_activated
+    then
+      begin
+        Printf.printf "Loading the regression suite...\n";
+        flush_all ();
+    	  let testing_data_dir = (Filename.concat !Config.path_deepsec "testing_data") in
+    	  create_if_not_exist testing_data_dir;
+    	  create_if_not_exist (Filename.concat testing_data_dir "tests_to_check");
+        Testing_load_verify.load ();
+        Testing_functions.update ()
+      end;
 
-      Term.Symbol.empty_signature ();
-      parse_file path;
+    Term.Symbol.empty_signature ();
+    parse_file path;
 
-      if Config.test_activated
-      then
-        begin
-          try
-            let l = excecute_queries 1 !Parser_functions.query_list in
-            let nb_queries = List.length !Parser_functions.query_list in
-            print_index path nb_queries l;
-            Testing_functions.publish ();
-            Testing_load_verify.publish_index ()
-          with
-          | _ ->
-            Testing_functions.publish ();
-            Testing_load_verify.publish_index ()
-        end
-      else
-        begin
+    if Config.test_activated
+    then
+      begin
+        try
           let l = excecute_queries 1 !Parser_functions.query_list in
           let nb_queries = List.length !Parser_functions.query_list in
           print_index path nb_queries l;
-        end
-    end;
-    Parser_functions.reset_parser ()
+          Testing_functions.publish ();
+          Testing_load_verify.publish_index ()
+        with
+        | _ ->
+          Testing_functions.publish ();
+          Testing_load_verify.publish_index ()
+      end
+    else
+      begin
+        print_string "Executing the queries...\n";
+        let l = excecute_queries 1 !Parser_functions.query_list in
+        let nb_queries = List.length !Parser_functions.query_list in
+        print_index path nb_queries l;
+      end
+  end;
+  Parser_functions.reset_parser ()
 
 let _ =
 
