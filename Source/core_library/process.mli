@@ -222,9 +222,10 @@ type output_gathering =
     out_private_channels : protocol_term list; (** The channels that must stay private *)
 
     out_tau_actions : Trace.t; (** The trace representing the unobservable actions that occured before reaching the output. *)
-    out_action : action_process option (** The action on which the output occurs. Since the gathering of trace information is optional, so is the type
+    out_action : action_process option; (** The action on which the output occurs. Since the gathering of trace information is optional, so is the type
       of [out_action]. *)
-
+    out_original_channel : protocol_term;
+    out_original_term : protocol_term
   }
 
 (** The type [input_gathering] represents the differents elements that were necessary to satisfy for the in transition to occur.*)
@@ -237,8 +238,9 @@ type input_gathering =
     in_private_channels : protocol_term list; (** The channels that must stay private *)
 
     in_tau_actions : Trace.t; (** The trace representing the unobservable actions that occured before reaching the input. *)
-    in_action : action_process option (** The action on which the input occurs. Since the gathering of trace information is optional, so is the type
+    in_action : action_process option; (** The action on which the input occurs. Since the gathering of trace information is optional, so is the type
       of [in_action]. *)
+    in_original_channel : protocol_term
   }
 
 (** The type [eavesdrop_gathering] represents the differents elements that were necessary to satisfy for the eavesdrop transition to occur.*)

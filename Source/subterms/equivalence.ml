@@ -48,7 +48,7 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
                   then Config.internal_error "[equivalence.ml >> apply_transition] There should be an action when display_trace is activated."
                 );
                 symb_proc.trace
-            | Some action -> Trace.add_input var_X_ch in_gathering.in_channel var_X_var (of_variable in_gathering.in_variable) action proc (Trace.combine symb_proc.trace in_gathering.in_tau_actions)
+            | Some action -> Trace.add_input var_X_ch in_gathering.in_original_channel var_X_var (of_variable in_gathering.in_variable) action proc (Trace.combine symb_proc.trace in_gathering.in_tau_actions)
         in
 
         let new_csys_5 = Constraint_system.replace_additional_data new_csys_4
@@ -115,7 +115,7 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
                 then Config.internal_error "[equivalence.ml >> apply_transition] There should be an action when display_trace is activated. (2)"
               );
               symb_proc.trace
-          | Some action -> Trace.add_output var_X_ch out_gathering.out_channel axiom out_gathering.out_term action proc (Trace.combine symb_proc.trace out_gathering.out_tau_actions)
+          | Some action -> Trace.add_output var_X_ch out_gathering.out_original_channel axiom out_gathering.out_original_term action proc (Trace.combine symb_proc.trace out_gathering.out_tau_actions)
         in
 
         let new_csys_5 = Constraint_system.replace_additional_data new_csys_4
@@ -226,7 +226,7 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
                   then Config.internal_error "[equivalence.ml >> apply_transition] There should be an action when display_trace is activated."
                 );
                 symb_proc.trace
-            | Some action -> Trace.add_input var_X_ch in_gathering.in_channel var_X_var (of_variable in_gathering.in_variable) action proc (Trace.combine symb_proc.trace in_gathering.in_tau_actions)
+            | Some action -> Trace.add_input var_X_ch in_gathering.in_original_channel var_X_var (of_variable in_gathering.in_variable) action proc (Trace.combine symb_proc.trace in_gathering.in_tau_actions)
         in
 
         let new_csys_6 = Constraint_system.replace_additional_data new_csys_5
@@ -305,7 +305,7 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
                 then Config.internal_error "[equivalence.ml >> apply_transition] There should be an action when display_trace is activated. (2)"
               );
               symb_proc.trace
-          | Some action -> Trace.add_output var_X_ch out_gathering.out_channel axiom out_gathering.out_term action proc (Trace.combine symb_proc.trace out_gathering.out_tau_actions)
+          | Some action -> Trace.add_output var_X_ch out_gathering.out_original_channel axiom out_gathering.out_original_term action proc (Trace.combine symb_proc.trace out_gathering.out_tau_actions)
         in
 
         let new_csys_6 = Constraint_system.replace_additional_data new_csys_5
@@ -389,7 +389,6 @@ let apply_one_transition_and_rules_for_trace_equivalence = function
   | Classic -> apply_one_transition_and_rules_for_trace_in_classic
   | Private -> apply_one_transition_and_rules_for_trace_in_private
   | _ -> Config.internal_error "[equivalence.ml >> apply_one_transition_and_rules_for_trace_equivalence] Trace equivalence for this semantics is not yet implemented."
-
 
 type result_trace_equivalence =
   | Equivalent
@@ -502,7 +501,7 @@ let publish_trace_equivalence_result id sem proc1 proc2 result runtime =
   let template_stylesheet = "<!-- Stylesheet deepsec -->" in
   let template_script = "<!-- Script deepsec -->" in
   let template_line = "<!-- Content of the file -->" in
-  
+
   let line = ref (input_line in_template) in
   while !line <> template_stylesheet do
     Printf.fprintf out_result "%s\n" !line;
@@ -520,7 +519,7 @@ let publish_trace_equivalence_result id sem proc1 proc2 result runtime =
     Printf.fprintf out_result "%s\n" !line;
     line := input_line in_template
   done;
-  
+
   (* Attack selection when there is one *)
 
   let attack_op = match result with
@@ -610,17 +609,17 @@ let publish_trace_equivalence_result id sem proc1 proc2 result runtime =
   in
   let (_,expansed_proc_1) = Process.expansed_of_process [] proc1 in
   let (_,expansed_proc_2) = Process.expansed_of_process [] proc2 in
-    
+
   let html_proc_1 = Process.display_expansed_process_HTML ~rho:rho ~id:"1" expansed_proc_1 in
   let html_proc_2 = Process.display_expansed_process_HTML ~rho:rho ~id:"2" expansed_proc_2 in
-  
+
   begin match attack_op with
   | None ->
     Printf.fprintf out_result "        <div class=\"result\">Result : The processes are equivalent</div>\n";
     display_process out_result html_proc_1 html_proc_2;
   | Some attack ->
     Printf.fprintf out_result "        <div class=\"result\">Result : The processes are not equivalent. An attack trace has been found on Process %d</div>\n\n" attack.attack_process_id;
-    
+
     let str_attacker_names = match attack.names_attacker with
       | [] -> Printf.sprintf "        <p>For this attack, the attacker does not generate any fresh name.</p>\n\n"
       | [k] -> Printf.sprintf "        <p>For this attack, the attacker generates one fresh name : \\(%s\\)</p>\n\n" (Name.display Latex ~rho:rho k)
@@ -630,12 +629,12 @@ let publish_trace_equivalence_result id sem proc1 proc2 result runtime =
     display_process out_result html_proc_1 html_proc_2;
 
     Printf.fprintf out_result "        <div class=\"small-separation\"> </div>\n";
-    
+
     let html_attack =
       Trace.display_expansed_HTML ~rho:rho ~title:"Display of the attack trace" "3e0" ~fst_subst:attack.fst_subst ~snd_subst:attack.snd_subst attack.attack_process attack.attack_trace in
-    
+
     close_out out_js;
-    
+
     Printf.fprintf out_result "%s" html_attack;
     Printf.fprintf out_result "        <script>\n";
     Printf.fprintf out_result "        var counter_3e0 = 1;\n";
@@ -647,9 +646,9 @@ let publish_trace_equivalence_result id sem proc1 proc2 result runtime =
     Printf.fprintf out_result "        }\n";
     Printf.fprintf out_result "        </script>\n";
   end;
-  
+
   Printf.fprintf out_result "        <div class=\"small-separation\"> </div>\n";
-  
+
   (* Complete the file *)
 
   try

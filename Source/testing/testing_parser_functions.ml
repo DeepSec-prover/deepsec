@@ -668,7 +668,9 @@ let parse_output_transition out_l =
       Process.out_term = term';
       Process.out_private_channels = term_list';
       Process.out_action = Some (action_process');
-      Process.out_tau_actions = trace'
+      Process.out_tau_actions = trace';
+      Process.out_original_channel = channel';
+      Process.out_original_term = term';
     })
   ) out_l
 
@@ -696,7 +698,8 @@ let parse_input_transition out_l =
       Process.in_variable = var';
       Process.in_private_channels = term_list';
       Process.in_action = Some (action_process');
-      Process.in_tau_actions = trace'
+      Process.in_tau_actions = trace';
+      Process.in_original_channel = channel';
     })
   ) out_l
 

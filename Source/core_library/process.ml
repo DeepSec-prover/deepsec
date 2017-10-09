@@ -275,7 +275,6 @@ let rec is_equal_modulo_symbolic_derivation symb_1 symb_2 =
           and symb_2' = { symb_2 with content_mult = { content = c2; mult = 1 } } in
 
           is_equal Protocol ch1' ch2' && is_equal Protocol t1' t2' && is_equal_modulo_symbolic_derivation symb_1' symb_2'
-
       | AIn(ch1,x1,c1), AIn(ch2,x2,c2) ->
           let new_x = Variable.fresh Protocol Free Variable.fst_ord_type in
           let rho_1 = Variable.Renaming.compose symb_1.var_renaming x1 new_x
@@ -288,7 +287,6 @@ let rec is_equal_modulo_symbolic_derivation symb_1 symb_2 =
           and symb_2' = { symb_2 with content_mult = { content = c2; mult = 1 }; var_renaming = rho_2 } in
 
           is_equal Protocol ch1' ch2' && is_equal_modulo_symbolic_derivation symb_1' symb_2'
-
       | ATest(t1,r1,c_pos1,c_neg1), ATest(t2,r2,c_pos2,c_neg2) ->
           let (t1',r1') = apply_renamings_pair symb_1.var_renaming symb_1.name_renaming (t1,r1)
           and (t2',r2') = apply_renamings_pair symb_2.var_renaming symb_2.name_renaming (t2,r2)
@@ -336,7 +334,6 @@ let rec is_equal_modulo_symbolic_derivation symb_1 symb_2 =
           and symb_2' = { symb_2 with content_mult = { content = c2; mult = 1 }; name_renaming = rho_2 } in
 
           is_equal_modulo_symbolic_derivation symb_1' symb_2'
-
       | APar c_mult_l_1, APar c_mult_l_2 | AChoice c_mult_l_1, AChoice c_mult_l_2 ->
           let proc_1 = List.map (fun c -> { symb_1 with content_mult = c }) c_mult_l_1
           and proc_2 = List.map (fun c -> { symb_2 with content_mult = c }) c_mult_l_2 in
@@ -1708,7 +1705,9 @@ type output_gathering =
     out_private_channels : protocol_term list;
 
     out_tau_actions : Trace.t;
-    out_action : action_process option
+    out_action : action_process option;
+    out_original_channel : protocol_term;
+    out_original_term : protocol_term
   }
 
 type input_gathering =
@@ -1720,7 +1719,8 @@ type input_gathering =
     in_private_channels : protocol_term list;
 
     in_tau_actions : Trace.t;
-    in_action : action_process option
+    in_action : action_process option;
+    in_original_channel : protocol_term;
   }
 
 type eavesdrop_gathering =
@@ -1786,8 +1786,8 @@ let rec next_output_classic_trace_content tau_actions content v_rho n_rho proc e
             if !Config.display_trace
             then
               let action = Some ({content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho}) in
-              (f_continuation [@tailcall]) proc' { out_equations = equations; out_disequations = disequations; out_channel = norm_ch; out_term = norm_t ; out_private_channels = []; out_tau_actions = tau_actions; out_action = action } f_next
-            else (f_continuation [@tailcall]) proc' { out_equations = equations; out_disequations = disequations; out_channel = norm_ch; out_term = norm_t ; out_private_channels = []; out_tau_actions = []; out_action = None} f_next
+              (f_continuation [@tailcall]) proc' { out_equations = equations; out_disequations = disequations; out_channel = norm_ch; out_term = norm_t ; out_private_channels = []; out_tau_actions = tau_actions; out_action = action; out_original_term = t'; out_original_channel = ch' } f_next
+            else (f_continuation [@tailcall]) proc' { out_equations = equations; out_disequations = disequations; out_channel = norm_ch; out_term = norm_t ; out_private_channels = []; out_tau_actions = []; out_action = None; out_original_term = t'; out_original_channel = ch'} f_next
         | EqList equations_modulo_list ->
             let f_next_equations =
               List.fold_left (fun acc_f_next equations_modulo ->
@@ -1819,8 +1819,8 @@ let rec next_output_classic_trace_content tau_actions content v_rho n_rho proc e
                       if !Config.display_trace
                       then
                         let action = Some ({content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho}) in
-                        (fun () -> (f_continuation [@tailcall]) proc' { out_equations = new_equations; out_disequations = new_disequations; out_channel = new_ch_2; out_term = new_t_2 ; out_private_channels = []; out_tau_actions = tau_actions; out_action = action } acc_f_next)
-                      else (fun () -> (f_continuation [@tailcall]) proc' { out_equations = new_equations; out_disequations = new_disequations; out_channel = new_ch_2; out_term = new_t_2 ; out_private_channels = []; out_tau_actions = []; out_action = None } acc_f_next)
+                        (fun () -> (f_continuation [@tailcall]) proc' { out_equations = new_equations; out_disequations = new_disequations; out_channel = new_ch_2; out_term = new_t_2 ; out_private_channels = []; out_tau_actions = tau_actions; out_action = action; out_original_term = t'; out_original_channel = ch' } acc_f_next)
+                      else (fun () -> (f_continuation [@tailcall]) proc' { out_equations = new_equations; out_disequations = new_disequations; out_channel = new_ch_2; out_term = new_t_2 ; out_private_channels = []; out_tau_actions = []; out_action = None; out_original_term = t'; out_original_channel = ch' } acc_f_next)
               ) f_next equations_modulo_list
             in
 
@@ -2266,8 +2266,8 @@ and next_input_classic_trace_content tau_actions content v_rho n_rho proc equati
               if !Config.display_trace
               then
                 let action = Some ({content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho}) in
-                (f_continuation [@tailcall]) new_proc { in_equations = equations; in_disequations = disequations; in_channel = norm_ch; in_variable = new_x ; in_private_channels = []; in_tau_actions = tau_actions; in_action = action } f_next
-              else (f_continuation [@tailcall]) new_proc { in_equations = equations; in_disequations = disequations; in_channel = norm_ch; in_variable = new_x ; in_private_channels = []; in_tau_actions = []; in_action = None} f_next
+                (f_continuation [@tailcall]) new_proc { in_equations = equations; in_disequations = disequations; in_channel = norm_ch; in_variable = new_x ; in_private_channels = []; in_tau_actions = tau_actions; in_action = action; in_original_channel = ch' } f_next
+              else (f_continuation [@tailcall]) new_proc { in_equations = equations; in_disequations = disequations; in_channel = norm_ch; in_variable = new_x ; in_private_channels = []; in_tau_actions = []; in_action = None; in_original_channel = ch'} f_next
           | EqList equations_modulo_list ->
               let f_next_equations =
                 List.fold_left (fun acc_f_next equations_modulo ->
@@ -2298,8 +2298,8 @@ and next_input_classic_trace_content tau_actions content v_rho n_rho proc equati
                         if !Config.display_trace
                         then
                           let action = Some ({content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho}) in
-                          (fun () -> (f_continuation [@tailcall]) new_proc { in_equations = new_equations; in_disequations = new_disequations; in_channel = new_ch_3; in_variable = new_x ; in_private_channels = []; in_tau_actions = tau_actions; in_action = action } acc_f_next)
-                        else (fun () -> (f_continuation [@tailcall]) new_proc { in_equations = new_equations; in_disequations = new_disequations; in_channel = new_ch_3; in_variable = new_x ; in_private_channels = []; in_tau_actions = []; in_action = None} acc_f_next)
+                          (fun () -> (f_continuation [@tailcall]) new_proc { in_equations = new_equations; in_disequations = new_disequations; in_channel = new_ch_3; in_variable = new_x ; in_private_channels = []; in_tau_actions = tau_actions; in_action = action; in_original_channel = ch' } acc_f_next)
+                        else (fun () -> (f_continuation [@tailcall]) new_proc { in_equations = new_equations; in_disequations = new_disequations; in_channel = new_ch_3; in_variable = new_x ; in_private_channels = []; in_tau_actions = []; in_action = None; in_original_channel = ch'} acc_f_next)
                 ) f_next equations_modulo_list
               in
 
@@ -2747,8 +2747,8 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
               if !Config.display_trace
               then
                 let action = Some ({content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho}) in
-                (f_continuation [@tailcall]) proc' { out_equations = equations; out_disequations = disequations; out_channel = norm_ch; out_term = norm_t ; out_private_channels = private_ch; out_tau_actions = tau_actions; out_action = action } f_next
-              else (f_continuation [@tailcall]) proc' { out_equations = equations; out_disequations = disequations; out_channel = norm_ch; out_term = norm_t ; out_private_channels = private_ch; out_tau_actions = []; out_action = None} f_next
+                (f_continuation [@tailcall]) proc' { out_equations = equations; out_disequations = disequations; out_channel = norm_ch; out_term = norm_t ; out_private_channels = private_ch; out_tau_actions = tau_actions; out_action = action; out_original_term = t'; out_original_channel = ch' } f_next
+              else (f_continuation [@tailcall]) proc' { out_equations = equations; out_disequations = disequations; out_channel = norm_ch; out_term = norm_t ; out_private_channels = private_ch; out_tau_actions = []; out_action = None; out_original_term = t'; out_original_channel = ch'} f_next
           | EqList equations_modulo_list ->
               let f_next_equations =
                 List.fold_left (fun acc_f_next equations_modulo ->
@@ -2785,9 +2785,9 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
                         if !Config.display_trace
                         then
                           let action = Some ({content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho}) in
-                          (fun () -> (f_continuation [@tailcall]) proc' { out_equations = new_equations; out_disequations = new_disequations; out_channel = new_ch_2; out_term = new_t_2 ; out_private_channels = private_ch_2; out_tau_actions = tau_actions; out_action = action } acc_f_next)
+                          (fun () -> (f_continuation [@tailcall]) proc' { out_equations = new_equations; out_disequations = new_disequations; out_channel = new_ch_2; out_term = new_t_2 ; out_private_channels = private_ch_2; out_tau_actions = tau_actions; out_action = action; out_original_term = t'; out_original_channel = ch' } acc_f_next)
                         else
-                          (fun () -> (f_continuation [@tailcall]) proc' { out_equations = new_equations; out_disequations = new_disequations; out_channel = new_ch_2; out_term = new_t_2 ; out_private_channels = private_ch_2; out_tau_actions = []; out_action = None } acc_f_next)
+                          (fun () -> (f_continuation [@tailcall]) proc' { out_equations = new_equations; out_disequations = new_disequations; out_channel = new_ch_2; out_term = new_t_2 ; out_private_channels = private_ch_2; out_tau_actions = []; out_action = None; out_original_term = t'; out_original_channel = ch' } acc_f_next)
                 ) f_next equations_modulo_list
               in
 
@@ -3255,8 +3255,8 @@ and next_input_private_trace_content tau_actions content v_rho n_rho proc equati
               if !Config.display_trace
               then
                 let action = Some ({content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho}) in
-                (f_continuation [@tailcall]) new_proc { in_equations = equations; in_disequations = disequations; in_channel = norm_ch; in_variable = new_x ; in_private_channels = private_ch; in_tau_actions = tau_actions; in_action = action } f_next
-              else (f_continuation [@tailcall]) new_proc { in_equations = equations; in_disequations = disequations; in_channel = norm_ch; in_variable = new_x ; in_private_channels = private_ch; in_tau_actions = []; in_action = None} f_next
+                (f_continuation [@tailcall]) new_proc { in_equations = equations; in_disequations = disequations; in_channel = norm_ch; in_variable = new_x ; in_private_channels = private_ch; in_tau_actions = tau_actions; in_action = action; in_original_channel = ch' } f_next
+              else (f_continuation [@tailcall]) new_proc { in_equations = equations; in_disequations = disequations; in_channel = norm_ch; in_variable = new_x ; in_private_channels = private_ch; in_tau_actions = []; in_action = None; in_original_channel = ch'} f_next
           | EqList equations_modulo_list ->
               let f_next_equations =
                 List.fold_left (fun acc_f_next equations_modulo ->
@@ -3288,8 +3288,8 @@ and next_input_private_trace_content tau_actions content v_rho n_rho proc equati
                         if !Config.display_trace
                         then
                           let action = Some ({content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho}) in
-                          (fun () -> (f_continuation [@tailcall]) new_proc { in_equations = new_equations; in_disequations = new_disequations; in_channel = new_ch_3; in_variable = new_x ; in_private_channels = private_ch_2; in_tau_actions = tau_actions; in_action = action } acc_f_next)
-                        else (fun () -> (f_continuation new_proc [@tailcall]) { in_equations = new_equations; in_disequations = new_disequations; in_channel = new_ch_3; in_variable = new_x ; in_private_channels = private_ch_2; in_tau_actions = []; in_action = None} acc_f_next)
+                          (fun () -> (f_continuation [@tailcall]) new_proc { in_equations = new_equations; in_disequations = new_disequations; in_channel = new_ch_3; in_variable = new_x ; in_private_channels = private_ch_2; in_tau_actions = tau_actions; in_action = action; in_original_channel = ch' } acc_f_next)
+                        else (fun () -> (f_continuation new_proc [@tailcall]) { in_equations = new_equations; in_disequations = new_disequations; in_channel = new_ch_3; in_variable = new_x ; in_private_channels = private_ch_2; in_tau_actions = []; in_action = None; in_original_channel = ch' } acc_f_next)
                 ) f_next equations_modulo_list
               in
 
