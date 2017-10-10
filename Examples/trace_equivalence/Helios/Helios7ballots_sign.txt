@@ -107,8 +107,22 @@ let VotingSystem(vote1,vote2) =
   out(c,vk(sk2));
   (Voter(sk1,vote1,pk(skE)) | Voter(sk2,vote2,pk(skE)) | Tally(skE,vk(sk1),vk(sk2),vk(sk3))).
 
+let VotingSystem_twice1(vote1,vote2) =
+  new skE;
+  out(c,pk(skE));
+  new sk1;
+  new sk2;
+  new sk3;
+  out(c,sk3);
+  out(c,vk(sk1));
+  out(c,vk(sk2));
+  ( !^2 Voter(sk1,vote1,pk(skE)) | Voter(sk2,vote2,pk(skE)) | Tally(skE,vk(sk1),vk(sk2),vk(sk3))).
+
 (* Should find an attack. *)
 query trace_equiv(VotingSystem(yes,no),VotingSystem(no,no)).
+
+(* Should find an attack. *)
+query trace_equiv(VotingSystem_twice1(yes,no),VotingSystem_twice1(no,yes)).
 
 (* Should not find an attack. *)
 query trace_equiv(VotingSystem(yes,no),VotingSystem(no,yes)).

@@ -162,6 +162,8 @@ let trace_equivalence semantics proc1 proc2 =
 
   (**** Launch the jobs in parallel ****)
 
+  EquivJob.result_equivalence := EquivJob.Equivalent;
+
   DistribEquivalence.compute_job () job;
 
   (**** Return the result of the computation ****)
