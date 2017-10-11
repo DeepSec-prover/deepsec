@@ -16,6 +16,7 @@
         (* Function declarations *)
         "fun", FUN;
         "reduc", REDUC;
+        "const", CONST;
 
         (* Public name declarations *)
         "free", FREE;

@@ -9,7 +9,7 @@ open Parser_functions
 
 %token SET SEMANTICS CLASSIC EAVESDROP PRIVATE
 %token FUN REDUC
-%token FREE
+%token FREE CONST
 %token NEW IF THEN ELSE IN OUT LET
 %token PHASE
 %token QUERY TRACEEQ OBSEQ
@@ -64,15 +64,25 @@ option_setting:
 
 /****** Function symbol declaration *******/
 
+ident_list :
+  | ident
+      { [$1] }
+  | ident COMMA ident_list
+      { $1 :: $3 }
+
 function_symbol_declaration:
+  | CONST ident_list DOT
+      { List.map (fun id -> Constructor (id,0,true)) $2 }
+  | CONST ident_list LBRACE PRIVATE RBRACE DOT
+      { List.map (fun id -> Constructor (id,0,false)) $2 }
   | FUN ident SLASH INT DOT
-      { Constructor ($2,$4,true) }
+      { [Constructor ($2,$4,true)] }
   | FUN ident SLASH INT LBRACE PRIVATE RBRACE DOT
-      { Constructor ($2,$4,false) }
+      { [Constructor ($2,$4,false)] }
   | REDUC rewrite_rule_list DOT
-      { Destructor ($2,true,(Parsing.symbol_start_pos ()).Lexing.pos_lnum) }
+      { [Destructor ($2,true,(Parsing.symbol_start_pos ()).Lexing.pos_lnum)] }
   | REDUC rewrite_rule_list LBRACE PRIVATE RBRACE DOT
-      { Destructor ($2,false,(Parsing.symbol_start_pos ()).Lexing.pos_lnum) }
+      { [Destructor ($2,false,(Parsing.symbol_start_pos ()).Lexing.pos_lnum)] }
 
 rewrite_rule_list:
   | rewrite_rule
@@ -87,8 +97,12 @@ rewrite_rule:
 /****** Function symbol declaration *******/
 
 free_name_declaration:
-  | FREE ident DOT
-      { $2 }
+  | FREE ident_list DOT
+      { $2,true }
+  /*
+  | FREE ident_list LBRACE PRIVATE RBRACE DOT
+      { $2,false }
+  */
 
 /****** Query ******/
 

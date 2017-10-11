@@ -44,8 +44,8 @@ type query =
 
 type declaration =
   | Setting of setting * int
-  | FuncDecl of functions
-  | FreeName of ident
+  | FuncDecl of functions list
+  | FreeName of (ident list * bool)
   | Query of query * int
   | ExtendedProcess of ident * ident list * extended_process
 

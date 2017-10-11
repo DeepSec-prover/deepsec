@@ -1,0 +1,82 @@
+(* CANDIDATES *)
+
+const a,b,c.
+
+(* PUBLIC KEY ENCRYPTION *)
+
+fun pub/1.
+fun enc/3.
+
+(* DECRYPTION EQUATION *)
+reduc dec(enc(x, pub(y), z), y) -> x.
+
+(* EQUATIONS FOR MIXNET PROOFS *)
+
+const ok.
+reduc
+  is_in(x,x,x2,x3) -> ok;
+  is_in(x,x1,x,x3) -> ok;
+  is_in(x,x1,x2,x) -> ok.
+
+reduc
+  exists_double(x,x,y) -> ok;
+  exists_double(x,y,x) -> ok;
+  exists_double(y,x,x) -> ok.
+
+(* COMMUNICATION CHANNELS *)
+
+free scanner, board.
+
+(* VOTERS *)
+
+free idA, idB.
+
+let Voter(vote,id,auth,psk) =
+    new r;
+    let onion = enc(vote, psk, r) in
+    out(scanner, (id, onion));
+    out(auth, onion).
+
+(* MIXER *)
+
+let Mixer(mix_ch) =
+  !^3 (in(scanner, onion); out(mix_ch,onion)).
+
+let Outcome(mix_ch,authA,authB,sk) =
+  (* Receiving onions of the authenticated onions of A and B *)
+  in(authA,onionA);
+  in(authB,onionB);
+
+  (* Receiving the onions from the Mixer *)
+  in(mix_ch,onion1);
+  in(mix_ch,onion2);
+  in(mix_ch,onion3);
+  if is_in(onionA,onion1,onion2,onion3) = ok then
+  if is_in(onionB,onion1,onion2,onion3) = ok then
+  if exists_double(onion1,onion2,onion3) = ok
+  then 0
+  else
+    ( out(board,dec(onion1,sk))
+    | out(board,dec(onion2,sk))
+    | out(board,dec(onion3,sk))
+    ).
+
+(*PRET A VOTER ANALYSIS*)
+
+let Pret_a_Voter(voteA,voteB) =
+  new sk;
+  new verifyOnionA;
+  new verifyOnionB;
+  new mix_ch;
+  out(board,pub(sk));
+  ( Voter(voteA,idA,verifyOnionA,pub(sk))
+  | Voter(voteB,idB,verifyOnionB,pub(sk))
+  | Mixer(mix_ch)
+  | Outcome(mix_ch,verifyOnionA,verifyOnionB,sk)
+  ).
+
+(* Should find an attack. *)
+query trace_equiv(Pret_a_Voter(a,b),Pret_a_Voter(b,b)).
+
+(* Should not find an attack. *)
+query trace_equiv(Pret_a_Voter(a,b),Pret_a_Voter(b,a)).

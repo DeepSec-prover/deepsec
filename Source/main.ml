@@ -109,6 +109,7 @@ let rec excecute_queries id = function
     let proc2 = Process.of_expansed_process exproc2 in
 
     Printf.printf "Executing query %d...\n" id;
+    flush_all ();
 
     let result =
       if !Config.distributed
@@ -140,6 +141,7 @@ let rec excecute_queries id = function
       then Printf.printf "Query %d: Processes not equivalent : See a summary of the input file and the attack trace on the HTML interface.\n" id
       else Printf.printf "Query %d: Processes not equivalent.\n" id
     end;
+    flush_all ();
     result::(excecute_queries (id+1) q)
   | _ -> Config.internal_error "Observational_equivalence not implemented"
 

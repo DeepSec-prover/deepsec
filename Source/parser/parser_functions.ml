@@ -44,8 +44,8 @@ type query =
 
 type declaration =
   | Setting of setting * int
-  | FuncDecl of functions
-  | FreeName of ident
+  | FuncDecl of functions list
+  | FreeName of (ident list * bool)
   | Query of query * int
   | ExtendedProcess of ident * ident list * extended_process
 
@@ -88,12 +88,18 @@ let warning_message line str =
 
 (******** Parse free names *******)
 
-let parse_free_name env (s,line) =
+let parse_free_name env pub (s,line) =
   if Env.mem s env
   then error_message line (Printf.sprintf "The identifier %s is already defined." s);
 
-  let n = Term.Symbol.new_constructor 0 s in
-  Env.add s (PublicName n) env
+  if pub
+  then
+    let n = Term.Symbol.new_constructor 0 s in
+    Env.add s (PublicName n) env
+  else
+    let n = Term.Name.fresh_with_label Term.Bound s in
+    Env.add s (Name n) env
+
 
 (******** Parse terms ********)
 
@@ -129,7 +135,6 @@ let rec parse_term env = function
       );
       let f = Term.Symbol.get_tuple (List.length args) in
       Term.apply_function f (List.map (parse_term env) args)
-
 
 (******** Parse pattern ********)
 
@@ -398,13 +403,11 @@ let parse_query env line = function
 
 let parse_one_declaration = function
   | Setting(sem,line) -> parse_setting line sem
-  | FuncDecl f -> environment := parse_functions !environment f
-  | FreeName ident -> environment := parse_free_name !environment ident
+  | FuncDecl f_list -> List.iter (fun f -> environment := parse_functions !environment f) f_list
+  | FreeName (ident_list,pub) -> List.iter (fun ident -> environment := parse_free_name !environment pub ident) ident_list
   | Query (query,line) -> parse_query !environment line query
   | ExtendedProcess(id,var_list,proc) -> environment := parse_process_declaration !environment id var_list proc
 
 let reset_parser () =
   environment := (Env.empty:env_elt Env.t);
   query_list := [];
-  
-    

@@ -43,6 +43,7 @@ type symbol_cat =
   | Tuple
   | Constructor
   | Destructor of ((fst_ord, name) term list *  (fst_ord, name) term) list
+
 and symbol =
   {
     name : string;
@@ -50,6 +51,7 @@ and symbol =
     arity : int;
     cat : symbol_cat
   }
+
 and ('a,'b) link =
   | NoLink
   | TLink of ('a, 'b) term
