@@ -7,7 +7,7 @@ const a,b,c.
 fun pub/1.
 fun enc/3.
 
-(* DECRYPTION EQUATION *)
+(* DECRYPTION   *)
 reduc dec(enc(x, pub(y), z), y) -> x.
 
 (* EQUATIONS FOR MIXNET PROOFS *)
@@ -22,6 +22,20 @@ reduc
   exists_double(x,x,y) -> ok;
   exists_double(x,y,x) -> ok;
   exists_double(y,x,x) -> ok.
+
+fun mixProof/7.
+
+reduc
+  checkMix(mixProof(k, enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), xm, ym, zm), enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), xm, ym, zm) -> ok;
+
+  checkMix(mixProof(k, enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), xm, zm, ym), enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), xm, zm, ym) -> ok;
+  checkMix(mixProof(k, enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), ym, xm, zm), enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), ym, xm, zm) -> ok;
+
+  checkMix(mixProof(k, enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), ym, zm, xm), enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), ym, zm, xm) -> ok;
+
+  checkMix(mixProof(k, enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), zm, xm, ym), enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), zm, xm, ym) -> ok;
+
+  checkMix(mixProof(k, enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), zm, ym, xm), enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), zm, ym, xm) -> ok.
 
 (* COMMUNICATION CHANNELS *)
 
@@ -56,10 +70,11 @@ let Outcome(mix_ch,authA,authB,sk) =
   if exists_double(onion1,onion2,onion3) = ok
   then 0
   else
-    ( out(board,dec(onion1,sk))
-    | out(board,dec(onion2,sk))
-    | out(board,dec(onion3,sk))
-    ).
+    let v1 = dec(onion1,sk) in
+    let v2 = dec(onion2,sk) in
+    let v3 = dec(onion3,sk) in
+    let proof = mixProof(sk, onion1, onion2, onion3, v1, v2, v3) in
+    out(board,(proof,v1,v2,v3)).
 
 (*PRET A VOTER ANALYSIS*)
 
