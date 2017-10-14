@@ -70,7 +70,7 @@ val apply_substitution : 'a t -> (fst_ord, name) Subst.t -> 'a t
 (** [instantiate_when_solved] {% $\C$ %} consider a constraint system {% $\C$ in solved form and extract a solution
     from $\C$ by instantiating all second-order variable in $\Df(\C)$ with fresh names.%}
     @raise Internal_error if {% $\C$ %} is not in solved form. *)
-val instantiate_when_solved : 'a t -> (fst_ord, name) Subst.t * (snd_ord, axiom) Subst.t * name list
+val instantiate_when_solved : 'a t -> (fst_ord, name) Subst.t * (snd_ord, axiom) Subst.t
 
 (** {3 Scanning} *)
 

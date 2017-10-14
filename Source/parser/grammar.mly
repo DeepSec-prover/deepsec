@@ -99,10 +99,8 @@ rewrite_rule:
 free_name_declaration:
   | FREE ident_list DOT
       { $2,true }
-  /*
   | FREE ident_list LBRACE PRIVATE RBRACE DOT
       { $2,false }
-  */
 
 /****** Query ******/
 

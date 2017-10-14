@@ -479,8 +479,7 @@ type attack =
     snd_subst : (snd_ord, axiom) Subst.t;
     attack_trace : Trace.t;
     attack_process_id : int;
-    attack_process : process;
-    names_attacker : name list
+    attack_process : process
   }
 
 
@@ -494,9 +493,6 @@ let publish_trace_equivalence_result id sem proc1 proc2 result runtime =
   let out_js = open_out path_javascript in
   let out_result = open_out path_result in
   let in_template = open_in path_template in
-
-  let free_names_1 = Process.get_names_with_list proc1 (fun b -> b = Public) [] in
-  let free_names = Process.get_names_with_list proc2 (fun b -> b = Public) free_names_1 in
 
   let template_stylesheet = "<!-- Stylesheet deepsec -->" in
   let template_script = "<!-- Script deepsec -->" in
@@ -526,7 +522,7 @@ let publish_trace_equivalence_result id sem proc1 proc2 result runtime =
     | Equivalent -> None
     | Not_Equivalent csys ->
       let trace = (Constraint_system.get_additional_data csys).trace in
-      let (fst_subst,snd_subst,names) = Constraint_system.instantiate_when_solved csys in
+      let (fst_subst,snd_subst) = Constraint_system.instantiate_when_solved csys in
       let id_proc,proc = match (Constraint_system.get_additional_data csys).origin_process with
         | Left -> 1,proc1
         | Right -> 2,proc2
@@ -535,7 +531,6 @@ let publish_trace_equivalence_result id sem proc1 proc2 result runtime =
         fst_subst = fst_subst;
         snd_subst = snd_subst;
         attack_trace = trace;
-        names_attacker = names;
         attack_process_id = id_proc;
         attack_process = proc
       }
@@ -553,14 +548,14 @@ let publish_trace_equivalence_result id sem proc1 proc2 result runtime =
       Subst.get_vars_with_list Protocol attack.fst_subst (fun _ -> true) fst_vars_4
   in
 
-  let names_1 = Process.get_names_with_list proc1 (fun _ -> true) free_names in
-  let names_2 = Process.get_names_with_list proc2 (fun _ -> true) names_1 in
+  let names_1 = Process.get_names_with_list proc1 [] in
+  let names_2 = Process.get_names_with_list proc2 names_1 in
   let names = match attack_op with
     | None -> names_2
     | Some(attack) ->
       let names_3 = Process.Trace.get_names_with_list attack.attack_trace names_2 in
         (* The names of the attacker should be included in that substitution *)
-      Subst.get_names_with_list Protocol attack.fst_subst (fun _ -> true) names_3
+      Subst.get_names_with_list Protocol attack.fst_subst names_3
   in
 
   let rho = Some(generate_display_renaming names fst_vars []) in
@@ -576,12 +571,14 @@ let publish_trace_equivalence_result id sem proc1 proc2 result runtime =
 
   (* Signature *)
   let str_signature = Symbol.display_signature Latex in
+  let str_public_name = Symbol.display_public_names Latex in
 
   Printf.fprintf out_result "        <p> Constructor function symbols : \\(%s\\)</p>\n\n" str_signature;
+  Printf.fprintf out_result "        <p> Public names : \\(%s\\)</p>\n\n" str_public_name;
 
   (* Rewriting system *)
   let str_rewriting_system = Rewrite_rules.display_all_rewrite_rules Latex rho in
-  Printf.fprintf out_result "        <p> Rewriting system : \\(%s\\)</p>\n\n<p> Note that for efficiency purpose, all declared public names have been transformed in constant.</p>" str_rewriting_system;
+  Printf.fprintf out_result "        <p> Rewriting system : \\(%s\\)</p>\n\n" str_rewriting_system;
 
   Printf.fprintf out_result "        <div class=\"title-paragraph\"> Query : Trace equivalence </div>\n\n";
 
@@ -620,10 +617,11 @@ let publish_trace_equivalence_result id sem proc1 proc2 result runtime =
   | Some attack ->
     Printf.fprintf out_result "        <div class=\"result\">Result : The processes are not equivalent. An attack trace has been found on Process %d</div>\n\n" attack.attack_process_id;
 
-    let str_attacker_names = match attack.names_attacker with
+    let attacker_names = List.filter Symbol.represents_attacker_public_name !Symbol.all_constructors in
+    let str_attacker_names = match attacker_names with
       | [] -> Printf.sprintf "        <p>For this attack, the attacker does not generate any fresh name.</p>\n\n"
-      | [k] -> Printf.sprintf "        <p>For this attack, the attacker generates one fresh name : \\(%s\\)</p>\n\n" (Name.display Latex ~rho:rho k)
-      | _ -> Printf.sprintf "        <p>For this attack, the attacker generates some fresh names : \\(\\{%s\\}\\)</p>\n\n" (display_list (Name.display Latex ~rho:rho) ", " attack.names_attacker)
+      | [k] -> Printf.sprintf "        <p>For this attack, the attacker generates one fresh name : \\(%s\\)</p>\n\n" (Symbol.display Latex k)
+      | _ -> Printf.sprintf "        <p>For this attack, the attacker generates some fresh names : \\(\\{%s\\}\\)</p>\n\n" (display_list (Symbol.display Latex) ", " attacker_names)
     in
     Printf.fprintf out_result "%s" str_attacker_names;
     display_process out_result html_proc_1 html_proc_2;

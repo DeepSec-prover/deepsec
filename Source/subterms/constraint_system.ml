@@ -197,16 +197,15 @@ let get_vars_with_list (type a) (type b) (at: (a,b) atom) csys (vars_l: (a,b) va
 let get_names_with_list csys names_l =
   let result_vars = ref names_l in
 
-  DF.iter csys.df (fun bfct -> result_vars := get_names_with_list Protocol (BasicFact.get_protocol_term bfct) (fun _ -> true) !result_vars);
+  DF.iter csys.df (fun bfct -> result_vars := get_names_with_list Protocol (BasicFact.get_protocol_term bfct) !result_vars);
   result_vars := Eq.get_names_with_list Protocol csys.eqfst !result_vars;
   SDF.iter csys.sdf (fun fct ->
-    result_vars := get_names_with_list Protocol (Fact.get_protocol_term fct) (fun _-> true) !result_vars;
-    result_vars := get_names_with_list Recipe (Fact.get_recipe fct) (fun _-> true) !result_vars
+    result_vars := get_names_with_list Protocol (Fact.get_protocol_term fct) !result_vars
   );
-  UF.iter Fact.Deduction csys.uf (fun psi -> result_vars := Fact.get_names_with_list Fact.Deduction psi (fun _ -> true) !result_vars);
-  UF.iter Fact.Equality csys.uf (fun psi -> result_vars := Fact.get_names_with_list Fact.Equality psi (fun _ -> true) !result_vars);
-  result_vars := Subst.get_names_with_list Protocol csys.i_subst_fst (fun _ -> true) !result_vars;
-  Uniformity_Set.iter csys.sub_cons (fun _ t -> result_vars := get_names_with_list Protocol t (fun _ -> true) !result_vars);
+  UF.iter Fact.Deduction csys.uf (fun psi -> result_vars := Fact.get_names_with_list Fact.Deduction psi !result_vars);
+  UF.iter Fact.Equality csys.uf (fun psi -> result_vars := Fact.get_names_with_list Fact.Equality psi !result_vars);
+  result_vars := Subst.get_names_with_list Protocol csys.i_subst_fst !result_vars;
+  Uniformity_Set.iter csys.sub_cons (fun _ t -> result_vars := get_names_with_list Protocol t !result_vars);
   !result_vars
 
 let get_axioms_with_list csys ax_list =
@@ -445,17 +444,16 @@ let instantiate_when_solved csys =
     then Config.internal_error "[constraint_system.ml >> instantiate_when_solved] The constraint system should be solved."
   );
 
-  let subst_fst, subst_snd, name_list, _ =
-    DF.fold (fun (acc_fst,acc_snd,acc_name,counter_ax) bfct ->
-      let k = Name.fresh_with_label Public "kI" in
-      let ax = Axiom.of_public_name k counter_ax in
-      let fst = Subst.create Protocol (variable_of (BasicFact.get_protocol_term bfct)) (of_name k) in
-      let snd = Subst.create Recipe (BasicFact.get_snd_ord_variable bfct) (of_axiom ax) in
-      (Subst.compose acc_fst fst, Subst.compose acc_snd snd, k::acc_name, counter_ax - 1)
-    ) (Subst.identity, Subst.identity, [], 0) csys.df
+  let subst_fst, subst_snd =
+    DF.fold (fun (acc_fst,acc_snd) bfct ->
+      let k = Symbol.fresh_attacker_name () in
+      let fst = Subst.create Protocol (variable_of (BasicFact.get_protocol_term bfct)) (apply_function k []) in
+      let snd = Subst.create Recipe (BasicFact.get_snd_ord_variable bfct) (apply_function k []) in
+      (Subst.compose acc_fst fst, Subst.compose acc_snd snd)
+    ) (Subst.identity, Subst.identity) csys.df
   in
 
-  (Subst.compose csys.i_subst_fst subst_fst, Subst.union csys.i_subst_ground_snd (Subst.compose csys.i_subst_snd subst_snd), name_list)
+  (Subst.compose csys.i_subst_fst subst_fst, Subst.union csys.i_subst_ground_snd (Subst.compose csys.i_subst_snd subst_snd))
 
 let add_private_channels csys pr_ch_l =
   Config.debug (fun () ->
@@ -1214,13 +1212,13 @@ let get_vars_simple_with_list (type a) (type b) (at: (a,b) atom) csys (vars_l: (
 let get_names_simple_with_list csys names_l =
   let result_vars = ref names_l in
 
-  DF.iter csys.simp_DF (fun bfct -> result_vars := get_names_Term Protocol (BasicFact.get_protocol_term bfct) (fun _ -> true) !result_vars);
+  DF.iter csys.simp_DF (fun bfct -> result_vars := get_names_Term Protocol (BasicFact.get_protocol_term bfct) !result_vars);
   result_vars := Eq.get_names_with_list Protocol csys.simp_EqFst !result_vars;
   SDF.iter csys.simp_SDF (fun fct ->
-    result_vars := get_names_Term Protocol (Fact.get_protocol_term fct) (fun _-> true) !result_vars;
-    result_vars := get_names_Term Recipe (Fact.get_recipe fct) (fun _-> true) !result_vars
+    result_vars := get_names_Term Protocol (Fact.get_protocol_term fct) !result_vars;
+    result_vars := get_names_Term Recipe (Fact.get_recipe fct) !result_vars
   );
-  Uniformity_Set.iter csys.simp_Sub_Cons (fun _ t -> result_vars := get_names_Term Protocol t (fun _ -> true) !result_vars);
+  Uniformity_Set.iter csys.simp_Sub_Cons (fun _ t -> result_vars := get_names_Term Protocol t !result_vars);
   !result_vars
 
 let get_axioms_simple_with_list csys ax_list =

@@ -200,8 +200,8 @@ let rec parse_names = function
       then
         let body = Str.matched_group 1 s in
         match body with
-          | "a" | "b" | "c" -> Hashtbl.add environment s (Name (Term.Name.fresh Term.Public))
-          | "k" | "l" | "m" -> Hashtbl.add environment s (Name (Term.Name.fresh Term.Bound))
+          | "a" | "b" | "c" -> Hashtbl.add environment s (Name (Term.Name.fresh ()))
+          | "k" | "l" | "m" -> Hashtbl.add environment s (Name (Term.Name.fresh ()))
           | _ -> Config.internal_error "[parser_functions >> parse_names] Unexpected case."
       else error_message line (Printf.sprintf "The identifiant %s should be a name, i.e. it should match the regex _[abcklm]_[0-9]+" s);
 
@@ -233,7 +233,7 @@ let rec parse_axioms = function
           | Some (s',line') ->
               begin try
                 begin match Hashtbl.find environment s' with
-                  | Name n -> Hashtbl.add environment s (Axiom (Term.Axiom.of_public_name n k))
+                  | Name _ -> ()
                   | env_elt -> error_message line' (Printf.sprintf "The identifiant %s is declared as %s but a name is expected." s' (display_env_elt_type env_elt))
                 end
               with
@@ -275,7 +275,7 @@ let rec parse_constructor = function
       if Hashtbl.mem environment s
       then error_message line (Printf.sprintf "The identifiant %s should not be already declared." s);
 
-      Hashtbl.add environment s (Func (Term.Symbol.new_constructor ar s));
+      Hashtbl.add environment s (Func (Term.Symbol.new_constructor ar true false s));
       parse_constructor q
 
 let rec parse_tuple = function
@@ -380,7 +380,7 @@ let rec parse_rewriting_system = function
         ) rw_rules
       in
 
-      Hashtbl.add environment s (Func (Term.Symbol.new_destructor length s rules));
+      Hashtbl.add environment s (Func (Term.Symbol.new_destructor length true s rules));
       parse_rewriting_system q
 
 (******** Syntactic_equation_list ********)

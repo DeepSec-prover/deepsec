@@ -92,14 +92,8 @@ let parse_free_name env pub (s,line) =
   if Env.mem s env
   then error_message line (Printf.sprintf "The identifier %s is already defined." s);
 
-  if pub
-  then
-    let n = Term.Symbol.new_constructor 0 s in
-    Env.add s (PublicName n) env
-  else
-    let n = Term.Name.fresh_with_label Term.Bound s in
-    Env.add s (Name n) env
-
+  let n = Term.Symbol.new_constructor 0 pub true s in
+  Env.add s (PublicName n) env
 
 (******** Parse terms ********)
 
@@ -207,7 +201,7 @@ let rec parse_plain_process env = function
       if Env.mem s env
       then warning_message line (Printf.sprintf "The identifier %s is already defined." s);
 
-      let n = Term.Name.fresh_with_label Term.Bound s in
+      let n = Term.Name.fresh_with_label s in
       let env' = Env.add s (Name n) env in
 
       Process.New(n,parse_plain_process env' proc)
@@ -272,7 +266,7 @@ let rec parse_list_argument proc env = function
       in
       generate_proc
 
-let dummy_term = Term.of_name (Term.Name.fresh Term.Public)
+let dummy_term = Term.of_name (Term.Name.fresh ())
 
 let parse_process_declaration env (s,line) var_list proc =
   if Env.mem s env
@@ -350,15 +344,13 @@ let parse_rewrite_rule line env (lhs,rhs) = match lhs with
 
 
 let parse_functions env = function
-  | Constructor((s,line),n,true) ->
+  | Constructor((s,line),n,public) ->
       if Env.mem s env
       then error_message line (Printf.sprintf "The identifier %s is already defined." s);
 
-      let f = Term.Symbol.new_constructor n s in
+      let f = Term.Symbol.new_constructor n public false s in
       Env.add s (Func f) env
-  | Constructor((_,line),_,false) -> error_message line "Private constructor function symbol not implemented yet."
-  | Destructor(_,false,line) -> error_message line "Private destructor function symbol not implemented yet."
-  | Destructor(rw_rules,true,line) ->
+  | Destructor(rw_rules,public,line) ->
       let (symb,lhs,rhs) = parse_rewrite_rule line env (List.hd rw_rules) in
       let ar = List.length lhs in
 
@@ -374,7 +366,7 @@ let parse_functions env = function
           (args',rhs')::acc
         ) [lhs,rhs] (List.tl rw_rules)
       in
-      let f = Term.Symbol.new_destructor ar symb rw_rules' in
+      let f = Term.Symbol.new_destructor ar public symb rw_rules' in
       Env.add symb (Func f) env
 
 
