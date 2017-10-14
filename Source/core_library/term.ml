@@ -1010,9 +1010,11 @@ module Symbol = struct
         then emptyset out
         else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list (display_with_arity out) ", " without_tuple) (rcurlybracket out)
 
-  let display_public_names out =
-    let names = List.filter represents_name !all_constructors in
-    Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list (display out) ", " names) (rcurlybracket out)
+  let display_names out public =
+    let names = List.filter (fun f -> f.represents = UserName && f.public = public) !all_constructors in
+    if names = []
+    then emptyset out
+    else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list (display out) ", " names) (rcurlybracket out)
 end
 
 (*************************************
@@ -3588,7 +3590,8 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) = struct
     | Func(f,args_r), Func(f',args_t) when Symbol.is_equal f f' ->
         List.for_all2 (consequence sdf df)  args_r args_t
     | Func(f,_), _ when Symbol.is_constructor f -> false
-    | Func(_,_), _ | AxName _, _ ->
+    | Func(_,_), _
+    | AxName _, _ ->
         SDF.exists sdf (fun fct -> (is_equal Recipe fct.Fact.df_recipe recipe) && (is_equal Protocol fct.Fact.df_term term))
     | Var(v),_ -> DF.exists_within_var_type (Variable.type_of v) df (fun b_fct -> (Variable.is_equal b_fct.BasicFact.var v) && (is_equal Protocol b_fct.BasicFact.pterm term))
 
@@ -3620,7 +3623,8 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) = struct
               | None -> None
               | Some (g,t_l) -> Some ({term = Func(f,t_l); ground = g})
             end
-      | Func(_,_) | AxName _ -> SDF.find sdf (fun fct -> if is_equal Recipe fct.Fact.df_recipe recipe then Some fct.Fact.df_term else None)
+      | Func(_,_)
+      | AxName _ -> SDF.find sdf (fun fct -> if is_equal Recipe fct.Fact.df_recipe recipe then Some fct.Fact.df_term else None)
       | Var v -> DF.find_term df v
 
     in
@@ -3647,8 +3651,8 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) = struct
           end
 
     and mem_term pterm = match pterm.term with
-      | Func(f,_) when f.arity = 0 -> Some ({term = Func(f,[]); ground = true})
-      | Func(f,args_t) ->
+      | Func(f,_) when f.arity = 0 && f.public -> Some ({term = Func(f,[]); ground = true})
+      | Func(f,args_t) when f.public ->
           begin match mem_list args_t with
             | None ->
                 begin match SDF.find sdf (fun fct -> if is_equal Protocol fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
@@ -3714,7 +3718,8 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) = struct
               | None -> None
               | Some (g,t_l) -> Some ({term = Func(f,t_l); ground = g})
             end
-      | Func(_,_) | AxName _ -> SDF.find sdf (fun fct -> if is_equal Recipe fct.Fact.df_recipe recipe then Some fct.Fact.df_term else None)
+      | Func(_,_)
+      | AxName _ -> SDF.find sdf (fun fct -> if is_equal Recipe fct.Fact.df_recipe recipe then Some fct.Fact.df_term else None)
       | Var v ->
           begin try
             let b_fct = List.find (fun b_fct -> Variable.is_equal v b_fct.BasicFact.var) b_fct_list in
@@ -3747,8 +3752,8 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) = struct
           end
 
     and mem_term pterm = match pterm.term with
-      | Func(f,_) when f.arity = 0 -> Some ({term = Func(f,[]); ground = true})
-      | Func(f,args_t) ->
+      | Func(f,_) when f.arity = 0 && f.public -> Some ({term = Func(f,[]); ground = true})
+      | Func(f,args_t) when f.public ->
           begin match mem_list args_t with
             | None ->
                 begin try
@@ -3864,12 +3869,12 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) = struct
           end
 
     and mem_term pterm = match pterm.term with
-      | Func(f,_) when f.arity = 0 -> Some ({term = Func(f,[]); ground = true})
+      | Func(f,_) when f.arity = 0 && f.public -> Some ({term = Func(f,[]); ground = true})
       | _ ->
           begin match Uni.find_protocol_term uni pterm with
             | None ->
                 begin match pterm.term with
-                  | Func(f,args_t) ->
+                  | Func(f,args_t) when f.public ->
                       begin match mem_list args_t with
                         | None ->
                             begin match SDF.find sdf (fun fct -> if is_equal Protocol fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
@@ -3922,7 +3927,8 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) = struct
             let (g,args_t,uniset_1,sdf_1) = explore_recipe_list uniset sdf args_r in
             let t = {term = Func(f,args_t); ground = g} in
             (t,Uni.add uniset_1 recipe t,sdf_1)
-      | Func(_,_) | AxName _ ->
+      | Func(_,_)
+      | AxName _ ->
           (* Destructor case *)
           begin match SDF.find_term_and_mark sdf recipe with
             | SDF.Not_in_SDF  -> Config.internal_error "[term.ml >> Tools.add_in_uniset] The recipe should be consequence."

@@ -2794,7 +2794,7 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
               f_next_equations ()
       in
 
-      if is_function ch' && Symbol.get_arity (root ch') = 0
+      if is_function ch' && Symbol.get_arity (root ch') = 0 && Symbol.is_public (root ch')
       then next_output f_next
       else
         let internal_communication f_next =
@@ -2875,7 +2875,7 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
 
         next_output (fun () -> internal_communication f_next)
   | AIn(ch,x,cont) ->
-      if is_function ch && Symbol.get_arity (root ch) = 0
+      if is_function ch && Symbol.get_arity (root ch) = 0 && Symbol.is_public (root ch)
       then f_next ()
       else
         (* This input may be used for an internal reduction *)
@@ -3296,7 +3296,7 @@ and next_input_private_trace_content tau_actions content v_rho n_rho proc equati
               f_next_equations ()
       in
 
-      if is_function ch' && Symbol.get_arity (root ch') = 0
+      if is_function ch' && Symbol.get_arity (root ch') = 0 && Symbol.is_public (root ch')
       then next_input f_next
       else
         let internal_communication f_next =
@@ -3376,7 +3376,7 @@ and next_input_private_trace_content tau_actions content v_rho n_rho proc equati
 
         next_input (fun () -> internal_communication f_next)
   | AOut(ch,t,cont) ->
-      if is_function ch && Symbol.get_arity (root ch) = 0
+      if is_function ch && Symbol.get_arity (root ch) = 0 && Symbol.is_public (root ch)
       then f_next ()
       else
         let ch',t' = apply_renamings_pair v_rho n_rho (ch,t) in

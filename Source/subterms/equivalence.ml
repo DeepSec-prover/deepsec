@@ -571,10 +571,12 @@ let publish_trace_equivalence_result id sem proc1 proc2 result runtime =
 
   (* Signature *)
   let str_signature = Symbol.display_signature Latex in
-  let str_public_name = Symbol.display_public_names Latex in
+  let str_public_name = Symbol.display_names Latex true in
+  let str_private_name = Symbol.display_names Latex false in
 
   Printf.fprintf out_result "        <p> Constructor function symbols : \\(%s\\)</p>\n\n" str_signature;
   Printf.fprintf out_result "        <p> Public names : \\(%s\\)</p>\n\n" str_public_name;
+  Printf.fprintf out_result "        <p> Private names : \\(%s\\)</p>\n\n" str_private_name;
 
   (* Rewriting system *)
   let str_rewriting_system = Rewrite_rules.display_all_rewrite_rules Latex rho in

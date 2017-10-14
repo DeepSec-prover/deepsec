@@ -185,7 +185,7 @@ module Symbol : sig
 
   val display_signature : Display.output -> string
 
-  val display_public_names : Display.output -> string
+  val display_names : Display.output -> bool -> string
 end
 
 (** {2 Variables} *)
