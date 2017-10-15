@@ -119,47 +119,6 @@ reduc                         (* Note : VCid = deltaId(SVK) *)
 (* Typing of the messages -- between Voter and his Computer only *)
 free mAC1, mAC2, mCA1, mCA2.
 
-(* Alice  --  The client process *)
-let Alice(Ch1,InitData,J1) =
-    (* Retrieves registration data obtained from the Registrar  --  Set of initial data given to Alice by the Registrar.             *)
-    let (SVKid, BCKid, sVCCid, sCCid1) = GetAliceData(InitData,J1) in
-    (* Voting part -- The voting process followed by agent Alice *)
-    out(Ch1,(mAC1,SVKid,J1));
-    in(Ch1, x);
-    let (=mCA1,sCC_Received1) = x in
-    if sCC_Received1 = sCCid1 then		                                    (* Compares the short Choice Codes.              *)
-    out(Ch1,(mAC2,BCKid));
-    in( Ch1, y);						    (* Alice checks the Vote Cast Code's value.      *)
-    if (mCA2,sVCCid) = y then
-    0
-.
-
-(* Computer  --  The Alice's computer *)
-let Cmp(Ch1,Ch2,EBpk) =
-    in(Ch1, x);
-    let (= mAC1,SVKid,J1) = x in			                    (* The Start Voting Key plus the Voting options. *)
-    let VCid = deltaId(SVKid) in                                           (* The GetID method; CryptoPaperUpdate page 4.   *)
-    out(Ch2, VCid);                                                                 (* Send the Voting Card ID to the Bulletin Board *)
-    in( Ch2, VCksid);                                                     (* Receives the asso. Verification Card keystore *)
-    let VCidsk = Dec_s(deltaKey(SVKid),VCksid) in					    (* Recover the asso. the Voting Card private key *)
-
-    new R;
-    let C = (Enc_c1(R),Enc_c2(EBpk,J1,R)) in
-    let P = ZKP(EBpk,pube(VCidsk),C,pCC(VCidsk,J1), R,VCidsk) in
-
-    out(Ch2, (C, pCC(VCidsk,J1), tild(VCidsk,C), pube(VCidsk), P));		            (* Sends the ballot (ie. 'Vote') to the server.  *)
-
-    in( Ch2, sCC_Set);						    (* Transmits the Choice Codes to the voter.      *)
-    out(Ch1, ( mCA1,sCC_Set));
-
-    in( Ch1, y);
-    let (=mAC2,BCKid) = y in
-    out(Ch2,pCC(VCidsk,BCKid));						    (* The Confirm(VCid,_,VCidsk,BCK) voter's method *)
-
-    in( Ch2, sVCCid);							    (* Transmits the Vote Cast Code to the voter.    *)
-    out(Ch1, ( mCA2,sVCCid))
-.
-
 (* MODELING  --  Alice plus her Computer together (if both honest, to avoid useless secure communications).                          *)
 let Alice_Cmp(InitData,J1,Ch2,EBpk) =
     (* Retrieves registration data obtained from the Registrar  --  Set of initial data given to Alice by the Registrar.             *)
@@ -246,13 +205,6 @@ let Tally(CTally,EBsk,VCCspk,VCid1,VCid2) =
 .
 
 
-
-(* 7. Security properties *)
-
-(* For observational equivalence, this is done through the choice(..) method. *)
-
-
-
 (* 8. Main process  -- initiates the election *)
 
 let Main_process(vote1,vote2) =
@@ -263,20 +215,18 @@ let Main_process(vote1,vote2) =
   out(c, deltaId(honest(svka))); out(c,pube(ske(deltaId(honest(svka)))));
   out(c, deltaId(honest(svkb))); out(c,pube(ske(deltaId(honest(svkb)))));
 
-(* Roles for honest voter(s)  --  one for Reachability, two for Observational Equivalence. *)
-   Alice_Cmp(AliceData(honest(svka),csk),vote1,c,pube(ske(election)))
- | Alice_Cmp(AliceData(honest(svkb),csk),vote2,c,pube(ske(election)))
-(* Alice_Cmp(AliceData(honest(svka),csk),       ja1     ,c,pube(ske(election)))*)	 (* For Runnability check *)
-(*|Alice_Cmp(AliceData(honest(svkb),csk),       jb1     ,c,pube(ske(election)))*)	 (* Same                  *)
+  (* Dishonest voter(s) : As many as possible for Reachability, need only one for Obervational equivalence. *)
+  new svki; out(c,svki); out(c,AliceData(svki,csk));
+  (* Bulletin Board (ie. Server) : is Honest for Reachability, but Dishonest for Observational Equivalence. *)
+  out(c,ServData(pube(ske(election)),csk,sks(signature)));
+  (
+    (* Roles for honest voter(s)  --  one for Reachability, two for Observational Equivalence. *)
+    Alice_Cmp(AliceData(honest(svka),csk),vote1,c,pube(ske(election)))
+  | Alice_Cmp(AliceData(honest(svkb),csk),vote2,c,pube(ske(election)))
 
-(* Dishonest voter(s) : As many as possible for Reachability, need only one for Obervational equivalence. *)
- |  (new svki; out(c,svki); out(c,AliceData(svki,csk)))
-
-(* Bulletin Board (ie. Server) : is Honest for Reachability, but Dishonest for Observational Equivalence. *)
- |  out(c,ServData(pube(ske(election)),csk,sks(signature)))
-
-(* The Tally phase  --  only after the honest voters have voted. *)
- | Tally(c,ske(election),pubs(sks(signature)),deltaId(honest(svka)),deltaId(honest(svkb))).
+    (* The Tally phase  --  only after the honest voters have voted. *)
+  | Tally(c,ske(election),pubs(sks(signature)),deltaId(honest(svka)),deltaId(honest(svkb)))
+  ).
 
 query trace_equiv(Main_process(ja1,jb1),Main_process(ja1,ja1)).
 
