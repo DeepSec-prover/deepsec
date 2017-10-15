@@ -2800,7 +2800,7 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
         let internal_communication f_next =
           (* This output may be used for an internal reduction *)
           next_input_private_trace proc equations disequations private_ch (fun proc' in_gather f_next_1 ->
-            if is_function in_gather.in_channel && Symbol.get_arity (root in_gather.in_channel) = 0
+            if is_function in_gather.in_channel && Symbol.get_arity (root in_gather.in_channel) = 0 && Symbol.is_public (root in_gather.in_channel)
             then f_next_1 ()
             else
               let new_ch, new_t = Subst.apply in_gather.in_equations (norm_ch,norm_t) (fun (x,y) f -> f x, f y) in
@@ -2886,7 +2886,7 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
         let new_v_rho = Variable.Renaming.restrict v_rho' cont.bound_var in
 
         next_output_private_trace proc equations disequations private_ch (fun proc' out_gather f_next_1 ->
-          if is_function out_gather.out_channel && Symbol.get_arity (root out_gather.out_channel) = 0
+          if is_function out_gather.out_channel && Symbol.get_arity (root out_gather.out_channel) = 0 && Symbol.is_public (root out_gather.out_channel)
           then f_next_1 ()
           else
             let new_ch = Subst.apply out_gather.out_equations ch' (fun x f -> f x) in
@@ -3301,7 +3301,7 @@ and next_input_private_trace_content tau_actions content v_rho n_rho proc equati
       else
         let internal_communication f_next =
             next_output_private_trace proc equations disequations private_ch (fun proc' out_gather f_next_1 ->
-              if is_function out_gather.out_channel && Symbol.get_arity (root out_gather.out_channel) = 0
+              if is_function out_gather.out_channel && Symbol.get_arity (root out_gather.out_channel) = 0 && Symbol.is_public (root out_gather.out_channel)
               then f_next_1 ()
               else
                 let new_ch = Subst.apply out_gather.out_equations norm_ch (fun x f -> f x) in
@@ -3385,7 +3385,7 @@ and next_input_private_trace_content tau_actions content v_rho n_rho proc equati
 
         (* This output may be used for an internal reduction *)
         next_input_private_trace proc equations disequations private_ch (fun proc' in_gather f_next_1 ->
-          if is_function in_gather.in_channel && Symbol.get_arity (root in_gather.in_channel) = 0
+          if is_function in_gather.in_channel && Symbol.get_arity (root in_gather.in_channel) = 0 && Symbol.is_public (root in_gather.in_channel)
           then f_next_1 ()
           else
             let new_ch, new_t = Subst.apply in_gather.in_equations (ch',t') (fun (x,y) f -> f x, f y) in

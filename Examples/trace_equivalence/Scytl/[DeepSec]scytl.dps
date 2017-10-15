@@ -72,12 +72,6 @@ free csk [private].   (* The Codes secret key 'Csk' (for f(...) function)      #
 fun bck/1 [private].  (* The Ballot Casting Key 'BCK^id'  of an agent id                 # private *)
 fun sCC/3 [private].  (* The short choice code 'sCC^id_i' of an agent id + voting option # private *)
 fun sVCC/2 [private]. (* The short vote cast code 'sVCC^id' of an agent id               # private *)
-reduc GetVCks(deltaId(SVK)) = Enc_s(deltaKey(SVK), ske(deltaId(SVK))). (* CryptoPaperDraft upd.page 4 *)
-fun CM_table/2.       (* The Codes Mapping Table ('CM_id', unbounded)  --  opened with readCC/VCC(). *)
-reduc                                                                       (* Enc_s(CC,sCC) *)
-      readCC(H(f(Csk, pCC(ske(VCid),J  ))), CM_table(Csk,VCid)) = Enc_s(f(Csk, pCC(ske(VCid),J  )), sCC(Csk,VCid,J)).
-reduc                                                                          (* Enc_s(VCC,sVCC) *)
-      readVCC(H(f(Csk, pCC(ske(VCid),bck(VCid)))), CM_table(Csk,VCid)) = Enc_s(f(Csk, pCC(ske(VCid),bck(VCid))), sVCC(Csk,VCid)).
 
 (* For any voter id, generates VCidpk,VCidsk ........ : pke(id) and ske(id) and GetVCks(id)     --  distributed in encrypted private data.  *)
 (* For any voter id, chooses a ballot casting key ... : bck(id) as defined above;               --  distributed in AliceData and Mapping.   *)
@@ -89,17 +83,6 @@ reduc                                                                          (
 
 
 (* Registration data for any voter id  --  AliceData(svk,csk) produced by the Registrar for Alice   --  opened with a reduction             *)
-fun AliceData/2 [private].
-reduc
-      GetAliceData(AliceData(SVK,Csk),J1) = (SVK, bck(deltaId(SVK)), sVCC(Csk,deltaId(SVK)), sCC(Csk,deltaId(SVK),J1)).
-(*    Note: The term sCC(id,v(J)) is a selection of one sCC corresponding to J1, decided at Alice's initialisation.                         *)
-
-
-(* Registration data for the server (Bulletin Board)  --  ServData(pke,Csk,sks) produced by the Registrar  -- opened with a reduction       *)
-fun   ServData/3 [private].
-reduc                         (* Note : VCid = deltaId(SVK) *)
-      GetServData(ServData(EBpk,Csk,VCCssk),deltaId(SVK)) = (EBpk,Csk,pubs(VCCssk), Enc_s(deltaKey(SVK),ske(deltaId(SVK))), CM_table(Csk,deltaId(SVK)), Sign(VCCssk,sVCC(Csk,deltaId(SVK))) ).
-
 
 (* 5. Methods and Agents processes *)
 
@@ -120,16 +103,15 @@ reduc                         (* Note : VCid = deltaId(SVK) *)
 free mAC1, mAC2, mCA1, mCA2.
 
 (* MODELING  --  Alice plus her Computer together (if both honest, to avoid useless secure communications).                          *)
-let Alice_Cmp(InitData,J1,Ch2,EBpk) =
+let Alice_Cmp(svk,J1,Ch2,EBpk) =
     (* Retrieves registration data obtained from the Registrar  --  Set of initial data given to Alice by the Registrar.             *)
-    let (SVKid, BCKid, sVCCid, sCCid1) = GetAliceData(InitData,J1) in
+    let (SVKid, BCKid, sVCCid, sCCid1) = (honest(svk), bck(deltaId(honest(svk))), sVCC(csk,deltaId(honest(svk))), sCC(csk,deltaId(honest(svk)),J1)) in
     (* Voting part -- The voting process followed by agent Alice *)
     let VCid = deltaId(SVKid) in                                           (* The GetID method; CryptoPaperUpdate page 4.   *)
     out(Ch2, VCid);                                                                 (* Send the Voting Card ID to the Bulletin Board *)
 
     in( Ch2, VCksid);                                                     (* Receives the asso. Verification Card keystore *)
     let VCidsk = Dec_s(deltaKey(SVKid),VCksid) in					    (* Recover the asso. the Voting Card private key *)
-
 
     new R;
     let C = (Enc_c1(R),Enc_c2(EBpk,J1,R)) in
@@ -184,7 +166,8 @@ let Tally(CTally,EBsk,VCCspk,VCid1,VCid2) =
     else if VCid1 = VCid3
     then 0
     else if VCid2 = VCid3
-    then
+    then 0
+    else
       (* MixNet Modeling -- The data to be mixed is sent concurrently on a specific channel *)
       (
         out(mix,C_1)
@@ -215,14 +198,21 @@ let Main_process(vote1,vote2) =
   out(c, deltaId(honest(svka))); out(c,pube(ske(deltaId(honest(svka)))));
   out(c, deltaId(honest(svkb))); out(c,pube(ske(deltaId(honest(svkb)))));
 
+  out(c, Enc_s(deltaKey(honest(svka)), ske(deltaId(honest(svka)))));
+  out(c, Enc_s(deltaKey(honest(svkb)), ske(deltaId(honest(svkb)))));
   (* Dishonest voter(s) : As many as possible for Reachability, need only one for Obervational equivalence. *)
-  new svki; out(c,svki); out(c,AliceData(svki,csk));
+  new svki; out(c,svki);
+  in(c,Ji);
+  out(c,(svki, bck(deltaId(svki)), sVCC(csk,deltaId(svki)), sCC(csk,deltaId(svki),Ji)));
   (* Bulletin Board (ie. Server) : is Honest for Reachability, but Dishonest for Observational Equivalence. *)
-  out(c,ServData(pube(ske(election)),csk,sks(signature)));
+  out(c, (pube(ske(election)),csk,pubs(sks(signature)), Enc_s(deltaKey(honest(svka)),ske(deltaId(honest(svka)))), Sign(sks(signature),sVCC(csk,deltaId(honest(svka)))) ));
+  out(c, (pube(ske(election)),csk,pubs(sks(signature)), Enc_s(deltaKey(honest(svkb)),ske(deltaId(honest(svkb)))), Sign(sks(signature),sVCC(csk,deltaId(honest(svkb)))) ));
+  out(c, (pube(ske(election)),csk,pubs(sks(signature)), Enc_s(deltaKey(svki),ske(deltaId(svki))), Sign(sks(signature),sVCC(csk,deltaId(svki))) ));
+
   (
     (* Roles for honest voter(s)  --  one for Reachability, two for Observational Equivalence. *)
-    Alice_Cmp(AliceData(honest(svka),csk),vote1,c,pube(ske(election)))
-  | Alice_Cmp(AliceData(honest(svkb),csk),vote2,c,pube(ske(election)))
+    Alice_Cmp(svka,vote1,c,pube(ske(election)))
+  | Alice_Cmp(svkb,vote2,c,pube(ske(election)))
 
     (* The Tally phase  --  only after the honest voters have voted. *)
   | Tally(c,ske(election),pubs(sks(signature)),deltaId(honest(svka)),deltaId(honest(svkb)))
