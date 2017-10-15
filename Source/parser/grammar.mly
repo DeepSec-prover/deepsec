@@ -93,6 +93,8 @@ rewrite_rule_list:
 rewrite_rule:
   | term RIGHTARROW term
       { ($1,$3) }
+  | term EQ term
+      { ($1,$3) }
 
 /****** Function symbol declaration *******/
 
