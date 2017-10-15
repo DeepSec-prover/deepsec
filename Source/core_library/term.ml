@@ -959,7 +959,7 @@ module Symbol = struct
     let acc = ref 0 in
 
     let f () =
-      let c = { name = "kI"; arity = !acc; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
+      let c = { name = (Printf.sprintf "kI_%d" !acc); arity = !acc; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
       incr accumulator_nb_symb;
       all_constructors := List.sort order (c::!all_constructors);
       number_of_constructors := !number_of_constructors + 1;
