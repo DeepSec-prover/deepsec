@@ -183,7 +183,7 @@ module Symbol : sig
 
   val display_with_arity  : Display.output -> symbol -> string
 
-  val display_signature : Display.output -> string
+  val display_signature : Display.output -> bool -> string
 
   val display_names : Display.output -> bool -> string
 end

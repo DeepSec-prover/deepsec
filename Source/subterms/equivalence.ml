@@ -570,11 +570,13 @@ let publish_trace_equivalence_result id sem proc1 proc2 result runtime =
   Printf.fprintf out_result "        <p> Selected semantics : %s</p>\n\n" str_semantics;
 
   (* Signature *)
-  let str_signature = Symbol.display_signature Latex in
+  let str_constructor_signature = Symbol.display_signature Latex true in
+  let str_destructor_signature = Symbol.display_signature Latex false in
   let str_public_name = Symbol.display_names Latex true in
   let str_private_name = Symbol.display_names Latex false in
 
-  Printf.fprintf out_result "        <p> Constructor function symbols : \\(%s\\)</p>\n\n" str_signature;
+  Printf.fprintf out_result "        <p> Constructor function symbols : \\(%s\\)</p>\n\n" str_constructor_signature;
+  Printf.fprintf out_result "        <p> Destructor function symbols : \\(%s\\)</p>\n\n" str_destructor_signature;
   Printf.fprintf out_result "        <p> Public names : \\(%s\\)</p>\n\n" str_public_name;
   Printf.fprintf out_result "        <p> Private names : \\(%s\\)</p>\n\n" str_private_name;
 

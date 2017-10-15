@@ -1276,7 +1276,7 @@ let data_IO_Term_Subst_unify =
 let header_terminal_and_latex snd_ord_vars rho gathering =
   let test_terminal =
     {
-      signature = Symbol.display_signature Testing;
+      signature = Symbol.display_signature Testing true;
       rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
       fst_ord_vars = display_var_list Testing Protocol rho gathering.g_fst_vars;
       snd_ord_vars = display_var_list Testing Recipe rho (List.sort (Variable.order Recipe) gathering.g_snd_vars);
@@ -1289,7 +1289,7 @@ let header_terminal_and_latex snd_ord_vars rho gathering =
 
   let test_latex =
     {
-      signature = (let t = Symbol.display_signature Latex in if t = emptyset Latex then "" else t);
+      signature = (let t = Symbol.display_signature Latex true in if t = emptyset Latex then "" else t);
       rewrite_rules = (let t = Rewrite_rules.display_all_rewrite_rules Latex rho in if t = emptyset Latex then "" else t);
       fst_ord_vars = "";
       snd_ord_vars = (if snd_ord_vars then (let t = display_var_list Latex Recipe rho gathering.g_snd_vars in if t = emptyset Latex then "" else t) else "");

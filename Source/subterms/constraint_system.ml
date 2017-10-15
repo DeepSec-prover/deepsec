@@ -2802,47 +2802,65 @@ module Rule = struct
               then
                 begin
                   let symb = root term in
-                  let args = get_args term in
-
-                  let univ_vars_snd = Variable.fresh_list Recipe Universal (Variable.snd_ord_type csys.size_frame) (Symbol.get_arity symb) in
-
-                  let b_fct_list = List.map2 (fun x t -> BasicFact.create x t) univ_vars_snd args in
-                  let head = Fact.create_equality_fact (Fact.get_recipe fact) (apply_function symb (List.map of_variable univ_vars_snd)) in
-
-                  let form = Fact.create Fact.Equality head b_fct_list [] in
-                  let (fst_renaming,snd_renaming,simple_csys) = simple_of_formula Fact.Equality csys form in
 
                   Config.debug (fun () ->
-                    if not (Variable.Renaming.is_identity fst_renaming)
-                    then Config.internal_error "[Constraint_system.ml >> rule_equality_constructor] The renaming should be identity."
+                    if Symbol.get_arity symb = 0 && Symbol.is_public symb
+                    then Config.internal_error "[constraint_system.ml >> internal_equality_constructor] A public function symbol should not be in SDF."
                   );
 
-                  try
-                    let ((mgs,l_vars), _, _) = one_mgs simple_csys in
-                    (* Need to restrict the mgs  to the variables of the constraint system *)
-                    Config.debug (fun () ->
-                      if List.exists (fun x -> Variable.type_of x = csys.size_frame) l_vars
-                      then Config.internal_error "[Constraint_system.ml >> rule_equality_constructor] The list l_vars should not contain second-order variable with the maximal type var."
-                    );
+                  if Symbol.is_public symb
+                  then
+                    begin
+                      let symb = root term in
+                      let args = get_args term in
 
-                    let mgs_csys, mgs_form = Subst.split_domain mgs (fun x -> Variable.type_of x <> csys.size_frame) in
+                      let univ_vars_snd = Variable.fresh_list Recipe Universal (Variable.snd_ord_type csys.size_frame) (Symbol.get_arity symb) in
 
-                    let mgs_form_univ = Subst.compose_restricted (Subst.of_renaming snd_renaming) mgs_form in
+                      let b_fct_list = List.map2 (fun x t -> BasicFact.create x t) univ_vars_snd args in
+                      let head = Fact.create_equality_fact (Fact.get_recipe fact) (apply_function symb (List.map of_variable univ_vars_snd)) in
 
-                    Config.debug (fun () ->
-                      if List.exists (fun x -> not (Subst.is_in_domain mgs_form_univ x)) univ_vars_snd || Subst.fold (fun b x _ -> b || List.for_all (fun y -> not (Variable.is_equal x y)) univ_vars_snd) false mgs_form_univ
-                      then Config.internal_error "[Constraint_system.ml >> rule_equality_constructor] The list univ_vars_snd should be equal to the domain of the mgs."
-                    );
+                      let form = Fact.create Fact.Equality head b_fct_list [] in
+                      let (fst_renaming,snd_renaming,simple_csys) = simple_of_formula Fact.Equality csys form in
 
-                    (Some (mgs_csys, l_vars, id_sdf, mgs_form_univ, univ_vars_snd, symb)), List.rev_append (csys::q_csys_set) explored_csys_set
-                  with
-                    | Not_found ->
-                        explore_csys explored_csys_set (
-                          { csys with
-                            equality_constructor_to_checked = List.tl csys.equality_constructor_to_checked;
-                            equality_constructor_checked = id_sdf::csys.equality_constructor_checked
-                          } ::q_csys_set
-                        )
+                      Config.debug (fun () ->
+                        if not (Variable.Renaming.is_identity fst_renaming)
+                        then Config.internal_error "[Constraint_system.ml >> rule_equality_constructor] The renaming should be identity."
+                      );
+
+                      try
+                        let ((mgs,l_vars), _, _) = one_mgs simple_csys in
+                        (* Need to restrict the mgs  to the variables of the constraint system *)
+                        Config.debug (fun () ->
+                          if List.exists (fun x -> Variable.type_of x = csys.size_frame) l_vars
+                          then Config.internal_error "[Constraint_system.ml >> rule_equality_constructor] The list l_vars should not contain second-order variable with the maximal type var."
+                        );
+
+                        let mgs_csys, mgs_form = Subst.split_domain mgs (fun x -> Variable.type_of x <> csys.size_frame) in
+
+                        let mgs_form_univ = Subst.compose_restricted (Subst.of_renaming snd_renaming) mgs_form in
+
+                        Config.debug (fun () ->
+                          if List.exists (fun x -> not (Subst.is_in_domain mgs_form_univ x)) univ_vars_snd || Subst.fold (fun b x _ -> b || List.for_all (fun y -> not (Variable.is_equal x y)) univ_vars_snd) false mgs_form_univ
+                          then Config.internal_error "[Constraint_system.ml >> rule_equality_constructor] The list univ_vars_snd should be equal to the domain of the mgs."
+                        );
+
+                        (Some (mgs_csys, l_vars, id_sdf, mgs_form_univ, univ_vars_snd, symb)), List.rev_append (csys::q_csys_set) explored_csys_set
+                      with
+                        | Not_found ->
+                            explore_csys explored_csys_set (
+                              { csys with
+                                equality_constructor_to_checked = List.tl csys.equality_constructor_to_checked;
+                                equality_constructor_checked = id_sdf::csys.equality_constructor_checked
+                              } ::q_csys_set
+                            )
+                    end
+                  else
+                    explore_csys explored_csys_set (
+                      { csys with
+                        equality_constructor_to_checked = List.tl csys.equality_constructor_to_checked;
+                        equality_constructor_checked = csys.equality_constructor_checked
+                      } ::q_csys_set
+                    )
                 end
               else
                 explore_csys explored_csys_set (

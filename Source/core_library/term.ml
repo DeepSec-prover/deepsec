@@ -959,7 +959,7 @@ module Symbol = struct
     let acc = ref 0 in
 
     let f () =
-      let c = { name = (Printf.sprintf "kI_%d" !acc); arity = !acc; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
+      let c = { name = (Printf.sprintf "kI_%d" !acc); arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
       incr accumulator_nb_symb;
       all_constructors := List.sort order (c::!all_constructors);
       number_of_constructors := !number_of_constructors + 1;
@@ -994,21 +994,30 @@ module Symbol = struct
   let display_with_arity out f =
     if f.public
     then Printf.sprintf "%s/%d" (display out f) f.arity
-    else Printf.sprintf "%s/%d [private]" (display out f) f.arity
+    else Printf.sprintf "%s/%d [\\color{red}{private}]" (display out f) f.arity
 
   let display_tuple f = string_of_int (f.arity)
 
-  let display_signature out = match out with
+  let reg_proj = Str.regexp "proj_{"
+
+  let display_signature out constructor = match out with
     | Testing ->
         let without_tuple = List.filter (fun f -> f.cat <> Tuple) !all_constructors in
         let str_without_tuple = Printf.sprintf "{ %s }" (display_list (display_with_arity Testing) ", " without_tuple) in
         let str_tuple = Printf.sprintf "{ %s }" (display_list display_tuple ", " (List.sort (fun f1 f2 -> compare f1.arity f2.arity) !all_tuple)) in
         str_without_tuple^" Tuple : "^str_tuple
     | _ ->
-        let without_tuple = List.filter (fun f -> f.cat <> Tuple && f.represents = UserDefined) !all_constructors in
-        if without_tuple = []
-        then emptyset out
-        else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list (display_with_arity out) ", " without_tuple) (rcurlybracket out)
+        if constructor
+        then
+          let without_tuple = List.filter (fun f -> f.cat <> Tuple && f.represents = UserDefined) !all_constructors in
+          if without_tuple = []
+          then emptyset out
+          else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list (display_with_arity out) ", " without_tuple) (rcurlybracket out)
+        else
+          let without_projection = List.filter (fun f -> not (Str.string_match reg_proj f.name 0)) !all_destructors in
+          if without_projection = []
+          then emptyset out
+          else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list (display_with_arity out) ", " without_projection) (rcurlybracket out)
 
   let display_names out public =
     let names = List.filter (fun f -> f.represents = UserName && f.public = public) !all_constructors in
