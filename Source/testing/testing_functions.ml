@@ -1687,7 +1687,7 @@ let update_Term_Rewrite_rules_skeletons () =
   )
 
 let apply_Term_Rewrite_rules_skeletons term f k  =
-  let result = Rewrite_rules.skeletons term f k in
+  let result = Rewrite_rules.skeletons true term f k in
 
   let test_terminal,_ = test_Term_Rewrite_rules_skeletons term f k result in
   produce_test_terminal test_terminal

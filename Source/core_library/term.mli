@@ -653,6 +653,8 @@ module Subst : sig
   val update_test_is_extended_by : ('a, 'b) atom -> (('a, 'b) t -> ('a, 'b) t -> bool -> unit) -> unit
 
   val update_test_is_equal_equations: ('a, 'b) atom -> (('a, 'b) t -> ('a, 'b) t -> bool -> unit) -> unit
+
+  val check_good_recipes : (snd_ord, axiom) t -> bool
 end
 
 (** {% A valuation in this section corresponds to a triplet of substitutions $(\Phi,\Sigma,\sigma)$ where $\Phi : \AX \rightarrow \T(\Fc,\N)$,
@@ -968,11 +970,14 @@ module Rewrite_rules : sig
       rewrite_rule : symbol * protocol_term list * protocol_term
     }
 
+  val has_constant_as_rhs : symbol -> bool
+
   (** [skeletons] {% $u$~$\ffun$~$k$ returns the list of skeletons $(\xi,t,D) = \Skel{\ell}{p}$ such that $\vars{\xi} \in \Xdeuxi{k}$, $\ell \rightarrow r \in \R$, $\rootsymb{\ell} = \ffun$,
       $\getpos{\ell}{p} \not\in \Xun$, $\mguset{\getpos{\ell}{p} \eqs u} \neq \bot$ and $\vars{\getpos{\ell}{p}} \cap \vars{r} \neq \emptyset$. Note that we consider that $\Skel{\ell}{p}$ is unique with fresh variable (this differs slightly
       from~\citepaper{Section}{sec:transformation rules} where it is define as a set that contains all possible renaming.%}
       @raise Internal_error when [f] is not a destructor. *)
-  val skeletons : protocol_term -> symbol -> int -> skeleton list
+
+  val skeletons : bool -> protocol_term -> symbol -> int -> skeleton list
 
   val rename_skeletons : skeleton -> snd_ord -> skeleton
 

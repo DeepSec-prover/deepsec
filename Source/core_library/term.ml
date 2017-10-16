@@ -1963,6 +1963,29 @@ module Subst = struct
     cleanup at;
     Config.test (fun () -> test_is_equal_equations at subst_1 subst_2 result);
     result
+
+  let rec check_good_recipes_term term = match term.term with
+    | Var _ -> true
+    | AxName _ -> true
+    | Func(f,args) when f.cat = Tuple ->
+        let projections = Symbol.get_projections f in
+        let result = ref false in
+        List.iter2 (fun t f_proj ->
+          if is_function t
+          then
+            let symb = root t in
+            if Symbol.is_equal f_proj symb
+            then ()
+            else result := true
+          else result := true
+        ) args projections;
+        if !result
+        then List.for_all check_good_recipes_term args
+        else false
+    | Func(_,args) -> List.for_all check_good_recipes_term args
+
+  let check_good_recipes subst =
+    List.for_all (fun (_,t) -> check_good_recipes_term t) subst
 end
 
 (***********************************
@@ -3089,7 +3112,8 @@ module Rewrite_rules = struct
 
   (****** Generation ******)
 
-  let all_skeletons = Hashtbl.create (!Symbol.number_of_destructors * 10)
+  let all_deduction_skeletons = Hashtbl.create !Symbol.number_of_destructors
+  let all_equality_skeletons = Hashtbl.create !Symbol.number_of_destructors
 
   let rec is_r_subterm r term =
     if is_equal Protocol term r
@@ -3161,6 +3185,37 @@ module Rewrite_rules = struct
         let is_sub_list = explore_term_subterm_list r snd_type (k+1) ar f_continuation q in
         is_sub || is_sub_list
 
+  let rec explore_term_equality snd_type (f_continuation:snd_ord_variable -> protocol_term -> recipe -> protocol_term -> BasicFact.t list -> unit) (term:protocol_term) = match term.term with
+    | Var _ -> ()
+    | Func(f,_) when f.arity = 0 -> ()
+    | Func(f,args) ->
+        if f.public
+        then
+          explore_term_equality_list snd_type 0 f.arity (fun x_snd x_term recipe_l term_l b_fct_l ->
+            f_continuation x_snd x_term ({ term = Func(f,recipe_l); ground = false}) ({ term = Func(f,term_l); ground = false}) b_fct_l
+          ) args
+        else ();
+
+        Config.test (fun () ->
+          if retrieve_search Protocol <> []
+          then Config.internal_error "[terml.ml >> Rewrite_rules.explore_term] Linked variables should be empty.";
+        );
+        let x_snd = Variable.fresh Recipe Universal snd_type
+        and x_fst = Variable.fresh Protocol Universal Variable.fst_ord_type in
+        let b_fct = BasicFact.create x_snd ({ term = Var x_fst; ground = false}) in
+        f_continuation x_snd term ({ term = Var x_snd; ground = false}) ({term = Var x_fst; ground = false}) [b_fct]
+    | _ -> Config.internal_error "[term.ml >> Rewrite_rules.explore_term_subterm] There should not be any names in the rewrite rules."
+
+  and explore_term_equality_list snd_type k ar f_continuation = function
+    | [] -> ()
+    | t::q ->
+        explore_term_equality snd_type (fun x_snd x_term recipe term b_fct_list ->
+          let (t_list, r_list, fct_list) = create_all_but_one_fresh snd_type k term recipe b_fct_list ar 0 in
+
+          f_continuation x_snd x_term r_list t_list fct_list
+          ) t;
+        explore_term_equality_list snd_type (k+1) ar f_continuation q
+
   let generate_skeletons_subterm f k = match f.cat with
     | Destructor rw_rules ->
         let accumulator = ref [] in
@@ -3185,22 +3240,69 @@ module Rewrite_rules = struct
         !accumulator
     | _ -> Config.internal_error "[term.ml >> Rewrite_rules.generate_skeletons_subterm] The function symbol should be a destructor."
 
-  let get_skeletons_subterm f k =
-    try
-      Hashtbl.find all_skeletons (f,k)
-    with
-      | Not_found ->
-          let skels_and_term = generate_skeletons_subterm f k in
-          Hashtbl.add all_skeletons (f,k) skels_and_term;
-          skels_and_term
+  let generate_skeletons_equality f k = match f.cat with
+    | Destructor rw_rules ->
+        let accumulator = ref [] in
 
-  let skeletons u f k =
+        List.iter (fun (args,r) ->
+          let _ =
+            explore_term_equality_list (Variable.snd_ord_type k) 0 f.arity (fun x_snd x_term recipe_l term_l b_fct_list ->
+              let skel =
+                {
+                  variable_at_position = x_snd;
+                  recipe = { term = Func(f,recipe_l); ground = false };
+                  p_term = { term = Func(f,term_l); ground = false };
+                  basic_deduction_facts = b_fct_list;
+                  rewrite_rule = f, args, r;
+                } in
+              accumulator := (x_term,skel)::!accumulator
+            ) args
+          in
+          ()
+        ) rw_rules;
+
+        !accumulator
+    | _ -> Config.internal_error "[term.ml >> Rewrite_rules.generate_skeletons_constant] The function symbol should be a destructor."
+
+  let has_constant_as_rhs f = match f.cat with
+    | Destructor rw_rules ->
+        let (_,r) = List.hd rw_rules in
+        is_ground r
+    | _ -> Config.internal_error "[term.ml >> Rewrite_rules.has_constant_as_rhs] The function symbol should be a destructor."
+
+  let get_skeletons for_deduction f k =
+    if for_deduction && not (has_constant_as_rhs f)
+    then
+      if has_constant_as_rhs f
+      then []
+      else
+        begin
+          try
+            Hashtbl.find all_deduction_skeletons (f,k)
+          with
+          | Not_found ->
+              let skels_and_term = generate_skeletons_subterm f k in
+              Hashtbl.add all_deduction_skeletons (f,k) skels_and_term;
+              skels_and_term
+        end
+    else
+      begin
+        try
+          Hashtbl.find all_equality_skeletons (f,k)
+        with
+        | Not_found ->
+            let skels_and_term = generate_skeletons_equality f k in
+            Hashtbl.add all_equality_skeletons (f,k) skels_and_term;
+            skels_and_term
+      end
+
+  let skeletons for_deduction u f k =
     Config.debug (fun () ->
       if not f.public
       then Config.internal_error "[term.ml >> Rewrite_rules.skeletons] The destructor should be public."
     );
 
-    let list_skel_term = get_skeletons_subterm f k in
+    let list_skel_term = get_skeletons for_deduction f k in
 
     Config.debug (fun () ->
       if !Variable.Renaming.linked_variables_fst <> [] || !Variable.Renaming.linked_variables_snd <> []

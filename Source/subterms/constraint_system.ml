@@ -2017,7 +2017,15 @@ module Rule = struct
                 let new_skeletons =
                   List.fold_left (fun acc f ->
                     if Symbol.is_public f
-                    then List.rev_append (Rewrite_rules.skeletons (Fact.get_protocol_term head) f csys.size_frame) acc
+                    then List.rev_append (Rewrite_rules.skeletons true (Fact.get_protocol_term head) f csys.size_frame) acc
+                    else acc
+                    ) [] !Symbol.all_destructors
+                in
+
+                let new_skeletons_for_equality =
+                  List.fold_left (fun acc f ->
+                    if Symbol.is_public f
+                    then List.rev_append (Rewrite_rules.skeletons false (Fact.get_protocol_term head) f csys.size_frame) acc
                     else acc
                     ) [] !Symbol.all_destructors
                 in
@@ -2027,7 +2035,7 @@ module Rule = struct
                     match create_skeleton_EQ (Fact.get_protocol_term head) skel with
                       | None -> acc
                       | Some skel_eq -> (id_last,skel_eq)::acc
-                  ) csys.skeletons_to_check_EQ new_skeletons
+                  ) csys.skeletons_to_check_EQ new_skeletons_for_equality
                 in
 
                 (*let (sub_cons_1,new_sdf_1) =
