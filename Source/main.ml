@@ -40,7 +40,7 @@ let print_index path n res_list =
     line := input_line in_template
   done;
   Printf.fprintf out_html "%s\n" !line; (* print template_stylesheet *)
-  Printf.fprintf out_html "        <p>File run with DeepSec : %s</p>\n\n" path;
+  Printf.fprintf out_html "        <p>File run with DeepSec, version %s, git hash %s : %s</p>\n\n" !Config.version !Config.git_commit path;
   let time = Unix.localtime (Unix.time ()) in
   Printf.fprintf out_html "        <p> on %s </p>\n\n" (Display.mkDate time);
   Printf.fprintf out_html "        <p>This file contained %d quer%s:\n" n (if n > 1 then "ies" else "y ");
