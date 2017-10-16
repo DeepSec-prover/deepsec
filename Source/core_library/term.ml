@@ -1970,12 +1970,18 @@ module Subst = struct
     | Func(f,args) when f.cat = Tuple ->
         let projections = Symbol.get_projections f in
         let result = ref false in
+        let term_proj = ref None in
         List.iter2 (fun t f_proj ->
           if is_function t
           then
             let symb = root t in
             if Symbol.is_equal f_proj symb
-            then ()
+            then
+              match !term_proj, get_args t  with
+                | Some t', [t''] when is_equal Recipe t' t'' -> ()
+                | Some _, _ -> result := true
+                | None, [t''] -> term_proj := Some t''
+                | None, _ -> Config.internal_error "[term.ml >> check_good_recipes_term] Projections should always have one unique argument."
             else result := true
           else result := true
         ) args projections;
