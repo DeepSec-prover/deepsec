@@ -239,7 +239,7 @@ struct
                     end
                 | JobList job_list ->
                     tmp_job_list := List.rev_append job_list !tmp_job_list;
-                    if ((List.length !job_list_ref) + (List.length !tmp_job_list)) < !minimum_nb_of_jobs
+                    if ((List.length !job_list_ref) + (List.length !tmp_job_list)) >= !minimum_nb_of_jobs
                     then active_process := List.filter_unordered (fun x -> x <> in_Unix_ch) !active_process
                     else
                       begin

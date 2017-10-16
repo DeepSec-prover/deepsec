@@ -3267,8 +3267,10 @@ module Rewrite_rules = struct
   let has_constant_as_rhs f = match f.cat with
     | Destructor rw_rules ->
         let (_,r) =
-          if rw_rules = []
-          then Config.internal_error "Should not happen.";
+          Config.debug (fun () ->
+            if rw_rules = []
+            then Config.internal_error "Should not happen."
+          );
           List.hd rw_rules
         in
 
