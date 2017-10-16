@@ -3266,7 +3266,12 @@ module Rewrite_rules = struct
 
   let has_constant_as_rhs f = match f.cat with
     | Destructor rw_rules ->
-        let (_,r) = List.hd rw_rules in
+        let (_,r) =
+          if rw_rules = []
+          then Config.internal_error "Should not happen.";
+          List.hd rw_rules
+        in
+
         is_ground r
     | _ -> Config.internal_error "[term.ml >> Rewrite_rules.has_constant_as_rhs] The function symbol should be a destructor."
 
