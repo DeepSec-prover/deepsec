@@ -168,6 +168,8 @@ module Symbol : sig
   (** [is_public f] returns true iff [f] is a public function symbol. *)
   val is_public : symbol -> bool
 
+  val order : symbol -> symbol -> bool
+
   val represents_attacker_public_name : symbol -> bool
 
   val represents_name : symbol -> bool
@@ -465,6 +467,8 @@ val get_type : recipe -> int
 
 (** [get_vars at t] returns the list of all variables in [t]. *)
 val get_vars : ('a, 'b) atom -> ('a, 'b) term -> ('a, 'b) variable list
+
+val get_vars_not_in : ('a, 'b) atom -> ('a, 'b) term -> ('a, 'b) variable list -> ('a, 'b) variable list
 
 (** [get_vars_with_list at t f_q l] adds the variables in [t] whose quantifier satisfies [f_q] in the list [l]. The addition of a variable as the union of sets, i.e. there is no dupplicate in the resulting list. *)
 val get_vars_with_list : ('a, 'b) atom -> ('a, 'b) term -> (quantifier -> bool) -> ('a, 'b) variable list -> ('a, 'b) variable list

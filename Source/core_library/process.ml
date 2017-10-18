@@ -3046,7 +3046,7 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
                 (next_output_private_trace_content [@tailcall]) tau_actions_1 cont_else new_v_rho_else new_n_rho_else proc equations disequations private_ch f_continuation f_next
               else (next_output_private_trace_content [@tailcall]) [] cont_else new_v_rho_else new_n_rho_else proc equations disequations private_ch f_continuation f_next
           | DiseqList disequations_modulo ->
-              let new_disequations = disequations_modulo @ disequations in
+              let new_disequations = List.rev_append disequations disequations_modulo in
 
               if !Config.display_trace
               then

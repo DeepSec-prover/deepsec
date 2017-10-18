@@ -342,7 +342,6 @@ let parse_rewrite_rule line env (lhs,rhs) = match lhs with
       else error_message line "The right hand term of a rewrite rule should be a free-name constructor term."
   | _ -> error_message line "The left hand term of a rewrite rule cannot be a tuple."
 
-
 let parse_functions env = function
   | Constructor((s,line),n,public) ->
       if Env.mem s env
@@ -368,7 +367,6 @@ let parse_functions env = function
       in
       let f = Term.Symbol.new_destructor ar public symb rw_rules' in
       Env.add symb (Func f) env
-
 
 (****** Parse setting *******)
 
