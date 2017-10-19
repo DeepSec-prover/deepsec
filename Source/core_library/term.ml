@@ -1362,6 +1362,30 @@ let get_vars at term =
   cleanup_search at;
   result
 
+let get_vars_not_in at term var_list =
+  Config.test (fun () ->
+    if retrieve_search at <> []
+    then Config.internal_error "[terml.ml >> get_vars] Linked variables should be empty."
+  );
+
+  List.iter (fun v -> v.link <- FLink) var_list;
+
+  let rec explore_term term =
+    if not term.ground
+    then
+      match term.term with
+        | Func (_,args) -> List.iter explore_term args
+        | Var({link = FLink; _}) -> ()
+        | Var v -> link_search at v
+        | AxName _ -> ()
+  in
+
+  explore_term term;
+  let result = retrieve_search at in
+  cleanup_search at;
+  List.iter (fun v -> v.link <- NoLink) var_list;
+  result
+
 let rec get_names_protocol term = match term.term with
   | Func (_,args) -> List.iter get_names_protocol args
   | AxName ({ link_n = NNoLink ; _} as n) -> Name.link_search n
@@ -1418,6 +1442,11 @@ let rec get_axioms_with_list recipe f_id ax_list  = match recipe.term with
       add_axiom_in_list ax ax_list
   | Var _ | AxName _ -> ax_list
   | Func(_,args) -> List.fold_left (fun acc r -> get_axioms_with_list r f_id acc) ax_list args
+
+let rec iter_variables_and_axioms f recipe = match recipe.term with
+  | AxName ax -> f (Some ax) None
+  | Var v -> f None (Some v)
+  | Func(_,args) -> List.iter (iter_variables_and_axioms f) args
 
 (********** Display **********)
 

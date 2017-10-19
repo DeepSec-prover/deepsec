@@ -1598,6 +1598,27 @@ module Set = struct
 
     List.hd csys_set.csys_list
 
+  let elements csys_set = csys_set.csys_list
+
+  let find_representative csys_set predicate =
+    let true_csys = ref None
+    and false_csys = ref None in
+
+    let rec explore = function
+      | [] -> raise Not_found
+      | csys :: q ->
+          begin match predicate csys, !true_csys, !false_csys with
+            | true, None, Some c -> csys, c
+            | false, Some c, None -> c, csys
+            | true, None, None -> true_csys := Some csys; explore q
+            | false, None, None -> false_csys := Some csys; explore q
+            | true, Some _, None
+            | false, None, Some _ -> explore q
+            | _,_,_ -> Config.internal_error "[constraint_system.ml >> Set.find_representative] Unexpected case."
+          end
+    in
+    explore csys_set.csys_list
+
   let optimise_snd_ord_recipes csys_set =
     if csys_set.csys_list = []
     then { csys_set with set_private_channels = false }

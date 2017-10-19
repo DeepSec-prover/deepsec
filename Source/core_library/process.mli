@@ -2,7 +2,7 @@
 
 open Term
 
-(** {2 Syntax} *)
+(** {2 Processes} *)
 
 (** Syntax of an expansed process. *)
 type expansed_process =

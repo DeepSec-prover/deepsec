@@ -205,6 +205,8 @@ module Set : sig
 
   val set_private_channels : 'a t -> bool -> 'a t
 
+  val elements : 'a t -> 'a csys list
+  
   (** [choose] {% $S$ returns one constraint system in $S$. %}
       @raise Internal_error if the set is empty. *)
   val choose : 'a t -> 'a csys
@@ -216,6 +218,8 @@ module Set : sig
 
   (** Returns true if the set is empty. *)
   val is_empty : 'a t -> bool
+
+  val find_representative : 'a t -> ('a csys -> bool) -> 'a csys * 'a csys
 
   (** [iter f] {% $S$ %} applies the function [f] to all constraint systems in {% $S$. %} Note that the order in which the constraint systems
       are passed onto [f] is unspecified. *)

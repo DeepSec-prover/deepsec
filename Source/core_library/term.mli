@@ -168,7 +168,7 @@ module Symbol : sig
   (** [is_public f] returns true iff [f] is a public function symbol. *)
   val is_public : symbol -> bool
 
-  val order : symbol -> symbol -> bool
+  val order : symbol -> symbol -> int
 
   val represents_attacker_public_name : symbol -> bool
 
@@ -221,7 +221,7 @@ module Variable : sig
   (** [quantifier_of x] returns the quantification of the variable [x]. *)
   val quantifier_of : ('a, 'b) variable -> quantifier
 
-  (** [type_of] {% $X$ returns the type in which the second-variable $X$ is defined, that is returns$i$ when $X \in \Xdeuxi{i}$. %} *)
+  (** [type_of] {% $X$ returns the type in which the second-variable $X$ is defined, that is returns $i$ when $X \in \Xdeuxi{i}$. %} *)
   val type_of : snd_ord_variable -> int
 
   (** A total ordering function over variables. This is a three-argument function [order] such that  [order at x1 x2] is zero if
@@ -479,10 +479,7 @@ val get_names_with_list : ('a, 'b) atom -> ('a, 'b) term -> name list -> name li
 (** [get_axioms_with_list t f_i l] adds the axiom in [t] whose index satisfies [f_i] in the list [l]. The addition of an axiom as the union of sets, i.e. there is no dupplicate in the resulting list..*)
 val get_axioms_with_list : recipe -> (int -> bool) -> axiom list -> axiom list
 
-(** A total ordering function over terms. This is a three-argument function [order] such that  [order at t1 t2] is zero if
-    the [t1] and [t2] are equal, [order at t1 t2] is strictly negative if [t1] is smaller than [t2], and
-    strictly strictly positive if [t1] is greater than [t2]. *)
-val order : ('a, 'b) atom -> ('a, 'b) term -> ('a, 'b) term -> int
+val iter_variables_and_axioms : (axiom option -> snd_ord_variable option -> unit) -> recipe -> unit
 
 (** {3 Scanning} *)
 
@@ -500,6 +497,11 @@ val name_occurs : name -> protocol_term -> bool
 
 (** [axiom_occurs ax r] returns [true] iff the axiom [ax] occurs in the recipe [r], i.e., {% $ax \in \axioms{r}$. %} *)
 val axiom_occurs : axiom -> recipe -> bool
+
+(** A total ordering function over terms. This is a three-argument function [order] such that  [order at t1 t2] is zero if
+    the [t1] and [t2] are equal, [order at t1 t2] is strictly negative if [t1] is smaller than [t2], and
+    strictly strictly positive if [t1] is greater than [t2]. *)
+val order : ('a, 'b) atom -> ('a, 'b) term -> ('a, 'b) term -> int
 
 (** [is_equal at t1 t2] returns [true] iff the [at] terms [t1] and [t2] are equal. *)
 val is_equal : ('a, 'b) atom -> ('a, 'b) term -> ('a, 'b) term -> bool

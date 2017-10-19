@@ -1377,12 +1377,12 @@ module Trace = struct
           let new_ch',new_t' = Rewrite_rules.normalise new_ch, Rewrite_rules.normalise new_t in
 
           let str_ch_recipe =
-            if is_axiom ch_recipe && Axiom.index_of (axiom_of ch_recipe) <= 0
+            if is_function ch_recipe && Symbol.get_arity (root ch_recipe) = 0 &&Symbol.is_public (root ch_recipe)
             then ""
             else Printf.sprintf " (computed by \\(%s\\))" (display Latex ~rho:rho Recipe ch_recipe)
 
           and str_t_recipe =
-            if is_axiom t_recipe && Axiom.index_of (axiom_of t_recipe) <= 0
+            if is_function t_recipe && Symbol.get_arity (root t_recipe) = 0 && Symbol.is_public (root t_recipe)
             then ""
             else Printf.sprintf " (computed by \\(%s\\))" (display Latex ~rho:rho Recipe t_recipe)
           in

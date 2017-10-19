@@ -404,6 +404,7 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
       out_apply_sat (Constraint_system.Set.initialise_for_output (Constraint_system.Set.set_private_channels !csys_set_for_output !private_channels_output))
         (fun () -> in_apply_sat (Constraint_system.Set.set_private_channels !csys_set_for_input !private_channels_input) f_next)
     end
+  else f_next ()
 
 let apply_one_transition_and_rules_for_trace_equivalence = function
   | Classic -> apply_one_transition_and_rules_for_trace_in_classic

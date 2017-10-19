@@ -13,24 +13,30 @@ type simple_det_process =
   | Output of symbol * protocol_term * simple_det_process * position
   | OutputSure of symbol * protocol_term * simple_det_process * position
   | Input of symbol * fst_ord_variable * simple_det_process * position
-  | IfThenElse of protocol_term * protocol_term * simple_det_process * simple_det_process
-  | Let of protocol_term * protocol_term * protocol_term * simple_det_process * simple_det_process
-  | New of name * simple_det_process
+  | IfThenElse of protocol_term * protocol_term * simple_det_process * simple_det_process * position
+  | Let of protocol_term * protocol_term * protocol_term * simple_det_process * simple_det_process * position
+  | New of name * simple_det_process * position
   | Par of simple_det_process list
 
 type label = int list
 
-type skeleton =
-  | SOutput of symbol
-  | SInput of symbol
-  | SPar of symbol list
-  | SNil
+module IntComp =
+struct
+  type t = int
+  let compare = compare
+end
+
+module IntSet = Set.Make(IntComp)
 
 type block =
   {
     label_b : label;
-    recipes : snd_ord_variable list;
-    minimal_axiom : axiom
+    recipes : snd_ord_variable list; (* There should always be variables *)
+    minimal_axiom : int;
+    maximal_axiom : int;
+
+    maximal_var : int;
+    used_axioms : IntSet.t
   }
 
 type det_process =
@@ -47,22 +53,30 @@ type configuration =
   {
     sure_input_proc : det_process list;    (* The processes where we know that outputs and input are doable. Moreover they are ordered. *)
     sure_output_proc : det_process list;
-    sure_zero_proc : det_process list;
-    sure_par_proc : det_process list;
 
-    sure_uncheked_skeletons : det_process list;
-
-    unsure_proc : det_process list;  (* The processes where we don't know if outputs can be done. *)
-
+    sure_uncheked_skeletons : det_process option;
+    unsure_proc : det_process option;  (* The processes where we don't know if outputs can be done. *)
     focused_proc : det_process option;
+
     trace : trace list;
   }
+
+module ActionComp =
+struct
+  type t = bool * symbol (* True for output, false for input *)
+  let compare (b1,s1) (b2,s2) = match b1, b2 with
+    | true, false -> -1
+    | false, true -> 1
+    | _,_ -> Symbol.order s1 s2
+end
+
+module ActionSet = Set.Make(ActionComp)
 
 (**************************************
 ***       Determinate process       ***
 ***************************************)
 
-let fresh_position () =
+let fresh_position =
   let acc = ref 0 in
   let f () =
     let r = !acc in
@@ -75,65 +89,176 @@ let rec simple_det_process_of_expansed_process vars = function
   | Process.Nil -> Nil
   | Process.Output(ch,t,p) ->
       Config.debug (fun () ->
-        if not (is_function ch) || not (is_public (root ch))
+        if not (is_function ch) || not (Symbol.is_public (root ch))
         then Config.internal_error "[process_determinate.ml >> simple_det_process_of_expansed_process] Outputs should only be done on public channels."
       );
       let det_p = simple_det_process_of_expansed_process vars p in
       Output(root ch,t,det_p,fresh_position ())
   | Process.Input(ch,x,p) ->
       Config.debug (fun () ->
-        if not (is_function ch) || not (is_public (root ch))
+        if not (is_function ch) || not (Symbol.is_public (root ch))
         then Config.internal_error "[process_determinate.ml >> simple_det_process_of_expansed_process] Inputs should only be done on public channels."
       );
       let det_p = simple_det_process_of_expansed_process (x::vars) p in
       Input(root ch,x,det_p,fresh_position ())
   | Process.IfThenElse(t1,t2,pthen,pelse) ->
-      let det_pthen = simple_det_process_of_expansed_process pthen in
-      let det_pelse = simple_det_process_of_expansed_process pelse in
-      IfThenElse(t1,t2,det_pthen,det_pelse)
+      let det_pthen = simple_det_process_of_expansed_process vars pthen in
+      let det_pelse = simple_det_process_of_expansed_process vars pelse in
+      IfThenElse(t1,t2,det_pthen,det_pelse,fresh_position ())
   | Process.Let(pat,t,pthen,pelse) ->
       let new_vars = get_vars_not_in Protocol pat vars in
       let rho = Variable.Renaming.fresh Protocol new_vars Universal in
 
-      let pat_else = apply_on_terms rho pat (fun x f -> f x) in
+      let pat_else = Variable.Renaming.apply_on_terms rho pat (fun x f -> f x) in
 
       let vars' = List.rev_append new_vars vars in
       let det_pthen = simple_det_process_of_expansed_process vars' pthen in
       let det_pelse = simple_det_process_of_expansed_process vars pelse in
 
-      Let(pat,pat_else,t,det_pthen,det_pelse)
+      Let(pat,pat_else,t,det_pthen,det_pelse,fresh_position ())
   | Process.New(n,p) ->
-      let det_p = simple_det_process_of_expansed_process p in
-      New(n,det_p)
+      let det_p = simple_det_process_of_expansed_process vars p in
+      New(n,det_p,fresh_position ())
   | Process.Par(mult_p) ->
       Config.debug (fun () ->
-        if List.exists (fun (_,i) -> i <> 1) mult_p)
+        if List.exists (fun (_,i) -> i <> 1) mult_p
         then Config.internal_error "[process_determinate.ml >> simple_det_process_of_expansed_process] The should not be any replication in determinate processes."
       );
 
-      let list_p = List.rev_map (fun (p,_) -> p) mult_p in
+      let list_p = List.rev_map (fun (p,_) -> simple_det_process_of_expansed_process vars p) mult_p in
       Par(list_p)
   | Process.Choice _ -> Config.internal_error "[process_determinate.ml >> simple_det_process_of_expansed_process] There should not be any choice operator in determinate processes."
 
+let is_action_determinate proc =
+  let rec explore = function
+    | Process.Nil -> ActionSet.empty
+    | Process.Output(ch,_,p) ->
+        if is_function ch
+        then
+          let symb = root ch in
+          if Symbol.is_public symb
+          then
+            let act_set = explore p in
+            ActionSet.add (true,symb) act_set
+          else raise Not_found
+        else raise Not_found
+    | Process.Input(ch,_,p) ->
+        if is_function ch
+        then
+          let symb = root ch in
+          if Symbol.is_public symb
+          then
+            let act_set = explore p in
+            ActionSet.add (false,symb) act_set
+          else raise Not_found
+        else raise Not_found
+    | Process.IfThenElse(_,_,p1,p2)
+    | Process.Let(_,_,p1,p2) ->
+        let act_set_1 = explore p1
+        and act_set_2 = explore p2 in
+        ActionSet.union act_set_1 act_set_2
+    | Process.New(_,p) -> explore p
+    | Process.Par mult_p_list ->
+        List.fold_left (fun acc_set (p,n) ->
+          if n <> 1
+          then raise Not_found
+          else
+            let set = explore p in
+            let inter = ActionSet.inter acc_set set in
+            if ActionSet.is_empty inter
+            then ActionSet.union set acc_set
+            else raise Not_found
+        ) ActionSet.empty mult_p_list
+    | Process.Choice _ -> raise Not_found
+  in
+
+  try
+    let _ = explore proc in
+    true
+  with
+    | Not_found -> false
+
 let configuration_of_expansed_process p =
-  let sdet_p = simple_det_process_of_expansed_process p in
+  let sdet_p = simple_det_process_of_expansed_process [] p in
   let det_p = { label_p = [0]; proc = Start sdet_p } in
 
   {
-    sure_proc = [det_p];
-    unsure_proc = [];
+    sure_input_proc = [det_p];
+    sure_output_proc = [];
+
+    sure_uncheked_skeletons = None;
+    unsure_proc = None;
     focused_proc = None;
     trace = []
   }
 
-let is_initial conf =
-  conf.ensure_proc = [] &&
-  conf.focused_proc = None &&
-  List.for_all (fun det_p -> match det_p.proc with
-    | Start _
-    | Input _ -> true
-    | _ -> false
-  ) conf.sure_proc
+let initial_label = [0]
+
+(**************************************
+***              Access             ***
+***************************************)
+
+let rec get_vars_with_list_sdet vars_l = function
+  | Start p -> get_vars_with_list_sdet vars_l p
+  | Nil -> vars_l
+  | Output(_,t,p,_)
+  | OutputSure(_,t,p,_) ->
+      let vars_l' = get_vars_with_list Protocol t (fun _ -> true) vars_l in
+      get_vars_with_list_sdet vars_l' p
+  | Input(_,x,p,_) ->
+      let vars_l' = get_vars_with_list Protocol (of_variable x) (fun _ -> true) vars_l in
+      get_vars_with_list_sdet vars_l' p
+  | IfThenElse(t1,t2,p1,p2,_)
+  | Let(t1,_,t2,p1,p2,_) ->
+      let vars_l1 = get_vars_with_list Protocol t1 (fun _ -> true) vars_l in
+      let vars_l2 = get_vars_with_list Protocol t2 (fun _ -> true) vars_l1 in
+      let vars_l3 = get_vars_with_list_sdet vars_l2 p1 in
+      get_vars_with_list_sdet vars_l3 p2
+  | New(_,p,_) -> get_vars_with_list_sdet vars_l p
+  | Par(p_list) -> List.fold_left get_vars_with_list_sdet vars_l p_list
+
+let get_vars_with_list_det vars_l p = get_vars_with_list_sdet vars_l p.proc
+
+let get_vars_with_list_trace vars_l = function
+  | TrInput(_,_,t,_)
+  | TrOutput(_,_,t,_) -> get_vars_with_list Protocol t (fun _ -> true) vars_l
+
+let get_vars_with_list conf vars_l =
+  let vars_1 = List.fold_left get_vars_with_list_trace vars_l conf.trace in
+  let vars_2 = List.fold_left get_vars_with_list_det vars_1 conf.sure_input_proc in
+  List.fold_left get_vars_with_list_det vars_2 conf.sure_output_proc
+
+let rec get_names_with_list_sdet names_l = function
+  | Start p -> get_names_with_list_sdet names_l p
+  | Nil -> names_l
+  | Output(_,t,p,_)
+  | OutputSure(_,t,p,_) ->
+      let names_l' = get_names_with_list Protocol t names_l in
+      get_names_with_list_sdet names_l' p
+  | Input(_,_,p,_) ->get_names_with_list_sdet names_l p
+  | IfThenElse(t1,t2,p1,p2,_)
+  | Let(t1,_,t2,p1,p2,_) ->
+      let names_l1 = get_names_with_list Protocol t1 names_l in
+      let names_l2 = get_names_with_list Protocol t2 names_l1 in
+      let names_l3 = get_names_with_list_sdet names_l2 p1 in
+      get_names_with_list_sdet names_l3 p2
+  | New(n,p,_) ->
+      let names_l1 = get_names_with_list Protocol (of_name n) names_l in
+      get_names_with_list_sdet names_l1 p
+  | Par(p_list) -> List.fold_left get_names_with_list_sdet names_l p_list
+
+let get_names_with_list_det names_l p = get_names_with_list_sdet names_l p.proc
+
+let get_names_with_list_trace names_l = function
+  | TrInput(_,_,t,_)
+  | TrOutput(_,_,t,_) -> get_names_with_list Protocol t names_l
+
+let get_names_with_list conf names_l =
+  let names_1 = List.fold_left get_names_with_list_trace names_l conf.trace in
+  let names_2 = List.fold_left get_names_with_list_det names_1 conf.sure_input_proc in
+  List.fold_left get_names_with_list_det names_2 conf.sure_output_proc
+
+let size_trace conf = List.length conf.trace
 
 (**************************************
 ***            Utilities            ***
@@ -145,16 +270,6 @@ let compare_normalised_process p1 p2 = match p1, p2 with
   | Input(c1,_,_,_), Input(c2,_,_,_) -> Symbol.order c1 c2
   | OutputSure(c1,_,_,_), OutputSure(c2,_,_,_) -> Symbol.order c1 c2
   | _,_ -> Config.internal_error "[process_determinate.ml >> compare_normalised_process] We should only compare Inputs and sure Outputs."
-
-let rec compare_normalised_process_list pl1 pl2 = match pl1, pl2 with
-  | [], [] -> 0
-  | [], _ -> -1
-  | _, [] -> 1
-  | p1::q1, p2::q2 ->
-      begin match compare_normalised_process p1 p2 with
-        | 0 -> compare_normalised_process_list q1 q2
-        | i -> i
-      end
 
 let rec is_equal_skeleton p1 p2 = match p1, p2 with
   | OutputSure(c1,_,_,_), OutputSure(c2,_,_,_)
@@ -173,6 +288,7 @@ let rec is_equal_skeleton p1 p2 = match p1, p2 with
   | _, IfThenElse _
   | _, Let _
   | _, New _ -> Config.internal_error "[process_determinate.ml >> is_equal_skeleton] We should test the equaly of skeletons on a normalised process."
+  | _ -> false
 
 (* Will be equal to 0 if the label are sequentially dependant *)
 let rec compare_label l1 l2 = match l1, l2 with
@@ -183,76 +299,241 @@ let rec compare_label l1 l2 = match l1, l2 with
         | 0 -> compare_label q1 q2
         | i -> i
 
-let compare_normalised_det_process p1 p2 = compare_label p1.label_p p2.label_p
-
 let order_flatten_process_list p_list =
   Config.debug (fun () ->
-    if List.exists (function Input _ | OutputSure _ -> false | _ -> true ) p_list
+    if List.exists (function Input _ | OutputSure _ -> false
+        | Nil -> print_string "Nil"; true
+        | Start _ -> print_string "Start"; true
+        | Output _ -> print_string "Output"; true
+        | IfThenElse _ -> print_string "IF"; true
+        | Let _ -> print_string "Let"; true
+        | New _ -> print_string "New"; true
+        | Par _ -> print_string "Par"; true ) p_list
     then Config.internal_error "[process_determinate.ml >> order_flatten_process_list] We should only order on a normalised flatten list."
   );
 
   List.fast_sort compare_normalised_process p_list
 
 let is_equal_skeleton_det p1 p2 =
-  p1.label_p = p2.label_p && is_equal_skeleton p1.proc p2.proc
-
-let is_equal_skeleton_conf conf1 conf2 =
   Config.debug (fun () ->
-    if conf1.unsure_proc <> [] || conf2.unsure_proc <> []
-    then Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] The unsure processes should be empty.";
+    if p1.label_p <> p2.label_p
+    then Config.internal_error "[process_determinate.ml >> is_equal_skeleton_det] The labels should be the same."
+  );
+  is_equal_skeleton p1.proc p2.proc
 
-    if List.length conf1.sure_uncheked_skeletons <> List.length conf2.sure_uncheked_skeletons
-    then Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] We should have the same size of unchecked skeletons.";
+type action =
+  | FOutput of axiom * protocol_term
+  | FInput of snd_ord_variable * protocol_term
+
+exception Faulty_skeleton of bool * configuration * action
+
+let find_faulty_skeleton_det size_frame conf1 conf2 p1 p2 =
+  Config.debug (fun () ->
+    if p1.label_p <> p2.label_p
+    then Config.internal_error "[process_determinate.ml >> find_faulty_skeleton_det] The labels should be the same."
+  );
+
+  let get_list_p p = match p.proc with
+    | OutputSure _
+    | Input _ -> [p.proc]
+    | Nil -> []
+    | Par pl -> pl
+    | _ -> Config.internal_error "[process_determinate.ml >> find_faulty_skeleton_det] Processes are not of the expected form after normalisation."
+  in
+
+  let list_1 = get_list_p p1
+  and list_2 = get_list_p p2 in
+
+  let ordered_list_1 = List.fast_sort compare_normalised_process list_1 in
+  let ordered_list_2 = List.fast_sort compare_normalised_process list_2 in
+
+  let retrieve_action conf = function
+    | OutputSure(c,t,_,pos) ->
+        let axiom = Axiom.create (size_frame + 1) in
+        let f_action = FOutput (axiom, t) in
+        let f_conf = { conf with trace = TrOutput(c,axiom,t,pos) :: conf.trace } in
+        (f_conf,f_action)
+    | Input(c,x,_,pos) ->
+        let var_X = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
+        let f_action = FInput (var_X, of_variable x) in
+        let f_conf = { conf with trace = TrInput(c,var_X,of_variable x,pos) :: conf.trace } in
+        (f_conf,f_action)
+    | _ -> Config.internal_error "[process_determinate.ml >> find_faulty_skeleton_det] Should only contain inputs and outputs."
+  in
+
+  let rec find_different pl1 pl2 = match pl1, pl2 with
+    | [], [] -> Config.internal_error "[process_determinate.ml >> find_faulty_skeleton_det] The ordered lists should not have the same skeletons."
+    | [], p2::_ ->
+        let (conf,action) = retrieve_action conf2 p2 in
+        (false,conf,action)
+    | p1::_ , [] ->
+        let (conf,action) = retrieve_action conf1 p1 in
+        (true,conf,action)
+    | p1::q1, p2::q2 ->
+        begin match compare_normalised_process p1 p2 with
+          | 0 -> find_different q1 q2
+          | -1 ->
+              let (conf,action) = retrieve_action conf1 p1 in
+              (true,conf,action)
+          | _ ->
+              let (conf,action) = retrieve_action conf2 p2 in
+              (true,conf,action)
+        end
+  in
+
+  find_different ordered_list_1 ordered_list_2
+
+let add_par_arguments_in_conf conf label p_list =
+
+  let rec explore acc_conf i = function
+    | [] -> acc_conf
+    | ((OutputSure _) as p)::q ->
+        let acc_conf' =  { acc_conf with sure_output_proc = { label_p = label @ [i]; proc = p }::acc_conf.sure_output_proc } in
+        explore acc_conf' (i+1) q
+    | ((Input _) as p)::q ->
+        let acc_conf' =  { acc_conf with sure_input_proc = { label_p = label @ [i]; proc = p }::acc_conf.sure_input_proc } in
+        explore acc_conf' (i+1) q
+    | _ -> Config.internal_error "[process_determinate.ml >> add_par_arguments_in_conf] Unexpected case."
+  in
+
+  explore conf 1 p_list
+
+let is_equal_skeleton_conf size_frame conf1 conf2 =
+  Config.debug (fun () ->
+    if (conf1.sure_uncheked_skeletons <> None && conf2.sure_uncheked_skeletons = None) || (conf1.sure_uncheked_skeletons = None && conf2.sure_uncheked_skeletons <> None)
+    then Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] The unchecked processes should have the same status.";
+
+    if (conf1.focused_proc <> None && conf2.focused_proc = None) || (conf1.focused_proc = None && conf2.focused_proc <> None)
+    then Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] The focused processes should have the same status.";
+
+    if conf1.focused_proc = None && conf2.focused_proc = None && conf1.sure_uncheked_skeletons = None && conf2.sure_uncheked_skeletons = None
+    then Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] The focused and unchecked processes should not be all empty.";
+
+    if conf1.focused_proc <> None && conf2.focused_proc <> None && conf1.sure_uncheked_skeletons <> None && conf2.sure_uncheked_skeletons <> None
+    then Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] The focused and unchecked processes should not be all full.";
 
     if not (List.for_all2 is_equal_skeleton_det conf1.sure_input_proc conf2.sure_input_proc)
     then Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] The skeletons of sure inputs should be the same.";
 
     if not (List.for_all2 is_equal_skeleton_det conf1.sure_output_proc conf2.sure_output_proc)
     then Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] The skeletons of sure outputs should be the same.";
-
-    if not (List.for_all2 is_equal_skeleton_det conf1.sure_zero_proc conf2.sure_zero_proc)
-    then Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] The skeletons of sure zero should be the same.";
-
-    if not (List.for_all2 is_equal_skeleton_det conf1.sure_par_proc conf2.sure_par_proc)
-    then Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] The skeletons of sure par should be the same."
   );
 
-  try
-    let conf1', conf2' =
-      List.fold_left2 (fun (acc_conf1,acc_conf2) p1 p2 ->
-        if p1.label_p = p2.label_p
-        then
-          match p1.proc, p2.proc with
-            | OutputSure(c1,_,_,_), OutputSure(c2,_,_,_) ->
-                if Symbol.is_equal c1 c2
-                then { acc_conf1 with sure_output_proc = p1::acc_conf1.sure_output_proc}, { acc_conf2 with sure_output_proc = p2::acc_conf2.sure_output_proc}
-                else raise Not_found
-            | Input(c1,_,_,_), Input(c2,_,_,_) ->
-                if Symbol.is_equal c1 c2
-                then { acc_conf1 with sure_input_proc = p1::acc_conf1.sure_input_proc}, { acc_conf2 with sure_input_proc = p2::acc_conf2.sure_input_proc}
-                else raise Not_found
-            | Nil, Nil -> { acc_conf1 with sure_zero_proc = p1::acc_conf1.sure_zero_proc}, { acc_conf2 with sure_zero_proc = p2::acc_conf2.sure_zero_proc}
-            | Par pl_1, Par pl_2 when List.length pl_1 = List.length pl_2 && List.for_all2 is_equal_skeleton pl_1 pl_2 ->
-                { acc_conf1 with sure_par_proc = p1::acc_conf1.sure_par_proc}, { acc_conf2 with sure_par_proc = p2::acc_conf2.sure_par_proc}
-            | _, _ -> raise Not_found
-        else raise Not_found
-      ) (conf1,conf2) (conf1.sure_uncheked_skeletons, conf2.sure_uncheked_skeletons)
-    in
-
-    begin match conf1.focused_proc, conf2.focused_proc with
-      | None, None -> Some (conf1',conf2')
+  if conf1.focused_proc = None
+  then
+    match conf1.sure_uncheked_skeletons, conf2.sure_uncheked_skeletons with
       | Some p1, Some p2 ->
           if is_equal_skeleton_det p1 p2
-          then Some (conf1',conf2')
-          else raise Not_found
-      | _, _ -> Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] The focused processes should have same option."
-    end
-  with
-    | Not_found -> None
+          then
+            match p1.proc, p2.proc with
+              | OutputSure _, OutputSure _ ->
+                  let conf1' = { conf1 with sure_uncheked_skeletons = None; sure_output_proc = p1::conf1.sure_output_proc } in
+                  let conf2' = { conf2 with sure_uncheked_skeletons = None; sure_output_proc = p2::conf2.sure_output_proc } in
+                  conf1', conf2'
+              | Input _, Input _ ->
+                  let conf1' = { conf1 with sure_uncheked_skeletons = None; sure_input_proc = p1::conf1.sure_input_proc } in
+                  let conf2' = { conf2 with sure_uncheked_skeletons = None; sure_input_proc = p2::conf2.sure_input_proc } in
+                  conf1', conf2'
+              | Par pl1, Par pl2 ->
+                  let conf1' = add_par_arguments_in_conf conf1 p1.label_p pl1 in
+                  let conf2' = add_par_arguments_in_conf conf2 p2.label_p pl2 in
+                  { conf1' with sure_uncheked_skeletons = None }, { conf2' with sure_uncheked_skeletons = None }
+              | Nil, Nil -> { conf1 with sure_uncheked_skeletons = None }, { conf2 with sure_uncheked_skeletons = None }
+              | _, _ -> Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] This case should not happen since they have the same skeletons."
+          else
+            let is_left,f_conf,f_action = find_faulty_skeleton_det size_frame conf1 conf2 p1 p2 in
+            raise (Faulty_skeleton (is_left, f_conf, f_action))
+      | _, _ -> Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] The unsure processes should be full."
+  else
+    match conf1.focused_proc, conf2.focused_proc with
+      | Some p1, Some p2 ->
+          if is_equal_skeleton_det p1 p2
+          then
+            match p1.proc, p2.proc with
+              | OutputSure _, OutputSure _ ->
+                  let conf1' = { conf1 with focused_proc = None; sure_output_proc = p1::conf1.sure_output_proc } in
+                  let conf2' = { conf2 with focused_proc = None; sure_output_proc = p2::conf2.sure_output_proc } in
+                  conf1', conf2'
+              | Input _, Input _ -> conf1, conf2
+              | Par pl1, Par pl2 ->
+                  let conf1' = add_par_arguments_in_conf conf1 p1.label_p pl1 in
+                  let conf2' = add_par_arguments_in_conf conf2 p2.label_p pl2 in
+                  { conf1' with focused_proc = None }, { conf2' with focused_proc = None }
+              | Nil, Nil -> { conf1 with focused_proc = None }, { conf2 with focused_proc = None }
+              | _, _ -> Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] This case should not happen since they have the same skeletons."
+          else
+            let is_left,f_conf,f_action = find_faulty_skeleton_det size_frame conf1 conf2 p1 p2 in
+            raise (Faulty_skeleton (is_left, f_conf, f_action))
+      | _, _ -> Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] The focused processes should be full."
 
 (**************************************
 ***            Blocks               ***
 ***************************************)
+
+let rec is_faulty_block block = function
+  | [] -> false
+  | b_i::q ->
+      begin match compare_label block.label_b b_i.label_b with
+        | -1 ->
+            if block.maximal_var < b_i.minimal_axiom &&
+              IntSet.for_all (fun ax -> ax < b_i.minimal_axiom || b_i.maximal_axiom < ax) block.used_axioms
+            then true
+            else is_faulty_block block q
+        | 1 -> is_faulty_block block q
+        | _ -> false
+      end
+
+let is_block_list_authorized b_list snd_subst =
+
+  let b_list_1 =
+    Subst.apply snd_subst b_list (fun l f ->
+      List.map (fun block ->
+        let max_var = ref 0 in
+        let used_axioms = ref IntSet.empty in
+
+        List.iter (fun var ->
+          let r' = f (of_variable var) in
+          iter_variables_and_axioms (fun ax_op var_op -> match ax_op,var_op with
+            | Some ax, None -> used_axioms := IntSet.add (Axiom.index_of ax) !used_axioms
+            | None, Some v -> max_var := max !max_var (Variable.type_of v)
+            | _, _ -> Config.internal_error "[process_determinate.ml >> is_block_list_authorized] The function iter_variables_and_axioms should return one filled option."
+          ) r';
+        ) block.recipes;
+
+        { block with
+          used_axioms = !used_axioms;
+          maximal_var = !max_var
+        }
+      ) l
+    )
+  in
+
+  let rec explore_block = function
+    | [] -> true
+    | [_] -> true
+    | block::q when is_faulty_block block q -> false
+    | _::q -> explore_block q
+  in
+
+  explore_block b_list_1
+
+let add_variable_in_block snd_var block =
+  { block with recipes = (snd_var :: block.recipes) }
+
+let add_axiom_in_block ax block =
+  if block.minimal_axiom = 0
+  then { block with minimal_axiom = Axiom.index_of ax ; maximal_axiom = Axiom.index_of ax }
+  else { block with maximal_axiom = Axiom.index_of ax }
+
+let create_block label =
+  {
+    label_b = label;
+    recipes = [];
+    minimal_axiom = 0;
+    maximal_axiom = 0;
+    maximal_var = 0;
+    used_axioms = IntSet.empty
+  }
 
 (**************************************
 ***            Transition           ***
@@ -264,10 +545,22 @@ type gathering_normalise =
     disequations : (fst_ord, name) Diseq.t list
   }
 
+exception Bot_disequations
+
+type modulo_result =
+  | EqBot
+  | EqTop
+  | EqList of (fst_ord, name) Subst.t list
+
+type dismodulo_result =
+  | DiseqBot
+  | DiseqTop
+  | DiseqList of (fst_ord, name) Diseq.t list
+
 let rec normalise_simple_det_process proc equations disequations f_continuation f_next = match proc with
-  | Start _ ->
-  | Nil ->
-  | OutputSure _ ->
+  | Start _
+  | Nil
+  | OutputSure _
   | Input _ ->
       let gather = { equations = equations; disequations = disequations } in
       f_continuation gather proc f_next
@@ -278,16 +571,16 @@ let rec normalise_simple_det_process proc equations disequations f_continuation 
       (* Positive side *)
       let equations_modulo_list_result =
         try
-          EqList (Modulo.syntactic_equations_of_equations [Modulo.create_equation t_2 t_2]])
+          EqList (Modulo.syntactic_equations_of_equations [Modulo.create_equation t_2 t_2])
         with
           | Modulo.Bot -> EqBot
-          | Modolo.Top -> EqTop
+          | Modulo.Top -> EqTop
       in
 
       begin match equations_modulo_list_result with
         | EqBot ->
             let gather = { equations = equations; disequations = disequations } in
-            f_continuation gather (Nil pos) f_next
+            f_continuation gather Nil f_next
         | EqTop ->
             let gather = { equations = equations; disequations = disequations } in
             f_continuation gather (OutputSure(ch,t_2,p,pos)) f_next
@@ -332,12 +625,12 @@ let rec normalise_simple_det_process proc equations disequations f_continuation 
               in
               let new_disequations = List.rev_append disequations disequations_modulo in
               let gather = { equations = equations; disequations = new_disequations } in
-              f_continuation gather (Nil pos) f_next
+              f_continuation gather Nil f_next
             in
 
             f_next_disequation f_next_equations
       end
-  | IfThenElse(u,v,pthen,pelse) ->
+  | IfThenElse(u,v,pthen,pelse,_) ->
       let (u_1,v_1) = Subst.apply equations (u,v) (fun (x,y) f -> f x, f y) in
 
       let equations_modulo_list_result =
@@ -394,7 +687,7 @@ let rec normalise_simple_det_process proc equations disequations f_continuation 
 
             else_next f_next_equations
       end
-  | Let(pat_then,pat_else,t,pthen,pelse) ->
+  | Let(pat_then,pat_else,t,pthen,pelse,_) ->
       let (pat_then_1,pat_else_1,t_1) = Subst.apply equations (pat_then,pat_else,t) (fun (x,y,z) f -> f x, f y, f z) in
 
       let then_next f_next =
@@ -451,28 +744,28 @@ let rec normalise_simple_det_process proc equations disequations f_continuation 
           | DiseqBot -> f_next ()
           | DiseqTop -> normalise_simple_det_process pelse equations disequations f_continuation f_next
           | DiseqList disequations_modulo ->
-              let new_disequations = List.rev_append isequations_modulo disequations in
+              let new_disequations = List.rev_append disequations_modulo disequations in
               normalise_simple_det_process pelse equations new_disequations f_continuation f_next
       in
 
       then_next (fun () -> else_next f_next)
-  | New(n,p) -> normalise_simple_det_process p equations disequations f_continuation f_next
+  | New(_,p,_) -> normalise_simple_det_process p equations disequations f_continuation f_next
   | Par(p_list) ->
       normalise_simple_det_process_list p_list equations disequations (fun gather p_list_1 f_next_1 ->
         if p_list_1 = []
         then f_continuation gather Nil f_next_1
-        else f_continuation gather (Par (order_flatten_process_list p_list)) f_next_1
+        else f_continuation gather (Par (order_flatten_process_list p_list_1)) f_next_1
       ) f_next
 
 and normalise_simple_det_process_list p_list equations disequations f_continuation f_next = match p_list with
   | [] -> f_continuation { equations = equations; disequations = disequations } [] f_next
   | p::q ->
-      normalise_simple_det_process_list q (fun gather_1 q_1 f_next_1 ->
+      normalise_simple_det_process_list q equations disequations (fun gather_1 q_1 f_next_1 ->
         normalise_simple_det_process p gather_1.equations gather_1.disequations (fun gather_2 proc f_next_2 ->
           match proc with
             | Nil -> f_continuation gather_2 q_1 f_next_2
             | Par p_list_1 -> f_continuation gather_2 (List.rev_append p_list_1 q_1) f_next_2
-            | _ -> f_continuation gather_2 (proc::q_1) f_next_2
+            | _  -> f_continuation gather_2 (proc::q_1) f_next_2
         ) f_next_1
       ) f_next
 
@@ -481,35 +774,22 @@ let normalise_det_process p_det equations disequations f_continuation f_next =
     f_continuation gather { p_det with proc = p } f_next_1
   ) f_next
 
-let normalise_det_process_list p_det_list equations disequations f_continuation f_next = match p_det_list with
-  | [] -> f_continuation { equations = equations; disequations = disequations } [] f_next
-  | p::q ->
-      normalise_det_process_list q equations disequations (fun gather_1 q_1 f_next_1 ->
-        normalise_det_process p gather_1.equations gather_1.disequations (fun gather_2 p_2 f_next_2 ->
-          f_continuation gather_2 (p_2::q_1) f_next_2
-        ) f_next_1
-      ) f_next
-
-let normalise_configuration conf equations disequations f_continuation =
+let normalise_configuration conf equations f_continuation =
   Config.debug (fun () ->
-    if conf.sure_uncheked_skeletons <> []
+    if conf.sure_uncheked_skeletons <> None
     then Config.internal_error "[process_determinate.ml >> normalise_configuration] Sure unchecked should be empty."
   );
 
   match conf.unsure_proc, conf.focused_proc with
-    | [], None -> f_continuation { equations = equations; disequations = disequations } conf
-    | [], Some p ->
-        normalise_det_process p equations disequations (fun gather p_1 f_next ->
+    | None, None -> f_continuation { equations = equations; disequations = [] } conf
+    | None, Some p ->
+        normalise_det_process p equations [] (fun gather p_1 f_next ->
           f_continuation gather { conf with focused_proc = Some p_1 };
           f_next ()
         ) (fun () -> ())
-    | pl, None ->
-        normalise_det_process_list pl equations disequations (fun gather pl_1 f_next ->
-          Config.debug (fun () ->
-            if pl_1 = []
-            then Config.internal_error "[process_determinate.ml >> normalise_configuration] The normalisation should not remove the Nil processes."
-          );
-          f_continuation gather { conf with sure_uncheked_skeletons = List.fast_sort compare_normalised_det_process pl_1; unsure_proc = [] };
+    | Some p, None ->
+        normalise_det_process p equations [] (fun gather p_1 f_next ->
+          f_continuation gather { conf with sure_uncheked_skeletons = Some p_1; unsure_proc = None };
           f_next ()
         ) (fun () -> ())
     | _, _ -> Config.internal_error "[process_determinate.ml >> normalise_configuration] A configure cannot be released and focused at the same time."
@@ -518,46 +798,99 @@ type next_rule =
   | RStart
   | RStartIn
   | RPosIn
-  | RNegParZero
   | RNegOut
-  | RRelease
   | RNothing
 
 let search_next_rule conf = match conf.focused_proc with
-  | Some (Input _) -> RPosIn
-  | Some _ -> RRelease
+  | Some { proc = Input _; _ } -> RPosIn
+  | Some _ -> Config.internal_error "[process_determinate.ml >> normalise_configuration] The process should have been released during the checks of the skeletons."
   | None ->
-      if conf.sure_zero_proc <> [] || conf.sure_par_proc <> []
-      then RNegParZero
-      else if conf.sure_output_proc <> []
+      if conf.sure_output_proc <> []
       then RNegOut
       else
         match conf.sure_input_proc with
           | [] -> RNothing
-          | [ Start _ ] -> RStart
+          | [ { proc = Start _; _ } ] -> RStart
           | _ -> RStartIn
 
-let apply_start_in snd_var conf =
-  let p = List.hd conf.sure_input_proc in
+let apply_start conf =
+  match conf.sure_input_proc with
+    | [ { proc = Start p; _ } ] ->
+          let conf' =
+            { conf with
+              sure_input_proc = [];
+              focused_proc = (Some { label_p = [0]; proc = p})
+            }
+          in
+          conf'
+    | _ -> Config.internal_error "[process_determinate.ml >> apply_start] Unexpected case."
 
-  match p.proc with
-    | Input(c,x,p',pos) ->
+let apply_start_in snd_var a_conf_list f_apply f_continuation f_next =
+
+  let rec explore a conf acc prev_p  = function
+    | [] -> acc
+    | ({ proc = Input(c,x,p',pos); label_p = l } as p)::q_list ->
         let conf' =
           { conf with
-            sure_input_proc = List.tl conf.sure_input_proc;
-            focused_proc = (Some { label_p = p.label_p; proc = p' });
-            trace = TrInput(c,snd_var,of_variable x,pos)
+            sure_input_proc = List.rev_append prev_p q_list;
+            focused_proc = (Some { label_p = l; proc = p' });
+            trace = TrInput(c,snd_var,of_variable x,pos) :: conf.trace
           }
         in
-        (conf',x,p.label_p)
+        explore a conf ((f_apply a conf',x,l)::acc) (p::prev_p) q_list
     | _ -> Config.internal_error "[process_determinate.ml >> apply_start_in] Unexpected case."
+  in
+
+  let a_list_list_to_join =
+    List.fold_left (fun acc_list (a,conf) ->
+      (explore a conf [] [] conf.sure_input_proc)::acc_list
+    ) [] a_conf_list in
+
+  let rec join_list a_list_list f_next_1 =
+    Config.debug (fun () ->
+      if List.exists (fun l1 -> List.exists (fun l2 -> List.length l1 <> List.length l2) a_list_list) a_list_list
+      then Config.internal_error "[process_determinate.ml >> apply_start_in] Size of the lists should be equal."
+    );
+
+    if List.hd a_list_list = []
+    then f_next_1 ()
+    else
+      let a_list = ref [] in
+      let label = ref None in
+      let prev_list_list = ref [] in
+
+      let rec join = function
+        | [] -> ()
+        | []::_ -> Config.internal_error "[process_determinate.ml >> apply_start_in] Unexpected case (2)."
+        | ((a,x,l)::q_a)::q ->
+              Config.debug (fun () ->
+                match !label with
+                  | None -> ()
+                  | Some l' when l = l' -> ()
+                  | _ -> Config.internal_error "[process_determinate.ml >> apply_start_in] Should have the same label."
+              );
+              a_list := (a,x) :: !a_list;
+              prev_list_list := q_a :: !prev_list_list;
+              label := Some l;
+              join q
+      in
+
+      join a_list_list;
+
+      match !label with
+        | None -> Config.internal_error "[process_determinate.ml >> apply_start_in] There should be some label."
+        | Some l ->
+            f_continuation !a_list l (fun () -> join_list !prev_list_list f_next_1)
+  in
+
+  join_list a_list_list_to_join f_next
 
 let apply_pos_in snd_var conf = match conf.focused_proc with
   | Some { proc = Input(c,x,p,pos); label_p = l }->
       let conf' =
         { conf with
           focused_proc = (Some { label_p = l; proc = p });
-          trace = TrInput(c,snd_var,of_variable x,pos)
+          trace = TrInput(c,snd_var,of_variable x,pos) :: conf.trace
         }
       in
       (conf',x)
@@ -567,54 +900,306 @@ let apply_neg_out ax conf =
   let p = List.hd conf.sure_output_proc in
 
   match p.proc with
-    | Output(c,t,p',pos) ->
+    | OutputSure(c,t,p',pos) ->
         let conf' =
           { conf with
             sure_output_proc = List.tl conf.sure_output_proc;
-            unsure_proc = [{ label_p = p.label_p; proc = p' }];
-            trace = TrOutput(c,ax,t,pos)
+            unsure_proc = Some { label_p = p.label_p; proc = p' };
+            trace = TrOutput(c,ax,t,pos) :: conf.trace
           }
         in
         (conf', t)
     | _ -> Config.internal_error "[process_determinate.ml >> apply_neg_out] Unexpected case."
 
-let add_par_arguments_in_conf conf label p_list =
+(**************************************
+***             Display             ***
+***************************************)
 
-  let rec explore acc_conf i = function
-    | [] -> acc_conf
-    | ((OutputSure _) as p)::q ->
-        let acc_conf' =  { acc_conf with sure_output_proc = { label_p = label @ i; proc = p }::acc_conf.sure_output_proc } in
-        explore acc_conf' (i+1)
+let get_position = function
+  | Start _
+  | Nil
+  | Par _ -> raise Not_found
+  | Output(_,_,_,pos)
+  | OutputSure(_,_,_,pos)
+  | Input(_,_,_,pos)
+  | IfThenElse(_,_,_,_,pos)
+  | Let(_,_,_,_,_,pos)
+  | New(_,_,pos) -> pos
+
+let compare_for_display p1 p2 = match p1, p2 with
+  | Start _, Start _ -> 0
+  | Nil, Nil -> 0
+  | Start _, _ -> -1
+  | _ , Start _ -> 1
+  | Nil, _ -> 1
+  | _, Nil -> -1
+  | _, _ -> compare (get_position p1) (get_position p2)
+
+let process_of_configuration conf =
+  let unchecked_p = match conf.sure_uncheked_skeletons with
+    | None -> []
+    | Some p -> [p.proc]
   in
 
-  explore conf 1 p_list
-
-let apply_neg_par_zero conf =
-
-  let new_conf =
-    List.fold_left (fun acc_conf p -> match p.proc with
-      | Par(p_list) -> add_par_arguments_in_conf acc_conf p.label_p 1 p_list
-      | _ -> Config.internal_error "[process_determinate.ml >> apply_par_out] Unexpected case."
-    ) [] conf.sure_par_proc
+  let unsure_p = match conf.unsure_proc with
+    | None -> unchecked_p
+    | Some p -> p.proc :: unchecked_p
   in
 
-  { conf with sure_par_proc = [] ; sure_zero_proc = [] }
+  let focused_p = match conf.focused_proc with
+    | None -> unsure_p
+    | Some p -> p.proc :: unsure_p
+  in
 
-let apply_release conf = match conf.focused_proc with
-  | None -> Config.internal_error "[process_determinate.ml >> apply_release] The release rule should only be applied when a process is focused."
-  | Some Nil -> { conf with focused_proc = None }
-  | Some ({ proc = OutputSure _; _ } as p) ->
-      { conf with
-        focused_proc = None;
-        sure_output_proc = p::conf.sure_output_proc
-      }
-  | Some ({ proc = Input _; _} as p) ->
-      {
-        conf with
-        focused_proc = None;
-        sure_input_proc = p::conf::sure_input_proc
-      }
-  | Some ({ proc = Par p_list; label_p = l} as p) ->
-      let conf' = add_par_arguments_in_conf conf l p_list in
-      { conf' with focused_proc = None }
-  | _ -> Config.internal_error "[process_determinate.ml >> apply_release] The release rule should only be applied on a normalised process."
+  let all = (List.map (fun p -> p.proc) conf.sure_output_proc) @ (List.map (fun p -> p.proc) conf.sure_input_proc) @ focused_p in
+  let sorted_all = List.fast_sort compare_for_display all in
+
+  match sorted_all with
+    | [] -> Nil
+    | [p] -> p
+    | _ -> Par(sorted_all)
+
+let display_simple_det_process_HTML ?(rho=None) ?(margin_px=15) ?(hidden=false) ?(highlight=[]) ?(id="") ?(subst=Subst.identity) sdet_proc =
+
+  let apply =
+    if Subst.is_identity subst
+    then (fun t -> Rewrite_rules.normalise t)
+    else (fun t -> Rewrite_rules.normalise (Subst.apply subst t (fun x f -> f x)))
+  in
+
+  let line = ref 1 in
+
+  let str_div margin str =
+    let s = Printf.sprintf "              <div class=\"expansedRow\"><div class=\"expansedLine\">{%d}</div><div class=\"expansedProcess\"><div style=\"margin-left:%dpx\">%s</div></div></div>\n"
+      !line
+      (margin * margin_px)
+      str
+    in
+    incr line;
+    s
+  in
+
+  let rec sub_display_process margin prev_in_out = function
+    | Start p -> sub_display_process margin prev_in_out p
+    | Nil when prev_in_out -> ""
+    | Nil -> str_div margin "0"
+    | Output(ch,t,p,pos)
+    | OutputSure(ch,t,p,pos)->
+        let str =
+          if List.mem pos highlight
+          then str_div margin (Printf.sprintf "<span class=\"highlight\">out(%s,%s);</span>" (Symbol.display HTML ch) (display HTML ~rho:rho Protocol (apply t)))
+          else str_div margin (Printf.sprintf "out(%s,%s);" (Symbol.display HTML ch) (display HTML ~rho:rho Protocol (apply t))) in
+        str^(sub_display_process margin true p)
+    | Input(ch,x,p,pos) ->
+        let str =
+          if List.mem pos highlight
+          then str_div margin (Printf.sprintf "<span class=\"highlight\">in(%s,%s);</span>" (Symbol.display HTML ch) (Variable.display HTML ~rho:rho Protocol x))
+          else str_div margin (Printf.sprintf "in(%s,%s);" (Symbol.display HTML ch) (Variable.display HTML ~rho:rho Protocol x)) in
+        str^(sub_display_process margin true p)
+    | IfThenElse(t1,t2,p_then,Nil,pos) ->
+        let str =
+          if List.mem pos highlight
+          then str_div margin (Printf.sprintf "<span class=\"highlight\">if %s %s %s then</span>" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2)))
+          else str_div margin (Printf.sprintf "if %s %s %s then" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2))) in
+        str^(sub_display_process margin false p_then)
+    | IfThenElse(t1,t2,p_then,p_else,pos) ->
+        let str_test =
+          if List.mem pos highlight
+          then str_div margin (Printf.sprintf "<span class=\"highlight\">if %s %s %s then</span>" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2)))
+          else str_div margin (Printf.sprintf "if %s %s %s then" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2))) in
+        let str_p_then = sub_display_process (margin+1) false p_then in
+        let str_else = str_div margin "else" in
+        let str_p_else = sub_display_process (margin+1) false p_else in
+        str_test ^ str_p_then ^ str_else ^ str_p_else
+    | Let(t1,_,t2,p_then,Nil,pos) ->
+        let str =
+          if List.mem pos highlight
+          then str_div margin (Printf.sprintf "<span class=\"highlight\">let %s %s %s in</span>" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2)))
+          else str_div margin (Printf.sprintf "let %s %s %s in" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2))) in
+        str^(sub_display_process margin false p_then)
+    | Let(t1,_,t2,p_then,p_else,pos) ->
+        let str_test =
+          if List.mem pos highlight
+          then str_div margin (Printf.sprintf "<span class=\"highlight\">let %s %s %s in</span>" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2)))
+          else str_div margin (Printf.sprintf "let %s %s %s in" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2))) in
+        let str_p_then = sub_display_process (margin+1) false p_then in
+        let str_else = str_div margin "else" in
+        let str_p_else = sub_display_process (margin+1) false p_else in
+        str_test ^ str_p_then ^ str_else ^ str_p_else
+    | New(k,p,pos) ->
+        let str =
+        if List.mem pos highlight
+        then str_div margin (Printf.sprintf "<span class=\"highlight\">new %s;</span>" (Name.display HTML ~rho:rho k))
+        else str_div margin (Printf.sprintf "new %s;" (Name.display HTML ~rho:rho k)) in
+        str^(sub_display_process margin false p)
+    | Par(p_list) ->
+        Config.debug (fun () ->
+          if p_list = []
+          then Config.internal_error "[process.ml >> display_expansed_process_HTML] The list in Par should not be empty."
+        );
+        begin match p_list with
+          | [_]
+          | []  -> Config.internal_error "[process.ml >> display_expansed_process_HTML] The only case the list in Par contains a single element is if the multiplicity is not 1."
+          | p::q_list ->
+              let str_begin = str_div margin "(" in
+
+              let str_p = sub_display_process (margin+1) false p
+              in
+              let str_q_list =
+                List.fold_left (fun acc_str p ->
+                  let str_begin = str_div margin ")&nbsp;|&nbsp;(" in
+                  let str_p = sub_display_process (margin+1) false p
+                  in
+                  acc_str ^ str_begin ^ str_p
+                ) "" q_list
+              in
+              let str_end = str_div margin ")" in
+              str_begin ^ str_p ^ str_q_list ^ str_end
+        end
+  in
+
+  if hidden
+  then
+    Printf.sprintf "          <div id=\"expansed%s\" class=\"expansedTable\" style=\"display:none;\">\n            <div class=\"expansedBody\">\n%s            </div>\n          </div>\n"
+      id
+      (sub_display_process 1 false sdet_proc)
+  else
+    Printf.sprintf "          <div id=\"expansed%s\" class=\"expansedTable\">\n            <div class=\"expansedBody\">\n%s            </div>\n          </div>\n"
+      id
+      (sub_display_process 1 false sdet_proc)
+
+let display_process_HTML ?(rho=None) ?(margin_px=15) ?(hidden=false) ?(highlight=[]) ?(id="") ?(subst=Subst.identity) conf =
+  display_simple_det_process_HTML ~rho:rho ~margin_px:margin_px ~hidden:hidden ~highlight:highlight ~id:id ~subst:subst (process_of_configuration conf)
+
+let display_trace_HTML ?(rho=None) ?(title="Display of the trace") id ?(fst_subst=Subst.identity) ?(snd_subst=Subst.identity) init_conf attack_conf =
+
+  let rev_trace = List.rev attack_conf.trace in
+
+  let str_id k = Printf.sprintf "%se%d" id k in
+
+  let html_script = ref "" in
+
+  let rec print_action_title counter = function
+    | [] -> ()
+    | action :: q ->
+        let desc = match action with
+          | TrInput(_,_,_,_) -> "Next <span class=\"alert\">observable</span> action: Input"
+          | TrOutput(_,_,_,_) -> "Next <span class=\"alert\">observable</span> action: Output"
+        in
+        html_script := Printf.sprintf "%s                    <span class=\"description-action\" id=\"desc-%se%d\">%s</span>\n" !html_script id counter desc;
+        html_script := Printf.sprintf "%s                    <span class=\"description-action\" id=\"desc-%se%d\">Result</span>\n" !html_script id (counter+1);
+        print_action_title (counter+2) q
+  in
+
+  let rec search_for_position tpos = function
+    | Start p -> search_for_position tpos p
+    | Nil -> raise Not_found
+    | Output(_,_,p,pos)
+    | OutputSure(_,_,p,pos)
+    | Input(_,_,p,pos)
+    | New(_,p,pos) ->
+        if pos = tpos
+        then p, [pos]
+        else
+          let p', pos_l = search_for_position tpos p in
+          p', pos::pos_l
+    | IfThenElse(_,_,p1,p2,pos)
+    | Let(_,_,_,p1,p2,pos) ->
+        let p', pos_l =
+          try
+            search_for_position tpos p1
+          with Not_found -> search_for_position tpos p2
+        in
+        p', pos::pos_l
+    | Par(p_list) ->
+        let pos_list = ref [] in
+
+        let p_list' =
+          List.map (fun p ->
+            try
+              let p',pos_l = search_for_position tpos p in
+              pos_list := pos_l;
+              p'
+            with
+              | Not_found -> p
+          ) p_list
+        in
+        let p_list'' = List.filter (fun p -> p <> Nil) p_list' in
+        match p_list'' with
+          | [] -> Nil, !pos_list
+          | [p] -> p, !pos_list
+          | _ -> Par(p_list''), !pos_list
+  in
+
+  let rec print_trace counter prev_process = function
+    | [] -> ()
+    | TrInput(_,_,_,pos) :: q
+    | TrOutput(_,_,_,pos) :: q ->
+        (* Script of the highlighted action *)
+        let (next_p, high) = search_for_position pos prev_process in
+        html_script := Printf.sprintf "%s%s" !html_script (display_simple_det_process_HTML ~rho:rho ~id:(str_id counter) ~highlight:high ~hidden:true ~subst:fst_subst prev_process);
+        (* Script of the result process *)
+        html_script := Printf.sprintf "%s%s" !html_script (display_simple_det_process_HTML ~rho:rho ~id:(str_id (counter+1)) ~highlight:[] ~hidden:true ~subst:fst_subst next_p);
+        print_trace (counter + 2) next_p q
+  in
+
+  let internal_counter_for_trace = ref 1 in
+
+  let rec print_action_trace counter = function
+    | [] -> ()
+    | TrInput(ch,t_X,t,_) :: q ->
+        let t_recipe = Subst.apply snd_subst (of_variable t_X) (fun x f -> f x) in
+        let new_t = Subst.apply fst_subst t (fun x f -> f x) in
+        let new_t' = Rewrite_rules.normalise new_t in
+
+        let str_t_recipe =
+          if is_function t_recipe && Symbol.get_arity (root t_recipe) = 0 && Symbol.is_public (root t_recipe)
+          then ""
+          else Printf.sprintf " (computed by \\(%s\\))" (display Latex ~rho:rho Recipe t_recipe)
+        in
+
+        html_script := Printf.sprintf "%s                  <div id=\"action-%se%d\" class=\"action\">%d. Input of \\(%s\\)%s on the channel \\(%s\\).<div>\n"
+          !html_script id (counter+1) !internal_counter_for_trace
+          (display Latex ~rho:rho Protocol new_t') str_t_recipe
+          (Symbol.display Latex ch);
+
+        incr internal_counter_for_trace;
+        print_action_trace (counter+2) q
+    | TrOutput(ch,ax,t,_) :: q ->
+        let new_t = Subst.apply fst_subst t (fun x f -> f x) in
+        let new_t' = Rewrite_rules.normalise new_t in
+
+        html_script := Printf.sprintf "%s                  <div id=\"action-%se%d\" class=\"action\">%d. Output of \\(%s\\) (refered by \\(%s\\)) on the channel \\(%s\\).<div>\n"
+          !html_script id (counter+1) !internal_counter_for_trace
+          (display Latex ~rho:rho Protocol new_t') (display Latex ~rho:rho Recipe (of_axiom ax))
+          (Symbol.display Latex ch);
+
+        incr internal_counter_for_trace;
+        print_action_trace (counter+2) q
+  in
+
+  html_script := Printf.sprintf "%s            <table class=\"processTable\">\n" !html_script;
+  html_script := Printf.sprintf "%s              <tr>\n" !html_script;
+  html_script := Printf.sprintf "%s                <td colspan=\"2\">\n" !html_script;
+  html_script := Printf.sprintf "%s                  <div class=\"title-trace\">%s</div>\n" !html_script title;
+  html_script := Printf.sprintf "%s                  <div class=\"link-trace\">\n" !html_script;
+  html_script := Printf.sprintf "%s                    <button id=\"previous-%s\" type=\"button\" onclick=\"javascript:previous_expansed('%s');\" disabled>Previous</button>\n" !html_script id id;
+  html_script := Printf.sprintf "%s                    <span class=\"description-action\" id=\"desc-%se1\" style=\"display: inline-block;\">Initial process</span>\n" !html_script id;
+  print_action_title 2 rev_trace;
+  html_script := Printf.sprintf "%s                    <button id=\"next-%s\" type=\"button\" onclick=\"javascript:next_expansed('%s');\">Next</button>\n" !html_script id id;
+  html_script := Printf.sprintf "%s                  </div>\n" !html_script;
+  html_script := Printf.sprintf "%s                </td>\n" !html_script;
+  html_script := Printf.sprintf "%s              </tr>\n" !html_script;
+  html_script := Printf.sprintf "%s              <tr class=\"processTableRow\">\n" !html_script;
+  html_script := Printf.sprintf "%s                <td class=\"processDag\">\n" !html_script;
+  html_script := Printf.sprintf "%s%s" !html_script (display_simple_det_process_HTML ~rho:rho ~id:(str_id 1) ~highlight:[] ~hidden:false ~subst:fst_subst (process_of_configuration init_conf));
+  print_trace 2 (process_of_configuration init_conf) rev_trace;
+  html_script := Printf.sprintf "%s                </td>\n" !html_script;
+  html_script := Printf.sprintf "%s                <td class=\"processRenaming\">\n" !html_script;
+  html_script := Printf.sprintf "%s                  <div class=\"subtitle-trace\">Trace</div>\n" !html_script;
+  print_action_trace 2 rev_trace;
+  html_script := Printf.sprintf "%s                </td>\n" !html_script;
+  html_script := Printf.sprintf "%s              </tr>\n" !html_script;
+  html_script := Printf.sprintf "%s            </table>\n" !html_script;
+
+  !html_script
