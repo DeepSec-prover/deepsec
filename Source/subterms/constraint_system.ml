@@ -3207,14 +3207,7 @@ module Rule = struct
       then Config.internal_error "[constraint_system.ml >> internal_rewrite] There should not be any deduction formula in UF";
 
       if csys_set.Set.eq_occurs <> Set.No_equality
-      then
-        (Printf.printf "---------------Contraint system set:%s\n" (Set.display HTML csys_set);
-        begin match csys_set.Set.eq_occurs with
-          | Set.Constructor_SDF _ -> print_string "Constructor\n"
-          | Set.Equality_SDF _ -> print_string "Equality\n"
-          | _ -> print_string "COnsequence\n"
-        end;
-        Config.internal_error "[constraint_system.ml >> internal_rewrite] There should not be any equality formula in UF");
+      then Config.internal_error "[constraint_system.ml >> internal_rewrite] There should not be any equality formula in UF";
 
       if csys_set.Set.ded_occurs = false && List.exists (fun csys ->
           UF.solved_occurs Fact.Deduction csys.uf || UF.unsolved_occurs Fact.Deduction csys.uf) csys_set.Set.csys_list

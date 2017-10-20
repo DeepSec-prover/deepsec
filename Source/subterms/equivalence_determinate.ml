@@ -95,6 +95,24 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
             then raise (Not_Trace_Equivalent csys)
             else
               let csys_left, csys_right =
+                Config.debug (fun () ->
+                  let found_bug = ref false in
+                  Constraint_system.Set.iter (fun csys1 ->
+                    let symb_test_1 = Constraint_system.get_additional_data csys1 in
+                    Constraint_system.Set.iter (fun csys2 ->
+                      let symb_test_2 = Constraint_system.get_additional_data csys2 in
+                      if symb_test_1.origin_process = symb_test_2.origin_process
+                      then
+                        try
+                          let _ = is_equal_skeleton_conf equiv_pbl.size_frame symb_test_1.configuration symb_test_2.configuration in
+                          ()
+                        with
+                        | Faulty_skeleton _ -> found_bug := true
+                    ) csys_set_1
+                  ) csys_set_1;
+                  if !found_bug
+                  then Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] Skeletons of constraint systems of same side are not equal."
+                );
                 Constraint_system.Set.find_representative csys_set (fun csys' ->
                   (Constraint_system.get_additional_data csys').origin_process = Left
                 )
@@ -200,6 +218,24 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                 if Subst.check_good_recipes snd_subst && is_block_list_authorized complete_blocks_1 snd_subst
                 then
                   let csys_left, csys_right =
+                    Config.debug (fun () ->
+                      let found_bug = ref false in
+                      Constraint_system.Set.iter (fun csys1 ->
+                        let symb_test_1 = Constraint_system.get_additional_data csys1 in
+                        Constraint_system.Set.iter (fun csys2 ->
+                          let symb_test_2 = Constraint_system.get_additional_data csys2 in
+                          if symb_test_1.origin_process = symb_test_2.origin_process
+                          then
+                            try
+                              let _ = is_equal_skeleton_conf equiv_pbl.size_frame symb_test_1.configuration symb_test_2.configuration in
+                              ()
+                            with
+                            | Faulty_skeleton _ -> found_bug := true
+                        ) csys_set_1
+                      ) csys_set_1;
+                      if !found_bug
+                      then Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] Skeletons of constraint systems of same side are not equal."
+                    );
                     Constraint_system.Set.find_representative csys_set_1 (fun csys' ->
                       (Constraint_system.get_additional_data csys').origin_process = Left
                     )
@@ -293,6 +329,24 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
               if Subst.check_good_recipes snd_subst && is_block_list_authorized equiv_pbl.complete_blocks snd_subst
               then
                 let csys_left, csys_right =
+                  Config.debug (fun () ->
+                    let found_bug = ref false in
+                    Constraint_system.Set.iter (fun csys1 ->
+                      let symb_test_1 = Constraint_system.get_additional_data csys1 in
+                      Constraint_system.Set.iter (fun csys2 ->
+                        let symb_test_2 = Constraint_system.get_additional_data csys2 in
+                        if symb_test_1.origin_process = symb_test_2.origin_process
+                        then
+                          try
+                            let _ = is_equal_skeleton_conf equiv_pbl.size_frame symb_test_1.configuration symb_test_2.configuration in
+                            ()
+                          with
+                          | Faulty_skeleton _ -> found_bug := true
+                      ) csys_set_1
+                    ) csys_set_1;
+                    if !found_bug
+                    then Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] Skeletons of constraint systems of same side are not equal."
+                  );
                   Constraint_system.Set.find_representative csys_set_1 (fun csys' ->
                     (Constraint_system.get_additional_data csys').origin_process = Left
                   )
@@ -416,6 +470,24 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
               if Subst.check_good_recipes snd_subst && is_block_list_authorized equiv_pbl.complete_blocks snd_subst
               then
                 let csys_left, csys_right =
+                  Config.debug (fun () ->
+                    let found_bug = ref false in
+                    Constraint_system.Set.iter (fun csys1 ->
+                      let symb_test_1 = Constraint_system.get_additional_data csys1 in
+                      Constraint_system.Set.iter (fun csys2 ->
+                        let symb_test_2 = Constraint_system.get_additional_data csys2 in
+                        if symb_test_1.origin_process = symb_test_2.origin_process
+                        then
+                          try
+                            let _ = is_equal_skeleton_conf equiv_pbl.size_frame symb_test_1.configuration symb_test_2.configuration in
+                            ()
+                          with
+                          | Faulty_skeleton _ -> found_bug := true
+                      ) csys_set_1
+                    ) csys_set_1;
+                    if !found_bug
+                    then Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] Skeletons of constraint systems of same side are not equal."
+                  );
                   Constraint_system.Set.find_representative csys_set_1 (fun csys' ->
                     (Constraint_system.get_additional_data csys').origin_process = Left
                   )
