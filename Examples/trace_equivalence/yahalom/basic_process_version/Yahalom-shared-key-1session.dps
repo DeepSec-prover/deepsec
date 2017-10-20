@@ -96,13 +96,11 @@ let processS(cs,a,b,kas,kbs) =
 */
 
 let Preal =
-  in(c,zz); if zz = ok then
   new kas; new kbs;
 ( processA(ca,a,b,kas) |  processBreal(cb,a,b,kbs) | processS(cs,a,b,kas,kbs) ).
 
 
 let Pideal =
-  in(c,zz); if zz = ok then
   new kas; new kbs;
 ( processA(ca,a,b,kas) |  processBideal(cb,a,b,kbs) | processS(cs,a,b,kas,kbs) ).
 

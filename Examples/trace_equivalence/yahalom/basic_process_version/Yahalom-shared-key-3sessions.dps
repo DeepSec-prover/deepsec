@@ -102,7 +102,6 @@ let processS(cs,a,b,kas,kbs) =
 */
 
 let Preal =
-  in(c,zz); if zz = ok then
   new kas; new kbs; (
     processA(ca1,a,b,kas) |  processBreal(cb1,a,b,kbs) | processS(cs1,a,b,kas,kbs) |
     processS(cs2,a,b,kas,kbs) | processA(ca2,a,b,kas) | processBreal(cb2,a,b,kbs) |
@@ -111,7 +110,6 @@ let Preal =
 
 
 let Pideal =
-  in(c,zz); if zz = ok then
   new kas; new kbs; (
     processA(ca1,a,b,kas) |  processBideal(cb1,a,b,kbs) | processS(cs1,a,b,kas,kbs) |
     processS(cs2,a,b,kas,kbs) | processA(ca2,a,b,kas) | processBreal(cb2,a,b,kbs) |
