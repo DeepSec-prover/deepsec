@@ -71,6 +71,8 @@ module DistribEquivalence : sig
   (** [compute_job shared job_l] launch [!number_of_workers] child processes send them the shared data and distribute the jobs in [job_l].
       When the computation is finished, the server close the child processes. *)
   val compute_job : EquivJob.shareddata -> EquivJob.job -> unit
+
+  val time_between_round : float ref
 end
 
 (** [trace_equivalence sem proc1 proc2] decide whether the processes [proc1] and [proc2] are in trace equivalence depending on the semantics
