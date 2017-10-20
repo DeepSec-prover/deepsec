@@ -214,45 +214,46 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                   | None -> Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] Ongoing blocks should exists"
                   | Some block -> block::equiv_pbl.complete_blocks
                 in
-                let snd_subst = Constraint_system.get_substitution_solution Recipe csys in
-                if Subst.check_good_recipes snd_subst && is_block_list_authorized complete_blocks_1 snd_subst
-                then
-                  let csys_left, csys_right =
-                    Config.debug (fun () ->
-                      let found_bug = ref false in
-                      Constraint_system.Set.iter (fun csys1 ->
-                        let symb_test_1 = Constraint_system.get_additional_data csys1 in
-                        Constraint_system.Set.iter (fun csys2 ->
-                          let symb_test_2 = Constraint_system.get_additional_data csys2 in
-                          if symb_test_1.origin_process = symb_test_2.origin_process
-                          then
-                            try
-                              let _ = is_equal_skeleton_conf equiv_pbl.size_frame symb_test_1.configuration symb_test_2.configuration in
-                              ()
-                            with
-                            | Faulty_skeleton _ -> found_bug := true
-                        ) csys_set_1
-                      ) csys_set_1;
-                      if !found_bug
-                      then Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] Skeletons of constraint systems of same side are not equal."
-                    );
-                    Constraint_system.Set.find_representative csys_set_1 (fun csys' ->
-                      (Constraint_system.get_additional_data csys').origin_process = Left
-                    )
-                  in
-                  let symb_left = Constraint_system.get_additional_data csys_left in
-                  let symb_right = Constraint_system.get_additional_data csys_right in
 
-                  let result_skel_test =
-                    try
-                      let cl,cr = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
-                      OK (cl,cr)
-                    with
-                    | Faulty_skeleton (is_left,f_conf,f_action) -> Faulty (is_left,f_conf,f_action)
-                  in
+                let csys_left, csys_right =
+                  Config.debug (fun () ->
+                    let found_bug = ref false in
+                    Constraint_system.Set.iter (fun csys1 ->
+                      let symb_test_1 = Constraint_system.get_additional_data csys1 in
+                      Constraint_system.Set.iter (fun csys2 ->
+                        let symb_test_2 = Constraint_system.get_additional_data csys2 in
+                        if symb_test_1.origin_process = symb_test_2.origin_process
+                        then
+                          try
+                            let _ = is_equal_skeleton_conf equiv_pbl.size_frame symb_test_1.configuration symb_test_2.configuration in
+                            ()
+                          with
+                          | Faulty_skeleton _ -> found_bug := true
+                      ) csys_set_1
+                    ) csys_set_1;
+                    if !found_bug
+                    then Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] Skeletons of constraint systems of same side are not equal."
+                  );
+                  Constraint_system.Set.find_representative csys_set_1 (fun csys' ->
+                    (Constraint_system.get_additional_data csys').origin_process = Left
+                  )
+                in
+                let symb_left = Constraint_system.get_additional_data csys_left in
+                let symb_right = Constraint_system.get_additional_data csys_right in
 
-                  match result_skel_test with
-                    | OK (conf_left, conf_right) ->
+                let result_skel_test =
+                  try
+                    let cl,cr = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
+                    OK (cl,cr)
+                  with
+                  | Faulty_skeleton (is_left,f_conf,f_action) -> Faulty (is_left,f_conf,f_action)
+                in
+
+                match result_skel_test with
+                  | OK (conf_left, conf_right) ->
+                      let snd_subst = Constraint_system.get_substitution_solution Recipe csys in
+                      if Subst.check_good_recipes snd_subst && is_block_list_authorized complete_blocks_1 snd_subst
+                      then
                         let csys_left = Constraint_system.replace_additional_data csys_left { symb_left with configuration = conf_left } in
                         let csys_right = Constraint_system.replace_additional_data csys_right { symb_right with configuration = conf_right } in
                         let csys_set_2 = Constraint_system.Set.add csys_left (Constraint_system.Set.add csys_right Constraint_system.Set.empty) in
@@ -260,20 +261,20 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                         let block_1 = add_variable_in_block var_X block in
                         let equiv_pbl_1 = { equiv_pbl with complete_blocks = complete_blocks_1; ongoing_block = Some block_1; csys_set = csys_set_2 } in
                         f_continuation equiv_pbl_1 f_next
-                    | Faulty (is_left,f_conf,f_action) ->
-                        let wit_csys, symb_proc = if is_left then csys_left, symb_left else csys_right, symb_right in
-                        begin match f_action with
-                          | FOutput(ax,t) ->
-                              let wit_csys_1 = Constraint_system.add_axiom wit_csys ax t in
-                              let wit_csys_2 = Constraint_system.replace_additional_data wit_csys_1 { symb_proc with configuration = f_conf } in
-                              raise (Not_Trace_Equivalent wit_csys_2)
-                          | FInput(var_X,t) ->
-                              let ded_fact_term = BasicFact.create var_X t in
-                              let wit_csys_1 = Constraint_system.add_basic_fact wit_csys ded_fact_term in
-                              let wit_csys_2 = Constraint_system.replace_additional_data wit_csys_1 { symb_proc with configuration = f_conf } in
-                              raise (Not_Trace_Equivalent wit_csys_2)
-                        end
-                else f_next ()
+                      else f_next ()
+                  | Faulty (is_left,f_conf,f_action) ->
+                      let wit_csys, symb_proc = if is_left then csys_left, symb_left else csys_right, symb_right in
+                      begin match f_action with
+                        | FOutput(ax,t) ->
+                            let wit_csys_1 = Constraint_system.add_axiom wit_csys ax t in
+                            let wit_csys_2 = Constraint_system.replace_additional_data wit_csys_1 { symb_proc with configuration = f_conf } in
+                            raise (Not_Trace_Equivalent wit_csys_2)
+                        | FInput(var_X,t) ->
+                            let ded_fact_term = BasicFact.create var_X t in
+                            let wit_csys_1 = Constraint_system.add_basic_fact wit_csys ded_fact_term in
+                            let wit_csys_2 = Constraint_system.replace_additional_data wit_csys_1 { symb_proc with configuration = f_conf } in
+                            raise (Not_Trace_Equivalent wit_csys_2)
+                      end
           in
 
           in_apply_sat !csys_set_for_input f_next_1
@@ -325,45 +326,45 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
             if Constraint_system.Set.for_all (fun csys -> (Constraint_system.get_additional_data csys).origin_process = origin_process) csys_set_1
             then raise (Not_Trace_Equivalent csys)
             else
-              let snd_subst = Constraint_system.get_substitution_solution Recipe csys in
-              if Subst.check_good_recipes snd_subst && is_block_list_authorized equiv_pbl.complete_blocks snd_subst
-              then
-                let csys_left, csys_right =
-                  Config.debug (fun () ->
-                    let found_bug = ref false in
-                    Constraint_system.Set.iter (fun csys1 ->
-                      let symb_test_1 = Constraint_system.get_additional_data csys1 in
-                      Constraint_system.Set.iter (fun csys2 ->
-                        let symb_test_2 = Constraint_system.get_additional_data csys2 in
-                        if symb_test_1.origin_process = symb_test_2.origin_process
-                        then
-                          try
-                            let _ = is_equal_skeleton_conf equiv_pbl.size_frame symb_test_1.configuration symb_test_2.configuration in
-                            ()
-                          with
-                          | Faulty_skeleton _ -> found_bug := true
-                      ) csys_set_1
-                    ) csys_set_1;
-                    if !found_bug
-                    then Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] Skeletons of constraint systems of same side are not equal."
-                  );
-                  Constraint_system.Set.find_representative csys_set_1 (fun csys' ->
-                    (Constraint_system.get_additional_data csys').origin_process = Left
-                  )
-                in
-                let symb_left = Constraint_system.get_additional_data csys_left in
-                let symb_right = Constraint_system.get_additional_data csys_right in
+              let csys_left, csys_right =
+                Config.debug (fun () ->
+                  let found_bug = ref false in
+                  Constraint_system.Set.iter (fun csys1 ->
+                    let symb_test_1 = Constraint_system.get_additional_data csys1 in
+                    Constraint_system.Set.iter (fun csys2 ->
+                      let symb_test_2 = Constraint_system.get_additional_data csys2 in
+                      if symb_test_1.origin_process = symb_test_2.origin_process
+                      then
+                        try
+                          let _ = is_equal_skeleton_conf equiv_pbl.size_frame symb_test_1.configuration symb_test_2.configuration in
+                          ()
+                        with
+                        | Faulty_skeleton _ -> found_bug := true
+                    ) csys_set_1
+                  ) csys_set_1;
+                  if !found_bug
+                  then Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] Skeletons of constraint systems of same side are not equal."
+                );
+                Constraint_system.Set.find_representative csys_set_1 (fun csys' ->
+                  (Constraint_system.get_additional_data csys').origin_process = Left
+                )
+              in
+              let symb_left = Constraint_system.get_additional_data csys_left in
+              let symb_right = Constraint_system.get_additional_data csys_right in
 
-                let result_skel_test =
-                  try
-                    let cl,cr = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
-                    OK (cl,cr)
-                  with
-                  | Faulty_skeleton (is_left,f_conf,f_action) -> Faulty (is_left,f_conf,f_action)
-                in
+              let result_skel_test =
+                try
+                  let cl,cr = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
+                  OK (cl,cr)
+                with
+                | Faulty_skeleton (is_left,f_conf,f_action) -> Faulty (is_left,f_conf,f_action)
+              in
 
-                match result_skel_test with
-                  | OK (conf_left, conf_right) ->
+              match result_skel_test with
+                | OK (conf_left, conf_right) ->
+                    let snd_subst = Constraint_system.get_substitution_solution Recipe csys in
+                    if Subst.check_good_recipes snd_subst && is_block_list_authorized equiv_pbl.complete_blocks snd_subst
+                    then
                       let csys_left = Constraint_system.replace_additional_data csys_left { symb_left with configuration = conf_left } in
                       let csys_right = Constraint_system.replace_additional_data csys_right { symb_right with configuration = conf_right } in
                       let csys_set_2 = Constraint_system.Set.add csys_left (Constraint_system.Set.add csys_right Constraint_system.Set.empty) in
@@ -373,20 +374,20 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                       in
                       let equiv_pbl_1 = { equiv_pbl with ongoing_block = Some block; csys_set = csys_set_2 } in
                       f_continuation equiv_pbl_1 f_next
-                  | Faulty (is_left,f_conf,f_action) ->
-                      let wit_csys, symb_proc = if is_left then csys_left, symb_left else csys_right, symb_right in
-                      begin match f_action with
-                        | FOutput(ax,t) ->
-                            let wit_csys_1 = Constraint_system.add_axiom wit_csys ax t in
-                            let wit_csys_2 = Constraint_system.replace_additional_data wit_csys_1 { symb_proc with configuration = f_conf } in
-                            raise (Not_Trace_Equivalent wit_csys_2)
-                        | FInput(var_X,t) ->
-                            let ded_fact_term = BasicFact.create var_X t in
-                            let wit_csys_1 = Constraint_system.add_basic_fact wit_csys ded_fact_term in
-                            let wit_csys_2 = Constraint_system.replace_additional_data wit_csys_1 { symb_proc with configuration = f_conf } in
-                            raise (Not_Trace_Equivalent wit_csys_2)
-                      end
-              else f_next ()
+                    else f_next ()
+                | Faulty (is_left,f_conf,f_action) ->
+                    let wit_csys, symb_proc = if is_left then csys_left, symb_left else csys_right, symb_right in
+                    begin match f_action with
+                      | FOutput(ax,t) ->
+                          let wit_csys_1 = Constraint_system.add_axiom wit_csys ax t in
+                          let wit_csys_2 = Constraint_system.replace_additional_data wit_csys_1 { symb_proc with configuration = f_conf } in
+                          raise (Not_Trace_Equivalent wit_csys_2)
+                      | FInput(var_X,t) ->
+                          let ded_fact_term = BasicFact.create var_X t in
+                          let wit_csys_1 = Constraint_system.add_basic_fact wit_csys ded_fact_term in
+                          let wit_csys_2 = Constraint_system.replace_additional_data wit_csys_1 { symb_proc with configuration = f_conf } in
+                          raise (Not_Trace_Equivalent wit_csys_2)
+                    end
         in
 
         in_apply_sat !csys_set_for_input f_next
@@ -466,45 +467,45 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
             if Constraint_system.Set.for_all (fun csys -> (Constraint_system.get_additional_data csys).origin_process = origin_process) csys_set_1
             then raise (Not_Trace_Equivalent csys)
             else
-              let snd_subst = Constraint_system.get_substitution_solution Recipe csys in
-              if Subst.check_good_recipes snd_subst && is_block_list_authorized equiv_pbl.complete_blocks snd_subst
-              then
-                let csys_left, csys_right =
-                  Config.debug (fun () ->
-                    let found_bug = ref false in
-                    Constraint_system.Set.iter (fun csys1 ->
-                      let symb_test_1 = Constraint_system.get_additional_data csys1 in
-                      Constraint_system.Set.iter (fun csys2 ->
-                        let symb_test_2 = Constraint_system.get_additional_data csys2 in
-                        if symb_test_1.origin_process = symb_test_2.origin_process
-                        then
-                          try
-                            let _ = is_equal_skeleton_conf equiv_pbl.size_frame symb_test_1.configuration symb_test_2.configuration in
-                            ()
-                          with
-                          | Faulty_skeleton _ -> found_bug := true
-                      ) csys_set_1
-                    ) csys_set_1;
-                    if !found_bug
-                    then Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] Skeletons of constraint systems of same side are not equal."
-                  );
-                  Constraint_system.Set.find_representative csys_set_1 (fun csys' ->
-                    (Constraint_system.get_additional_data csys').origin_process = Left
-                  )
-                in
-                let symb_left = Constraint_system.get_additional_data csys_left in
-                let symb_right = Constraint_system.get_additional_data csys_right in
+              let csys_left, csys_right =
+                Config.debug (fun () ->
+                  let found_bug = ref false in
+                  Constraint_system.Set.iter (fun csys1 ->
+                    let symb_test_1 = Constraint_system.get_additional_data csys1 in
+                    Constraint_system.Set.iter (fun csys2 ->
+                      let symb_test_2 = Constraint_system.get_additional_data csys2 in
+                      if symb_test_1.origin_process = symb_test_2.origin_process
+                      then
+                        try
+                          let _ = is_equal_skeleton_conf equiv_pbl.size_frame symb_test_1.configuration symb_test_2.configuration in
+                          ()
+                        with
+                        | Faulty_skeleton _ -> found_bug := true
+                    ) csys_set_1
+                  ) csys_set_1;
+                  if !found_bug
+                  then Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] Skeletons of constraint systems of same side are not equal."
+                );
+                Constraint_system.Set.find_representative csys_set_1 (fun csys' ->
+                  (Constraint_system.get_additional_data csys').origin_process = Left
+                )
+              in
+              let symb_left = Constraint_system.get_additional_data csys_left in
+              let symb_right = Constraint_system.get_additional_data csys_right in
 
-                let result_skel_test =
-                  try
-                    let cl,cr = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
-                    OK (cl,cr)
-                  with
-                  | Faulty_skeleton (is_left,f_conf,f_action) -> Faulty (is_left,f_conf,f_action)
-                in
+              let result_skel_test =
+                try
+                  let cl,cr = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
+                  OK (cl,cr)
+                with
+                | Faulty_skeleton (is_left,f_conf,f_action) -> Faulty (is_left,f_conf,f_action)
+              in
 
-                match result_skel_test with
-                  | OK (conf_left, conf_right) ->
+              match result_skel_test with
+                | OK (conf_left, conf_right) ->
+                    let snd_subst = Constraint_system.get_substitution_solution Recipe csys in
+                    if Subst.check_good_recipes snd_subst && is_block_list_authorized equiv_pbl.complete_blocks snd_subst
+                    then
                       let csys_left = Constraint_system.replace_additional_data csys_left { symb_left with configuration = conf_left } in
                       let csys_right = Constraint_system.replace_additional_data csys_right { symb_right with configuration = conf_right } in
                       let csys_set_2 = Constraint_system.Set.add csys_left (Constraint_system.Set.add csys_right Constraint_system.Set.empty) in
@@ -514,19 +515,19 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                       in
                       let equiv_pbl_1 = { equiv_pbl with size_frame = equiv_pbl.size_frame + 1; ongoing_block = Some block; csys_set = csys_set_2 } in
                       f_continuation equiv_pbl_1 f_next
-                  | Faulty (is_left,f_conf,f_action) ->
-                      let wit_csys, symb_proc  = if is_left then csys_left, symb_left else csys_right, symb_right in
-                      match f_action with
-                        | FOutput(ax,t) ->
-                            let wit_csys_1 = Constraint_system.add_axiom wit_csys ax t in
-                            let wit_csys_2 = Constraint_system.replace_additional_data wit_csys_1 { symb_proc with configuration = f_conf } in
-                            raise (Not_Trace_Equivalent wit_csys_2)
-                        | FInput(var_X,t) ->
-                            let ded_fact_term = BasicFact.create var_X t in
-                            let wit_csys_1 = Constraint_system.add_basic_fact wit_csys ded_fact_term in
-                            let wit_csys_2 = Constraint_system.replace_additional_data wit_csys_1 { symb_proc with configuration = f_conf } in
-                            raise (Not_Trace_Equivalent wit_csys_2)
-              else f_next ()
+                    else f_next ()
+                | Faulty (is_left,f_conf,f_action) ->
+                    let wit_csys, symb_proc  = if is_left then csys_left, symb_left else csys_right, symb_right in
+                    match f_action with
+                      | FOutput(ax,t) ->
+                          let wit_csys_1 = Constraint_system.add_axiom wit_csys ax t in
+                          let wit_csys_2 = Constraint_system.replace_additional_data wit_csys_1 { symb_proc with configuration = f_conf } in
+                          raise (Not_Trace_Equivalent wit_csys_2)
+                      | FInput(var_X,t) ->
+                          let ded_fact_term = BasicFact.create var_X t in
+                          let wit_csys_1 = Constraint_system.add_basic_fact wit_csys ded_fact_term in
+                          let wit_csys_2 = Constraint_system.replace_additional_data wit_csys_1 { symb_proc with configuration = f_conf } in
+                          raise (Not_Trace_Equivalent wit_csys_2)
         in
 
         out_apply_sat (Constraint_system.Set.initialise_for_output !csys_set_for_output) f_next
