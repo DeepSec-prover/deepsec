@@ -54,19 +54,19 @@ let print_index path n res_list =
       let rec print_queries = function
         | (k, _) when k > n -> ()
         | (k, (res,rt)::tl) ->
-          Printf.fprintf out_html
-	    "            <li>Query %d:</br>\n Result: the processes are %s</br>\n \nRunning time: %s (%s)</br>\n<a href=\"result/result_query_%d_%s.html\">Details</a></li>\n"
-	    k
-	    (match res with
-        | Standard Equivalence.Equivalent
-        | Determinate Equivalence_determinate.Equivalent -> "equivalent"
-        | _ -> "not equivalent"
-      )
-	    (Display.mkRuntime rt)
-	    (if !Config.distributed then "Workers: "^(Distributed_equivalence.DistribEquivalence.display_workers ()) else "Not distributed")
-	    k !Config.tmp_file;
-          print_queries ((k+1), tl)
-	| (_ , _) -> failwith "Number of queries and number of results differ"
+                Printf.fprintf out_html
+      	    "            <li>Query %d:</br>\n Result: the processes are %s</br>\n \nRunning time: %s (%s)</br>\n<a href=\"result/result_query_%d_%s.html\">Details</a></li>\n"
+      	    k
+      	    (match res with
+              | Standard Equivalence.Equivalent
+              | Determinate Equivalence_determinate.Equivalent -> "equivalent"
+              | _ -> "not equivalent"
+            )
+      	    (Display.mkRuntime rt)
+      	    (if !Config.distributed then "Workers: "^(Distributed_equivalence.DistribEquivalence.display_workers ()) else "Not distributed")
+      	    k !Config.tmp_file;
+                print_queries ((k+1), tl)
+      	| (_ , _) -> Config.internal_error "Number of queries and number of results differ"
       in
       print_queries (1, res_list);
       Printf.fprintf out_html "          </ul>\n";
@@ -164,15 +164,15 @@ let rec excecute_queries id = function
     in
 
     begin match result with
-      | Standard Equivalence.Equivalent, _
-      | Determinate Equivalence_determinate.Equivalent, _ ->
+      | Standard Equivalence.Equivalent, running_time
+      | Determinate Equivalence_determinate.Equivalent, running_time ->
           if !Config.display_trace
-          then Printf.printf "Query %d: Equivalent processes : See a summary of the input file on the HTML interface.\n" id
-          else Printf.printf "Query %d: Equivalent processes.\n" id
-      | _ ->
+          then Printf.printf "Query %d: Equivalent processes.\nRunning time: %s.\nAdditional informations on the HTML interface.\n" id (Display.mkRuntime running_time)
+          else Printf.printf "Query %d: Equivalent processes.\nRunning time: %s.\nAdditional informations on the HTML interface.\n" id (Display.mkRuntime running_time)
+      | _,running_time ->
           if !Config.display_trace
-          then Printf.printf "Query %d: Processes not equivalent : See a summary of the input file and the attack trace on the HTML interface.\n" id
-          else Printf.printf "Query %d: Processes not equivalent.\n" id
+          then Printf.printf "Query %d: Processes not equivalent.\nRunning time: %s.\nAdditional informations on the HTML interface.\n" id (Display.mkRuntime running_time)
+          else Printf.printf "Query %d: Processes not equivalent.\nRunning time: %s.\nAdditional informations on the HTML interface.\n" id (Display.mkRuntime running_time)
     end;
 
     flush_all ();

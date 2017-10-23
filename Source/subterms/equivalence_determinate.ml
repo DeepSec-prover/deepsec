@@ -260,6 +260,10 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                         let block = create_block label in
                         let block_1 = add_variable_in_block var_X block in
                         let equiv_pbl_1 = { equiv_pbl with complete_blocks = complete_blocks_1; ongoing_block = Some block_1; csys_set = csys_set_2 } in
+                        (*let _ =
+                          Printf.printf "%s\n" (Process_determinate.display_block (block_1::complete_blocks_1) snd_subst);
+                          flush_all ()
+                        in*)
                         f_continuation equiv_pbl_1 f_next
                       else f_next ()
                   | Faulty (is_left,f_conf,f_action) ->
@@ -552,12 +556,12 @@ let trace_equivalence conf1 conf2 =
   let symb_proc_1 =
     {
       origin_process = Left;
-      configuration = conf1
+      configuration = clean_inital_configuration conf1
     }
   and symb_proc_2 =
     {
       origin_process = Right;
-      configuration = conf2
+      configuration = clean_inital_configuration conf2
     }
   in
 

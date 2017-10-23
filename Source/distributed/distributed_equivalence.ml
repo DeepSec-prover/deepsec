@@ -240,12 +240,12 @@ let trace_equivalence_determinate conf1 conf2 =
   let symb_proc_1 =
     {
       Equivalence_determinate.origin_process = Equivalence_determinate.Left;
-      Equivalence_determinate.configuration = conf1;
+      Equivalence_determinate.configuration = Process_determinate.clean_inital_configuration conf1;
     }
   and symb_proc_2 =
     {
       Equivalence_determinate.origin_process = Equivalence_determinate.Right;
-      Equivalence_determinate.configuration = conf2;
+      Equivalence_determinate.configuration = Process_determinate.clean_inital_configuration conf2;
     }
   in
 

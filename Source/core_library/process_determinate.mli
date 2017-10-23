@@ -12,6 +12,8 @@ type label
 
 val configuration_of_expansed_process : Process.expansed_process -> configuration
 
+val clean_inital_configuration : configuration -> configuration
+
 val create_block : label -> block
 
 val add_variable_in_block : snd_ord_variable -> block -> block
@@ -80,6 +82,8 @@ val apply_pos_in : snd_ord_variable -> configuration -> configuration * fst_ord_
 val apply_neg_out : axiom -> configuration -> configuration * protocol_term
 
 (** {3 Display} *)
+
+val display_block : block list -> (snd_ord, axiom) Subst.t -> string
 
 val display_process_HTML : ?rho: display_renamings option -> ?margin_px:int -> ?hidden:bool -> ?highlight:int list -> ?id:string -> ?subst: (fst_ord, name) Subst.t -> configuration -> string
 

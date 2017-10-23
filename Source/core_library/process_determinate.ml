@@ -192,6 +192,33 @@ let configuration_of_expansed_process p =
     trace = []
   }
 
+let rec exists_input_or_output = function
+  | Start _ -> Config.internal_error "[Process_determinate.ml >> exists_input_or_output] Unexpected case."
+  | Nil -> false
+  | Output _
+  | OutputSure _
+  | Input _ -> true
+  | IfThenElse(_,_,p1,p2,_)
+  | Let(_,_,_,p1,p2,_) -> exists_input_or_output p1 || exists_input_or_output p2
+  | New(_,p,_) -> exists_input_or_output p
+  | Par p_list -> List.exists exists_input_or_output p_list
+
+let rec clean_simple_process = function
+  | Start p -> Start (clean_simple_process p)
+  | Nil -> Nil
+  | Output(c,t,p,pos) -> Output(c,t,clean_simple_process p,pos)
+  | OutputSure(c,t,p,pos) -> OutputSure(c,t,clean_simple_process p, pos)
+  | Input(c,x,p,pos) when exists_input_or_output p -> Input(c,x,clean_simple_process p, pos)
+  | Input(c,x,_,pos) -> Input(c,x,Nil,pos)
+  | IfThenElse(t1,t2,p1,p2,pos) -> IfThenElse(t1,t2,clean_simple_process p1, clean_simple_process p2, pos)
+  | Let(t1,t1uni,t2,p1,p2,pos) -> Let(t1,t1uni,t2,clean_simple_process p1, clean_simple_process p2,pos)
+  | New(n,p,pos) -> New(n,clean_simple_process p,pos)
+  | Par p_list -> Par (List.map clean_simple_process p_list)
+
+let clean_inital_configuration conf = match conf.sure_input_proc with
+  | [p] -> { conf with sure_input_proc = [{ p with proc = clean_simple_process p.proc}] }
+  | _ -> Config.internal_error "[Process_determinate.ml >> clean_inital_configuration] Unexpected case."
+
 let initial_label = [0]
 
 (**************************************
@@ -469,6 +496,26 @@ let is_equal_skeleton_conf size_frame conf1 conf2 =
 (**************************************
 ***            Blocks               ***
 ***************************************)
+
+let display_block b_list snd_subst  =
+  let str = ref "Begining of block:\n" in
+  let counter = ref (List.length b_list) in
+  let _ =
+    Subst.apply snd_subst b_list (fun l f ->
+      List.iter (fun block ->
+        str := Printf.sprintf "%sBlock %d: label = %s ; min_ax %d ; max_ax %d ; vars =" !str !counter (Display.display_list string_of_int "." block.label_b) block.minimal_axiom block.maximal_axiom;
+        counter := !counter -1;
+        List.iter (fun var ->
+          let r' = f (of_variable var) in
+          str := Printf.sprintf "%s%s -> %s; " !str (Variable.display Terminal Recipe ~v_type:true var) (display Terminal Recipe r')
+        ) block.recipes;
+
+        str := !str^"\n"
+      ) l;
+      b_list
+    )
+  in
+  !str
 
 let rec is_faulty_block block = function
   | [] -> false
@@ -847,7 +894,7 @@ let apply_start_in snd_var a_conf_list f_apply f_continuation f_next =
             trace = TrInput(c,snd_var,of_variable x,pos) :: conf.trace
           }
         in
-        explore a conf ((f_apply a conf',x,l)::acc) (p::prev_p) q_list
+        explore a conf ((f_apply a conf',p' = Nil,x,l)::acc) (p::prev_p) q_list
     | _ -> Config.internal_error "[process_determinate.ml >> apply_start_in] Unexpected case."
   in
 
@@ -865,6 +912,7 @@ let apply_start_in snd_var a_conf_list f_apply f_continuation f_next =
     if List.hd a_list_list = []
     then f_next_1 ()
     else
+      let is_nil_input = ref true in
       let a_list = ref [] in
       let label = ref None in
       let prev_list_list = ref [] in
@@ -872,13 +920,14 @@ let apply_start_in snd_var a_conf_list f_apply f_continuation f_next =
       let rec join = function
         | [] -> ()
         | []::_ -> Config.internal_error "[process_determinate.ml >> apply_start_in] Unexpected case (2)."
-        | ((a,x,l)::q_a)::q ->
+        | ((a,is_nil,x,l)::q_a)::q ->
               Config.debug (fun () ->
                 match !label with
                   | None -> ()
                   | Some l' when l = l' -> ()
                   | _ -> Config.internal_error "[process_determinate.ml >> apply_start_in] Should have the same label."
               );
+              if not is_nil then is_nil_input := false;
               a_list := (a,x) :: !a_list;
               prev_list_list := q_a :: !prev_list_list;
               label := Some l;
@@ -887,10 +936,11 @@ let apply_start_in snd_var a_conf_list f_apply f_continuation f_next =
 
       join a_list_list;
 
-      match !label with
-        | None -> Config.internal_error "[process_determinate.ml >> apply_start_in] There should be some label."
-        | Some l ->
+      match !label,!is_nil_input with
+        | None, _ -> Config.internal_error "[process_determinate.ml >> apply_start_in] There should be some label."
+        | Some l,false ->
             f_continuation !a_list l (fun () -> join_list !prev_list_list f_next_1)
+        | _, true -> join_list !prev_list_list f_next_1
   in
 
   join_list a_list_list_to_join f_next
