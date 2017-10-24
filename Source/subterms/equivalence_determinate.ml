@@ -17,15 +17,17 @@ type equivalence_problem =
     csys_set : symbolic_process Constraint_system.Set.t;
     complete_blocks : block list;
     ongoing_block : block option;
-    size_frame : int
+    size_frame : int;
+    else_branch : bool
   }
 
-let initialise_equivalence_problem csys_set =
+let initialise_equivalence_problem else_branch csys_set =
   {
     csys_set = csys_set;
     complete_blocks = [];
     ongoing_block = None;
-    size_frame = 0
+    size_frame = 0;
+    else_branch = else_branch
   }
 
 exception Not_Trace_Equivalent of symbolic_process Constraint_system.t
@@ -59,7 +61,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           let conf = apply_start symb_proc.configuration in
           let fst_subst = Constraint_system.get_substitution_solution Protocol csys in
 
-          normalise_configuration conf fst_subst (fun gathering conf_1 ->
+          normalise_configuration conf equiv_pbl.else_branch fst_subst (fun gathering conf_1 ->
             try
               let csys_1 = Constraint_system.apply_substitution csys gathering.equations in
               let csys_2 = Constraint_system.add_disequations Protocol csys_1 gathering.disequations in
@@ -173,7 +175,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
             let symb_proc = Constraint_system.get_additional_data csys in
             let fst_subst = Constraint_system.get_substitution_solution Protocol csys in
 
-            normalise_configuration symb_proc.configuration fst_subst (fun gathering conf_1 ->
+            normalise_configuration symb_proc.configuration equiv_pbl.else_branch fst_subst (fun gathering conf_1 ->
               let term_x = Subst.apply gathering.equations (of_variable x) (fun x f -> f x) in
               let ded_fact_term = BasicFact.create var_X term_x in
 
@@ -293,7 +295,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           let conf,x = apply_pos_in var_X symb_proc.configuration in
           let fst_subst = Constraint_system.get_substitution_solution Protocol csys in
 
-          normalise_configuration conf fst_subst (fun gathering conf_1 ->
+          normalise_configuration conf equiv_pbl.else_branch fst_subst (fun gathering conf_1 ->
             let term_x = Subst.apply gathering.equations (of_variable x) (fun x f -> f x) in
             let ded_fact_term = BasicFact.create var_X term_x in
 
@@ -405,7 +407,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           let conf, term = apply_neg_out axiom symb_proc.configuration in
           let fst_subst = Constraint_system.get_substitution_solution Protocol csys in
 
-          normalise_configuration conf fst_subst (fun gathering conf_1 ->
+          normalise_configuration conf equiv_pbl.else_branch fst_subst (fun gathering conf_1 ->
             let term' = Subst.apply gathering.equations term (fun x f -> f x) in
 
             try
@@ -565,6 +567,7 @@ let trace_equivalence conf1 conf2 =
     }
   in
 
+  let else_branch = exists_else_branch_initial_configuration symb_proc_1.configuration && exists_else_branch_initial_configuration symb_proc_2.configuration in
   let csys_1 = Constraint_system.empty symb_proc_1 in
   let csys_2 = Constraint_system.empty symb_proc_2 in
 
@@ -578,7 +581,8 @@ let trace_equivalence conf1 conf2 =
       csys_set = csys_set_2;
       complete_blocks = [];
       ongoing_block = None;
-      size_frame = 0
+      size_frame = 0;
+      else_branch = else_branch
     }
   in
 

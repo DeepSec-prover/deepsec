@@ -248,7 +248,9 @@ let trace_equivalence_determinate conf1 conf2 =
       Equivalence_determinate.configuration = Process_determinate.clean_inital_configuration conf2;
     }
   in
-
+  let else_branch =
+    Process_determinate.exists_else_branch_initial_configuration symb_proc_1.Equivalence_determinate.configuration &&
+    Process_determinate.exists_else_branch_initial_configuration symb_proc_2.Equivalence_determinate.configuration in
   let csys_1 = Constraint_system.empty symb_proc_1 in
   let csys_2 = Constraint_system.empty symb_proc_2 in
 
@@ -261,7 +263,7 @@ let trace_equivalence_determinate conf1 conf2 =
   let v_counter = Variable.get_counter () in
   let n_counter = Name.get_counter () in
 
-  let equiv_pbl = Equivalence_determinate.initialise_equivalence_problem csys_set_2 in
+  let equiv_pbl = Equivalence_determinate.initialise_equivalence_problem else_branch csys_set_2 in
 
   let data =
     {

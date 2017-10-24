@@ -14,6 +14,8 @@ val configuration_of_expansed_process : Process.expansed_process -> configuratio
 
 val clean_inital_configuration : configuration -> configuration
 
+val exists_else_branch_initial_configuration : configuration -> bool
+
 val create_block : label -> block
 
 val add_variable_in_block : snd_ord_variable -> block -> block
@@ -54,6 +56,7 @@ type gathering_normalise =
 
 val normalise_configuration :
   configuration ->
+  bool ->
   (fst_ord, name) Subst.t ->
   (gathering_normalise -> configuration -> unit) ->
   unit

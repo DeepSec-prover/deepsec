@@ -22,7 +22,7 @@ val apply_one_transition_and_rules :
   (unit -> unit) ->
   unit
 
-val initialise_equivalence_problem : symbolic_process Constraint_system.Set.t -> equivalence_problem
+val initialise_equivalence_problem : bool -> symbolic_process Constraint_system.Set.t -> equivalence_problem
 
 type result_trace_equivalence =
   | Equivalent

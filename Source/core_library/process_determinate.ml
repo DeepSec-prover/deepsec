@@ -219,6 +219,23 @@ let clean_inital_configuration conf = match conf.sure_input_proc with
   | [p] -> { conf with sure_input_proc = [{ p with proc = clean_simple_process p.proc}] }
   | _ -> Config.internal_error "[Process_determinate.ml >> clean_inital_configuration] Unexpected case."
 
+let rec exists_else_branch_simple_process = function
+  | Start p -> exists_else_branch_simple_process p
+  | Nil -> false
+  | Output(_,_,p,_) -> exists_else_branch_simple_process p
+  | OutputSure(_,_,p,_) -> exists_else_branch_simple_process p
+  | Input(_,_,p,_) -> exists_else_branch_simple_process p
+  | IfThenElse(_,_,p1,Nil,_) -> exists_else_branch_simple_process p1
+  | IfThenElse _ -> true
+  | Let(_,_,_,p1,Nil,_) -> exists_else_branch_simple_process p1
+  | Let _ -> true
+  | New(_,p,_) -> exists_else_branch_simple_process p
+  | Par p_list -> List.exists exists_else_branch_simple_process p_list
+
+let exists_else_branch_initial_configuration conf = match conf.sure_input_proc with
+  | [p] -> exists_else_branch_simple_process p.proc
+  | _ -> Config.internal_error "[Process_determinate.ml >> exists_else_branch_initial_configuration] Unexpected case."
+
 let initial_label = [0]
 
 (**************************************
@@ -614,7 +631,7 @@ type dismodulo_result =
   | DiseqTop
   | DiseqList of (fst_ord, name) Diseq.t list
 
-let rec normalise_simple_det_process proc equations disequations f_continuation f_next = match proc with
+let rec normalise_simple_det_process proc else_branch equations disequations f_continuation f_next = match proc with
   | Start _
   | Nil
   | OutputSure _
@@ -672,20 +689,23 @@ let rec normalise_simple_det_process proc equations disequations f_continuation 
               ) f_next equations_modulo_list
             in
 
-            let f_next_disequation f_next =
-              let disequations_modulo =
-                try
-                  Modulo.syntactic_disequations_of_disequations (Modulo.create_disequation t_2 t_2)
-                with
-                | Modulo.Bot
-                | Modulo.Top -> Config.internal_error "[process_determinate.ml >> normalise_simple_det_process] The disequations cannot be top or bot."
+            if else_branch
+            then
+              let f_next_disequation f_next =
+                let disequations_modulo =
+                  try
+                    Modulo.syntactic_disequations_of_disequations (Modulo.create_disequation t_2 t_2)
+                  with
+                  | Modulo.Bot
+                  | Modulo.Top -> Config.internal_error "[process_determinate.ml >> normalise_simple_det_process] The disequations cannot be top or bot."
+                in
+                let new_disequations = List.rev_append disequations disequations_modulo in
+                let gather = { equations = equations; disequations = new_disequations } in
+                f_continuation gather Nil f_next
               in
-              let new_disequations = List.rev_append disequations disequations_modulo in
-              let gather = { equations = equations; disequations = new_disequations } in
-              f_continuation gather Nil f_next
-            in
 
-            f_next_disequation f_next_equations
+              f_next_disequation f_next_equations
+            else f_next_equations ()
       end
   | IfThenElse(u,v,pthen,pelse,_) ->
       let (u_1,v_1) = Subst.apply equations (u,v) (fun (x,y) f -> f x, f y) in
@@ -699,8 +719,8 @@ let rec normalise_simple_det_process proc equations disequations f_continuation 
       in
 
       begin match equations_modulo_list_result with
-        | EqBot -> normalise_simple_det_process pelse equations disequations f_continuation f_next
-        | EqTop -> normalise_simple_det_process pthen equations disequations f_continuation f_next
+        | EqBot -> normalise_simple_det_process pelse else_branch equations disequations f_continuation f_next
+        | EqTop -> normalise_simple_det_process pthen else_branch equations disequations f_continuation f_next
         | EqList equations_modulo_list ->
             let f_next_equations =
               List.fold_left (fun acc_f_next equations_modulo ->
@@ -725,24 +745,27 @@ let rec normalise_simple_det_process proc equations disequations f_continuation 
                   | None -> acc_f_next
                   | Some new_disequations ->
                       let new_equations = Subst.compose equations equations_modulo in
-                      (fun () -> normalise_simple_det_process pthen new_equations new_disequations f_continuation acc_f_next)
+                      (fun () -> normalise_simple_det_process pthen else_branch new_equations new_disequations f_continuation acc_f_next)
               ) f_next equations_modulo_list
             in
 
-            let else_next f_next =
-              let disequations_modulo =
-                try
-                  Modulo.syntactic_disequations_of_disequations (Modulo.create_disequation u_1 v_1)
-                with
-                  | Modulo.Bot
-                  | Modulo.Top -> Config.internal_error "[process_determinate.ml >> normalise_simple_det_process] The disequations cannot be top or bot (2)."
+            if else_branch
+            then
+              let else_next f_next =
+                let disequations_modulo =
+                  try
+                    Modulo.syntactic_disequations_of_disequations (Modulo.create_disequation u_1 v_1)
+                  with
+                    | Modulo.Bot
+                    | Modulo.Top -> Config.internal_error "[process_determinate.ml >> normalise_simple_det_process] The disequations cannot be top or bot (2)."
+                in
+
+                let new_disequations = List.rev_append disequations_modulo disequations in
+                normalise_simple_det_process pelse else_branch equations new_disequations f_continuation f_next
               in
 
-              let new_disequations = List.rev_append disequations_modulo disequations in
-              normalise_simple_det_process pelse equations new_disequations f_continuation f_next
-            in
-
-            else_next f_next_equations
+              else_next f_next_equations
+            else f_next_equations ()
       end
   | Let(pat_then,pat_else,t,pthen,pelse,_) ->
       let (pat_then_1,pat_else_1,t_1) = Subst.apply equations (pat_then,pat_else,t) (fun (x,y,z) f -> f x, f y, f z) in
@@ -757,8 +780,8 @@ let rec normalise_simple_det_process proc equations disequations f_continuation 
         in
 
         match equations_modulo_list_result with
-          | EqBot -> f_next ()
-          | EqTop -> normalise_simple_det_process pthen equations disequations f_continuation f_next
+          | EqBot -> if else_branch then f_next () else normalise_simple_det_process pelse else_branch equations disequations f_continuation f_next
+          | EqTop -> normalise_simple_det_process pthen else_branch equations disequations f_continuation f_next
           | EqList equations_modulo_list ->
               let f_next_equations =
                 List.fold_left (fun acc_f_next equations_modulo ->
@@ -782,43 +805,46 @@ let rec normalise_simple_det_process proc equations disequations f_continuation 
                     | None -> acc_f_next
                     | Some new_disequations ->
                         let new_equations = Subst.compose equations equations_modulo in
-                        (fun () -> normalise_simple_det_process pthen new_equations new_disequations f_continuation acc_f_next)
+                        (fun () -> normalise_simple_det_process pthen else_branch new_equations new_disequations f_continuation acc_f_next)
                 ) f_next equations_modulo_list
               in
               f_next_equations ()
       in
 
-      let else_next f_next =
-        let disequations_modulo_result =
-          try
-            DiseqList (Modulo.syntactic_disequations_of_disequations (Modulo.create_disequation pat_else_1 t_1))
-          with
-            | Modulo.Bot -> DiseqBot
-            | Modulo.Top -> DiseqTop
+      if else_branch
+      then
+        let else_next f_next =
+          let disequations_modulo_result =
+            try
+              DiseqList (Modulo.syntactic_disequations_of_disequations (Modulo.create_disequation pat_else_1 t_1))
+            with
+              | Modulo.Bot -> DiseqBot
+              | Modulo.Top -> DiseqTop
+          in
+
+          match disequations_modulo_result with
+            | DiseqBot -> f_next ()
+            | DiseqTop -> normalise_simple_det_process pelse else_branch equations disequations f_continuation f_next
+            | DiseqList disequations_modulo ->
+                let new_disequations = List.rev_append disequations_modulo disequations in
+                normalise_simple_det_process pelse else_branch equations new_disequations f_continuation f_next
         in
 
-        match disequations_modulo_result with
-          | DiseqBot -> f_next ()
-          | DiseqTop -> normalise_simple_det_process pelse equations disequations f_continuation f_next
-          | DiseqList disequations_modulo ->
-              let new_disequations = List.rev_append disequations_modulo disequations in
-              normalise_simple_det_process pelse equations new_disequations f_continuation f_next
-      in
-
-      then_next (fun () -> else_next f_next)
-  | New(_,p,_) -> normalise_simple_det_process p equations disequations f_continuation f_next
+        then_next (fun () -> else_next f_next)
+      else then_next f_next
+  | New(_,p,_) -> normalise_simple_det_process p else_branch equations disequations f_continuation f_next
   | Par(p_list) ->
-      normalise_simple_det_process_list p_list equations disequations (fun gather p_list_1 f_next_1 ->
+      normalise_simple_det_process_list p_list else_branch equations disequations (fun gather p_list_1 f_next_1 ->
         if p_list_1 = []
         then f_continuation gather Nil f_next_1
         else f_continuation gather (Par (order_flatten_process_list p_list_1)) f_next_1
       ) f_next
 
-and normalise_simple_det_process_list p_list equations disequations f_continuation f_next = match p_list with
+and normalise_simple_det_process_list p_list else_branch equations disequations f_continuation f_next = match p_list with
   | [] -> f_continuation { equations = equations; disequations = disequations } [] f_next
   | p::q ->
-      normalise_simple_det_process_list q equations disequations (fun gather_1 q_1 f_next_1 ->
-        normalise_simple_det_process p gather_1.equations gather_1.disequations (fun gather_2 proc f_next_2 ->
+      normalise_simple_det_process_list q else_branch equations disequations (fun gather_1 q_1 f_next_1 ->
+        normalise_simple_det_process p else_branch gather_1.equations gather_1.disequations (fun gather_2 proc f_next_2 ->
           match proc with
             | Nil -> f_continuation gather_2 q_1 f_next_2
             | Par p_list_1 -> f_continuation gather_2 (List.rev_append p_list_1 q_1) f_next_2
@@ -826,12 +852,12 @@ and normalise_simple_det_process_list p_list equations disequations f_continuati
         ) f_next_1
       ) f_next
 
-let normalise_det_process p_det equations disequations f_continuation f_next =
-  normalise_simple_det_process p_det.proc equations disequations (fun gather p f_next_1 ->
+let normalise_det_process p_det else_branch equations disequations f_continuation f_next =
+  normalise_simple_det_process p_det.proc else_branch equations disequations (fun gather p f_next_1 ->
     f_continuation gather { p_det with proc = p } f_next_1
   ) f_next
 
-let normalise_configuration conf equations f_continuation =
+let normalise_configuration conf else_branch equations f_continuation =
   Config.debug (fun () ->
     if conf.sure_uncheked_skeletons <> None
     then Config.internal_error "[process_determinate.ml >> normalise_configuration] Sure unchecked should be empty."
@@ -840,12 +866,12 @@ let normalise_configuration conf equations f_continuation =
   match conf.unsure_proc, conf.focused_proc with
     | None, None -> f_continuation { equations = equations; disequations = [] } conf
     | None, Some p ->
-        normalise_det_process p equations [] (fun gather p_1 f_next ->
+        normalise_det_process p else_branch equations [] (fun gather p_1 f_next ->
           f_continuation gather { conf with focused_proc = Some p_1 };
           f_next ()
         ) (fun () -> ())
     | Some p, None ->
-        normalise_det_process p equations [] (fun gather p_1 f_next ->
+        normalise_det_process p else_branch equations [] (fun gather p_1 f_next ->
           f_continuation gather { conf with sure_uncheked_skeletons = Some p_1; unsure_proc = None };
           f_next ()
         ) (fun () -> ())
