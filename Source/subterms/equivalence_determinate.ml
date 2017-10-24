@@ -567,7 +567,7 @@ let trace_equivalence conf1 conf2 =
     }
   in
 
-  let else_branch = exists_else_branch_initial_configuration symb_proc_1.configuration && exists_else_branch_initial_configuration symb_proc_2.configuration in
+  let else_branch = exists_else_branch_initial_configuration symb_proc_1.configuration || exists_else_branch_initial_configuration symb_proc_2.configuration in
   let csys_1 = Constraint_system.empty symb_proc_1 in
   let csys_2 = Constraint_system.empty symb_proc_2 in
 
