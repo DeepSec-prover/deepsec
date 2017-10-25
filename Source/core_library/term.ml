@@ -1967,6 +1967,30 @@ module Subst = struct
       Config.test (fun () -> test_is_matchable at term_list1 term_list2 false);
       false
 
+  let match_terms at term_list1 term_list2 =
+    Config.debug (fun () ->
+      if retrieve at <> []
+      then Config.internal_error "[term.ml >> Subst.is_matchable] The list of linked variables should be empty.";
+
+      if List.length term_list1 <> List.length term_list2
+      then Config.internal_error "[term.ml >> Subst.is_matchable] Both lists should have the same size.";
+    );
+
+    try
+      List.iter2 (match_term at) term_list1 term_list2;
+      let list_vars = retrieve at in
+      let subst =
+        List.rev_map (fun x -> match x.link with
+          | TLink t -> (x,t)
+          | _ -> Config.internal_error "[term.ml >> Subst.match_terms] All variables should be linked."
+        ) list_vars
+      in
+      cleanup at;
+      Some subst
+    with Not_matchable ->
+      cleanup at;
+      None
+
   (********** is_equal_equations **********)
 
   let rec is_equal_linked_terms at t1 t2 = match t1.term,t2.term with

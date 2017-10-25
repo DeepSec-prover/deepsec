@@ -77,6 +77,9 @@ val instantiate_when_solved : 'a t -> (fst_ord, name) Subst.t * (snd_ord, axiom)
 (** [is_solved] {% $\C$ %} returns [true] if {% $\C$ is solved. %}*)
 val is_solved : 'a t -> bool
 
+(** [subsume b] {% $\C_1$~$\C_2$ %} returns [true] if {% $\C_1$ subsume $\C_2$.%} If [b = true] then the fine grained subsumption test is applied. *)
+val subsume : bool -> 'a t -> 'a t -> bool
+
 (** {3 Display function} *)
 
 val display : Display.output -> ?rho: display_renamings option -> ?hidden:bool -> ?id:int -> 'a t -> string
@@ -206,7 +209,7 @@ module Set : sig
   val set_private_channels : 'a t -> bool -> 'a t
 
   val elements : 'a t -> 'a csys list
-  
+
   (** [choose] {% $S$ returns one constraint system in $S$. %}
       @raise Internal_error if the set is empty. *)
   val choose : 'a t -> 'a csys

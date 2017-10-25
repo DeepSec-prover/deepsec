@@ -36,7 +36,7 @@ type result_skeleton =
   | OK of configuration * configuration
   | Faulty of bool * configuration * action
 
-let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
+let apply_one_transition_and_rules_internal equiv_pbl f_continuation f_next =
 
   Config.debug (fun () ->
     match Constraint_system.Set.elements equiv_pbl.csys_set with
@@ -546,6 +546,51 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           if Constraint_system.Set.for_all (fun csys -> (Constraint_system.get_additional_data csys).origin_process = origin_process) equiv_pbl.csys_set
           then raise (Not_Trace_Equivalent csys)
           else f_next ()
+
+let counter = ref 0
+
+let rec subsume equiv_pbl csys origin prev = function
+  | [] -> equiv_pbl :: prev
+  | eq_pbl::q ->
+      let csys' = match Constraint_system.Set.elements eq_pbl.csys_set with
+        | [csys';_] when (Constraint_system.get_additional_data csys').origin_process = origin -> csys'
+        | [_;csys'] -> csys'
+        | _ -> Config.internal_error "[equivalence_determinate >> is_subsumed_or_subsume] There should be only two constraint systems: one left, one right."
+      in
+      if Constraint_system.subsume false csys csys'
+      then (incr counter; Printf.printf "Subsume counter = %d\n" !counter; flush_all (); subsume equiv_pbl csys origin prev q)
+      else subsume equiv_pbl csys origin (eq_pbl::prev) q
+
+let rec is_subsumed_or_subsume equiv_pbl csys origin prev = function
+  | [] -> equiv_pbl :: prev
+  | eq_pbl::q ->
+      let csys' = match Constraint_system.Set.elements eq_pbl.csys_set with
+        | [csys';_] when (Constraint_system.get_additional_data csys').origin_process = origin -> csys'
+        | [_;csys'] -> csys'
+        | _ -> Config.internal_error "[equivalence_determinate >> is_subsumed_or_subsume] There should be only two constraint systems: one left, one right."
+      in
+      if Constraint_system.subsume false csys csys'
+      then (incr counter; Printf.printf "Subsume counter = %d\n" !counter; flush_all ();  subsume equiv_pbl csys origin prev q)
+      else if Constraint_system.subsume false csys' csys
+      then (incr counter; Printf.printf "Subsume counter = %d\n" !counter; flush_all ();  List.rev_append prev (eq_pbl::q))
+      else is_subsumed_or_subsume equiv_pbl csys origin (eq_pbl::prev) q
+
+let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
+  let equiv_pbl_list = ref [] in
+
+  apply_one_transition_and_rules_internal equiv_pbl (fun equiv_pbl_1 f_next_1 ->
+    let csys = Constraint_system.Set.choose equiv_pbl_1.csys_set in
+    let origin = (Constraint_system.get_additional_data csys).origin_process in
+    equiv_pbl_list := is_subsumed_or_subsume equiv_pbl_1 csys origin [] !equiv_pbl_list;
+    f_next_1 ()
+  ) (fun () -> ());
+
+  let rec explore f_next_1 = function
+    | [] -> f_next_1 ()
+    | eq_pbl :: q -> f_continuation eq_pbl (fun () -> explore f_next_1 q)
+  in
+
+  explore f_next !equiv_pbl_list
 
 type result_trace_equivalence =
   | Equivalent

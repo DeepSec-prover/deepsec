@@ -1552,6 +1552,253 @@ let apply_mgs_on_formula (type a) (fct: a Fact.t) csys (subst_snd,list_var) (for
   with
     | Fact.Bot -> Config.test (fun () -> test_apply_mgs_on_formula fct csys (subst_snd,list_var) formula None); raise Fact.Bot
 
+(**** Subsumption *****)
+
+let exists_match_mgs csys f_pred =
+  let result = ref false in
+
+  let rec apply_rules csys f_next =
+
+    let test_not_solved basic_fct =
+      if not (is_variable (BasicFact.get_protocol_term basic_fct))
+      then Some basic_fct
+      else None
+    in
+
+    let apply_res basic_fct fct f_next =
+      let b_term = BasicFact.get_protocol_term basic_fct
+      and b_recipe = BasicFact.get_snd_ord_variable basic_fct
+      and term = Fact.get_protocol_term fct
+      and recipe = Fact.get_recipe fct in
+
+      if is_equal Protocol term b_term
+      then
+        begin
+          let unif_opt =
+            try
+              Some(Subst.unify Recipe [(of_variable b_recipe,recipe)])
+            with
+            | Subst.Not_unifiable -> None
+          in
+
+          match unif_opt with
+            | None -> f_next ()
+            | Some(subst_snd) ->
+
+                let df_1 = DF.remove csys.simp_DF b_recipe in
+
+                Config.debug (fun () ->
+                  if not (Uniformity_Set.exists csys.simp_Sub_Cons recipe term)
+                  then Config.internal_error "[Constraint_system.ml >> mgs] Elements of DF should always be in the uniformity set."
+                );
+
+                let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst_snd Subst.identity in
+
+                let csys' = { csys with
+                    simp_DF = df_1;
+                    simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst_snd;
+                    simp_SDF = SDF.apply csys.simp_SDF subst_snd Subst.identity;
+                    simp_Sub_Cons = sub_cons_1
+                  }
+
+                in
+
+                (* Check that eqfst and eqsnd are not bot and that the normalisation rule for unification is not triggered *)
+
+                if Eq.is_bot csys'.simp_EqSnd
+                then f_next ()
+                else (apply_rules [@tailcall]) csys' f_next
+        end
+      else f_next ()
+    in
+
+    let apply_cons basic_fct f_next =
+      let term = BasicFact.get_protocol_term basic_fct
+      and x_snd = BasicFact.get_snd_ord_variable basic_fct in
+
+      if is_name term
+      then f_next ()
+      else
+        let symb = root term in
+        if Symbol.is_public symb
+        then
+          let arity = Symbol.get_arity symb in
+
+          if arity = 0
+          then
+            let recipe = apply_function symb [] in
+            let subst = Subst.create Recipe x_snd recipe in
+            let df_1 = DF.remove csys.simp_DF x_snd in
+            let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity in
+            let csys' =
+              { csys with
+                  simp_DF = df_1;
+                  simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst;
+                  simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
+                  simp_Sub_Cons = sub_cons_1
+              }
+            in
+
+            if Eq.is_bot csys'.simp_EqSnd
+            then f_next ()
+            else (apply_rules [@tailcall]) csys' f_next
+          else
+            begin
+              let args_of_term = get_args term in
+
+              let vars_snd = Variable.fresh_list Recipe Existential (Variable.snd_ord_type (Variable.type_of x_snd)) arity in
+              let vars_snd_as_term = List.map of_variable vars_snd in
+
+              let recipe = apply_function symb vars_snd_as_term in
+              let subst = Subst.create Recipe x_snd recipe in
+
+              let ded_fact_list = List.map2 BasicFact.create vars_snd args_of_term in
+
+              let df_1 = DF.remove csys.simp_DF x_snd in
+              let df_2 = List.fold_left (fun df b_fct -> DF.add df b_fct) df_1 ded_fact_list in
+
+              let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity in
+              let sub_cons_2 = List.fold_left2 (fun subc x t -> Uniformity_Set.add subc x t) sub_cons_1  vars_snd_as_term args_of_term in
+
+              let csys' = { csys with
+                  simp_DF = df_2;
+                  simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst;
+                  simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
+                  simp_Sub_Cons = sub_cons_2
+                }
+              in
+
+              (* Check that eqsnd is not bot and that the normalisation rule for unification is not triggered *)
+
+              if Eq.is_bot csys'.simp_EqSnd
+              then f_next ()
+              else (apply_rules [@tailcall]) csys' f_next
+            end
+        else f_next ()
+    in
+
+    match Uniformity_Set.unify_multiple_opt csys.simp_Sub_Cons with
+      | None -> f_next ()
+      | Some(subst,uniset) ->
+          if Subst.is_identity subst
+          then
+            match DF.find csys.simp_DF test_not_solved with
+              | None ->
+                  if f_pred csys
+                  then result := true
+                  else f_next ()
+              | Some basic_fct ->
+                  (SDF.tail_iter_within_var_type [@tailcall]) (Variable.type_of (BasicFact.get_snd_ord_variable basic_fct)) csys.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
+          else
+            let new_eqsnd = Eq.apply Recipe csys.simp_EqSnd subst in
+
+            if Eq.is_bot new_eqsnd
+            then f_next ()
+            else
+              let new_df = Subst.fold (fun df x _ -> DF.remove df x) csys.simp_DF subst in
+              let csys' =
+                { csys with
+                  simp_DF = new_df;
+                  simp_EqSnd = new_eqsnd;
+                  simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
+                  simp_Sub_Cons = uniset
+                }
+              in
+              match DF.find csys'.simp_DF test_not_solved with
+                | None ->
+                    if f_pred csys
+                    then result := true
+                    else f_next ()
+                | Some basic_fct ->
+                    (SDF.tail_iter_within_var_type [@tailcall]) (Variable.type_of (BasicFact.get_snd_ord_variable basic_fct)) csys'.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
+  in
+
+  (* We first check if the constraint is not directly bot *)
+
+  if Eq.is_bot csys.simp_EqFst || Eq.is_bot csys.simp_EqSnd
+  then false
+  else
+    begin
+      apply_rules csys (fun () -> ());
+      !result
+    end
+
+let subsume fine_grained csys1 csys2 =
+  (* We check that csys1 subsume csys2,
+    i.e. solutions of csys1 include the one of csys2.
+    Not that we should only take argument that we know comes from
+    the same original constraint system. *)
+
+  (* Retreive the terms and free recipes variables of csys2 *)
+  let (t_list,v_list) =
+    DF.fold (fun (acc_t,acc_v) bfct ->
+      let v = BasicFact.get_snd_ord_variable bfct in
+      if Variable.quantifier_of v = Free
+      then
+        let t = BasicFact.get_protocol_term bfct in
+        (t::acc_t,(of_variable v)::acc_v)
+      else (acc_t,acc_v)
+    ) ([],[]) csys2.df
+  in
+  let (t_list_2,v_list') =
+    Subst.fold (fun (acc_t,acc_v) x r ->
+      match Tools.partial_consequence Recipe csys2.sdf csys2.df r with
+        | None -> Config.internal_error "[constraint_system.ml >> subsume] The recipe should be consequence."
+        | Some(_,t) -> (t::acc_t,(of_variable x)::acc_v)
+    ) (t_list,v_list) csys2.i_subst_snd
+  in
+
+  (* Apply the recipe substitution of csys1 on the variable list *)
+  let rev_r_list = Subst.apply csys1.i_subst_snd v_list' (fun vl f -> List.rev_map f vl) in
+  (* Compute the corresponding protocol terms in csys1 *)
+  let t_list_1 =
+    List.rev_map (fun r ->
+      match Tools.partial_consequence Recipe csys1.sdf csys1.df r with
+        | None -> Config.internal_error "[constraint_system.ml >> subsume] The recipe should be consequence (2)."
+        | Some(_,t) -> t
+    ) rev_r_list
+  in
+
+  (* Check if the terms are matchables *)
+  match Subst.match_terms Protocol t_list_1 t_list_2 with
+    | None -> false
+    | Some sigma ->
+        (* Apply the substitution on csys1 *)
+        let new_csys1 = simple_of csys1 in
+        let new_csys2 =
+          { new_csys1 with
+            simp_DF = DF.apply new_csys1.simp_DF sigma;
+            simp_SDF = SDF.apply new_csys1.simp_SDF Subst.identity sigma;
+            simp_Sub_Cons = Uniformity_Set.apply new_csys1.simp_Sub_Cons Subst.identity sigma
+          }
+        in
+
+        if fine_grained
+        then false
+        else
+          let f_pred csys =
+            if Eq.is_top csys.simp_EqSnd
+            then
+              begin
+                let term_sdf = ref [] in
+                let term_cons = ref [] in
+                Uniformity_Set.iter csys.simp_Sub_Cons (fun r t ->
+                  if is_function r
+                  then
+                    if Symbol.is_constructor (root r)
+                    then term_cons := t :: !term_cons
+                    else term_sdf := t :: !term_sdf
+                  else if is_variable r
+                  then ()
+                  else term_sdf := t :: !term_sdf
+                );
+                not (List.exists (fun t1 -> List.exists (fun t2 -> Subst.is_unifiable Protocol [t1,t2]) !term_sdf) !term_cons)
+              end
+            else false
+          in
+          exists_match_mgs new_csys2 f_pred
+
+
 (**********************************
 **** Set of constraint systems ****
 ***********************************)
