@@ -93,16 +93,16 @@ rewrite_rule_list:
 rewrite_rule:
   | term RIGHTARROW term
       { ($1,$3) }
+  | term EQ term
+      { ($1,$3) }
 
 /****** Function symbol declaration *******/
 
 free_name_declaration:
   | FREE ident_list DOT
       { $2,true }
-  /*
   | FREE ident_list LBRACE PRIVATE RBRACE DOT
       { $2,false }
-  */
 
 /****** Query ******/
 

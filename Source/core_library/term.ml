@@ -10,22 +10,15 @@ type quantifier =
   | Existential
   | Universal
 
-type boundedness =
-  | Public
-  | Bound
-
 type name =
   {
     label_n : string;
-    bound : boundedness;
     index_n : int;
     mutable link_n : link_n
   }
-and axiom =
-  {
-    id_axiom : int;
-    public_name : name option;
-  }
+
+and axiom = int
+
 and link_n =
   | NNoLink
   | NLink of name
@@ -39,6 +32,11 @@ type ('a, 'b) atom =
   | Protocol : (fst_ord, name) atom
   | Recipe : (snd_ord, axiom) atom
 
+type representation =
+  | AttackerPublicName
+  | UserName
+  | UserDefined
+
 type symbol_cat =
   | Tuple
   | Constructor
@@ -49,7 +47,9 @@ and symbol =
     name : string;
     index_s : int;
     arity : int;
-    cat : symbol_cat
+    cat : symbol_cat;
+    public: bool;
+    represents : representation
   }
 
 and ('a,'b) link =
@@ -57,6 +57,7 @@ and ('a,'b) link =
   | TLink of ('a, 'b) term
   | VLink of ('a, 'b) variable
   | FLink
+
 and ('a,'b) variable =
   {
     label : string;
@@ -65,10 +66,12 @@ and ('a,'b) variable =
     quantifier : quantifier;
     var_type : 'a
   }
+
 and ('a,'b) generic_term =
   | Func of symbol * ('a, 'b) term list
   | Var of ('a, 'b) variable
   | AxName of 'b
+
 and ('a,'b) term =
   {
     ground : bool;
@@ -88,107 +91,6 @@ type display_renamings =
     rho_name : (name * name) list;
     rho_fst_var : (fst_ord_variable * fst_ord_variable) list;
     rho_snd_var : (snd_ord_variable * snd_ord_variable) list
-  }
-
-let generate_display_renaming names fst_vars snd_vars =
-
-  let rec organise_names n = function
-    | [] -> [n.label_n,[n]]
-    | (str,l)::q when str = n.label_n -> (str,n::l)::q
-    | t::q -> t::(organise_names n q)
-  in
-
-  let rec organise_variables var = function
-    | [] -> [var.label,[var]]
-    | (str,l)::q when str = var.label -> (str,var::l)::q
-    | t::q -> t::(organise_variables var q)
-  in
-
-  let organised_names:(string * name list) list = List.fold_left (fun acc n -> organise_names n acc) [] names in
-  let organised_fst_vars = List.fold_left (fun acc v -> organise_variables v acc) [] fst_vars in
-  let organised_snd_vars = List.fold_left (fun acc v -> organise_variables v acc) [] snd_vars in
-
-  let rec create_rho_names : (string * name list) list -> (name * name) list = function
-    | [] -> []
-    | (str,l)::q ->
-        begin match l with
-          | [] -> Config.internal_error "[term.ml >> generate_display_renaming] Unexpected case 1"
-          | [n] -> (n,{ label_n = str; bound = n.bound; index_n = 0; link_n = NNoLink })::(create_rho_names q)
-          | _ ->
-            let (new_l,_) =
-              List.fold_left (fun (acc,i) n ->
-                ((n,{ label_n = str; bound = n.bound; index_n = i; link_n = NNoLink })::acc,i+1)
-              ) (create_rho_names q, 1) l in
-            new_l
-        end
-  in
-
-  let rec create_rho_variables = function
-    | [] -> []
-    | (str,l)::q ->
-        begin match l with
-          | [] -> Config.internal_error "[term.ml >> generate_display_renaming] Unexpected case 2"
-          | [n] -> (n,{ label = str; var_type = n.var_type; index = 0; link = NoLink; quantifier = n.quantifier })::(create_rho_variables q)
-          | _ ->
-            let (new_l,_) =
-              List.fold_left (fun (acc,i) n ->
-                ((n,{ label = str; var_type = n.var_type; index = i; link = NoLink; quantifier = n.quantifier })::acc,i+1)
-              ) (create_rho_variables q, 1) l in
-            new_l
-        end
-  in
-
-  {
-    rho_name = create_rho_names organised_names;
-    rho_fst_var = create_rho_variables organised_fst_vars;
-    rho_snd_var = create_rho_variables organised_snd_vars
-  }
-
-let generate_display_renaming_for_testing names fst_vars snd_vars =
-  let rec partition_vars = function
-    | [] -> [],[],[]
-    | x::q when x.quantifier = Free ->
-        let (free,exis,univ) = partition_vars q in
-        (x::free, exis, univ)
-    | x::q when x.quantifier = Existential ->
-        let (free,exis,univ) = partition_vars q in
-        (free, x::exis, univ)
-    | x::q ->
-        let (free,exis,univ) = partition_vars q in
-        (free, exis,x::univ)
-  in
-
-  let (free_fst_vars,exist_fst_vars,univ_fst_vars) = partition_vars fst_vars
-  and (free_snd_vars,exist_snd_vars,univ_snd_vars) = partition_vars snd_vars
-  and public_names, bound_names = List.partition (fun n -> n.bound = Public) names in
-
-  let std_p_names = ["a";"b";"c"]
-  and std_b_names = ["k";"l";"m"]
-  and std_fst_vars_U = ["z"]
-  and std_snd_vars_U = ["Z"]
-  and std_fst_vars_E = ["x";"y"]
-  and std_snd_vars_E = ["X";"Y"]
-  and std_fst_vars_F = ["w"]
-  and std_snd_vars_F = ["W"] in
-
-  let rec generate_names full_std k std names = match std,names with
-    | _,[] -> []
-    | [],_ -> generate_names full_std (k+1) full_std  names
-    | str::q_std,n::q -> (n,{ label_n = str; bound = n.bound; index_n = k; link_n = NNoLink })::(generate_names full_std k q_std q) in
-
-  let rec generate_vars full_std  k std var = match std,var with
-    | _,[] -> []
-    | [],_ -> generate_vars full_std (k+1) full_std  var
-    | str::q_std,x::q -> (x,{ label = str; quantifier = x.quantifier; index = k; link = NoLink ; var_type = x.var_type })::(generate_vars full_std  k q_std q) in
-
-  {
-    rho_name = (generate_names std_p_names 0 std_p_names public_names)@(generate_names std_b_names 0 std_b_names bound_names);
-    rho_fst_var = (generate_vars std_fst_vars_F 0 std_fst_vars_F free_fst_vars)@
-                  (generate_vars std_fst_vars_E 0 std_fst_vars_E exist_fst_vars)@
-                  (generate_vars std_fst_vars_U 0 std_fst_vars_U univ_fst_vars);
-    rho_snd_var = (generate_vars std_snd_vars_F 0 std_snd_vars_F free_snd_vars)@
-                  (generate_vars std_snd_vars_E 0 std_snd_vars_E exist_snd_vars)@
-                  (generate_vars std_snd_vars_U 0 std_snd_vars_U univ_snd_vars)
   }
 
 let reg_latex_1 = Str.regexp "\\([a-zA-Z0-9_]+\\)_\\([0-9]+\\)"
@@ -567,6 +469,15 @@ module Variable = struct
           new_elt
         end
 
+    let rename : 'a 'b. ('a,'b) atom -> quantifier -> 'a -> ('a,'b) variable -> ('a,'b) variable = fun (type a) (type b) (at:(a,b) atom) quantifier (ord_type:a) (v:(a,b) variable) ->
+      match v.link with
+        | VLink(v') -> v'
+        | NoLink ->
+            let v' = variable_fresh_shortcut at quantifier ord_type in
+            link at v v';
+            v'
+        | _ -> Config.internal_error "[term.ml >> Subst.Renaming.rename] Unexpected link"
+
     let rec rename_term : 'a 'b. ('a,'b) atom -> quantifier -> 'a -> ('a,'b) term -> ('a,'b) term = fun (type a) (type b) (at:(a,b) atom) quantifier (ord_type:a) (t:(a,b) term) ->
       Config.debug (fun () ->
         if t.ground <> is_ground_debug t
@@ -619,18 +530,16 @@ module Name = struct
 
   let get_counter () = !accumulator
 
-  let fresh_with_label b n =
-    let name = { label_n = n; bound = b; index_n = !accumulator; link_n = NNoLink } in
+  let fresh_with_label n =
+    let name = { label_n = n; index_n = !accumulator; link_n = NNoLink } in
     accumulator := !accumulator + 1;
     name
 
-  let fresh b = fresh_with_label b "n"
+  let fresh () = fresh_with_label "n"
 
-  let fresh_from name = fresh_with_label name.bound name.label_n
+  let fresh_from name = fresh_with_label name.label_n
 
   let is_equal n1 n2 = n1 == n2
-
-  let is_public n = n.bound = Public
 
   let order n1 n2 = compare n1.index_n n2.index_n
 
@@ -694,8 +603,8 @@ module Name = struct
 
     let identity = []
 
-    let fresh name_list bound =
-      List.fold_left (fun acc x -> (x, fresh bound)::acc) [] name_list
+    let fresh name_list =
+      List.fold_left (fun acc x -> (x, fresh ())::acc) [] name_list
 
     let compose rho n1 n2 =
       Config.debug (fun () ->
@@ -846,75 +755,19 @@ module Axiom = struct
   let create i =
     if i <= 0
     then Config.internal_error "[term.ml >> Axiom.create] An axiom should always be positive";
-    {
-      id_axiom = i;
-      public_name = None
-    }
+    i
 
-  let of_public_name n k =
-    Config.debug (fun () ->
-      if k > 0
-      then Config.internal_error "[term.ml >> Axiom.of_public_name] A public name should always be linked to an axiom with a negative index."
-    );
-    {
-      id_axiom = k;
-      public_name = Some n
-    }
+  let order ax1 ax2 = compare ax1 ax2
 
-  let of_public_names_list n_list =
-    let acc = ref 0 in
-    List.rev_map (fun n ->
-      Config.debug (fun () ->
-        if n.bound = Bound
-        then Config.internal_error "[term.ml >> Axiom.of_public_names] The names should not be bound."
-      );
+  let index_of ax = ax
 
-      let old_acc = !acc in
-      acc := !acc - 1;
-      { id_axiom = old_acc ; public_name = Some n }
-    ) n_list
+  let is_equal ax1 ax2 = ax1 = ax2
 
-  let name_of ax = match ax.public_name with
-    | None -> Config.internal_error "[term.ml >> Axiom.name_of] The axiom should be associated to a public name"
-    | Some n -> n
-
-  let order ax1 ax2 = compare ax1.id_axiom ax2.id_axiom
-
-  let index_of ax = ax.id_axiom
-
-  let is_equal ax1 ax2 =
-    Config.debug (fun () ->
-      if ax1.id_axiom = ax2.id_axiom
-      then
-        match ax1.public_name, ax2.public_name with
-          | None,None -> ()
-          | Some n1,Some n2 when n1 == n2 -> ()
-          | _,_ -> Config.internal_error "[term.ml >> Axiom.is_equal] Two axioms with same index does not have the same public name attribute."
-      else ()
-    );
-    ax1.id_axiom = ax2.id_axiom
-
-  let display out ?(rho=None) ?(both=false) ax = match ax.public_name with
-    | None ->
-        begin match out with
-          | Testing -> Printf.sprintf "_ax_%d" ax.id_axiom
-          | Terminal | Pretty_Terminal -> Printf.sprintf "ax_%d" ax.id_axiom
-          | HTML -> Printf.sprintf "ax<sub>%d</sub>" ax.id_axiom
-          | Latex -> Printf.sprintf "\\mathsf{ax}_{%d}" ax.id_axiom
-        end
-    | Some n ->
-        let n' = Name.search_name_in_display_renaming rho n in
-        if both
-        then
-          match out with
-            | Testing -> Printf.sprintf "_ax_%d[%s]" ax.id_axiom (Name.display out ~rho:rho n')
-            | Terminal | Pretty_Terminal ->  Printf.sprintf "ax_%d[%s]" ax.id_axiom (Name.display out ~rho:rho n')
-            | HTML -> Printf.sprintf "ax<sub>%d</sub>[%s]" ax.id_axiom (Name.display out ~rho:rho n')
-            | Latex -> Printf.sprintf "\\ax_{%d}[%s]" ax.id_axiom (Name.display out ~rho:rho n')
-        else
-          match out with
-            | Testing -> Printf.sprintf "_ax_%d" ax.id_axiom
-            | _ -> Name.display out ~rho:rho n'
+  let display out ax = match out with
+    | Testing -> Printf.sprintf "_ax_%d" ax
+    | Terminal | Pretty_Terminal -> Printf.sprintf "ax_%d" ax
+    | HTML -> Printf.sprintf "ax<sub>%d</sub>" ax
+    | Latex -> Printf.sprintf "\\mathsf{ax}_{%d}" ax
 end
 
 
@@ -999,6 +852,16 @@ module Symbol = struct
 
   let is_proj sym = Str.string_match reg_proj sym.name 0
 
+  let is_public sym = sym.public
+
+  let represents_attacker_public_name symb = match symb.represents with
+    | AttackerPublicName -> true
+    | _ -> false
+
+  let represents_name symb = match symb.represents with
+    | UserName -> true
+    | _ -> false
+
   let get_arity sym = sym.arity
 
   let order sym_1 sym_2 = compare sym_1.index_s sym_2.index_s
@@ -1017,17 +880,17 @@ module Symbol = struct
 
   (********* Addition ************)
 
-  let new_constructor ar s =
-    let symb = { name = s; arity = ar; cat = Constructor; index_s = !accumulator_nb_symb } in
+  let new_constructor ar public is_name s =
+    let symb = { name = s; arity = ar; cat = Constructor; index_s = !accumulator_nb_symb; public = public; represents = (if is_name then UserName else UserDefined) } in
     incr accumulator_nb_symb;
     all_constructors := List.sort order (symb::!all_constructors);
     number_of_constructors := !number_of_constructors + 1;
-    if ar = 0
+    if ar = 0 && public
     then dummy_constant := Some symb;
     symb
 
-  let new_destructor ar s rw_rules =
-    let symb = { name = s; arity = ar; cat = Destructor rw_rules; index_s = !accumulator_nb_symb } in
+  let new_destructor ar public s rw_rules =
+    let symb = { name = s; arity = ar; cat = Destructor rw_rules; index_s = !accumulator_nb_symb; public = public; represents = UserDefined } in
     incr accumulator_nb_symb;
     all_destructors := List.sort order (symb::!all_destructors);
     number_of_destructors := !number_of_destructors + 1;
@@ -1041,7 +904,9 @@ module Symbol = struct
         name = (Printf.sprintf "proj_{%d,%d}" (i+1) tuple_symb.arity);
         arity = 1;
         cat = Destructor([([{ term = Func(tuple_symb,args) ; ground = false } ],x)]);
-        index_s = !accumulator_nb_symb
+        index_s = !accumulator_nb_symb;
+        public = true;
+        represents = UserDefined
       }
     in
     incr accumulator_nb_symb;
@@ -1052,7 +917,7 @@ module Symbol = struct
       List.find (fun symb -> symb.arity = ar) !all_tuple
     with Not_found ->
       begin
-        let symb = { name = (Printf.sprintf "tuple%d" ar); arity = ar; cat = Tuple; index_s = !accumulator_nb_symb } in
+        let symb = { name = (Printf.sprintf "tuple%d" ar); arity = ar; cat = Tuple; index_s = !accumulator_nb_symb; public = true; represents = UserDefined } in
         incr accumulator_nb_symb;
         all_constructors := List.sort order (symb::!all_constructors);
         all_tuple := symb::!all_tuple;
@@ -1076,15 +941,32 @@ module Symbol = struct
       Hashtbl.find special_constructor n
     with
     | Not_found ->
-        let c = { name = "__dummy_c"; arity = 0; cat = Constructor; index_s = !accumulator_nb_symb } in
+        let c = { name = "__dummy_c"; arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
         incr accumulator_nb_symb;
         c
 
   let get_constant () = match !dummy_constant with
     | None ->
-        let c = new_constructor 0 "_c" in
-        c
+        let symb = { name = "_c"; arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
+        incr accumulator_nb_symb;
+        all_constructors := List.sort order (symb::!all_constructors);
+        number_of_constructors := !number_of_constructors + 1;
+        dummy_constant := Some symb;
+        symb
     | Some c -> c
+
+  let fresh_attacker_name =
+    let acc = ref 0 in
+
+    let f () =
+      let c = { name = (Printf.sprintf "kI_%d" !acc); arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
+      incr accumulator_nb_symb;
+      all_constructors := List.sort order (c::!all_constructors);
+      number_of_constructors := !number_of_constructors + 1;
+      incr acc;
+      c
+    in
+    f
 
   (******** Display function *******)
 
@@ -1110,22 +992,38 @@ module Symbol = struct
         | _ -> f.name
 
   let display_with_arity out f =
-    Printf.sprintf "%s/%d" (display out f) f.arity
+    if f.public
+    then Printf.sprintf "%s/%d" (display out f) f.arity
+    else Printf.sprintf "%s/%d [\\color{red}{private}]" (display out f) f.arity
 
   let display_tuple f = string_of_int (f.arity)
 
-  let display_signature out = match out with
+  let reg_proj = Str.regexp "proj_{"
+
+  let display_signature out constructor = match out with
     | Testing ->
         let without_tuple = List.filter (fun f -> f.cat <> Tuple) !all_constructors in
         let str_without_tuple = Printf.sprintf "{ %s }" (display_list (display_with_arity Testing) ", " without_tuple) in
         let str_tuple = Printf.sprintf "{ %s }" (display_list display_tuple ", " (List.sort (fun f1 f2 -> compare f1.arity f2.arity) !all_tuple)) in
         str_without_tuple^" Tuple : "^str_tuple
     | _ ->
-        let without_tuple = List.filter (fun f -> f.cat <> Tuple) !all_constructors in
-        if without_tuple = []
-        then emptyset out
-        else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list (display_with_arity out) ", " without_tuple) (rcurlybracket out)
+        if constructor
+        then
+          let without_tuple = List.filter (fun f -> f.cat <> Tuple && f.represents = UserDefined) !all_constructors in
+          if without_tuple = []
+          then emptyset out
+          else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list (display_with_arity out) ", " without_tuple) (rcurlybracket out)
+        else
+          let without_projection = List.filter (fun f -> not (Str.string_match reg_proj f.name 0)) !all_destructors in
+          if without_projection = []
+          then emptyset out
+          else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list (display_with_arity out) ", " without_projection) (rcurlybracket out)
 
+  let display_names out public =
+    let names = List.filter (fun f -> f.represents = UserName && f.public = public) !all_constructors in
+    if names = []
+    then emptyset out
+    else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list (display out) ", " names) (rcurlybracket out)
 end
 
 (*************************************
@@ -1136,16 +1034,120 @@ module AxName = struct
 
   let is_equal (type a) (type b) (at: (a,b) atom) (axn1:b) (axn2:b) = match at with
     | Protocol -> Name.is_equal axn1 axn2
-    | Recipe -> Axiom.is_equal axn1 axn2
+    | Recipe -> axn1 = axn2
 
   let order (type a) (type b) (at:(a,b) atom) (axn1:b) (axn2:b) = match at with
     | Protocol -> compare axn1.index_n axn2.index_n
-    | Recipe -> compare axn1.id_axiom axn2.id_axiom
+    | Recipe -> compare axn1 axn2
 
   let display (type a) (type b) out ?(rho=None) (at:(a,b) atom) (axn:b) = match at with
     | Protocol -> Name.display out ~rho:rho axn
-    | Recipe -> Axiom.display out ~rho:rho  axn
+    | Recipe -> Axiom.display out axn
 end
+
+(********* Generate display renaming *********)
+
+let generate_display_renaming names fst_vars snd_vars =
+
+  let rec organise_names n = function
+    | [] -> [n.label_n,[n]]
+    | (str,l)::q when str = n.label_n -> (str,n::l)::q
+    | t::q -> t::(organise_names n q)
+  in
+
+  let rec organise_variables var = function
+    | [] -> [var.label,[var]]
+    | (str,l)::q when str = var.label -> (str,var::l)::q
+    | t::q -> t::(organise_variables var q)
+  in
+
+  let organised_names:(string * name list) list = List.fold_left (fun acc n -> organise_names n acc) [] names in
+  let organised_fst_vars = List.fold_left (fun acc v -> organise_variables v acc) [] fst_vars in
+  let organised_snd_vars = List.fold_left (fun acc v -> organise_variables v acc) [] snd_vars in
+
+  let rec create_rho_names : (string * name list) list -> (name * name) list = function
+    | [] -> []
+    | (str,l)::q ->
+        begin match l with
+          | [] -> Config.internal_error "[term.ml >> generate_display_renaming] Unexpected case 1"
+          | [n] ->
+              if List.exists (fun symb -> symb.name = str) !Symbol.all_constructors
+              then (n,{ label_n = str; index_n = 0; link_n = NNoLink })::(create_rho_names q)
+              else (n,{ label_n = str; index_n = 1; link_n = NNoLink })::(create_rho_names q)
+          | _ ->
+            let (new_l,_) =
+              List.fold_left (fun (acc,i) n ->
+                ((n,{ label_n = str; index_n = i; link_n = NNoLink })::acc,i+1)
+              ) (create_rho_names q, 1) l in
+            new_l
+        end
+  in
+
+  let rec create_rho_variables = function
+    | [] -> []
+    | (str,l)::q ->
+        begin match l with
+          | [] -> Config.internal_error "[term.ml >> generate_display_renaming] Unexpected case 2"
+          | [n] -> (n,{ label = str; var_type = n.var_type; index = 0; link = NoLink; quantifier = n.quantifier })::(create_rho_variables q)
+          | _ ->
+            let (new_l,_) =
+              List.fold_left (fun (acc,i) n ->
+                ((n,{ label = str; var_type = n.var_type; index = i; link = NoLink; quantifier = n.quantifier })::acc,i+1)
+              ) (create_rho_variables q, 1) l in
+            new_l
+        end
+  in
+
+  {
+    rho_name = create_rho_names organised_names;
+    rho_fst_var = create_rho_variables organised_fst_vars;
+    rho_snd_var = create_rho_variables organised_snd_vars
+  }
+
+let generate_display_renaming_for_testing names fst_vars snd_vars =
+  let rec partition_vars = function
+    | [] -> [],[],[]
+    | x::q when x.quantifier = Free ->
+        let (free,exis,univ) = partition_vars q in
+        (x::free, exis, univ)
+    | x::q when x.quantifier = Existential ->
+        let (free,exis,univ) = partition_vars q in
+        (free, x::exis, univ)
+    | x::q ->
+        let (free,exis,univ) = partition_vars q in
+        (free, exis,x::univ)
+  in
+
+  let (free_fst_vars,exist_fst_vars,univ_fst_vars) = partition_vars fst_vars
+  and (free_snd_vars,exist_snd_vars,univ_snd_vars) = partition_vars snd_vars in
+
+  let std_b_names = ["k";"l";"m"]
+  and std_fst_vars_U = ["z"]
+  and std_snd_vars_U = ["Z"]
+  and std_fst_vars_E = ["x";"y"]
+  and std_snd_vars_E = ["X";"Y"]
+  and std_fst_vars_F = ["w"]
+  and std_snd_vars_F = ["W"] in
+
+  let rec generate_names full_std k std names = match std,names with
+    | _,[] -> []
+    | [],_ -> generate_names full_std (k+1) full_std  names
+    | str::q_std,n::q -> (n,{ label_n = str; index_n = k; link_n = NNoLink })::(generate_names full_std k q_std q) in
+
+  let rec generate_vars full_std  k std var = match std,var with
+    | _,[] -> []
+    | [],_ -> generate_vars full_std (k+1) full_std  var
+    | str::q_std,x::q -> (x,{ label = str; quantifier = x.quantifier; index = k; link = NoLink ; var_type = x.var_type })::(generate_vars full_std  k q_std q) in
+
+  {
+    rho_name =(generate_names std_b_names 0 std_b_names names);
+    rho_fst_var = (generate_vars std_fst_vars_F 0 std_fst_vars_F free_fst_vars)@
+                  (generate_vars std_fst_vars_E 0 std_fst_vars_E exist_fst_vars)@
+                  (generate_vars std_fst_vars_U 0 std_fst_vars_U univ_fst_vars);
+    rho_snd_var = (generate_vars std_snd_vars_F 0 std_snd_vars_F free_snd_vars)@
+                  (generate_vars std_snd_vars_E 0 std_snd_vars_E exist_snd_vars)@
+                  (generate_vars std_snd_vars_U 0 std_snd_vars_U univ_snd_vars)
+  }
 
 (********* Generation of terms *********)
 
@@ -1252,7 +1254,7 @@ let rec var_occurs_or_out_of_world (var:snd_ord_variable) (r:recipe) =
     | Var(v) when Variable.is_equal v var -> true
     | Var({link = TLink t; _}) -> var_occurs_or_out_of_world var t
     | Var(v) when v.var_type > var.var_type -> true
-    | AxName(ax) when ax.id_axiom > var.var_type -> true
+    | AxName(ax) when ax > var.var_type -> true
     | Func(_,args) -> List.exists (var_occurs_or_out_of_world var) args
     | _ -> false
 
@@ -1360,17 +1362,36 @@ let get_vars at term =
   cleanup_search at;
   result
 
-let rec get_names_recipe f_bound term = match term.term with
-  | Func (_,args) -> List.iter (get_names_recipe f_bound) args
-  | AxName { public_name = Some ({link_n = NNoLink; bound = b; _} as n); _ } when f_bound b -> Name.link_search n
+let get_vars_not_in at term var_list =
+  Config.test (fun () ->
+    if retrieve_search at <> []
+    then Config.internal_error "[terml.ml >> get_vars] Linked variables should be empty."
+  );
+
+  List.iter (fun v -> v.link <- FLink) var_list;
+
+  let rec explore_term term =
+    if not term.ground
+    then
+      match term.term with
+        | Func (_,args) -> List.iter explore_term args
+        | Var({link = FLink; _}) -> ()
+        | Var v -> link_search at v
+        | AxName _ -> ()
+  in
+
+  explore_term term;
+  let result = retrieve_search at in
+  cleanup_search at;
+  List.iter (fun v -> v.link <- NoLink) var_list;
+  result
+
+let rec get_names_protocol term = match term.term with
+  | Func (_,args) -> List.iter get_names_protocol args
+  | AxName ({ link_n = NNoLink ; _} as n) -> Name.link_search n
   | AxName _ | Var _ -> ()
 
-let rec get_names_protocol f_bound term = match term.term with
-  | Func (_,args) -> List.iter (get_names_protocol f_bound) args
-  | AxName ({ link_n = NNoLink ; bound = b; _} as n) when f_bound b -> Name.link_search n
-  | AxName _ | Var _ -> ()
-
-let get_names_with_list (type a) (type b) (at:(a,b) atom) (term:(a,b) term) f_bound (l:name list) =
+let get_names_with_list (type a) (type b) (at:(a,b) atom) (term:(a,b) term) (l:name list) =
   Config.test (fun () ->
     if !Name.linked_names <> []
     then Config.internal_error "[terml.ml get_names_with_list] Linked names should be empty."
@@ -1379,8 +1400,8 @@ let get_names_with_list (type a) (type b) (at:(a,b) atom) (term:(a,b) term) f_bo
   List.iter Name.link_search l;
 
   begin match at with
-    | Recipe -> get_names_recipe f_bound term
-    | Protocol -> get_names_protocol f_bound term
+    | Recipe -> ()
+    | Protocol -> get_names_protocol term
   end;
 
   let result = Name.retrieve_search () in
@@ -1413,26 +1434,19 @@ let get_vars_with_list (type a) (type b) (at:(a,b) atom) (term:(a,b) term) f_qua
 
 let rec add_axiom_in_list ax ax_list = match ax_list with
   | [] -> [ax]
-  | ax'::_ when ax'.id_axiom = ax.id_axiom ->
-      Config.debug (fun () ->
-        if ax'.id_axiom > 0 && ax'.public_name <> None
-        then Config.internal_error "[term.ml >> add_axioms_in_list] An axiom with index bigger or equal to 1 should not be linked to a public name. (2)";
-
-        match ax.public_name, ax'.public_name with
-          | Some n, Some n' when not (n == n') -> Config.internal_error "[term.ml >> add_axioms_in_list] Axioms with same index should be linked to the same public name."
-          | _, _ -> ()
-      );
-      ax_list
+  | ax'::_ when ax' = ax -> ax_list
   | ax'::q -> ax'::(add_axiom_in_list ax q)
 
 let rec get_axioms_with_list recipe f_id ax_list  = match recipe.term with
-  | AxName ax when f_id ax.id_axiom ->
-      if ax.id_axiom > 0 && ax.public_name <> None
-      then Config.internal_error "[term.ml >> get_axioms_with_list] An axiom with index bigger or equal to 1 should not be linked to a public name. (1)";
-
+  | AxName ax when f_id ax ->
       add_axiom_in_list ax ax_list
   | Var _ | AxName _ -> ax_list
   | Func(_,args) -> List.fold_left (fun acc r -> get_axioms_with_list r f_id acc) ax_list args
+
+let rec iter_variables_and_axioms f recipe = match recipe.term with
+  | AxName ax -> f (Some ax) None
+  | Var v -> f None (Some v)
+  | Func(_,args) -> List.iter (iter_variables_and_axioms f) args
 
 (********** Display **********)
 
@@ -1658,7 +1672,7 @@ module Subst = struct
 
   (*********** Access ************)
 
-  let get_names_with_list (type a) (type b) (at:(a,b) atom) (subst:(a,b) t) f_bound (l:name list) =
+  let get_names_with_list (type a) (type b) (at:(a,b) atom) (subst:(a,b) t) (l:name list) =
     Config.test (fun () ->
       if !Name.linked_names <> []
       then Config.internal_error "[terml.ml >> Subst.get_names_with_list] Linked names should be empty."
@@ -1667,8 +1681,8 @@ module Subst = struct
     List.iter Name.link_search l;
 
     begin match at with
-      | Recipe -> List.iter (fun (_,t) -> get_names_recipe f_bound t) subst
-      | Protocol -> List.iter (fun (_,t) -> get_names_protocol f_bound t) subst
+      | Recipe -> ()
+      | Protocol -> List.iter (fun (_,t) -> get_names_protocol t) subst
     end;
 
     let result = Name.retrieve_search () in
@@ -1978,6 +1992,35 @@ module Subst = struct
     cleanup at;
     Config.test (fun () -> test_is_equal_equations at subst_1 subst_2 result);
     result
+
+  let rec check_good_recipes_term term = match term.term with
+    | Var _ -> true
+    | AxName _ -> true
+    | Func(f,args) when f.cat = Tuple ->
+        let projections = Symbol.get_projections f in
+        let result = ref false in
+        let term_proj = ref None in
+        List.iter2 (fun t f_proj ->
+          if is_function t
+          then
+            let symb = root t in
+            if Symbol.is_equal f_proj symb
+            then
+              match !term_proj, get_args t  with
+                | Some t', [t''] when is_equal Recipe t' t'' -> ()
+                | Some _, _ -> result := true
+                | None, [t''] -> term_proj := Some t''
+                | None, _ -> Config.internal_error "[term.ml >> check_good_recipes_term] Projections should always have one unique argument."
+            else result := true
+          else result := true
+        ) args projections;
+        if !result
+        then List.for_all check_good_recipes_term args
+        else false
+    | Func(_,args) -> List.for_all check_good_recipes_term args
+
+  let check_good_recipes subst =
+    List.for_all (fun (_,t) -> check_good_recipes_term t) subst
 end
 
 (***********************************
@@ -2007,15 +2050,11 @@ module Diseq = struct
         List.iter Name.link_search l;
 
         begin match at with
-          | Recipe ->
-              List.iter (fun (t1,t2) ->
-                get_names_recipe (fun _ -> true) t1;
-                get_names_recipe (fun _ -> true) t2
-              ) diseq_l
+          | Recipe -> ()
           | Protocol ->
               List.iter (fun (t1,t2) ->
-                get_names_protocol (fun _ -> true) t1;
-                get_names_protocol (fun _ -> true) t2
+                get_names_protocol t1;
+                get_names_protocol t2
               ) diseq_l
         end;
 
@@ -2265,11 +2304,11 @@ module Modulo = struct
 
   let get_vars_eq_with_list (t1,t2) f v_l = get_vars_with_list Protocol t1 f (get_vars_with_list Protocol t2 f v_l)
 
-  let get_names_eq_with_list (t1,t2) f n_l = get_names_with_list Protocol t1 f (get_names_with_list Protocol t2 f n_l)
+  let get_names_eq_with_list (t1,t2) n_l = get_names_with_list Protocol t1 (get_names_with_list Protocol t2 n_l)
 
   let get_vars_diseq_with_list (t1,t2) f v_l = get_vars_with_list Protocol t1 f (get_vars_with_list Protocol t2 f v_l)
 
-  let get_names_diseq_with_list (t1,t2) f n_l = get_names_with_list Protocol t1 f (get_names_with_list Protocol t2 f n_l)
+  let get_names_diseq_with_list (t1,t2) n_l = get_names_with_list Protocol t1 (get_names_with_list Protocol t2 n_l)
   (****** Display *******)
 
   let display_equation out ?(rho=None) (t1,t2) =
@@ -2619,20 +2658,17 @@ module Fact = struct
         cleanup_search Recipe;
         (result: (a,b) variable list)
 
-  let get_names_with_list (type a) (fct: a t) (form: a formula) f_bound (n_list: name list) =
+  let get_names_with_list (type a) (fct: a t) (form: a formula) (n_list: name list) =
     List.iter Name.link_search n_list;
 
-    List.iter (fun (_,t) -> get_names_protocol f_bound t) form.equation_subst;
+    List.iter (fun (_,t) -> get_names_protocol t) form.equation_subst;
 
-    List.iter (fun b_fct -> get_names_protocol f_bound b_fct.BasicFact.pterm) form.ded_fact_list;
+    List.iter (fun b_fct -> get_names_protocol b_fct.BasicFact.pterm) form.ded_fact_list;
 
     begin match fct with
       | Deduction ->
-          get_names_protocol f_bound form.head.df_term;
-          get_names_recipe f_bound form.head.df_recipe
-      | Equality ->
-          get_names_recipe f_bound form.head.ef_recipe_1;
-          get_names_recipe f_bound form.head.ef_recipe_2
+          get_names_protocol form.head.df_term
+      | Equality -> ()
     end;
 
     let result = Name.retrieve_search () in
@@ -3109,12 +3145,19 @@ module Rewrite_rules = struct
       Config.test (fun () -> !test_normalise t result);
       result
 
-  let rec search_variables term = match term.term with
-    | Var ({ link = NoLink; _ }) -> false
-    | Var ({ link = FLink; _ }) -> true
-    | Var _ -> Config.internal_error "[term.ml >> Rewrite_rules.search_variables] Unexpected link"
-    | Func(_,args) -> List.exists search_variables args
-    | _ -> Config.internal_error "[term.ml >> Rewrite_rules.search_variables] There should not be any names."
+  (****** Generation ******)
+
+  let all_deduction_skeletons = Hashtbl.create !Symbol.number_of_destructors
+  let all_equality_skeletons = Hashtbl.create !Symbol.number_of_destructors
+
+  let rec is_r_subterm r term =
+    if is_equal Protocol term r
+    then true
+    else
+      match term.term with
+        | Var _ -> false
+        | Func(_,args) -> List.exists (is_r_subterm r) args
+        | _ -> Config.internal_error "[term.ml >> Rewrite_rules.is_r_subterm] There should not be any names in the rewrite rules."
 
   let rec create_all_but_one_fresh snd_type k term recipe b_fcts ar = function
     | n when n = k ->
@@ -3131,83 +3174,224 @@ module Rewrite_rules = struct
 
         (({ term = Var x_fst; ground = false})::l_t, ({term = Var x_snd; ground = false})::l_r, b_fct::l_fct)
 
-  (* Type of the function f_continuation : snd_ord_variable -> recipe -> protocol_term -> BasicFact.basic_deduction_fact list -> unit *)
-  let rec explore_term rw_vars u snd_type (f_continuation:snd_ord_variable -> recipe -> protocol_term -> BasicFact.t list -> unit) term = match term.term with
+  let rec explore_term_subterm (r:protocol_term) snd_type (f_continuation:snd_ord_variable -> protocol_term -> recipe -> protocol_term -> BasicFact.t list -> unit) (term:protocol_term) =
+    if is_equal Protocol term r
+    then true
+    else
+      match term.term with
+        | Var _ -> false
+        | Func(f,_) when f.arity = 0 -> false
+        | Func(f,args) ->
+            let is_sub =
+              if f.public
+              then
+                explore_term_subterm_list r snd_type 0 f.arity (fun x_snd x_term recipe_l term_l b_fct_l ->
+                  f_continuation x_snd x_term ({ term = Func(f,recipe_l); ground = false}) ({ term = Func(f,term_l); ground = false}) b_fct_l
+                ) args
+              else List.exists (is_r_subterm r) args
+            in
+
+            if is_sub
+            then
+              begin
+                Config.test (fun () ->
+                  if retrieve_search Protocol <> []
+                  then Config.internal_error "[terml.ml >> Rewrite_rules.explore_term] Linked variables should be empty.";
+                );
+                let x_snd = Variable.fresh Recipe Universal snd_type
+                and x_fst = Variable.fresh Protocol Universal Variable.fst_ord_type in
+                let b_fct = BasicFact.create x_snd ({ term = Var x_fst; ground = false}) in
+                f_continuation x_snd term ({ term = Var x_snd; ground = false}) ({term = Var x_fst; ground = false}) [b_fct];
+                true
+              end
+            else false
+        | _ -> Config.internal_error "[term.ml >> Rewrite_rules.explore_term_subterm] There should not be any names in the rewrite rules."
+
+  and explore_term_subterm_list r snd_type k ar f_continuation = function
+    | [] -> false
+    | t::q ->
+        let is_sub =
+          explore_term_subterm r snd_type (fun x_snd x_term recipe term b_fct_list ->
+            let (t_list, r_list, fct_list) = create_all_but_one_fresh snd_type k term recipe b_fct_list ar 0 in
+
+            f_continuation x_snd x_term r_list t_list fct_list
+            ) t
+        in
+        let is_sub_list = explore_term_subterm_list r snd_type (k+1) ar f_continuation q in
+        is_sub || is_sub_list
+
+  let rec explore_term_equality snd_type (f_continuation:snd_ord_variable -> protocol_term -> recipe -> protocol_term -> BasicFact.t list -> unit) (term:protocol_term) = match term.term with
     | Var _ -> ()
     | Func(f,_) when f.arity = 0 -> ()
     | Func(f,args) ->
-        if Subst.is_unifiable Protocol [u,term]
+        if f.public
         then
-          begin
-            Config.test (fun () ->
-              if retrieve_search Protocol <> []
-              then Config.internal_error "[terml.ml >> Rewrite_rules.explore_term] Linked variables should be empty.";
-            );
-            List.iter (link_search Protocol) rw_vars;
-            let search = search_variables term in
-            cleanup_search Protocol;
+          explore_term_equality_list snd_type 0 f.arity (fun x_snd x_term recipe_l term_l b_fct_l ->
+            f_continuation x_snd x_term ({ term = Func(f,recipe_l); ground = false}) ({ term = Func(f,term_l); ground = false}) b_fct_l
+          ) args
+        else ();
 
-            if search
-            then
-              let x_snd = Variable.fresh Recipe Universal snd_type
-              and x_fst = Variable.fresh Protocol Universal Variable.fst_ord_type in
-              let b_fct = BasicFact.create x_snd ({ term = Var x_fst; ground = false}) in
+        Config.test (fun () ->
+          if retrieve_search Protocol <> []
+          then Config.internal_error "[terml.ml >> Rewrite_rules.explore_term] Linked variables should be empty.";
+        );
+        let x_snd = Variable.fresh Recipe Universal snd_type
+        and x_fst = Variable.fresh Protocol Universal Variable.fst_ord_type in
+        let b_fct = BasicFact.create x_snd ({ term = Var x_fst; ground = false}) in
+        f_continuation x_snd term ({ term = Var x_snd; ground = false}) ({term = Var x_fst; ground = false}) [b_fct]
+    | _ -> Config.internal_error "[term.ml >> Rewrite_rules.explore_term_subterm] There should not be any names in the rewrite rules."
 
-              f_continuation x_snd ({ term =Var x_snd; ground = false}) ({term = Var x_fst; ground = false}) [b_fct]
-            else ()
-          end;
-
-        explore_term_list rw_vars u snd_type 0 f.arity (fun x_snd recipe_l term_l b_fct_l ->
-          f_continuation x_snd ({ term = Func(f,recipe_l); ground = false}) ({ term = Func(f,term_l); ground = false}) b_fct_l
-        ) args
-    | _ -> Config.internal_error "[term.ml >> Rewrite_rules.explore_term] There should not be any names in the rewrite rules."
-
-  and explore_term_list rw_vars u snd_type k ar f_continuation = function
-    | []-> ()
+  and explore_term_equality_list snd_type k ar f_continuation = function
+    | [] -> ()
     | t::q ->
-        explore_term rw_vars u snd_type (fun x_snd recipe term b_fct_list ->
+        explore_term_equality snd_type (fun x_snd x_term recipe term b_fct_list ->
           let (t_list, r_list, fct_list) = create_all_but_one_fresh snd_type k term recipe b_fct_list ar 0 in
 
-          f_continuation x_snd r_list t_list fct_list
+          f_continuation x_snd x_term r_list t_list fct_list
           ) t;
+        explore_term_equality_list snd_type (k+1) ar f_continuation q
 
-        explore_term_list rw_vars u snd_type (k+1) ar f_continuation q
-
-  let skeletons u f k = match f.cat with
+  let generate_skeletons_subterm f k = match f.cat with
     | Destructor rw_rules ->
         let accumulator = ref [] in
-        let fresh_rw_rules =
-          List.fold_left (fun acc (lhs,rhs) ->
-            Config.debug (fun () ->
-              if !Variable.Renaming.linked_variables_fst <> []
-              then Config.internal_error "[term.ml >> Rewrite_rules.skeletons] The list of linked variables for renaming should be empty"
-            );
-
-            let lhs' = List.map (Variable.Renaming.rename_term Protocol Existential Variable.fst_ord_type) lhs in
-            let rhs' = Variable.Renaming.rename_term Protocol Existential Variable.fst_ord_type rhs in
-
-            Variable.Renaming.cleanup Protocol;
-            (lhs',rhs')::acc
-          ) [] rw_rules
-        in
 
         List.iter (fun (args,r) ->
-          explore_term_list (get_vars Protocol r) u (Variable.snd_ord_type k) 0 f.arity (fun x_snd recipe_l term_l b_fct_list ->
-            let skel =
-              {
-                variable_at_position = x_snd;
-                recipe = { term = Func(f,recipe_l); ground = false };
-                p_term = { term = Func(f,term_l); ground = false };
-                basic_deduction_facts = b_fct_list;
-                rewrite_rule = f, args, r
-              } in
-            accumulator := skel::!accumulator
-          ) args
-        ) fresh_rw_rules;
+          let _ =
+            explore_term_subterm_list r (Variable.snd_ord_type k) 0 f.arity (fun x_snd x_term recipe_l term_l b_fct_list ->
+              let skel =
+                {
+                  variable_at_position = x_snd;
+                  recipe = { term = Func(f,recipe_l); ground = false };
+                  p_term = { term = Func(f,term_l); ground = false };
+                  basic_deduction_facts = b_fct_list;
+                  rewrite_rule = f, args, r;
+                } in
+              accumulator := (x_term,skel)::!accumulator
+            ) args
+          in
+          ()
+        ) rw_rules;
 
-        Config.test (fun () -> !test_skeletons u f k !accumulator);
         !accumulator
-    | _ -> Config.internal_error "[term.ml >> Rewrite_rules.skeletons] The function symbol should be a destructor."
+    | _ -> Config.internal_error "[term.ml >> Rewrite_rules.generate_skeletons_subterm] The function symbol should be a destructor."
+
+  let generate_skeletons_equality f k = match f.cat with
+    | Destructor rw_rules ->
+        let accumulator = ref [] in
+
+        List.iter (fun (args,r) ->
+          let _ =
+            explore_term_equality_list (Variable.snd_ord_type k) 0 f.arity (fun x_snd x_term recipe_l term_l b_fct_list ->
+              let skel =
+                {
+                  variable_at_position = x_snd;
+                  recipe = { term = Func(f,recipe_l); ground = false };
+                  p_term = { term = Func(f,term_l); ground = false };
+                  basic_deduction_facts = b_fct_list;
+                  rewrite_rule = f, args, r;
+                } in
+              accumulator := (x_term,skel)::!accumulator
+            ) args
+          in
+          ()
+        ) rw_rules;
+
+        !accumulator
+    | _ -> Config.internal_error "[term.ml >> Rewrite_rules.generate_skeletons_constant] The function symbol should be a destructor."
+
+  let has_constant_as_rhs f = match f.cat with
+    | Destructor rw_rules ->
+        let (_,r) =
+          Config.debug (fun () ->
+            if rw_rules = []
+            then Config.internal_error "Should not happen."
+          );
+          List.hd rw_rules
+        in
+
+        is_ground r
+    | _ -> Config.internal_error "[term.ml >> Rewrite_rules.has_constant_as_rhs] The function symbol should be a destructor."
+
+  let get_skeletons for_deduction f k =
+    if for_deduction && not (has_constant_as_rhs f)
+    then
+      if has_constant_as_rhs f
+      then []
+      else
+        begin
+          try
+            Hashtbl.find all_deduction_skeletons (f,k)
+          with
+          | Not_found ->
+              let skels_and_term = generate_skeletons_subterm f k in
+              Hashtbl.add all_deduction_skeletons (f,k) skels_and_term;
+              skels_and_term
+        end
+    else
+      begin
+        try
+          Hashtbl.find all_equality_skeletons (f,k)
+        with
+        | Not_found ->
+            let skels_and_term = generate_skeletons_equality f k in
+            Hashtbl.add all_equality_skeletons (f,k) skels_and_term;
+            skels_and_term
+      end
+
+  let skeletons for_deduction u f k =
+    Config.debug (fun () ->
+      if not f.public
+      then Config.internal_error "[term.ml >> Rewrite_rules.skeletons] The destructor should be public."
+    );
+
+    let list_skel_term = get_skeletons for_deduction f k in
+
+    Config.debug (fun () ->
+      if !Variable.Renaming.linked_variables_fst <> [] || !Variable.Renaming.linked_variables_snd <> []
+      then Config.internal_error "[term.ml >> Rewrite_rules.skeletons] The list of linked variables for renaming should be empty"
+    );
+
+    let snd_type = Variable.snd_ord_type k in
+
+    List.fold_left (fun acc (term,skel) ->
+      if Subst.is_unifiable Protocol [u,term]
+      then
+        let p_term_1 = Variable.Renaming.rename_term Protocol Universal Variable.fst_ord_type skel.p_term in
+        let bfact_list_1 =
+          List.fold_left (fun acc' b_fct ->
+            { b_fct with
+              BasicFact.pterm = Variable.Renaming.rename_term Protocol Universal Variable.fst_ord_type b_fct.BasicFact.pterm
+            }::acc'
+          ) [] skel.basic_deduction_facts
+        in
+        let (f,lhs,rhs) = skel.rewrite_rule in
+        let lhs' =  List.map (Variable.Renaming.rename_term Protocol Existential Variable.fst_ord_type) lhs in
+        let rhs' = Variable.Renaming.rename_term Protocol Existential Variable.fst_ord_type rhs in
+        Variable.Renaming.cleanup Protocol;
+
+        let variable_at_position' = Variable.Renaming.rename Recipe Universal snd_type skel.variable_at_position in
+        let recipe' = Variable.Renaming.rename_term Recipe Universal snd_type skel.recipe in
+        let bfact_list_2 =
+          List.fold_left (fun acc' b_fct ->
+            { b_fct with
+              BasicFact.var = Variable.Renaming.rename Recipe Universal snd_type b_fct.BasicFact.var
+            }::acc'
+          ) [] bfact_list_1
+        in
+        Variable.Renaming.cleanup Recipe;
+
+        let skel' =
+          {
+            variable_at_position = variable_at_position';
+            recipe = recipe';
+            p_term = p_term_1;
+            basic_deduction_facts = bfact_list_2;
+            rewrite_rule = (f,lhs',rhs')
+          }
+        in
+        skel'::acc
+      else acc
+    ) [] list_skel_term
 
   let rename_skeletons skel v_type =
 
@@ -3559,7 +3743,8 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) = struct
     | Func(f,args_r), Func(f',args_t) when Symbol.is_equal f f' ->
         List.for_all2 (consequence sdf df)  args_r args_t
     | Func(f,_), _ when Symbol.is_constructor f -> false
-    | Func(_,_), _ | AxName _, _ ->
+    | Func(_,_), _
+    | AxName _, _ ->
         SDF.exists sdf (fun fct -> (is_equal Recipe fct.Fact.df_recipe recipe) && (is_equal Protocol fct.Fact.df_term term))
     | Var(v),_ -> DF.exists_within_var_type (Variable.type_of v) df (fun b_fct -> (Variable.is_equal b_fct.BasicFact.var v) && (is_equal Protocol b_fct.BasicFact.pterm term))
 
@@ -3591,7 +3776,8 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) = struct
               | None -> None
               | Some (g,t_l) -> Some ({term = Func(f,t_l); ground = g})
             end
-      | Func(_,_) | AxName _ -> SDF.find sdf (fun fct -> if is_equal Recipe fct.Fact.df_recipe recipe then Some fct.Fact.df_term else None)
+      | Func(_,_)
+      | AxName _ -> SDF.find sdf (fun fct -> if is_equal Recipe fct.Fact.df_recipe recipe then Some fct.Fact.df_term else None)
       | Var v -> DF.find_term df v
 
     in
@@ -3618,8 +3804,8 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) = struct
           end
 
     and mem_term pterm = match pterm.term with
-      | Func(f,_) when f.arity = 0 -> Some ({term = Func(f,[]); ground = true})
-      | Func(f,args_t) ->
+      | Func(f,_) when f.arity = 0 && f.public -> Some ({term = Func(f,[]); ground = true})
+      | Func(f,args_t) when f.public ->
           begin match mem_list args_t with
             | None ->
                 begin match SDF.find sdf (fun fct -> if is_equal Protocol fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
@@ -3685,7 +3871,8 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) = struct
               | None -> None
               | Some (g,t_l) -> Some ({term = Func(f,t_l); ground = g})
             end
-      | Func(_,_) | AxName _ -> SDF.find sdf (fun fct -> if is_equal Recipe fct.Fact.df_recipe recipe then Some fct.Fact.df_term else None)
+      | Func(_,_)
+      | AxName _ -> SDF.find sdf (fun fct -> if is_equal Recipe fct.Fact.df_recipe recipe then Some fct.Fact.df_term else None)
       | Var v ->
           begin try
             let b_fct = List.find (fun b_fct -> Variable.is_equal v b_fct.BasicFact.var) b_fct_list in
@@ -3718,8 +3905,8 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) = struct
           end
 
     and mem_term pterm = match pterm.term with
-      | Func(f,_) when f.arity = 0 -> Some ({term = Func(f,[]); ground = true})
-      | Func(f,args_t) ->
+      | Func(f,_) when f.arity = 0 && f.public -> Some ({term = Func(f,[]); ground = true})
+      | Func(f,args_t) when f.public ->
           begin match mem_list args_t with
             | None ->
                 begin try
@@ -3835,12 +4022,12 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) = struct
           end
 
     and mem_term pterm = match pterm.term with
-      | Func(f,_) when f.arity = 0 -> Some ({term = Func(f,[]); ground = true})
+      | Func(f,_) when f.arity = 0 && f.public -> Some ({term = Func(f,[]); ground = true})
       | _ ->
           begin match Uni.find_protocol_term uni pterm with
             | None ->
                 begin match pterm.term with
-                  | Func(f,args_t) ->
+                  | Func(f,args_t) when f.public ->
                       begin match mem_list args_t with
                         | None ->
                             begin match SDF.find sdf (fun fct -> if is_equal Protocol fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
@@ -3893,7 +4080,8 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) = struct
             let (g,args_t,uniset_1,sdf_1) = explore_recipe_list uniset sdf args_r in
             let t = {term = Func(f,args_t); ground = g} in
             (t,Uni.add uniset_1 recipe t,sdf_1)
-      | Func(_,_) | AxName _ ->
+      | Func(_,_)
+      | AxName _ ->
           (* Destructor case *)
           begin match SDF.find_term_and_mark sdf recipe with
             | SDF.Not_in_SDF  -> Config.internal_error "[term.ml >> Tools.add_in_uniset] The recipe should be consequence."

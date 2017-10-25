@@ -14,9 +14,15 @@ free a.
 free b.
 
 free c.
-free ca.
-free cb.
-free cs.
+free ca1.
+free cb1.
+free cs1.
+free cs2.
+free ca2.
+free cb2.
+free cs3.
+free ca3.
+free cb3.
 
 free ok.
 
@@ -96,14 +102,18 @@ let processS(cs,a,b,kas,kbs) =
 */
 
 let Preal =
-  in(c,zz); if zz = ok then
-  new kas; new kbs;
-( processA(ca,a,b,kas) |  processBreal(cb,a,b,kbs) | processS(cs,a,b,kas,kbs) ).
+  new kas; new kbs; (
+    processA(ca1,a,b,kas) |  processBreal(cb1,a,b,kbs) | processS(cs1,a,b,kas,kbs) |
+    processS(cs2,a,b,kas,kbs) | processA(ca2,a,b,kas) | processBreal(cb2,a,b,kbs) |
+    processS(cs3,a,b,kas,kbs) | processA(ca3,a,b,kas) | processBreal(cb3,a,b,kbs)
+  ).
 
 
 let Pideal =
-  in(c,zz); if zz = ok then
-  new kas; new kbs;
-( processA(ca,a,b,kas) |  processBideal(cb,a,b,kbs) | processS(cs,a,b,kas,kbs) ).
+  new kas; new kbs; (
+    processA(ca1,a,b,kas) |  processBideal(cb1,a,b,kbs) | processS(cs1,a,b,kas,kbs) |
+    processS(cs2,a,b,kas,kbs) | processA(ca2,a,b,kas) | processBreal(cb2,a,b,kbs) |
+    processS(cs3,a,b,kas,kbs) | processA(ca3,a,b,kas) | processBreal(cb3,a,b,kbs)
+  ).
 
 query trace_equiv(Preal, Pideal).

@@ -26,12 +26,6 @@ type snd_ord
 (** The type [axiom] corresponds to the set {% $\AX$ in~\paper. %} *)
 type axiom
 
-(** The type [boundedness] is associated to a name. It specifies whether the name was public or
-    bound in the input processes. *)
-type boundedness =
-  | Public
-  | Bound
-
 (** The type [name] corresponds to the set {% $\Npriv$ in~\paper. %} *)
 type name
 
@@ -118,17 +112,20 @@ module Symbol : sig
 
   (** {3 Addition} *)
 
-  (** [new_symbol ar s] creates a constructor function symbol with the name [s] and the arity [ar].
+  (** [new_symbol ar b n s] creates a constructor function symbol with the name [s] and the arity [ar].
+      The symbol is public if [b = true] else private.
+      The symbol represents a name if [n = true] else is a user-defined function symbol.
       The resulting symbol is automatically added into [all_constructors].
       Moreover, [number_of_constructors] is increased by 1.
       Note that if the constructor is in fact a tuple, it is better to use [get_tuple].*)
-  val new_constructor : int -> string -> symbol
+  val new_constructor : int -> bool -> bool -> string -> symbol
 
-  (** [new_destructor ar s l] creates a destructor function symbol with the name [s] and the arity [ar].
+  (** [new_destructor ar b s l] creates a destructor function symbol with the name [s] and the arity [ar].
+      The symbol is public if [b = true] else private.
       Furthermore each element of [l] represents the arguments and result of a rewrite rule for the destructor.
       The resulting symbol is automatically added into [all_destructors].
       Moreover, [number_of_destructors] is increased by 1.*)
-  val new_destructor : int -> string -> (protocol_term list * protocol_term) list -> symbol
+  val new_destructor : int -> bool -> string -> (protocol_term list * protocol_term) list -> symbol
 
   (** [get_tuple ar] get the function symbol for tuple of arity [ar].
       If such function symbol was not created yet, it creates it and
@@ -152,6 +149,7 @@ module Symbol : sig
       @raise Not_found if [f] was not previously introduced by [get_tuple].*)
   val get_projections : symbol -> symbol list
 
+  val fresh_attacker_name : unit -> symbol
 
   (** {3 Symbol testing} *)
 
@@ -167,6 +165,15 @@ module Symbol : sig
   (** [is_destructor f] returns true iff [f] is a destructor. *)
   val is_destructor : symbol -> bool
 
+  (** [is_public f] returns true iff [f] is a public function symbol. *)
+  val is_public : symbol -> bool
+
+  val order : symbol -> symbol -> int
+
+  val represents_attacker_public_name : symbol -> bool
+
+  val represents_name : symbol -> bool
+
   (** {3 Symbol Access} *)
 
   (** [get_arity f] returns the arity of the function symbol [f].*)
@@ -178,7 +185,9 @@ module Symbol : sig
 
   val display_with_arity  : Display.output -> symbol -> string
 
-  val display_signature : Display.output -> string
+  val display_signature : Display.output -> bool -> string
+
+  val display_names : Display.output -> bool -> string
 end
 
 (** {2 Variables} *)
@@ -212,7 +221,7 @@ module Variable : sig
   (** [quantifier_of x] returns the quantification of the variable [x]. *)
   val quantifier_of : ('a, 'b) variable -> quantifier
 
-  (** [type_of] {% $X$ returns the type in which the second-variable $X$ is defined, that is returns$i$ when $X \in \Xdeuxi{i}$. %} *)
+  (** [type_of] {% $X$ returns the type in which the second-variable $X$ is defined, that is returns $i$ when $X \in \Xdeuxi{i}$. %} *)
   val type_of : snd_ord_variable -> int
 
   (** A total ordering function over variables. This is a three-argument function [order] such that  [order at x1 x2] is zero if
@@ -306,20 +315,10 @@ module Axiom : sig
   (** [create i] creates an axiom with index [i]. It corresponds to {% $\ax_i$ in~\paper.%}*)
   val create : int -> axiom
 
-  (** [of_public_names_list] {% $[n_0;\ldots;n_k]$ generates the list of axioms $[\ax_{-k}; \ldots; \ax_0]$ where $\ax_{-i}$ is associated to $n_i$ for all $i$. %} *)
-  val of_public_names_list : name list -> axiom list
-
-  (** [of_public_name n k] generates the {% axiom $\ax_k$ and associate it with $n$. %} *)
-  val of_public_name : name -> int -> axiom
-
   (** A total ordering function over axioms. This is a two-argument function [order] such that  [order ax1 ax2] is zero if
       the [ax1] and [ax2] are equal, [order ax1 ax2] is strictly negative if [ax1] is smaller than [ax2], and
       strictly strictly positive if [ax1] is greater than [ax2]. *)
   val order : axiom -> axiom -> int
-
-  (** [name_of ax] returns the public name associated to [ax].
-      @raise Internal_error when [ax] is not associated to a public name.*)
-  val name_of : axiom -> name
 
   (** [index_of_axiom ax] returns the index of the axiom [ax]. *)
   val index_of : axiom -> int
@@ -328,18 +327,18 @@ module Axiom : sig
   val is_equal : axiom -> axiom -> bool
 
   (** [display out ax] returns a string displaying the axiom [ax] depending on the outpout mode [out]. *)
-  val display : Display.output -> ?rho:display_renamings option -> ?both:bool -> axiom -> string
+  val display : Display.output -> axiom -> string
 end
 
 (** {2 Names} *)
 
 module Name :  sig
 
-  (** [fresh b] creates a fresh name with the boundedness [b].*)
-  val fresh : boundedness ->  name
+  (** [fresh ()] creates a fresh name.*)
+  val fresh :  unit -> name
 
-  (** [fresh_with_label b s] creates a fresh name with the boundedness [b] and label [s].*)
-  val fresh_with_label : boundedness ->  string -> name
+  (** [fresh_with_label s] creates a fresh name with the boundedness [b] and label [s].*)
+  val fresh_with_label : string -> name
 
   (** [fresh_from n] creates a fresh name with the same label and same boundedness as [n].*)
   val fresh_from : name -> name
@@ -348,9 +347,6 @@ module Name :  sig
       the [n1] and [n2] are equal, [order n1 n2] is strictly negative if [n1] is smaller than [n2], and
       strictly strictly positive if [n1] is greater than [n2]. *)
   val order : name -> name -> int
-
-  (** Check whether a name is public. *)
-  val is_public : name -> bool
 
   (** [is_equal n1 n2] returns [true] iff the name [n1] and [n2] are equal. *)
   val is_equal : name -> name -> bool
@@ -378,7 +374,7 @@ module Name :  sig
     val identity : t
 
     (** [fresh n_l b] generate a fresh renaming for the names in [n_l]. The image of the renaming contains only names with boundedness as [b]. *)
-    val fresh : name list -> boundedness -> t
+    val fresh : name list -> t
 
     (** [compose] {% $\rho_1$~$\rho_2$ returns the renaming $\rho_1\rho_2$. %} *)
     val compose : t -> name -> name -> t
@@ -472,19 +468,18 @@ val get_type : recipe -> int
 (** [get_vars at t] returns the list of all variables in [t]. *)
 val get_vars : ('a, 'b) atom -> ('a, 'b) term -> ('a, 'b) variable list
 
+val get_vars_not_in : ('a, 'b) atom -> ('a, 'b) term -> ('a, 'b) variable list -> ('a, 'b) variable list
+
 (** [get_vars_with_list at t f_q l] adds the variables in [t] whose quantifier satisfies [f_q] in the list [l]. The addition of a variable as the union of sets, i.e. there is no dupplicate in the resulting list. *)
 val get_vars_with_list : ('a, 'b) atom -> ('a, 'b) term -> (quantifier -> bool) -> ('a, 'b) variable list -> ('a, 'b) variable list
 
-(** [get_names_with_list t f_b l] adds the names in [t] whose boundedness satisfies [f_b] in the list [l]. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
-val get_names_with_list : ('a, 'b) atom -> ('a, 'b) term -> (boundedness -> bool) -> name list -> name list
+(** [get_names_with_list t l] adds the names in [t]. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
+val get_names_with_list : ('a, 'b) atom -> ('a, 'b) term -> name list -> name list
 
 (** [get_axioms_with_list t f_i l] adds the axiom in [t] whose index satisfies [f_i] in the list [l]. The addition of an axiom as the union of sets, i.e. there is no dupplicate in the resulting list..*)
 val get_axioms_with_list : recipe -> (int -> bool) -> axiom list -> axiom list
 
-(** A total ordering function over terms. This is a three-argument function [order] such that  [order at t1 t2] is zero if
-    the [t1] and [t2] are equal, [order at t1 t2] is strictly negative if [t1] is smaller than [t2], and
-    strictly strictly positive if [t1] is greater than [t2]. *)
-val order : ('a, 'b) atom -> ('a, 'b) term -> ('a, 'b) term -> int
+val iter_variables_and_axioms : (axiom option -> snd_ord_variable option -> unit) -> recipe -> unit
 
 (** {3 Scanning} *)
 
@@ -502,6 +497,11 @@ val name_occurs : name -> protocol_term -> bool
 
 (** [axiom_occurs ax r] returns [true] iff the axiom [ax] occurs in the recipe [r], i.e., {% $ax \in \axioms{r}$. %} *)
 val axiom_occurs : axiom -> recipe -> bool
+
+(** A total ordering function over terms. This is a three-argument function [order] such that  [order at t1 t2] is zero if
+    the [t1] and [t2] are equal, [order at t1 t2] is strictly negative if [t1] is smaller than [t2], and
+    strictly strictly positive if [t1] is greater than [t2]. *)
+val order : ('a, 'b) atom -> ('a, 'b) term -> ('a, 'b) term -> int
 
 (** [is_equal at t1 t2] returns [true] iff the [at] terms [t1] and [t2] are equal. *)
 val is_equal : ('a, 'b) atom -> ('a, 'b) term -> ('a, 'b) term -> bool
@@ -583,8 +583,8 @@ module Subst : sig
   (** [get_vars_with_list at s f_q l] adds the variables in [s] whose quantifier satisfies [f_q] in the list [l]. The addition of a variable as the union of sets, i.e. there is no dupplicate in the resulting list. *)
   val get_vars_with_list : ('a, 'b) atom -> ('a, 'b) t -> (quantifier -> bool) -> ('a, 'b) variable list -> ('a, 'b) variable list
 
-  (** [get_names_with_list s f_b l] adds the names in [s] whose boundedness atisfies [f_b] in the list [l]. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
-  val get_names_with_list : ('a, 'b) atom -> ('a, 'b) t -> (boundedness -> bool) -> name list -> name list
+  (** [get_names_with_list s l] adds the names in [s]. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
+  val get_names_with_list : ('a, 'b) atom -> ('a, 'b) t -> name list -> name list
 
   (** [get_axioms_with_list s f_i l] adds the axiom in [s] whose index atisfies [f_i] in the list [l]. The addition of an axiom as the union of sets, i.e. there is no dupplicate in the resulting list..*)
   val get_axioms_with_list : (snd_ord, axiom) t -> (int -> bool) -> axiom list -> axiom list
@@ -659,6 +659,8 @@ module Subst : sig
   val update_test_is_extended_by : ('a, 'b) atom -> (('a, 'b) t -> ('a, 'b) t -> bool -> unit) -> unit
 
   val update_test_is_equal_equations: ('a, 'b) atom -> (('a, 'b) t -> ('a, 'b) t -> bool -> unit) -> unit
+
+  val check_good_recipes : (snd_ord, axiom) t -> bool
 end
 
 (** {% A valuation in this section corresponds to a triplet of substitutions $(\Phi,\Sigma,\sigma)$ where $\Phi : \AX \rightarrow \T(\Fc,\N)$,
@@ -748,14 +750,14 @@ module Modulo : sig
   (** [get_vars_eq_with_list eq f_q l] adds the variables in [eq] whose quantifier satisfies [f_q] in the list [l]. The addition of a variable as the union of sets, i.e. there is no dupplicate in the resulting list. *)
   val get_vars_eq_with_list : equation -> (quantifier -> bool) -> fst_ord_variable list -> fst_ord_variable list
 
-  (** [get_names_eq_with_list eq f_b l] adds the names in [eq] whose boundedness atisfies [f_b] in the list [l]. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
-  val get_names_eq_with_list : equation -> (boundedness -> bool) -> name list -> name list
+  (** [get_names_eq_with_list eq l] adds the names in [eq]. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
+  val get_names_eq_with_list : equation -> name list -> name list
 
   (** [get_vars_diseq_with_list diseq f_q l] adds the variables in [diseq] whose quantifier satisfies [f_q] in the list [l]. The addition of a variable as the union of sets, i.e. there is no dupplicate in the resulting list. *)
   val get_vars_diseq_with_list : disequation -> (quantifier -> bool) -> fst_ord_variable list -> fst_ord_variable list
 
-  (** [get_names_diseq_with_list diseq f_b l] adds the names in [diseq] whose boundedness atisfies [f_b] in the list [l]. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
-  val get_names_diseq_with_list : disequation -> (boundedness -> bool) -> name list -> name list
+  (** [get_names_diseq_with_list diseq l] adds the names in [diseq] whose boundedness atisfies [f_b] in the list [l]. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
+  val get_names_diseq_with_list : disequation -> name list -> name list
 
   (** {3 Display} *)
 
@@ -903,8 +905,8 @@ module Fact : sig
   (** [get_vars_with_list at fct] {% $\psi$ %} [f_q l] adds the [at] variables in the [fct] formula {% $\psi$ %} whose quantifier satisfies [f_q] in the list [l]. The addition of a variable as the union of sets, i.e. there is no dupplicate in the resulting list. *)
   val get_vars_with_list : ('a, 'b) atom -> 'c t -> 'c formula -> (quantifier -> bool) -> ('a, 'b) variable list -> ('a, 'b) variable list
 
-  (** [get_names_with_list t fct] {% $\psi$ %} [f_b l] adds the names in the [fct] formula {% $\psi$ %} whose boundedness satisfies [f_b] in the list [l]. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
-  val get_names_with_list : 'c t -> 'c formula -> (boundedness -> bool) -> name list -> name list
+  (** [get_names_with_list t fct] {% $\psi$ %} adds the names in the [fct] formula {% $\psi$ %}. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
+  val get_names_with_list : 'c t -> 'c formula -> name list -> name list
 
   (** [get_axioms_with_list t fct] {% $\psi$ %} [f_i l] adds the axiom in the [fct] formula {% $\psi$ %} whose index satisfies [f_i] in the list [l]. The addition of an axiom as the union of sets, i.e. there is no dupplicate in the resulting list..*)
   val get_axioms_with_list : 'c t -> 'c formula -> (int -> bool) -> axiom list -> axiom list
@@ -974,11 +976,14 @@ module Rewrite_rules : sig
       rewrite_rule : symbol * protocol_term list * protocol_term
     }
 
+  val has_constant_as_rhs : symbol -> bool
+
   (** [skeletons] {% $u$~$\ffun$~$k$ returns the list of skeletons $(\xi,t,D) = \Skel{\ell}{p}$ such that $\vars{\xi} \in \Xdeuxi{k}$, $\ell \rightarrow r \in \R$, $\rootsymb{\ell} = \ffun$,
       $\getpos{\ell}{p} \not\in \Xun$, $\mguset{\getpos{\ell}{p} \eqs u} \neq \bot$ and $\vars{\getpos{\ell}{p}} \cap \vars{r} \neq \emptyset$. Note that we consider that $\Skel{\ell}{p}$ is unique with fresh variable (this differs slightly
       from~\citepaper{Section}{sec:transformation rules} where it is define as a set that contains all possible renaming.%}
       @raise Internal_error when [f] is not a destructor. *)
-  val skeletons : protocol_term -> symbol -> int -> skeleton list
+
+  val skeletons : bool -> protocol_term -> symbol -> int -> skeleton list
 
   val rename_skeletons : skeleton -> snd_ord -> skeleton
 

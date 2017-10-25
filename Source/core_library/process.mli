@@ -2,7 +2,7 @@
 
 open Term
 
-(** {2 Syntax} *)
+(** {2 Processes} *)
 
 (** Syntax of an expansed process. *)
 type expansed_process =
@@ -37,14 +37,14 @@ val expansed_of_process : action_process list -> ?fst_subst:(fst_ord, name) Subs
 
 (** {3 Access} *)
 
-(** [get_names_with_list p f_b l] adds the names in the process [p] whose boundedness satisfies [f_b] in the list [l]. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
-val get_names_with_list : process -> (boundedness -> bool) -> name list -> name list
+(** [get_names_with_list p l] adds the names in the process [p]. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
+val get_names_with_list : process ->  name list -> name list
 
 (** [get_vars_with_list p l] adds the variables in the process [p] in the list [l]. Note that all variables in the process are considered to be [Free]. The addition of a variable as the union of sets, i.e. there is no dupplicate in the resulting list. *)
 val get_vars_with_list : process -> (fst_ord, name) variable list -> (fst_ord, name) variable list
 
-(** [get_names_with_list_expansed p f_b l] adds the names in the expansed process [p] whose boundedness satisfies [f_b] in the list [l]. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
-val get_names_with_list_expansed : expansed_process -> (boundedness -> bool) -> name list -> name list
+(** [get_names_with_list_expansed p f_b l] adds the names in the expansed process [p]. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
+val get_names_with_list_expansed : expansed_process -> name list -> name list
 
 (** [get_vars_with_list_expansed p l] adds the variables in the expansed process [p] in the list [l]. Note that all variables in the expansed process are considered to be [Free]. The addition of a variable as the union of sets, i.e. there is no dupplicate in the resulting list. *)
 val get_vars_with_list_expansed : expansed_process -> (fst_ord, name) variable list -> (fst_ord, name) variable list

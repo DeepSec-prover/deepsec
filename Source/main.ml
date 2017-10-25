@@ -1,5 +1,8 @@
 (******* Display index page *******)
 
+type result =
+  | Standard of Equivalence.result_trace_equivalence
+  | Determinate of Equivalence_determinate.result_trace_equivalence
 
 let print_index path n res_list =
 
@@ -51,15 +54,19 @@ let print_index path n res_list =
       let rec print_queries = function
         | (k, _) when k > n -> ()
         | (k, (res,rt)::tl) ->
-          Printf.fprintf out_html
-	    "            <li>Query %d:</br>\n Result: the processes are %s</br>\n \nRunning time: %s (%s)</br>\n<a href=\"result/result_query_%d_%s.html\">Details</a></li>\n"
-	    k
-	    (match res with | Equivalence.Equivalent -> "equivalent" | Equivalence.Not_Equivalent _ -> "not equivalent")
-	    (Display.mkRuntime rt)
-	    (if !Config.distributed then "Workers: "^(Distributed_equivalence.DistribEquivalence.display_workers ()) else "Not distributed")
-	    k !Config.tmp_file;
-          print_queries ((k+1), tl)
-	| (_ , _) -> failwith "Number of queries and number of results differ"
+                Printf.fprintf out_html
+      	    "            <li>Query %d:</br>\n Result: the processes are %s</br>\n \nRunning time: %s (%s)</br>\n<a href=\"result/result_query_%d_%s.html\">Details</a></li>\n"
+      	    k
+      	    (match res with
+              | Standard Equivalence.Equivalent
+              | Determinate Equivalence_determinate.Equivalent -> "equivalent"
+              | _ -> "not equivalent"
+            )
+      	    (Display.mkRuntime rt)
+      	    (if !Config.distributed then "Workers: "^(Distributed_equivalence.DistribEquivalence.display_workers ()) else "Not distributed")
+      	    k !Config.tmp_file;
+                print_queries ((k+1), tl)
+      	| (_ , _) -> Config.internal_error "Number of queries and number of results differ"
       in
       print_queries (1, res_list);
       Printf.fprintf out_html "          </ul>\n";
@@ -105,42 +112,69 @@ let rec excecute_queries id = function
   | (Process.Trace_Equivalence,exproc1,exproc2)::q ->
     start_time :=  (Unix.time ());
 
-    let proc1 = Process.of_expansed_process exproc1 in
-    let proc2 = Process.of_expansed_process exproc2 in
-
-    Printf.printf "Executing query %d...\n" id;
-    flush_all ();
-
     let result =
-      if !Config.distributed
+      if Process_determinate.is_action_determinate exproc1 && Process_determinate.is_action_determinate exproc2
       then
-        begin
-          let result,init_proc1, init_proc2 = Distributed_equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 in
-	        let running_time = ( Unix.time () -. !start_time ) in
-          if !Config.display_trace
-          then Equivalence.publish_trace_equivalence_result id !Process.chosen_semantics init_proc1 init_proc2 result running_time;
-          (result, running_time)
-        end
+        let conf1 = Process_determinate.configuration_of_expansed_process exproc1 in
+        let conf2 = Process_determinate.configuration_of_expansed_process exproc2 in
+
+        Printf.printf "Executing query %d...\n" id;
+        Printf.printf "Action-determinate processes detected...\n";
+        flush_all ();
+
+        if !Config.distributed
+        then
+          begin
+            let result,init_proc1, init_proc2 = Distributed_equivalence.trace_equivalence_determinate conf1 conf2 in
+            let running_time = ( Unix.time () -. !start_time ) in
+            Equivalence_determinate.publish_trace_equivalence_result id init_proc1 init_proc2 result running_time;
+            (Determinate result,running_time)
+          end
+        else
+          begin
+            let result = Equivalence_determinate.trace_equivalence conf1 conf2 in
+            let running_time = ( Unix.time () -. !start_time ) in
+            Equivalence_determinate.publish_trace_equivalence_result id conf1 conf2 result running_time;
+            (Determinate result,running_time)
+          end
       else
-        begin
-          let result = Equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 in
-	        let running_time = ( Unix.time () -. !start_time ) in
-          if !Config.display_trace
-          then Equivalence.publish_trace_equivalence_result id !Process.chosen_semantics proc1 proc2 result running_time;
-          (result, running_time)
-        end
+        let proc1 = Process.of_expansed_process exproc1 in
+        let proc2 = Process.of_expansed_process exproc2 in
+
+        Printf.printf "Executing query %d...\n" id;
+        flush_all ();
+
+        if !Config.distributed
+        then
+          begin
+            let result,init_proc1, init_proc2 = Distributed_equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 in
+  	        let running_time = ( Unix.time () -. !start_time ) in
+            if !Config.display_trace
+            then Equivalence.publish_trace_equivalence_result id !Process.chosen_semantics init_proc1 init_proc2 result running_time;
+            (Standard result,running_time)
+          end
+        else
+          begin
+            let result = Equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 in
+  	        let running_time = ( Unix.time () -. !start_time ) in
+            if !Config.display_trace
+            then Equivalence.publish_trace_equivalence_result id !Process.chosen_semantics proc1 proc2 result running_time;
+            (Standard result,running_time)
+          end
     in
 
     begin match result with
-    | (Equivalence.Equivalent, _) ->
-      if !Config.display_trace
-      then Printf.printf "Query %d: Equivalent processes : See a summary of the input file on the HTML interface.\n" id
-      else Printf.printf "Query %d: Equivalent processes.\n" id
-    | (Equivalence.Not_Equivalent _, _) ->
-      if !Config.display_trace
-      then Printf.printf "Query %d: Processes not equivalent : See a summary of the input file and the attack trace on the HTML interface.\n" id
-      else Printf.printf "Query %d: Processes not equivalent.\n" id
+      | Standard Equivalence.Equivalent, running_time
+      | Determinate Equivalence_determinate.Equivalent, running_time ->
+          if !Config.display_trace
+          then Printf.printf "Query %d: Equivalent processes.\nRunning time: %s.\nAdditional informations on the HTML interface.\n" id (Display.mkRuntime running_time)
+          else Printf.printf "Query %d: Equivalent processes.\nRunning time: %s.\nAdditional informations on the HTML interface.\n" id (Display.mkRuntime running_time)
+      | _,running_time ->
+          if !Config.display_trace
+          then Printf.printf "Query %d: Processes not equivalent.\nRunning time: %s.\nAdditional informations on the HTML interface.\n" id (Display.mkRuntime running_time)
+          else Printf.printf "Query %d: Processes not equivalent.\nRunning time: %s.\nAdditional informations on the HTML interface.\n" id (Display.mkRuntime running_time)
     end;
+
     flush_all ();
     result::(excecute_queries (id+1) q)
   | _ -> Config.internal_error "Observational_equivalence not implemented"
@@ -258,6 +292,10 @@ let _ =
     ("-nb_sets",
      Arg.Set_int(Distributed_equivalence.DistribEquivalence.minimum_nb_of_jobs),
      "<n> Set the number of sets of constraint systems generated by deepsec and that will be distributed to the workers."
+    );
+    ("-round_timer",
+     Arg.Set_float(Distributed_equivalence.DistribEquivalence.time_between_round),
+     "<n> Set the time limit in seconds for the end of a round in distributed settings (default is 120s)"
     );
     (
       "-semantics",

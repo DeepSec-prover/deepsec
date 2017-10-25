@@ -151,13 +151,13 @@ let publish_loading_script out =
   )
 
 let publish_tests_to_check data =
-  let path_testing_data = (Filename.concat !Config.path_deepsec "testing_data") in 
+  let path_testing_data = (Filename.concat !Config.path_deepsec "testing_data") in
   let path_tests_to_check = (Filename.concat path_testing_data "tests_to_check") in
 
   let path_html = (Filename.concat path_tests_to_check (Printf.sprintf "%s.html" data.file))
   and path_txt =  (Filename.concat path_tests_to_check (Printf.sprintf "%s.txt"  data.file))
   and path_template = ( Filename.concat (Filename.concat !Config.path_html_template "tests_to_check") (Printf.sprintf "%s.html" data.file) ) in
-  
+
   let out_html = open_out path_html in
   let out_txt = open_out path_txt in
 
@@ -452,7 +452,7 @@ let publish_tests data =
 (**** Loading tests ****)
 
 let preload_tests data =
-  let path_testing_data = (Filename.concat !Config.path_deepsec "testing_data") in 
+  let path_testing_data = (Filename.concat !Config.path_deepsec "testing_data") in
   let path_tests_to_check = (Filename.concat path_testing_data "tests_to_check") in
   let path_validated_tests = (Filename.concat path_testing_data "validated_tests") in
 
@@ -604,33 +604,33 @@ let gather_in_signature gather =
 
 let gather_in_pair_list (type a) (type b) (at:(a,b) atom) (eq_list:((a,b) term * (a,b) term) list) (gather:gathering) = match at with
   | Protocol ->
-      let names = List.fold_left (fun acc (t1,t2) -> get_names_with_list at t2 (fun _ -> true) (get_names_with_list at t1 (fun _ -> true) acc)) gather.g_names eq_list
+      let names = List.fold_left (fun acc (t1,t2) -> get_names_with_list at t2 (get_names_with_list at t1 acc)) gather.g_names eq_list
       and fst_vars = List.fold_left (fun acc (t1,t2) -> get_vars_with_list at t2 (fun _ -> true) (get_vars_with_list at t1 (fun _ -> true) acc)) gather.g_fst_vars eq_list in
       { gather with g_names = names; g_fst_vars = fst_vars }
   | Recipe ->
-      let names = List.fold_left (fun acc (t1,t2) -> get_names_with_list at t2 (fun _ -> true) (get_names_with_list at t1 (fun _ -> true) acc)) gather.g_names eq_list
+      let names = List.fold_left (fun acc (t1,t2) -> get_names_with_list at t2 (get_names_with_list at t1 acc)) gather.g_names eq_list
       and snd_vars = List.fold_left (fun acc (t1,t2) -> get_vars_with_list at t2 (fun _ -> true) (get_vars_with_list at t1 (fun _ -> true) acc)) gather.g_snd_vars eq_list
       and axioms = List.fold_left (fun acc (t1,t2) -> get_axioms_with_list t2 (fun _ -> true) (get_axioms_with_list t1 (fun _ -> true) acc)) gather.g_axioms eq_list in
       { gather with g_names = names; g_snd_vars = snd_vars ; g_axioms = axioms }
 
 let gather_in_list (type a) (type b) (at:(a,b) atom) (tlist:(a,b) term list) (gather:gathering) = match at with
   | Protocol ->
-      let names = List.fold_left (fun acc t -> get_names_with_list at t (fun _ -> true) acc) gather.g_names tlist
+      let names = List.fold_left (fun acc t -> get_names_with_list at t acc) gather.g_names tlist
       and fst_vars = List.fold_left (fun acc t -> get_vars_with_list at t (fun _ -> true) acc) gather.g_fst_vars tlist in
       { gather with g_names = names; g_fst_vars = fst_vars }
   | Recipe ->
-      let names = List.fold_left (fun acc t -> get_names_with_list at t (fun _ -> true) acc) gather.g_names tlist
+      let names = List.fold_left (fun acc t -> get_names_with_list at t acc) gather.g_names tlist
       and snd_vars = List.fold_left (fun acc t -> get_vars_with_list at t (fun _ -> true) acc) gather.g_snd_vars tlist
       and axioms = List.fold_left (fun acc t -> get_axioms_with_list t (fun _ -> true) acc) gather.g_axioms tlist in
       { gather with g_names = names; g_snd_vars = snd_vars ; g_axioms = axioms }
 
 let gather_in_subst (type a) (type b) (at:(a,b) atom) (subst:(a,b) Subst.t) (gather:gathering) = match at with
   | Protocol ->
-      let names = Subst.get_names_with_list at subst (fun _ -> true) gather.g_names
+      let names = Subst.get_names_with_list at subst gather.g_names
       and fst_vars = Subst.get_vars_with_list at subst (fun _ -> true) gather.g_fst_vars in
       { gather with g_names = names; g_fst_vars = fst_vars }
   | Recipe ->
-      let names = Subst.get_names_with_list at subst (fun _ -> true) gather.g_names
+      let names = Subst.get_names_with_list at subst gather.g_names
       and snd_vars = Subst.get_vars_with_list at subst (fun _ -> true) gather.g_snd_vars
       and axioms = Subst.get_axioms_with_list subst (fun _ -> true) gather.g_axioms in
       { gather with g_names = names; g_snd_vars = snd_vars ; g_axioms = axioms }
@@ -648,23 +648,23 @@ let gather_in_subst_option (type a) (type b) (at:(a,b) atom) (subst_op:(a,b) Sub
   | Some subst -> gather_in_subst at subst gather
 
 let gather_in_equation eq gather =
-  let names = Modulo.get_names_eq_with_list eq (fun _ -> true) gather.g_names
+  let names = Modulo.get_names_eq_with_list eq gather.g_names
   and fst_vars = Modulo.get_vars_eq_with_list eq (fun _ -> true) gather.g_fst_vars in
   { gather with g_names = names; g_fst_vars = fst_vars }
 
 let gather_in_term (type a) (type b) (at:(a,b) atom) (term:(a,b) term) (gather:gathering) = match at with
   | Protocol ->
-      let names = get_names_with_list Protocol term (fun _ -> true) gather.g_names
+      let names = get_names_with_list Protocol term gather.g_names
       and fst_vars = get_vars_with_list Protocol term (fun _ -> true) gather.g_fst_vars in
       { gather with g_names = names; g_fst_vars = fst_vars }
   | Recipe ->
-      let names = get_names_with_list Recipe term (fun _ -> true) gather.g_names
+      let names = get_names_with_list Recipe term gather.g_names
       and snd_vars = get_vars_with_list Recipe term (fun _ -> true) gather.g_snd_vars
       and axioms = get_axioms_with_list term (fun _ -> true) gather.g_axioms in
       { gather with g_names = names; g_snd_vars = snd_vars; g_axioms = axioms }
 
 let gather_in_basic_fct bfct gather =
-  let names = get_names_with_list Protocol (BasicFact.get_protocol_term bfct) (fun _ -> true) gather.g_names
+  let names = get_names_with_list Protocol (BasicFact.get_protocol_term bfct)  gather.g_names
   and fst_vars = get_vars_with_list Protocol (BasicFact.get_protocol_term bfct) (fun _ -> true) gather.g_fst_vars
   and snd_vars = add_in_list (BasicFact.get_snd_ord_variable bfct) Variable.is_equal gather.g_snd_vars in
   { gather with g_names = names; g_fst_vars = fst_vars; g_snd_vars = snd_vars }
@@ -735,12 +735,12 @@ let gather_in_Uniformity_Set uniset gather =
   !acc_gather
 
 let gather_in_process proc gather =
-  let names = Process.get_names_with_list proc (fun _ -> true) gather.g_names in
+  let names = Process.get_names_with_list proc gather.g_names in
   let fst_vars = Process.get_vars_with_list proc gather.g_fst_vars in
   { gather with g_names = names; g_fst_vars = fst_vars }
 
 let gather_in_expansed_process proc gather =
-  let names = Process.get_names_with_list_expansed proc (fun _ -> true) gather.g_names in
+  let names = Process.get_names_with_list_expansed proc gather.g_names in
   let fst_vars = Process.get_vars_with_list_expansed proc gather.g_fst_vars in
   { gather with g_names = names; g_fst_vars = fst_vars }
 
@@ -838,10 +838,10 @@ let display_name_list out rho name_list =
   then emptyset out
   else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list (Name.display out ~rho:rho) ", " name_list) (rcurlybracket out)
 
-let display_axiom_list out rho axiom_list =
+let display_axiom_list out _ axiom_list =
   if axiom_list = []
   then emptyset out
-  else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list (Axiom.display out ~rho:rho ~both:true) ", " axiom_list) (rcurlybracket out)
+  else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list (Axiom.display out) ", " axiom_list) (rcurlybracket out)
 
 let display_syntactic_equation_list out at rho eq_list =
   if eq_list = []
@@ -1276,7 +1276,7 @@ let data_IO_Term_Subst_unify =
 let header_terminal_and_latex snd_ord_vars rho gathering =
   let test_terminal =
     {
-      signature = Symbol.display_signature Testing;
+      signature = Symbol.display_signature Testing true;
       rewrite_rules = Rewrite_rules.display_all_rewrite_rules Testing rho;
       fst_ord_vars = display_var_list Testing Protocol rho gathering.g_fst_vars;
       snd_ord_vars = display_var_list Testing Recipe rho (List.sort (Variable.order Recipe) gathering.g_snd_vars);
@@ -1289,7 +1289,7 @@ let header_terminal_and_latex snd_ord_vars rho gathering =
 
   let test_latex =
     {
-      signature = (let t = Symbol.display_signature Latex in if t = emptyset Latex then "" else t);
+      signature = (let t = Symbol.display_signature Latex true in if t = emptyset Latex then "" else t);
       rewrite_rules = (let t = Rewrite_rules.display_all_rewrite_rules Latex rho in if t = emptyset Latex then "" else t);
       fst_ord_vars = "";
       snd_ord_vars = (if snd_ord_vars then (let t = display_var_list Latex Recipe rho gathering.g_snd_vars in if t = emptyset Latex then "" else t) else "");
@@ -1687,7 +1687,7 @@ let update_Term_Rewrite_rules_skeletons () =
   )
 
 let apply_Term_Rewrite_rules_skeletons term f k  =
-  let result = Rewrite_rules.skeletons term f k in
+  let result = Rewrite_rules.skeletons true term f k in
 
   let test_terminal,_ = test_Term_Rewrite_rules_skeletons term f k result in
   produce_test_terminal test_terminal

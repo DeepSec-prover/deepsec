@@ -84,59 +84,59 @@ let update_test_of_expansed_process f = test_of_expansed_process := f
 ***               Access               ***
 *****************************************)
 
-let rec get_names_with_list_expansed process f_bound list_names = match process with
+let rec get_names_with_list_expansed process list_names = match process with
   | Nil -> list_names
   | Output(ch,t,proc) ->
-      let names_1 = get_names_with_list_expansed proc f_bound list_names in
-      let names_2 = get_names_with_list Protocol ch f_bound names_1 in
-      get_names_with_list Protocol t f_bound names_2
+      let names_1 = get_names_with_list_expansed proc list_names in
+      let names_2 = get_names_with_list Protocol ch names_1 in
+      get_names_with_list Protocol t names_2
   | Input(ch,_,proc) ->
-      let names_1 = get_names_with_list_expansed proc f_bound list_names in
-      get_names_with_list Protocol ch f_bound names_1
+      let names_1 = get_names_with_list_expansed proc list_names in
+      get_names_with_list Protocol ch names_1
   | IfThenElse(t1,t2,proc_then,proc_else) | Let(t1,t2,proc_then,proc_else) ->
-      let names_1 = get_names_with_list_expansed proc_then f_bound list_names in
-      let names_2 = get_names_with_list_expansed proc_else f_bound names_1 in
-      let names_3 = get_names_with_list Protocol t1 f_bound names_2 in
-      get_names_with_list Protocol t2 f_bound names_3
+      let names_1 = get_names_with_list_expansed proc_then list_names in
+      let names_2 = get_names_with_list_expansed proc_else names_1 in
+      let names_3 = get_names_with_list Protocol t1 names_2 in
+      get_names_with_list Protocol t2 names_3
   | New(k,proc) ->
-      let name_1 = get_names_with_list_expansed proc f_bound list_names in
-      get_names_with_list Protocol (of_name k) f_bound name_1
+      let name_1 = get_names_with_list_expansed proc list_names in
+      get_names_with_list Protocol (of_name k)  name_1
   | Par(proc_l) ->
-      List.fold_left (fun acc (proc,_) -> get_names_with_list_expansed proc f_bound acc) list_names proc_l
+      List.fold_left (fun acc (proc,_) -> get_names_with_list_expansed proc acc) list_names proc_l
   | Choice(proc_l) ->
-      List.fold_left (fun acc proc -> get_names_with_list_expansed proc f_bound acc) list_names proc_l
+      List.fold_left (fun acc proc -> get_names_with_list_expansed proc acc) list_names proc_l
 
 let explored_name_list = ref []
 let explored_var_list = ref []
 let explored_content_list = ref []
 
-let rec explore_content_for_names f_bound c = match c.link with
+let rec explore_content_for_names c = match c.link with
   | NoLink ->
       begin match c.action with
         | ANil -> ()
         | AOut(ch,t,cont) ->
-            explore_content_for_names f_bound  cont;
-            explored_name_list := get_names_with_list Protocol t f_bound (get_names_with_list Protocol ch f_bound !explored_name_list)
+            explore_content_for_names cont;
+            explored_name_list := get_names_with_list Protocol t (get_names_with_list Protocol ch !explored_name_list)
         | AIn(ch,_,cont) ->
-            explore_content_for_names f_bound  cont;
-            explored_name_list := get_names_with_list Protocol ch f_bound !explored_name_list
+            explore_content_for_names cont;
+            explored_name_list := get_names_with_list Protocol ch !explored_name_list
         | ATest(t1,t2,cont_then,cont_else) | ALet(t1,t2,cont_then,cont_else) ->
-            explore_content_for_names f_bound  cont_then;
-            explore_content_for_names f_bound  cont_else;
-            explored_name_list := get_names_with_list Protocol t1 f_bound (get_names_with_list Protocol t2 f_bound !explored_name_list)
+            explore_content_for_names cont_then;
+            explore_content_for_names cont_else;
+            explored_name_list := get_names_with_list Protocol t1 (get_names_with_list Protocol t2 !explored_name_list)
         | ANew(k,cont) ->
-            explore_content_for_names f_bound  cont;
-            explored_name_list := get_names_with_list Protocol (of_name k) f_bound !explored_name_list
+            explore_content_for_names cont;
+            explored_name_list := get_names_with_list Protocol (of_name k) !explored_name_list
         | APar(cont_mult_list) ->
-            List.iter (fun cont_mult -> explore_content_for_names f_bound cont_mult.content) cont_mult_list
+            List.iter (fun cont_mult -> explore_content_for_names cont_mult.content) cont_mult_list
         | AChoice(cont_mult_list) ->
-            List.iter (fun cont_mult -> explore_content_for_names f_bound cont_mult.content) cont_mult_list
+            List.iter (fun cont_mult -> explore_content_for_names cont_mult.content) cont_mult_list
       end;
       c.link <- Found;
       explored_content_list := c :: !explored_content_list
   | Found -> ()
 
-let get_names_with_list proc f_bound list_names =
+let get_names_with_list proc list_names =
   Config.debug (fun () ->
     if !explored_name_list <> [] || !explored_content_list <> []
     then Config.internal_error "[process.ml >> get_names_with_list] explored lists should be empty"
@@ -144,7 +144,7 @@ let get_names_with_list proc f_bound list_names =
 
   explored_name_list := list_names;
 
-  List.iter (fun symb -> explore_content_for_names f_bound symb.content_mult.content) proc;
+  List.iter (fun symb -> explore_content_for_names symb.content_mult.content) proc;
 
   List.iter (fun c -> c.link <- NoLink) !explored_content_list;
   explored_content_list := [];
@@ -152,7 +152,7 @@ let get_names_with_list proc f_bound list_names =
   explored_name_list := [];
   result
 
-let get_names_with_list_content cont f_bound list_names =
+let get_names_with_list_content cont list_names =
   Config.debug (fun () ->
     if !explored_name_list <> [] || !explored_content_list <> []
     then Config.internal_error "[process.ml >> get_names_with_list_content] explored lists should be empty"
@@ -160,7 +160,7 @@ let get_names_with_list_content cont f_bound list_names =
 
   explored_name_list := list_names;
 
-  explore_content_for_names f_bound cont;
+  explore_content_for_names cont;
 
   List.iter (fun c -> c.link <- NoLink) !explored_content_list;
   explored_content_list := [];
@@ -326,7 +326,7 @@ let rec is_equal_modulo_symbolic_derivation symb_1 symb_2 =
             && is_equal_modulo_symbolic_derivation symb_else1 symb_else2
           else false
       | ANew(k1,c1), ANew(k2,c2) ->
-          let new_k = Name.fresh Bound in
+          let new_k = Name.fresh () in
           let rho_1 = Name.Renaming.compose symb_1.name_renaming k1 new_k
           and rho_2 = Name.Renaming.compose symb_2.name_renaming k2 new_k in
 
@@ -376,7 +376,7 @@ let add_content new_content =
     | Not_found ->
         contents_of_general_dag := new_content :: !contents_of_general_dag;
         new_content.bound_var <- Variable.Renaming.of_list (get_vars_with_list_content new_content []);
-        new_content.bound_name <- Name.Renaming.of_list (get_names_with_list_content new_content (fun b -> b = Bound) []);
+        new_content.bound_name <- Name.Renaming.of_list (get_names_with_list_content new_content []);
         new_content
 
 let rec content_of_expansed_process = function
@@ -916,7 +916,7 @@ module Testing = struct
   let add id action =
     let new_content = { action = action; link = NoLink; id = id; bound_var = Variable.Renaming.empty; bound_name = Name.Renaming.empty } in
     new_content.bound_var <- Variable.Renaming.of_list (get_vars_with_list_content new_content []);
-    new_content.bound_name <- Name.Renaming.of_list (get_names_with_list_content new_content (fun b -> b = Bound) []);
+    new_content.bound_name <- Name.Renaming.of_list (get_names_with_list_content new_content []);
     contents_of_general_dag := new_content :: !contents_of_general_dag
 
   let add_Nil id =
@@ -1132,8 +1132,8 @@ module Trace = struct
       | TrInput(_,ch,_,t,_,proc)
       | TrOutput(_,ch,_,t,_,proc)
       | TrEavesdrop(_,ch,_,t,_,_,proc) ->
-          let n_list_1 = get_names_Term Protocol ch (fun _ -> true) acc in
-          let n_list_2 = get_names_Term Protocol t (fun _ -> true) n_list_1 in
+          let n_list_1 = get_names_Term Protocol ch acc in
+          let n_list_2 = get_names_Term Protocol t n_list_1 in
           List.fold_left (fun acc' symb -> Name.Renaming.get_names_with_list symb.name_renaming acc') n_list_2 proc
     ) n_list trace
 
@@ -1183,7 +1183,7 @@ module Trace = struct
         Printf.sprintf "_TrOutput(%s,%s,%s,%s,%s,%s)"
           (Variable.display Testing ~rho:rho Recipe ch_X)
           (display Testing ~rho:rho Protocol ch)
-          (Axiom.display Testing ~rho:rho ax)
+          (Axiom.display Testing ax)
           (display Testing ~rho:rho Protocol t)
           (display_action_process_testing rho id_rho act1)
           (display_process_testing rho id_rho proc)
@@ -1191,7 +1191,7 @@ module Trace = struct
         Printf.sprintf "_TrEavesdrop(%s,%s,%s,%s,%s,%s,%s)"
           (Variable.display Testing ~rho:rho Recipe ch_X)
           (display Testing ~rho:rho Protocol ch)
-          (Axiom.display Testing ~rho:rho ax)
+          (Axiom.display Testing ax)
           (display Testing ~rho:rho Protocol t)
           (display_action_process_testing rho id_rho act1)
           (display_action_process_testing rho id_rho act2)
@@ -1377,12 +1377,12 @@ module Trace = struct
           let new_ch',new_t' = Rewrite_rules.normalise new_ch, Rewrite_rules.normalise new_t in
 
           let str_ch_recipe =
-            if is_axiom ch_recipe && Axiom.index_of (axiom_of ch_recipe) <= 0
+            if is_function ch_recipe && Symbol.get_arity (root ch_recipe) = 0 &&Symbol.is_public (root ch_recipe)
             then ""
             else Printf.sprintf " (computed by \\(%s\\))" (display Latex ~rho:rho Recipe ch_recipe)
 
           and str_t_recipe =
-            if is_axiom t_recipe && Axiom.index_of (axiom_of t_recipe) <= 0
+            if is_function t_recipe && Symbol.get_arity (root t_recipe) = 0 && Symbol.is_public (root t_recipe)
             then ""
             else Printf.sprintf " (computed by \\(%s\\))" (display Latex ~rho:rho Recipe t_recipe)
           in
@@ -2794,13 +2794,13 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
               f_next_equations ()
       in
 
-      if is_function ch' && Symbol.get_arity (root ch') = 0
+      if is_function ch' && Symbol.get_arity (root ch') = 0 && Symbol.is_public (root ch')
       then next_output f_next
       else
         let internal_communication f_next =
           (* This output may be used for an internal reduction *)
           next_input_private_trace proc equations disequations private_ch (fun proc' in_gather f_next_1 ->
-            if is_function in_gather.in_channel && Symbol.get_arity (root in_gather.in_channel) = 0
+            if is_function in_gather.in_channel && Symbol.get_arity (root in_gather.in_channel) = 0 && Symbol.is_public (root in_gather.in_channel)
             then f_next_1 ()
             else
               let new_ch, new_t = Subst.apply in_gather.in_equations (norm_ch,norm_t) (fun (x,y) f -> f x, f y) in
@@ -2875,7 +2875,7 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
 
         next_output (fun () -> internal_communication f_next)
   | AIn(ch,x,cont) ->
-      if is_function ch && Symbol.get_arity (root ch) = 0
+      if is_function ch && Symbol.get_arity (root ch) = 0 && Symbol.is_public (root ch)
       then f_next ()
       else
         (* This input may be used for an internal reduction *)
@@ -2886,7 +2886,7 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
         let new_v_rho = Variable.Renaming.restrict v_rho' cont.bound_var in
 
         next_output_private_trace proc equations disequations private_ch (fun proc' out_gather f_next_1 ->
-          if is_function out_gather.out_channel && Symbol.get_arity (root out_gather.out_channel) = 0
+          if is_function out_gather.out_channel && Symbol.get_arity (root out_gather.out_channel) = 0 && Symbol.is_public (root out_gather.out_channel)
           then f_next_1 ()
           else
             let new_ch = Subst.apply out_gather.out_equations ch' (fun x f -> f x) in
@@ -3046,7 +3046,7 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
                 (next_output_private_trace_content [@tailcall]) tau_actions_1 cont_else new_v_rho_else new_n_rho_else proc equations disequations private_ch f_continuation f_next
               else (next_output_private_trace_content [@tailcall]) [] cont_else new_v_rho_else new_n_rho_else proc equations disequations private_ch f_continuation f_next
           | DiseqList disequations_modulo ->
-              let new_disequations = disequations_modulo @ disequations in
+              let new_disequations = List.rev_append disequations disequations_modulo in
 
               if !Config.display_trace
               then
@@ -3296,12 +3296,12 @@ and next_input_private_trace_content tau_actions content v_rho n_rho proc equati
               f_next_equations ()
       in
 
-      if is_function ch' && Symbol.get_arity (root ch') = 0
+      if is_function ch' && Symbol.get_arity (root ch') = 0 && Symbol.is_public (root ch')
       then next_input f_next
       else
         let internal_communication f_next =
             next_output_private_trace proc equations disequations private_ch (fun proc' out_gather f_next_1 ->
-              if is_function out_gather.out_channel && Symbol.get_arity (root out_gather.out_channel) = 0
+              if is_function out_gather.out_channel && Symbol.get_arity (root out_gather.out_channel) = 0 && Symbol.is_public (root out_gather.out_channel)
               then f_next_1 ()
               else
                 let new_ch = Subst.apply out_gather.out_equations norm_ch (fun x f -> f x) in
@@ -3376,7 +3376,7 @@ and next_input_private_trace_content tau_actions content v_rho n_rho proc equati
 
         next_input (fun () -> internal_communication f_next)
   | AOut(ch,t,cont) ->
-      if is_function ch && Symbol.get_arity (root ch) = 0
+      if is_function ch && Symbol.get_arity (root ch) = 0 && Symbol.is_public (root ch)
       then f_next ()
       else
         let ch',t' = apply_renamings_pair v_rho n_rho (ch,t) in
@@ -3385,7 +3385,7 @@ and next_input_private_trace_content tau_actions content v_rho n_rho proc equati
 
         (* This output may be used for an internal reduction *)
         next_input_private_trace proc equations disequations private_ch (fun proc' in_gather f_next_1 ->
-          if is_function in_gather.in_channel && Symbol.get_arity (root in_gather.in_channel) = 0
+          if is_function in_gather.in_channel && Symbol.get_arity (root in_gather.in_channel) = 0 && Symbol.is_public (root in_gather.in_channel)
           then f_next_1 ()
           else
             let new_ch, new_t = Subst.apply in_gather.in_equations (ch',t') (fun (x,y) f -> f x, f y) in

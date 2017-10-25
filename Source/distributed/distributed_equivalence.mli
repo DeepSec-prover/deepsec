@@ -1,9 +1,5 @@
 (** *)
 
-open Equivalence
-open Process
-
-
 module EquivJob : sig
 
   (** [shareddata] is a type for data needed by all the computation*)
@@ -47,7 +43,7 @@ end
 module DistribEquivalence : sig
 
   val display_workers : unit -> string
-    
+
   (** Corresponds to the minimum number of jobs initially generated before distribution. Note that this number is necessarily bigger than
       the number of workers launched. Its initial value is 100. *)
   val minimum_nb_of_jobs : int ref
@@ -75,10 +71,14 @@ module DistribEquivalence : sig
   (** [compute_job shared job_l] launch [!number_of_workers] child processes send them the shared data and distribute the jobs in [job_l].
       When the computation is finished, the server close the child processes. *)
   val compute_job : EquivJob.shareddata -> EquivJob.job -> unit
+
+  val time_between_round : float ref
 end
 
 (** [trace_equivalence sem proc1 proc2] decide whether the processes [proc1] and [proc2] are in trace equivalence depending on the semantics
     [sem]. The function returns a triple [(res,proc1',proc')] where [proc1'] and [proc2'] are typically the processes [proc1] and [proc2] respectively.
     Due to the marshalling, the initial processes are given in each job and returned by each worker to ensure that physical equality within the processes
     are preserved. As such, when displaying an attack trace given by [res], one should use the processes [proc1'] and [proc2'] instead of [proc1] and [proc2]. *)
-val trace_equivalence : semantics -> process -> process -> result_trace_equivalence * process * process
+val trace_equivalence : Process.semantics -> Process.process -> Process.process -> Equivalence.result_trace_equivalence * Process.process * Process.process
+
+val trace_equivalence_determinate : Process_determinate.configuration -> Process_determinate.configuration -> Equivalence_determinate.result_trace_equivalence * Process_determinate.configuration * Process_determinate.configuration

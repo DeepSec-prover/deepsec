@@ -1,0 +1,22 @@
+free c.
+free k [private].
+fun h/1 [private].
+fun g/1 [private].
+free a.
+
+reduc get_inside(h(x)) -> x.
+reduc get_inside_priv(g(x)) -> x [private].
+
+let P_1 = new b; out(c,b).
+
+let P_2 = out(c,k).
+
+let P_3 = out(c,h(a)).
+
+let P_4 = out(c,g(a)).
+
+query trace_equiv(P_1,P_2).
+
+query trace_equiv(P_1,P_3).
+
+query trace_equiv(P_1,P_4).
