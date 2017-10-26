@@ -262,7 +262,7 @@ struct
           begin
             let nb_of_jobs_created = List.length !job_list_ref in
             let nb_of_jobs = ref nb_of_jobs_created in
-
+            job_list_ref := List.rev !job_list_ref;
             Printf.printf "Number of sets of constraint systems generated: %d\n%!" !nb_of_jobs;
 
             (**** Compute the first jobs ****)
