@@ -83,8 +83,6 @@ end
 
 exception Bot
 
-let empty_skeletong_EQ csys = csys.skeletons_to_check_EQ = []
-
 (******** Functions for skeleton_EQ *********)
 
 let refresh_skeleton_EQ skel var_type =

@@ -342,10 +342,6 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
       Constraint_system.Rule.not_applicable = in_apply_final_test
     } f_next
   and in_apply_final_test csys_set f_next =
-    Config.debug (fun () ->
-      if not (Constraint_system.Set.for_all Constraint_system.empty_skeletong_EQ csys_set)
-      then Config.internal_error "[equivalence.ml >> apply_one_transition_and_rules_for_trace_in_private] skeletons_to_check_EQ should be empty (Input)"
-    );
     if Constraint_system.Set.is_empty csys_set
     then f_next ()
     else
@@ -475,10 +471,6 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
       Constraint_system.Rule.not_applicable = out_apply_final_test
     } f_next
   and out_apply_final_test csys_set f_next =
-    Config.debug (fun () ->
-      if not (Constraint_system.Set.for_all Constraint_system.empty_skeletong_EQ csys_set)
-      then Config.internal_error "[equivalence.ml >> apply_one_transition_and_rules_for_trace_in_private] skeletons_to_check_EQ should be empty (Output)"
-    );
     if Constraint_system.Set.is_empty csys_set
     then f_next ()
     else
