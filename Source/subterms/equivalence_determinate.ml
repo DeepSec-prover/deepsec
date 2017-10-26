@@ -36,7 +36,34 @@ type result_skeleton =
   | OK of configuration * configuration
   | Faulty of bool * configuration * action
 
-let apply_one_transition_and_rules_internal equiv_pbl f_continuation f_next =
+let rec subsume equiv_pbl csys origin prev = function
+  | [] -> equiv_pbl :: prev
+  | eq_pbl::q ->
+      let csys' = match Constraint_system.Set.elements eq_pbl.csys_set with
+        | [csys';_] when (Constraint_system.get_additional_data csys').origin_process = origin -> csys'
+        | [_;csys'] -> csys'
+        | _ -> Config.internal_error "[equivalence_determinate >> is_subsumed_or_subsume] There should be only two constraint systems: one left, one right."
+      in
+      if Constraint_system.subsume false csys csys'
+      then subsume equiv_pbl csys origin prev q
+      else subsume equiv_pbl csys origin (eq_pbl::prev) q
+
+let rec is_subsumed_or_subsume equiv_pbl csys origin prev = function
+  | [] -> equiv_pbl :: prev
+  | eq_pbl::q ->
+      let csys' = match Constraint_system.Set.elements eq_pbl.csys_set with
+        | [csys';_] when (Constraint_system.get_additional_data csys').origin_process = origin -> csys'
+        | [_;csys'] -> csys'
+        | _ -> Config.internal_error "[equivalence_determinate >> is_subsumed_or_subsume] There should be only two constraint systems: one left, one right."
+      in
+      if Constraint_system.subsume false csys csys'
+      then subsume equiv_pbl csys origin prev q
+      else if Constraint_system.subsume false csys' csys
+      then List.rev_append prev (eq_pbl::q)
+      else is_subsumed_or_subsume equiv_pbl csys origin (eq_pbl::prev) q
+
+
+let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
   Config.debug (fun () ->
     match Constraint_system.Set.elements equiv_pbl.csys_set with
@@ -46,6 +73,11 @@ let apply_one_transition_and_rules_internal equiv_pbl f_continuation f_next =
           -> ()
       | _ -> Config.internal_error "[equivalence_determinate >> apply_one_transition_and_rules] There should be only two constraint systems: one left, one right."
   );
+
+  let rec explore f_next_1 = function
+    | [] -> f_next_1 ()
+    | eq_pbl :: q -> f_continuation eq_pbl (fun () -> explore f_next_1 q)
+  in
 
   (*** Selection of the transition rule to apply ***)
 
@@ -71,6 +103,15 @@ let apply_one_transition_and_rules_internal equiv_pbl f_continuation f_next =
               | Constraint_system.Bot -> ()
           )
         ) equiv_pbl.csys_set;
+
+        let equiv_pbl_list = ref [] in
+
+        let subsume_continuation equiv_pbl_2 f_next_2 =
+          let csys = Constraint_system.Set.choose equiv_pbl_2.csys_set in
+          let origin = (Constraint_system.get_additional_data csys).origin_process in
+          equiv_pbl_list := is_subsumed_or_subsume equiv_pbl_2 csys origin [] !equiv_pbl_list;
+          f_next_2 ()
+        in
 
         (*** Application of the transformation rules for inputs ***)
 
@@ -137,7 +178,7 @@ let apply_one_transition_and_rules_internal equiv_pbl f_continuation f_next =
                     let csys_set = Constraint_system.Set.add csys_left (Constraint_system.Set.add csys_right Constraint_system.Set.empty) in
                     let block = create_block initial_label in
                     let equiv_pbl_1 = { equiv_pbl with ongoing_block = Some block; csys_set = csys_set } in
-                    f_continuation equiv_pbl_1 f_next
+                    subsume_continuation equiv_pbl_1 f_next
                 | Faulty (is_left,f_conf,f_action) ->
                     let wit_csys, symb_proc = if is_left then csys_left, symb_left else csys_right, symb_right in
                     let fst_subst = Constraint_system.get_substitution_solution Protocol wit_csys in
@@ -154,7 +195,7 @@ let apply_one_transition_and_rules_internal equiv_pbl f_continuation f_next =
                     end
         in
 
-        in_apply_sat !csys_set_for_start f_next
+        in_apply_sat !csys_set_for_start (fun () -> explore f_next !equiv_pbl_list)
     | RStartIn ->
         let var_X = Variable.fresh Recipe Free (Variable.snd_ord_type equiv_pbl.size_frame) in
 
@@ -171,6 +212,7 @@ let apply_one_transition_and_rules_internal equiv_pbl f_continuation f_next =
 
         apply_start_in var_X !csys_conf_list apply_conf (fun csys_var_list label f_next_1 ->
           let csys_set_for_input = ref Constraint_system.Set.empty in
+
           List.iter (fun (csys,x) ->
             let symb_proc = Constraint_system.get_additional_data csys in
             let fst_subst = Constraint_system.get_substitution_solution Protocol csys in
@@ -189,6 +231,15 @@ let apply_one_transition_and_rules_internal equiv_pbl f_continuation f_next =
                 | Constraint_system.Bot -> ()
             )
           ) csys_var_list;
+
+          let equiv_pbl_list = ref [] in
+
+          let subsume_continuation equiv_pbl_2 f_next_2 =
+            let csys = Constraint_system.Set.choose equiv_pbl_2.csys_set in
+            let origin = (Constraint_system.get_additional_data csys).origin_process in
+            equiv_pbl_list := is_subsumed_or_subsume equiv_pbl_2 csys origin [] !equiv_pbl_list;
+            f_next_2 ()
+          in
 
           let rec in_apply_sat csys_set f_next =
             Constraint_system.Rule.sat csys_set {
@@ -266,7 +317,7 @@ let apply_one_transition_and_rules_internal equiv_pbl f_continuation f_next =
                           Printf.printf "%s\n" (Process_determinate.display_block (block_1::complete_blocks_1) snd_subst);
                           flush_all ()
                         in*)
-                        f_continuation equiv_pbl_1 f_next
+                        subsume_continuation equiv_pbl_1 f_next
                       else f_next ()
                   | Faulty (is_left,f_conf,f_action) ->
                       let wit_csys, symb_proc = if is_left then csys_left, symb_left else csys_right, symb_right in
@@ -283,7 +334,7 @@ let apply_one_transition_and_rules_internal equiv_pbl f_continuation f_next =
                       end
           in
 
-          in_apply_sat !csys_set_for_input f_next_1
+          in_apply_sat !csys_set_for_input (fun () -> explore f_next_1 !equiv_pbl_list)
         ) f_next
     | RPosIn ->
         let var_X = Variable.fresh Recipe Free (Variable.snd_ord_type equiv_pbl.size_frame) in
@@ -309,6 +360,15 @@ let apply_one_transition_and_rules_internal equiv_pbl f_continuation f_next =
               | Constraint_system.Bot -> ()
           )
         ) equiv_pbl.csys_set;
+
+        let equiv_pbl_list = ref [] in
+
+        let subsume_continuation equiv_pbl_2 f_next_2 =
+          let csys = Constraint_system.Set.choose equiv_pbl_2.csys_set in
+          let origin = (Constraint_system.get_additional_data csys).origin_process in
+          equiv_pbl_list := is_subsumed_or_subsume equiv_pbl_2 csys origin [] !equiv_pbl_list;
+          f_next_2 ()
+        in
 
         let rec in_apply_sat csys_set f_next =
           Constraint_system.Rule.sat csys_set {
@@ -379,7 +439,7 @@ let apply_one_transition_and_rules_internal equiv_pbl f_continuation f_next =
                         | Some b -> add_variable_in_block var_X b
                       in
                       let equiv_pbl_1 = { equiv_pbl with ongoing_block = Some block; csys_set = csys_set_2 } in
-                      f_continuation equiv_pbl_1 f_next
+                      subsume_continuation equiv_pbl_1 f_next
                     else f_next ()
                 | Faulty (is_left,f_conf,f_action) ->
                     let wit_csys, symb_proc = if is_left then csys_left, symb_left else csys_right, symb_right in
@@ -396,7 +456,7 @@ let apply_one_transition_and_rules_internal equiv_pbl f_continuation f_next =
                     end
         in
 
-        in_apply_sat !csys_set_for_input f_next
+        in_apply_sat !csys_set_for_input (fun () -> explore f_next !equiv_pbl_list)
     | RNegOut ->
         let axiom = Axiom.create (equiv_pbl.size_frame + 1) in
 
@@ -420,6 +480,15 @@ let apply_one_transition_and_rules_internal equiv_pbl f_continuation f_next =
               | Constraint_system.Bot -> ()
           )
         ) equiv_pbl.csys_set;
+
+        let equiv_pbl_list = ref [] in
+
+        let subsume_continuation equiv_pbl_2 f_next_2 =
+          let csys = Constraint_system.Set.choose equiv_pbl_2.csys_set in
+          let origin = (Constraint_system.get_additional_data csys).origin_process in
+          equiv_pbl_list := is_subsumed_or_subsume equiv_pbl_2 csys origin [] !equiv_pbl_list;
+          f_next_2 ()
+        in
 
         let rec out_apply_sat csys_set f_next =
           Constraint_system.Rule.sat csys_set {
@@ -520,7 +589,7 @@ let apply_one_transition_and_rules_internal equiv_pbl f_continuation f_next =
                         | Some b -> add_axiom_in_block axiom b
                       in
                       let equiv_pbl_1 = { equiv_pbl with size_frame = equiv_pbl.size_frame + 1; ongoing_block = Some block; csys_set = csys_set_2 } in
-                      f_continuation equiv_pbl_1 f_next
+                      subsume_continuation equiv_pbl_1 f_next
                     else f_next ()
                 | Faulty (is_left,f_conf,f_action) ->
                     let wit_csys, symb_proc  = if is_left then csys_left, symb_left else csys_right, symb_right in
@@ -536,7 +605,7 @@ let apply_one_transition_and_rules_internal equiv_pbl f_continuation f_next =
                           raise (Not_Trace_Equivalent wit_csys_2)
         in
 
-        out_apply_sat (Constraint_system.Set.initialise_for_output !csys_set_for_output) f_next
+        out_apply_sat (Constraint_system.Set.initialise_for_output !csys_set_for_output) (fun () -> explore f_next !equiv_pbl_list)
     | RNothing ->
         if Constraint_system.Set.is_empty equiv_pbl.csys_set
         then f_next ()
@@ -546,51 +615,6 @@ let apply_one_transition_and_rules_internal equiv_pbl f_continuation f_next =
           if Constraint_system.Set.for_all (fun csys -> (Constraint_system.get_additional_data csys).origin_process = origin_process) equiv_pbl.csys_set
           then raise (Not_Trace_Equivalent csys)
           else f_next ()
-
-let counter = ref 0
-
-let rec subsume equiv_pbl csys origin prev = function
-  | [] -> equiv_pbl :: prev
-  | eq_pbl::q ->
-      let csys' = match Constraint_system.Set.elements eq_pbl.csys_set with
-        | [csys';_] when (Constraint_system.get_additional_data csys').origin_process = origin -> csys'
-        | [_;csys'] -> csys'
-        | _ -> Config.internal_error "[equivalence_determinate >> is_subsumed_or_subsume] There should be only two constraint systems: one left, one right."
-      in
-      if Constraint_system.subsume false csys csys'
-      then (incr counter; Printf.printf "Subsume counter = %d\n" !counter; flush_all (); subsume equiv_pbl csys origin prev q)
-      else subsume equiv_pbl csys origin (eq_pbl::prev) q
-
-let rec is_subsumed_or_subsume equiv_pbl csys origin prev = function
-  | [] -> equiv_pbl :: prev
-  | eq_pbl::q ->
-      let csys' = match Constraint_system.Set.elements eq_pbl.csys_set with
-        | [csys';_] when (Constraint_system.get_additional_data csys').origin_process = origin -> csys'
-        | [_;csys'] -> csys'
-        | _ -> Config.internal_error "[equivalence_determinate >> is_subsumed_or_subsume] There should be only two constraint systems: one left, one right."
-      in
-      if Constraint_system.subsume false csys csys'
-      then (incr counter; Printf.printf "Subsume counter = %d\n" !counter; flush_all ();  subsume equiv_pbl csys origin prev q)
-      else if Constraint_system.subsume false csys' csys
-      then (incr counter; Printf.printf "Subsume counter = %d\n" !counter; flush_all ();  List.rev_append prev (eq_pbl::q))
-      else is_subsumed_or_subsume equiv_pbl csys origin (eq_pbl::prev) q
-
-let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
-  let equiv_pbl_list = ref [] in
-
-  apply_one_transition_and_rules_internal equiv_pbl (fun equiv_pbl_1 f_next_1 ->
-    let csys = Constraint_system.Set.choose equiv_pbl_1.csys_set in
-    let origin = (Constraint_system.get_additional_data csys).origin_process in
-    equiv_pbl_list := is_subsumed_or_subsume equiv_pbl_1 csys origin [] !equiv_pbl_list;
-    f_next_1 ()
-  ) (fun () -> ());
-
-  let rec explore f_next_1 = function
-    | [] -> f_next_1 ()
-    | eq_pbl :: q -> f_continuation eq_pbl (fun () -> explore f_next_1 q)
-  in
-
-  explore f_next !equiv_pbl_list
 
 type result_trace_equivalence =
   | Equivalent

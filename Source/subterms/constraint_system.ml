@@ -662,6 +662,10 @@ let mgs csys =
             let df_1 = DF.remove csys.simp_DF b_recipe in
             let df_2 = DF.apply df_1 subst_fst in
 
+            Config.debug (fun () ->
+              if not (Uniformity_Set.exists csys.simp_Sub_Cons (of_variable b_recipe) b_term)
+              then Config.internal_error "[Constraint_system.ml >> mgs] Elements of DF should always be in the uniformity set."
+            );
             (*let sub_cons_1 = Uniformity_Set.add csys.simp_Sub_Cons recipe term in*)
             let sub_cons_2 = Uniformity_Set.apply csys.simp_Sub_Cons subst_snd subst_fst in
 
@@ -1588,8 +1592,8 @@ let exists_match_mgs csys f_pred =
                 let df_1 = DF.remove csys.simp_DF b_recipe in
 
                 Config.debug (fun () ->
-                  if not (Uniformity_Set.exists csys.simp_Sub_Cons recipe term)
-                  then Config.internal_error "[Constraint_system.ml >> mgs] Elements of DF should always be in the uniformity set."
+                  if not (Uniformity_Set.exists csys.simp_Sub_Cons (of_variable b_recipe) b_term)
+                  then Config.internal_error "[Constraint_system.ml >> exists_match_mgs] Elements of DF should always be in the uniformity set."
                 );
 
                 let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst_snd Subst.identity in
@@ -1747,9 +1751,17 @@ let subsume fine_grained csys1 csys2 =
         | Some(_,t) -> (t::acc_t,(of_variable x)::acc_v)
     ) (t_list,v_list) csys2.i_subst_snd
   in
+  let (t_list_2',v_list'') =
+    Subst.fold (fun (acc_t,acc_v) x r ->
+      match Tools.partial_consequence Recipe csys2.sdf csys2.df r with
+        | None -> Config.internal_error "[constraint_system.ml >> subsume] The recipe should be consequence (3)."
+        | Some(_,t) -> (t::acc_t,(of_variable x)::acc_v)
+    ) (t_list_2,v_list') csys2.i_subst_ground_snd
+  in
 
   (* Apply the recipe substitution of csys1 on the variable list *)
-  let rev_r_list = Subst.apply csys1.i_subst_snd v_list' (fun vl f -> List.rev_map f vl) in
+  let subst2 = Subst.union csys1.i_subst_snd csys1.i_subst_ground_snd in
+  let rev_r_list = Subst.apply subst2 v_list'' (fun vl f -> List.rev_map f vl) in
   (* Compute the corresponding protocol terms in csys1 *)
   let t_list_1 =
     List.rev_map (fun r ->
@@ -1760,7 +1772,7 @@ let subsume fine_grained csys1 csys2 =
   in
 
   (* Check if the terms are matchables *)
-  match Subst.match_terms Protocol t_list_1 t_list_2 with
+  match Subst.match_terms Protocol t_list_1 t_list_2' with
     | None -> false
     | Some sigma ->
         (* Apply the substitution on csys1 *)

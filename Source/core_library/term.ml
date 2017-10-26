@@ -1941,7 +1941,7 @@ module Subst = struct
     | Var({link = TLink t ; _}), _ ->
         if not (is_equal at t t2)
         then raise Not_matchable
-    | _, Var({link = TLink _; _}) -> Config.internal_error "[term.ml >> Subst.match_term] Unexpected link"
+    (*| _, Var({link = TLink _; _}) -> Config.internal_error "[term.ml >> Subst.match_term] Unexpected link"*)
     | Var(v1),_ -> link at v1 t2
     | AxName(n1), AxName(n2) when AxName.is_equal at n1 n2 -> ()
     | Func(f1,args1), Func(f2,args2) ->
