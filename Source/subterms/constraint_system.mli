@@ -13,6 +13,8 @@ open Data_structure
     may contain some additional data of type ['a]. %}*)
 type 'a t
 
+val empty_skeletong_EQ : 'a t -> bool
+
 (** The type [constraint_system] does not represents the unsatisfiable constraint system. Thus, when a function is able to detect an unsatisfiable
     constraint system, it raises the exception [Bot]. *)
 exception Bot

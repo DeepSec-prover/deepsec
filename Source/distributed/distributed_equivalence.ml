@@ -167,13 +167,15 @@ let trace_equivalence semantics proc1 proc2 =
     {
       Equivalence.origin_process = Equivalence.Left;
       Equivalence.current_process = proc1;
-      Equivalence.trace = Trace.empty
+      Equivalence.trace = Trace.empty;
+      Equivalence.id = 0
     }
   and symb_proc_2 =
     {
       Equivalence.origin_process = Equivalence.Right;
       Equivalence.current_process = proc2;
-      Equivalence.trace = Trace.empty
+      Equivalence.trace = Trace.empty;
+      Equivalence.id = 0
     }
   in
 

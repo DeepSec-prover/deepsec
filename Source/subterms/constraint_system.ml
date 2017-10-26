@@ -83,6 +83,8 @@ end
 
 exception Bot
 
+let empty_skeletong_EQ csys = csys.skeletons_to_check_EQ = []
+
 (******** Functions for skeleton_EQ *********)
 
 let refresh_skeleton_EQ skel var_type =
@@ -3690,7 +3692,6 @@ module Rule = struct
     then (fun csys_set continuation_func f_next -> test_rule internal_rewrite !test_rewrite_unit csys_set continuation_func f_next)
     else internal_rewrite
 
-
   (**** The rule Rewrite EQ ****)
 
   (* Todo LIST :
@@ -3763,7 +3764,12 @@ module Rule = struct
     in
 
     match explore_csys [] csys_set.Set.csys_list with
-      | None, csys_set_1 -> (continuation_func.not_applicable [@tailcall]) { csys_set with Set.csys_list = csys_set_1 } f_next
+      | None, csys_set_1 ->
+          Config.debug (fun () ->
+            if List.exists (fun csys -> csys.skeletons_to_check_EQ <> []) csys_set_1
+            then Config.internal_error "[constraint_system.ml >> internal_rewrite_EQ] Skeletons to check EQ should be empty."
+          );
+          (continuation_func.not_applicable [@tailcall]) { csys_set with Set.csys_list = csys_set_1 } f_next
       | Some (id_sdf, skel, (mgs_csys,l_vars), mgs_form), csys_set_1 ->
 
           if Subst.is_identity mgs_csys
