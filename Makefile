@@ -45,16 +45,14 @@ TESTING_ML = $(TESTING_ML_NAME:%.ml=$(SOURCE)testing/%.ml)
 PARSER_ML_NAME = parser_functions.ml grammar.ml lexer.ml
 PARSER_ML = $(PARSER_ML_NAME:%.ml=$(SOURCE)parser/%.ml)
 
-ALL_ML = $(SOURCE)core_library/config.ml $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)main.ml $(SOURCE)testing/testing.ml $(SOURCE)distributed/worker.ml $(SOURCE)distributed/manager.ml
+ALL_ML = $(SOURCE)core_library/config.ml $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)main.ml $(SOURCE)distributed/worker.ml $(SOURCE)distributed/manager.ml
 
 EXE_MAIN_ML = $(SOURCE)core_library/config.ml $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)main.ml
-EXE_TESTING_ML = $(SOURCE)core_library/config.ml $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)testing/testing.ml
 EXE_WORKER_ML = $(SOURCE)core_library/config.ml $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)distributed/worker.ml
 EXE_MANAGER_ML = $(SOURCE)core_library/config.ml $(CORE_ML) $(SUBTERMS_ML) $(TESTING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)distributed/manager.ml
 
 ALL_OBJ = $(ALL_ML:.ml=.$(CMOX))
 EXE_MAIN_OBJ = $(EXE_MAIN_ML:.ml=.$(CMOX))
-EXE_TESTING_OBJ = $(EXE_TESTING_ML:.ml=.$(CMOX))
 EXE_WORKER_OBJ = $(EXE_WORKER_ML:.ml=.$(CMOX))
 EXE_MANAGER_OBJ = $(EXE_MANAGER_ML:.ml=.$(CMOX))
 
@@ -69,10 +67,6 @@ all: .display_obj $(ALL_OBJ)
 	@echo The main executable:
 	@echo
 	$(OCAMLOPT) -o $(EXECUTABLE) $(OCAMLFLAGS) $(EXE_MAIN_OBJ)
-	@echo
-	@echo The executable for testing:
-	@echo
-	$(OCAMLOPT) -o $(TESTING) $(OCAMLFLAGS) $(EXE_TESTING_OBJ)
 	@echo
 	@echo The executables for distributed worker:
 	@echo
