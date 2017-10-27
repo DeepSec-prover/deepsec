@@ -304,14 +304,15 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
                 match result_skel_test with
                   | OK (conf_left, conf_right) ->
+                      let block = create_block label in
+                      let block_1 = add_variable_in_block var_X block in
                       let snd_subst = Constraint_system.get_substitution_solution Recipe csys in
-                      if Subst.check_good_recipes snd_subst && is_block_list_authorized complete_blocks_1 snd_subst
+                      if Subst.check_good_recipes snd_subst && is_block_list_authorized (block_1::complete_blocks_1) snd_subst
                       then
                         let csys_left = Constraint_system.replace_additional_data csys_left { symb_left with configuration = conf_left } in
                         let csys_right = Constraint_system.replace_additional_data csys_right { symb_right with configuration = conf_right } in
                         let csys_set_2 = Constraint_system.Set.add csys_left (Constraint_system.Set.add csys_right Constraint_system.Set.empty) in
-                        let block = create_block label in
-                        let block_1 = add_variable_in_block var_X block in
+
                         let equiv_pbl_1 = { equiv_pbl with complete_blocks = complete_blocks_1; ongoing_block = Some block_1; csys_set = csys_set_2 } in
                         (*let _ =
                           Printf.printf "%s\n" (Process_determinate.display_block (block_1::complete_blocks_1) snd_subst);
@@ -428,16 +429,16 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
               match result_skel_test with
                 | OK (conf_left, conf_right) ->
+                    let block = match equiv_pbl.ongoing_block with
+                      | None -> Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] Ongoing blocks should exists (2)."
+                      | Some b -> add_variable_in_block var_X b
+                    in
                     let snd_subst = Constraint_system.get_substitution_solution Recipe csys in
-                    if Subst.check_good_recipes snd_subst && is_block_list_authorized equiv_pbl.complete_blocks snd_subst
+                    if Subst.check_good_recipes snd_subst && is_block_list_authorized (block::equiv_pbl.complete_blocks) snd_subst
                     then
                       let csys_left = Constraint_system.replace_additional_data csys_left { symb_left with configuration = conf_left } in
                       let csys_right = Constraint_system.replace_additional_data csys_right { symb_right with configuration = conf_right } in
                       let csys_set_2 = Constraint_system.Set.add csys_left (Constraint_system.Set.add csys_right Constraint_system.Set.empty) in
-                      let block = match equiv_pbl.ongoing_block with
-                        | None -> Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] Ongoing blocks should exists (2)."
-                        | Some b -> add_variable_in_block var_X b
-                      in
                       let equiv_pbl_1 = { equiv_pbl with ongoing_block = Some block; csys_set = csys_set_2 } in
                       subsume_continuation equiv_pbl_1 f_next
                     else f_next ()
@@ -578,16 +579,17 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
               match result_skel_test with
                 | OK (conf_left, conf_right) ->
+                    let block = match equiv_pbl.ongoing_block with
+                      | None -> Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] Ongoing blocks should exists (2)."
+                      | Some b -> add_axiom_in_block axiom b
+                    in
                     let snd_subst = Constraint_system.get_substitution_solution Recipe csys in
-                    if Subst.check_good_recipes snd_subst && is_block_list_authorized equiv_pbl.complete_blocks snd_subst
+                    if Subst.check_good_recipes snd_subst && is_block_list_authorized (block::equiv_pbl.complete_blocks) snd_subst
                     then
                       let csys_left = Constraint_system.replace_additional_data csys_left { symb_left with configuration = conf_left } in
                       let csys_right = Constraint_system.replace_additional_data csys_right { symb_right with configuration = conf_right } in
                       let csys_set_2 = Constraint_system.Set.add csys_left (Constraint_system.Set.add csys_right Constraint_system.Set.empty) in
-                      let block = match equiv_pbl.ongoing_block with
-                        | None -> Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] Ongoing blocks should exists (2)."
-                        | Some b -> add_axiom_in_block axiom b
-                      in
+
                       let equiv_pbl_1 = { equiv_pbl with size_frame = equiv_pbl.size_frame + 1; ongoing_block = Some block; csys_set = csys_set_2 } in
                       subsume_continuation equiv_pbl_1 f_next
                     else f_next ()
