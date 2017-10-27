@@ -624,7 +624,6 @@ let display_simple out ?(rho=None) ?(hidden=false) ?(id=0) csys = match out with
       str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Uni%d\" class=\"csys%d\"%s>\\({\\sf R}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (Uniformity_Set.display Latex ~rho:rho csys.simp_Sub_Cons);
 
       Printf.sprintf "%s            </div>\n" !str
-
   | _ -> Config.internal_error "[constraint_system.ml >> display] This display mode is not implemented yet."
 
 (***** Generators ******)
@@ -3691,12 +3690,6 @@ module Rule = struct
     else internal_rewrite
 
   (**** The rule Rewrite EQ ****)
-
-  (* Todo LIST :
-      - Apply first ord substitution on skeleton
-      - Refresh sleketon when we change frame
-      - Creation of skeleton EQ
-  *)
 
   let internal_rewrite_EQ csys_set continuation_func f_next =
 
