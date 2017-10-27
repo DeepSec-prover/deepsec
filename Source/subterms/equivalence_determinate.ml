@@ -307,7 +307,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                       let block = create_block label in
                       let block_1 = add_variable_in_block var_X block in
                       let snd_subst = Constraint_system.get_substitution_solution Recipe csys in
-                      if Subst.check_good_recipes snd_subst && is_block_list_authorized (block_1::complete_blocks_1) snd_subst
+                      if Subst.check_good_recipes snd_subst && is_block_list_authorized complete_blocks_1 block_1 snd_subst
                       then
                         let csys_left = Constraint_system.replace_additional_data csys_left { symb_left with configuration = conf_left } in
                         let csys_right = Constraint_system.replace_additional_data csys_right { symb_right with configuration = conf_right } in
@@ -434,7 +434,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                       | Some b -> add_variable_in_block var_X b
                     in
                     let snd_subst = Constraint_system.get_substitution_solution Recipe csys in
-                    if Subst.check_good_recipes snd_subst && is_block_list_authorized (block::equiv_pbl.complete_blocks) snd_subst
+                    if Subst.check_good_recipes snd_subst && is_block_list_authorized equiv_pbl.complete_blocks block snd_subst
                     then
                       let csys_left = Constraint_system.replace_additional_data csys_left { symb_left with configuration = conf_left } in
                       let csys_right = Constraint_system.replace_additional_data csys_right { symb_right with configuration = conf_right } in
@@ -584,7 +584,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                       | Some b -> add_axiom_in_block axiom b
                     in
                     let snd_subst = Constraint_system.get_substitution_solution Recipe csys in
-                    if Subst.check_good_recipes snd_subst && is_block_list_authorized (block::equiv_pbl.complete_blocks) snd_subst
+                    if Subst.check_good_recipes snd_subst && is_block_list_authorized equiv_pbl.complete_blocks block snd_subst
                     then
                       let csys_left = Constraint_system.replace_additional_data csys_left { symb_left with configuration = conf_left } in
                       let csys_right = Constraint_system.replace_additional_data csys_right { symb_right with configuration = conf_right } in

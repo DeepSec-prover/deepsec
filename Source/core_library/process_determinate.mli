@@ -36,7 +36,7 @@ val size_trace : configuration -> int
 
 val is_action_determinate : Process.expansed_process -> bool
 
-val is_block_list_authorized : block list -> (snd_ord, axiom) Subst.t -> bool
+val is_block_list_authorized : block list -> block -> (snd_ord, axiom) Subst.t -> bool
 
 type action =
   | FOutput of axiom * protocol_term
