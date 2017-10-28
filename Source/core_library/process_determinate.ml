@@ -547,16 +547,16 @@ let rec is_faulty_block block = function
         | _ -> false
       end
 
-let is_block_list_authorized b_list snd_subst = match b_list with
+let is_block_list_authorized b_list cur_block snd_subst = match b_list with
   | [] -> true
   | b::_ when b.minimal_axiom = 0 -> false
   | _ ->
       (*let str = ref "Begining of block test:\n" in
 
-      let counter = ref (List.length b_list) in
-      *)
+      let counter = ref ((List.length b_list) + 1) in*)
+
       let b_list_1 =
-        Subst.apply snd_subst b_list (fun l f ->
+        Subst.apply snd_subst (cur_block::b_list) (fun l f ->
           List.map (fun block ->
             let max_var = ref 0 in
             let used_axioms = ref IntSet.empty in
@@ -564,7 +564,7 @@ let is_block_list_authorized b_list snd_subst = match b_list with
             counter := !counter -1;*)
             List.iter (fun var ->
               let r' = f (of_variable var) in
-              (*str := Printf.sprintf "%s%s -> %s; " !str (Variable.display Terminal Recipe ~v_type:true var) (display Terminal Recipe r');*)
+              (* str := Printf.sprintf "%s%s -> %s; " !str (Variable.display Terminal Recipe ~v_type:true var) (display Terminal Recipe r'); *)
               iter_variables_and_axioms (fun ax_op var_op -> match ax_op,var_op with
                 | Some ax, None -> used_axioms := IntSet.add (Axiom.index_of ax) !used_axioms
                 | None, Some v -> max_var := max !max_var (Variable.type_of v)
@@ -572,7 +572,7 @@ let is_block_list_authorized b_list snd_subst = match b_list with
               ) r';
             ) block.recipes;
 
-            (*str := !str^"\n";*)
+            (* str := !str^"\n"; *)
 
             { block with
               used_axioms = !used_axioms;
@@ -585,7 +585,7 @@ let is_block_list_authorized b_list snd_subst = match b_list with
       let rec explore_block = function
         | [] -> true
         | [_] -> true
-        | block::q when is_faulty_block block q -> (*Printf.printf "%s\n\n" !str; *) false
+        | block::q when is_faulty_block block q -> (*Printf.printf "%s\n\n" !str;*) false
         | _::q -> explore_block q
       in
 

@@ -1690,7 +1690,7 @@ type semantics =
   | Private
   | Eavesdrop
 
-let chosen_semantics = ref Classic
+let chosen_semantics = ref Private
 
 type equivalence =
   | Trace_Equivalence

@@ -4,7 +4,7 @@ let debug_activated = false
 
 let internal_error msg =
   Printf.printf "Internal error : %s\nPlease report the bug to vincent.cheval@loria.fr with the input file and output\n" msg;
-  raise (Internal_error msg)
+  exit 0
 
 let debug =
   if debug_activated
@@ -24,7 +24,7 @@ let test =
 
 let version = ref "VERSION"
 let git_commit = ref "GITCOMMIT"
-    
+
 (**** Paths ****)
 
 let path_deepsec = ref ""

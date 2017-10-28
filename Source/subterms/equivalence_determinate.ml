@@ -36,6 +36,33 @@ type result_skeleton =
   | OK of configuration * configuration
   | Faulty of bool * configuration * action
 
+let rec subsume equiv_pbl csys origin prev = function
+  | [] -> equiv_pbl :: prev
+  | eq_pbl::q ->
+      let csys' = match Constraint_system.Set.elements eq_pbl.csys_set with
+        | [csys';_] when (Constraint_system.get_additional_data csys').origin_process = origin -> csys'
+        | [_;csys'] -> csys'
+        | _ -> Config.internal_error "[equivalence_determinate >> is_subsumed_or_subsume] There should be only two constraint systems: one left, one right."
+      in
+      if Constraint_system.subsume false csys csys'
+      then subsume equiv_pbl csys origin prev q
+      else subsume equiv_pbl csys origin (eq_pbl::prev) q
+
+let rec is_subsumed_or_subsume equiv_pbl csys origin prev = function
+  | [] -> equiv_pbl :: prev
+  | eq_pbl::q ->
+      let csys' = match Constraint_system.Set.elements eq_pbl.csys_set with
+        | [csys';_] when (Constraint_system.get_additional_data csys').origin_process = origin -> csys'
+        | [_;csys'] -> csys'
+        | _ -> Config.internal_error "[equivalence_determinate >> is_subsumed_or_subsume] There should be only two constraint systems: one left, one right."
+      in
+      if Constraint_system.subsume false csys csys'
+      then subsume equiv_pbl csys origin prev q
+      else if Constraint_system.subsume false csys' csys
+      then List.rev_append prev (eq_pbl::q)
+      else is_subsumed_or_subsume equiv_pbl csys origin (eq_pbl::prev) q
+
+
 let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
   Config.debug (fun () ->
@@ -46,6 +73,11 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           -> ()
       | _ -> Config.internal_error "[equivalence_determinate >> apply_one_transition_and_rules] There should be only two constraint systems: one left, one right."
   );
+
+  let rec explore f_next_1 = function
+    | [] -> f_next_1 ()
+    | eq_pbl :: q -> f_continuation eq_pbl (fun () -> explore f_next_1 q)
+  in
 
   (*** Selection of the transition rule to apply ***)
 
@@ -71,6 +103,15 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
               | Constraint_system.Bot -> ()
           )
         ) equiv_pbl.csys_set;
+
+        let equiv_pbl_list = ref [] in
+
+        let subsume_continuation equiv_pbl_2 f_next_2 =
+          let csys = Constraint_system.Set.choose equiv_pbl_2.csys_set in
+          let origin = (Constraint_system.get_additional_data csys).origin_process in
+          equiv_pbl_list := is_subsumed_or_subsume equiv_pbl_2 csys origin [] !equiv_pbl_list;
+          f_next_2 ()
+        in
 
         (*** Application of the transformation rules for inputs ***)
 
@@ -137,7 +178,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                     let csys_set = Constraint_system.Set.add csys_left (Constraint_system.Set.add csys_right Constraint_system.Set.empty) in
                     let block = create_block initial_label in
                     let equiv_pbl_1 = { equiv_pbl with ongoing_block = Some block; csys_set = csys_set } in
-                    f_continuation equiv_pbl_1 f_next
+                    subsume_continuation equiv_pbl_1 f_next
                 | Faulty (is_left,f_conf,f_action) ->
                     let wit_csys, symb_proc = if is_left then csys_left, symb_left else csys_right, symb_right in
                     let fst_subst = Constraint_system.get_substitution_solution Protocol wit_csys in
@@ -154,7 +195,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                     end
         in
 
-        in_apply_sat !csys_set_for_start f_next
+        in_apply_sat !csys_set_for_start (fun () -> explore f_next !equiv_pbl_list)
     | RStartIn ->
         let var_X = Variable.fresh Recipe Free (Variable.snd_ord_type equiv_pbl.size_frame) in
 
@@ -171,6 +212,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
         apply_start_in var_X !csys_conf_list apply_conf (fun csys_var_list label f_next_1 ->
           let csys_set_for_input = ref Constraint_system.Set.empty in
+
           List.iter (fun (csys,x) ->
             let symb_proc = Constraint_system.get_additional_data csys in
             let fst_subst = Constraint_system.get_substitution_solution Protocol csys in
@@ -189,6 +231,15 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                 | Constraint_system.Bot -> ()
             )
           ) csys_var_list;
+
+          let equiv_pbl_list = ref [] in
+
+          let subsume_continuation equiv_pbl_2 f_next_2 =
+            let csys = Constraint_system.Set.choose equiv_pbl_2.csys_set in
+            let origin = (Constraint_system.get_additional_data csys).origin_process in
+            equiv_pbl_list := is_subsumed_or_subsume equiv_pbl_2 csys origin [] !equiv_pbl_list;
+            f_next_2 ()
+          in
 
           let rec in_apply_sat csys_set f_next =
             Constraint_system.Rule.sat csys_set {
@@ -253,20 +304,21 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
                 match result_skel_test with
                   | OK (conf_left, conf_right) ->
+                      let block = create_block label in
+                      let block_1 = add_variable_in_block var_X block in
                       let snd_subst = Constraint_system.get_substitution_solution Recipe csys in
-                      if Subst.check_good_recipes snd_subst && is_block_list_authorized complete_blocks_1 snd_subst
+                      if Subst.check_good_recipes snd_subst && is_block_list_authorized complete_blocks_1 block_1 snd_subst
                       then
                         let csys_left = Constraint_system.replace_additional_data csys_left { symb_left with configuration = conf_left } in
                         let csys_right = Constraint_system.replace_additional_data csys_right { symb_right with configuration = conf_right } in
                         let csys_set_2 = Constraint_system.Set.add csys_left (Constraint_system.Set.add csys_right Constraint_system.Set.empty) in
-                        let block = create_block label in
-                        let block_1 = add_variable_in_block var_X block in
+
                         let equiv_pbl_1 = { equiv_pbl with complete_blocks = complete_blocks_1; ongoing_block = Some block_1; csys_set = csys_set_2 } in
                         (*let _ =
                           Printf.printf "%s\n" (Process_determinate.display_block (block_1::complete_blocks_1) snd_subst);
                           flush_all ()
                         in*)
-                        f_continuation equiv_pbl_1 f_next
+                        subsume_continuation equiv_pbl_1 f_next
                       else f_next ()
                   | Faulty (is_left,f_conf,f_action) ->
                       let wit_csys, symb_proc = if is_left then csys_left, symb_left else csys_right, symb_right in
@@ -283,7 +335,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                       end
           in
 
-          in_apply_sat !csys_set_for_input f_next_1
+          in_apply_sat !csys_set_for_input (fun () -> explore f_next_1 !equiv_pbl_list)
         ) f_next
     | RPosIn ->
         let var_X = Variable.fresh Recipe Free (Variable.snd_ord_type equiv_pbl.size_frame) in
@@ -309,6 +361,15 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
               | Constraint_system.Bot -> ()
           )
         ) equiv_pbl.csys_set;
+
+        let equiv_pbl_list = ref [] in
+
+        let subsume_continuation equiv_pbl_2 f_next_2 =
+          let csys = Constraint_system.Set.choose equiv_pbl_2.csys_set in
+          let origin = (Constraint_system.get_additional_data csys).origin_process in
+          equiv_pbl_list := is_subsumed_or_subsume equiv_pbl_2 csys origin [] !equiv_pbl_list;
+          f_next_2 ()
+        in
 
         let rec in_apply_sat csys_set f_next =
           Constraint_system.Rule.sat csys_set {
@@ -368,18 +429,18 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
               match result_skel_test with
                 | OK (conf_left, conf_right) ->
+                    let block = match equiv_pbl.ongoing_block with
+                      | None -> Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] Ongoing blocks should exists (2)."
+                      | Some b -> add_variable_in_block var_X b
+                    in
                     let snd_subst = Constraint_system.get_substitution_solution Recipe csys in
-                    if Subst.check_good_recipes snd_subst && is_block_list_authorized equiv_pbl.complete_blocks snd_subst
+                    if Subst.check_good_recipes snd_subst && is_block_list_authorized equiv_pbl.complete_blocks block snd_subst
                     then
                       let csys_left = Constraint_system.replace_additional_data csys_left { symb_left with configuration = conf_left } in
                       let csys_right = Constraint_system.replace_additional_data csys_right { symb_right with configuration = conf_right } in
                       let csys_set_2 = Constraint_system.Set.add csys_left (Constraint_system.Set.add csys_right Constraint_system.Set.empty) in
-                      let block = match equiv_pbl.ongoing_block with
-                        | None -> Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] Ongoing blocks should exists (2)."
-                        | Some b -> add_variable_in_block var_X b
-                      in
                       let equiv_pbl_1 = { equiv_pbl with ongoing_block = Some block; csys_set = csys_set_2 } in
-                      f_continuation equiv_pbl_1 f_next
+                      subsume_continuation equiv_pbl_1 f_next
                     else f_next ()
                 | Faulty (is_left,f_conf,f_action) ->
                     let wit_csys, symb_proc = if is_left then csys_left, symb_left else csys_right, symb_right in
@@ -396,7 +457,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                     end
         in
 
-        in_apply_sat !csys_set_for_input f_next
+        in_apply_sat !csys_set_for_input (fun () -> explore f_next !equiv_pbl_list)
     | RNegOut ->
         let axiom = Axiom.create (equiv_pbl.size_frame + 1) in
 
@@ -420,6 +481,15 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
               | Constraint_system.Bot -> ()
           )
         ) equiv_pbl.csys_set;
+
+        let equiv_pbl_list = ref [] in
+
+        let subsume_continuation equiv_pbl_2 f_next_2 =
+          let csys = Constraint_system.Set.choose equiv_pbl_2.csys_set in
+          let origin = (Constraint_system.get_additional_data csys).origin_process in
+          equiv_pbl_list := is_subsumed_or_subsume equiv_pbl_2 csys origin [] !equiv_pbl_list;
+          f_next_2 ()
+        in
 
         let rec out_apply_sat csys_set f_next =
           Constraint_system.Rule.sat csys_set {
@@ -509,18 +579,19 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
               match result_skel_test with
                 | OK (conf_left, conf_right) ->
+                    let block = match equiv_pbl.ongoing_block with
+                      | None -> Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] Ongoing blocks should exists (2)."
+                      | Some b -> add_axiom_in_block axiom b
+                    in
                     let snd_subst = Constraint_system.get_substitution_solution Recipe csys in
-                    if Subst.check_good_recipes snd_subst && is_block_list_authorized equiv_pbl.complete_blocks snd_subst
+                    if Subst.check_good_recipes snd_subst && is_block_list_authorized equiv_pbl.complete_blocks block snd_subst
                     then
                       let csys_left = Constraint_system.replace_additional_data csys_left { symb_left with configuration = conf_left } in
                       let csys_right = Constraint_system.replace_additional_data csys_right { symb_right with configuration = conf_right } in
                       let csys_set_2 = Constraint_system.Set.add csys_left (Constraint_system.Set.add csys_right Constraint_system.Set.empty) in
-                      let block = match equiv_pbl.ongoing_block with
-                        | None -> Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] Ongoing blocks should exists (2)."
-                        | Some b -> add_axiom_in_block axiom b
-                      in
+
                       let equiv_pbl_1 = { equiv_pbl with size_frame = equiv_pbl.size_frame + 1; ongoing_block = Some block; csys_set = csys_set_2 } in
-                      f_continuation equiv_pbl_1 f_next
+                      subsume_continuation equiv_pbl_1 f_next
                     else f_next ()
                 | Faulty (is_left,f_conf,f_action) ->
                     let wit_csys, symb_proc  = if is_left then csys_left, symb_left else csys_right, symb_right in
@@ -536,7 +607,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                           raise (Not_Trace_Equivalent wit_csys_2)
         in
 
-        out_apply_sat (Constraint_system.Set.initialise_for_output !csys_set_for_output) f_next
+        out_apply_sat (Constraint_system.Set.initialise_for_output !csys_set_for_output) (fun () -> explore f_next !equiv_pbl_list)
     | RNothing ->
         if Constraint_system.Set.is_empty equiv_pbl.csys_set
         then f_next ()
