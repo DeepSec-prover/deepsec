@@ -34,6 +34,8 @@ val size_trace : configuration -> int
 
 (** {3 Testing} *)
 
+val have_else_branch_or_par_conf : configuration -> bool
+
 val is_action_determinate : Process.expansed_process -> bool
 
 val is_block_list_authorized : block list -> block -> (snd_ord, axiom) Subst.t -> bool

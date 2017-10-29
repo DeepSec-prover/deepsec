@@ -217,6 +217,8 @@ module Set : sig
   (** [for_all f] {% $S$ %} returns [true] iff for all constraint system {% $\C \in S$, %} [f] {% $\C$ %} [= true].*)
   val for_all : ('a csys -> bool) -> 'a t -> bool
 
+  val exists : ('a csys -> bool) -> 'a t -> bool
+
   val size : 'a t -> int
 
   (** Returns true if the set is empty. *)

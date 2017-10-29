@@ -634,16 +634,22 @@ type dismodulo_result =
   | DiseqTop
   | DiseqList of (fst_ord, name) Diseq.t list
 
-let rec have_else_branch_or_par = function
+let rec have_else_branch_or_par_simple_det = function
   | Start _
   | Nil
   | OutputSure _
   | Input _
   | Output _ -> false
   | IfThenElse(_,_,p,Nil,_)
-  | Let(_,_,_,p,Nil,_) -> have_else_branch_or_par p
-  | New(_,p,_) -> have_else_branch_or_par p
+  | Let(_,_,_,p,Nil,_) -> have_else_branch_or_par_simple_det p
+  | New(_,p,_) -> have_else_branch_or_par_simple_det p
   | _ -> true
+
+let have_else_branch_or_par_conf conf = match conf.unsure_proc, conf.focused_proc with
+  | None,None -> false
+  | None, Some p
+  | Some p, None -> have_else_branch_or_par_simple_det p.proc
+  | _, _ -> Config.internal_error "[process_determinate.ml >> have_else_branch_or_par_conf] A configuration cannot be released and focused at the same time."
 
 let rec normalise_simple_det_process proc else_branch equations disequations f_continuation f_next = match proc with
   | Start _
@@ -867,7 +873,7 @@ and normalise_simple_det_process_list p_list else_branch equations disequations 
       ) f_next
 
 let normalise_det_process p_det else_branch equations disequations f_continuation f_next =
-  normalise_simple_det_process p_det.proc (else_branch && have_else_branch_or_par p_det.proc) equations disequations (fun gather p f_next_1 ->
+  normalise_simple_det_process p_det.proc else_branch equations disequations (fun gather p f_next_1 ->
     f_continuation gather { p_det with proc = p } f_next_1
   ) f_next
 
@@ -889,7 +895,7 @@ let normalise_configuration conf else_branch equations f_continuation =
           f_continuation gather { conf with sure_uncheked_skeletons = Some p_1; unsure_proc = None };
           f_next ()
         ) (fun () -> ())
-    | _, _ -> Config.internal_error "[process_determinate.ml >> normalise_configuration] A configure cannot be released and focused at the same time."
+    | _, _ -> Config.internal_error "[process_determinate.ml >> normalise_configuration] A configuration cannot be released and focused at the same time."
 
 type next_rule =
   | RStart

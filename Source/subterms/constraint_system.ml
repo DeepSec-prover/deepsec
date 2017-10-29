@@ -1901,6 +1901,8 @@ module Set = struct
 
   let for_all f csys_set = List.for_all f csys_set.csys_list
 
+  let exists f csys_set = List.exists f csys_set.csys_list
+
   let is_empty csys_set = csys_set.csys_list = []
 
   let iter f csys_set = List.iter f csys_set.csys_list

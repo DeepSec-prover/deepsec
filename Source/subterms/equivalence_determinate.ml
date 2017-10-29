@@ -62,7 +62,6 @@ let rec is_subsumed_or_subsume equiv_pbl csys origin prev = function
       then List.rev_append prev (eq_pbl::q)
       else is_subsumed_or_subsume equiv_pbl csys origin (eq_pbl::prev) q
 
-
 let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
   Config.debug (fun () ->
@@ -88,12 +87,18 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
     | RStart ->
         let csys_set_for_start = ref Constraint_system.Set.empty in
 
+        let else_branch =
+          if equiv_pbl.else_branch
+          then Constraint_system.Set.exists (fun csys -> have_else_branch_or_par_conf (Constraint_system.get_additional_data csys).configuration) equiv_pbl.csys_set
+          else false
+        in
+
         Constraint_system.Set.iter (fun csys ->
           let symb_proc = Constraint_system.get_additional_data csys in
           let conf = apply_start symb_proc.configuration in
           let fst_subst = Constraint_system.get_substitution_solution Protocol csys in
 
-          normalise_configuration conf equiv_pbl.else_branch fst_subst (fun gathering conf_1 ->
+          normalise_configuration conf else_branch fst_subst (fun gathering conf_1 ->
             try
               let csys_1 = Constraint_system.apply_substitution csys gathering.equations in
               let csys_2 = Constraint_system.add_disequations Protocol csys_1 gathering.disequations in
@@ -213,11 +218,17 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
         apply_start_in var_X !csys_conf_list apply_conf (fun csys_var_list label f_next_1 ->
           let csys_set_for_input = ref Constraint_system.Set.empty in
 
+          let else_branch =
+            if equiv_pbl.else_branch
+            then List.exists (fun (csys,_) -> have_else_branch_or_par_conf (Constraint_system.get_additional_data csys).configuration) csys_var_list
+            else false
+          in
+
           List.iter (fun (csys,x) ->
             let symb_proc = Constraint_system.get_additional_data csys in
             let fst_subst = Constraint_system.get_substitution_solution Protocol csys in
 
-            normalise_configuration symb_proc.configuration equiv_pbl.else_branch fst_subst (fun gathering conf_1 ->
+            normalise_configuration symb_proc.configuration else_branch fst_subst (fun gathering conf_1 ->
               let term_x = Subst.apply gathering.equations (of_variable x) (fun x f -> f x) in
               let ded_fact_term = BasicFact.create var_X term_x in
 
@@ -342,12 +353,18 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
         let csys_set_for_input = ref Constraint_system.Set.empty in
 
+        let else_branch =
+          if equiv_pbl.else_branch
+          then Constraint_system.Set.exists (fun csys -> have_else_branch_or_par_conf (Constraint_system.get_additional_data csys).configuration) equiv_pbl.csys_set
+          else false
+        in
+
         Constraint_system.Set.iter (fun csys ->
           let symb_proc = Constraint_system.get_additional_data csys in
           let conf,x = apply_pos_in var_X symb_proc.configuration in
           let fst_subst = Constraint_system.get_substitution_solution Protocol csys in
 
-          normalise_configuration conf equiv_pbl.else_branch fst_subst (fun gathering conf_1 ->
+          normalise_configuration conf else_branch fst_subst (fun gathering conf_1 ->
             let term_x = Subst.apply gathering.equations (of_variable x) (fun x f -> f x) in
             let ded_fact_term = BasicFact.create var_X term_x in
 
@@ -463,12 +480,18 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
         let csys_set_for_output = ref Constraint_system.Set.empty in
 
+        let else_branch =
+          if equiv_pbl.else_branch
+          then Constraint_system.Set.exists (fun csys -> have_else_branch_or_par_conf (Constraint_system.get_additional_data csys).configuration) equiv_pbl.csys_set
+          else false
+        in
+
         Constraint_system.Set.iter (fun csys ->
           let symb_proc = Constraint_system.get_additional_data csys in
           let conf, term = apply_neg_out axiom symb_proc.configuration in
           let fst_subst = Constraint_system.get_substitution_solution Protocol csys in
 
-          normalise_configuration conf equiv_pbl.else_branch fst_subst (fun gathering conf_1 ->
+          normalise_configuration conf else_branch fst_subst (fun gathering conf_1 ->
             let term' = Subst.apply gathering.equations term (fun x f -> f x) in
 
             try
