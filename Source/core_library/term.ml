@@ -1250,13 +1250,16 @@ let rec var_occurs_or_out_of_world (var:snd_ord_variable) (r:recipe) =
     if r.ground <> is_ground_debug r
     then Config.internal_error "[term.ml >> var_occurs_or_out_of_world] Conflict with ground."
   );
-  match r.term with
-    | Var(v) when Variable.is_equal v var -> true
-    | Var({link = TLink t; _}) -> var_occurs_or_out_of_world var t
-    | Var(v) when v.var_type > var.var_type -> true
-    | AxName(ax) when ax > var.var_type -> true
-    | Func(_,args) -> List.exists (var_occurs_or_out_of_world var) args
-    | _ -> false
+  if r.ground
+  then false
+  else
+    match r.term with
+      | Var(v) when Variable.is_equal v var -> true
+      | Var({link = TLink t; _}) -> var_occurs_or_out_of_world var t
+      | Var(v) when v.var_type > var.var_type -> true
+      | AxName(ax) when ax > var.var_type -> true
+      | Func(_,args) -> List.exists (var_occurs_or_out_of_world var) args
+      | _ -> false
 
 let rec quantified_var_occurs quantifier term =
   if term.ground

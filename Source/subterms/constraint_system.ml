@@ -1092,7 +1092,7 @@ let simple_of_formula (type a) (fct: a Fact.t) csys (form: a Fact.formula) = mat
 
       let df_1 = List.fold_left DF.add df_0 b_fct_hypothesis_2 in
       let sub_cons_1 = List.fold_left (fun acc bfct -> Uniformity_Set.add acc (of_variable (BasicFact.get_snd_ord_variable bfct)) (BasicFact.get_protocol_term bfct)) sub_cons_0 b_fct_hypothesis_2 in
-(*
+      (*
       let (sub_cons_1,sdf_1) =
         if is_function recipe_1_2 && Symbol.get_arity (root recipe_1_2) > 0
         then List.fold_left (fun (acc_sub_cons_1,acc_sdf_1) r -> Tools.add_in_uniset acc_sub_cons_1 acc_sdf_1 df_1 r) (sub_cons_0,sdf_0) (get_args recipe_1_2)

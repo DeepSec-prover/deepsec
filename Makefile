@@ -9,7 +9,7 @@ SOURCE = Source/
 #  make NATIVECODE="" <target>
 DEBUG=
 PROFIL=
-OCAMLOPT=$(if $(PROFIL),ocamloptp -p -P f,$(if $(DEBUG), ocamlc -g,ocamlopt))
+OCAMLOPT=$(if $(PROFIL),ocamloptp -p -P a,$(if $(DEBUG), ocamlc -g,ocamlopt))
 OCAMLDEP=ocamldep $(if $(DEBUG), ,-native)
 OCAMLDOC=ocamldoc
 
