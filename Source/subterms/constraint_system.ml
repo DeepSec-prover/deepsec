@@ -841,7 +841,7 @@ let one_mgs csys =
         then None
         else
           try
-            Some(Subst.unify Protocol [(b_term,term)],Subst.create b_recipe recipe)
+            Some(Subst.unify Protocol [(b_term,term)],Subst.create Recipe b_recipe recipe)
           with
           | Subst.Not_unifiable -> None
       in
@@ -1586,7 +1586,7 @@ let exists_match_mgs csys f_pred =
         then f_next ()
         else
           begin
-            let subst_snd = Subst.create b_recipe recipe in
+            let subst_snd = Subst.create Recipe b_recipe recipe in
 
             let df_1 = DF.remove csys.simp_DF b_recipe in
 
