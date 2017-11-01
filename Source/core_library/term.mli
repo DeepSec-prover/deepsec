@@ -984,6 +984,8 @@ module Rewrite_rules : sig
       rewrite_rule : symbol * protocol_term list * protocol_term
     }
 
+  val reset_skeletons : unit -> unit
+
   val has_constant_as_rhs : symbol -> bool
 
   (** [skeletons] {% $u$~$\ffun$~$k$ returns the list of skeletons $(\xi,t,D) = \Skel{\ell}{p}$ such that $\vars{\xi} \in \Xdeuxi{k}$, $\ell \rightarrow r \in \R$, $\rootsymb{\ell} = \ffun$,
