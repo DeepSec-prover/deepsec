@@ -3174,6 +3174,10 @@ module Rewrite_rules = struct
   let all_deduction_skeletons = Hashtbl.create !Symbol.number_of_destructors
   let all_equality_skeletons = Hashtbl.create !Symbol.number_of_destructors
 
+  let reset_skeletons () =
+    Hashtbl.reset all_equality_skeletons;
+    Hashtbl.reset all_deduction_skeletons
+
   let rec is_r_subterm r term =
     if is_equal Protocol term r
     then true

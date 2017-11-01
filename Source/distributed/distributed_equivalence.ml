@@ -63,6 +63,7 @@ struct
   let evaluation job =
     Variable.set_up_counter job.variable_counter;
     Name.set_up_counter job.name_counter;
+    Rewrite_rules.reset_skeletons ();
     Symbol.set_up_signature
       {
         Symbol.all_t = job.all_tuples;
@@ -110,6 +111,7 @@ struct
   let generate_jobs job =
     Variable.set_up_counter job.variable_counter;
     Name.set_up_counter job.name_counter;
+    Rewrite_rules.reset_skeletons ();
     Symbol.set_up_signature
       {
         Symbol.all_t = job.all_tuples;
