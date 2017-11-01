@@ -648,10 +648,13 @@ let mgs csys =
       and recipe = Fact.get_recipe fct in
 
       let unif_opt =
-        try
-          Some(Subst.unify Protocol [(b_term,term)],Subst.unify Recipe [(of_variable b_recipe,recipe)])
-        with
-        | Subst.Not_unifiable -> None
+        if var_occurs b_recipe recipe
+        then None
+        else
+          try
+            Some(Subst.unify Protocol [(b_term,term)],Subst.create Recipe b_recipe recipe)
+          with
+            | Subst.Not_unifiable -> None
       in
 
       match unif_opt with
@@ -834,10 +837,13 @@ let one_mgs csys =
       and recipe = Fact.get_recipe fct in
 
       let unif_opt =
-        try
-          Some(Subst.unify Protocol [(b_term,term)],Subst.unify Recipe [(of_variable b_recipe,recipe)])
-        with
-        | Subst.Not_unifiable -> None
+        if var_occurs b_recipe recipe
+        then None
+        else
+          try
+            Some(Subst.unify Protocol [(b_term,term)],Subst.create b_recipe recipe)
+          with
+          | Subst.Not_unifiable -> None
       in
 
       match unif_opt with
@@ -1576,42 +1582,36 @@ let exists_match_mgs csys f_pred =
 
       if is_equal Protocol term b_term
       then
-        begin
-          let unif_opt =
-            try
-              Some(Subst.unify Recipe [(of_variable b_recipe,recipe)])
-            with
-            | Subst.Not_unifiable -> None
-          in
+        if var_occurs b_recipe recipe
+        then f_next ()
+        else
+          begin
+            let subst_snd = Subst.create b_recipe recipe in
 
-          match unif_opt with
-            | None -> f_next ()
-            | Some(subst_snd) ->
+            let df_1 = DF.remove csys.simp_DF b_recipe in
 
-                let df_1 = DF.remove csys.simp_DF b_recipe in
+            Config.debug (fun () ->
+              if not (Uniformity_Set.exists csys.simp_Sub_Cons (of_variable b_recipe) b_term)
+              then Config.internal_error "[Constraint_system.ml >> exists_match_mgs] Elements of DF should always be in the uniformity set."
+            );
 
-                Config.debug (fun () ->
-                  if not (Uniformity_Set.exists csys.simp_Sub_Cons (of_variable b_recipe) b_term)
-                  then Config.internal_error "[Constraint_system.ml >> exists_match_mgs] Elements of DF should always be in the uniformity set."
-                );
+            let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst_snd Subst.identity in
 
-                let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst_snd Subst.identity in
+            let csys' = { csys with
+                simp_DF = df_1;
+                simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst_snd;
+                simp_SDF = SDF.apply csys.simp_SDF subst_snd Subst.identity;
+                simp_Sub_Cons = sub_cons_1
+              }
 
-                let csys' = { csys with
-                    simp_DF = df_1;
-                    simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst_snd;
-                    simp_SDF = SDF.apply csys.simp_SDF subst_snd Subst.identity;
-                    simp_Sub_Cons = sub_cons_1
-                  }
+            in
 
-                in
+            (* Check that eqfst and eqsnd are not bot and that the normalisation rule for unification is not triggered *)
 
-                (* Check that eqfst and eqsnd are not bot and that the normalisation rule for unification is not triggered *)
-
-                if Eq.is_bot csys'.simp_EqSnd
-                then f_next ()
-                else (apply_rules [@tailcall]) csys' f_next
-        end
+            if Eq.is_bot csys'.simp_EqSnd
+            then f_next ()
+            else (apply_rules [@tailcall]) csys' f_next
+          end
       else f_next ()
     in
 
