@@ -14,7 +14,7 @@ Automated verification has become an essential part in the security evaluation o
 
 ### Installation of DeepSec
 
-1. Run `git checkout https://github.com/DeepSec-prover/deepsec.git` (with a HTTPS connexion) or `git checkout git@github.com:DeepSec-prover/deepsec.git` (with a SSH connexion)
+1. Run `git clone https://github.com/DeepSec-prover/deepsec.git` (with a HTTPS connexion) or `git clone git@github.com:DeepSec-prover/deepsec.git` (with a SSH connexion)
 2. Inside the directory `deepsec`, run `make`
 3. The executable program `deepsec` has been built.
 4. Add the `deepsec` executable to your path, e.g. if your shell is bash, add the line `export DEEPSEC_DIR=<path to the deepsec folder>/deepsec` to the .bash_profile file
