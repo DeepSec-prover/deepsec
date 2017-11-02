@@ -1026,7 +1026,7 @@ let simple_of_formula (type a) (fct: a Fact.t) csys (form: a Fact.formula) = mat
       let b_fct_hypothesis_1 =
         Variable.Renaming.apply_on_terms fst_renaming b_fct_hypothesis (fun l f -> List.fold_left (fun acc b_fct -> (BasicFact.create (BasicFact.get_snd_ord_variable b_fct) (f (BasicFact.get_protocol_term b_fct)))::acc) [] l) in
 
-      let b_fct_hypothesis_2, _ (*recipe_head_2*) =
+      let b_fct_hypothesis_2, recipe_head_2 =
         Variable.Renaming.apply_on_terms snd_renaming (b_fct_hypothesis_1,recipe_head) (fun (l,r) f ->
           List.fold_left (fun acc b_fct ->
             let v = of_variable (BasicFact.get_snd_ord_variable b_fct) in
@@ -1045,18 +1045,18 @@ let simple_of_formula (type a) (fct: a Fact.t) csys (form: a Fact.formula) = mat
       and sub_cons_0 = Uniformity_Set.apply csys.sub_cons Subst.identity mgu_hypothesis_2 in
 
       let df_1 = List.fold_left DF.add df_0 b_fct_hypothesis_2 in
-      let sub_cons_1 = List.fold_left (fun acc bfct -> Uniformity_Set.add acc (of_variable (BasicFact.get_snd_ord_variable bfct)) (BasicFact.get_protocol_term bfct)) sub_cons_0 b_fct_hypothesis_2 in
-      (*let (sub_cons_1,sdf_1) =
+      (*let sub_cons_1 = List.fold_left (fun acc bfct -> Uniformity_Set.add acc (of_variable (BasicFact.get_snd_ord_variable bfct)) (BasicFact.get_protocol_term bfct)) sub_cons_0 b_fct_hypothesis_2 in*)
+      let (sub_cons_1,sdf_1) =
         if is_function recipe_head_2 && Symbol.get_arity (root recipe_head_2) > 0
         then List.fold_left (fun (acc_sub_cons_1,acc_sdf_1) r -> Tools.add_in_uniset acc_sub_cons_1 acc_sdf_1 df_1 r) (sub_cons_0,sdf_0) (get_args recipe_head_2)
         else (sub_cons_0,sdf_0)
-      in*)
+      in
 
       let simple_csys = {
         simp_DF = df_1;
         simp_EqFst = eqfst_0;
         simp_EqSnd = csys.eqsnd;
-        simp_SDF = sdf_0;
+        simp_SDF = sdf_1;
         simp_Sub_Cons = sub_cons_1
       } in
 
@@ -1077,7 +1077,7 @@ let simple_of_formula (type a) (fct: a Fact.t) csys (form: a Fact.formula) = mat
       let b_fct_hypothesis_1 =
         Variable.Renaming.apply_on_terms fst_renaming b_fct_hypothesis (fun l f -> List.fold_left (fun acc b_fct -> (BasicFact.create (BasicFact.get_snd_ord_variable b_fct) (f (BasicFact.get_protocol_term b_fct)))::acc) [] l) in
 
-      let b_fct_hypothesis_2, _, _ (* recipe_1_2, recipe_2_2 *) =
+      let b_fct_hypothesis_2, recipe_1_2, recipe_2_2 =
         Variable.Renaming.apply_on_terms snd_renaming (b_fct_hypothesis_1,recipe_1, recipe_2) (fun (l,r1,r2) f ->
           List.fold_left (fun acc b_fct ->
             let v = of_variable (BasicFact.get_snd_ord_variable b_fct) in
@@ -1097,8 +1097,8 @@ let simple_of_formula (type a) (fct: a Fact.t) csys (form: a Fact.formula) = mat
       and sub_cons_0 = Uniformity_Set.apply csys.sub_cons Subst.identity mgu_hypothesis_2 in
 
       let df_1 = List.fold_left DF.add df_0 b_fct_hypothesis_2 in
-      let sub_cons_1 = List.fold_left (fun acc bfct -> Uniformity_Set.add acc (of_variable (BasicFact.get_snd_ord_variable bfct)) (BasicFact.get_protocol_term bfct)) sub_cons_0 b_fct_hypothesis_2 in
-      (*
+      (* let sub_cons_1 = List.fold_left (fun acc bfct -> Uniformity_Set.add acc (of_variable (BasicFact.get_snd_ord_variable bfct)) (BasicFact.get_protocol_term bfct)) sub_cons_0 b_fct_hypothesis_2 in *)
+
       let (sub_cons_1,sdf_1) =
         if is_function recipe_1_2 && Symbol.get_arity (root recipe_1_2) > 0
         then List.fold_left (fun (acc_sub_cons_1,acc_sdf_1) r -> Tools.add_in_uniset acc_sub_cons_1 acc_sdf_1 df_1 r) (sub_cons_0,sdf_0) (get_args recipe_1_2)
@@ -1109,14 +1109,14 @@ let simple_of_formula (type a) (fct: a Fact.t) csys (form: a Fact.formula) = mat
         if is_function recipe_2_2 && Symbol.get_arity (root recipe_2_2) > 0
         then List.fold_left (fun (acc_sub_cons_1,acc_sdf_1) r -> Tools.add_in_uniset acc_sub_cons_1 acc_sdf_1 df_1 r) (sub_cons_1,sdf_1) (get_args recipe_2_2)
         else (sub_cons_1,sdf_1)
-      in*)
+      in
 
       let simple_csys = {
         simp_DF = df_1;
         simp_EqFst = eqfst_0;
         simp_EqSnd = csys.eqsnd;
-        simp_SDF = sdf_0;
-        simp_Sub_Cons = sub_cons_1
+        simp_SDF = sdf_2;
+        simp_Sub_Cons = sub_cons_2
       } in
 
       let result = (fst_renaming, snd_renaming, simple_csys) in
@@ -1172,7 +1172,7 @@ let simple_of_skeleton_EQ csys id_sdf skeleton =
 
   let snd_renaming = Variable.Renaming.fresh Recipe snd_univ Existential in
 
-  let b_fct_hypothesis_2, _ (*recipe_head_2*) =
+  let b_fct_hypothesis_2, recipe_head_2 =
     Variable.Renaming.apply_on_terms snd_renaming (b_fct_hypothesis,recipe_head) (fun (l,r) f ->
       List.fold_left (fun acc b_fct ->
         let v = of_variable (BasicFact.get_snd_ord_variable b_fct) in
@@ -1191,18 +1191,18 @@ let simple_of_skeleton_EQ csys id_sdf skeleton =
   let eqfst_1 = List.fold_left Eq.wedge eqfst_0 diseq_hypothesis in
 
   let df_1 = List.fold_left DF.add df_0 b_fct_hypothesis_2 in
-  let sub_cons_1 = List.fold_left (fun acc bfct -> Uniformity_Set.add acc (of_variable (BasicFact.get_snd_ord_variable bfct)) (BasicFact.get_protocol_term bfct)) sub_cons_0 b_fct_hypothesis_2 in
-  (*let (sub_cons_1,sdf_1) =
+  (* let sub_cons_1 = List.fold_left (fun acc bfct -> Uniformity_Set.add acc (of_variable (BasicFact.get_snd_ord_variable bfct)) (BasicFact.get_protocol_term bfct)) sub_cons_0 b_fct_hypothesis_2 in *)
+  let (sub_cons_1,sdf_1) =
     if is_function recipe_head_2 && Symbol.get_arity (root recipe_head_2) > 0
     then List.fold_left (fun (acc_sub_cons_1,acc_sdf_1) r -> Tools.add_in_uniset acc_sub_cons_1 acc_sdf_1 df_1 r) (sub_cons_0,sdf_0) (get_args recipe_head_2)
     else (sub_cons_0,sdf_0)
-  in*)
+  in
 
   let simple_csys = {
     simp_DF = df_1;
     simp_EqFst = eqfst_1;
     simp_EqSnd = csys.eqsnd;
-    simp_SDF = sdf_0;
+    simp_SDF = sdf_1;
     simp_Sub_Cons = sub_cons_1
   } in
 
