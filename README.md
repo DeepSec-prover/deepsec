@@ -27,7 +27,7 @@ Note that two executable programs are compile at the same time as `deepsec`: `wo
 
 ### Input grammar
 
-To use **DeepSec**, you first need to specify your security protocol inside a file. The input grammar of **DeepSec** is very similar to the untyped input grammar of **[ProVerif](http://prosecco.gforge.inria.fr/personal/bblanche/proverif/)**. Examples of input files can be found in the **DeepSec** repository. 
+To use **DeepSec**, you first need to specify your security protocol inside a file. The input grammar of **DeepSec** is very similar to the untyped input grammar of **[ProVerif](http://prosecco.gforge.inria.fr/personal/bblanche/proverif/)**. Examples of input files can be found in the **DeepSec** repository.
 
 Free and privates names can be defined using the keyword `free`.
 
