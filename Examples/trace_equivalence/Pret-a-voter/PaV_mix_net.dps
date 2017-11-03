@@ -26,16 +26,12 @@ reduc
 fun mixProof/7.
 
 reduc
-  checkMix(mixProof(k, enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), xm, ym, zm), enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), xm, ym, zm) -> ok;
-
-  checkMix(mixProof(k, enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), xm, zm, ym), enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), xm, zm, ym) -> ok;
-  checkMix(mixProof(k, enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), ym, xm, zm), enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), ym, xm, zm) -> ok;
-
-  checkMix(mixProof(k, enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), ym, zm, xm), enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), ym, zm, xm) -> ok;
-
-  checkMix(mixProof(k, enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), zm, xm, ym), enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), zm, xm, ym) -> ok;
-
-  checkMix(mixProof(k, enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), zm, ym, xm), enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), zm, ym, xm) -> ok.
+  checkMix(mixProof(k, enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), xm, ym, zm), enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), xm, ym, zm) = ok;
+  checkMix(mixProof(k, enc(xm, pub(k), xr), enc(zm, pub(k), zr), enc(ym, pub(k), yr), xm, zm, ym), enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), xm, zm, ym) = ok;
+  checkMix(mixProof(k, enc(ym, pub(k), yr), enc(xm, pub(k), xr), enc(zm, pub(k), zr), ym, xm, zm), enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), ym, xm, zm) = ok;
+  checkMix(mixProof(k, enc(ym, pub(k), yr), enc(zm, pub(k), zr), enc(xm, pub(k), xr), ym, zm, xm), enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), ym, zm, xm) = ok;
+  checkMix(mixProof(k, enc(zm, pub(k), zr), enc(xm, pub(k), xr), enc(ym, pub(k), yr), zm, xm, ym), enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), zm, xm, ym) = ok;
+  checkMix(mixProof(k, enc(zm, pub(k), zr), enc(ym, pub(k), yr), enc(xm, pub(k), xr), zm, ym, xm), enc(xm, pub(k), xr), enc(ym, pub(k), yr), enc(zm, pub(k), zr), zm, ym, xm) = ok.
 
 (* COMMUNICATION CHANNELS *)
 
