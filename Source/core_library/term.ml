@@ -3354,7 +3354,10 @@ module Rewrite_rules = struct
     in
 
     (* Generate optimised skeletons *)
-    List.iter (fun f -> match f.cat with
+    List.iter (fun f ->
+      if f.public
+      then
+      match f.cat with
       | Destructor rw_rules ->
           List.iter (fun (args,_) ->
             explore_skel_term_list (fun x_snd x_term recipe_l b_fct_list ->
