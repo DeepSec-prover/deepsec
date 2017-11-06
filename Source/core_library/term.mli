@@ -202,6 +202,8 @@ module Variable : sig
   (** The variables of {% $\Xdeux$ %} are typed by an integer. Hence, [snd_ord_type i] corresponds to the type of variables in {% $\Xdeuxi{i}$ %} *)
   val snd_ord_type : int -> snd_ord
 
+  val infinite_snd_ord_type : snd_ord
+
   (** [fresh at q ty] creates a fresh variable quantified by [q] with type [ty]. *)
   val fresh : ('a, 'b) atom -> quantifier -> 'a -> ('a, 'b) variable
 
@@ -223,6 +225,8 @@ module Variable : sig
 
   (** [type_of] {% $X$ returns the type in which the second-variable $X$ is defined, that is returns $i$ when $X \in \Xdeuxi{i}$. %} *)
   val type_of : snd_ord_variable -> int
+
+  val has_infinite_type : snd_ord_variable -> bool
 
   (** A total ordering function over variables. This is a three-argument function [order] such that  [order at x1 x2] is zero if
       the [x1] and [x2] are equal, [order at x1 x2] is strictly negative if [x1] is smaller than [x2], and
@@ -601,6 +605,10 @@ module Subst : sig
   (** [is_in_domain s x] returns [true] iff the variable [x] is in the domain of [s].*)
   val is_in_domain : ('a, 'b) t -> ('a, 'b) variable -> bool
 
+  val not_in_domain : (snd_ord, axiom) t -> (snd_ord, axiom) variable list -> (snd_ord, axiom) variable list
+
+  val check_good_recipes : (snd_ord, axiom) t -> bool
+
   (** [apply_substitution subst elt map_elt] applies the substitution [subst] on the element [elt]. The function
       [map_elt] should map the terms contained in the element [elt] on which [subst] should be applied.
 
@@ -657,18 +665,6 @@ module Subst : sig
   (** {3 Display function} *)
 
   val display : Display.output -> ?rho:display_renamings option -> ('a, 'b) atom -> ('a, 'b) t -> string
-
-  (** {3 Tested functions} *)
-
-  val update_test_unify : ('a, 'b) atom -> ((('a, 'b) term * ('a, 'b) term) list -> ('a, 'b) t option -> unit) -> unit
-
-  val update_test_is_matchable : ('a, 'b) atom -> (('a, 'b) term list -> ('a, 'b) term list -> bool -> unit) -> unit
-
-  val update_test_is_extended_by : ('a, 'b) atom -> (('a, 'b) t -> ('a, 'b) t -> bool -> unit) -> unit
-
-  val update_test_is_equal_equations: ('a, 'b) atom -> (('a, 'b) t -> ('a, 'b) t -> bool -> unit) -> unit
-
-  val check_good_recipes : (snd_ord, axiom) t -> bool
 end
 
 (** {% A valuation in this section corresponds to a triplet of substitutions $(\Phi,\Sigma,\sigma)$ where $\Phi : \AX \rightarrow \T(\Fc,\N)$,
@@ -713,7 +709,7 @@ module Diseq : sig
       $\rho$ is a fresh renaming of $\tilde{x}$ to existential variables and
       $\sigma = \\{ x_i \rightarrow v_i\rho\\}_i^n$.%}
       @raise Internal_error if the disequation is bot. *)
-  val substitution_of : ('a, 'b) atom -> ('a, 'b) t -> ('a, 'b) Subst.t * ('a, 'b) Variable.Renaming.t
+  val substitution_of : (fst_ord, name) t -> (fst_ord, name) Subst.t
 
 
   (** [apply_and_normalise at] {% $\sigma$~$\phi$ applies the substitution $\sigma$ on $\phi$ and normalise
@@ -728,6 +724,17 @@ module Diseq : sig
   (** {4 Testing} *)
 
   val create_for_testing : (('a, 'b) term * ('a, 'b) term) list -> ('a, 'b) t
+
+  module Mixed : sig
+
+    type t
+
+    val is_top : t -> bool
+
+    val is_bot : t -> bool
+
+    val apply_and_normalise : (fst_ord, name) Subst.t -> (snd_ord, axiom) Subst.t -> t -> t
+  end
 end
 
 (** {2 (Dis)equations modulo the rewriting system} *)
@@ -886,9 +893,7 @@ module Fact : sig
 
   exception Bot
 
-  val create : 'a t -> 'a -> BasicFact.t list -> (protocol_term * protocol_term) list -> 'a formula
-
-  val create_for_testing : 'a -> BasicFact.t list -> (fst_ord, name)Subst.t -> 'a formula
+  val create : 'a t -> 'a -> (protocol_term * protocol_term) list -> 'a formula
 
   (** {3 Access} *)
 
@@ -907,9 +912,6 @@ module Fact : sig
   (** [get_mgu_hypothesis] {% $\psi$ returns the substitution $\Fmgu{\psi}$. %} *)
   val get_mgu_hypothesis : 'a formula -> (fst_ord, name) Subst.t
 
-  (** [get_basic_fact_hypothesis] {% $\psi$ returns $\Df(\psi)$. %} *)
-  val get_basic_fact_hypothesis : 'a formula -> BasicFact.t list
-
   (** [get_vars_with_list at fct] {% $\psi$ %} [f_q l] adds the [at] variables in the [fct] formula {% $\psi$ %} whose quantifier satisfies [f_q] in the list [l]. The addition of a variable as the union of sets, i.e. there is no dupplicate in the resulting list. *)
   val get_vars_with_list : ('a, 'b) atom -> 'c t -> 'c formula -> (quantifier -> bool) -> ('a, 'b) variable list -> ('a, 'b) variable list
 
@@ -919,22 +921,13 @@ module Fact : sig
   (** [get_axioms_with_list t fct] {% $\psi$ %} [f_i l] adds the axiom in the [fct] formula {% $\psi$ %} whose index satisfies [f_i] in the list [l]. The addition of an axiom as the union of sets, i.e. there is no dupplicate in the resulting list..*)
   val get_axioms_with_list : 'c t -> 'c formula -> (int -> bool) -> axiom list -> axiom list
 
-  (** [universal_variables form] returns the first-order and second-order universal variables in the formula [form] *)
-  val universal_variables : 'a formula -> (fst_ord, name) variable list * (snd_ord, axiom) variable list
+  (** [universal_variables form] returns the first-order universal variables in the formula [form] *)
+  val universal_variables : 'a formula -> (fst_ord, name) variable list
 
   (** {3 Testing} *)
 
-  (** [is_solved] {% $\psi$ %} returns [true] iff {% $\psi$ is a solved formula (see~\citepaper{Definition}{def:clause}). %} *)
-  val is_solved : 'a formula  -> bool
-
-  (** [is_equation_free] {% $\psi$ %} returns [true] iff {% $\psi = \clause{S}{H}{\varphi}$ with $\Equn(\varphi) = \top$. %} *)
-  val is_equation_free : 'a formula -> bool
-
   (** [is_fact] {% $\psi$ %}) returns [true] iff $\psi$ is a fact, i.e. no universal variables and equation free *)
   val is_fact : 'a formula -> bool
-
-  (** [is_recipe_equivalent] {% $\psi$~$\psi'$ %} returns [true] iff {% $\psi \receq^\rho \psi'$ with $\rho$ being the identity. %} *)
-  val is_recipe_equivalent : 'a t -> 'a formula -> 'a formula -> bool
 
   (** {3 Modification} *)
 
@@ -977,44 +970,24 @@ module Rewrite_rules : sig
 
   type skeleton =
     {
-      variable_at_position : snd_ord_variable;
+      pos_vars : snd_ord_variable;
+      pos_term : protocol_term;
+      snd_vars : snd_ord_variable list; (* Contains variables of recipe without pos_vars *)
       recipe : recipe;
-      p_term : protocol_term;
       basic_deduction_facts : BasicFact.t list;
-      rewrite_rule : symbol * protocol_term list * protocol_term
+      lhs : protocol_term list;
+
     }
 
-  val reset_skeletons : unit -> unit
+  val initialise_skeletons : unit -> unit
 
-  val has_constant_as_rhs : symbol -> bool
+  (* Access function *)
 
-  (** [skeletons] {% $u$~$\ffun$~$k$ returns the list of skeletons $(\xi,t,D) = \Skel{\ell}{p}$ such that $\vars{\xi} \in \Xdeuxi{k}$, $\ell \rightarrow r \in \R$, $\rootsymb{\ell} = \ffun$,
-      $\getpos{\ell}{p} \not\in \Xun$, $\mguset{\getpos{\ell}{p} \eqs u} \neq \bot$ and $\vars{\getpos{\ell}{p}} \cap \vars{r} \neq \emptyset$. Note that we consider that $\Skel{\ell}{p}$ is unique with fresh variable (this differs slightly
-      from~\citepaper{Section}{sec:transformation rules} where it is define as a set that contains all possible renaming.%}
-      @raise Internal_error when [f] is not a destructor. *)
+  val get_skeleton : int -> skeleton
 
-  val skeletons : bool -> protocol_term -> symbol -> int -> skeleton list
+  val get_compatible_rewrite_rules : int -> (protocol_term list * protocol_term) list
 
-  val rename_skeletons : skeleton -> snd_ord -> skeleton
-
-  val rename_skeletons_with_basic_facts : skeleton -> BasicFact.t list -> snd_ord -> skeleton * BasicFact.t list
-
-  (** The function [skeletons] will be used for the application of the rule {% \Rew. However, we use it
-      in a different but equivalent way than in~\paper. Typically, in~\paper, to apply the rule \Rew,
-      we need at least a deduction fact $\dedfact{\xi_0}{u_0} \in \Solved(\C)$, a rewrite rule $\ell \rightarrow r \in \R$, a recipe $\xi$, a position $p$ and a formula $\psi_0 \in \RewF{\xi}{\ell \rightarrow r}{p}$ such that
-      such that there exists $\Sigma \in \mgs{\FRestr{\C}{\FApply{\Sigma_0}{\psi_0}{\C}}{}}$ where $\Sigma_0 = \\{ \getpos{\xi}{p} \rightarrow \xi_0\\}$.
-      However, it is unecessary to calculate the most general solutions for all cases. In particular, when $u_0$ is not unifiable with $\getpos{\ell}{p}$ then we directly obtain that
-      $\mgs{\FRestr{\C}{\FApply{\Sigma_0}{\psi_0}{\C}}{}} = \emptyset$. Therefore by inputing $u_0$ to the function %} [skeletons], {% we already reduces considerably the
-      number of times we have to calculate most general solutions. Moreover, we also require that $\getpos{\ell}{p} \not\in \Xun$ but for a different reason. In such a case, we
-      we would most probably obtain some most general solutions but these cases would either lead to consequential term or they would be covered by other application of the rule \Rew.%} *)
-
-  (** Assuming that {% $(\xi,t,D) = \Skel{\ell}{p}$ for some $\ell \rightarrow r \in \R$ and $p$ a position of $\ell$, and assuming that $\rootsymb{\ell} = \ffun$, %}
-      [generic_rewrite_rules_formula] {% $\ffun$~$(\xi,t,D)$ returns the set $\RewF{\xi}{\ell \rightarrow r}{p}\Vnorm$ whete $t$ and $D$ are used for the
-      protocol terms.%} *)
-  val generic_rewrite_rules_formula : Fact.deduction -> skeleton -> Fact.deduction_formula list
-
-  (** The function [specific_rewrite_rules_formula] directly applies the deduction facts on the formulas generated by the skeleton. *)
-  val specific_rewrite_rules_formula : Fact.deduction -> skeleton -> Fact.deduction_formula
+  val get_all_skeleton_indices : unit -> int list
 
   (** [get_vars_with_list l] adds the variables of the rewriting system in the list [l]. The addition of a variable as the union of sets, i.e. there is no dupplicate in the resulting list. *)
   val get_vars_with_list : fst_ord_variable list -> fst_ord_variable list
@@ -1024,14 +997,6 @@ module Rewrite_rules : sig
   val display_skeleton : Display.output -> ?rho:display_renamings option -> skeleton -> string
 
   val display_all_rewrite_rules : Display.output -> ?per_line:int -> ?tab:int -> display_renamings option -> string
-
-  (** {3 Tested functions} *)
-
-  val update_test_normalise : (protocol_term -> protocol_term  -> unit) -> unit
-
-  val update_test_skeletons : (protocol_term -> symbol -> int -> skeleton list -> unit) -> unit
-
-  val update_test_generic_rewrite_rules_formula : (Fact.deduction -> skeleton -> Fact.deduction_formula list -> unit) -> unit
 end
 
 (** {2 Tools} *)
@@ -1104,9 +1069,6 @@ module Tools_Subterm :
 
     (** {3 Consequence} *)
 
-    (** [consequence] {% $\Solved$~$\Df$~$\xi$~$t$ %} returns [true] iff {% $(\xi,t) \in \Consequence{\Solved \cup \Df}$.%}*)
-    val consequence : SDF.t -> DF.t -> recipe -> protocol_term -> bool
-
     (** [partial_consequence] is related to [consequence]. When [at = Protocol] (resp. [Recipe]), [partial_consequence at] {% $\Solved$~$\Df$~$t$ (resp. $\xi$)
         \begin{itemize}
         \item %} returns [None] if {% for all $\xi$ (resp. for all $t$),%} [mem] {% $\Solved$~$\Df$~$\xi$~$t$ %} returns [false]; {% otherwise
@@ -1127,11 +1089,7 @@ module Tools_Subterm :
 
     val add_in_uniset : Uni.t -> SDF.t -> DF.t -> recipe -> Uni.t * SDF.t
 
-    (** {3 Tested functions} *)
+    (** {3 Skeletons and formulas} *)
 
-    val update_test_partial_consequence : ('a, 'b) atom -> (SDF.t -> DF.t -> ('a, 'b) term ->  (recipe * protocol_term) option -> unit) -> unit
-
-    val update_test_partial_consequence_additional : ('a, 'b) atom -> (SDF.t -> DF.t -> BasicFact.t list -> ('a, 'b) term -> (recipe * protocol_term) option -> unit) -> unit
-
-    val update_test_uniform_consequence : (SDF.t -> DF.t -> Uni.t -> protocol_term -> recipe option -> unit) -> unit
+    val mixed_diseq_for_skeletons : SDF.t -> DF.t -> (fst_ord, name) variable list -> (snd_ord, axiom) variable list -> recipe -> Diseq.Mixed.t
   end

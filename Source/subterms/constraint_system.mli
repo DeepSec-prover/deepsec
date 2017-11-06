@@ -5,7 +5,6 @@
     and transformation rules described in~\citepaper{Section}{sec:normalisation_rule} and~\citepaper{Section}{sec:transformation rules}.%} *)
 
 open Term
-open Data_structure
 
 (** {2 Constraint systems} *)
 
@@ -113,20 +112,6 @@ val mgs : simple -> (mgs * (fst_ord, name) Subst.t * simple) list
     @raise Not_found when [most_general_solutions] {% $\C$ %} returns the empty list. *)
 val one_mgs : simple -> mgs * (fst_ord, name) Subst.t * simple
 
-(** This function transform a constraint system into a simple constraint system.
-    @raise Internal_error when the constraint system does {% not meet the conditions of ~\citepaper{Lemma}{lem:most_general_solutions}. \highdebug %} *)
-val simple_of : 'a t -> simple
-
-(** [simple_of_formula] {% $\C$~$\psi$ returns $(\rho^1,\rho^2,\C')$ where $\C' = \FRestr{\C}{\psi\rho^1\rho^2}$ and $\rho^1,\rho^2$ are
-    fresh first and second order renamings. %} *)
-val simple_of_formula : 'a Fact.t -> 'b t -> 'a Fact.formula ->
-  (fst_ord, name) Variable.Renaming.t * (snd_ord, axiom) Variable.Renaming.t * simple
-
-(** [simple_of_disequation] {% $\C$~$\forall \tilde{x}.\phi$ returns $(\rho,\C')$ where $\C' = \DRestr{\C}{(\forall \tilde{x}.\psi)\rho}$ and $\rho$ is
-    a fresh first-order renaming. %} *)
-val simple_of_disequation : 'a t -> (fst_ord, name) Diseq.t ->
-  (fst_ord, name) Variable.Renaming.t * simple
-
 (** {3 Access} *)
 
 (** [get_vars_simple_with_list at] {% $\C$ %} [l] adds the variables in {% $\C$ %} in the list [l]. Note that it does not cover the potential variables in the additional data. The addition of a variable as the union of sets, i.e. there is no dupplicate in the resulting list. *)
@@ -146,45 +131,11 @@ val get_axioms_simple_with_list : simple -> axiom list -> axiom list
     @raise Bot if {% $\CApply{\Sigma}{\C}\Vnorm = \bot$ %} *)
 val apply_mgs : 'a t -> mgs -> 'a t
 
-(** [apply_mgs_on_formula] {% $\C$~$\Sigma$~$\psi$ returns $\FApply{\Sigma}{\psi}{\C}\Vnorm$. %}
-    @raise Fact.Bot if {% $\FApply{\Sigma}{\psi}{\C}\Vnorm = \bot$. %} *)
-val apply_mgs_on_formula : 'a Fact.t -> 'b t -> mgs -> 'a Fact.formula -> 'a Fact.formula
-
 (** {3 Display functions} *)
 
 val display_mgs : Display.output -> ?rho: display_renamings option -> mgs -> string
 
 val display_simple : Display.output -> ?rho: display_renamings option -> ?hidden:bool -> ?id:int -> simple -> string
-
-(**/**)
-
-(** {3 Tested function} *)
-
-val update_test_mgs : (simple -> (mgs * (fst_ord, name) Subst.t * simple) list -> unit) -> unit
-
-val update_test_one_mgs : (simple -> (mgs * (fst_ord, name) Subst.t * simple) option -> unit) -> unit
-
-val update_test_simple_of_formula : 'a Fact.t -> (unit t -> 'a Fact.formula ->
-  (fst_ord, name) Variable.Renaming.t * (snd_ord, axiom) Variable.Renaming.t * simple -> unit) -> unit
-
-val update_test_simple_of_disequation : (unit t -> (fst_ord, name) Diseq.t ->
-  (fst_ord, name) Variable.Renaming.t * simple -> unit) -> unit
-
-val update_test_apply_mgs : (unit t -> mgs -> unit t option -> unit) -> unit
-
-val update_test_apply_mgs_on_formula : 'a Fact.t -> (unit t -> mgs -> 'a Fact.formula -> 'a Fact.formula option -> unit) -> unit
-
-val create_mgs : (snd_ord, axiom) Subst.t -> snd_ord_variable list -> mgs
-
-val create_simple : DF.t -> (fst_ord, name) Eq.t -> (snd_ord, axiom) Eq.t -> SDF.t -> Uniformity_Set.t -> simple
-
-val create : int -> DF.t -> (fst_ord, name) Eq.t -> (snd_ord, axiom) Eq.t -> SDF.t -> UF.t ->
-  (fst_ord, name) Subst.t -> (snd_ord, axiom) Subst.t -> Uniformity_Set.t ->
-  int list -> int list -> int list ->
-  (int * Rewrite_rules.skeleton) list -> (int * Rewrite_rules.skeleton) list ->
-  unit t
-
-(**/**)
 
 (** {2 Set of constraint systems} *)
 
@@ -268,23 +219,4 @@ module Rule : sig
   val equality : 'a Set.t -> 'a continuation -> (unit -> unit) -> unit
 
   val rewrite : 'a Set.t -> 'a continuation -> (unit -> unit) -> unit
-
-  val rewrite_EQ : 'a Set.t -> 'a continuation -> (unit -> unit) -> unit
-
-  (**/**)
-
-  val update_test_normalisation : (unit Set.t -> unit Set.t list -> unit) -> unit
-
-  val update_test_sat : (unit Set.t -> unit Set.t list * unit Set.t list * unit Set.t list -> unit) -> unit
-
-  val update_test_sat_disequation : (unit Set.t -> unit Set.t list * unit Set.t list * unit Set.t list -> unit) -> unit
-
-  val update_test_sat_formula : (unit Set.t -> unit Set.t list * unit Set.t list * unit Set.t list -> unit) -> unit
-
-  val update_test_equality_constructor : (unit Set.t -> unit Set.t list * unit Set.t list * unit Set.t list -> unit) -> unit
-
-  val update_test_equality : (unit Set.t -> unit Set.t list * unit Set.t list * unit Set.t list -> unit) -> unit
-
-  val update_test_rewrite : (unit Set.t -> unit Set.t list * unit Set.t list * unit Set.t list -> unit) -> unit
-  (**/**)
 end

@@ -131,6 +131,10 @@ module SDF = struct
     SDF_Map.tail_iter_until (fun cell f_next_1 -> f cell.g_fact f_next_1) (fun cell -> cell.g_var_type > k) sdf.map_ground
       (fun () -> SDF_Map.tail_iter_until (fun cell f_next_1 -> f cell.fact f_next_1) (fun cell -> cell.var_type > k) sdf.map f_next)
 
+  let tail_iter sdf f f_next =
+    SDF_Map.tail_iter (fun cell f_next_1 -> f cell.g_fact f_next_1) sdf.map_ground
+      (fun () -> SDF_Map.tail_iter (fun cell f_next_1 -> f cell.fact f_next_1) sdf.map f_next)
+
   let map_protocol_term sdf f =
     if sdf.last_entry_ground
     then
@@ -797,7 +801,7 @@ module UF = struct
       then Config.internal_error "[Data_structure.ml >> add_equality] There is already an equality formula in UF."
       );
 
-    if Fact.is_solved form
+    if Fact.is_fact form
     then { uf with eq_formula = EqSolved form }
     else { uf with eq_formula = EqUnsolved form }
 
@@ -811,7 +815,7 @@ module UF = struct
       );
 
     try
-      let solved_form = List.find Fact.is_solved form_list in
+      let solved_form = List.find Fact.is_fact form_list in
       { uf with ded_formula = DedSolved solved_form }
     with
       | Not_found -> { uf with ded_formula = DedUnsolved form_list }
@@ -968,7 +972,7 @@ module UF = struct
                   List.iter (fun form ->
                     try
                       let form_1 = apply_subst_on_ded_formula form in
-                      if Fact.is_solved form_1
+                      if Fact.is_fact form_1
                       then raise (Solved_ded form_1)
                       else result_list := form_1 :: !result_list
                     with
@@ -999,7 +1003,7 @@ module UF = struct
               begin
                 try
                   let form_1 = apply_subst_on_eq_formula form in
-                  if Fact.is_solved form_1
+                  if Fact.is_fact form_1
                   then EqSolved form_1
                   else EqUnsolved form_1
                 with
@@ -1051,7 +1055,7 @@ module UF = struct
                   List.iter (fun form ->
                     try
                       let form_1 = apply_subst_on_ded_formula form in
-                      if Fact.is_solved form_1
+                      if Fact.is_fact form_1
                       then raise (Solved_ded form_1)
                       else result_list := form_1 :: !result_list
                     with
@@ -1082,7 +1086,7 @@ module UF = struct
               begin
                 try
                   let form_1 = apply_subst_on_eq_formula form in
-                  if Fact.is_solved form_1
+                  if Fact.is_fact form_1
                   then EqSolved form_1
                   else EqUnsolved form_1
                 with
@@ -1231,6 +1235,50 @@ module Eq = struct
     | Bot -> Display.bot out
     | Conj diseq_list -> Display.display_list (Diseq.display out ~rho:rho at) (Printf.sprintf " %s " (Display.wedge out)) diseq_list
 
+  module Mixed = struct
+
+    type t =
+      | MTop
+      | MBot
+      | MConj of Diseq.Mixed.t list
+
+    let top = MTop
+
+    let bot = MTop
+
+    let wedge form diseq = match form with
+      | MTop -> MConj [diseq]
+      | MBot -> MBot
+      | MConj diseq_l -> MConj (diseq::diseq_l)
+
+    let apply form fst_subst snd_subst = match form with
+      | MTop -> MTop
+      | MBot -> MBot
+      | MConj diseq_l ->
+          try
+            let diseq_l' =
+              List.fold_left (fun acc diseq ->
+                let diseq' = Diseq.Mixed.apply_and_normalise fst_subst snd_subst diseq in
+                if Diseq.Mixed.is_bot diseq'
+                then raise Is_Bot
+                else if Diseq.Mixed.is_top diseq'
+                then acc
+                else diseq'::acc
+              ) [] diseq_l
+            in
+            if diseq_l' = []
+            then MTop
+            else MConj diseq_l'
+          with Is_Bot -> MBot
+
+    let is_top = function
+      | MTop -> true
+      | _ -> false
+
+    let is_bot = function
+      | MBot -> true
+      | _ -> false
+  end
 end
 
 (*****************************************

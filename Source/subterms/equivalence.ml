@@ -228,12 +228,6 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
     Constraint_system.Rule.rewrite csys_set {
       Constraint_system.Rule.positive = out_apply_sat_formula;
       Constraint_system.Rule.negative = out_apply_sat_formula;
-      Constraint_system.Rule.not_applicable = out_apply_rewrite_EQ
-    } f_next
-  and out_apply_rewrite_EQ csys_set f_next =
-    Constraint_system.Rule.rewrite_EQ csys_set {
-      Constraint_system.Rule.positive = out_apply_sat_formula;
-      Constraint_system.Rule.negative = out_apply_sat_formula;
       Constraint_system.Rule.not_applicable = out_apply_final_test
     } f_next
   and out_apply_final_test csys_set f_next =
@@ -462,12 +456,6 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
     Constraint_system.Rule.rewrite csys_set {
       Constraint_system.Rule.positive = out_apply_sat_formula;
       Constraint_system.Rule.negative = out_apply_sat_formula;
-      Constraint_system.Rule.not_applicable = out_apply_rewrite_EQ
-    } f_next
-  and out_apply_rewrite_EQ csys_set f_next =
-    Constraint_system.Rule.rewrite_EQ csys_set {
-      Constraint_system.Rule.positive = out_apply_sat_formula;
-      Constraint_system.Rule.negative = out_apply_sat_formula;
       Constraint_system.Rule.not_applicable = out_apply_final_test
     } f_next
   and out_apply_final_test csys_set f_next =
@@ -523,6 +511,10 @@ type result_trace_equivalence =
 
 let trace_equivalence_classic proc1 proc2 =
 
+  (*** Initialise skeletons ***)
+
+  Rewrite_rules.initialise_skeletons ();
+  
   (*** Generate the initial constraint systems ***)
 
   let symb_proc_1 =
@@ -560,6 +552,10 @@ let trace_equivalence_classic proc1 proc2 =
     | Not_Trace_Equivalent csys -> Not_Equivalent csys
 
 let trace_equivalence_private proc1 proc2 =
+
+  (*** Initialise skeletons ***)
+
+  Rewrite_rules.initialise_skeletons ();
 
   (*** Generate the initial constraint systems ***)
 
@@ -612,7 +608,6 @@ type attack =
     attack_process_id : int;
     attack_process : process
   }
-
 
 let publish_trace_equivalence_result id sem proc1 proc2 result runtime =
   let path_scripts = Filename.concat !Config.path_deepsec "Scripts" in

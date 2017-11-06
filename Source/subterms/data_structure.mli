@@ -46,6 +46,8 @@ module SDF : sig
   (** [iter] {% $\Solved$ %} [g] applies the function [g] on every deduction fact [psi] of {% $\Solved$ %}. *)
   val iter : t -> (Fact.deduction -> unit) -> unit
 
+  val tail_iter : t -> (Fact.deduction -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
+
   (** [iter_id] {% $\Solved$ %} [g] applies the function [g] on every deduction fact [psi] of {% $\Solved$ %}. *)
   val iter_id : t -> (id_recipe_equivalent -> Fact.deduction -> unit) -> unit
 
@@ -267,6 +269,23 @@ module Eq : sig
   (** {3 Tested function} *)
 
   val update_test_implies : ('a, 'b) atom -> (('a, 'b) t -> ('a, 'b) term -> ('a, 'b) term -> bool -> unit) -> unit
+
+  module Mixed : sig
+
+    type t
+
+    val top : t
+
+    val bot : t
+
+    val wedge : t -> Diseq.Mixed.t -> t
+
+    val apply : t -> (fst_ord, name) Subst.t -> (snd_ord, axiom) Subst.t -> t
+
+    val is_top : t -> bool
+
+    val is_bot : t -> bool
+  end
 end
 
 (** {2 The set of subterm consequence} *)
@@ -325,9 +344,6 @@ end
 module Tools : sig
   (** {3 Consequence} *)
 
-  (** [consequence] {% $\Solved$~$\Df$~$\xi$~$t$ %} returns [true] iff {% $(\xi,t) \in \Consequence{\Solved \cup \Df}$.%}*)
-  val consequence : SDF.t -> DF.t -> recipe -> protocol_term -> bool
-
   (** [partial_consequence] is related to [consequence]. When [at = Protocol] (resp. [Recipe]), [partial_consequence at] {% $\Solved$~$\Df$~$t$ (resp. $\xi$)
       \begin{itemize}
       \item %} returns [None] if {% for all $\xi$ (resp. for all $t$),%} [mem] {% $\Solved$~$\Df$~$\xi$~$t$ %} returns [false]; {% otherwise
@@ -348,12 +364,7 @@ module Tools : sig
 
   val add_in_uniset : Uniformity_Set.t -> SDF.t -> DF.t -> recipe -> Uniformity_Set.t * SDF.t
 
+  (** {3 Skeletons and formulas} *)
 
-  (** {3 Tested functions} *)
-
-  val update_test_partial_consequence : ('a, 'b) atom -> (SDF.t -> DF.t -> ('a, 'b) term ->  (recipe * protocol_term) option -> unit) -> unit
-
-  val update_test_partial_consequence_additional : ('a, 'b) atom -> (SDF.t -> DF.t -> BasicFact.t list -> ('a, 'b) term -> (recipe * protocol_term) option -> unit) -> unit
-
-  val update_test_uniform_consequence : (SDF.t -> DF.t -> Uniformity_Set.t -> protocol_term -> recipe option -> unit) -> unit
+  val mixed_diseq_for_skeletons : SDF.t -> DF.t -> (fst_ord, name) variable list -> (snd_ord, axiom) variable list -> recipe -> Diseq.Mixed.t
 end

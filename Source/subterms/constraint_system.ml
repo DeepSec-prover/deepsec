@@ -7,22 +7,13 @@ open Extensions
 ***       Constraint systems       ***
 **************************************)
 
-type skeleton_EQ =
+type history_skeleton =
   {
-    skeleton : Rewrite_rules.skeleton;
-    ded_facts : BasicFact.t list; (* Does not include the deduction fact corresponding to the position of the skeleton*)
-    fst_subst : (fst_ord, name) Subst.t;
-    diseq : (fst_ord, name) Diseq.t list
+    destructor : symbol;
+    fst_vars : (fst_ord, name) variable list;
+    snd_vars : (snd_ord, axiom) variable list;
+    diseq : Eq.Mixed.t
   }
-
-(*
-let display_skeleton_EQ skel =
-  Printf.sprintf "<p><ul><li>Skeleton = %s</li><li>ded_facts = %s</li><li>Subst = %s</li><li>Diseq = %s</li></ul></p>"
-    (Rewrite_rules.display_skeleton HTML skel.skeleton)
-    (display_list (BasicFact.display HTML) ", " skel.ded_facts)
-    (Subst.display HTML Protocol skel.fst_subst)
-    (display_list (Diseq.display HTML Protocol) ", " skel.diseq)
-*)
 
 type 'a t =
   {
@@ -65,12 +56,10 @@ type 'a t =
       last entry to SDF (all the other pair would have been checked by that time.)*)
     equality_to_checked : Data_structure.id_recipe_equivalent list;
 
-    skeletons_checked : (Data_structure.id_recipe_equivalent * Rewrite_rules.skeleton) list;
-    skeletons_to_check : (Data_structure.id_recipe_equivalent * Rewrite_rules.skeleton) list;
+    skeletons_checked : (Data_structure.id_recipe_equivalent * int) list;
+    skeletons_to_check : (Data_structure.id_recipe_equivalent * int) list;
 
-    (* Note that in the following skeleton*)
-    skeletons_checked_EQ : (Data_structure.id_recipe_equivalent * skeleton_EQ) list;
-    skeletons_to_check_EQ : (Data_structure.id_recipe_equivalent * skeleton_EQ) list
+    history_skeleton : history_skeleton list
   }
 
 module Ordered_Snd_Ord_Variable = struct
@@ -82,64 +71,6 @@ module Ordered_Snd_Ord_Variable = struct
 end
 
 exception Bot
-
-(******** Functions for skeleton_EQ *********)
-
-let refresh_skeleton_EQ skel var_type =
-  let (new_skeleton, new_ded_facts) = Rewrite_rules.rename_skeletons_with_basic_facts skel.skeleton skel.ded_facts var_type in
-
-  { skel with
-    skeleton = new_skeleton;
-    ded_facts = new_ded_facts
-  }
-
-let create_skeleton_EQ sdf_term skel =
-  let vars_sdf = get_vars Protocol sdf_term in
-
-  let (f,args,_) = skel.Rewrite_rules.rewrite_rule in
-  let vars = get_vars Protocol skel.Rewrite_rules.p_term in
-  let fst_renaming = Variable.Renaming.fresh Protocol vars Existential in
-
-  let x_fst = ref None in
-
-  let new_p_term, new_ded_facts =
-    Variable.Renaming.apply_on_terms
-      fst_renaming
-      (skel.Rewrite_rules.p_term,skel.Rewrite_rules.basic_deduction_facts)
-      (fun (t,ded_facts) f ->
-        f t,
-        List.fold_left (fun acc bfct ->
-          if Variable.is_equal (BasicFact.get_snd_ord_variable bfct) skel.Rewrite_rules.variable_at_position
-          then (x_fst := Some (f (BasicFact.get_protocol_term bfct)); acc)
-          else (BasicFact.create (BasicFact.get_snd_ord_variable bfct) (f (BasicFact.get_protocol_term bfct)))::acc
-        ) [] ded_facts
-      )
-  in
-
-  match !x_fst with
-    | None -> Config.internal_error "[Constraint_system.ml >> create_skeleton_EQ] Unexpected case"
-    | Some x ->
-        let equations = [(x,sdf_term); (new_p_term, apply_function f args)] in
-        begin
-          try
-            let subst = Subst.unify Protocol equations in
-            let ded_facts =
-              Subst.apply subst new_ded_facts (fun bfct_l f ->
-                List.fold_left (fun acc bfct ->
-                  (BasicFact.create (BasicFact.get_snd_ord_variable bfct) (f (BasicFact.get_protocol_term bfct)))::acc
-                ) [] bfct_l
-              )
-            in
-            let subst' = Subst.restrict_list subst vars_sdf in
-            Some {
-              skeleton = skel;
-              ded_facts = ded_facts;
-              fst_subst = subst';
-              diseq = []
-            }
-          with
-            | Subst.Not_unifiable -> None
-        end
 
 (******** Access functions ********)
 
@@ -167,14 +98,6 @@ let get_vars_with_list (type a) (type b) (at: (a,b) atom) csys (vars_l: (a,b) va
         UF.iter Fact.Equality csys.uf (fun psi -> result_vars := Fact.get_vars_with_list Protocol Fact.Equality psi (fun _ -> true) !result_vars);
         result_vars := Subst.get_vars_with_list Protocol csys.i_subst_fst (fun _ -> true) !result_vars;
         Uniformity_Set.iter csys.sub_cons (fun _ t -> result_vars := get_vars_with_list Protocol t (fun _ -> true) !result_vars);
-        let f = List.iter (fun (_,skel) ->
-          result_vars := get_vars_with_list Protocol skel.Rewrite_rules.p_term (fun _ -> true) !result_vars;
-          List.iter (fun b_fct ->  result_vars := get_vars_with_list Protocol (BasicFact.get_protocol_term b_fct) (fun _ -> true) !result_vars) skel.Rewrite_rules.basic_deduction_facts;
-          let (_,l,t) = skel.Rewrite_rules.rewrite_rule in
-          List.iter (fun t -> result_vars := get_vars_with_list Protocol t (fun _ -> true) !result_vars) (t::l)
-        ) in
-        f csys.skeletons_checked;
-        f csys.skeletons_to_check;
         !result_vars
     | Recipe ->
         DF.iter csys.df (fun bfct -> result_vars := get_vars_with_list Recipe (of_variable (BasicFact.get_snd_ord_variable bfct)) (fun _ -> true) !result_vars);
@@ -185,13 +108,6 @@ let get_vars_with_list (type a) (type b) (at: (a,b) atom) csys (vars_l: (a,b) va
         result_vars := Subst.get_vars_with_list Recipe csys.i_subst_ground_snd (fun _ -> true) !result_vars;
         result_vars := Subst.get_vars_with_list Recipe csys.i_subst_snd (fun _ -> true) !result_vars;
         Uniformity_Set.iter csys.sub_cons (fun r _ -> result_vars := get_vars_with_list Recipe r (fun _ -> true) !result_vars);
-        let f = List.iter (fun (_,skel) ->
-          result_vars := get_vars_with_list Recipe (of_variable skel.Rewrite_rules.variable_at_position) (fun _ -> true) !result_vars;
-          result_vars := get_vars_with_list Recipe skel.Rewrite_rules.recipe (fun _ -> true) !result_vars;
-          List.iter (fun b_fct ->  result_vars := get_vars_with_list Recipe (of_variable (BasicFact.get_snd_ord_variable b_fct)) (fun _ -> true) !result_vars) skel.Rewrite_rules.basic_deduction_facts
-        ) in
-        f csys.skeletons_checked;
-        f csys.skeletons_to_check;
         !result_vars
 
 let get_names_with_list csys names_l =
@@ -225,9 +141,6 @@ let is_uniformity_rule_applicable csys =
 
 (******** Display *******)
 
-let display_id_skeleton out rho (id,skel) =
-    Printf.sprintf "(%d,%s)" id (Rewrite_rules.display_skeleton out ~rho:rho skel)
-
 let id_class_csys =
   let acc = ref 0 in
   let f () =
@@ -237,21 +150,6 @@ let id_class_csys =
   f
 
 let display out ?(rho=None) ?(hidden=false) ?(id=0) csys = match out with
-  | Testing ->
-      Printf.sprintf "( %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, { } )"  (* The last set will be for the set of non-deducible terms *)
-        (DF.display out ~rho:rho csys.df)
-        (Eq.display out ~rho:rho Protocol csys.eqfst)
-        (Eq.display out ~rho:rho Recipe csys.eqsnd)
-        (SDF.display out ~rho:rho csys.sdf)
-        (UF.display out ~rho:rho csys.uf)
-        (Subst.display out ~rho:rho Protocol csys.i_subst_fst)
-        (Subst.display out ~rho:rho Recipe csys.i_subst_snd)
-        (Uniformity_Set.display out ~rho:rho csys.sub_cons)
-        (Printf.sprintf "{ %s }" (display_list string_of_int "," csys.equality_constructor_checked))
-        (Printf.sprintf "{ %s }" (display_list string_of_int "," csys.equality_constructor_to_checked))
-        (Printf.sprintf "{ %s }" (display_list string_of_int "," csys.equality_to_checked))
-        (Printf.sprintf "{ %s }" (display_list (display_id_skeleton out rho) "," csys.skeletons_checked))
-        (Printf.sprintf "{ %s }" (display_list (display_id_skeleton out rho) "," csys.skeletons_to_check))
   | HTML ->
       let str = ref "" in
       let id_j = id_class_csys () in
@@ -310,6 +208,24 @@ let display out ?(rho=None) ?(hidden=false) ?(id=0) csys = match out with
 
 (********* Generators *********)
 
+let generate_history f =
+  let rec generate_vars fst_vars snd_vars = function
+    | 0 -> fst_vars, snd_vars
+    | n ->
+        let x_fst = Variable.fresh Protocol Existential Variable.fst_ord_type in
+        let x_snd = Variable.fresh Recipe Existential Variable.infinite_snd_ord_type in
+        generate_vars (x_fst::fst_vars) (x_snd::snd_vars) (n-1)
+  in
+
+  let (fst_vars, snd_vars) = generate_vars [] [] (Symbol.get_arity f) in
+
+  {
+    destructor = f;
+    fst_vars = fst_vars;
+    snd_vars = snd_vars;
+    diseq = Eq.Mixed.top
+  }
+
 let empty data =
 
   {
@@ -342,8 +258,7 @@ let empty data =
     skeletons_checked = [];
     skeletons_to_check = [];
 
-    skeletons_to_check_EQ = [];
-    skeletons_checked_EQ = []
+    history_skeleton = List.rev_map generate_history !Symbol.all_destructors
   }
 
 let apply_substitution csys subst =
@@ -364,7 +279,12 @@ let apply_substitution csys subst =
   let new_sdf = SDF.apply csys.sdf Subst.identity subst
   and new_uf = UF.apply csys.uf Subst.identity subst
   and new_i_subst_fst = Subst.restrict subst (fun x -> Variable.quantifier_of x = Free)
-  and new_sub_cons = Uniformity_Set.apply csys.sub_cons Subst.identity subst in
+  and new_sub_cons = Uniformity_Set.apply csys.sub_cons Subst.identity subst
+  and new_history =
+    List.fold_left (fun acc hist ->
+      { hist with diseq = Eq.Mixed.apply hist.diseq subst Subst.identity }::acc
+    ) [] csys.history_skeleton
+  in
 
   let new_csys =
     { csys with
@@ -373,7 +293,8 @@ let apply_substitution csys subst =
       sdf = new_sdf;
       uf = new_uf;
       i_subst_fst = new_i_subst_fst;
-      sub_cons = new_sub_cons
+      sub_cons = new_sub_cons;
+      history_skeleton = new_history
     }
   in
 
@@ -417,26 +338,15 @@ let add_axiom csys ax t =
     then Config.internal_error "[constraint_system.ml >> add_axiom] The axiom given as argument should have an index equal to the size of the frame + 1";
 
     if csys.skeletons_to_check <> []
-    then Config.internal_error "[constraint_system.ml >> add_axiom] All skeletons should have been checked.";
-
-    if csys.skeletons_to_check_EQ <> []
-    then Config.internal_error "[constraint_system.ml >> add_axiom] All skeletons_EQ should have been checked."
+    then Config.internal_error "[constraint_system.ml >> add_axiom] All skeletons should have been checked."
   );
 
   let new_size = csys.size_frame + 1 in
 
-  let var_type = Variable.snd_ord_type new_size in
-
   { csys with
-    skeletons_checked = [];
-    skeletons_to_check = List.fold_left (fun acc (id,skel) -> (id,Rewrite_rules.rename_skeletons skel var_type)::acc) [] csys.skeletons_checked;
-    uf = UF.add_deduction csys.uf [Fact.create Fact.Deduction (Fact.create_deduction_fact (of_axiom ax) t) [] []];
-    size_frame = new_size;
-    skeletons_checked_EQ = [];
-    skeletons_to_check_EQ = List.fold_left (fun acc (id,skel) -> (id,refresh_skeleton_EQ skel var_type)::acc) [] csys.skeletons_checked_EQ
+    uf = UF.add_deduction csys.uf [Fact.create Fact.Deduction (Fact.create_deduction_fact (of_axiom ax) t) []];
+    size_frame = new_size
   }
-
-let replace_additional_data csys data = { csys with additional_data = data }
 
 let instantiate_when_solved csys =
   Config.debug (fun () ->
@@ -462,6 +372,13 @@ let add_private_channels csys pr_ch_l =
   );
   { csys with private_channels = pr_ch_l }
 
+let replace_additional_data csys data = { csys with additional_data = data }
+
+let rec replace_history symb f_replace = function
+  | [] -> Config.internal_error "[constraint_system.ml >> replace_history] Unexpected case"
+  | hist::q when hist.destructor == symb -> (f_replace hist)::q
+  | hist::q -> hist::(replace_history symb f_replace q)
+
 (*****************************************
 ***       Most general solutions       ***
 ******************************************)
@@ -472,107 +389,13 @@ type simple =
     simp_EqFst : (fst_ord, name) Eq.t;
     simp_EqSnd : (snd_ord, axiom) Eq.t;
     simp_SDF : SDF.t;
-    simp_Sub_Cons : Uniformity_Set.t
+    simp_Sub_Cons : Uniformity_Set.t;
+    simp_Mixed_Eq : Eq.Mixed.t
   }
 
 type mgs = (snd_ord, axiom) Subst.t * snd_ord_variable list
 
 module Set_Snd_Ord_Variable = Set.Make(Ordered_Snd_Ord_Variable)
-
-(******** Testing **********)
-
-let unit_t_of csys = { csys with additional_data = () }
-
-let test_mgs : (simple -> (mgs * (fst_ord, name) Subst.t * simple) list -> unit) ref = ref (fun _ _ -> ())
-
-let update_test_mgs f = test_mgs := f
-
-let test_one_mgs : (simple -> (mgs * (fst_ord, name) Subst.t * simple) option -> unit) ref = ref (fun _ _ -> ())
-
-let update_test_one_mgs f = test_one_mgs := f
-
-let test_simple_of_formula_Deduction : (unit t -> Fact.deduction Fact.formula -> ((fst_ord, name) Variable.Renaming.t * (snd_ord, axiom) Variable.Renaming.t * simple) -> unit) ref = ref (fun _ _ _ -> ())
-
-let test_simple_of_formula_Equality : (unit t -> Fact.equality Fact.formula -> (fst_ord, name) Variable.Renaming.t * (snd_ord, axiom) Variable.Renaming.t * simple -> unit) ref = ref (fun _ _ _ -> ())
-
-let test_simple_of_formula (type a) (fct: a Fact.t) csys (form: a Fact.formula) result = match fct with
-  | Fact.Deduction -> !test_simple_of_formula_Deduction (unit_t_of csys) form result
-  | Fact.Equality -> !test_simple_of_formula_Equality (unit_t_of csys) form result
-
-let update_test_simple_of_formula (type a) (fct: a Fact.t) (f: unit t ->  a Fact.formula -> (fst_ord, name) Variable.Renaming.t * (snd_ord, axiom) Variable.Renaming.t * simple -> unit) = match fct with
-  | Fact.Deduction -> test_simple_of_formula_Deduction := f
-  | Fact.Equality -> test_simple_of_formula_Equality := f
-
-let test_simple_of_disequation_unit : (unit t -> (fst_ord, name) Diseq.t ->
-  (fst_ord, name) Variable.Renaming.t * simple -> unit) ref = ref (fun _ _ _ -> ())
-
-let test_simple_of_disequation csys diseq result = !test_simple_of_disequation_unit (unit_t_of csys) diseq result
-
-let update_test_simple_of_disequation f = test_simple_of_disequation_unit := f
-
-let test_apply_mgs_unit : (unit t -> mgs -> unit t option -> unit) ref = ref (fun _ _ _ -> ())
-
-let test_apply_mgs csys mgs result = !test_apply_mgs_unit (unit_t_of csys) mgs result
-
-let update_test_apply_mgs f = test_apply_mgs_unit := f
-
-let test_apply_mgs_on_formula_Deduction : (unit t -> mgs -> Fact.deduction Fact.formula -> Fact.deduction Fact.formula option -> unit) ref = ref (fun _ _ _ _ -> ())
-
-let test_apply_mgs_on_formula_Equality : (unit t -> mgs -> Fact.equality Fact.formula -> Fact.equality Fact.formula option -> unit) ref = ref (fun _ _ _ _ -> ())
-
-let test_apply_mgs_on_formula (type a) (fct: a Fact.t) csys mgs (form:a Fact.formula) (result:a Fact.formula option) = match fct with
-  | Fact.Deduction -> !test_apply_mgs_on_formula_Deduction (unit_t_of csys) mgs form result
-  | Fact.Equality -> !test_apply_mgs_on_formula_Equality (unit_t_of csys) mgs form result
-
-let update_test_apply_mgs_on_formula (type a) (fct: a Fact.t) (f: unit t ->  mgs -> a Fact.formula -> a Fact.formula option -> unit) = match fct with
-  | Fact.Deduction -> test_apply_mgs_on_formula_Deduction := f
-  | Fact.Equality -> test_apply_mgs_on_formula_Equality := f
-
-let create_mgs subst v_list = (subst,v_list)
-
-let create_simple df subst1 subst2 sdf uni =
-  {
-    simp_DF = df;
-    simp_EqFst = subst1;
-    simp_EqSnd = subst2;
-    simp_SDF = sdf;
-    simp_Sub_Cons = uni
-  }
-
-let create size_frame df eq1 eq2 sdf uf sub1 sub2 uni il1 il2 il3 is1 is2 =
-  {
-    additional_data = ();
-
-    size_frame = size_frame;
-
-    df = df;
-
-    private_channels = [];
-
-    eqfst = eq1;
-    eqsnd = eq2;
-
-    sdf = sdf;
-    uf = uf;
-
-    i_subst_fst = sub1;
-    i_subst_snd = sub2;
-
-    i_subst_ground_snd = Subst.identity;
-
-    sub_cons = uni;
-
-    equality_constructor_checked = il1;
-    equality_constructor_to_checked = il2;
-
-    equality_to_checked = il3;
-
-    skeletons_checked = is1;
-    skeletons_to_check = is2;
-
-    skeletons_to_check_EQ = [];
-    skeletons_checked_EQ = []
-  }
 
 (**** Display *****)
 
@@ -661,34 +484,44 @@ let mgs csys =
         | None -> f_next ()
         | Some(subst_fst,subst_snd) ->
 
-            let df_1 = DF.remove csys.simp_DF b_recipe in
-            let df_2 = DF.apply df_1 subst_fst in
-
-            Config.debug (fun () ->
-              if not (Uniformity_Set.exists csys.simp_Sub_Cons (of_variable b_recipe) b_term)
-              then Config.internal_error "[Constraint_system.ml >> mgs] Elements of DF should always be in the uniformity set."
-            );
-            (*let sub_cons_1 = Uniformity_Set.add csys.simp_Sub_Cons recipe term in*)
-            let sub_cons_2 = Uniformity_Set.apply csys.simp_Sub_Cons subst_snd subst_fst in
-
-            let csys' = {
-                simp_DF = df_2;
-                simp_EqFst = Eq.apply Protocol csys.simp_EqFst subst_fst;
-                simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst_snd;
-                simp_SDF = SDF.apply csys.simp_SDF subst_snd subst_fst;
-                simp_Sub_Cons = sub_cons_2
-              }
-
-            in
-
-            (* Check that eqfst and eqsnd are not bot and that the normalisation rule for unification is not triggered *)
-
-            if Eq.is_bot csys'.simp_EqFst || Eq.is_bot csys'.simp_EqSnd
+            let new_eq_fst = Eq.apply Protocol csys.simp_EqFst subst_fst in
+            if Eq.is_bot new_eq_fst
             then f_next ()
             else
-              let mgs' = Subst.apply subst_snd mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
-              and snd_ord_vars' = Set_Snd_Ord_Variable.remove b_recipe snd_ord_vars in
-              (apply_rules [@tailcall]) csys' mgs' (Subst.compose fst_ord_mgs subst_fst) snd_ord_vars' f_next
+              let new_eq_snd = Eq.apply Recipe csys.simp_EqSnd subst_snd in
+              if Eq.is_bot new_eq_snd
+              then f_next ()
+              else
+                let new_mixed = Eq.Mixed.apply csys.simp_Mixed_Eq subst_fst subst_snd in
+                if Eq.Mixed.is_bot new_mixed
+                then f_next ()
+                else
+                  begin
+                    let df_1 = DF.remove csys.simp_DF b_recipe in
+                    let df_2 = DF.apply df_1 subst_fst in
+
+                    Config.debug (fun () ->
+                      if not (Uniformity_Set.exists csys.simp_Sub_Cons (of_variable b_recipe) b_term)
+                      then Config.internal_error "[Constraint_system.ml >> mgs] Elements of DF should always be in the uniformity set."
+                    );
+                    (*let sub_cons_1 = Uniformity_Set.add csys.simp_Sub_Cons recipe term in*)
+                    let sub_cons_2 = Uniformity_Set.apply csys.simp_Sub_Cons subst_snd subst_fst in
+
+                    let csys' = {
+                        simp_DF = df_2;
+                        simp_EqFst = new_eq_fst;
+                        simp_EqSnd = new_eq_snd;
+                        simp_SDF = SDF.apply csys.simp_SDF subst_snd subst_fst;
+                        simp_Sub_Cons = sub_cons_2;
+                        simp_Mixed_Eq = new_mixed
+                      }
+
+                    in
+
+                    let mgs' = Subst.apply subst_snd mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
+                    and snd_ord_vars' = Set_Snd_Ord_Variable.remove b_recipe snd_ord_vars in
+                    (apply_rules [@tailcall]) csys' mgs' (Subst.compose fst_ord_mgs subst_fst) snd_ord_vars' f_next
+                  end
     in
 
     let apply_cons basic_fct f_next =
@@ -705,27 +538,31 @@ let mgs csys =
 
           if arity = 0
           then
-            begin
-              let recipe = apply_function symb [] in
-              let subst = Subst.create Recipe x_snd recipe in
-              let df_1 = DF.remove csys.simp_DF x_snd in
-              let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity in
-              let csys' =
-                { csys with
-                    simp_DF = df_1;
-                    simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst;
-                    simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
-                    simp_Sub_Cons = sub_cons_1
-                }
-              in
-
-              if Eq.is_bot csys'.simp_EqSnd
+            let recipe = apply_function symb [] in
+            let subst = Subst.create Recipe x_snd recipe in
+            let new_eq_snd = Eq.apply Recipe csys.simp_EqSnd subst in
+            if Eq.is_bot new_eq_snd
+            then f_next ()
+            else
+              let new_mixed = Eq.Mixed.apply csys.simp_Mixed_Eq Subst.identity subst in
+              if Eq.Mixed.is_bot new_mixed
               then f_next ()
               else
+                let df_1 = DF.remove csys.simp_DF x_snd in
+                let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity in
+                let csys' =
+                  { csys with
+                      simp_DF = df_1;
+                      simp_EqSnd = new_eq_snd;
+                      simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
+                      simp_Sub_Cons = sub_cons_1;
+                      simp_Mixed_Eq = new_mixed
+                  }
+                in
+
                 let mgs' = Subst.apply subst mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
                 and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_snd snd_ord_vars in
                 (apply_rules [@tailcall]) csys' mgs' fst_ord_mgs snd_ord_vars' f_next
-            end
           else
             begin
               let args_of_term = get_args term in
@@ -736,32 +573,36 @@ let mgs csys =
               let recipe = apply_function symb vars_snd_as_term in
               let subst = Subst.create Recipe x_snd recipe in
 
-              let ded_fact_list = List.map2 BasicFact.create vars_snd args_of_term in
-
-              let df_1 = DF.remove csys.simp_DF x_snd in
-              let df_2 = List.fold_left (fun df b_fct -> DF.add df b_fct) df_1 ded_fact_list in
-
-              let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity in
-              let sub_cons_2 = List.fold_left2 (fun subc x t -> Uniformity_Set.add subc x t) sub_cons_1  vars_snd_as_term args_of_term in
-
-              let csys' = { csys with
-                  simp_DF = df_2;
-                  simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst;
-                  simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
-                  simp_Sub_Cons = sub_cons_2
-                }
-              in
-
-              (* Check that eqsnd is not bot and that the normalisation rule for unification is not triggered *)
-
-              if Eq.is_bot csys'.simp_EqSnd
+              let new_eq_snd = Eq.apply Recipe csys.simp_EqSnd subst in
+              if Eq.is_bot new_eq_snd
               then f_next ()
               else
-                let mgs' = Subst.apply subst mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
-                and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_snd snd_ord_vars in
-                let snd_ord_vars'' = List.fold_left (fun set x -> Set_Snd_Ord_Variable.add x set) snd_ord_vars' vars_snd in
+                let new_mixed = Eq.Mixed.apply csys.simp_Mixed_Eq Subst.identity subst in
+                if Eq.Mixed.is_bot new_mixed
+                then f_next ()
+                else
+                  let ded_fact_list = List.map2 BasicFact.create vars_snd args_of_term in
 
-                (apply_rules [@tailcall]) csys' mgs' fst_ord_mgs snd_ord_vars'' f_next
+                  let df_1 = DF.remove csys.simp_DF x_snd in
+                  let df_2 = List.fold_left (fun df b_fct -> DF.add df b_fct) df_1 ded_fact_list in
+
+                  let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity in
+                  let sub_cons_2 = List.fold_left2 (fun subc x t -> Uniformity_Set.add subc x t) sub_cons_1  vars_snd_as_term args_of_term in
+
+                  let csys' = { csys with
+                      simp_DF = df_2;
+                      simp_EqSnd = new_eq_snd;
+                      simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
+                      simp_Sub_Cons = sub_cons_2;
+                      simp_Mixed_Eq = new_mixed
+                    }
+                  in
+
+                  let mgs' = Subst.apply subst mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
+                  and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_snd snd_ord_vars in
+                  let snd_ord_vars'' = List.fold_left (fun set x -> Set_Snd_Ord_Variable.add x set) snd_ord_vars' vars_snd in
+
+                  (apply_rules [@tailcall]) csys' mgs' fst_ord_mgs snd_ord_vars'' f_next
             end
         else f_next ()
     in
@@ -774,50 +615,54 @@ let mgs csys =
             match DF.find csys.simp_DF test_not_solved with
               | None -> accumulator := (mgs,fst_ord_mgs,Set_Snd_Ord_Variable.elements snd_ord_vars,csys) :: !accumulator; f_next ()
               | Some basic_fct ->
-                  (SDF.tail_iter_within_var_type [@tailcall]) (Variable.type_of (BasicFact.get_snd_ord_variable basic_fct)) csys.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
+                  if Variable.has_infinite_type (BasicFact.get_snd_ord_variable basic_fct)
+                  then (SDF.tail_iter [@tailcall]) csys.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
+                  else (SDF.tail_iter_within_var_type [@tailcall]) (Variable.type_of (BasicFact.get_snd_ord_variable basic_fct)) csys.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
           else
             let new_eqsnd = Eq.apply Recipe csys.simp_EqSnd subst in
-
             if Eq.is_bot new_eqsnd
             then f_next ()
             else
-              let new_df,snd_ord_vars' = Subst.fold (fun (df,snd_ord) x _ -> DF.remove df x, Set_Snd_Ord_Variable.remove x snd_ord) (csys.simp_DF,snd_ord_vars) subst in
-              let mgs' = Subst.apply subst mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs) in
-              let csys' =
-                { csys with
-                  simp_DF = new_df;
-                  simp_EqSnd = new_eqsnd;
-                  simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
-                  simp_Sub_Cons = uniset
-                }
-              in
-              match DF.find csys'.simp_DF test_not_solved with
-                | None -> accumulator := (mgs',fst_ord_mgs,Set_Snd_Ord_Variable.elements snd_ord_vars',csys') :: !accumulator; f_next ()
-                | Some basic_fct ->
-                    (SDF.tail_iter_within_var_type [@tailcall]) (Variable.type_of (BasicFact.get_snd_ord_variable basic_fct)) csys'.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
+              let new_mixed = Eq.Mixed.apply csys.simp_Mixed_Eq Subst.identity subst in
+              if Eq.Mixed.is_bot new_mixed
+              then f_next ()
+              else
+                let new_df,snd_ord_vars' = Subst.fold (fun (df,snd_ord) x _ -> DF.remove df x, Set_Snd_Ord_Variable.remove x snd_ord) (csys.simp_DF,snd_ord_vars) subst in
+                let mgs' = Subst.apply subst mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs) in
+                let csys' =
+                  { csys with
+                    simp_DF = new_df;
+                    simp_EqSnd = new_eqsnd;
+                    simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
+                    simp_Sub_Cons = uniset;
+                    simp_Mixed_Eq = new_mixed
+                  }
+                in
+                match DF.find csys'.simp_DF test_not_solved with
+                  | None -> accumulator := (mgs',fst_ord_mgs,Set_Snd_Ord_Variable.elements snd_ord_vars',csys') :: !accumulator; f_next ()
+                  | Some basic_fct ->
+                      if Variable.has_infinite_type (BasicFact.get_snd_ord_variable basic_fct)
+                      then (SDF.tail_iter [@tailcall]) csys'.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
+                      else (SDF.tail_iter_within_var_type [@tailcall]) (Variable.type_of (BasicFact.get_snd_ord_variable basic_fct)) csys'.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
   in
 
   (* We first check if the constraint is not directly bot *)
 
-  let result =
-    if Eq.is_bot csys.simp_EqFst || Eq.is_bot csys.simp_EqSnd
-    then []
-    else
-      begin
-        let init_mgs = DF.fold (fun acc b_fct ->
-          let x = BasicFact.get_snd_ord_variable b_fct in
-          (x, of_variable x)::acc
-          ) [] csys.simp_DF
-        in
+  if Eq.is_bot csys.simp_EqFst || Eq.is_bot csys.simp_EqSnd || Eq.Mixed.is_bot csys.simp_Mixed_Eq
+  then []
+  else
+    begin
+      let init_mgs = DF.fold (fun acc b_fct ->
+        let x = BasicFact.get_snd_ord_variable b_fct in
+        (x, of_variable x)::acc
+        ) [] csys.simp_DF
+      in
 
-        apply_rules csys init_mgs Subst.identity Set_Snd_Ord_Variable.empty (fun () -> ());
-        List.fold_left (fun acc_mgs (mgs,fst_ord_mgs,var_list,csys') ->
-          ((Subst.create_multiple Recipe (List.fold_left (fun acc (r_1,r_2) -> if is_equal Recipe (of_variable r_1) r_2 then acc else (r_1,r_2)::acc) [] mgs), var_list), fst_ord_mgs, csys')::acc_mgs
-          ) [] !accumulator
-      end
-  in
-  Config.test (fun () -> !test_mgs csys result);
-  result
+      apply_rules csys init_mgs Subst.identity Set_Snd_Ord_Variable.empty (fun () -> ());
+      List.fold_left (fun acc_mgs (mgs,fst_ord_mgs,var_list,csys') ->
+        ((Subst.create_multiple Recipe (List.fold_left (fun acc (r_1,r_2) -> if is_equal Recipe (of_variable r_1) r_2 then acc else (r_1,r_2)::acc) [] mgs), var_list), fst_ord_mgs, csys')::acc_mgs
+        ) [] !accumulator
+    end
 
 exception Found_mgs of (snd_ord_variable * recipe) list * (fst_ord, name) Subst.t * (snd_ord_variable list)  * simple
 
@@ -850,30 +695,38 @@ let one_mgs csys =
         | None -> f_next ()
         | Some(subst_fst,subst_snd) ->
 
-            let df_1 = DF.remove csys.simp_DF b_recipe in
-            let df_2 = DF.apply df_1 subst_fst in
-
-            (*let sub_cons_1 = Uniformity_Set.add csys.simp_Sub_Cons recipe term in*)
-            let sub_cons_2 = Uniformity_Set.apply csys.simp_Sub_Cons subst_snd subst_fst in
-
-            let csys' = {
-                simp_DF = df_2;
-                simp_EqFst = Eq.apply Protocol csys.simp_EqFst subst_fst;
-                simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst_snd;
-                simp_SDF = SDF.apply csys.simp_SDF subst_snd subst_fst;
-                simp_Sub_Cons = sub_cons_2
-              }
-
-            in
-
-            (* Check that eqfst and eqsnd are not bot and that the normalisation rule for unification is not triggered *)
-
-            if Eq.is_bot csys'.simp_EqFst || Eq.is_bot csys'.simp_EqSnd
+            let new_eq_fst = Eq.apply Protocol csys.simp_EqFst subst_fst in
+            if Eq.is_bot new_eq_fst
             then f_next ()
             else
-              let mgs' = Subst.apply subst_snd mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
-              and snd_ord_vars' = Set_Snd_Ord_Variable.remove b_recipe snd_ord_vars in
-              (apply_rules [@tailcall]) csys' mgs' (Subst.compose fst_ord_mgs subst_fst) snd_ord_vars' f_next
+              let new_eq_snd = Eq.apply Recipe csys.simp_EqSnd subst_snd in
+              if Eq.is_bot new_eq_snd
+              then f_next ()
+              else
+                let new_mixed = Eq.Mixed.apply csys.simp_Mixed_Eq subst_fst subst_snd in
+                if Eq.Mixed.is_bot new_mixed
+                then f_next ()
+                else
+                  let df_1 = DF.remove csys.simp_DF b_recipe in
+                  let df_2 = DF.apply df_1 subst_fst in
+
+                  (*let sub_cons_1 = Uniformity_Set.add csys.simp_Sub_Cons recipe term in*)
+                  let sub_cons_2 = Uniformity_Set.apply csys.simp_Sub_Cons subst_snd subst_fst in
+
+                  let csys' = {
+                      simp_DF = df_2;
+                      simp_EqFst = new_eq_fst;
+                      simp_EqSnd = new_eq_snd;
+                      simp_SDF = SDF.apply csys.simp_SDF subst_snd subst_fst;
+                      simp_Sub_Cons = sub_cons_2;
+                      simp_Mixed_Eq = new_mixed
+                    }
+
+                  in
+
+                  let mgs' = Subst.apply subst_snd mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
+                  and snd_ord_vars' = Set_Snd_Ord_Variable.remove b_recipe snd_ord_vars in
+                  (apply_rules [@tailcall]) csys' mgs' (Subst.compose fst_ord_mgs subst_fst) snd_ord_vars' f_next
     in
 
     let apply_cons basic_fct f_next =
@@ -890,64 +743,71 @@ let one_mgs csys =
 
           if arity = 0
           then
-            begin
-              let recipe = apply_function symb [] in
-              let subst = Subst.create Recipe x_snd recipe in
-              let df_1 = DF.remove csys.simp_DF x_snd in
-              let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity in
-              let csys' =
-                { csys with
-                    simp_DF = df_1;
-                    simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst;
-                    simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
-                    simp_Sub_Cons = sub_cons_1
-                }
-              in
+            let recipe = apply_function symb [] in
+            let subst = Subst.create Recipe x_snd recipe in
 
-              if Eq.is_bot csys'.simp_EqSnd
+            let new_eq_snd = Eq.apply Recipe csys.simp_EqSnd subst in
+            if Eq.is_bot new_eq_snd
+            then f_next ()
+            else
+              let new_mixed = Eq.Mixed.apply csys.simp_Mixed_Eq Subst.identity subst in
+              if Eq.Mixed.is_bot new_mixed
               then f_next ()
               else
+                let df_1 = DF.remove csys.simp_DF x_snd in
+                let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity in
+                let csys' =
+                  { csys with
+                      simp_DF = df_1;
+                      simp_EqSnd = new_eq_snd;
+                      simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
+                      simp_Sub_Cons = sub_cons_1;
+                      simp_Mixed_Eq = new_mixed
+                  }
+                in
+
                 let mgs' = Subst.apply subst mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
                 and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_snd snd_ord_vars in
                 (apply_rules [@tailcall]) csys' mgs' fst_ord_mgs snd_ord_vars' f_next
-            end
           else
-            begin
-              let args_of_term = get_args term in
+            let args_of_term = get_args term in
 
-              let vars_snd = Variable.fresh_list Recipe Existential (Variable.snd_ord_type (Variable.type_of x_snd)) arity in
-              let vars_snd_as_term = List.map of_variable vars_snd in
+            let vars_snd = Variable.fresh_list Recipe Existential (Variable.snd_ord_type (Variable.type_of x_snd)) arity in
+            let vars_snd_as_term = List.map of_variable vars_snd in
 
-              let recipe = apply_function symb vars_snd_as_term in
-              let subst = Subst.create Recipe x_snd recipe in
+            let recipe = apply_function symb vars_snd_as_term in
+            let subst = Subst.create Recipe x_snd recipe in
 
-              let ded_fact_list = List.map2 BasicFact.create vars_snd args_of_term in
-
-              let df_1 = DF.remove csys.simp_DF x_snd in
-              let df_2 = List.fold_left (fun df b_fct -> DF.add df b_fct) df_1 ded_fact_list in
-
-              let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity in
-              let sub_cons_2 = List.fold_left2 (fun subc x t -> Uniformity_Set.add subc x t) sub_cons_1  vars_snd_as_term args_of_term in
-
-              let csys' = { csys with
-                  simp_DF = df_2;
-                  simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst;
-                  simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
-                  simp_Sub_Cons = sub_cons_2
-                }
-              in
-
-              (* Check that eqsnd is not bot and that the normalisation rule for unification is not triggered *)
-
-              if Eq.is_bot csys'.simp_EqSnd
+            let new_eq_snd = Eq.apply Recipe csys.simp_EqSnd subst in
+            if Eq.is_bot new_eq_snd
+            then f_next ()
+            else
+              let new_mixed = Eq.Mixed.apply csys.simp_Mixed_Eq Subst.identity subst in
+              if Eq.Mixed.is_bot new_mixed
               then f_next ()
               else
+                let ded_fact_list = List.map2 BasicFact.create vars_snd args_of_term in
+
+                let df_1 = DF.remove csys.simp_DF x_snd in
+                let df_2 = List.fold_left (fun df b_fct -> DF.add df b_fct) df_1 ded_fact_list in
+
+                let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity in
+                let sub_cons_2 = List.fold_left2 (fun subc x t -> Uniformity_Set.add subc x t) sub_cons_1  vars_snd_as_term args_of_term in
+
+                let csys' = { csys with
+                    simp_DF = df_2;
+                    simp_EqSnd = new_eq_snd;
+                    simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
+                    simp_Sub_Cons = sub_cons_2;
+                    simp_Mixed_Eq = new_mixed
+                  }
+                in
+
                 let mgs' = Subst.apply subst mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
                 and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_snd snd_ord_vars in
                 let snd_ord_vars'' = List.fold_left (fun set x -> Set_Snd_Ord_Variable.add x set) snd_ord_vars' vars_snd in
 
                 (apply_rules [@tailcall]) csys' mgs' fst_ord_mgs snd_ord_vars'' f_next
-            end
         else f_next ()
     in
 
@@ -958,32 +818,42 @@ let one_mgs csys =
           then
             match DF.find csys.simp_DF test_not_solved with
               | None -> raise (Found_mgs (mgs,fst_ord_mgs,Set_Snd_Ord_Variable.elements snd_ord_vars,csys))
-              | Some basic_fct -> SDF.tail_iter_within_var_type (Variable.type_of (BasicFact.get_snd_ord_variable basic_fct)) csys.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
+              | Some basic_fct ->
+                  if Variable.has_infinite_type (BasicFact.get_snd_ord_variable basic_fct)
+                  then SDF.tail_iter csys.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
+                  else SDF.tail_iter_within_var_type (Variable.type_of (BasicFact.get_snd_ord_variable basic_fct)) csys.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
           else
             let new_eqsnd = Eq.apply Recipe csys.simp_EqSnd subst in
-
             if Eq.is_bot new_eqsnd
             then f_next ()
             else
-              let new_df,snd_ord_vars' = Subst.fold (fun (df,snd_ord) x _ -> DF.remove df x, Set_Snd_Ord_Variable.remove x snd_ord) (csys.simp_DF,snd_ord_vars) subst in
-              let mgs' = Subst.apply subst mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs) in
-              let csys' =
-                { csys with
-                  simp_DF = new_df;
-                  simp_EqSnd = new_eqsnd;
-                  simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
-                  simp_Sub_Cons = uniset
-                }
-              in
-              match DF.find csys'.simp_DF test_not_solved with
-                | None -> raise (Found_mgs (mgs',fst_ord_mgs,Set_Snd_Ord_Variable.elements snd_ord_vars',csys'))
-                | Some basic_fct -> (SDF.tail_iter_within_var_type [@tailcall]) (Variable.type_of (BasicFact.get_snd_ord_variable basic_fct)) csys'.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
+              let new_mixed = Eq.Mixed.apply csys.simp_Mixed_Eq Subst.identity subst in
+              if Eq.Mixed.is_bot new_mixed
+              then f_next ()
+              else
+                let new_df,snd_ord_vars' = Subst.fold (fun (df,snd_ord) x _ -> DF.remove df x, Set_Snd_Ord_Variable.remove x snd_ord) (csys.simp_DF,snd_ord_vars) subst in
+                let mgs' = Subst.apply subst mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs) in
+                let csys' =
+                  { csys with
+                    simp_DF = new_df;
+                    simp_EqSnd = new_eqsnd;
+                    simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
+                    simp_Sub_Cons = uniset;
+                    simp_Mixed_Eq = new_mixed
+                  }
+                in
+                match DF.find csys'.simp_DF test_not_solved with
+                  | None -> raise (Found_mgs (mgs',fst_ord_mgs,Set_Snd_Ord_Variable.elements snd_ord_vars',csys'))
+                  | Some basic_fct ->
+                      if Variable.has_infinite_type (BasicFact.get_snd_ord_variable basic_fct)
+                      then (SDF.tail_iter [@tailcall]) csys'.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
+                      else (SDF.tail_iter_within_var_type [@tailcall]) (Variable.type_of (BasicFact.get_snd_ord_variable basic_fct)) csys'.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
   in
 
   (* We first check if the constraint is not directly bot *)
 
-  if Eq.is_bot csys.simp_EqFst || Eq.is_bot csys.simp_EqSnd
-  then (Config.test (fun () -> !test_one_mgs csys None); raise Not_found)
+  if Eq.is_bot csys.simp_EqFst || Eq.is_bot csys.simp_EqSnd || Eq.Mixed.is_bot csys.simp_Mixed_Eq
+  then raise Not_found
   else
     begin
       let init_mgs = DF.fold (fun acc b_fct ->
@@ -994,13 +864,10 @@ let one_mgs csys =
 
       try
         apply_rules csys init_mgs Subst.identity Set_Snd_Ord_Variable.empty (fun () -> ());
-        Config.test (fun () -> !test_one_mgs csys None);
         raise Not_found
       with
       | Found_mgs (mgs,fst_ord_mgs,var_list,csys') ->
-          let result = ((Subst.create_multiple Recipe (List.filter_unordered (fun (r_1,r_2) -> not (is_equal Recipe (of_variable r_1) r_2)) mgs), var_list), fst_ord_mgs, csys') in
-          Config.test (fun () -> !test_one_mgs csys (Some result));
-          result
+          (Subst.create_multiple Recipe (List.filter_unordered (fun (r_1,r_2) -> not (is_equal Recipe (of_variable r_1) r_2)) mgs), var_list), fst_ord_mgs, csys'
     end
 
 let simple_of csys =
@@ -1009,140 +876,49 @@ let simple_of csys =
     simp_EqFst = csys.eqfst;
     simp_EqSnd = csys.eqsnd;
     simp_SDF = csys.sdf;
-    simp_Sub_Cons = csys.sub_cons
+    simp_Sub_Cons = csys.sub_cons;
+    simp_Mixed_Eq = Eq.Mixed.top
   }
 
-let simple_of_formula (type a) (fct: a Fact.t) csys (form: a Fact.formula) = match fct with
-  | Fact.Deduction ->
-      let fst_univ, snd_univ = Fact.universal_variables form in
+let simple_of_formula csys form =
+  let fst_univ = Fact.universal_variables form in
 
-      let mgu_hypothesis = Fact.get_mgu_hypothesis form
-      and b_fct_hypothesis = Fact.get_basic_fact_hypothesis form
-      and recipe_head = Fact.get_recipe (Fact.get_head form) in
+  let mgu_hypothesis = Fact.get_mgu_hypothesis form in
+  let fst_renaming = Variable.Renaming.fresh Protocol fst_univ Existential in
 
-      let fst_renaming = Variable.Renaming.fresh Protocol fst_univ Existential
-      and snd_renaming = Variable.Renaming.fresh Recipe snd_univ Existential in
+  let mgu_hypothesis_2 = Subst.compose_restricted mgu_hypothesis (Subst.of_renaming fst_renaming) in
 
-      let b_fct_hypothesis_1 =
-        Variable.Renaming.apply_on_terms fst_renaming b_fct_hypothesis (fun l f -> List.fold_left (fun acc b_fct -> (BasicFact.create (BasicFact.get_snd_ord_variable b_fct) (f (BasicFact.get_protocol_term b_fct)))::acc) [] l) in
+  let df_0 = DF.apply csys.df mgu_hypothesis_2
+  and eqfst_0 = Eq.apply Protocol csys.eqfst mgu_hypothesis_2
+  and sdf_0 = SDF.apply csys.sdf Subst.identity mgu_hypothesis_2
+  and sub_cons_0 = Uniformity_Set.apply csys.sub_cons Subst.identity mgu_hypothesis_2 in
 
-      let b_fct_hypothesis_2, _ (*recipe_head_2*) =
-        Variable.Renaming.apply_on_terms snd_renaming (b_fct_hypothesis_1,recipe_head) (fun (l,r) f ->
-          List.fold_left (fun acc b_fct ->
-            let v = of_variable (BasicFact.get_snd_ord_variable b_fct) in
-            let v' = variable_of (f v) in
-            (BasicFact.create v' (BasicFact.get_protocol_term b_fct))::acc
-            ) [] l,
-          f r
-          )
-      in
-
-      let mgu_hypothesis_2 = Subst.compose_restricted mgu_hypothesis (Subst.of_renaming fst_renaming) in
-
-      let df_0 = DF.apply csys.df mgu_hypothesis_2
-      and eqfst_0 = Eq.apply Protocol csys.eqfst mgu_hypothesis_2
-      and sdf_0 = SDF.apply csys.sdf Subst.identity mgu_hypothesis_2
-      and sub_cons_0 = Uniformity_Set.apply csys.sub_cons Subst.identity mgu_hypothesis_2 in
-
-      let df_1 = List.fold_left DF.add df_0 b_fct_hypothesis_2 in
-      let sub_cons_1 = List.fold_left (fun acc bfct -> Uniformity_Set.add acc (of_variable (BasicFact.get_snd_ord_variable bfct)) (BasicFact.get_protocol_term bfct)) sub_cons_0 b_fct_hypothesis_2 in
-      (*let (sub_cons_1,sdf_1) =
-        if is_function recipe_head_2 && Symbol.get_arity (root recipe_head_2) > 0
-        then List.fold_left (fun (acc_sub_cons_1,acc_sdf_1) r -> Tools.add_in_uniset acc_sub_cons_1 acc_sdf_1 df_1 r) (sub_cons_0,sdf_0) (get_args recipe_head_2)
-        else (sub_cons_0,sdf_0)
-      in*)
-
-      let simple_csys = {
-        simp_DF = df_1;
-        simp_EqFst = eqfst_0;
-        simp_EqSnd = csys.eqsnd;
-        simp_SDF = sdf_0;
-        simp_Sub_Cons = sub_cons_1
-      } in
-
-      let result = (fst_renaming, snd_renaming, simple_csys) in
-      Config.test (fun () -> test_simple_of_formula Fact.Deduction csys form result);
-      result
-
-  | Fact.Equality ->
-      let fst_univ, snd_univ = Fact.universal_variables form in
-
-      let mgu_hypothesis = Fact.get_mgu_hypothesis form
-      and b_fct_hypothesis = Fact.get_basic_fact_hypothesis form
-      and recipe_1,recipe_2 = Fact.get_both_recipes (Fact.get_head form) in
-
-      let fst_renaming = Variable.Renaming.fresh Protocol fst_univ Existential
-      and snd_renaming = Variable.Renaming.fresh Recipe snd_univ Existential in
-
-      let b_fct_hypothesis_1 =
-        Variable.Renaming.apply_on_terms fst_renaming b_fct_hypothesis (fun l f -> List.fold_left (fun acc b_fct -> (BasicFact.create (BasicFact.get_snd_ord_variable b_fct) (f (BasicFact.get_protocol_term b_fct)))::acc) [] l) in
-
-      let b_fct_hypothesis_2, _, _ (* recipe_1_2, recipe_2_2 *) =
-        Variable.Renaming.apply_on_terms snd_renaming (b_fct_hypothesis_1,recipe_1, recipe_2) (fun (l,r1,r2) f ->
-          List.fold_left (fun acc b_fct ->
-            let v = of_variable (BasicFact.get_snd_ord_variable b_fct) in
-            let v' = variable_of (f v) in
-            (BasicFact.create v' (BasicFact.get_protocol_term b_fct))::acc
-            ) [] l,
-          f r1,
-          f r2
-          )
-      in
-
-      let mgu_hypothesis_2 = Subst.compose_restricted mgu_hypothesis (Subst.of_renaming fst_renaming) in
-
-      let df_0 = DF.apply csys.df mgu_hypothesis_2
-      and eqfst_0 = Eq.apply Protocol csys.eqfst mgu_hypothesis_2
-      and sdf_0 = SDF.apply csys.sdf Subst.identity mgu_hypothesis_2
-      and sub_cons_0 = Uniformity_Set.apply csys.sub_cons Subst.identity mgu_hypothesis_2 in
-
-      let df_1 = List.fold_left DF.add df_0 b_fct_hypothesis_2 in
-      let sub_cons_1 = List.fold_left (fun acc bfct -> Uniformity_Set.add acc (of_variable (BasicFact.get_snd_ord_variable bfct)) (BasicFact.get_protocol_term bfct)) sub_cons_0 b_fct_hypothesis_2 in
-      (*
-      let (sub_cons_1,sdf_1) =
-        if is_function recipe_1_2 && Symbol.get_arity (root recipe_1_2) > 0
-        then List.fold_left (fun (acc_sub_cons_1,acc_sdf_1) r -> Tools.add_in_uniset acc_sub_cons_1 acc_sdf_1 df_1 r) (sub_cons_0,sdf_0) (get_args recipe_1_2)
-        else (sub_cons_0,sdf_0)
-      in
-
-      let (sub_cons_2,sdf_2) =
-        if is_function recipe_2_2 && Symbol.get_arity (root recipe_2_2) > 0
-        then List.fold_left (fun (acc_sub_cons_1,acc_sdf_1) r -> Tools.add_in_uniset acc_sub_cons_1 acc_sdf_1 df_1 r) (sub_cons_1,sdf_1) (get_args recipe_2_2)
-        else (sub_cons_1,sdf_1)
-      in*)
-
-      let simple_csys = {
-        simp_DF = df_1;
-        simp_EqFst = eqfst_0;
-        simp_EqSnd = csys.eqsnd;
-        simp_SDF = sdf_0;
-        simp_Sub_Cons = sub_cons_1
-      } in
-
-      let result = (fst_renaming, snd_renaming, simple_csys) in
-      Config.test (fun () -> test_simple_of_formula Fact.Equality csys form result);
-      result
+  {
+    simp_DF = df_0;
+    simp_EqFst = eqfst_0;
+    simp_EqSnd = csys.eqsnd;
+    simp_SDF = sdf_0;
+    simp_Sub_Cons = sub_cons_0;
+    simp_Mixed_Eq = Eq.Mixed.top
+  }
 
 let simple_of_disequation csys diseq =
 
-  let (subst,renaming) = Diseq.substitution_of Protocol diseq in
+  let subst = Diseq.substitution_of diseq in
 
   let df_0 = DF.apply csys.df subst
   and eqfst_0 = Eq.apply Protocol csys.eqfst subst
   and sdf_0 = SDF.apply csys.sdf Subst.identity subst
   and sub_cons_0 = Uniformity_Set.apply csys.sub_cons Subst.identity subst in
 
-  let simple_csys = {
+  {
     simp_DF = df_0;
     simp_EqFst = eqfst_0;
     simp_EqSnd = csys.eqsnd;
     simp_SDF = sdf_0;
-    simp_Sub_Cons = sub_cons_0
-  } in
-
-  let result = (renaming, simple_csys) in
-  Config.test (fun () -> test_simple_of_disequation csys diseq result);
-  result
+    simp_Sub_Cons = sub_cons_0;
+    simp_Mixed_Eq = Eq.Mixed.top
+  }
 
 let simple_of_private csys ch =
 
@@ -1154,59 +930,86 @@ let simple_of_private csys ch =
     simp_EqFst = csys.eqfst;
     simp_EqSnd = csys.eqsnd;
     simp_SDF = csys.sdf;
-    simp_Sub_Cons = Uniformity_Set.add csys.sub_cons (of_variable xsnd) ch
+    simp_Sub_Cons = Uniformity_Set.add csys.sub_cons (of_variable xsnd) ch;
+    simp_Mixed_Eq = Eq.Mixed.top
   }
 
-let simple_of_skeleton_EQ csys id_sdf skeleton =
+let simple_of_equality_constructor csys symb term =
+  let args = get_args term in
+  let vars_snd = Variable.fresh_list Recipe Existential (Variable.snd_ord_type csys.size_frame) (Symbol.get_arity symb) in
+  let simple_recipe = apply_function symb (List.map of_variable vars_snd) in
+  let b_fct_list = List.map2 (fun x t -> BasicFact.create x t) vars_snd args in
 
-  let snd_univ = List.fold_left (fun acc ded -> (BasicFact.get_snd_ord_variable ded)::acc) [] skeleton.ded_facts in
+  let df_1 = List.fold_left DF.add csys.df b_fct_list in
+  let sub_cons_1 = List.fold_left (fun acc bfct -> Uniformity_Set.add acc (of_variable (BasicFact.get_snd_ord_variable bfct)) (BasicFact.get_protocol_term bfct)) csys.sub_cons b_fct_list in
 
-  let mgu_hypothesis = skeleton.fst_subst
-  and b_fct_hypothesis = skeleton.ded_facts
-  and diseq_hypothesis = skeleton.diseq in
-
-  let ded_sdf = SDF.get csys.sdf id_sdf in
-  let recipe_sdf = Fact.get_recipe ded_sdf in
-  let subst_head = Subst.create Recipe skeleton.skeleton.Rewrite_rules.variable_at_position recipe_sdf in
-  let recipe_head = Subst.apply subst_head skeleton.skeleton.Rewrite_rules.recipe (fun t f -> f t) in
-
-  let snd_renaming = Variable.Renaming.fresh Recipe snd_univ Existential in
-
-  let b_fct_hypothesis_2, _ (*recipe_head_2*) =
-    Variable.Renaming.apply_on_terms snd_renaming (b_fct_hypothesis,recipe_head) (fun (l,r) f ->
-      List.fold_left (fun acc b_fct ->
-        let v = of_variable (BasicFact.get_snd_ord_variable b_fct) in
-        let v' = variable_of (f v) in
-        (BasicFact.create v' (BasicFact.get_protocol_term b_fct))::acc
-        ) [] l,
-      f r
-      )
+  let simple_csys =
+    {
+      simp_DF = df_1;
+      simp_EqFst = csys.eqfst;
+      simp_EqSnd = csys.eqsnd;
+      simp_SDF = csys.sdf;
+      simp_Sub_Cons = sub_cons_1;
+      simp_Mixed_Eq = Eq.Mixed.top
+    }
   in
 
-  let df_0 = DF.apply csys.df mgu_hypothesis
-  and eqfst_0 = Eq.apply Protocol csys.eqfst mgu_hypothesis
-  and sdf_0 = SDF.apply csys.sdf Subst.identity mgu_hypothesis
-  and sub_cons_0 = Uniformity_Set.apply csys.sub_cons Subst.identity mgu_hypothesis in
+  simple_recipe, simple_csys
 
-  let eqfst_1 = List.fold_left Eq.wedge eqfst_0 diseq_hypothesis in
+let simple_of_skeleton csys id_sdf id_skel =
+  let fact = SDF.get csys.sdf id_sdf in
 
-  let df_1 = List.fold_left DF.add df_0 b_fct_hypothesis_2 in
-  let sub_cons_1 = List.fold_left (fun acc bfct -> Uniformity_Set.add acc (of_variable (BasicFact.get_snd_ord_variable bfct)) (BasicFact.get_protocol_term bfct)) sub_cons_0 b_fct_hypothesis_2 in
-  (*let (sub_cons_1,sdf_1) =
-    if is_function recipe_head_2 && Symbol.get_arity (root recipe_head_2) > 0
-    then List.fold_left (fun (acc_sub_cons_1,acc_sdf_1) r -> Tools.add_in_uniset acc_sub_cons_1 acc_sdf_1 df_1 r) (sub_cons_0,sdf_0) (get_args recipe_head_2)
-    else (sub_cons_0,sdf_0)
-  in*)
+  let recipe_fact = Fact.get_recipe fact in
 
-  let simple_csys = {
-    simp_DF = df_1;
-    simp_EqFst = eqfst_1;
-    simp_EqSnd = csys.eqsnd;
-    simp_SDF = sdf_0;
-    simp_Sub_Cons = sub_cons_1
-  } in
+  let term_fact = Fact.get_protocol_term fact in
+  let skel = Rewrite_rules.get_skeleton id_skel in
+  let symb = root skel.Rewrite_rules.recipe in
+  try
+    let fst_subst = Subst.unify Protocol [term_fact,skel.Rewrite_rules.pos_term] in
 
-  (snd_renaming, simple_csys)
+    let new_eq_fst = Eq.apply Protocol csys.eqfst fst_subst in
+    if Eq.is_bot new_eq_fst
+    then None
+    else
+      let snd_subst = Subst.create Recipe skel.Rewrite_rules.pos_vars recipe_fact in
+
+      let new_recipe = Subst.apply snd_subst skel.Rewrite_rules.recipe (fun r f -> f r) in
+      let (new_lhs,new_bfct_list) =
+        Subst.apply fst_subst (skel.Rewrite_rules.lhs,skel.Rewrite_rules.basic_deduction_facts) (fun (t_list,bfct_l) f ->
+          List.map f t_list,
+          List.fold_left (fun acc bfct ->
+            if Variable.is_equal (BasicFact.get_snd_ord_variable bfct) skel.Rewrite_rules.pos_vars
+            then acc
+            else (BasicFact.create (BasicFact.get_snd_ord_variable bfct) (f (BasicFact.get_protocol_term bfct)))::acc
+          ) [] bfct_l
+        )
+      in
+
+      let hist = List.find (fun hist -> Symbol.is_equal hist.destructor symb) csys.history_skeleton in
+      let fst_subst_hist = Subst.create_multiple Protocol (List.map2 (fun x t -> (x,t)) hist.fst_vars new_lhs) in
+      let snd_subst_hist = Subst.create_multiple Recipe (List.map2 (fun x t -> (x,t)) hist.snd_vars (get_args new_recipe)) in
+      let mixed_diseq = Eq.Mixed.apply hist.diseq fst_subst_hist snd_subst_hist in
+
+      if Eq.Mixed.is_bot mixed_diseq
+      then None
+      else
+        let df_0 = DF.apply csys.df fst_subst in
+        let df_1 = List.fold_left DF.add df_0 new_bfct_list in
+        let sdf_1 = SDF.apply csys.sdf Subst.identity fst_subst in
+        let sub_cons_0 = Uniformity_Set.apply csys.sub_cons Subst.identity fst_subst in
+        let sub_cons_1 = List.fold_left (fun acc bfct -> Uniformity_Set.add acc (of_variable (BasicFact.get_snd_ord_variable bfct)) (BasicFact.get_protocol_term bfct)) sub_cons_0 new_bfct_list in
+        let simple_csys =
+          {
+            simp_DF = df_1;
+            simp_EqFst = new_eq_fst;
+            simp_EqSnd = csys.eqsnd;
+            simp_SDF = sdf_1;
+            simp_Sub_Cons = sub_cons_1;
+            simp_Mixed_Eq = mixed_diseq
+          }
+        in
+        Some (new_recipe,simple_csys)
+  with Subst.Not_unifiable -> None
 
 (***** Access *****)
 
@@ -1279,12 +1082,12 @@ let apply_mgs csys (subst_snd,list_var) =
     and new_eqfst = Eq.apply Protocol csys.eqfst subst_fst in
 
     if Eq.is_bot new_eqfst
-    then (Config.test (fun () -> test_apply_mgs csys (subst_snd,list_var) None); raise Bot);
+    then raise Bot;
 
     let new_eqsnd = Eq.apply Recipe csys.eqsnd subst_snd in
 
     if Eq.is_bot new_eqsnd
-    then (Config.test (fun () -> test_apply_mgs csys (subst_snd,list_var) None); raise Bot);
+    then raise Bot;
 
     let new_sdf_2 = SDF.apply new_sdf_1 Subst.identity subst_fst
     and new_uf_1 = UF.apply csys.uf subst_snd subst_fst
@@ -1303,7 +1106,14 @@ let apply_mgs csys (subst_snd,list_var) =
         if is_function r && Symbol.get_arity (root r) > 0
         then List.fold_left (fun (acc_sub_cons_1,acc_sdf_1) r -> Tools.add_in_uniset acc_sub_cons_1 acc_sdf_1 new_df_3 r) (acc_sub_cons,acc_sdf) (get_args r)
         else (acc_sub_cons,acc_sdf)
-      ) (new_sub_cons_1,new_sdf_2) subst_snd in
+      ) (new_sub_cons_1,new_sdf_2) subst_snd
+    in
+
+    let new_history =
+      List.fold_left (fun acc hist ->
+        { hist with diseq = Eq.Mixed.apply hist.diseq subst_fst subst_snd }::acc
+      ) [] csys.history_skeleton
+    in
 
     let new_csys =
       { csys with
@@ -1314,15 +1124,16 @@ let apply_mgs csys (subst_snd,list_var) =
         uf = new_uf_1;
         i_subst_fst = new_i_subst_fst;
         i_subst_snd = new_i_subst_snd;
-        sub_cons = new_sub_cons_2
+        sub_cons = new_sub_cons_2;
+        history_skeleton = new_history
       }
     in
 
     if is_uniformity_rule_applicable new_csys
-    then (Config.test (fun () -> test_apply_mgs (unit_t_of csys) (subst_snd,list_var) None); raise Bot)
-    else (Config.test (fun () -> test_apply_mgs (unit_t_of csys) (subst_snd,list_var) (Some (unit_t_of new_csys))); new_csys)
+    then raise Bot
+    else new_csys
   with
-    | Subst.Not_unifiable  -> Config.test (fun () -> test_apply_mgs (unit_t_of csys) (subst_snd,list_var) None); raise Bot
+    | Subst.Not_unifiable  -> raise Bot
 
 let dummy_recipe = of_axiom (Axiom.create 1)
 
@@ -1334,47 +1145,6 @@ type data_shared =
     share_eq : Fact.equality option ref;
     share_i_subst_snd : (snd_ord, axiom) Subst.t
   }
-
-let apply_subst_on_skeleton_EQ subst skel_list =
-  List.fold_left (fun acc (id_sdf,skel) ->
-    let equations1 = Subst.equations_of skel.fst_subst in
-    let equations2 = Subst.equations_of subst in
-    let equations3 = List.rev_append equations1 equations2 in
-
-    try
-      let new_fst_subst = Subst.unify Protocol equations3 in
-
-      let new_ded_fact =
-        Subst.apply new_fst_subst skel.ded_facts (fun ded_l f ->
-          List.fold_left (fun acc1 ded ->
-            let ded1 = BasicFact.create (BasicFact.get_snd_ord_variable ded) (f (BasicFact.get_protocol_term ded)) in
-            ded1::acc1
-          ) [] ded_l
-        )
-      in
-
-      let new_diseq =
-        List.fold_left (fun acc1 diseq ->
-          let diseq1 = Diseq.apply_and_normalise Protocol new_fst_subst diseq in
-
-          if Diseq.is_top diseq1
-          then acc1
-          else if Diseq.is_bot diseq1
-          then raise Subst.Not_unifiable
-          else diseq1::acc1
-        ) [] skel.diseq
-      in
-
-      let new_skel =
-        { skel with
-          ded_facts = new_ded_fact;
-          fst_subst = new_fst_subst;
-          diseq = new_diseq
-        }
-      in
-      (id_sdf,new_skel)::acc
-    with Subst.Not_unifiable -> acc
-  ) [] skel_list
 
 let apply_mgs_and_gather csys data_shared (subst_snd,list_var) =
 
@@ -1406,9 +1176,6 @@ let apply_mgs_and_gather csys data_shared (subst_snd,list_var) =
     if Eq.is_bot new_eqfst
     then raise Bot;
 
-    let new_skeletons_to_check_EQ = apply_subst_on_skeleton_EQ subst_fst csys.skeletons_to_check_EQ
-    and new_skeletons_checked_EQ = apply_subst_on_skeleton_EQ subst_fst csys.skeletons_checked_EQ in
-
     let new_df_3 = DF.apply new_df_2 subst_fst in
 
     let new_sdf_2 = SDF.apply new_sdf_1 Subst.identity subst_fst
@@ -1429,6 +1196,12 @@ let apply_mgs_and_gather csys data_shared (subst_snd,list_var) =
         else (acc_sub_cons,acc_sdf)
       ) (new_sub_cons_1,new_sdf_2) subst_snd in
 
+    let new_history =
+      List.fold_left (fun acc hist ->
+        { hist with diseq = Eq.Mixed.apply hist.diseq subst_fst subst_snd } :: acc
+      ) [] csys.history_skeleton
+    in
+
     let new_csys =
       { csys with
         df = new_df_3;
@@ -1439,8 +1212,7 @@ let apply_mgs_and_gather csys data_shared (subst_snd,list_var) =
         i_subst_fst = new_i_subst_fst;
         i_subst_snd = data_shared.share_i_subst_snd;
         sub_cons = new_sub_cons_2;
-        skeletons_checked_EQ = new_skeletons_checked_EQ;
-        skeletons_to_check_EQ = new_skeletons_to_check_EQ
+        history_skeleton = new_history
       }
     in
 
@@ -1480,9 +1252,6 @@ let apply_mgs_from_gathering csys data_shared (subst_snd,list_var) =
     if Eq.is_bot new_eqfst
     then raise Bot;
 
-    let new_skeletons_to_check_EQ = apply_subst_on_skeleton_EQ subst_fst csys.skeletons_to_check_EQ
-    and new_skeletons_checked_EQ = apply_subst_on_skeleton_EQ subst_fst csys.skeletons_checked_EQ in
-
     let new_df_3 = DF.apply new_df_2 subst_fst in
 
     let new_sdf_2 = SDF.apply new_sdf_1 Subst.identity subst_fst
@@ -1503,6 +1272,12 @@ let apply_mgs_from_gathering csys data_shared (subst_snd,list_var) =
         else (acc_sub_cons,acc_sdf)
       ) (new_sub_cons_1,new_sdf_2) subst_snd in
 
+    let new_history =
+      List.fold_left (fun acc hist ->
+        { hist with diseq = Eq.Mixed.apply hist.diseq subst_fst subst_snd } :: acc
+      ) [] csys.history_skeleton
+    in
+
     let new_csys =
       { csys with
         df = new_df_3;
@@ -1513,8 +1288,7 @@ let apply_mgs_from_gathering csys data_shared (subst_snd,list_var) =
         i_subst_fst = new_i_subst_fst;
         i_subst_snd = data_shared.share_i_subst_snd;
         sub_cons = new_sub_cons_2;
-        skeletons_checked_EQ = new_skeletons_checked_EQ;
-        skeletons_to_check_EQ = new_skeletons_to_check_EQ
+        history_skeleton = new_history
       }
     in
 
@@ -1523,43 +1297,6 @@ let apply_mgs_from_gathering csys data_shared (subst_snd,list_var) =
     else new_csys
   with
     | Subst.Not_unifiable  -> raise Bot
-
-let rec remove_from_list x = function
-  | [] -> Config.internal_error "[constraint_system.ml >> apply_on_formula] The variables in the domain should be in the deduction facts of the hypothesis of the formula."
-  | b_fct::q when Variable.is_equal (BasicFact.get_snd_ord_variable b_fct) x -> BasicFact.get_protocol_term b_fct, q
-  | b_fct::q ->
-      let (t,l) = remove_from_list x q in
-      (t,b_fct::l)
-
-let apply_mgs_on_formula (type a) (fct: a Fact.t) csys (subst_snd,list_var) (formula: a Fact.formula) =
-
-  let head = Fact.get_head formula
-  and mgu_hyp = Fact.get_mgu_hypothesis formula
-  and b_fct_hyp = Fact.get_basic_fact_hypothesis formula in
-
-  let b_fct_to_remove,b_fct_to_keep = List.partition_unordered (fun b_fct -> Subst.is_in_domain subst_snd (BasicFact.get_snd_ord_variable b_fct)) b_fct_hyp in
-
-  let new_b_fct_hyp = List.fold_left (fun acc x_snd ->
-    (BasicFact.create x_snd (of_variable (Variable.fresh Protocol Universal Variable.fst_ord_type)))::acc
-    ) b_fct_to_keep list_var in
-
-  let equations, _ =
-    Subst.fold (fun (eq_l,b_fct_l) x r ->
-      let (t,b_fct_l') = remove_from_list x b_fct_l in
-      match Tools.partial_consequence_additional Recipe csys.sdf csys.df new_b_fct_hyp r with
-        | None -> Config.internal_error "[constraint_system.ml >> apply_on_formula] The substitution is not compatible with the constraint system."
-        | Some (_,t') -> (t,t')::eq_l, b_fct_l'
-    ) (Subst.equations_of mgu_hyp, b_fct_to_remove) subst_snd
-  in
-
-  let new_head = Fact.apply_snd_ord_on_fact fct head subst_snd in
-
-  try
-    let result = Fact.create fct new_head new_b_fct_hyp equations in
-    Config.test (fun () -> test_apply_mgs_on_formula fct csys (subst_snd,list_var) formula (Some result));
-    result
-  with
-    | Fact.Bot -> Config.test (fun () -> test_apply_mgs_on_formula fct csys (subst_snd,list_var) formula None); raise Fact.Bot
 
 (**** Subsumption *****)
 
@@ -1809,7 +1546,6 @@ let subsume fine_grained csys1 csys2 =
           in
           exists_match_mgs new_csys2 f_pred
 
-
 (**********************************
 **** Set of constraint systems ****
 ***********************************)
@@ -1833,8 +1569,6 @@ module Set = struct
       eq_occurs : equality_type;
       set_private_channels : bool
     }
-
-  let unit_t_of (type a) (csys_set: a t) = { csys_set with csys_list = (List.fold_left (fun acc csys -> (unit_t_of csys)::acc) [] csys_set.csys_list) }
 
   let empty =
     {
@@ -1948,77 +1682,6 @@ module Rule = struct
       not_applicable : 'a Set.t -> (unit -> unit) -> unit
     }
 
-  (* Tested functions *)
-
-  let test_normalisation_unit : (unit Set.t -> unit Set.t list -> unit) ref = ref (fun _ _ -> ())
-
-  let update_test_normalisation f = test_normalisation_unit := f
-
-
-  let test_sat_unit : (unit Set.t -> unit Set.t list * unit Set.t list * unit Set.t list  -> unit) ref = ref (fun _ _ -> ())
-
-  let update_test_sat f = test_sat_unit := f
-
-
-  let test_sat_disequation_unit : (unit Set.t -> unit Set.t list * unit Set.t list * unit Set.t list  -> unit) ref = ref (fun _ _ -> ())
-
-  let update_test_sat_disequation f = test_sat_disequation_unit := f
-
-
-  let test_sat_formula_unit : (unit Set.t -> unit Set.t list * unit Set.t list * unit Set.t list  -> unit) ref = ref (fun _ _ -> ())
-
-  let update_test_sat_formula f = test_sat_formula_unit := f
-
-
-  let test_equality_constructor_unit : (unit Set.t -> unit Set.t list * unit Set.t list * unit Set.t list  -> unit) ref = ref (fun _ _ -> ())
-
-  let update_test_equality_constructor f = test_equality_constructor_unit := f
-
-
-  let test_equality_unit : (unit Set.t -> unit Set.t list * unit Set.t list * unit Set.t list  -> unit) ref = ref (fun _ _ -> ())
-
-  let update_test_equality f = test_equality_unit := f
-
-
-  let test_rewrite_unit : (unit Set.t -> unit Set.t list * unit Set.t list * unit Set.t list  -> unit) ref = ref (fun _ _ -> ())
-
-  let update_test_rewrite f = test_rewrite_unit := f
-
-  let test_rule (type a) (rule : a Set.t -> a continuation -> (unit -> unit) -> unit) test_rule_function (csys_set: a Set.t) (continuation_func: a continuation) (f_next:unit -> unit) =
-    try
-      let res_pos = ref ([]:unit Set.t list)
-      and res_neg = ref ([]:unit Set.t list)
-      and res_not = ref ([]:unit Set.t list) in
-
-      let f_pos (set: a Set.t) f_next =
-        res_pos := (Set.unit_t_of set)::!res_pos;
-        continuation_func.positive set f_next
-      and f_neg (set: a Set.t) f_next =
-        res_neg := (Set.unit_t_of set)::!res_neg;
-        continuation_func.negative set f_next
-      and f_not (set: a Set.t) f_next =
-        res_not := (Set.unit_t_of set)::!res_not;
-        continuation_func.not_applicable set f_next
-      in
-
-      rule csys_set { positive = f_pos; negative = f_neg ; not_applicable = f_not } f_next;
-
-      test_rule_function (Set.unit_t_of csys_set) (!res_pos,!res_neg,!res_not)
-    with
-      | Config.Internal_error msg -> raise (Config.Internal_error msg)
-      | exc ->
-          let res_pos = ref ([]:unit Set.t list)
-          and res_neg = ref ([]:unit Set.t list)
-          and res_not = ref ([]:unit Set.t list) in
-
-          let f_pos set _ = res_pos := (Set.unit_t_of set)::!res_pos
-          and f_neg set _ = res_neg := (Set.unit_t_of set)::!res_neg
-          and f_not set _ = res_not := (Set.unit_t_of set)::!res_not in
-
-          rule csys_set { positive = f_pos; negative = f_neg ; not_applicable = f_not } f_next;
-          test_rule_function (Set.unit_t_of csys_set) (!res_pos,!res_neg,!res_not);
-          raise exc
-
   (* The rules *)
 
   let rec remove_id_from_list id = function
@@ -2038,7 +1701,6 @@ module Rule = struct
     | Set.Constructor_SDF (id_sdf,symb) ->
         Config.debug (fun () ->
           let fact = SDF.get csys.sdf id_sdf in
-
           if not (Symbol.is_equal (root (Fact.get_protocol_term fact)) symb)
           then Config.internal_error "[Constraint_system.ml >> check_equality_when_removing_eq_formula] The symbol should correspond to the one deduction fact in the SDF with the given id."
         );
@@ -2050,6 +1712,29 @@ module Rule = struct
       no_split : 'a Set.t -> (unit -> unit) -> unit;
       split : 'a Set.t -> (unit -> unit) -> unit
     }
+
+  let add_mixed_diseq_skeleton csys =
+    Config.debug (fun () ->
+      if not (UF.solved_occurs Fact.Deduction csys.uf)
+      then Config.internal_error "[constraint_system.ml >> add_diseq_skeleton] There should be a solved deduction fact in UF."
+    );
+
+    let form = UF.choose_solved Fact.Deduction csys.uf in
+    let recipe = Fact.get_recipe (Fact.get_head form) in
+
+    if is_axiom recipe
+    then csys
+    else
+      let f = root recipe in
+
+      let new_history =
+        replace_history f (fun hist ->
+          let diseq = Tools.mixed_diseq_for_skeletons csys.sdf csys.df hist.fst_vars hist.snd_vars recipe in
+          { hist with diseq = Eq.Mixed.wedge hist.diseq diseq }
+        ) csys.history_skeleton
+      in
+
+      { csys with history_skeleton = new_history }
 
   let partition_csys_set eq_type_op csys_set =
     let positive = ref []
@@ -2072,8 +1757,9 @@ module Rule = struct
             if UF.solved_occurs Fact.Equality csys.uf
             then
               let new_uf = UF.remove_solved Fact.Equality csys.uf in
-              let csys_1 = { csys with uf = UF.remove_solved Fact.Deduction new_uf } in
-              positive := csys_1 :: !positive
+              let csys_1 = add_mixed_diseq_skeleton csys in
+              let csys_2 = { csys_1 with uf = UF.remove_solved Fact.Deduction new_uf } in
+              positive := csys_2 :: !positive
             else
               begin
                 Config.debug (fun () ->
@@ -2179,7 +1865,8 @@ module Rule = struct
                       let csys_list =
                         List.fold_left (fun acc csys ->
                           let new_uf = UF.remove_solved Fact.Equality csys.uf in
-                          { csys with uf = UF.remove_solved Fact.Deduction new_uf } :: acc
+                          let csys_1 = add_mixed_diseq_skeleton csys in
+                          { csys_1 with uf = UF.remove_solved Fact.Deduction new_uf } :: acc
                         ) [] csys_set.Set.csys_list
                       in
                       let csys_set' = { csys_set with Set.csys_list = csys_list ; Set.eq_occurs = Set.No_equality ; Set.ded_occurs = false } in
@@ -2286,63 +1973,27 @@ module Rule = struct
 
                   if csys.equality_to_checked <> []
                   then Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] All pair of deduction fact from sdf should have been checked for equalities at that point.";
-
-                  if csys.skeletons_checked_EQ <> []
-                  then Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] No skeletons_EQ should have been checked when we had a SDF."
                 );
+
                 let head = Fact.get_head ded_formula in
 
                 let new_sdf = SDF.add csys.sdf csys.size_frame head in
                 let id_last = SDF.last_entry_id new_sdf in
-
-                let new_skeletons =
-                  List.fold_left (fun acc f ->
-                    if Symbol.is_public f
-                    then List.rev_append (Rewrite_rules.skeletons true (Fact.get_protocol_term head) f csys.size_frame) acc
-                    else acc
-                    ) [] !Symbol.all_destructors
-                in
-
-                let new_skeletons_for_equality =
-                  List.fold_left (fun acc f ->
-                    if Symbol.is_public f
-                    then List.rev_append (Rewrite_rules.skeletons false (Fact.get_protocol_term head) f csys.size_frame) acc
-                    else acc
-                    ) [] !Symbol.all_destructors
-                in
-
-                let new_skeletons_EQ =
-                  List.fold_left (fun acc skel ->
-                    match create_skeleton_EQ (Fact.get_protocol_term head) skel with
-                      | None -> acc
-                      | Some skel_eq -> (id_last,skel_eq)::acc
-                  ) csys.skeletons_to_check_EQ new_skeletons_for_equality
-                in
-
-                (*let (sub_cons_1,new_sdf_1) =
-                  let recipe_head = Fact.get_recipe head in
-                  if is_function recipe_head
-                  then
-                    let recipe_args = get_args recipe_head in
-                    List.fold_left (fun (acc_sub_cons,acc_sdf) r -> Tools.add_in_uniset acc_sub_cons acc_sdf csys.df r) (csys.sub_cons,new_sdf) recipe_args
-                  else csys.sub_cons, new_sdf
-                in*)
 
                 Config.debug (fun () ->
                   if Uniformity_Set.exists_pair_with_same_protocol_term csys.sub_cons (Eq.implies Recipe csys.eqsnd)
                   then Config.internal_error "[constraint_system.ml >> normalisation_SDF_or_consequence] The uniformity check should not occur when adding an element to SDF."
                 );
 
-                { csys with
+                let csys_1 = add_mixed_diseq_skeleton csys in
+
+                { csys_1 with
                   skeletons_checked = [];
-                  skeletons_to_check = List.rev_append csys.skeletons_checked (List.fold_left (fun acc skel -> (id_last,skel)::acc) csys.skeletons_to_check new_skeletons);
-                  skeletons_checked_EQ = [];
-                  skeletons_to_check_EQ = new_skeletons_EQ;
+                  skeletons_to_check = (List.rev_append csys.skeletons_checked (List.fold_left (fun acc id_skel -> (id_last,id_skel)::acc) csys.skeletons_to_check (Rewrite_rules.get_all_skeleton_indices ())));
                   equality_to_checked = SDF.all_id csys.sdf;
                   equality_constructor_checked = [];
                   equality_constructor_to_checked = id_last::csys.equality_constructor_checked;
                   sdf = new_sdf;
-                  sub_cons = csys.sub_cons;
                   uf = UF.remove_solved Fact.Deduction csys.uf
                 } :: acc_csys
               ) [] csys_set.Set.csys_list
@@ -2373,8 +2024,8 @@ module Rule = struct
 
                     begin try
                       let head_eq = Fact.create_equality_fact recipe recipe_conseq in
-                      let eq_form = Fact.create Fact.Equality head_eq [] [term,term_conseq] in
-                      let (_,_,simple_csys) = simple_of_formula Fact.Equality csys eq_form in
+                      let eq_form = Fact.create Fact.Equality head_eq [term,term_conseq] in
+                      let simple_csys = simple_of_formula csys eq_form in
 
                       let _ = one_mgs simple_csys in
                       { csys with uf = UF.add_equality csys.uf eq_form } :: acc
@@ -2406,7 +2057,7 @@ module Rule = struct
                       match UF.choose_solved_option Fact.Deduction csys.uf with
                         | None ->
                             let uf_1 = UF.filter Fact.Deduction csys.uf (fun form ->
-                              let _,_,simple_csys = simple_of_formula Fact.Deduction csys form in
+                              let simple_csys = simple_of_formula csys form in
                               try
                                 let _ = one_mgs simple_csys in
                                 true
@@ -2418,21 +2069,7 @@ module Rule = struct
                             then ded_occurs := true;
 
                             { csys with uf = uf_1 } :: acc_csys
-                        | Some _ ->
-                            (*let sub_cons =
-                              let recipe_head = Fact.get_recipe (Fact.get_head form) in
-                              if is_function recipe_head
-                              then
-                                let recipe_args = get_args recipe_head in
-                                let sub_cons',_ = List.fold_left (fun (acc_sub_cons,acc_sdf) r -> Tools.add_in_uniset acc_sub_cons acc_sdf csys.df r) (csys.sub_cons,csys.sdf) recipe_args in
-                                sub_cons'
-                              else csys.sub_cons
-                            in
-
-                            if Uniformity_Set.exists_pair_with_same_protocol_term sub_cons (Eq.implies Recipe csys.eqsnd)
-                            then { csys with uf = UF.remove_solved Fact.Deduction csys.uf } :: acc_csys
-                            else (ded_occurs := true; csys :: acc_csys)*)
-                            (ded_occurs := true; csys :: acc_csys)
+                        | Some _ -> (ded_occurs := true; csys :: acc_csys)
                     ) [] csys_set.Set.csys_list
                   in
 
@@ -2455,7 +2092,7 @@ module Rule = struct
                       begin match UF.choose_unsolved_option Fact.Equality csys.uf with
                         | None -> csys::acc_csys
                         | Some form ->
-                            let _,_,simple_csys = simple_of_formula Fact.Equality csys form in
+                            let simple_csys = simple_of_formula csys form in
                             begin try
                               let _ = one_mgs simple_csys in
                               eq_occurs := true;
@@ -2464,31 +2101,7 @@ module Rule = struct
                               | Not_found -> { csys with uf = UF.remove_unsolved_equality csys.uf } :: acc_csys
                             end
                       end
-                  | Some _ (*form*) ->
-                      (*let head = Fact.get_head form in
-                      let (recipe_1,recipe_2) = Fact.get_both_recipes head in
-
-                      let sub_cons_1,sdf_1 =
-                        if is_function recipe_1 && Symbol.get_arity (root recipe_1) <> 0
-                        then
-                          let recipe_args = get_args recipe_1 in
-                          List.fold_left (fun (acc_sub_cons,acc_sdf) r -> Tools.add_in_uniset acc_sub_cons acc_sdf csys.df r) (csys.sub_cons,csys.sdf) recipe_args
-                        else csys.sub_cons, csys.sdf
-                      in
-
-                      let sub_cons_2 =
-                        if is_function recipe_2 && Symbol.get_arity (root recipe_2) <> 0
-                        then
-                          let recipe_args = get_args recipe_2 in
-                          let sub_cons',_ = List.fold_left (fun (acc_sub_cons,acc_sdf) r -> Tools.add_in_uniset acc_sub_cons acc_sdf csys.df r) (sub_cons_1,sdf_1) recipe_args in
-                          sub_cons'
-                        else sub_cons_1
-                      in
-
-                      if Uniformity_Set.exists_pair_with_same_protocol_term sub_cons_2 (Eq.implies Recipe csys.eqsnd)
-                      then { csys with uf = UF.remove_solved Fact.Equality csys.uf } :: acc_csys
-                      else (eq_occurs := true; csys :: acc_csys)*)
-                      (eq_occurs := true; csys :: acc_csys)
+                  | Some _  -> (eq_occurs := true; csys :: acc_csys)
               ) [] new_csys_set_1.Set.csys_list
             in
 
@@ -2565,7 +2178,7 @@ module Rule = struct
 
   let normalisation_after_axiom = normalisation_NoEq_Solved_Ded
 
-  let internal_normalisation csys_set f_continuation f_next =
+  let normalisation csys_set f_continuation f_next =
 
     Config.debug (fun () ->
       if csys_set.Set.ded_occurs = false && List.exists (fun csys -> UF.solved_occurs Fact.Deduction csys.uf || UF.unsolved_occurs Fact.Deduction csys.uf) csys_set.Set.csys_list
@@ -2574,37 +2187,9 @@ module Rule = struct
 
     normalisation_mgs csys_set (fun csys_set_1 f_next_1 -> normalisation_without_mgs_check csys_set_1 f_continuation f_next_1) f_next
 
-  let test_normalisation csys_set f_continuation f_next =
-    try
-      let res = ref [] in
-
-      internal_normalisation csys_set (fun csys_set' f_next ->
-        res := (Set.unit_t_of csys_set'):: !res;
-        f_continuation csys_set' f_next
-      ) f_next;
-
-      !test_normalisation_unit (Set.unit_t_of csys_set) !res
-    with
-      | Config.Internal_error msg -> raise (Config.Internal_error msg)
-      | exc ->
-          let res = ref [] in
-
-          internal_normalisation csys_set (fun csys_set' _ ->
-            res := (Set.unit_t_of csys_set')::!res
-          ) f_next;
-
-          !test_normalisation_unit (Set.unit_t_of csys_set) !res;
-          raise exc
-
-  let normalisation =
-    if Config.test_activated
-    then test_normalisation
-    else internal_normalisation
-
-
   (**** The rule SAT ****)
 
-  let rec internal_sat csys_set continuation_func f_next =
+  let rec sat csys_set continuation_func f_next =
 
     let rec explore_csys_set prev_csys_set = function
       | [] -> None
@@ -2619,7 +2204,7 @@ module Rule = struct
           let mgs_list = mgs simple_csys in
 
           if mgs_list =  []
-          then (internal_sat [@tailcall]) { csys_set with Set.csys_list = other_csys } continuation_func f_next
+          then (sat [@tailcall]) { csys_set with Set.csys_list = other_csys } continuation_func f_next
           else
             begin
               let accumulator_diseq = ref [] in
@@ -2692,16 +2277,11 @@ module Rule = struct
 
               (continuation_func.negative [@tailcall]) negative_csys_set new_f_next
             end
-    | None -> (continuation_func.not_applicable [@tailcall]) csys_set f_next
-
-  let sat =
-    if Config.test_activated
-    then (fun csys_set continuation_func f_next -> test_rule internal_sat !test_sat_unit csys_set continuation_func f_next)
-    else internal_sat
+      | None -> (continuation_func.not_applicable [@tailcall]) csys_set f_next
 
   (**** The rule SAT Private ****)
 
-  let internal_sat_private csys_set continuation_func f_next =
+  let sat_private csys_set continuation_func f_next =
     if csys_set.Set.set_private_channels
     then
       let result_rule = ref [] in
@@ -2801,11 +2381,9 @@ module Rule = struct
         | None -> (continuation_func.not_applicable [@tailcall]) { csys_set with Set.csys_list = !result_rule } f_next
     else (continuation_func.not_applicable [@tailcall]) csys_set f_next
 
-  let sat_private = internal_sat_private
-
   (**** The rule SAT Disequation ****)
 
-  let internal_sat_disequation csys_set continuation_func f_next =
+  let sat_disequation csys_set continuation_func f_next =
 
     let result_rule = ref [] in
 
@@ -2821,7 +2399,7 @@ module Rule = struct
           in
           let new_csys = { csys with eqfst = eqfst_1 } in
 
-          let (_,simple_csys) = simple_of_disequation new_csys diseq in
+          let simple_csys = simple_of_disequation new_csys diseq in
 
           let mgs_list = mgs simple_csys in
 
@@ -2902,23 +2480,18 @@ module Rule = struct
           (continuation_func.negative [@tailcall]) negative_csys_set new_f_next
       | None -> (continuation_func.not_applicable [@tailcall]) { csys_set with Set.csys_list = !result_rule } f_next
 
-  let sat_disequation =
-    if Config.test_activated
-    then (fun csys_set continuation_func f_next -> test_rule internal_sat_disequation !test_sat_disequation_unit csys_set continuation_func f_next)
-    else internal_sat_disequation
-
   (**** The rule SAT Formula ****)
 
   exception Rule_Sat_Formula_applied of mgs
 
-  let internal_sat_formula csys_set continuation_func f_next =
+  let sat_formula csys_set continuation_func f_next =
 
     let is_rule_sat_formula_applicable =
       try
         List.iter (fun csys ->
           match UF.choose_unsolved_option Fact.Deduction csys.uf with
             | Some form ->
-                let (_,_,simple_csys) = simple_of_formula Fact.Deduction csys form in
+                let simple_csys = simple_of_formula csys form in
 
                 begin
                   try
@@ -2930,7 +2503,7 @@ module Rule = struct
             | None ->
                 begin match UF.choose_unsolved_option Fact.Equality csys.uf with
                   | Some form ->
-                      let (_,_,simple_csys) = simple_of_formula Fact.Equality csys form in
+                      let simple_csys = simple_of_formula csys form in
 
                       begin
                         try
@@ -3010,14 +2583,9 @@ module Rule = struct
 
           (normalisation [@tailcall]) negative_csys_set continuation_func.negative (fun () -> (normalisation [@tailcall]) positive_csys_set continuation_func.positive f_next)
 
-  let sat_formula =
-    if Config.test_activated
-    then (fun csys_set continuation_func f_next -> test_rule internal_sat_formula !test_sat_formula_unit csys_set continuation_func f_next)
-    else internal_sat_formula
-
   (**** The rule Equality Constructor ****)
 
-  let create_eq_constructor_formula csys id_sdf univ_vars_snd symbol =
+  let create_eq_constructor_formula csys id_sdf recipe symbol =
     let fact = SDF.get csys.sdf id_sdf in
 
     let term = Fact.get_protocol_term fact in
@@ -3028,52 +2596,26 @@ module Rule = struct
 
       if Symbol.is_equal symb symbol
       then
-        let args = get_args term in
-        let b_fct_list = List.map2 (fun x t -> BasicFact.create x t) univ_vars_snd args in
-        let head = Fact.create_equality_fact (Fact.get_recipe fact) (apply_function symb (List.map of_variable univ_vars_snd)) in
-        Fact.create Fact.Equality head b_fct_list []
+        match Tools.partial_consequence Recipe csys.sdf csys.df recipe with
+          | None -> Config.internal_error "[constraint_system.ml >> create_eq_constructor_formula] The recipe should be consequence."
+          | Some (_,t) ->
+              let head = Fact.create_equality_fact (Fact.get_recipe fact) recipe in
+              Fact.create Fact.Equality head [term,t]
       else raise Fact.Bot
     else raise Fact.Bot
 
   let add_when_mgs_exists_eq csys form =
-    if Fact.is_solved form
-    then
-      begin
-        (*let head = Fact.get_head form in
-        let (recipe_1,recipe_2) = Fact.get_both_recipes head in
-
-        let sub_cons_1,sdf_1 =
-          if is_function recipe_1
-          then
-            let recipe_args = get_args recipe_1 in
-            List.fold_left (fun (acc_sub_cons,acc_sdf) r -> Tools.add_in_uniset acc_sub_cons acc_sdf csys.df r) (csys.sub_cons,csys.sdf) recipe_args
-          else csys.sub_cons, csys.sdf
-        in
-
-        let sub_cons_2 =
-          if is_function recipe_2
-          then
-            let recipe_args = get_args recipe_2 in
-            let sub_cons',_ = List.fold_left (fun (acc_sub_cons,acc_sdf) r -> Tools.add_in_uniset acc_sub_cons acc_sdf csys.df r) (sub_cons_1,sdf_1) recipe_args in
-            sub_cons'
-          else sub_cons_1
-        in
-
-        if Uniformity_Set.exists_pair_with_same_protocol_term sub_cons_2 (Eq.implies Recipe csys.eqsnd)
-        then csys
-        else { csys with uf = UF.add_equality csys.uf form }*)
-        { csys with uf = UF.add_equality csys.uf form }
-      end
+    if Fact.is_fact form
+    then { csys with uf = UF.add_equality csys.uf form }
     else
-      let _,_,simple_csys = simple_of_formula Fact.Equality csys form in
-      begin try
-        let _ = one_mgs simple_csys in
+      let simple_csys = simple_of_formula csys form in
+      try
+        ignore (one_mgs simple_csys);
         { csys with uf = UF.add_equality csys.uf form }
       with
         | Not_found -> csys
-      end
 
-  let internal_equality_constructor csys_set continuation_func f_next =
+  let equality_constructor csys_set continuation_func f_next =
 
     let rec explore_csys explored_csys_set = function
       | [] -> None, explored_csys_set
@@ -3100,21 +2642,7 @@ module Rule = struct
                   if Symbol.is_public symb
                   then
                     begin
-                      let symb = root term in
-                      let args = get_args term in
-
-                      let univ_vars_snd = Variable.fresh_list Recipe Universal (Variable.snd_ord_type csys.size_frame) (Symbol.get_arity symb) in
-
-                      let b_fct_list = List.map2 (fun x t -> BasicFact.create x t) univ_vars_snd args in
-                      let head = Fact.create_equality_fact (Fact.get_recipe fact) (apply_function symb (List.map of_variable univ_vars_snd)) in
-
-                      let form = Fact.create Fact.Equality head b_fct_list [] in
-                      let (fst_renaming,snd_renaming,simple_csys) = simple_of_formula Fact.Equality csys form in
-
-                      Config.debug (fun () ->
-                        if not (Variable.Renaming.is_identity fst_renaming)
-                        then Config.internal_error "[Constraint_system.ml >> rule_equality_constructor] The renaming should be identity."
-                      );
+                      let simple_recipe, simple_csys = simple_of_equality_constructor csys symb term in
 
                       try
                         let ((mgs,l_vars), _, _) = one_mgs simple_csys in
@@ -3126,14 +2654,9 @@ module Rule = struct
 
                         let mgs_csys, mgs_form = Subst.split_domain mgs (fun x -> Variable.type_of x <> csys.size_frame) in
 
-                        let mgs_form_univ = Subst.compose_restricted (Subst.of_renaming snd_renaming) mgs_form in
+                        let recipe = Subst.apply mgs_form simple_recipe (fun r f -> f r) in
 
-                        Config.debug (fun () ->
-                          if List.exists (fun x -> not (Subst.is_in_domain mgs_form_univ x)) univ_vars_snd || Subst.fold (fun b x _ -> b || List.for_all (fun y -> not (Variable.is_equal x y)) univ_vars_snd) false mgs_form_univ
-                          then Config.internal_error "[Constraint_system.ml >> rule_equality_constructor] The list univ_vars_snd should be equal to the domain of the mgs."
-                        );
-
-                        (Some (mgs_csys, l_vars, id_sdf, mgs_form_univ, univ_vars_snd, symb)), List.rev_append (csys::q_csys_set) explored_csys_set
+                        (Some (mgs_csys, l_vars, id_sdf, recipe, symb)), List.rev_append (csys::q_csys_set) explored_csys_set
                       with
                         | Not_found ->
                             explore_csys explored_csys_set (
@@ -3163,7 +2686,7 @@ module Rule = struct
 
     match explore_csys [] csys_set.Set.csys_list with
       | None, csys_set_1 -> (continuation_func.not_applicable [@tailcall]) { csys_set with Set.csys_list = csys_set_1 } f_next
-      | Some (mgs_csys, l_vars, id_sdf, mgs_form_univ, univ_vars_snd, symb), csys_set_1 ->
+      | Some (mgs_csys, l_vars, id_sdf, recipe, symb), csys_set_1 ->
 
           if Subst.is_identity mgs_csys
           then
@@ -3174,9 +2697,8 @@ module Rule = struct
               );
               let positive_csys_list = List.fold_left (fun set csys ->
                 try
-                  let form_1 = create_eq_constructor_formula csys id_sdf univ_vars_snd symb in
-                  let form_2 = apply_mgs_on_formula Fact.Equality csys (mgs_form_univ,[]) form_1 in
-                  (add_when_mgs_exists_eq csys form_2):: set
+                  let form_1 = create_eq_constructor_formula csys id_sdf recipe symb in
+                  (add_when_mgs_exists_eq csys form_1):: set
                 with
                   | Fact.Bot -> csys::set
                 ) [] csys_set_1
@@ -3206,9 +2728,8 @@ module Rule = struct
                   let one_csys' = apply_mgs_and_gather one_csys data_shared (mgs_csys,l_vars) in
                   let one_csys'' =
                     try
-                      let form_1 = create_eq_constructor_formula one_csys' id_sdf univ_vars_snd symb in
-                      let form_2 = apply_mgs_on_formula Fact.Equality one_csys' (mgs_form_univ,[]) form_1 in
-                      add_when_mgs_exists_eq one_csys' form_2
+                      let form_1 = create_eq_constructor_formula one_csys' id_sdf recipe symb in
+                      add_when_mgs_exists_eq one_csys' form_1
                     with
                       | Fact.Bot -> one_csys'
                   in
@@ -3216,9 +2737,8 @@ module Rule = struct
                     try
                       let csys_1 = apply_mgs_from_gathering csys data_shared (mgs_csys,l_vars) in
                       begin try
-                        let form_1 = create_eq_constructor_formula csys_1 id_sdf univ_vars_snd symb in
-                        let form_2 = apply_mgs_on_formula Fact.Equality csys_1 (mgs_form_univ,[]) form_1 in
-                        (add_when_mgs_exists_eq csys_1 form_2) :: set
+                        let form_1 = create_eq_constructor_formula csys_1 id_sdf recipe symb in
+                        (add_when_mgs_exists_eq csys_1 form_1) :: set
                       with
                         | Fact.Bot -> csys_1::set
                       end
@@ -3231,9 +2751,8 @@ module Rule = struct
                       try
                         let csys_1 = apply_mgs_from_gathering csys data_shared (mgs_csys,l_vars) in
                         begin try
-                          let form_1 = create_eq_constructor_formula csys_1 id_sdf univ_vars_snd symb in
-                          let form_2 = apply_mgs_on_formula Fact.Equality csys_1 (mgs_form_univ,[]) form_1 in
-                          (add_when_mgs_exists_eq csys_1 form_2) :: set
+                          let form_1 = create_eq_constructor_formula csys_1 id_sdf recipe symb in
+                          (add_when_mgs_exists_eq csys_1 form_1) :: set
                         with
                           | Fact.Bot -> csys_1::set
                         end
@@ -3262,14 +2781,9 @@ module Rule = struct
               (normalisation [@tailcall]) negative_csys_set continuation_func.negative (fun () -> (normalisation [@tailcall]) positive_csys_set continuation_func.positive f_next)
             end
 
-  let equality_constructor =
-    if Config.test_activated
-    then (fun csys_set continuation_func f_next -> test_rule internal_equality_constructor !test_equality_constructor_unit csys_set continuation_func f_next)
-    else internal_equality_constructor
-
   (**** The rule Equality ****)
 
-  let internal_equality csys_set continuation_func f_next =
+  let equality csys_set continuation_func f_next =
 
     let rec explore_csys explored_csys_set = function
       | [] -> None, explored_csys_set
@@ -3289,14 +2803,9 @@ module Rule = struct
               let head = Fact.create_equality_fact (Fact.get_recipe fact) (Fact.get_recipe last_fact) in
 
               try
-                let form = Fact.create Fact.Equality head [] [(term,last_term)] in
+                let form = Fact.create Fact.Equality head [(term,last_term)] in
 
-                let (fst_renaming,snd_renaming,simple_csys) = simple_of_formula Fact.Equality csys form in
-
-                Config.debug (fun () ->
-                  if not (Variable.Renaming.is_identity fst_renaming) || not (Variable.Renaming.is_identity snd_renaming)
-                  then Config.internal_error "[Constraint_system.ml >> rule_equality] The renaming should be identity."
-                );
+                let simple_csys = simple_of_formula csys form in
 
                 let ((mgs,l_vars), _, _) = one_mgs simple_csys in
 
@@ -3332,7 +2841,7 @@ module Rule = struct
 
                     let head = Fact.create_equality_fact (Fact.get_recipe fact) (Fact.get_recipe last_fact) in
 
-                    let form = Fact.create Fact.Equality head [] [(term,last_term)] in
+                    let form = Fact.create Fact.Equality head [(term,last_term)] in
 
                     (add_when_mgs_exists_eq csys form) :: set
                   with
@@ -3377,7 +2886,7 @@ module Rule = struct
 
                       let head = Fact.create_equality_fact (Fact.get_recipe fact) (Fact.get_recipe last_fact) in
 
-                      let form = Fact.create Fact.Equality head [] [(term,last_term)] in
+                      let form = Fact.create Fact.Equality head [(term,last_term)] in
 
                       add_when_mgs_exists_eq one_csys' form
                     with
@@ -3396,7 +2905,7 @@ module Rule = struct
 
                         let head = Fact.create_equality_fact (Fact.get_recipe fact) (Fact.get_recipe last_fact) in
 
-                        let form = Fact.create Fact.Equality head [] [(term,last_term)] in
+                        let form = Fact.create Fact.Equality head [(term,last_term)] in
 
                         (add_when_mgs_exists_eq csys_1 form) :: set
                       with
@@ -3421,7 +2930,7 @@ module Rule = struct
 
                           let head = Fact.create_equality_fact (Fact.get_recipe fact) (Fact.get_recipe last_fact) in
 
-                          let form = Fact.create Fact.Equality head [] [(term,last_term)] in
+                          let form = Fact.create Fact.Equality head [(term,last_term)] in
 
                           (add_when_mgs_exists_eq csys_1 form) :: set
                         with
@@ -3452,16 +2961,13 @@ module Rule = struct
               (normalisation [@tailcall]) negative_csys_set continuation_func.negative (fun () -> (normalisation [@tailcall]) positive_csys_set continuation_func.positive f_next)
             end
 
-  let equality =
-    if Config.test_activated
-    then (fun csys_set continuation_func f_next -> test_rule internal_equality !test_equality_unit csys_set continuation_func f_next)
-    else internal_equality
-
   (**** The rule Rewrite ****)
 
-  exception Rule_rewrite_applicable of mgs * (snd_ord,axiom) Subst.t
+  (* exception Rule_rewrite_applicable of mgs * (snd_ord,axiom) Subst.t
 
-  let internal_rewrite csys_set continuation_func f_next =
+
+
+  let rewrite csys_set continuation_func f_next =
     Config.debug (fun () ->
       if csys_set.Set.ded_occurs
       then Config.internal_error "[constraint_system.ml >> internal_rewrite] There should not be any deduction formula in UF";
@@ -3481,7 +2987,7 @@ module Rule = struct
           then (explore_csys [@taicall]) (csys::explored_csys_set) q_csys_set
           else
             begin
-              let (id_sdf,skel) = List.hd csys.skeletons_to_check in
+              let (id_sdf,id_skel) = List.hd csys.skeletons_to_check in
               let fact = SDF.get csys.sdf id_sdf in
 
               let form_op =
@@ -3684,86 +3190,83 @@ module Rule = struct
               let negative_csys_set = { csys_set with Set.csys_list = negative_csys_list; ded_occurs = false } in
 
               (normalisation [@tailcall]) negative_csys_set continuation_func.negative (fun () -> (normalisation [@tailcall]) positive_csys_set continuation_func.positive f_next)
-            end
-
-  let rewrite =
-    if Config.test_activated
-    then (fun csys_set continuation_func f_next -> test_rule internal_rewrite !test_rewrite_unit csys_set continuation_func f_next)
-    else internal_rewrite
+            end *)
 
   (**** The rule Rewrite EQ ****)
 
-  let internal_rewrite_EQ csys_set continuation_func f_next =
+  let create_generic_skeleton_formula csys id_skel recipe =
+    let lhs_recipe = get_args recipe in
+    let lhs_terms =
+      List.map (fun r -> match Tools.partial_consequence Recipe csys.sdf csys.df r with
+        | None -> Config.internal_error "[constraint_system.ml >> create_generic_skeleton_formula] The recipe should be consequence."
+        | Some (_,t) -> t
+      ) lhs_recipe
+    in
+
+    List.fold_left (fun acc (lhs,r) ->
+      let fact = Fact.create_deduction_fact recipe r in
+
+      try
+        let form = Fact.create Fact.Deduction fact (List.combine lhs lhs_terms) in
+        form::acc
+      with Fact.Bot -> acc
+    ) [] (Rewrite_rules.get_compatible_rewrite_rules id_skel)
+
+  let rewrite csys_set continuation_func f_next =
 
     let rec explore_csys explored_csys_set = function
       | [] -> None, explored_csys_set
       | csys::q_csys_set ->
-          if csys.skeletons_to_check_EQ = []
+          if csys.skeletons_to_check = []
           then (explore_csys [@taicall]) (csys::explored_csys_set) q_csys_set
           else
             begin
-              let (id_sdf,skel) = List.hd csys.skeletons_to_check_EQ in
+              let (id_sdf,id_skel) = List.hd csys.skeletons_to_check in
 
-              let (snd_renaming, simple_csys) = simple_of_skeleton_EQ csys id_sdf skel in
+              match simple_of_skeleton csys id_sdf id_skel with
+                | None -> explore_csys explored_csys_set ({ csys with skeletons_to_check = List.tl csys.skeletons_to_check }::q_csys_set)
+                | Some (recipe,simple_csys) ->
+                    let is_rule_applicable =
+                      try
+                        let ((mgs,l_vars), _, _) = one_mgs simple_csys in
 
-              let is_rule_applicable =
-                try
-                  let ((mgs,l_vars), fst_subst_mgs, _) = one_mgs simple_csys in
-                  (* Need to add the disequations corresponding to the mgs in the list of skeleton *)
+                        let mgs_form, mgs_csys  = Subst.split_domain mgs Variable.has_infinite_type in
+                        let l_vars_form, l_vars_csys = List.partition_unordered Variable.has_infinite_type l_vars in
 
-                  let mgs_csys,mgs_form = Subst.split_domain mgs (fun x -> Variable.type_of x <> csys.size_frame) in
-                  let l_vars_csys, l_vars_form = List.partition_unordered (fun x -> Variable.type_of x <> csys.size_frame) l_vars in
+                        let snd_vars = (Rewrite_rules.get_skeleton id_skel).Rewrite_rules.snd_vars in
+                        let not_instantied_vars = Subst.not_in_domain mgs_form snd_vars in
 
-                  let new_mgs_form =  Subst.compose_restricted (Subst.of_renaming snd_renaming) mgs_form in
+                        let (nb_vars,eq_name_1) = List.fold_left (fun (i,acc) x -> (i+1,(x, apply_function (Symbol.get_fresh_constant i) [])::acc)) (0,[]) not_instantied_vars in
+                        let (_,eq_name_2) = List.fold_left (fun (i,acc) x -> (i+1,(x, apply_function (Symbol.get_fresh_constant i) [])::acc)) (nb_vars,eq_name_1) l_vars_form in
+                        let subst_name = Subst.create_multiple Recipe eq_name_2 in
 
-                  let eq_name = List.map (fun x -> (x,  apply_function (Symbol.get_constant ()) [])) l_vars_form in
-                  let (_,eq_name_2) = Subst.fold (fun (n,eq) _ r ->
-                    if is_variable r && Variable.type_of (variable_of r) = csys.size_frame
-                    then (n+1,(variable_of r, apply_function (Symbol.get_fresh_constant (n+1)) [])::eq)
-                    else (n,eq)
-                  ) (0,eq_name) new_mgs_form
-                  in
+                        let new_mgs_form = Subst.compose mgs_form subst_name in
+                        let new_recipe = Subst.apply new_mgs_form recipe (fun r f -> f r) in
 
-                  let subst_name = Subst.create_multiple Recipe eq_name_2 in
-                  let new_mgs_form_2 = Subst.compose_restricted new_mgs_form subst_name in
-                  Some ((mgs_csys,l_vars_csys),new_mgs_form_2,fst_subst_mgs)
-                with
-                  | Not_found -> None
-                      (* No MGS exists -> We can consider the skeleton as checked. *)
-              in
-
-              match is_rule_applicable with
-                | None -> (explore_csys [@tailcall]) explored_csys_set (
-                    { csys with
-                      skeletons_to_check_EQ = List.tl csys.skeletons_to_check_EQ;
-                      skeletons_checked_EQ = (id_sdf,skel)::csys.skeletons_checked_EQ
-                    }::q_csys_set)
-                | Some (mgs,mgs_form,fst_subst_mgs) ->
-                    let new_diseq = Diseq.of_substitution Protocol fst_subst_mgs [] in
-                    let new_csys =
-                      if Diseq.is_bot new_diseq
-                      then
-                        { csys with
-                          skeletons_to_check_EQ = (List.tl csys.skeletons_to_check_EQ);
-                        }
-                      else
-                        { csys with
-                          skeletons_to_check_EQ = (id_sdf,{skel with diseq = new_diseq::skel.diseq})::(List.tl csys.skeletons_to_check_EQ);
-                        }
+                        Some(id_skel,(mgs_csys,l_vars_csys),new_recipe)
+                      with
+                        | Not_found -> None
                     in
-                    Some (id_sdf,skel.skeleton,mgs,mgs_form), List.rev_append (new_csys::q_csys_set) explored_csys_set
 
+                    begin match is_rule_applicable with
+                      | None -> (explore_csys [@tailcall]) explored_csys_set (
+                          { csys with
+                            skeletons_to_check = List.tl csys.skeletons_to_check;
+                            skeletons_checked = (id_sdf,id_skel)::csys.skeletons_checked
+                          }::q_csys_set)
+                      | _ -> is_rule_applicable, List.rev_append (csys::q_csys_set) explored_csys_set
+                    end
             end
     in
 
     match explore_csys [] csys_set.Set.csys_list with
       | None, csys_set_1 ->
           Config.debug (fun () ->
-            if List.exists (fun csys -> csys.skeletons_to_check_EQ <> []) csys_set_1
-            then Config.internal_error "[constraint_system.ml >> internal_rewrite_EQ] Skeletons to check EQ should be empty."
+            if List.exists (fun csys -> csys.skeletons_to_check <> []) csys_set_1
+            then Config.internal_error "[constraint_system.ml >> rewrite] Skeletons to check should be empty."
           );
           (continuation_func.not_applicable [@tailcall]) { csys_set with Set.csys_list = csys_set_1 } f_next
-      | Some (id_sdf, skel, (mgs_csys,l_vars), mgs_form), csys_set_1 ->
+      | Some (id_skel, (mgs_csys,l_vars), recipe), csys_set_1 ->
 
           if Subst.is_identity mgs_csys
           then
@@ -3773,22 +3276,10 @@ module Rule = struct
                 then Config.internal_error "[Constraint_system.ml >> internal_equality] An identity substitution should imply an empty list of created variables"
               );
               let positive_csys_list = List.fold_left (fun set csys ->
-                try
-                  let ded_sdf = SDF.get csys.sdf id_sdf in
-                  let form_list_1 = Rewrite_rules.generic_rewrite_rules_formula ded_sdf skel in
-                  let form_list_2 = List.fold_left (fun acc form ->
-                    try
-                      let form_1 = apply_mgs_on_formula Fact.Deduction csys (mgs_form,[]) form in
-                      form_1::acc
-                    with
-                    | Fact.Bot -> acc
-                  ) [] form_list_1 in
-
-                  if form_list_2 = []
-                  then csys::set
-                  else { csys with uf = UF.add_deduction csys.uf form_list_2 } :: set
-                with
-                  | Bot -> set
+                let form_list = create_generic_skeleton_formula csys id_skel recipe in
+                if form_list = []
+                then csys::set
+                else { csys with uf = UF.add_deduction csys.uf form_list } :: set
                 ) [] csys_set_1
               in
 
@@ -3816,37 +3307,21 @@ module Rule = struct
                 try
                   let one_csys' = apply_mgs_and_gather one_csys data_shared (mgs_csys,l_vars) in
                   let one_csys'' =
-                    let ded_sdf = SDF.get one_csys'.sdf id_sdf in
-                    let form_list_1 = Rewrite_rules.generic_rewrite_rules_formula ded_sdf skel in
-                    let form_list_2 = List.fold_left (fun acc form ->
-                      try
-                        let form_1 = apply_mgs_on_formula Fact.Deduction one_csys' (mgs_form,[]) form in
-                        form_1::acc
-                      with
-                      | Fact.Bot -> acc
-                    ) [] form_list_1 in
+                    let form_list = create_generic_skeleton_formula one_csys' id_skel recipe in
 
-                    if form_list_2 = []
+                    if form_list = []
                     then one_csys'
-                    else { one_csys' with uf = UF.add_deduction one_csys'.uf form_list_2 }
+                    else { one_csys' with uf = UF.add_deduction one_csys'.uf form_list }
                   in
 
                   List.fold_left (fun set csys ->
                     try
                       let csys_1 = apply_mgs_from_gathering csys data_shared (mgs_csys,l_vars) in
-                      let ded_sdf = SDF.get csys_1.sdf id_sdf in
-                      let form_list_1 = Rewrite_rules.generic_rewrite_rules_formula ded_sdf skel in
-                      let form_list_2 = List.fold_left (fun acc form ->
-                        try
-                          let form_1 = apply_mgs_on_formula Fact.Deduction csys_1 (mgs_form,[]) form in
-                          form_1::acc
-                        with
-                        | Fact.Bot -> acc
-                      ) [] form_list_1 in
+                      let form_list = create_generic_skeleton_formula csys_1 id_skel recipe in
 
-                      if form_list_2 = []
+                      if form_list = []
                       then csys_1::set
-                      else { csys_1 with uf = UF.add_deduction csys_1.uf form_list_2 } :: set
+                      else { csys_1 with uf = UF.add_deduction csys_1.uf form_list } :: set
                     with
                       | Bot -> set
                     ) [one_csys''] (List.tl csys_set_1)
@@ -3855,19 +3330,11 @@ module Rule = struct
                     List.fold_left (fun set csys ->
                       try
                         let csys_1 = apply_mgs_from_gathering csys data_shared (mgs_csys,l_vars) in
-                        let ded_sdf = SDF.get csys_1.sdf id_sdf in
-                        let form_list_1 = Rewrite_rules.generic_rewrite_rules_formula ded_sdf skel in
-                        let form_list_2 = List.fold_left (fun acc form ->
-                          try
-                            let form_1 = apply_mgs_on_formula Fact.Deduction csys_1 (mgs_form,[]) form in
-                            form_1::acc
-                          with
-                          | Fact.Bot -> acc
-                        ) [] form_list_1 in
+                        let form_list = create_generic_skeleton_formula csys_1 id_skel recipe in
 
-                        if form_list_2 = []
+                        if form_list = []
                         then csys_1::set
-                        else { csys_1 with uf = UF.add_deduction csys_1.uf form_list_2 } :: set
+                        else { csys_1 with uf = UF.add_deduction csys_1.uf form_list } :: set
                       with
                         | Bot -> set
                       ) [] (List.tl csys_set_1)
@@ -3895,6 +3362,4 @@ module Rule = struct
 
               (normalisation [@tailcall]) negative_csys_set continuation_func.negative (fun () -> (normalisation [@tailcall]) positive_csys_set continuation_func.positive f_next)
             end
-
-  let rewrite_EQ = internal_rewrite_EQ
 end

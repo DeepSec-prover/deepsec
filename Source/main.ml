@@ -216,42 +216,13 @@ let process_file path =
     and len_suffix = String.length suffix in
     Config.tmp_file:= String.sub tmp (len_prefix) ( len_tmp - ( len_prefix + len_suffix ) );
 
-    if Config.test_activated
-    then
-      begin
-        Printf.printf "Loading the regression suite...\n";
-        flush_all ();
-    	  let testing_data_dir = (Filename.concat !Config.path_deepsec "testing_data") in
-    	  create_if_not_exist testing_data_dir;
-    	  create_if_not_exist (Filename.concat testing_data_dir "tests_to_check");
-        Testing_load_verify.load ();
-        Testing_functions.update ()
-      end;
-
     Term.Symbol.empty_signature ();
     parse_file path;
 
-    if Config.test_activated
-    then
-      begin
-        try
-          let l = excecute_queries 1 !Parser_functions.query_list in
-          let nb_queries = List.length !Parser_functions.query_list in
-          print_index path nb_queries l;
-          Testing_functions.publish ();
-          Testing_load_verify.publish_index ()
-        with
-        | _ ->
-          Testing_functions.publish ();
-          Testing_load_verify.publish_index ()
-      end
-    else
-      begin
-        print_string "Executing the queries...\n";
-        let l = excecute_queries 1 !Parser_functions.query_list in
-        let nb_queries = List.length !Parser_functions.query_list in
-        print_index path nb_queries l;
-      end
+    print_string "Executing the queries...\n";
+    let l = excecute_queries 1 !Parser_functions.query_list in
+    let nb_queries = List.length !Parser_functions.query_list in
+    print_index path nb_queries l
   end;
   Parser_functions.reset_parser ()
 
