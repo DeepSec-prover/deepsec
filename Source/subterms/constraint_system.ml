@@ -456,7 +456,7 @@ let substitution_of_mgs (subst,_) = subst
 let mgs csys =
   let accumulator = ref [] in
 
-  let rec apply_rules csys mgs fst_ord_mgs snd_ord_vars f_next =
+  let rec apply_rules csys mgs snd_ord_vars f_next =
 
     let test_not_solved basic_fct =
       if not (is_variable (BasicFact.get_protocol_term basic_fct))
@@ -520,7 +520,7 @@ let mgs csys =
 
                     let mgs' = Subst.apply subst_snd mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
                     and snd_ord_vars' = Set_Snd_Ord_Variable.remove b_recipe snd_ord_vars in
-                    (apply_rules [@tailcall]) csys' mgs' (Subst.compose fst_ord_mgs subst_fst) snd_ord_vars' f_next
+                    (apply_rules [@tailcall]) csys' mgs' snd_ord_vars' f_next
                   end
     in
 
@@ -562,7 +562,7 @@ let mgs csys =
 
                 let mgs' = Subst.apply subst mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
                 and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_snd snd_ord_vars in
-                (apply_rules [@tailcall]) csys' mgs' fst_ord_mgs snd_ord_vars' f_next
+                (apply_rules [@tailcall]) csys' mgs' snd_ord_vars' f_next
           else
             begin
               let args_of_term = get_args term in
@@ -602,7 +602,7 @@ let mgs csys =
                   and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_snd snd_ord_vars in
                   let snd_ord_vars'' = List.fold_left (fun set x -> Set_Snd_Ord_Variable.add x set) snd_ord_vars' vars_snd in
 
-                  (apply_rules [@tailcall]) csys' mgs' fst_ord_mgs snd_ord_vars'' f_next
+                  (apply_rules [@tailcall]) csys' mgs' snd_ord_vars'' f_next
             end
         else f_next ()
     in
@@ -613,7 +613,7 @@ let mgs csys =
           if Subst.is_identity subst
           then
             match DF.find csys.simp_DF test_not_solved with
-              | None -> accumulator := (mgs,fst_ord_mgs,Set_Snd_Ord_Variable.elements snd_ord_vars,csys) :: !accumulator; f_next ()
+              | None -> accumulator := (mgs,Set_Snd_Ord_Variable.elements snd_ord_vars) :: !accumulator; f_next ()
               | Some basic_fct ->
                   if Variable.has_infinite_type (BasicFact.get_snd_ord_variable basic_fct)
                   then (SDF.tail_iter [@tailcall]) csys.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
@@ -639,7 +639,7 @@ let mgs csys =
                   }
                 in
                 match DF.find csys'.simp_DF test_not_solved with
-                  | None -> accumulator := (mgs',fst_ord_mgs,Set_Snd_Ord_Variable.elements snd_ord_vars',csys') :: !accumulator; f_next ()
+                  | None -> accumulator := (mgs',Set_Snd_Ord_Variable.elements snd_ord_vars') :: !accumulator; f_next ()
                   | Some basic_fct ->
                       if Variable.has_infinite_type (BasicFact.get_snd_ord_variable basic_fct)
                       then (SDF.tail_iter [@tailcall]) csys'.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
@@ -658,16 +658,16 @@ let mgs csys =
         ) [] csys.simp_DF
       in
 
-      apply_rules csys init_mgs Subst.identity Set_Snd_Ord_Variable.empty (fun () -> ());
-      List.fold_left (fun acc_mgs (mgs,fst_ord_mgs,var_list,csys') ->
-        ((Subst.create_multiple Recipe (List.fold_left (fun acc (r_1,r_2) -> if is_equal Recipe (of_variable r_1) r_2 then acc else (r_1,r_2)::acc) [] mgs), var_list), fst_ord_mgs, csys')::acc_mgs
+      apply_rules csys init_mgs Set_Snd_Ord_Variable.empty (fun () -> ());
+      List.fold_left (fun acc_mgs (mgs,var_list) ->
+        (Subst.create_multiple Recipe (List.fold_left (fun acc (r_1,r_2) -> if is_equal Recipe (of_variable r_1) r_2 then acc else (r_1,r_2)::acc) [] mgs), var_list)::acc_mgs
         ) [] !accumulator
     end
 
-exception Found_mgs of (snd_ord_variable * recipe) list * (fst_ord, name) Subst.t * (snd_ord_variable list)  * simple
+exception Found_mgs of (snd_ord_variable * recipe) list * (snd_ord_variable list)
 
 let one_mgs csys =
-  let rec apply_rules csys mgs fst_ord_mgs snd_ord_vars f_next =
+  let rec apply_rules csys mgs snd_ord_vars f_next =
 
     let test_not_solved basic_fct =
       if not (is_variable (BasicFact.get_protocol_term basic_fct))
@@ -726,7 +726,7 @@ let one_mgs csys =
 
                   let mgs' = Subst.apply subst_snd mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
                   and snd_ord_vars' = Set_Snd_Ord_Variable.remove b_recipe snd_ord_vars in
-                  (apply_rules [@tailcall]) csys' mgs' (Subst.compose fst_ord_mgs subst_fst) snd_ord_vars' f_next
+                  (apply_rules [@tailcall]) csys' mgs' snd_ord_vars' f_next
     in
 
     let apply_cons basic_fct f_next =
@@ -768,7 +768,7 @@ let one_mgs csys =
 
                 let mgs' = Subst.apply subst mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
                 and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_snd snd_ord_vars in
-                (apply_rules [@tailcall]) csys' mgs' fst_ord_mgs snd_ord_vars' f_next
+                (apply_rules [@tailcall]) csys' mgs' snd_ord_vars' f_next
           else
             let args_of_term = get_args term in
 
@@ -807,7 +807,7 @@ let one_mgs csys =
                 and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_snd snd_ord_vars in
                 let snd_ord_vars'' = List.fold_left (fun set x -> Set_Snd_Ord_Variable.add x set) snd_ord_vars' vars_snd in
 
-                (apply_rules [@tailcall]) csys' mgs' fst_ord_mgs snd_ord_vars'' f_next
+                (apply_rules [@tailcall]) csys' mgs' snd_ord_vars'' f_next
         else f_next ()
     in
 
@@ -817,7 +817,7 @@ let one_mgs csys =
           if Subst.is_identity subst
           then
             match DF.find csys.simp_DF test_not_solved with
-              | None -> raise (Found_mgs (mgs,fst_ord_mgs,Set_Snd_Ord_Variable.elements snd_ord_vars,csys))
+              | None -> raise (Found_mgs (mgs,Set_Snd_Ord_Variable.elements snd_ord_vars))
               | Some basic_fct ->
                   if Variable.has_infinite_type (BasicFact.get_snd_ord_variable basic_fct)
                   then SDF.tail_iter csys.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
@@ -843,7 +843,7 @@ let one_mgs csys =
                   }
                 in
                 match DF.find csys'.simp_DF test_not_solved with
-                  | None -> raise (Found_mgs (mgs',fst_ord_mgs,Set_Snd_Ord_Variable.elements snd_ord_vars',csys'))
+                  | None -> raise (Found_mgs (mgs',Set_Snd_Ord_Variable.elements snd_ord_vars'))
                   | Some basic_fct ->
                       if Variable.has_infinite_type (BasicFact.get_snd_ord_variable basic_fct)
                       then (SDF.tail_iter [@tailcall]) csys'.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
@@ -863,11 +863,11 @@ let one_mgs csys =
       in
 
       try
-        apply_rules csys init_mgs Subst.identity Set_Snd_Ord_Variable.empty (fun () -> ());
+        apply_rules csys init_mgs Set_Snd_Ord_Variable.empty (fun () -> ());
         raise Not_found
       with
-      | Found_mgs (mgs,fst_ord_mgs,var_list,csys') ->
-          (Subst.create_multiple Recipe (List.filter_unordered (fun (r_1,r_2) -> not (is_equal Recipe (of_variable r_1) r_2)) mgs), var_list), fst_ord_mgs, csys'
+      | Found_mgs (mgs,var_list) ->
+          (Subst.create_multiple Recipe (List.filter_unordered (fun (r_1,r_2) -> not (is_equal Recipe (of_variable r_1) r_2)) mgs), var_list)
     end
 
 let simple_of csys =
@@ -934,27 +934,55 @@ let simple_of_private csys ch =
     simp_Mixed_Eq = Eq.Mixed.top
   }
 
-let simple_of_equality_constructor csys symb term =
+let simple_of_equality_constructor csys symb term stored_cons =
   let args = get_args term in
-  let vars_snd = Variable.fresh_list Recipe Existential (Variable.snd_ord_type csys.size_frame) (Symbol.get_arity symb) in
-  let simple_recipe = apply_function symb (List.map of_variable vars_snd) in
-  let b_fct_list = List.map2 (fun x t -> BasicFact.create x t) vars_snd args in
+  if Eq.Mixed.is_top stored_cons.Tools.mixed_diseq
+  then
+    let vars_snd = stored_cons.Tools.snd_vars in
+    let simple_recipe = apply_function symb (List.map of_variable vars_snd) in
 
-  let df_1 = List.fold_left DF.add csys.df b_fct_list in
-  let sub_cons_1 = List.fold_left (fun acc bfct -> Uniformity_Set.add acc (of_variable (BasicFact.get_snd_ord_variable bfct)) (BasicFact.get_protocol_term bfct)) csys.sub_cons b_fct_list in
+    let b_fct_list = List.map2 (fun x t -> BasicFact.create x t) vars_snd args in
 
-  let simple_csys =
-    {
-      simp_DF = df_1;
-      simp_EqFst = csys.eqfst;
-      simp_EqSnd = csys.eqsnd;
-      simp_SDF = csys.sdf;
-      simp_Sub_Cons = sub_cons_1;
-      simp_Mixed_Eq = Eq.Mixed.top
-    }
-  in
+    let df_1 = List.fold_left DF.add csys.df b_fct_list in
+    let sub_cons_1 = List.fold_left (fun acc bfct -> Uniformity_Set.add acc (of_variable (BasicFact.get_snd_ord_variable bfct)) (BasicFact.get_protocol_term bfct)) csys.sub_cons b_fct_list in
 
-  simple_recipe, simple_csys
+    let simple_csys =
+      {
+        simp_DF = df_1;
+        simp_EqFst = csys.eqfst;
+        simp_EqSnd = csys.eqsnd;
+        simp_SDF = csys.sdf;
+        simp_Sub_Cons = sub_cons_1;
+        simp_Mixed_Eq = Eq.Mixed.top
+      }
+    in
+
+    simple_recipe, simple_csys
+  else
+    let fst_subst = Subst.create_multiple Protocol (List.map2 (fun x t -> x,t) stored_cons.Tools.fst_vars args) in
+    let new_diseq = Eq.Mixed.apply stored_cons.Tools.mixed_diseq fst_subst Subst.identity in
+
+    let vars_snd = stored_cons.Tools.snd_vars in
+    let simple_recipe = apply_function symb (List.map of_variable vars_snd) in
+
+    let b_fct_list = List.map2 (fun x t -> BasicFact.create x t) vars_snd args in
+
+    let df_1 = List.fold_left DF.add csys.df b_fct_list in
+    let sub_cons_1 = List.fold_left (fun acc bfct -> Uniformity_Set.add acc (of_variable (BasicFact.get_snd_ord_variable bfct)) (BasicFact.get_protocol_term bfct)) csys.sub_cons b_fct_list in
+
+    let simple_csys =
+      {
+        simp_DF = df_1;
+        simp_EqFst = csys.eqfst;
+        simp_EqSnd = csys.eqsnd;
+        simp_SDF = csys.sdf;
+        simp_Sub_Cons = sub_cons_1;
+        simp_Mixed_Eq = new_diseq
+      }
+    in
+
+    simple_recipe, simple_csys
+
 
 let simple_of_skeleton csys id_sdf id_skel =
   let fact = SDF.get csys.sdf id_sdf in
@@ -977,10 +1005,7 @@ let simple_of_skeleton csys id_sdf id_skel =
       let (new_lhs,new_bfct_list) =
         Subst.apply fst_subst (skel.Rewrite_rules.lhs,skel.Rewrite_rules.basic_deduction_facts) (fun (t_list,bfct_l) f ->
           List.map f t_list,
-          List.fold_left (fun acc bfct ->
-            if Variable.is_equal (BasicFact.get_snd_ord_variable bfct) skel.Rewrite_rules.pos_vars
-            then acc
-            else (BasicFact.create (BasicFact.get_snd_ord_variable bfct) (f (BasicFact.get_protocol_term bfct)))::acc
+          List.fold_left (fun acc bfct -> (BasicFact.create (BasicFact.get_snd_ord_variable bfct) (f (BasicFact.get_protocol_term bfct)))::acc
           ) [] bfct_l
         )
       in
@@ -2027,7 +2052,7 @@ module Rule = struct
                       let eq_form = Fact.create Fact.Equality head_eq [term,term_conseq] in
                       let simple_csys = simple_of_formula csys eq_form in
 
-                      let _ = one_mgs simple_csys in
+                      ignore (one_mgs simple_csys);
                       { csys with uf = UF.add_equality csys.uf eq_form } :: acc
                     with
                       | Fact.Bot | Not_found -> csys :: acc
@@ -2059,7 +2084,7 @@ module Rule = struct
                             let uf_1 = UF.filter Fact.Deduction csys.uf (fun form ->
                               let simple_csys = simple_of_formula csys form in
                               try
-                                let _ = one_mgs simple_csys in
+                                ignore (one_mgs simple_csys);
                                 true
                               with
                                 | Not_found -> false
@@ -2094,7 +2119,7 @@ module Rule = struct
                         | Some form ->
                             let simple_csys = simple_of_formula csys form in
                             begin try
-                              let _ = one_mgs simple_csys in
+                              ignore (one_mgs simple_csys);
                               eq_occurs := true;
                               csys :: acc_csys
                             with
@@ -2210,7 +2235,7 @@ module Rule = struct
               let accumulator_diseq = ref [] in
 
               let new_f_next =
-                List.fold_left (fun acc_f_next ((mgs,l_vars),_,_) ->
+                List.fold_left (fun acc_f_next (mgs,l_vars) ->
                   let diseq = Diseq.of_substitution Recipe mgs l_vars in
 
                   if Diseq.is_bot diseq
@@ -2296,7 +2321,7 @@ module Rule = struct
 
             let exists_mgs =
               try
-                let ((mgs,l_vars),_,_) = one_mgs simple_csys in
+                let (mgs,l_vars) = one_mgs simple_csys in
                 let mgs_csys,_ = Subst.split_domain mgs (fun x -> Variable.type_of x <> csys.size_frame + 1) in
                 let l_vars_csys = List.filter_unordered (fun x -> Variable.type_of x <> csys.size_frame + 1) l_vars in
                 Some (mgs_csys, l_vars_csys)
@@ -2413,7 +2438,7 @@ module Rule = struct
           let accumulator_diseq = ref [] in
 
           let new_f_next =
-            List.fold_left (fun acc_f_next ((mgs,l_vars),_,_) ->
+            List.fold_left (fun acc_f_next (mgs,l_vars) ->
               let diseq = Diseq.of_substitution Recipe mgs l_vars in
 
               if Diseq.is_bot diseq
@@ -2495,7 +2520,7 @@ module Rule = struct
 
                 begin
                   try
-                    let (mgs,_,_) = one_mgs simple_csys in
+                    let mgs = one_mgs simple_csys in
                     raise (Rule_Sat_Formula_applied mgs)
                   with
                     | Not_found -> Config.internal_error "[Constraint_system.ml >> internal_sat_formula] The unsolved formula should have at least one most general solution (it should have been removed by the normalisation rules)"
@@ -2507,7 +2532,7 @@ module Rule = struct
 
                       begin
                         try
-                          let (mgs,_,_) = one_mgs simple_csys in
+                          let mgs = one_mgs simple_csys in
                           raise (Rule_Sat_Formula_applied mgs)
                         with
                           | Not_found -> Config.internal_error "[Constraint_system.ml >> internal_sat_formula] The unsolved formula should have at least one most general solution (it should have been removed by the normalisation rules) (2)"
@@ -2629,7 +2654,7 @@ module Rule = struct
 
               let term = Fact.get_protocol_term fact in
 
-              if is_function term
+              if is_function term && not (Symbol.is_tuple (root term))
               then
                 begin
                   let symb = root term in
@@ -2642,29 +2667,40 @@ module Rule = struct
                   if Symbol.is_public symb
                   then
                     begin
-                      let simple_recipe, simple_csys = simple_of_equality_constructor csys symb term in
+                      let stored_constructor = Tools.get_stored_constructor symb in
 
-                      try
-                        let ((mgs,l_vars), _, _) = one_mgs simple_csys in
-                        (* Need to restrict the mgs  to the variables of the constraint system *)
-                        Config.debug (fun () ->
-                          if List.exists (fun x -> Variable.type_of x = csys.size_frame) l_vars
-                          then Config.internal_error "[Constraint_system.ml >> rule_equality_constructor] The list l_vars should not contain second-order variable with the maximal type var."
-                        );
+                      if Eq.Mixed.is_bot stored_constructor.Tools.mixed_diseq
+                      then
+                        let simple_recipe, simple_csys = simple_of_equality_constructor csys symb term stored_constructor in
 
-                        let mgs_csys, mgs_form = Subst.split_domain mgs (fun x -> Variable.type_of x <> csys.size_frame) in
+                        try
+                          let (mgs,l_vars) = one_mgs simple_csys in
+                          (* Need to restrict the mgs  to the variables of the constraint system *)
+                          Config.debug (fun () ->
+                            if List.exists (fun x -> Variable.type_of x = csys.size_frame) l_vars
+                            then Config.internal_error "[Constraint_system.ml >> rule_equality_constructor] The list l_vars should not contain second-order variable with the maximal type var."
+                          );
 
-                        let recipe = Subst.apply mgs_form simple_recipe (fun r f -> f r) in
+                          let mgs_csys, mgs_form = Subst.split_domain mgs (fun x -> Variable.type_of x <> csys.size_frame) in
 
-                        (Some (mgs_csys, l_vars, id_sdf, recipe, symb)), List.rev_append (csys::q_csys_set) explored_csys_set
-                      with
-                        | Not_found ->
-                            explore_csys explored_csys_set (
-                              { csys with
-                                equality_constructor_to_checked = List.tl csys.equality_constructor_to_checked;
-                                equality_constructor_checked = id_sdf::csys.equality_constructor_checked
-                              } ::q_csys_set
-                            )
+                          let recipe = Subst.apply mgs_form simple_recipe (fun r f -> f r) in
+
+                          (Some (mgs_csys, l_vars, id_sdf, recipe, symb)), List.rev_append (csys::q_csys_set) explored_csys_set
+                        with
+                          | Not_found ->
+                              explore_csys explored_csys_set (
+                                { csys with
+                                  equality_constructor_to_checked = List.tl csys.equality_constructor_to_checked;
+                                  equality_constructor_checked = id_sdf::csys.equality_constructor_checked
+                                } ::q_csys_set
+                              )
+                      else
+                        explore_csys explored_csys_set (
+                          { csys with
+                            equality_constructor_to_checked = List.tl csys.equality_constructor_to_checked;
+                            equality_constructor_checked = csys.equality_constructor_checked
+                          } ::q_csys_set
+                        )
                     end
                   else
                     explore_csys explored_csys_set (
@@ -2807,7 +2843,7 @@ module Rule = struct
 
                 let simple_csys = simple_of_formula csys form in
 
-                let ((mgs,l_vars), _, _) = one_mgs simple_csys in
+                let (mgs,l_vars) = one_mgs simple_csys in
 
                 Some (mgs, l_vars, id_sdf), List.rev_append (csys::q_csys_set) explored_csys_set
               with
@@ -2997,7 +3033,7 @@ module Rule = struct
                 | Some (recipe,simple_csys) ->
                     let is_rule_applicable =
                       try
-                        let ((mgs,l_vars), _, _) = one_mgs simple_csys in
+                        let (mgs,l_vars) = one_mgs simple_csys in
 
                         let mgs_form, mgs_csys  = Subst.split_domain mgs Variable.has_infinite_type in
                         let l_vars_form, l_vars_csys = List.partition_unordered Variable.has_infinite_type l_vars in

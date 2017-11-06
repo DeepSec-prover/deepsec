@@ -644,7 +644,8 @@ let trace_equivalence conf1 conf2 =
   (*** Initialise skeletons ***)
 
   Rewrite_rules.initialise_skeletons ();
-  
+  Data_structure.Tools.initialise_constructor ();
+
   (*** Generate the initial constraint systems ***)
 
   let symb_proc_1 =

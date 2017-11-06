@@ -1244,7 +1244,7 @@ module Eq = struct
 
     let top = MTop
 
-    let bot = MTop
+    let bot = MBot
 
     let wedge form diseq = match form with
       | MTop -> MConj [diseq]
@@ -1946,4 +1946,4 @@ end
 ***                Tools               ***
 ******************************************)
 
-module Tools = Tools_Subterm(SDF)(DF)(Uniformity_Set)
+module Tools = Tools_Subterm(SDF)(DF)(Uniformity_Set)(Eq.Mixed)

@@ -367,4 +367,15 @@ module Tools : sig
   (** {3 Skeletons and formulas} *)
 
   val mixed_diseq_for_skeletons : SDF.t -> DF.t -> (fst_ord, name) variable list -> (snd_ord, axiom) variable list -> recipe -> Diseq.Mixed.t
+
+  val initialise_constructor : unit -> unit
+
+  type stored_constructor =
+    {
+      snd_vars : snd_ord_variable list;
+      fst_vars : fst_ord_variable list;
+      mixed_diseq : Eq.Mixed.t
+    }
+
+  val get_stored_constructor : symbol -> stored_constructor
 end

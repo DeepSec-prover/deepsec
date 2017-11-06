@@ -106,11 +106,11 @@ val substitution_of_mgs : mgs -> (snd_ord, axiom) Subst.t
 
 (** [mgs] {% $\C$ returns a list of elements $(\Sigma,\sigma,\C')$ such that $\Sigma \in \mgs{\C}$, $\C' = \CApply{\Sigma}{\C}$
     and $\mguset{\C'} = \mguset{\C}\sigma$.%} *)
-val mgs : simple -> (mgs * (fst_ord, name) Subst.t * simple) list
+val mgs : simple -> mgs list
 
 (** [one_mgs] {% $\C$ %} returns one element of the list returned by [most_general_solutions] {% $\C$ %}.
     @raise Not_found when [most_general_solutions] {% $\C$ %} returns the empty list. *)
-val one_mgs : simple -> mgs * (fst_ord, name) Subst.t * simple
+val one_mgs : simple -> mgs
 
 (** {3 Access} *)
 

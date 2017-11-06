@@ -514,7 +514,8 @@ let trace_equivalence_classic proc1 proc2 =
   (*** Initialise skeletons ***)
 
   Rewrite_rules.initialise_skeletons ();
-  
+  Data_structure.Tools.initialise_constructor ();
+
   (*** Generate the initial constraint systems ***)
 
   let symb_proc_1 =
@@ -556,6 +557,7 @@ let trace_equivalence_private proc1 proc2 =
   (*** Initialise skeletons ***)
 
   Rewrite_rules.initialise_skeletons ();
+  Data_structure.Tools.initialise_constructor ();
 
   (*** Generate the initial constraint systems ***)
 

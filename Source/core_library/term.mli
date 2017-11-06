@@ -976,7 +976,7 @@ module Rewrite_rules : sig
       recipe : recipe;
       basic_deduction_facts : BasicFact.t list;
       lhs : protocol_term list;
-
+      rhs : protocol_term
     }
 
   val initialise_skeletons : unit -> unit
@@ -1063,8 +1063,23 @@ module type Uni =
     val exists : t -> recipe -> protocol_term -> bool
   end
 
+module type EqMixed =
+  sig
+    type t
+
+    val top : t
+
+    val bot : t
+
+    val wedge : t -> Diseq.Mixed.t -> t
+
+    val is_bot : t -> bool
+
+    val is_top : t -> bool
+  end
+
 module Tools_Subterm :
-  functor (SDF : SDF) (DF : DF) (Uni : Uni)->
+  functor (SDF : SDF) (DF : DF) (Uni : Uni) (Eq:EqMixed) ->
     sig
 
     (** {3 Consequence} *)
@@ -1092,4 +1107,15 @@ module Tools_Subterm :
     (** {3 Skeletons and formulas} *)
 
     val mixed_diseq_for_skeletons : SDF.t -> DF.t -> (fst_ord, name) variable list -> (snd_ord, axiom) variable list -> recipe -> Diseq.Mixed.t
+
+    val initialise_constructor : unit -> unit
+
+    type stored_constructor =
+      {
+        snd_vars : snd_ord_variable list;
+        fst_vars : fst_ord_variable list;
+        mixed_diseq : Eq.t
+      }
+
+    val get_stored_constructor : symbol -> stored_constructor
   end

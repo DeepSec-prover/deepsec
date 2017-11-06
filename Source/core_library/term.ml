@@ -3061,6 +3061,16 @@ end
 ***    Rewrite rules   ***
 ****************************************************)
 
+module HashSymb = struct
+  type t = symbol
+
+  let equal = (==)
+
+  let hash = Hashtbl.hash
+end
+
+module HashtblSymb = Hashtbl.Make(HashSymb)
+
 module Rewrite_rules = struct
 
   type skeleton =
@@ -3071,7 +3081,8 @@ module Rewrite_rules = struct
       recipe : recipe;
       basic_deduction_facts : BasicFact.t list;
 
-      lhs : protocol_term list
+      lhs : protocol_term list;
+      rhs : protocol_term
     }
 
   type stored_skeleton =
@@ -3090,7 +3101,8 @@ module Rewrite_rules = struct
       recipe = of_variable dummy_var_snd;
       basic_deduction_facts = [];
 
-      lhs = []
+      lhs = [];
+      rhs = of_variable dummy_var_fst;
     }
 
   let storage_skeletons = ref (Array.make 0 { skeleton = dummy_skeleton; compat_rewrite_rules = [] })
@@ -3359,7 +3371,7 @@ module Rewrite_rules = struct
       then
       match f.cat with
       | Destructor rw_rules ->
-          List.iter (fun (args,_) ->
+          List.iter (fun (args,r) ->
             explore_skel_term_list (fun x_snd x_term recipe_l b_fct_list ->
               let skel =
                 {
@@ -3369,20 +3381,21 @@ module Rewrite_rules = struct
                   recipe = { term = Func(f,recipe_l); ground = false };
                   basic_deduction_facts = b_fct_list;
 
-                  lhs = args
+                  lhs = args;
+                  rhs = r
                 }
               in
               match optimise_skeletons skel [] b_fct_list with
                 | None -> ()
                 | Some skel' ->
-                    let snd_vars =
-                      List.fold_left (fun acc bfct ->
+                    let (snd_vars, bfct_list) =
+                      List.fold_left (fun (acc_vars,acc_bfct) bfct ->
                         if bfct.BasicFact.var == skel'.pos_vars
-                        then acc
-                        else bfct.BasicFact.var::acc
-                      ) [] skel'.basic_deduction_facts
+                        then (acc_vars,acc_bfct)
+                        else (bfct.BasicFact.var::acc_vars,bfct::acc_bfct)
+                      ) ([],[]) skel'.basic_deduction_facts
                     in
-                    accumulator := { skel' with snd_vars = snd_vars } :: !accumulator
+                    accumulator := { skel' with snd_vars = snd_vars; basic_deduction_facts = bfct_list } :: !accumulator
             ) args
           ) rw_rules
       | _ -> Config.internal_error "[term.ml >> Tools_Subterm.initialise_skeletons] There should not be any constructor function symbols in this list."
@@ -3633,7 +3646,22 @@ module type Uni =
     val exists : t -> recipe -> protocol_term -> bool
   end
 
-module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) = struct
+module type EqMixed =
+  sig
+    type t
+
+    val top : t
+
+    val bot : t
+
+    val wedge : t -> Diseq.Mixed.t -> t
+
+    val is_bot : t -> bool
+
+    val is_top : t -> bool
+  end
+
+module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) (Eq: EqMixed)= struct
 
   (***** Consequence ******)
 
@@ -4045,4 +4073,143 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) = struct
       Diseq.Mixed.MDiseq(eq_fst,eq_snd)
     else
       Diseq.Mixed.MDiseq(List.fold_left2 (fun acc x t -> (of_variable x,t)::acc) [] fst_vars term_l, [])
+
+  (* Generation of stored constructor *)
+
+  type stored_constructor =
+    {
+      snd_vars : snd_ord_variable list;
+      fst_vars : fst_ord_variable list;
+      mixed_diseq : Eq.t
+    }
+
+  let storage_functions: stored_constructor HashtblSymb.t ref = ref (HashtblSymb.create 0)
+
+  let initialise_constructor () =
+    let list_constructor = List.filter_unordered (fun f -> (not (Symbol.is_tuple f)) && f.public && (f.arity > 0)) !Symbol.all_constructors in
+    let nb_cons = List.length list_constructor in
+
+    let list_single_skeletons =
+      let list_storage = Array.to_list !Rewrite_rules.storage_skeletons in
+      List.filter (fun stored_skel ->
+        let single_rw_rule = List.length stored_skel.Rewrite_rules.compat_rewrite_rules = 1 in
+        let f = root stored_skel.Rewrite_rules.skeleton.Rewrite_rules.recipe in
+        let f_c = root stored_skel.Rewrite_rules.skeleton.Rewrite_rules.pos_term in
+        if f.public && (not (Symbol.is_tuple f_c)) && f_c.public && f_c.arity > 0
+        then
+          let list_same_dest = List.filter (fun stored_skel' -> (root stored_skel'.Rewrite_rules.skeleton.Rewrite_rules.recipe) == f) list_storage in
+          single_rw_rule && List.length list_same_dest = 1
+        else false
+      ) list_storage
+    in
+
+    let rec explore_term f_next t = match t.term with
+      | Var _ ->
+          let x_snd = Variable.fresh Recipe Universal (-1) in
+          f_next (of_variable x_snd) [BasicFact.create x_snd t]
+      | Func(f,args) ->
+          let x_snd = Variable.fresh Recipe Universal (-1) in
+          f_next (of_variable x_snd) [BasicFact.create x_snd t];
+          if f.public && f.arity > 0
+          then
+            explore_term_list (fun recipe_list bfct_list ->
+              f_next (apply_function f recipe_list) bfct_list
+            ) args
+      | _ -> Config.internal_error "[term.ml >> Rewrtie_rules.initialise_constructor] Rewrite rules should not contain names."
+
+    and explore_term_list f_next = function
+      | [] -> f_next [] []
+      | t::q ->
+          explore_term_list (fun recipe_q bfct_list_q ->
+            explore_term (fun recipe bfct_list ->
+              f_next (recipe::recipe_q) (List.rev_append bfct_list bfct_list_q)
+            ) t
+          ) q
+    in
+
+    let check_conditions skel args bfct_r bfct_list =
+      let test_1 =
+        List.for_all (fun bfct ->
+          match Rewrite_rules.consequence_protocol_term bfct_list bfct.BasicFact.pterm with
+            | None -> false
+            | Some _ -> true
+        ) skel.Rewrite_rules.basic_deduction_facts
+      in
+      if test_1
+      then
+        List.for_all (fun t ->
+          match Rewrite_rules.consequence_protocol_term (bfct_r::skel.Rewrite_rules.basic_deduction_facts) t with
+            | None -> false
+            | Some _ -> true
+        ) args
+      else false
+    in
+
+    let list_found_symb = ref [] in
+
+    List.iter (fun stored_skel ->
+      let f_c = root stored_skel.Rewrite_rules.skeleton.Rewrite_rules.pos_term in
+      let args = get_args stored_skel.Rewrite_rules.skeleton.Rewrite_rules.pos_term in
+      let bfct_r = BasicFact.create (Variable.fresh Recipe Universal (-1)) stored_skel.Rewrite_rules.skeleton.Rewrite_rules.rhs in
+      explore_term_list (fun recipe_list bfct_list ->
+        if check_conditions stored_skel.Rewrite_rules.skeleton args bfct_r bfct_list
+        then
+          begin
+            let pterm_uni = Variable.Renaming.rename_term Protocol Universal NoType stored_skel.Rewrite_rules.skeleton.Rewrite_rules.pos_term in
+            Variable.Renaming.cleanup Protocol;
+            list_found_symb := (f_c,get_args pterm_uni,recipe_list) :: !list_found_symb
+          end
+      ) args
+    ) list_single_skeletons;
+
+    storage_functions := HashtblSymb.create nb_cons;
+
+    List.iter (fun f ->
+      let snd_vars = Variable.fresh_list Recipe Existential (-1) f.arity in
+      let fst_vars = Variable.fresh_list Protocol Existential NoType f.arity in
+
+      let diseq_form =
+        List.fold_left (fun acc (f_c,term_list,recipe_list) ->
+          if Eq.is_bot acc || not (f == f_c)
+          then acc
+          else
+            begin
+              List.iter2 (fun x t -> Subst.unify_term Protocol (of_variable x) t) fst_vars term_list;
+              List.iter2 (fun x t -> Subst.unify_term Recipe (of_variable x) t) snd_vars recipe_list;
+
+              let fst_diseq =
+                List.fold_left (fun acc v ->
+                  if v.quantifier = Universal
+                  then acc
+                  else ({ term = Var v; ground = false}, Subst.follow_link_var v)::acc
+                ) [] (Subst.retrieve Protocol)
+              in
+              let snd_diseq =
+                List.fold_left (fun acc v ->
+                  if v.quantifier = Universal
+                  then acc
+                  else ({ term = Var v; ground = false}, Subst.follow_link_var v)::acc
+                ) [] (Subst.retrieve Recipe)
+              in
+              Subst.cleanup Protocol;
+              Subst.cleanup Recipe;
+              if fst_diseq = [] && snd_diseq = []
+              then Eq.bot
+              else Eq.wedge acc (Diseq.Mixed.MDiseq (fst_diseq,snd_diseq))
+            end
+        ) Eq.top !list_found_symb
+      in
+
+      Config.debug (fun () ->
+        if Eq.is_bot diseq_form
+        then Printf.printf "Function symbol removed from Equality : %s\n" (Symbol.display Latex f);
+
+        if not (Eq.is_bot diseq_form) && not (Eq.is_top diseq_form)
+        then Printf.printf "Function symbol with special diseq : %s\n" (Symbol.display Latex f);
+      );
+      HashtblSymb.add !storage_functions f { snd_vars = snd_vars; fst_vars = fst_vars ; mixed_diseq = diseq_form }
+    ) list_constructor
+
+  let get_stored_constructor f =
+    HashtblSymb.find !storage_functions f
 end
