@@ -1463,7 +1463,7 @@ let rec iter_variables_and_axioms f recipe = match recipe.term with
 (********** Display **********)
 
 let rec display out ?(rho=None) at term = match term.term with
-  | Var(v) -> Variable.display out ~rho:rho at v
+  | Var(v) -> Variable.display out ~rho:rho ~v_type:true at v
   | AxName(axn) -> AxName.display out ~rho:rho at axn
   | Func(f_symb,_) when f_symb.arity = 0 ->
       Printf.sprintf "%s" (Symbol.display out f_symb)
@@ -1783,17 +1783,6 @@ module Subst = struct
 
     result
 
-  (*********** Display ************)
-
-  let display out ?(rho=None) at subst =
-    let display_element (x,t) =
-      Printf.sprintf "%s %s %s" (Variable.display out ~rho:rho at x) (rightarrow out) (display out ~rho:rho at t)
-    in
-
-    if subst = []
-    then emptyset out
-    else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list display_element ", " subst) (rcurlybracket out)
-
   (*********** Unification **********)
 
   let linked_variables_fst = (ref []: fst_ord_variable list ref)
@@ -1855,9 +1844,13 @@ module Subst = struct
               then link at v1 t2
               else link at v2 t1
           | Recipe ->
-              if v2.var_type = -1 || v1.var_type < v2.var_type
+              if v2.var_type = -1
               then link at v2 t1
-              else if v1.var_type = -1 || v1.var_type > v2.var_type
+              else if v1.var_type = -1
+              then link at v1 t2
+              else if v1.var_type < v2.var_type
+              then link at v2 t1
+              else if v1.var_type > v2.var_type
               then link at v1 t2
               else if v1.quantifier = Universal || (v1.quantifier = Existential && v2.quantifier = Free) || (v1.quantifier = v2.quantifier &&  Variable.order at v1 v2 < 0)
               then link at v1 t2
@@ -1888,6 +1881,29 @@ module Subst = struct
       List.iter (fun (t1,t2) -> unify_term at t1 t2) eq_list;
       let subst = List.fold_left (fun acc var -> (var,follow_link_var var)::acc) [] (retrieve at) in
       cleanup at;
+      Config.debug (fun () ->
+        match at with
+          | Protocol ->
+              if not (check_disjoint_domain subst)
+              then Config.internal_error "[term.ml >> Subst.unify] A variable appears twice in the domain";
+
+              if List.exists (fun (x,_) -> List.exists (fun (_,t) -> var_occurs x t) subst) subst
+              then Config.internal_error "[term.ml >> Subst.unify] The substution is not acyclic"
+          | Recipe ->
+              if not (check_disjoint_domain subst)
+              then Config.internal_error "[term.ml >> Subst.unify] A variable appears twice in the domain";
+
+              if List.exists (fun (x,_) -> List.exists (fun (_,t) -> var_occurs x t) subst) subst
+              then Config.internal_error "[term.ml >> Subst.unify] The substution is not acyclic";
+
+              if List.exists (fun (x,t) -> var_occurs_or_out_of_world x t) subst
+              then
+                begin
+                  Printf.printf "Terms %s" (display_list (fun (t1,t2) -> Printf.sprintf "%s = %s\n" (display Latex Recipe t1) (display Latex Recipe t2)) "\n" eq_list);
+                  Printf.printf "The subst %s" (display_list (fun (x,t2) -> Printf.sprintf "%s = %s\n" (display Latex Recipe (of_variable x)) (display Latex Recipe t2)) "\n" subst);
+                  Config.internal_error "[term.ml >> Subst.unify] The substitution is not unifiable (type issue)"
+                end
+      );
       subst
     with Not_unifiable ->
       cleanup at;
@@ -1904,6 +1920,17 @@ module Subst = struct
       cleanup at;
       true
     with Not_unifiable -> cleanup at; false
+
+  (*********** Display ************)
+
+  let display out ?(rho=None) at subst =
+    let display_element (x,t) =
+      Printf.sprintf "%s %s %s" (Variable.display out ~rho:rho at x) (rightarrow out) (display out ~rho:rho at t)
+    in
+
+    if subst = []
+    then emptyset out
+    else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list display_element ", " subst) (rcurlybracket out)
 
   (******* Syntactic match *******)
 

@@ -216,18 +216,24 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
     Constraint_system.Rule.equality csys_set {
       Constraint_system.Rule.positive = out_apply_sat_formula;
       Constraint_system.Rule.negative = out_apply_sat_formula;
-      Constraint_system.Rule.not_applicable = out_apply_equality_constructor
-    } f_next
-  and out_apply_equality_constructor csys_set f_next =
-    Constraint_system.Rule.equality_constructor csys_set {
-      Constraint_system.Rule.positive = out_apply_sat_formula;
-      Constraint_system.Rule.negative = out_apply_sat_formula;
       Constraint_system.Rule.not_applicable = out_apply_rewrite
     } f_next
   and out_apply_rewrite csys_set f_next =
     Constraint_system.Rule.rewrite csys_set {
       Constraint_system.Rule.positive = out_apply_sat_formula;
       Constraint_system.Rule.negative = out_apply_sat_formula;
+      Constraint_system.Rule.not_applicable = out_apply_equality_constructor
+    } f_next
+  and out_apply_sat_formula_for_equality_constructor csys_set f_next =
+    Constraint_system.Rule.sat_formula csys_set {
+      Constraint_system.Rule.positive = out_apply_sat_formula_for_equality_constructor;
+      Constraint_system.Rule.negative = out_apply_sat_formula_for_equality_constructor;
+      Constraint_system.Rule.not_applicable = out_apply_equality_constructor
+    } f_next
+  and out_apply_equality_constructor csys_set f_next =
+    Constraint_system.Rule.equality_constructor csys_set {
+      Constraint_system.Rule.positive = out_apply_sat_formula_for_equality_constructor;
+      Constraint_system.Rule.negative = out_apply_sat_formula_for_equality_constructor;
       Constraint_system.Rule.not_applicable = out_apply_final_test
     } f_next
   and out_apply_final_test csys_set f_next =
@@ -444,18 +450,24 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
     Constraint_system.Rule.equality csys_set {
       Constraint_system.Rule.positive = out_apply_sat_formula;
       Constraint_system.Rule.negative = out_apply_sat_formula;
-      Constraint_system.Rule.not_applicable = out_apply_equality_constructor
-    } f_next
-  and out_apply_equality_constructor csys_set f_next =
-    Constraint_system.Rule.equality_constructor csys_set {
-      Constraint_system.Rule.positive = out_apply_sat_formula;
-      Constraint_system.Rule.negative = out_apply_sat_formula;
       Constraint_system.Rule.not_applicable = out_apply_rewrite
     } f_next
   and out_apply_rewrite csys_set f_next =
     Constraint_system.Rule.rewrite csys_set {
       Constraint_system.Rule.positive = out_apply_sat_formula;
       Constraint_system.Rule.negative = out_apply_sat_formula;
+      Constraint_system.Rule.not_applicable = out_apply_equality_constructor
+    } f_next
+  and out_apply_sat_formula_for_equality_constructor csys_set f_next =
+    Constraint_system.Rule.sat_formula csys_set {
+      Constraint_system.Rule.positive = out_apply_sat_formula_for_equality_constructor;
+      Constraint_system.Rule.negative = out_apply_sat_formula_for_equality_constructor;
+      Constraint_system.Rule.not_applicable = out_apply_equality_constructor
+    } f_next
+  and out_apply_equality_constructor csys_set f_next =
+    Constraint_system.Rule.equality_constructor csys_set {
+      Constraint_system.Rule.positive = out_apply_sat_formula_for_equality_constructor;
+      Constraint_system.Rule.negative = out_apply_sat_formula_for_equality_constructor;
       Constraint_system.Rule.not_applicable = out_apply_final_test
     } f_next
   and out_apply_final_test csys_set f_next =

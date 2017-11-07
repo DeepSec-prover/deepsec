@@ -983,7 +983,6 @@ let simple_of_equality_constructor csys symb term stored_cons =
 
     simple_recipe, simple_csys
 
-
 let simple_of_skeleton csys id_sdf id_skel =
   let fact = SDF.get csys.sdf id_sdf in
 
@@ -1992,9 +1991,6 @@ module Rule = struct
                 Config.debug (fun () ->
                   if not (Fact.is_fact ded_formula)
                   then Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] The formula should be a fact.";
-
-                  if csys.equality_constructor_to_checked <> []
-                  then Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] All sdf should have been checked when we add a new element to SDF, i.e.  we did not respect the order of rule Sat < Equality < Rew";
 
                   if csys.equality_to_checked <> []
                   then Config.internal_error "[Constraint_system.ml >> normalisation_SDF_or_consequence] All pair of deduction fact from sdf should have been checked for equalities at that point.";
