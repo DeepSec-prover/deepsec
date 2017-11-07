@@ -81,6 +81,8 @@ module SDF : sig
       different from [None], when such [psi] exists. Otherwise it returns [None]. *)
   val find : t -> (Fact.deduction -> 'a option) -> 'a option
 
+  val findi : t -> (int -> Fact.deduction -> 'a option) -> 'a option
+
   (** {3 Display} *)
 
   (** [display out ~rho:rho ~per_line:n ~tab:k] {% $\Solved$%} displays {% $\Solved$ %} with at most [n] deduction facts per line. Moreover,

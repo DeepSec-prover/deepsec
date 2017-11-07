@@ -364,6 +364,24 @@ module SDF = struct
     with
     | Found -> !result
 
+  let findi sdf f =
+    let result = ref None in
+
+    try
+      SDF_Map.iter (fun id cell -> match f id cell.fact with
+        | None -> ()
+        | Some a -> result := Some a; raise Found
+      ) sdf.map;
+
+      SDF_Map.iter (fun id cell -> match f id cell.g_fact with
+        | None -> ()
+        | Some a -> result := Some a; raise Found
+      ) sdf.map_ground;
+
+      !result
+    with
+    | Found -> !result
+
   type marked_result =
     | Not_in_SDF
     | Marked of protocol_term
