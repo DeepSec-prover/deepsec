@@ -1014,10 +1014,6 @@ module type SDF =
         such that [f psi] is not [None], when such [psi] exists. Otherwise, it returns [None]. *)
     val find : t -> (Fact.deduction -> 'a option) -> 'a option
 
-    val findi : t -> (int -> Fact.deduction -> 'a option) -> 'a option
-
-    val get : t -> int -> Fact.deduction
-
     type marked_result =
       | Not_in_SDF
       | Marked of protocol_term
