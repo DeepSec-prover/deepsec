@@ -37,3 +37,7 @@ val tmp_file : string ref
 val display_trace : bool ref
 
 val distributed : bool ref
+
+val core_factor : int ref
+
+  

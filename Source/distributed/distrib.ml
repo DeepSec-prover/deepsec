@@ -62,9 +62,10 @@ struct
     (****** Setting up the workers *******)
 
     let workers = ref []
-
-    let local_workers n = workers := (Local,n) :: !workers
-    let add_distant_worker machine path n = workers := (Distant(machine,path),n) :: !workers
+    let nb_workers = ref 0
+      
+    let local_workers n = workers := (Local,n) :: !workers; nb_workers := !nb_workers + n
+    let add_distant_worker machine path n = workers := (Distant(machine,path),n) :: !workers; nb_workers := !nb_workers + n
 
     let display_workers () =
       let display_worker (h,n) =
@@ -128,7 +129,7 @@ struct
 
     (****** The server main function *******)
 
-    let minimum_nb_of_jobs = ref 100
+    let minimum_nb_of_jobs = ref 0
 
     let rec replace_job in_ch job acc = function
       | [] -> Config.internal_error "[distrib.ml] There should be an entry in the list"

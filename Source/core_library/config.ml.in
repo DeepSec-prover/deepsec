@@ -36,4 +36,8 @@ let tmp_file = ref ""
 
 let display_trace = ref true
 
+(**** Distribution ****)
+
 let distributed = ref false
+let core_factor = ref 30
+  

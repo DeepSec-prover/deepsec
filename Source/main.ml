@@ -180,6 +180,11 @@ let rec excecute_queries id = function
   | _ -> Config.internal_error "Observational_equivalence not implemented"
 
 let process_file path =
+  if !Distributed_equivalence.DistribEquivalence.minimum_nb_of_jobs = 0 then
+    begin
+      Distributed_equivalence.DistribEquivalence.minimum_nb_of_jobs := !Distributed_equivalence.DistribEquivalence.nb_workers * !Config.core_factor
+    end;
+  
   if !Config.path_deepsec = "" then
     begin
       Config.path_deepsec:=
@@ -286,7 +291,11 @@ let _ =
      Arg.Tuple(
        [Arg.Set_string(dist_host);
 	Arg.Set_string(dist_path);
-	Arg.Int( fun i -> Config.distributed := true; Distributed_equivalence.DistribEquivalence.add_distant_worker !dist_host !dist_path i)]),
+	Arg.Int(
+	  fun i ->
+	    Config.distributed := true;
+	    Distributed_equivalence.DistribEquivalence.add_distant_worker !dist_host !dist_path i
+	)]),
      "<host><path><n> Activate n workers on <host> with <path> specifying the directory of deepsec.\nExample: -distant_workers my_login@my_host deepsec_path_on_my_host 25"
     );
     ("-nb_sets",

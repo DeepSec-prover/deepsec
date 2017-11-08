@@ -50,6 +50,8 @@ sig
   type host
   
   val workers : (host * int) list ref
+
+  val nb_workers : int ref
     
   val display_workers : unit -> string
     
