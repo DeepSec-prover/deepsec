@@ -29,8 +29,10 @@ module SDF : sig
   (** [cardinal] {% $\Solved$ %} returns the number of deduction facts in {% $\Solved$ %} *)
   val cardinal : t -> int
 
+  val last_entry : t -> Fact.deduction
+
   (** [last_entry] {% $\Solved$ %} returns the last deduction fact added to {% $\Solved$ %} with its recipe equivalent id. *)
-  val last_entry : t -> Fact.deduction * id_recipe_equivalent
+  val last_entry_with_id : t -> Fact.deduction * id_recipe_equivalent
 
   (** [last_entry_id] {% $\Solved$ %} is the same as [let _,id = last_entry] {% $\Solved$ %} [in id] but more efficient. *)
   val last_entry_id : t -> id_recipe_equivalent
@@ -52,8 +54,6 @@ module SDF : sig
   val iter_id : t -> (id_recipe_equivalent -> Fact.deduction -> unit) -> unit
 
   val iter_unmarked : t -> (id_recipe_equivalent -> Fact.deduction -> unit) -> unit
-
-  val remove : t -> id_recipe_equivalent -> t
 
   (** [iter_within_var_type k] {% $\Solved$ %} [f g] applies the function [g] on every deduction fact [psi] of {% $\SetRestr{\Solved}{k}$. %} *)
   val iter_within_var_type : int -> t -> (Fact.deduction -> unit) -> unit
@@ -80,8 +80,6 @@ module SDF : sig
   (** [find] {% $\Solved$ %} [f] returns [f psi] where [psi] is a deduction fact of {% $\Solved$ %} such that [f psi] is
       different from [None], when such [psi] exists. Otherwise it returns [None]. *)
   val find : t -> (Fact.deduction -> 'a option) -> 'a option
-
-  val findi : t -> (int -> Fact.deduction -> 'a option) -> 'a option
 
   (** {3 Display} *)
 
@@ -163,54 +161,57 @@ module UF : sig
   val empty : t
 
   (** [add_equality] {% $\USolved$~$\psi$%} [id] returns the set {% $\USolved \cup \{ \psi\}$. Note that we associate to $\psi$ the recipe equivalent id%} [id]. *)
-  val add_equality : t -> Fact.equality_formula -> t
+  val add_equality_formula : t -> Fact.equality_formula -> t
+
+  val add_equality_fact : t -> Fact.equality -> t
 
   (** [add_deduction] {% $\USolved$~$[\psi_1;\ldots;\psi_n]$ %} [id] returns the set {% $\USolved \cup \{ \psi_1,\ldots, \psi_n\}$. Note that we associate to $\psi_1,\ldots, \psi_n$ the same recipe equivalent id%} [id]. *)
-  val add_deduction : t -> Fact.deduction_formula list -> t
+  val add_deduction_formulas : t -> Fact.deduction_formula list -> t
+
+  val add_deduction_fact : t -> Fact.deduction -> t
 
   (** [apply] {% $\USolved$~$\Sigma$~$\sigma$ %} returns the set {% $\USolved\Sigma\sigma\Vnorm$.
       Note that the normalisation rules we consider are only the normalisations rules of \citepaper{Figure}{fig:normalisation_formula}
       and~\citepaper{Rule}{rule:Removal of unsolved formula}. %} *)
-  val apply : t -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t  -> t
+  val apply : t -> (fst_ord, name) Subst.t  -> t
 
-  val apply_with_gathering : t -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t -> recipe option ref -> Fact.equality option ref -> t
+  val apply_with_gathering : t -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t -> recipe list ref -> Fact.equality option ref -> t
 
   (** [filter fct UF p] returns the set with all the [fct] formulas in [UF] that satisfy predicate [p]. *)
-  val filter : 'a Fact.t -> t -> ('a Fact.formula -> bool) -> t
+  val filter_unsolved : t -> (Fact.deduction_formula -> bool) -> t
 
-  val remove_solved : 'a Fact.t -> t -> t
+  val remove_one_deduction_fact : t -> t
 
-  val remove_unsolved_equality : t -> t
+  val remove_equality_fact : t -> t
+
+  val remove_one_unsolved_equality_formula : t -> t
+
+  val remove_one_unsolved_deduction_formula : t -> t
+
+  val replace_deduction_facts : t -> Fact.deduction list -> t
 
   (** {3 Access} *)
 
-  (** [choose_solved fct UF] return one solved [fct] formula in [UF]. The choice of the formula is unspecified.
-      @raise Not_found when there is not solved [fct] formula in [UF] *)
-  val choose_solved : 'a Fact.t -> t -> 'a Fact.formula
+  val pop_deduction_fact :  t -> Fact.deduction
 
-  (** [choose_solved_option fct UF] return one solved [fct] formula in [UF]. The choice of the formula is unspecified.
-      Returns [None] otherwise. *)
-  val choose_solved_option : 'a Fact.t -> t -> 'a Fact.formula option
+  val pop_deduction_fact_option :  t -> Fact.deduction option
 
-  (** [choose_unsolved_option fct UF] return one unsolved [fct] formula in [UF]. The choice of the formula is unspecified.
-      Returns [None] otherwise. *)
-  val choose_unsolved_option : 'a Fact.t -> t -> 'a Fact.formula option
+  val pop_equality_fact_option : t -> Fact.equality option
+
+  val pop_deduction_formula_option :  t -> Fact.deduction_formula option
+
+  val pop_equality_formula_option : t -> Fact.equality_formula option
+
+  val number_of_deduction_facts : t -> int
 
   (** {3 Testing} *)
 
-  (** [solved_solved fct UF] checks if at least one solved [fct] formula in [UF] occurs. *)
-  val solved_occurs : 'a Fact.t -> t -> bool
+  val exists_equality_fact : t -> bool
+
+  val exists_deduction_fact : t -> bool
 
   (** [solved_solved fct UF] checks if at least one unsolved [fct] formula in [UF] occurs. *)
-  val unsolved_occurs : 'a Fact.t -> t -> bool
-
-  (** {3 Search} *)
-
-  (** {3 Iterators} *)
-
-  (** [iter fct UF f] applies [f] to all solved [fct] formulas in [UF].
-      The order in which the recipe equivalent ids and formulas are passed to [f] is unspecified.*)
-  val iter :  'a Fact.t -> t -> ('a Fact.formula -> unit) -> unit
+  val exists_unsolved_equality_formula : t -> bool
 
   (** {3 Display} *)
 
@@ -242,7 +243,7 @@ module Eq : sig
   val apply : ('a, 'b) atom -> ('a, 'b) t -> ('a, 'b) Subst.t -> ('a, 'b) t
 
   (** [extract at] {% $\phi$ %} returns a pair {% $(\forall \tilde{x}. \psi, \phi')$ such that $\phi = \forall \tilde{x}. \psi \wedge \phi'$ when $\phi$ is not top or bot, otherwise it returns%} [None] {% and $\phi$. %} *)
-  val extract : ('a, 'b) t -> ('a, 'b) Diseq.t option * ('a, 'b) t
+  val extract : ('a, 'b) t -> ('a, 'b) Diseq.t * ('a, 'b) t
 
   (** [get_names_with_list s l] adds the names in [s] in the list [l]. The addition of a name as the union of sets, i.e. there is no dupplicate in the resulting list..*)
   val get_names_with_list : ('a, 'b) atom -> ('a, 'b) t -> name list -> name list
@@ -315,18 +316,21 @@ module Uniformity_Set : sig
       Warning : The order in which the function [iter] goes through the pairs of $\Set$ is unspecified. %}*)
   val iter : t -> (recipe -> protocol_term -> unit) -> unit
 
-  val unify_multiple_opt : t -> ((snd_ord, axiom) Subst.t * t) option
+  type uniformity_check =
+    | Not_uniform
+    | Uniform
+    | Substitution of (snd_ord, axiom) Subst.t * t
+
+  val unify_recipes_deducing_same_protocol_term : t -> uniformity_check
 
   (** {3 Testing} *)
+
+  val exists_recipes_deducing_same_protocol_term : t -> bool
 
   val exists : t -> recipe -> protocol_term -> bool
 
   (** [find_protocol] {% $\Set$~$t$%} [f] returns [Some] {% $\xi$ if $(\xi,t) \in \Set$ %} and [f] {% $\xi$ %} returns [true]. Otherwise it returns [None].*)
   val find_protocol_term : t -> protocol_term -> recipe option
-
-  (** [exists_pair_with_same_protocol_term] {% $\Set$ %} [f] returns [true] if and only if there exist {% $u, \xi_1,\xi_2$ such that
-      $\xi_1 \neq \xi_2$, %} [f] {% $\xi_1$~$\xi_2$ %} returns [true] and {% $(\xi_1,u), (\xi_2,u) \in \Set$. %}*)
-  val exists_pair_with_same_protocol_term : t -> ((recipe * recipe) list-> bool) -> bool
 
   (** {3 Display} *)
 

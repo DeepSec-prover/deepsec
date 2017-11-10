@@ -127,6 +127,16 @@ let rec is_ground_debug term = match term.term with
   | Func(_,args) -> List.for_all is_ground_debug args
   | _ -> true
 
+module HashSymb = struct
+  type t = symbol
+
+  let equal = (==)
+
+  let hash = Hashtbl.hash
+end
+
+module HashtblSymb = Hashtbl.Make(HashSymb)
+
 (************************************
 ***            Variables          ***
 *************************************)
@@ -146,6 +156,8 @@ module Variable = struct
   let infinite_snd_ord_type = -1
 
   let has_infinite_type v = v.var_type = -1
+
+  let has_not_infinite_type v = v.var_type <> -1
 
   let fresh_with_label q ty s =
     let var = { label = s; index = !accumulator; link = NoLink; quantifier = q; var_type = ty } in
@@ -796,7 +808,7 @@ module Symbol = struct
 
   let number_of_destructors = ref 0
 
-  let all_projection = Hashtbl.create 7
+  let all_projection = HashtblSymb.create 7
 
   let special_constructor = Hashtbl.create 7
 
@@ -806,10 +818,19 @@ module Symbol = struct
     all_tuple := [];
     number_of_constructors :=0;
     number_of_destructors := 0;
-    Hashtbl.reset all_projection;
+    HashtblSymb.reset all_projection;
     Hashtbl.reset special_constructor
 
-  type setting = { all_t : symbol list ; all_p : (int * symbol list) list ; all_c : symbol list ; all_d : symbol list ; nb_c : int ; nb_d : int ; cst : symbol }
+  type setting =
+    {
+      all_t : symbol list ;
+      all_p : (symbol * symbol list) list ;
+      all_c : symbol list ;
+      all_d : symbol list ;
+      nb_c : int ;
+      nb_d : int ;
+      cst : symbol
+    }
 
   let set_up_signature setting =
     accumulator_nb_symb := setting.nb_c + setting.nb_d;
@@ -819,17 +840,16 @@ module Symbol = struct
     all_tuple := setting.all_t;
     number_of_constructors := setting.nb_c;
     number_of_destructors := setting.nb_d;
-    Hashtbl.reset all_projection;
+    HashtblSymb.reset all_projection;
     Hashtbl.reset special_constructor;
-    List.iter (fun (ar,list_proj) ->
-      let array_proj = Array.of_list list_proj in
-      Hashtbl.add all_projection ar array_proj
+    List.iter (fun (f,list_proj) ->
+      HashtblSymb.add all_projection f list_proj
     ) setting.all_p
 
   let get_settings () =
     {
       all_t = !all_tuple;
-      all_p = Hashtbl.fold (fun ar array_proj acc -> (ar,Array.to_list array_proj)::acc) all_projection [];
+      all_p = HashtblSymb.fold (fun f list_proj acc -> (f,list_proj)::acc) all_projection [];
       all_c = !all_constructors;
       all_d = !all_destructors;
       nb_c = !number_of_constructors;
@@ -872,14 +892,8 @@ module Symbol = struct
 
   (********* Tuple ************)
 
-  let nth_projection symb_tuple i = match symb_tuple.cat with
-    | Tuple ->
-        let ar = symb_tuple.arity in
-        (Hashtbl.find all_projection ar).(i-1)
-    | _ -> Config.internal_error "[term.ml >> Symbol.nth_projection] The function symbol should be a tuple"
-
   let get_projections symb_tuple = match symb_tuple.cat with
-    | Tuple -> Array.to_list (Hashtbl.find all_projection (symb_tuple.arity))
+    | Tuple -> HashtblSymb.find all_projection symb_tuple
     | _ -> Config.internal_error "[term.ml >> Symbol.get_projections] The function symbol should be a tuple"
 
   (********* Addition ************)
@@ -900,21 +914,25 @@ module Symbol = struct
     number_of_destructors := !number_of_destructors + 1;
     symb
 
-  let new_projection tuple_symb i =
-    let args = Variable.fresh_term_list Protocol Existential Variable.fst_ord_type tuple_symb.arity in
-    let x = List.nth args i in
-    let symb =
-      {
-        name = (Printf.sprintf "proj_{%d,%d}" (i+1) tuple_symb.arity);
-        arity = 1;
-        cat = Destructor([([{ term = Func(tuple_symb,args) ; ground = false } ],x)]);
-        index_s = !accumulator_nb_symb;
-        public = true;
-        represents = UserDefined
-      }
-    in
-    incr accumulator_nb_symb;
-    symb
+  let rec new_projection acc tuple_symb i = match i with
+    | 0 -> acc
+    | i ->
+        let args = Variable.fresh_term_list Protocol Existential Variable.fst_ord_type tuple_symb.arity in
+        let x = List.nth args (i-1) in
+        let symb =
+          {
+            name = (Printf.sprintf "proj_{%d,%d}" i tuple_symb.arity);
+            arity = 1;
+            cat = Destructor([([{ term = Func(tuple_symb,args) ; ground = false } ],x)]);
+            index_s = !accumulator_nb_symb;
+            public = true;
+            represents = UserDefined
+          }
+        in
+        all_destructors := symb :: !all_destructors;
+        incr number_of_destructors;
+        incr accumulator_nb_symb;
+        new_projection (symb::acc) tuple_symb (i-1)
 
   let get_tuple ar =
     try
@@ -927,18 +945,11 @@ module Symbol = struct
         all_tuple := symb::!all_tuple;
         number_of_constructors := !number_of_constructors + 1;
 
-        let array_proj = Array.init ar (new_projection symb) in
-        Hashtbl.add all_projection ar array_proj;
+        let list_proj = new_projection [] symb ar in
+        HashtblSymb.add all_projection symb list_proj;
 
-        let rec add_proj = function
-          | 0 -> all_destructors := List.sort order ((array_proj.(0))::!all_destructors)
-          | n -> all_destructors := List.sort order ((array_proj.(n))::!all_destructors); add_proj (n-1)
-        in
-
-        add_proj (ar-1);
-        number_of_destructors := ar + !number_of_destructors;
         symb
-      end;;
+      end
 
   let get_fresh_constant n =
     try
@@ -946,6 +957,7 @@ module Symbol = struct
     with
     | Not_found ->
         let c = { name = "__dummy_c"; arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
+        Hashtbl.add special_constructor n c;
         incr accumulator_nb_symb;
         c
 
@@ -1610,7 +1622,6 @@ module Subst = struct
 
     new_elt
 
-
   let apply_generalised subst elt f_iter_elt =
     Config.debug (fun () ->
       if List.exists (fun (v,_) -> v.link <> NoLink) subst
@@ -2013,34 +2024,6 @@ module Subst = struct
     cleanup at;
     result
 
-  let rec check_good_recipes_term term = match term.term with
-    | Var _ -> true
-    | AxName _ -> true
-    | Func(f,args) when f.cat = Tuple ->
-        let projections = Symbol.get_projections f in
-        let result = ref false in
-        let term_proj = ref None in
-        List.iter2 (fun t f_proj ->
-          if is_function t
-          then
-            let symb = root t in
-            if Symbol.is_equal f_proj symb
-            then
-              match !term_proj, get_args t  with
-                | Some t', [t''] when is_equal Recipe t' t'' -> ()
-                | Some _, _ -> result := true
-                | None, [t''] -> term_proj := Some t''
-                | None, _ -> Config.internal_error "[term.ml >> check_good_recipes_term] Projections should always have one unique argument."
-            else result := true
-          else result := true
-        ) args projections;
-        if !result
-        then List.for_all check_good_recipes_term args
-        else false
-    | Func(_,args) -> List.for_all check_good_recipes_term args
-
-  let check_good_recipes subst =
-    List.for_all (fun (_,t) -> check_good_recipes_term t) subst
 end
 
 (***********************************
@@ -2108,21 +2091,20 @@ module Diseq = struct
           get_axioms_with_list t2 (fun _ -> true) (get_axioms_with_list t1 (fun _ -> true) acc)
         ) ax_list diseq_l
 
-  let of_substitution (type a) (type b) (at:(a,b) atom) (sigma:(a,b) Subst.t) (l:(a,b) variable list) =
+  let of_substitution (sigma:(snd_ord,axiom) Subst.t) (l:(snd_ord, axiom) variable list) =
     if sigma = []
-    then (Bot:(a,b) t)
+    then Bot
     else if l = []
-    then (Diseq (Subst.equations_of sigma):(a,b) t)
+    then Diseq (Subst.equations_of sigma)
     else
       begin
         Config.test (fun () ->
-          if retrieve_search at <> [] ||  Variable.Renaming.retrieve at <> []
+          if retrieve_search Recipe <> [] ||  Variable.Renaming.retrieve Recipe <> []
           then Config.internal_error "[terml.ml >> of_substitution] Linked variables should be empty."
         );
-        List.iter (fun (v:(a,b) variable) ->
-          match at with
-            | Protocol -> let (v':(a,b) variable) = Variable.fresh at Universal Variable.fst_ord_type in Variable.Renaming.link at v v'
-            | Recipe -> let (v':(a,b) variable) = Variable.fresh at Universal (Variable.snd_ord_type (Variable.type_of v)) in Variable.Renaming.link at v v'
+        List.iter (fun v ->
+          let v' = Variable.fresh Recipe Universal (Variable.snd_ord_type (Variable.type_of v)) in
+          Variable.Renaming.link Recipe v v'
         ) l;
         let diseq = List.fold_left (fun acc (v,t) ->
           if v.link = NoLink
@@ -2131,10 +2113,10 @@ module Diseq = struct
           ) [] sigma
         in
 
-        Variable.Renaming.cleanup at;
+        Variable.Renaming.cleanup Recipe;
         if diseq = []
-        then (Bot:(a,b) t)
-        else (Diseq diseq:(a,b) t)
+        then Bot
+        else Diseq diseq
       end
 
   let rec rename_universal_to_existential at term =
@@ -2814,71 +2796,74 @@ module Fact = struct
 
   let is_fact psi = psi.equation_subst = []
 
-  (********** Modification *********)
+  (********** Application of substitution *********)
 
-  let apply (type a) (fct: a t) (psi: a formula)  (subst_snd : (snd_ord,axiom) Subst.t) (subst_fst : (fst_ord,name) Subst.t) =
+  let apply_fst_on_deduction_fact (subst_fst: (fst_ord,name) Subst.t) fact =
     Config.debug (fun () ->
       if List.exists (fun (v,_) -> v.link <> NoLink) subst_fst
-      then Config.internal_error "[term.ml >> Fact.apply] Variables in the domain should not be linked"
+      then Config.internal_error "[term.ml >> Fact.apply_fst_on_deduction_fact] Variables in the domain should not be linked"
+    );
+
+    (* Link the variables of the substitution *)
+    List.iter (fun (v,t) -> v.link <- (TLink t)) subst_fst;
+
+    let fact' = { fact with df_term = Subst.apply_on_term fact.df_term } in
+
+    (* Clean the variables of the substitution *)
+    List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
+
+    fact'
+
+  let apply_snd_on_fact (type a) (fct: a t) (subst_snd: (snd_ord,axiom) Subst.t) (fact:a) =
+    Config.debug (fun () ->
+      if List.exists (fun (v,_) -> v.link <> NoLink) subst_snd
+      then Config.internal_error "[term.ml >> Fact.apply_snd_on_fact] Variables in the domain should not be linked"
+    );
+
+    (* Link the variables of the substitution *)
+    List.iter (fun (v,t) -> v.link <- (TLink t)) subst_snd;
+
+    match fct with
+      | Deduction ->
+          let fact' = { fact with df_recipe = Subst.apply_on_term fact.df_recipe } in
+          (* Clean the variables of the substitution *)
+          List.iter (fun (v,_) -> v.link <- NoLink) subst_snd;
+          (fact':a)
+      | Equality ->
+          let fact' = { ef_recipe_1 = Subst.apply_on_term fact.ef_recipe_1; ef_recipe_2 = Subst.apply_on_term fact.ef_recipe_2 } in
+          (* Clean the variables of the substitution *)
+          List.iter (fun (v,_) -> v.link <- NoLink) subst_snd;
+          (fact':a)
+
+  let apply_on_deduction_fact (subst_snd: (snd_ord,axiom) Subst.t) (subst_fst: (fst_ord,name) Subst.t) fact =
+    Config.debug (fun () ->
+      if List.exists (fun (v,_) -> v.link <> NoLink) subst_fst || List.exists (fun (v,_) -> v.link <> NoLink) subst_snd
+      then Config.internal_error "[term.ml >> Fact.apply_fst_on_deduction_fact] Variables in the domain should not be linked"
+    );
+
+    (* Link the variables of the substitution *)
+    List.iter (fun (v,t) -> v.link <- (TLink t)) subst_fst;
+    List.iter (fun (v,t) -> v.link <- (TLink t)) subst_snd;
+
+    let fact' = { df_recipe = Subst.apply_on_term fact.df_recipe; df_term = Subst.apply_on_term fact.df_term } in
+
+    (* Clean the variables of the substitution *)
+    List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
+    List.iter (fun (v,_) -> v.link <- NoLink) subst_snd;
+
+    fact'
+
+  let apply_fst_on_formula (type a) (fct: a t) (subst_fst: (fst_ord,name) Subst.t) (psi: a formula) =
+    Config.debug (fun () ->
+      if List.exists (fun (v,_) -> v.link <> NoLink) subst_fst
+      then Config.internal_error "[term.ml >> Fact.apply_fst_on_formula] Variables in the domain should not be linked"
     );
 
     (* Link the variables of the substitution *)
     List.iter (fun (v,t) -> v.link <- (TLink t)) subst_fst;
 
     try
-      List.iter (fun (x,t) -> Subst.unify_term Protocol { term = Var x; ground = false } t) psi.equation_subst;
-
-      begin match fct with
-        | Deduction ->
-            let head = { psi.head with df_term = Subst.follow_link psi.head.df_term }
-            and equation_subst = List.fold_left (fun acc var -> if var.quantifier = Universal then acc else (var,Subst.follow_link_var var)::acc) [] (Subst.retrieve Protocol) in
-
-            let psi_1 = { head = head; equation_subst = equation_subst } in
-
-            Subst.cleanup Protocol;
-
-            (* Unlink the variables of the substitution *)
-            List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
-
-            (* Apply the second-order substitution *)
-
-            ({ psi_1 with head = Subst.apply subst_snd psi_1.head (fun d_fact f -> { d_fact with df_recipe = f d_fact.df_recipe }) }: a formula)
-
-        | Equality ->
-            let equation_subst = List.fold_left (fun acc var -> if var.quantifier = Universal then acc else (var,Subst.follow_link_var var)::acc) [] (Subst.retrieve Protocol) in
-
-            let psi_1 = { psi with equation_subst = equation_subst } in
-
-            Subst.cleanup Protocol;
-
-            (* Unlink the variables of the substitution *)
-            List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
-
-            (* Apply the second-order substitution *)
-
-            ({ psi_1 with head = Subst.apply subst_snd psi_1.head (fun d_fact f -> { ef_recipe_1 = f d_fact.ef_recipe_1; ef_recipe_2 = f d_fact.ef_recipe_2 }) }: a formula)
-      end
-    with Subst.Not_unifiable ->
-      Subst.cleanup Protocol;
-      (* Unlink the variables of the substitution *)
-      List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
-      raise Bot
-
-  let apply_snd_ord (type a) (fct: a t) (psi: a formula) (subst_snd : (snd_ord,axiom) Subst.t) = match fct with
-    | Deduction ->  ({ psi with head = Subst.apply subst_snd psi.head (fun d_fact f -> { d_fact with df_recipe = f d_fact.df_recipe }) }: a formula)
-    | Equality -> ({ psi with head = Subst.apply subst_snd psi.head (fun d_fact f -> { ef_recipe_1 = f d_fact.ef_recipe_1; ef_recipe_2 = f d_fact.ef_recipe_2 }) }: a formula)
-
-  let apply_fst_ord (type a) (fct: a t) (psi: a formula) subst_fst =
-    Config.debug (fun () ->
-      if List.exists (fun (v,_) -> v.link <> NoLink) subst_fst
-      then Config.internal_error "[term.ml >> Fact.apply_fst_ord] Variables in the domain should not be linked"
-    );
-
-    (* Link the variables of the substitution *)
-    List.iter (fun (v,t) -> v.link <- (TLink t)) subst_fst;
-
-    try
-      List.iter (fun (x,t) -> Subst.unify_term Protocol ({term = Var x; ground = false}) t) psi.equation_subst;
+      List.iter (fun (x,t) -> Subst.unify_term Protocol {term = Var x; ground = false} t) psi.equation_subst;
 
       begin match fct with
         | Deduction ->
@@ -2914,106 +2899,35 @@ module Fact = struct
       List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
       raise Bot
 
-  let apply_snd_ord_on_fact (type a) (fct: a t) (fact: a) (subst_snd : (snd_ord,axiom) Subst.t) = match fct with
-    | Deduction -> (Subst.apply subst_snd fact (fun fact f -> {fact with df_recipe = f fact.df_recipe}) : a)
-    | Equality -> (Subst.apply subst_snd fact (fun fact f -> {ef_recipe_1 = f fact.ef_recipe_1; ef_recipe_2 = f fact.ef_recipe_2}) : a)
+  let apply_snd_on_formula (type a) (fct: a t) (subst_snd : (snd_ord,axiom) Subst.t) (psi: a formula) = match fct with
+    | Deduction ->
+        (* Link the variables of the substitution *)
+        List.iter (fun (v,t) -> v.link <- TLink t) subst_snd;
 
-  let apply_ded_with_gathering psi subst_snd subst_fst ded_ref =
-    Config.debug (fun () ->
-      if List.exists (fun (v,_) -> v.link <> NoLink) subst_fst
-      then Config.internal_error "[term.ml >> Fact.apply_ded_with_gathering] Variables in the domain should not be linked"
-    );
+        let psi' = { psi with head = { psi.head with df_recipe = Subst.apply_on_term psi.head.df_recipe } } in
 
-    (* Link the variables of the substitution *)
-    List.iter (fun (v,t) -> v.link <- (TLink t)) subst_fst;
+        (* Unlink the variables of the substitution *)
+        List.iter (fun (v,_) -> v.link <- NoLink) subst_snd;
 
-    try
-      List.iter (fun (x,t) -> Subst.unify_term Protocol ({ term = Var x; ground = false }) t) psi.equation_subst;
+        (psi': a formula)
+    | Equality ->
+        (* Link the variables of the substitution *)
+        List.iter (fun (v,t) -> v.link <- TLink t) subst_snd;
 
-      let head = { psi.head with df_term = Subst.follow_link psi.head.df_term }
-      and equation_subst = List.fold_left (fun acc var -> if var.quantifier = Universal then acc else (var,Subst.follow_link_var var)::acc) [] (Subst.retrieve Protocol) in
+        let psi' = { psi with head = { ef_recipe_1 = Subst.apply_on_term psi.head.ef_recipe_1; ef_recipe_2 = Subst.apply_on_term psi.head.ef_recipe_2 } } in
 
-      let psi_1 = { head = head; equation_subst = equation_subst } in
+        (* Unlink the variables of the substitution *)
+        List.iter (fun (v,_) -> v.link <- NoLink) subst_snd;
 
-      Subst.cleanup Protocol;
+        (psi': a formula)
 
-      (* Unlink the variables of the substitution *)
-      List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
+  (********** Replacement of recipes *********)
 
-      (* Apply the second-order substitution *)
+  let replace_recipe_in_deduction_fact r fact = { fact with df_recipe = r }
 
-      begin match !ded_ref with
-        | None ->
-            { psi_1 with
-              head =
-                Subst.apply subst_snd psi_1.head (fun d_fact f ->
-                  let recipe = f d_fact.df_recipe in
-                  ded_ref := Some recipe;
-                  { d_fact with df_recipe = recipe }
-                )
-            }
-        | Some recipe -> { psi_1 with head = { psi_1.head with df_recipe = recipe} }
-      end
-    with Subst.Not_unifiable ->
-      Subst.cleanup Protocol;
-      (* Unlink the variables of the substitution *)
-      List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
-      raise Bot
+  let replace_recipe_in_deduction_formula r form = { form with head = { form.head with df_recipe = r} }
 
-  let apply_eq_with_gathering psi subst_snd subst_fst eq_ref =
-    Config.debug (fun () ->
-      if List.exists (fun (v,_) -> v.link <> NoLink) subst_fst
-      then Config.internal_error "[term.ml >> Fact.apply] Variables in the domain should not be linked"
-    );
-
-    (* Link the variables of the substitution *)
-    List.iter (fun (v,t) -> v.link <- (TLink t)) subst_fst;
-
-    try
-      List.iter (fun (x,t) -> Subst.unify_term Protocol ({ term = Var x; ground = false }) t) psi.equation_subst;
-
-      let equation_subst = List.fold_left (fun acc var -> if var.quantifier = Universal then acc else (var,Subst.follow_link_var var)::acc) [] (Subst.retrieve Protocol) in
-
-      let psi_1 = { psi with equation_subst = equation_subst } in
-
-      Subst.cleanup Protocol;
-
-      (* Unlink the variables of the substitution *)
-      List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
-
-      (* Apply the second-order substitution *)
-
-      begin match !eq_ref with
-        | None ->
-            let head = Subst.apply subst_snd psi_1.head (fun d_fact f -> { ef_recipe_1 = f d_fact.ef_recipe_1; ef_recipe_2 = f d_fact.ef_recipe_2 }) in
-            eq_ref := Some head;
-            { psi_1 with head = head }
-        | Some head -> { psi_1 with head = head }
-      end
-    with Subst.Not_unifiable ->
-      Subst.cleanup Protocol;
-      (* Unlink the variables of the substitution *)
-      List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
-      raise Bot
-
-  let apply_snd_ord_ded_with_gathering psi subst_snd ded_ref = match !ded_ref with
-    | None ->
-        let head =
-          Subst.apply subst_snd psi.head (fun d_fact f ->
-            let recipe = f d_fact.df_recipe in
-            ded_ref := Some recipe;
-            { d_fact with df_recipe = recipe }
-          )
-        in
-        { psi with head = head }
-    | Some recipe -> { psi with head = { psi.head with df_recipe = recipe } }
-
-  let apply_snd_ord_eq_with_gathering psi subst_snd eq_ref = match !eq_ref with
-    | None ->
-        let head = Subst.apply subst_snd psi.head (fun d_fact f -> { ef_recipe_1 = f d_fact.ef_recipe_1; ef_recipe_2 = f d_fact.ef_recipe_2 }) in
-        eq_ref := Some head;
-        { psi with head = head }
-    | Some head -> { psi with head = head }
+  let replace_head_in_equality_formula (fact:equality) (form:equality_formula) = { form with head = fact }
 
   (********* Display functions *******)
 
@@ -3085,18 +2999,39 @@ module Fact = struct
 end
 
 (***************************************************
-***    Rewrite rules   ***
+***                Patterns                      ***
 ****************************************************)
 
-module HashSymb = struct
-  type t = symbol
+type pattern =
+  | PatOther
+  | PatTuple of symbol * pattern list
 
-  let equal = (==)
+let rec is_equal_pattern pat1 pat2 = match pat1,pat2 with
+  | PatOther, PatOther -> true
+  | PatTuple(f1,args1), PatTuple(f2,args2) -> f1 == f2 && List.for_all2 is_equal_pattern args1 args2
+  | _, _ -> false
 
-  let hash = Hashtbl.hash
-end
+let extract_pattern_of_deduction_fact fact =
 
-module HashtblSymb = Hashtbl.Make(HashSymb)
+  let acc_facts = ref [] in
+
+  let rec internal recipe term = match term.term with
+    | Func(f,args) when f.cat = Tuple ->
+        let projections = HashtblSymb.find Symbol.all_projection f in
+        let pat_args = List.map2 (fun f_proj t -> internal { term = Func(f_proj,[recipe]); ground = recipe.ground } t) projections args in
+        PatTuple(f,pat_args)
+    | _ ->
+        acc_facts := { Fact.df_recipe = recipe; Fact.df_term = term} :: !acc_facts;
+        PatOther
+  in
+
+  match internal fact.Fact.df_recipe fact.Fact.df_term with
+    | PatOther -> None
+    | pat -> Some (pat, !acc_facts)
+
+(***************************************************
+***    Rewrite rules   ***
+****************************************************)
 
 module Rewrite_rules = struct
 

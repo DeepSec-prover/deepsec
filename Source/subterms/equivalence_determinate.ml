@@ -101,8 +101,9 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           normalise_configuration conf else_branch fst_subst (fun gathering conf_1 ->
             try
               let csys_1 = Constraint_system.apply_substitution csys gathering.equations in
-              let csys_2 = Constraint_system.add_disequations Protocol csys_1 gathering.disequations in
+              let csys_2 = Constraint_system.add_disequations csys_1 gathering.disequations in
               let csys_3 = Constraint_system.replace_additional_data csys_2 { symb_proc with configuration = conf_1 } in
+
               csys_set_for_start := Constraint_system.Set.add csys_3 !csys_set_for_start
             with
               | Constraint_system.Bot -> ()
@@ -120,19 +121,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
         (*** Application of the transformation rules for inputs ***)
 
-        let rec in_apply_sat csys_set f_next =
-          Constraint_system.Rule.sat csys_set {
-            Constraint_system.Rule.positive = in_apply_sat;
-            Constraint_system.Rule.negative = in_apply_sat;
-            Constraint_system.Rule.not_applicable = in_apply_sat_disequation
-          } f_next
-        and in_apply_sat_disequation csys_set f_next =
-          Constraint_system.Rule.sat_disequation csys_set {
-            Constraint_system.Rule.positive = in_apply_sat_disequation;
-            Constraint_system.Rule.negative = in_apply_sat_disequation;
-            Constraint_system.Rule.not_applicable = in_apply_final_test
-          } f_next
-        and in_apply_final_test csys_set f_next =
+        let in_apply_final_test csys_set f_next =
           if Constraint_system.Set.is_empty csys_set
           then f_next ()
           else
@@ -200,7 +189,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                     end
         in
 
-        in_apply_sat !csys_set_for_start (fun () -> explore f_next !equiv_pbl_list)
+        Constraint_system.Rule.apply_rules_after_input false false !csys_set_for_start in_apply_final_test (fun () -> explore f_next !equiv_pbl_list)
     | RStartIn ->
         let var_X = Variable.fresh Recipe Free (Variable.snd_ord_type equiv_pbl.size_frame) in
 
@@ -217,6 +206,8 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
         apply_start_in var_X !csys_conf_list apply_conf (fun csys_var_list label f_next_1 ->
           let csys_set_for_input = ref Constraint_system.Set.empty in
+
+          let apply_uniform = ref false in
 
           let else_branch =
             if equiv_pbl.else_branch
@@ -235,11 +226,14 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
               try
                 let csys_1 = Constraint_system.apply_substitution csys gathering.equations in
                 let csys_2 = Constraint_system.add_basic_fact csys_1 ded_fact_term in
-                let csys_3 = Constraint_system.add_disequations Protocol csys_2 gathering.disequations in
+                let csys_3 = Constraint_system.add_disequations csys_2 gathering.disequations in
                 let csys_4 = Constraint_system.replace_additional_data csys_3 { symb_proc with configuration = conf_1 } in
+
+                if Constraint_system.exists_recipes_deducing_same_protocol_term csys_4
+                then apply_uniform := true;
+
                 csys_set_for_input := Constraint_system.Set.add csys_4 !csys_set_for_input
-              with
-                | Constraint_system.Bot -> ()
+              with Constraint_system.Bot -> ()
             )
           ) csys_var_list;
 
@@ -252,19 +246,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
             f_next_2 ()
           in
 
-          let rec in_apply_sat csys_set f_next =
-            Constraint_system.Rule.sat csys_set {
-              Constraint_system.Rule.positive = in_apply_sat;
-              Constraint_system.Rule.negative = in_apply_sat;
-              Constraint_system.Rule.not_applicable = in_apply_sat_disequation
-            } f_next
-          and in_apply_sat_disequation csys_set f_next =
-            Constraint_system.Rule.sat_disequation csys_set {
-              Constraint_system.Rule.positive = in_apply_sat_disequation;
-              Constraint_system.Rule.negative = in_apply_sat_disequation;
-              Constraint_system.Rule.not_applicable = in_apply_final_test
-            } f_next
-          and in_apply_final_test csys_set f_next =    (* Rework that part : add the block + tests *)
+          let in_apply_final_test csys_set f_next =
             if Constraint_system.Set.is_empty csys_set
             then f_next ()
             else
@@ -318,17 +300,13 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                       let block = create_block label in
                       let block_1 = add_variable_in_block var_X block in
                       let snd_subst = Constraint_system.get_substitution_solution Recipe csys in
-                      if Subst.check_good_recipes snd_subst && is_block_list_authorized complete_blocks_1 block_1 snd_subst
+                      if is_block_list_authorized complete_blocks_1 block_1 snd_subst
                       then
                         let csys_left = Constraint_system.replace_additional_data csys_left { symb_left with configuration = conf_left } in
                         let csys_right = Constraint_system.replace_additional_data csys_right { symb_right with configuration = conf_right } in
                         let csys_set_2 = Constraint_system.Set.add csys_left (Constraint_system.Set.add csys_right Constraint_system.Set.empty) in
 
                         let equiv_pbl_1 = { equiv_pbl with complete_blocks = complete_blocks_1; ongoing_block = Some block_1; csys_set = csys_set_2 } in
-                        (*let _ =
-                          Printf.printf "%s\n" (Process_determinate.display_block (block_1::complete_blocks_1) snd_subst);
-                          flush_all ()
-                        in*)
                         subsume_continuation equiv_pbl_1 f_next
                       else f_next ()
                   | Faulty (is_left,f_conf,f_action) ->
@@ -346,7 +324,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                       end
           in
 
-          in_apply_sat !csys_set_for_input (fun () -> explore f_next_1 !equiv_pbl_list)
+          Constraint_system.Rule.apply_rules_after_input false !apply_uniform !csys_set_for_input in_apply_final_test (fun () -> explore f_next_1 !equiv_pbl_list)
         ) f_next
     | RPosIn ->
         let var_X = Variable.fresh Recipe Free (Variable.snd_ord_type equiv_pbl.size_frame) in
@@ -358,6 +336,8 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           then Constraint_system.Set.exists (fun csys -> have_else_branch_or_par_conf (Constraint_system.get_additional_data csys).configuration) equiv_pbl.csys_set
           else false
         in
+
+        let apply_uniform = ref false in
 
         Constraint_system.Set.iter (fun csys ->
           let symb_proc = Constraint_system.get_additional_data csys in
@@ -371,8 +351,12 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
             try
               let csys_1 = Constraint_system.apply_substitution csys gathering.equations in
               let csys_2 = Constraint_system.add_basic_fact csys_1 ded_fact_term in
-              let csys_3 = Constraint_system.add_disequations Protocol csys_2 gathering.disequations in
+              let csys_3 = Constraint_system.add_disequations csys_2 gathering.disequations in
               let csys_4 = Constraint_system.replace_additional_data csys_3 { symb_proc with configuration = conf_1 } in
+
+              if Constraint_system.exists_recipes_deducing_same_protocol_term csys_4
+              then apply_uniform := true;
+
               csys_set_for_input := Constraint_system.Set.add csys_4 !csys_set_for_input
             with
               | Constraint_system.Bot -> ()
@@ -388,19 +372,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           f_next_2 ()
         in
 
-        let rec in_apply_sat csys_set f_next =
-          Constraint_system.Rule.sat csys_set {
-            Constraint_system.Rule.positive = in_apply_sat;
-            Constraint_system.Rule.negative = in_apply_sat;
-            Constraint_system.Rule.not_applicable = in_apply_sat_disequation
-          } f_next
-        and in_apply_sat_disequation csys_set f_next =
-          Constraint_system.Rule.sat_disequation csys_set {
-            Constraint_system.Rule.positive = in_apply_sat_disequation;
-            Constraint_system.Rule.negative = in_apply_sat_disequation;
-            Constraint_system.Rule.not_applicable = in_apply_final_test
-          } f_next
-        and in_apply_final_test csys_set f_next =
+        let in_apply_final_test csys_set f_next =
           if Constraint_system.Set.is_empty csys_set
           then f_next ()
           else
@@ -451,7 +423,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                       | Some b -> add_variable_in_block var_X b
                     in
                     let snd_subst = Constraint_system.get_substitution_solution Recipe csys in
-                    if Subst.check_good_recipes snd_subst && is_block_list_authorized equiv_pbl.complete_blocks block snd_subst
+                    if is_block_list_authorized equiv_pbl.complete_blocks block snd_subst
                     then
                       let csys_left = Constraint_system.replace_additional_data csys_left { symb_left with configuration = conf_left } in
                       let csys_right = Constraint_system.replace_additional_data csys_right { symb_right with configuration = conf_right } in
@@ -474,7 +446,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                     end
         in
 
-        in_apply_sat !csys_set_for_input (fun () -> explore f_next !equiv_pbl_list)
+        Constraint_system.Rule.apply_rules_after_input false !apply_uniform !csys_set_for_input in_apply_final_test (fun () -> explore f_next !equiv_pbl_list)
     | RNegOut ->
         let axiom = Axiom.create (equiv_pbl.size_frame + 1) in
 
@@ -485,6 +457,8 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           then Constraint_system.Set.exists (fun csys -> have_else_branch_or_par_conf (Constraint_system.get_additional_data csys).configuration) equiv_pbl.csys_set
           else false
         in
+
+        let apply_uniform = ref false in
 
         Constraint_system.Set.iter (fun csys ->
           let symb_proc = Constraint_system.get_additional_data csys in
@@ -497,8 +471,12 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
             try
               let csys_1 = Constraint_system.apply_substitution csys gathering.equations in
               let csys_2 = Constraint_system.add_axiom csys_1 axiom term' in
-              let csys_3 = Constraint_system.add_disequations Protocol csys_2 gathering.disequations in
+              let csys_3 = Constraint_system.add_disequations csys_2 gathering.disequations in
               let csys_4 = Constraint_system.replace_additional_data csys_3 { symb_proc with configuration = conf_1 } in
+
+              if Constraint_system.exists_recipes_deducing_same_protocol_term csys_4
+              then apply_uniform := true;
+
               csys_set_for_output := Constraint_system.Set.add csys_4 !csys_set_for_output
             with
               | Constraint_system.Bot -> ()
@@ -514,49 +492,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           f_next_2 ()
         in
 
-        let rec out_apply_sat csys_set f_next =
-          Constraint_system.Rule.sat csys_set {
-            Constraint_system.Rule.positive = out_apply_sat;
-            Constraint_system.Rule.negative = out_apply_sat;
-            Constraint_system.Rule.not_applicable = out_apply_sat_disequation
-          } f_next
-        and out_apply_sat_disequation csys_set f_next =
-          Constraint_system.Rule.sat_disequation csys_set {
-            Constraint_system.Rule.positive = out_apply_sat_disequation;
-            Constraint_system.Rule.negative = out_apply_sat_disequation;
-            Constraint_system.Rule.not_applicable = (fun csys_set f_next -> Constraint_system.Rule.normalisation_after_axiom csys_set out_apply_sat_formula f_next)
-          } f_next
-        and out_apply_sat_formula csys_set f_next =
-          Constraint_system.Rule.sat_formula csys_set {
-            Constraint_system.Rule.positive = out_apply_sat_formula;
-            Constraint_system.Rule.negative = out_apply_sat_formula;
-            Constraint_system.Rule.not_applicable = out_apply_equality
-          } f_next
-        and out_apply_equality csys_set f_next =
-          Constraint_system.Rule.equality csys_set {
-            Constraint_system.Rule.positive = out_apply_sat_formula;
-            Constraint_system.Rule.negative = out_apply_sat_formula;
-            Constraint_system.Rule.not_applicable = out_apply_rewrite
-          } f_next
-        and out_apply_rewrite csys_set f_next =
-          Constraint_system.Rule.rewrite csys_set {
-            Constraint_system.Rule.positive = out_apply_sat_formula;
-            Constraint_system.Rule.negative = out_apply_sat_formula;
-            Constraint_system.Rule.not_applicable = out_apply_equality_constructor
-          } f_next
-        and out_apply_sat_formula_for_equality_constructor csys_set f_next =
-          Constraint_system.Rule.sat_formula csys_set {
-            Constraint_system.Rule.positive = out_apply_sat_formula_for_equality_constructor;
-            Constraint_system.Rule.negative = out_apply_sat_formula_for_equality_constructor;
-            Constraint_system.Rule.not_applicable = out_apply_equality_constructor
-          } f_next
-        and out_apply_equality_constructor csys_set f_next =
-          Constraint_system.Rule.equality_constructor csys_set {
-            Constraint_system.Rule.positive = out_apply_sat_formula_for_equality_constructor;
-            Constraint_system.Rule.negative = out_apply_sat_formula_for_equality_constructor;
-            Constraint_system.Rule.not_applicable = out_apply_final_test
-          } f_next
-        and out_apply_final_test csys_set f_next =
+        let out_apply_final_test csys_set f_next =
           if Constraint_system.Set.is_empty csys_set
           then f_next ()
           else
@@ -607,7 +543,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                       | Some b -> add_axiom_in_block axiom b
                     in
                     let snd_subst = Constraint_system.get_substitution_solution Recipe csys in
-                    if Subst.check_good_recipes snd_subst && is_block_list_authorized equiv_pbl.complete_blocks block snd_subst
+                    if is_block_list_authorized equiv_pbl.complete_blocks block snd_subst
                     then
                       let csys_left = Constraint_system.replace_additional_data csys_left { symb_left with configuration = conf_left } in
                       let csys_right = Constraint_system.replace_additional_data csys_right { symb_right with configuration = conf_right } in
@@ -630,7 +566,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                           raise (Not_Trace_Equivalent wit_csys_2)
         in
 
-        out_apply_sat (Constraint_system.Set.initialise_for_output !csys_set_for_output) (fun () -> explore f_next !equiv_pbl_list)
+        Constraint_system.Rule.apply_rules_after_output false !apply_uniform !csys_set_for_output out_apply_final_test (fun () -> explore f_next !equiv_pbl_list)
     | RNothing ->
         if Constraint_system.Set.is_empty equiv_pbl.csys_set
         then f_next ()

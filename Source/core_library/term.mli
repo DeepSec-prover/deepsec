@@ -104,7 +104,16 @@ module Symbol : sig
   (** Empty the signature from all function symbols (constructor, destructor and tuple) *)
   val empty_signature : unit -> unit
 
-  type setting = { all_t : symbol list ; all_p : (int * symbol list) list ; all_c : symbol list ; all_d : symbol list ; nb_c : int ; nb_d : int ; cst : symbol }
+  type setting =
+    {
+      all_t : symbol list ;
+      all_p : (symbol * symbol list) list ;
+      all_c : symbol list ;
+      all_d : symbol list ;
+      nb_c : int ;
+      nb_d : int ;
+      cst : symbol
+    }
 
   val set_up_signature : setting -> unit
 
@@ -134,16 +143,8 @@ module Symbol : sig
       At last, the associated projection function symbol are automatically added into [all_projection].*)
   val get_tuple : int -> symbol
 
-  (** [nth_projection f i] returns the projection function symbol of the [i]{^ th} element of tuple function symbol [f].
-      Note that for a tuple of arity [n], the range of [i] is [1...n].
-
-      @raise Internal_error if [f] is not a tuple.
-      @raise Not_found if [f] was not previously introduced by [get_tuple].*)
-  val nth_projection : symbol -> int -> symbol
-
   (** [get_projections f] returns the list [[f_1;...;f_n]] with [f_i] is the projection
       function symbol of the [i]{^ th} element of the tuple function symbol [f].
-      It returns the same result as [[nth_projection f 1; ...; nth_projection f n]].
 
       @raise Internal_error if [f] is not a tuple.
       @raise Not_found if [f] was not previously introduced by [get_tuple].*)
@@ -227,6 +228,8 @@ module Variable : sig
   val type_of : snd_ord_variable -> int
 
   val has_infinite_type : snd_ord_variable -> bool
+
+  val has_not_infinite_type : snd_ord_variable -> bool
 
   (** A total ordering function over variables. This is a three-argument function [order] such that  [order at x1 x2] is zero if
       the [x1] and [x2] are equal, [order at x1 x2] is strictly negative if [x1] is smaller than [x2], and
@@ -607,8 +610,6 @@ module Subst : sig
 
   val not_in_domain : (snd_ord, axiom) t -> (snd_ord, axiom) variable list -> (snd_ord, axiom) variable list
 
-  val check_good_recipes : (snd_ord, axiom) t -> bool
-
   (** [apply_substitution subst elt map_elt] applies the substitution [subst] on the element [elt]. The function
       [map_elt] should map the terms contained in the element [elt] on which [subst] should be applied.
 
@@ -703,7 +704,7 @@ module Diseq : sig
   (** {4 Generation} *)
 
   (** [of_substitution] {% $\sigma$~$S$ generates the normalisation of the disequation $\forall S. \bigvee_{x \in \Dom{\sigma}} x \neqs x\sigma$. %} *)
-  val of_substitution : ('a, 'b) atom -> ('a, 'b) Subst.t -> ('a, 'b) variable list -> ('a, 'b) t
+  val of_substitution : (snd_ord, axiom) Subst.t -> (snd_ord, axiom) variable list -> (snd_ord, axiom) t
 
   (** [substitution_of_diseq at] {% $\forall \tilde{x}. \bigvee^n_1 x_i \neqs v_i$ generates the pair $(\sigma,\rho)$ where
       $\rho$ is a fresh renaming of $\tilde{x}$ to existential variables and
@@ -929,26 +930,31 @@ module Fact : sig
   (** [is_fact] {% $\psi$ %}) returns [true] iff $\psi$ is a fact, i.e. no universal variables and equation free *)
   val is_fact : 'a formula -> bool
 
-  (** {3 Modification} *)
+  (** {3 Application of substitutions} *)
+
+  val apply_fst_on_deduction_fact : (fst_ord, name) Subst.t -> deduction -> deduction
+
+  val apply_snd_on_fact : 'a t -> (snd_ord, axiom) Subst.t -> 'a -> 'a
+
+  val apply_on_deduction_fact : (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t -> deduction -> deduction
+
+  val apply_fst_on_formula : 'a t -> (fst_ord, name) Subst.t -> 'a formula -> 'a formula
+
+  val apply_snd_on_formula : 'a t -> (snd_ord, axiom) Subst.t -> 'a formula -> 'a formula
+
+  (** {3 Replacement of recipes} *)
+
+  val replace_recipe_in_deduction_fact : recipe -> deduction -> deduction
+
+  val replace_recipe_in_deduction_formula : recipe -> deduction_formula -> deduction_formula
+
+  val replace_head_in_equality_formula : equality -> equality_formula -> equality_formula
 
   (** [apply fct] {% $\psi$~$\Sigma$~$\sigma$ applies the subsitutions $\Sigma$ and $\sigma$ on $\psi$ and normalise the resulting formula
       with respect to the normalisation rules in \citepaper{Figure}{fig:normalisation_formula}, i.e. $\psi\Sigma\sigma\Vnorm$. %}
       @raise Bot if {% $\psi\Sigma\sigma\Vnorm = \bot$. %} *)
-  val apply : 'a t -> 'a formula -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t -> 'a formula
 
-  val apply_fst_ord : 'a t -> 'a formula -> (fst_ord, name) Subst.t -> 'a formula
 
-  val apply_snd_ord : 'a t -> 'a formula -> (snd_ord, axiom) Subst.t -> 'a formula
-
-  val apply_snd_ord_on_fact : 'a t -> 'a -> (snd_ord, axiom) Subst.t -> 'a
-
-  val apply_ded_with_gathering : deduction formula -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t -> recipe option ref -> deduction formula
-
-  val apply_eq_with_gathering : equality formula -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t -> equality option ref -> equality formula
-
-  val apply_snd_ord_ded_with_gathering : deduction formula -> (snd_ord, axiom) Subst.t -> recipe option ref -> deduction formula
-
-  val apply_snd_ord_eq_with_gathering : equality formula -> (snd_ord, axiom) Subst.t ->  equality option ref -> equality formula
 
   (** {3 Display functions} *)
 
@@ -958,6 +964,14 @@ module Fact : sig
 
   val display_formula : Display.output -> ?rho:display_renamings option -> 'a t -> 'a formula -> string
 end
+
+(** {2 Pattern} *)
+
+type pattern
+
+val is_equal_pattern : pattern -> pattern -> bool
+
+val extract_pattern_of_deduction_fact : Fact.deduction -> (pattern * Fact.deduction list) option
 
 (** {2 Rewrite rules} *)
 

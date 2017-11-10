@@ -39,7 +39,7 @@ struct
       variable_counter : int;
       name_counter : int;
       all_tuples : symbol list;
-      all_projections : (int * symbol list) list;
+      all_projections : (symbol * symbol list) list;
       all_constructors : symbol list;
       all_destructors : symbol list;
       number_of_constructors : int;

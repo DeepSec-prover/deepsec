@@ -54,7 +54,7 @@ val add_axiom : 'a t -> axiom -> protocol_term -> 'a t
     {% $\C[\Equn \mapsto \Equn \wedge \bigwedge_{i=1}^n \phi_i]\Vnorm$ when %} [at = Protocol] and returns
     {% $\C[\Equn \mapsto \Equn \wedge \bigwedge_{i=1}^n \phi_i]\Vnorm$ when %} [at = Recipe].
     @raise Bot when the resulting constraint system is unsatisfiable. *)
-val add_disequations : ('a, 'b) atom -> 'c t -> ('a, 'b) Diseq.t list -> 'c t
+val add_disequations : 'a t -> (Term.fst_ord, Term.name) Term.Diseq.t list -> 'a t
 
 val add_private_channels : 'a t -> protocol_term list -> 'a t
 
@@ -73,11 +73,10 @@ val instantiate_when_solved : 'a t -> (fst_ord, name) Subst.t * (snd_ord, axiom)
 
 (** {3 Scanning} *)
 
-(** [is_solved] {% $\C$ %} returns [true] if {% $\C$ is solved. %}*)
-val is_solved : 'a t -> bool
-
 (** [subsume b] {% $\C_1$~$\C_2$ %} returns [true] if {% $\C_1$ subsume $\C_2$.%} If [b = true] then the fine grained subsumption test is applied. *)
 val subsume : bool -> 'a t -> 'a t -> bool
+
+val exists_recipes_deducing_same_protocol_term : 'a t -> bool
 
 (** {3 Display function} *)
 
@@ -100,10 +99,6 @@ type mgs
     set of most general unifier. The type%} [simple_constraint_system] represent the constraint systems that satisfiy these conditions. *)
 type simple
 
-(** [substitution_of_mgs mgs] returns the substitution corresponding to the most general solution typically removing
-    all extra information useful for the application of mgs on constraint systems. *)
-val substitution_of_mgs : mgs -> (snd_ord, axiom) Subst.t
-
 (** [mgs] {% $\C$ returns a list of elements $(\Sigma,\sigma,\C')$ such that $\Sigma \in \mgs{\C}$, $\C' = \CApply{\Sigma}{\C}$
     and $\mguset{\C'} = \mguset{\C}\sigma$.%} *)
 val mgs : simple -> mgs list
@@ -122,14 +117,6 @@ val get_names_simple_with_list : simple ->  name list -> name list
 
 (** [get_axioms_simple_with_list] {% $\C$ %} [l] adds the axiom in {% $\C$ %} in the list [l]. Note that it does not cover the potential axioms in the additional data. The addition of an axiom as the union of sets, i.e. there is no dupplicate in the resulting list..*)
 val get_axioms_simple_with_list : simple -> axiom list -> axiom list
-
-(** {3 Operations} *)
-
-(** In this section, we will assimilate an element of type [most_general_solution] to its substitution of recipes *)
-
-(** [apply_mgs] {% $\C$~$\Sigma$ returns $\CApply{\Sigma}{\C}\Vnorm$.%}
-    @raise Bot if {% $\CApply{\Sigma}{\C}\Vnorm = \bot$ %} *)
-val apply_mgs : 'a t -> mgs -> 'a t
 
 (** {3 Display functions} *)
 
@@ -154,10 +141,6 @@ module Set : sig
   val add : 'a csys -> 'a t -> 'a t
 
   val optimise_snd_ord_recipes : 'a t -> 'a t
-
-  val initialise_for_output : 'a t -> 'a t
-
-  val set_private_channels : 'a t -> bool -> 'a t
 
   val elements : 'a t -> 'a csys list
 
@@ -190,33 +173,9 @@ end
 
 module Rule : sig
 
-  type 'a continuation =
-    {
-      positive : 'a Set.t -> (unit -> unit) -> unit;
-      negative : 'a Set.t -> (unit -> unit) -> unit;
-      not_applicable : 'a Set.t -> (unit -> unit) -> unit
-    }
+  val apply_rules_after_input :
+    bool -> bool -> 'a Set.t -> ('a Set.t -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
 
-  val normalisation_after_axiom : 'a Set.t -> ('a Set.t -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
-
-  val normalisation : 'a Set.t -> ('a Set.t -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
-
-  (** All the normalisation and transformation rules have the same type. Typically, a rule is a function that takes two arguments
-      [S] and [f] where [S] is a set of constraint systems and [f] are continuation functions that each takes a constraint system as argument and return unit.
-      A rule typically apply the rules (in the sense of {% those defined in~\citepaper{Section}{sec:normalisation_rule} and~\citepaper{Section}{sec:transformation rules}) %} and then
-      apply the functions [f] on each normalised sets obtained by application of the rule depending on how the set of constraint systems was produced by the rule.  *)
-
-  val sat : 'a Set.t -> 'a continuation -> (unit -> unit) -> unit
-
-  val sat_private : 'a Set.t -> 'a continuation -> (unit -> unit) -> unit
-
-  val sat_disequation : 'a Set.t -> 'a continuation -> (unit -> unit) -> unit
-
-  val sat_formula : 'a Set.t -> 'a continuation -> (unit -> unit) -> unit
-
-  val equality_constructor : 'a Set.t -> 'a continuation -> (unit -> unit) -> unit
-
-  val equality : 'a Set.t -> 'a continuation -> (unit -> unit) -> unit
-
-  val rewrite : 'a Set.t -> 'a continuation -> (unit -> unit) -> unit
+  val apply_rules_after_output :
+    bool -> bool -> 'a Set.t -> ('a Set.t -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
 end

@@ -88,6 +88,8 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
   let var_X_ch = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
   let var_X_var = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
 
+  let in_uniform = ref false in
+
   Constraint_system.Set.iter (fun csys ->
     let symb_proc = Constraint_system.get_additional_data csys in
     let fst_subst = Constraint_system.get_substitution_solution Protocol csys in
@@ -100,7 +102,7 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
         let new_csys_1 = Constraint_system.apply_substitution csys in_gathering.in_equations in
         let new_csys_2 = Constraint_system.add_basic_fact new_csys_1 ded_fact_ch in
         let new_csys_3 = Constraint_system.add_basic_fact new_csys_2 ded_fact_term in
-        let new_csys_4 = Constraint_system.add_disequations Protocol new_csys_3 in_gathering.in_disequations in
+        let new_csys_4 = Constraint_system.add_disequations new_csys_3 in_gathering.in_disequations in
         let trace =
           match in_gathering.in_action with
             | None ->
@@ -119,6 +121,9 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
           }
         in
 
+        if Constraint_system.exists_recipes_deducing_same_protocol_term new_csys_5
+        then in_uniform := true;
+
         csys_set_for_input := Constraint_system.Set.add new_csys_5 !csys_set_for_input
       with
         | Constraint_system.Bot -> ()
@@ -127,19 +132,7 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
 
   (*** Application of the tranformation rules ***)
 
-  let rec in_apply_sat csys_set f_next =
-    Constraint_system.Rule.sat csys_set {
-      Constraint_system.Rule.positive = in_apply_sat;
-      Constraint_system.Rule.negative = in_apply_sat;
-      Constraint_system.Rule.not_applicable = in_apply_sat_disequation
-    } f_next
-  and in_apply_sat_disequation csys_set f_next =
-    Constraint_system.Rule.sat_disequation csys_set {
-      Constraint_system.Rule.positive = in_apply_sat_disequation;
-      Constraint_system.Rule.negative = in_apply_sat_disequation;
-      Constraint_system.Rule.not_applicable = in_apply_final_test
-    } f_next
-  and in_apply_final_test csys_set f_next =
+  let in_apply_final_test csys_set f_next =
     if Constraint_system.Set.is_empty csys_set
     then f_next ()
     else
@@ -157,6 +150,8 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
   let var_X_ch = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
   let axiom = Axiom.create (size_frame + 1) in
 
+  let out_uniform = ref false in
+
   Constraint_system.Set.iter (fun csys ->
     let symb_proc = Constraint_system.get_additional_data csys in
     let fst_subst = Constraint_system.get_substitution_solution Protocol csys in
@@ -168,7 +163,7 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
         let new_csys_1 = Constraint_system.apply_substitution csys out_gathering.out_equations in
         let new_csys_2 = Constraint_system.add_basic_fact new_csys_1 ded_fact_ch in
         let new_csys_3 = Constraint_system.add_axiom new_csys_2 axiom (out_gathering.out_term) in
-        let new_csys_4 = Constraint_system.add_disequations Protocol new_csys_3 out_gathering.out_disequations in
+        let new_csys_4 = Constraint_system.add_disequations new_csys_3 out_gathering.out_disequations in
         let trace = match out_gathering.out_action with
           | None ->
               Config.debug (fun () ->
@@ -186,6 +181,9 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
           }
         in
 
+        if Constraint_system.exists_recipes_deducing_same_protocol_term new_csys_5
+        then out_uniform := true;
+
         csys_set_for_output := Constraint_system.Set.add new_csys_5 !csys_set_for_output
       with
         | Constraint_system.Bot -> ()
@@ -194,49 +192,7 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
 
   (*** Application of the tranformation rules ***)
 
-  let rec out_apply_sat csys_set f_next =
-    Constraint_system.Rule.sat csys_set {
-      Constraint_system.Rule.positive = out_apply_sat;
-      Constraint_system.Rule.negative = out_apply_sat;
-      Constraint_system.Rule.not_applicable = out_apply_sat_disequation
-    } f_next
-  and out_apply_sat_disequation csys_set f_next =
-    Constraint_system.Rule.sat_disequation csys_set {
-      Constraint_system.Rule.positive = out_apply_sat_disequation;
-      Constraint_system.Rule.negative = out_apply_sat_disequation;
-      Constraint_system.Rule.not_applicable = (fun csys_set f_next -> Constraint_system.Rule.normalisation_after_axiom csys_set out_apply_sat_formula f_next)
-    } f_next
-  and out_apply_sat_formula csys_set f_next =
-    Constraint_system.Rule.sat_formula csys_set {
-      Constraint_system.Rule.positive = out_apply_sat_formula;
-      Constraint_system.Rule.negative = out_apply_sat_formula;
-      Constraint_system.Rule.not_applicable = out_apply_equality
-    } f_next
-  and out_apply_equality csys_set f_next =
-    Constraint_system.Rule.equality csys_set {
-      Constraint_system.Rule.positive = out_apply_sat_formula;
-      Constraint_system.Rule.negative = out_apply_sat_formula;
-      Constraint_system.Rule.not_applicable = out_apply_rewrite
-    } f_next
-  and out_apply_rewrite csys_set f_next =
-    Constraint_system.Rule.rewrite csys_set {
-      Constraint_system.Rule.positive = out_apply_sat_formula;
-      Constraint_system.Rule.negative = out_apply_sat_formula;
-      Constraint_system.Rule.not_applicable = out_apply_equality_constructor
-    } f_next
-  and out_apply_sat_formula_for_equality_constructor csys_set f_next =
-    Constraint_system.Rule.sat_formula csys_set {
-      Constraint_system.Rule.positive = out_apply_sat_formula_for_equality_constructor;
-      Constraint_system.Rule.negative = out_apply_sat_formula_for_equality_constructor;
-      Constraint_system.Rule.not_applicable = out_apply_equality_constructor
-    } f_next
-  and out_apply_equality_constructor csys_set f_next =
-    Constraint_system.Rule.equality_constructor csys_set {
-      Constraint_system.Rule.positive = out_apply_sat_formula_for_equality_constructor;
-      Constraint_system.Rule.negative = out_apply_sat_formula_for_equality_constructor;
-      Constraint_system.Rule.not_applicable = out_apply_final_test
-    } f_next
-  and out_apply_final_test csys_set f_next =
+  let out_apply_final_test csys_set f_next =
     if Constraint_system.Set.is_empty csys_set
     then f_next ()
     else
@@ -247,7 +203,8 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
       else f_continuation csys_set (size_frame + 1) f_next
   in
 
-  out_apply_sat (Constraint_system.Set.initialise_for_output !csys_set_for_output) (fun () -> in_apply_sat !csys_set_for_input f_next)
+  Constraint_system.Rule.apply_rules_after_output false !out_uniform !csys_set_for_output out_apply_final_test
+    (fun () -> Constraint_system.Rule.apply_rules_after_input false !in_uniform !csys_set_for_input in_apply_final_test f_next)
 
 let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_continuation f_next =
 
@@ -270,6 +227,7 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
   let var_X_var = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
 
   let counter_id_in = ref 0 in
+  let in_uniform = ref false in
 
   Constraint_system.Set.iter (fun csys ->
     let symb_proc = Constraint_system.get_additional_data csys in
@@ -283,7 +241,7 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
         let new_csys_1 = Constraint_system.apply_substitution csys in_gathering.in_equations in
         let new_csys_2 = Constraint_system.add_basic_fact new_csys_1 ded_fact_ch in
         let new_csys_3 = Constraint_system.add_basic_fact new_csys_2 ded_fact_term in
-        let new_csys_4 = Constraint_system.add_disequations Protocol new_csys_3 in_gathering.in_disequations in
+        let new_csys_4 = Constraint_system.add_disequations new_csys_3 in_gathering.in_disequations in
         let new_csys_5 =
           if in_gathering.in_private_channels = []
           then new_csys_4
@@ -307,6 +265,10 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
             id = !counter_id_in
           }
         in
+
+        if Constraint_system.exists_recipes_deducing_same_protocol_term new_csys_6
+        then in_uniform := true;
+
         incr counter_id_in;
         csys_set_for_input := Constraint_system.Set.add new_csys_6 !csys_set_for_input
       with
@@ -323,25 +285,7 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
 
   (*** Application of the tranformation rules ***)
 
-  let rec in_apply_sat csys_set f_next =
-    Constraint_system.Rule.sat csys_set {
-      Constraint_system.Rule.positive = in_apply_sat;
-      Constraint_system.Rule.negative = in_apply_sat;
-      Constraint_system.Rule.not_applicable = in_apply_sat_private_channels
-    } f_next
-  and in_apply_sat_private_channels csys_set f_next =
-    Constraint_system.Rule.sat_private csys_set {
-      Constraint_system.Rule.positive = in_apply_sat_private_channels;
-      Constraint_system.Rule.negative = in_apply_sat_private_channels;
-      Constraint_system.Rule.not_applicable = in_apply_sat_disequation
-    } f_next
-  and in_apply_sat_disequation csys_set f_next =
-    Constraint_system.Rule.sat_disequation csys_set {
-      Constraint_system.Rule.positive = in_apply_sat_disequation;
-      Constraint_system.Rule.negative = in_apply_sat_disequation;
-      Constraint_system.Rule.not_applicable = in_apply_final_test
-    } f_next
-  and in_apply_final_test csys_set f_next =
+  let in_apply_final_test csys_set f_next =
     if Constraint_system.Set.is_empty csys_set
     then f_next ()
     else
@@ -350,16 +294,11 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
       if Constraint_system.Set.for_all (fun csys -> (Constraint_system.get_additional_data csys).origin_process = origin_process) csys_set
       then raise (Not_Trace_Equivalent csys)
       else
-        let opti_csys_set = Constraint_system.Set.optimise_snd_ord_recipes csys_set in
-        let one_csys = Constraint_system.Set.choose csys_set in
-        let snd_subst = Constraint_system.get_substitution_solution Recipe one_csys in
-        if Subst.check_good_recipes snd_subst
-        then
-          begin
-            is_subsumed_or_subsume array_csys_set_in opti_csys_set;
-            f_next ()
-          end
-        else f_next ()
+        begin
+          let opti_csys_set = Constraint_system.Set.optimise_snd_ord_recipes csys_set in
+          is_subsumed_or_subsume array_csys_set_in opti_csys_set;
+          f_next ()
+        end
   in
 
   (*** Generate the set for the next output ***)
@@ -371,6 +310,7 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
   let axiom = Axiom.create (size_frame + 1) in
 
   let counter_id_out = ref 0 in
+  let out_uniform = ref false in
 
   Constraint_system.Set.iter (fun csys ->
     let symb_proc = Constraint_system.get_additional_data csys in
@@ -383,7 +323,7 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
         let new_csys_1 = Constraint_system.apply_substitution csys out_gathering.out_equations in
         let new_csys_2 = Constraint_system.add_basic_fact new_csys_1 ded_fact_ch in
         let new_csys_3 = Constraint_system.add_axiom new_csys_2 axiom (out_gathering.out_term) in
-        let new_csys_4 = Constraint_system.add_disequations Protocol new_csys_3 out_gathering.out_disequations in
+        let new_csys_4 = Constraint_system.add_disequations new_csys_3 out_gathering.out_disequations in
         let new_csys_5 =
           if out_gathering.out_private_channels = []
           then new_csys_4
@@ -406,6 +346,10 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
             id = !counter_id_out
           }
         in
+
+        if Constraint_system.exists_recipes_deducing_same_protocol_term new_csys_6
+        then out_uniform := true;
+
         incr counter_id_out;
         csys_set_for_output := Constraint_system.Set.add new_csys_6 !csys_set_for_output
       with
@@ -422,55 +366,7 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
 
   (*** Application of the tranformation rules ***)
 
-  let rec out_apply_sat csys_set f_next =
-    Constraint_system.Rule.sat csys_set {
-      Constraint_system.Rule.positive = out_apply_sat;
-      Constraint_system.Rule.negative = out_apply_sat;
-      Constraint_system.Rule.not_applicable = out_apply_sat_private_channels
-    } f_next
-  and out_apply_sat_private_channels csys_set f_next =
-    Constraint_system.Rule.sat_private csys_set {
-      Constraint_system.Rule.positive = out_apply_sat_private_channels;
-      Constraint_system.Rule.negative = out_apply_sat_private_channels;
-      Constraint_system.Rule.not_applicable = out_apply_sat_disequation
-    } f_next
-  and out_apply_sat_disequation csys_set f_next =
-    Constraint_system.Rule.sat_disequation csys_set {
-      Constraint_system.Rule.positive = out_apply_sat_disequation;
-      Constraint_system.Rule.negative = out_apply_sat_disequation;
-      Constraint_system.Rule.not_applicable = (fun csys_set f_next -> Constraint_system.Rule.normalisation_after_axiom csys_set out_apply_sat_formula f_next)
-    } f_next
-  and out_apply_sat_formula csys_set f_next =
-    Constraint_system.Rule.sat_formula csys_set {
-      Constraint_system.Rule.positive = out_apply_sat_formula;
-      Constraint_system.Rule.negative = out_apply_sat_formula;
-      Constraint_system.Rule.not_applicable = out_apply_equality
-    } f_next
-  and out_apply_equality csys_set f_next =
-    Constraint_system.Rule.equality csys_set {
-      Constraint_system.Rule.positive = out_apply_sat_formula;
-      Constraint_system.Rule.negative = out_apply_sat_formula;
-      Constraint_system.Rule.not_applicable = out_apply_rewrite
-    } f_next
-  and out_apply_rewrite csys_set f_next =
-    Constraint_system.Rule.rewrite csys_set {
-      Constraint_system.Rule.positive = out_apply_sat_formula;
-      Constraint_system.Rule.negative = out_apply_sat_formula;
-      Constraint_system.Rule.not_applicable = out_apply_equality_constructor
-    } f_next
-  and out_apply_sat_formula_for_equality_constructor csys_set f_next =
-    Constraint_system.Rule.sat_formula csys_set {
-      Constraint_system.Rule.positive = out_apply_sat_formula_for_equality_constructor;
-      Constraint_system.Rule.negative = out_apply_sat_formula_for_equality_constructor;
-      Constraint_system.Rule.not_applicable = out_apply_equality_constructor
-    } f_next
-  and out_apply_equality_constructor csys_set f_next =
-    Constraint_system.Rule.equality_constructor csys_set {
-      Constraint_system.Rule.positive = out_apply_sat_formula_for_equality_constructor;
-      Constraint_system.Rule.negative = out_apply_sat_formula_for_equality_constructor;
-      Constraint_system.Rule.not_applicable = out_apply_final_test
-    } f_next
-  and out_apply_final_test csys_set f_next =
+  let out_apply_final_test csys_set f_next =
     if Constraint_system.Set.is_empty csys_set
     then f_next ()
     else
@@ -480,37 +376,28 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
       then raise (Not_Trace_Equivalent csys)
       else
         let opti_csys_set = Constraint_system.Set.optimise_snd_ord_recipes csys_set in
-        let one_csys = Constraint_system.Set.choose csys_set in
-        let snd_subst = Constraint_system.get_substitution_solution Recipe one_csys in
-        if Subst.check_good_recipes snd_subst
-        then
-          begin
-            is_subsumed_or_subsume array_csys_set_out opti_csys_set;
-            f_next ()
-          end
-        else f_next ()
+        is_subsumed_or_subsume array_csys_set_out opti_csys_set;
+        f_next ()
   in
 
   match !counter_id_out, !counter_id_in with
     | 0, 0 -> f_next ()
     | 0, _ ->
-        in_apply_sat (Constraint_system.Set.set_private_channels !csys_set_for_input !private_channels_input) (fun () ->
+        Constraint_system.Rule.apply_rules_after_input !private_channels_input !in_uniform !csys_set_for_input in_apply_final_test (fun () ->
           explore array_csys_set_in (!counter_id_in - 1) 0 size_frame f_next
         )
     | _, 0 ->
-        out_apply_sat (Constraint_system.Set.initialise_for_output (Constraint_system.Set.set_private_channels !csys_set_for_output !private_channels_output))
-        (fun () ->
+        Constraint_system.Rule.apply_rules_after_output !private_channels_output !out_uniform !csys_set_for_output out_apply_final_test (fun () ->
           explore array_csys_set_out (!counter_id_out - 1) 0 (size_frame + 1) f_next
         )
     | _, _ ->
-        out_apply_sat (Constraint_system.Set.initialise_for_output (Constraint_system.Set.set_private_channels !csys_set_for_output !private_channels_output))
-          (fun () ->
-            explore array_csys_set_out (!counter_id_out - 1) 0 (size_frame + 1) (fun () ->
-              in_apply_sat (Constraint_system.Set.set_private_channels !csys_set_for_input !private_channels_input) (fun () ->
-                explore array_csys_set_in (!counter_id_in - 1) 0 size_frame f_next
-              )
+        Constraint_system.Rule.apply_rules_after_output !private_channels_output !out_uniform !csys_set_for_output out_apply_final_test (fun () ->
+          explore array_csys_set_out (!counter_id_out - 1) 0 (size_frame + 1) (fun () ->
+            Constraint_system.Rule.apply_rules_after_input !private_channels_input !in_uniform !csys_set_for_input in_apply_final_test (fun () ->
+              explore array_csys_set_in (!counter_id_in - 1) 0 size_frame f_next
             )
           )
+        )
 
 let apply_one_transition_and_rules_for_trace_equivalence = function
   | Classic -> apply_one_transition_and_rules_for_trace_in_classic
