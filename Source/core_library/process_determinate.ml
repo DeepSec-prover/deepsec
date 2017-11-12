@@ -535,10 +535,15 @@ let decompress_process channels_list p =
             | p' -> p'::acc
         ) [] p_list)
     | ParMult pmult_list ->
+        Config.debug (fun () ->
+          if pmult_list = []
+          then Config.internal_error "[decompress_process] The list should not be empty."
+        );
         let removed_p, kept_p = explore_mult [] [] pmult_list in
-        if removed_p = []
-        then ParMult (List.fast_sort (fun (ch1,_) (ch2,_) -> compare_channels ch1 ch2) kept_p)
-        else Par((ParMult (List.fast_sort (fun (ch1,_) (ch2,_) -> compare_channels ch1 ch2) kept_p))::removed_p)
+        match removed_p, kept_p with
+          | [], _ -> ParMult (List.fast_sort (fun (ch1,_) (ch2,_) -> compare_channels ch1 ch2) kept_p)
+          | _, [] -> Par removed_p
+          | _, _ -> Par((ParMult (List.fast_sort (fun (ch1,_) (ch2,_) -> compare_channels ch1 ch2) kept_p))::removed_p)
 
   and explore_mult removed_p kept_p = function
     | [] -> removed_p, kept_p
@@ -1279,7 +1284,16 @@ let rec normalise_simple_det_process proc else_branch equations disequations f_c
           | _ -> f_continuation gather (Par (order_flatten_process_list p_list_1)) f_next_1
       ) f_next
   | ParMult p_list ->
+      Config.debug (fun () ->
+        if p_list = []
+        then Config.internal_error "[normalise_simple_det_process] The list should not be empty (1)."
+      );
       normalise_simple_det_channel_process_list p_list else_branch equations disequations (fun gather p_list_1 f_next_1 ->
+        Config.debug (fun () ->
+          if p_list_1 = []
+          then Config.internal_error "[normalise_simple_det_process] The list should not be empty (2)."
+        );
+
         f_continuation gather (ParMult p_list_1) f_next_1
       ) f_next
 
@@ -1417,7 +1431,6 @@ let apply_start_in snd_var a_conf_list f_apply f_continuation f_next =
       if List.exists (fun l1 -> List.exists (fun l2 -> List.length l1 <> List.length l2) a_list_list) a_list_list
       then Config.internal_error "[process_determinate.ml >> apply_start_in] Size of the lists should be equal."
     );
-
     if List.hd a_list_list = []
     then f_next_1 ()
     else
