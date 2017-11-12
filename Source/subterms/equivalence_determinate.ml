@@ -602,9 +602,16 @@ let trace_equivalence conf1 conf2 =
     }
   in
 
+
   let else_branch = exists_else_branch_initial_configuration symb_proc_1.configuration || exists_else_branch_initial_configuration symb_proc_2.configuration in
-  let csys_1 = Constraint_system.empty symb_proc_1 in
-  let csys_2 = Constraint_system.empty symb_proc_2 in
+
+  let comp_conf1, comp_conf2 = Process_determinate.compress_initial_configuration symb_proc_1.configuration symb_proc_2.configuration in
+
+  let symb_proc_1' = { symb_proc_1 with configuration = comp_conf1 }
+  and symb_proc_2' = { symb_proc_2 with configuration = comp_conf2 } in
+
+  let csys_1 = Constraint_system.empty symb_proc_1' in
+  let csys_2 = Constraint_system.empty symb_proc_2' in
 
   (**** Generate the initial set ****)
 

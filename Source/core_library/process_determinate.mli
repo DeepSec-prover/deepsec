@@ -40,6 +40,8 @@ val is_action_determinate : Process.expansed_process -> bool
 
 val is_block_list_authorized : block list -> block -> (snd_ord, axiom) Subst.t -> bool
 
+val compress_initial_configuration : configuration -> configuration -> configuration * configuration
+
 type action =
   | FOutput of axiom * protocol_term
   | FInput of snd_ord_variable * protocol_term

@@ -1,5 +1,6 @@
 open Term
 open Display
+open Extensions
 
 (************************
 ***       Types       ***
@@ -17,6 +18,7 @@ type simple_det_process =
   | Let of protocol_term * protocol_term * protocol_term * simple_det_process * simple_det_process * position
   | New of name * simple_det_process * position
   | Par of simple_det_process list
+  | ParMult of (symbol list * simple_det_process) list
 
 type label = int list
 
@@ -51,15 +53,25 @@ type trace =
 
 type configuration =
   {
-    sure_input_proc : det_process list;    (* The processes where we know that outputs and input are doable. Moreover they are ordered. *)
-    sure_output_proc : det_process list;
+    sure_input_proc : det_process list;    (* The processes where we know that outputs and input are doable. *)
+    sure_output_proc : det_process list;  (* Both can contain ParMult processes *)
+    sure_input_mult_proc : det_process list list list;
 
     sure_uncheked_skeletons : det_process option;
+
     unsure_proc : det_process option;  (* The processes where we don't know if outputs can be done. *)
     focused_proc : det_process option;
 
     trace : trace list;
   }
+
+module SymbolComp =
+struct
+  type t = symbol
+  let compare = Symbol.order
+end
+
+module SymbolSet = Set.Make(SymbolComp)
 
 module ActionComp =
 struct
@@ -186,6 +198,8 @@ let configuration_of_expansed_process p =
     sure_input_proc = [det_p];
     sure_output_proc = [];
 
+    sure_input_mult_proc = [];
+
     sure_uncheked_skeletons = None;
     unsure_proc = None;
     focused_proc = None;
@@ -202,6 +216,7 @@ let rec exists_input_or_output = function
   | Let(_,_,_,p1,p2,_) -> exists_input_or_output p1 || exists_input_or_output p2
   | New(_,p,_) -> exists_input_or_output p
   | Par p_list -> List.exists exists_input_or_output p_list
+  | ParMult p_list -> List.exists (fun (_,p) -> exists_input_or_output p) p_list
 
 let rec clean_simple_process = function
   | Start p -> Start (clean_simple_process p)
@@ -214,6 +229,7 @@ let rec clean_simple_process = function
   | Let(t1,t1uni,t2,p1,p2,pos) -> Let(t1,t1uni,t2,clean_simple_process p1, clean_simple_process p2,pos)
   | New(n,p,pos) -> New(n,clean_simple_process p,pos)
   | Par p_list -> Par (List.map clean_simple_process p_list)
+  | ParMult p_list -> ParMult (List.map (fun (ch,p) -> (ch,clean_simple_process p)) p_list)
 
 let clean_inital_configuration conf = match conf.sure_input_proc with
   | [p] -> { conf with sure_input_proc = [{ p with proc = clean_simple_process p.proc}] }
@@ -234,12 +250,326 @@ let rec exists_else_branch_simple_process after_in = function
       if after_in
       then true
       else List.exists (exists_else_branch_simple_process after_in) p_list
+  | ParMult p_list ->
+      if after_in
+      then true
+      else List.exists (fun (_,p) -> exists_else_branch_simple_process after_in p) p_list
 
 let exists_else_branch_initial_configuration conf = match conf.sure_input_proc with
   | [p] -> exists_else_branch_simple_process false p.proc
   | _ -> Config.internal_error "[Process_determinate.ml >> exists_else_branch_initial_configuration] Unexpected case."
 
 let initial_label = [0]
+
+(**** Testing ****)
+
+let rec exists_channel_association c1 c2 = function
+  | [] -> Some false
+  | (c1',c2')::_ when Symbol.is_equal c1 c1' && Symbol.is_equal c2 c2' -> Some true
+  | (c1',c2')::_ when Symbol.is_equal c1 c1' || Symbol.is_equal c2 c2' -> None
+  | _::q -> exists_channel_association c1 c2 q
+
+let apply_renamings xrho nrho t =
+  let f_apply = (fun x f -> f x) in
+  let t1 = Variable.Renaming.apply_on_terms xrho t f_apply in
+  Name.Renaming.apply_on_terms nrho t1 f_apply
+
+let apply_renamings_pair xrho nrho (t1,t2) =
+  let f_apply = (fun (x,y) f -> (f x,f y)) in
+  let (t1',t2') = Variable.Renaming.apply_on_terms xrho (t1,t2) f_apply in
+  Name.Renaming.apply_on_terms nrho (t1',t2') f_apply
+
+(* Applied on a compressed processed. *)
+let rec is_equal_modulo_renaming channels1 channels2 proc1 proc2 =
+
+  let rec internal_process xrho1 xrho2 nrho1 nrho2 channels1 channels2 assoc_channel proc1 proc2 = match proc1, proc2 with
+    | Start p1, Start p2 -> internal_process xrho1 xrho2 nrho1 nrho2 channels1 channels2 assoc_channel p1 p2
+    | Nil, Nil -> Some assoc_channel
+    | Output(c1,t1,p1,_), Output(c2,t2,p2,_) ->
+        begin match SymbolSet.mem c1 channels1, SymbolSet.mem c2 channels2 with
+          | true, true ->
+              begin match exists_channel_association c1 c2 assoc_channel with
+                | None -> None
+                | Some already_associated ->
+                    let assoc_channel' =
+                      if already_associated
+                      then assoc_channel
+                      else (c1,c2)::assoc_channel
+                    in
+
+                    let t1' = apply_renamings xrho1 nrho1 t1
+                    and t2' = apply_renamings xrho2 nrho2 t2 in
+
+                    if is_equal Protocol t1' t2'
+                    then internal_process xrho1 xrho2 nrho1 nrho2 channels1 channels2 assoc_channel' p1 p2
+                    else None
+              end
+          | false, false ->
+              let t1' = apply_renamings xrho1 nrho1 t1
+              and t2' = apply_renamings xrho2 nrho2 t2 in
+
+              if Symbol.is_equal c1 c2 && is_equal Protocol t1' t2'
+              then internal_process xrho1 xrho2 nrho1 nrho2 channels1 channels2 assoc_channel p1 p2
+              else None
+          | _, _ -> None
+        end
+    | Input(c1,x1,p1,_), Input(c2,x2,p2,_) ->
+        begin match SymbolSet.mem c1 channels1, SymbolSet.mem c2 channels2 with
+          | true, true ->
+              begin match exists_channel_association c1 c2 assoc_channel with
+                | None -> None
+                | Some already_associated ->
+                    let assoc_channel' =
+                      if already_associated
+                      then assoc_channel
+                      else (c1,c2)::assoc_channel
+                    in
+
+                    let new_x = Variable.fresh Protocol Free Variable.fst_ord_type in
+                    let xrho1' = Variable.Renaming.compose xrho1 x1 new_x in
+                    let xrho2' = Variable.Renaming.compose xrho2 x2 new_x in
+
+                    internal_process xrho1' xrho2' nrho1 nrho2 channels1 channels2 assoc_channel' p1 p2
+              end
+          | false, false ->
+              let new_x = Variable.fresh Protocol Free Variable.fst_ord_type in
+              let xrho1' = Variable.Renaming.compose xrho1 x1 new_x in
+              let xrho2' = Variable.Renaming.compose xrho2 x2 new_x in
+
+              if Symbol.is_equal c1 c2
+              then internal_process xrho1' xrho2' nrho1 nrho2 channels1 channels2 assoc_channel p1 p2
+              else None
+          | _, _ -> None
+        end
+    | IfThenElse(u1,v1,pthen1,pelse1,_), IfThenElse(u2,v2,pthen2,pelse2,_) ->
+        let (u1',v1') = apply_renamings_pair xrho1 nrho1 (u1,v1)
+        and (u2',v2') = apply_renamings_pair xrho2 nrho2 (u2,v2) in
+
+        if (is_equal Protocol u1' u2' && is_equal Protocol v1' v2') || (is_equal Protocol u1' v2' && is_equal Protocol v1' u2')
+        then
+          match internal_process xrho1 xrho2 nrho1 nrho2 channels1 channels2 assoc_channel pthen1 pthen2 with
+            | None -> None
+            | Some assoc_channel' -> internal_process xrho1 xrho2 nrho1 nrho2 channels1 channels2 assoc_channel' pelse1 pelse2
+        else None
+    | Let(pat1,_,cond1,pthen1,pelse1,_), Let(pat2,_,cond2,pthen2,pelse2,_) ->
+        let fresh_variables_1 = Variable.Renaming.not_in_domain xrho1 (get_vars Protocol pat1) in
+        let fresh_variables_2 = Variable.Renaming.not_in_domain xrho2 (get_vars Protocol pat2) in
+
+        if List.length fresh_variables_1 = List.length fresh_variables_2
+        then
+          let xrho1',xrho2' =
+            List.fold_left2 (fun (acc_rho1,acc_rho2) x1 x2 ->
+              let new_x = Variable.fresh Protocol Free Variable.fst_ord_type in
+              Variable.Renaming.compose acc_rho1 x1 new_x, Variable.Renaming.compose acc_rho2 x2 new_x
+            ) (xrho1, xrho2) fresh_variables_1 fresh_variables_2
+          in
+
+          let (pat1',cond1') = apply_renamings_pair xrho1' nrho1 (pat1,cond1)
+          and (pat2',cond2') = apply_renamings_pair xrho2' nrho2 (pat2,cond2) in
+
+          if (is_equal Protocol pat1' pat2') && (is_equal Protocol cond1' cond2')
+          then
+            match internal_process xrho1' xrho2' nrho1 nrho2 channels1 channels2 assoc_channel pthen1 pthen2 with
+              | None -> None
+              | Some assoc_channel' -> internal_process xrho1 xrho2 nrho1 nrho2 channels1 channels2 assoc_channel' pelse1 pelse2
+          else None
+        else None
+    | New(n1,p1,_), New(n2,p2,_) ->
+        let new_n = Name.fresh () in
+        let nrho1' = Name.Renaming.compose nrho1 n1 new_n in
+        let nrho2' = Name.Renaming.compose nrho2 n2 new_n in
+
+        internal_process xrho1 xrho2 nrho1' nrho2' channels1 channels2 assoc_channel p1 p2
+    | Par proc_list1, Par proc_list2 -> internal_process_list xrho1 xrho2 nrho1 nrho2 channels1 channels2 assoc_channel proc_list1 proc_list2
+    | ParMult [], ParMult _
+    | ParMult _, ParMult [] -> Config.internal_error "[process_determinate.ml >> is_equal_modulo_renaming] Unexpected case."
+    | ParMult ((ch1,p1)::q1), ParMult((ch2,p2)::q2) ->
+        if List.length q1 = List.length q2
+        then
+          match internal_process xrho1 xrho2 nrho1 nrho2 (List.fold_left (fun acc c -> SymbolSet.add c acc) channels1 ch1) (List.fold_left (fun acc c -> SymbolSet.add c acc) channels2 ch2) assoc_channel p1 p2 with
+            | None -> None
+            | Some _ -> Some assoc_channel
+        else None
+    | _, _ -> None
+
+  and internal_process_list xrho1 xrho2 nrho1 nrho2 channels1 channels2 assoc_channel list1 list2 = match list1, list2 with
+    | [], [] -> Some assoc_channel
+    | _, []
+    | [], _ -> None
+    | p1::q1, _ ->
+        let rec search assoc_channel prev = function
+          | [] -> None
+          | p2::q2 ->
+              match internal_process xrho1 xrho2 nrho1 nrho2 channels1 channels2 assoc_channel p1 p2 with
+                | None -> search assoc_channel (p2::prev) q2
+                | Some assoc_channel' -> Some(assoc_channel', List.rev_append prev q2)
+        in
+
+        begin match search assoc_channel [] list2 with
+          | None -> None
+          | Some(assoc_channel',q2) -> internal_process_list xrho1 xrho2 nrho1 nrho2 channels1 channels2 assoc_channel' q1 q2
+        end
+  in
+
+  if SymbolSet.cardinal channels1 = SymbolSet.cardinal channels2
+  then
+    match internal_process Variable.Renaming.identity Variable.Renaming.identity Name.Renaming.identity Name.Renaming.identity channels1 channels2 [] proc1 proc2 with
+      | None -> false
+      | Some _ -> true
+  else false
+
+and compress_process ch_set = function
+  | Nil -> Nil, ch_set
+  | Start p ->
+      let (p',ch_set') = compress_process ch_set p in
+      Start p', ch_set'
+  | Output(c,t,p,pos) ->
+      let ch_set' = SymbolSet.add c ch_set in
+      let p', ch_set'' = compress_process ch_set' p in
+      Output(c,t,p',pos), ch_set''
+  | Input(c,x,p,pos) ->
+      let ch_set' = SymbolSet.add c ch_set in
+      let p', ch_set'' = compress_process ch_set' p in
+      Input(c,x,p', pos), ch_set''
+  | IfThenElse(u,v,pthen,pelse,pos) ->
+      let pthen', ch_set_then = compress_process ch_set pthen
+      and pelse', ch_set_else = compress_process ch_set pelse in
+      let ch_set' = SymbolSet.union ch_set_then ch_set_else in
+      IfThenElse(u,v,pthen',pelse',pos), ch_set'
+  | Let(pat,pat_univ,cond,pthen,pelse,pos) ->
+      let pthen', ch_set_then = compress_process ch_set pthen
+      and pelse', ch_set_else = compress_process ch_set pelse in
+      let ch_set' = SymbolSet.union ch_set_then ch_set_else in
+      Let(pat,pat_univ,cond,pthen',pelse',pos), ch_set'
+  | New(n,p,pos) ->
+      let (p',ch_set') = compress_process ch_set p in
+      New(n,p', pos), ch_set'
+  | Par list_proc ->
+      let compressed_list =
+        List.map (fun p ->
+          let (p', ch_set') = compress_process SymbolSet.empty p in
+          (SymbolSet.diff ch_set' ch_set), p'
+        ) list_proc
+      in
+
+      let rec search channels p acc_no_mod acc_mod = function
+        | [] ->
+            if acc_mod = []
+            then None
+            else Some (ParMult((SymbolSet.elements channels,p)::acc_mod),acc_no_mod)
+        | (channels',p')::q ->
+            if is_equal_modulo_renaming channels channels' p p'
+            then  search channels p acc_no_mod ((SymbolSet.elements channels',p')::acc_mod) q
+            else search channels p ((channels',p')::acc_no_mod) acc_mod q
+      in
+
+      let rec explore ch_set = function
+        | [] -> [], ch_set
+        | (channels,p)::q ->
+            match search channels p [] [] q with
+              | None ->
+                  let q', ch_set' = explore (SymbolSet.union ch_set channels) q in
+                  p::q', ch_set'
+              | Some(p_mult,q') ->
+                  let q', ch_set' = explore ch_set q' in
+                  p_mult::q', ch_set'
+      in
+
+      let list_proc', ch_set' = explore ch_set compressed_list in
+      if List.length list_proc' = 1
+      then List.hd list_proc', ch_set'
+      else Par(list_proc'), ch_set'
+  | ParMult _ -> Config.internal_error "[process_determinate.ml >> compress_process] This function should not be applied on an already compressed process."
+  | OutputSure _ -> Config.internal_error "[process_determinate.ml >> compress_process] This function should only be applied on an intial process."
+
+let rec retrieve_par_mult_channels = function
+  | Nil -> []
+  | Start p
+  | Output(_,_,p,_)
+  | Input(_,_,p,_)
+  | New(_,p,_) -> retrieve_par_mult_channels p
+  | OutputSure _ -> Config.internal_error "[process_determinate.ml >> retrieve_par_mult_channels] Should only be applied on initial configuration."
+  | IfThenElse(_,_,p1,p2,_)
+  | Let(_,_,_,p1,p2,_) -> List.rev_append (retrieve_par_mult_channels p1) (retrieve_par_mult_channels p2)
+  | Par p_list -> List.fold_left (fun acc p -> List.rev_append (retrieve_par_mult_channels p) acc) [] p_list
+  | ParMult pmult_list ->
+      List.fold_left (fun acc (channels,p) ->
+        channels::(List.rev_append (retrieve_par_mult_channels p) acc)
+      ) [] pmult_list
+
+let exists_list_channel ch_list_list ch_list =
+  List.exists (List.for_all2 Symbol.is_equal ch_list) ch_list_list
+
+let rec is_equal_list_channel ch1 ch2 = match ch1,ch2 with
+  | [], [] -> true
+  | _, []
+  | [], _ -> false
+  | c1::q1, c2::q2 -> (Symbol.is_equal c1 c2) && (is_equal_list_channel q1 q2)
+
+let inter_mult_channels ch_list_list1 ch_list_list2 = List.filter_unordered (exists_list_channel ch_list_list2) ch_list_list1
+
+let rec compare_channels ch1 ch2 = match ch1, ch2 with
+  | [], [] -> 0
+  | _, []
+  | [], _ -> Config.internal_error "[determinate_process.ml >> compare_channels] Should be equal."
+  | c1::q1, c2::q2 ->
+      match Symbol.order c1 c2 with
+        | 0 -> compare_channels q1 q2
+        | n -> n
+
+let decompress_process channels_list p =
+
+  let rec explore = function
+    | Nil -> Nil
+    | Start p -> Start(explore p)
+    | Output(c,t,p,pos) -> Output(c,t,explore p, pos)
+    | Input(c,t,p,pos) -> Input(c,t,explore p,pos)
+    | New(n,p,pos) -> New(n,explore p,pos)
+    | OutputSure _ -> Config.internal_error "[process_determinate.ml >> decompress_process] Should only be applied on initial configuration."
+    | IfThenElse(u,v,p1,p2,pos) -> IfThenElse(u,v,explore p1, explore p2,pos)
+    | Let(u,v,t,p1,p2,pos) -> Let(u,v,t,explore p1,explore p2,pos)
+    | Par p_list ->
+        Par (List.fold_left (fun acc p ->
+          match explore p with
+            | Par p_list' -> List.rev_append p_list' acc
+            | p' -> p'::acc
+        ) [] p_list)
+    | ParMult pmult_list ->
+        let removed_p, kept_p = explore_mult [] [] pmult_list in
+        if removed_p = []
+        then ParMult (List.fast_sort (fun (ch1,_) (ch2,_) -> compare_channels ch1 ch2) kept_p)
+        else Par((ParMult (List.fast_sort (fun (ch1,_) (ch2,_) -> compare_channels ch1 ch2) kept_p))::removed_p)
+
+  and explore_mult removed_p kept_p = function
+    | [] -> removed_p, kept_p
+    | (channels,p)::q when List.exists (fun ch_list -> List.for_all2 Symbol.is_equal ch_list channels) channels_list -> explore_mult removed_p ((channels,p)::kept_p) q
+    | (_,p)::q -> explore_mult (p::removed_p) kept_p q
+  in
+
+  explore p
+
+let compress_initial_configuration conf1 conf2 =
+  let det1 = List.hd conf1.sure_input_proc
+  and det2 = List.hd conf2.sure_input_proc in
+
+  let p1 = det1.proc
+  and p2 = det2.proc in
+
+  let comp_p1,_ = compress_process SymbolSet.empty p1
+  and comp_p2,_ = compress_process SymbolSet.empty p2 in
+
+  let extracted_ch1 = retrieve_par_mult_channels comp_p1
+  and extracted_ch2 = retrieve_par_mult_channels comp_p2 in
+
+  let inter_channel = inter_mult_channels extracted_ch1 extracted_ch2 in
+
+  let comp_p1' = decompress_process inter_channel comp_p1
+  and comp_p2' = decompress_process inter_channel comp_p2 in
+
+  let conf1' = { conf1 with sure_input_proc = [ { det1 with proc = comp_p1'} ] }
+  and conf2' = { conf1 with sure_input_proc = [ { det1 with proc = comp_p2'} ] } in
+
+  conf1', conf2'
 
 (**************************************
 ***              Access             ***
@@ -263,6 +593,7 @@ let rec get_vars_with_list_sdet vars_l = function
       get_vars_with_list_sdet vars_l3 p2
   | New(_,p,_) -> get_vars_with_list_sdet vars_l p
   | Par(p_list) -> List.fold_left get_vars_with_list_sdet vars_l p_list
+  | ParMult p_list -> List.fold_left (fun acc (_,p) -> get_vars_with_list_sdet acc p) vars_l p_list
 
 let get_vars_with_list_det vars_l p = get_vars_with_list_sdet vars_l p.proc
 
@@ -273,7 +604,8 @@ let get_vars_with_list_trace vars_l = function
 let get_vars_with_list conf vars_l =
   let vars_1 = List.fold_left get_vars_with_list_trace vars_l conf.trace in
   let vars_2 = List.fold_left get_vars_with_list_det vars_1 conf.sure_input_proc in
-  List.fold_left get_vars_with_list_det vars_2 conf.sure_output_proc
+  let vars_3 = List.fold_left get_vars_with_list_det vars_2 conf.sure_output_proc in
+  List.fold_left (List.fold_left (List.fold_left get_vars_with_list_det)) vars_3 conf.sure_input_mult_proc
 
 let rec get_names_with_list_sdet names_l = function
   | Start p -> get_names_with_list_sdet names_l p
@@ -293,6 +625,7 @@ let rec get_names_with_list_sdet names_l = function
       let names_l1 = get_names_with_list Protocol (of_name n) names_l in
       get_names_with_list_sdet names_l1 p
   | Par(p_list) -> List.fold_left get_names_with_list_sdet names_l p_list
+  | ParMult p_list -> List.fold_left (fun acc (_,p) -> get_names_with_list_sdet acc p) names_l p_list
 
 let get_names_with_list_det names_l p = get_names_with_list_sdet names_l p.proc
 
@@ -303,7 +636,8 @@ let get_names_with_list_trace names_l = function
 let get_names_with_list conf names_l =
   let names_1 = List.fold_left get_names_with_list_trace names_l conf.trace in
   let names_2 = List.fold_left get_names_with_list_det names_1 conf.sure_input_proc in
-  List.fold_left get_names_with_list_det names_2 conf.sure_output_proc
+  let names_3 = List.fold_left get_names_with_list_det names_2 conf.sure_output_proc in
+  List.fold_left (List.fold_left (List.fold_left get_names_with_list_det)) names_3 conf.sure_input_mult_proc
 
 let size_trace conf = List.length conf.trace
 
@@ -312,6 +646,14 @@ let size_trace conf = List.length conf.trace
 ***************************************)
 
 let compare_normalised_process p1 p2 = match p1, p2 with
+  | ParMult _ , OutputSure _ -> -1
+  | ParMult _, Input _ -> -1
+  | OutputSure _, ParMult _ -> 1
+  | Input _ , ParMult _ -> 1
+  | ParMult p_list1, ParMult p_list2 ->
+      let (ch1,_) = List.hd p_list1 in
+      let (ch2,_) = List.hd p_list2 in
+      compare_channels ch1 ch2
   | OutputSure _ , Input _  -> -1
   | Input _, OutputSure _ -> 1
   | Input(c1,_,_,_), Input(c2,_,_,_) -> Symbol.order c1 c2
@@ -327,6 +669,10 @@ let rec is_equal_skeleton p1 p2 = match p1, p2 with
       if List.length pl_1 <> List.length pl_2
       then false
       else List.for_all2 is_equal_skeleton pl_1 pl_2
+  | ParMult pl_1, ParMult pl_2 ->
+      if List.length pl_1 <> List.length pl_2
+      then false
+      else List.for_all2 (fun (ch1,p1) (ch2,p2) -> (is_equal_list_channel ch1 ch2) && is_equal_skeleton p1 p2) pl_1 pl_2
   | Output _, _
   | IfThenElse _, _
   | Let _, _
@@ -348,7 +694,7 @@ let rec compare_label l1 l2 = match l1, l2 with
 
 let order_flatten_process_list p_list =
   Config.debug (fun () ->
-    if List.exists (function Input _ | OutputSure _ -> false
+    if List.exists (function Input _ | OutputSure _ | ParMult _ -> false
         | Nil -> print_string "Nil"; true
         | Start _ -> print_string "Start"; true
         | Output _ -> print_string "Output"; true
@@ -374,22 +720,31 @@ type action =
 
 exception Faulty_skeleton of bool * configuration * action
 
+let rec exists_output = function
+  | OutputSure _ -> true
+  | Input _ -> false
+  | Nil -> false
+  | Par pl -> List.exists exists_output pl
+  | ParMult pl -> List.exists (fun (_,p) -> exists_output p) pl
+  | _ -> Config.internal_error "[process_determinate.ml >> exists_output] The process should be normalised."
+
 let find_faulty_skeleton_det size_frame conf1 conf2 p1 p2 =
   Config.debug (fun () ->
     if p1.label_p <> p2.label_p
     then Config.internal_error "[process_determinate.ml >> find_faulty_skeleton_det] The labels should be the same."
   );
 
-  let get_list_p p = match p.proc with
+  let rec get_list_p p = match p with
     | OutputSure _
-    | Input _ -> [p.proc]
+    | Input _ -> [p]
     | Nil -> []
-    | Par pl -> pl
+    | Par pl -> List.fold_left (fun acc p -> List.rev_append (get_list_p p) acc) [] pl
+    | ParMult pl ->  List.fold_left (fun acc (_,p) -> List.rev_append (get_list_p p) acc) [] pl
     | _ -> Config.internal_error "[process_determinate.ml >> find_faulty_skeleton_det] Processes are not of the expected form after normalisation."
   in
 
-  let list_1 = get_list_p p1
-  and list_2 = get_list_p p2 in
+  let list_1 = get_list_p p1.proc
+  and list_2 = get_list_p p2.proc in
 
   let ordered_list_1 = List.fast_sort compare_normalised_process list_1 in
   let ordered_list_2 = List.fast_sort compare_normalised_process list_2 in
@@ -430,6 +785,27 @@ let find_faulty_skeleton_det size_frame conf1 conf2 p1 p2 =
 
   find_different ordered_list_1 ordered_list_2
 
+let add_par_mult_arguments_in_conf conf label p_list =
+
+  let (_,p_list') =
+    List.fold_right (fun (_,p) (i,acc) -> match p with
+      | Input _ -> (i+1,[{ label_p = label @ [i]; proc = p }]::acc)
+      | Par pl ->
+          let pl' =
+            List.mapi (fun j p' -> match p' with
+              | Input _ -> { label_p = label @ [i;j+1]; proc = p'}
+              | _ -> Config.internal_error "[process_determinate.ml >> add_par_mult_arguments_in_conf] The function should only be applied when no only input are availables 2"
+            ) pl
+          in
+          (i+1,pl'::acc)
+      | Nil -> (i,acc)
+      | _ -> Config.internal_error "[process_determinate.ml >> add_par_mult_arguments_in_conf] The function should only be applied when no only input are availables"
+    ) p_list (1,[])
+  in
+  if p_list' = []
+  then conf
+  else { conf with sure_input_mult_proc = p_list'::conf.sure_input_mult_proc }
+
 let add_par_arguments_in_conf conf label p_list =
 
   let rec explore acc_conf i = function
@@ -440,6 +816,14 @@ let add_par_arguments_in_conf conf label p_list =
     | ((Input _) as p)::q ->
         let acc_conf' =  { acc_conf with sure_input_proc = { label_p = label @ [i]; proc = p }::acc_conf.sure_input_proc } in
         explore acc_conf' (i+1) q
+    | ((ParMult pl) as p)::q ->
+        if List.exists (fun (_,p) -> exists_output p) pl
+        then
+          let acc_conf' =  { acc_conf with sure_output_proc = { label_p = label @ [i]; proc = p }::acc_conf.sure_output_proc } in
+          explore acc_conf' (i+1) q
+        else
+          let acc_conf' = add_par_mult_arguments_in_conf acc_conf (label @ [i]) pl in
+          explore acc_conf' (i+1) q
     | _ -> Config.internal_error "[process_determinate.ml >> add_par_arguments_in_conf] Unexpected case."
   in
 
@@ -485,6 +869,23 @@ let is_equal_skeleton_conf size_frame conf1 conf2 =
                   let conf1' = add_par_arguments_in_conf conf1 p1.label_p pl1 in
                   let conf2' = add_par_arguments_in_conf conf2 p2.label_p pl2 in
                   { conf1' with sure_uncheked_skeletons = None }, { conf2' with sure_uncheked_skeletons = None }
+              | ParMult pl1, ParMult pl2 ->
+                  Config.debug (fun () ->
+                    match List.exists (fun (_,p) -> exists_output p) pl1, List.exists (fun (_,p) -> exists_output p) pl2 with
+                      | true,true
+                      | false, false -> ()
+                      | _, _ -> Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] The availability of output should be the same since they have same skeletons."
+                  );
+
+                  if List.exists (fun (_,p) -> exists_output p) pl1
+                  then
+                    let conf1' = { conf1 with sure_uncheked_skeletons = None; sure_output_proc = p1::conf1.sure_output_proc } in
+                    let conf2' = { conf2 with sure_uncheked_skeletons = None; sure_output_proc = p2::conf2.sure_output_proc } in
+                    conf1',conf2'
+                  else
+                    let conf1' = add_par_mult_arguments_in_conf conf1 p1.label_p pl1 in
+                    let conf2' = add_par_mult_arguments_in_conf conf2 p2.label_p pl2 in
+                    { conf1' with sure_uncheked_skeletons = None }, { conf2' with sure_uncheked_skeletons = None }
               | Nil, Nil -> { conf1 with sure_uncheked_skeletons = None }, { conf2 with sure_uncheked_skeletons = None }
               | _, _ -> Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] This case should not happen since they have the same skeletons."
           else
@@ -506,6 +907,23 @@ let is_equal_skeleton_conf size_frame conf1 conf2 =
                   let conf1' = add_par_arguments_in_conf conf1 p1.label_p pl1 in
                   let conf2' = add_par_arguments_in_conf conf2 p2.label_p pl2 in
                   { conf1' with focused_proc = None }, { conf2' with focused_proc = None }
+              | ParMult pl1, ParMult pl2 ->
+                  Config.debug (fun () ->
+                    match List.exists (fun (_,p) -> exists_output p) pl1, List.exists (fun (_,p) -> exists_output p) pl2 with
+                      | true,true
+                      | false, false -> ()
+                      | _, _ -> Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] The availability of output should be the same since they have same skeletons."
+                  );
+
+                  if List.exists (fun (_,p) -> exists_output p) pl1
+                  then
+                    let conf1' = { conf1 with focused_proc = None; sure_output_proc = p1::conf1.sure_output_proc } in
+                    let conf2' = { conf2 with focused_proc = None; sure_output_proc = p2::conf2.sure_output_proc } in
+                    conf1',conf2'
+                  else
+                    let conf1' = add_par_mult_arguments_in_conf conf1 p1.label_p pl1 in
+                    let conf2' = add_par_mult_arguments_in_conf conf2 p2.label_p pl2 in
+                    { conf1' with focused_proc = None }, { conf2' with focused_proc = None }
               | Nil, Nil -> { conf1 with focused_proc = None }, { conf2 with focused_proc = None }
               | _, _ -> Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] This case should not happen since they have the same skeletons."
           else
@@ -855,9 +1273,14 @@ let rec normalise_simple_det_process proc else_branch equations disequations f_c
   | New(_,p,_) -> normalise_simple_det_process p else_branch equations disequations f_continuation f_next
   | Par(p_list) ->
       normalise_simple_det_process_list p_list else_branch equations disequations (fun gather p_list_1 f_next_1 ->
-        if p_list_1 = []
-        then f_continuation gather Nil f_next_1
-        else f_continuation gather (Par (order_flatten_process_list p_list_1)) f_next_1
+        match p_list_1 with
+          | [] -> f_continuation gather Nil f_next_1
+          | [p] -> f_continuation gather p f_next_1
+          | _ -> f_continuation gather (Par (order_flatten_process_list p_list_1)) f_next_1
+      ) f_next
+  | ParMult p_list ->
+      normalise_simple_det_channel_process_list p_list else_branch equations disequations (fun gather p_list_1 f_next_1 ->
+        f_continuation gather (ParMult p_list_1) f_next_1
       ) f_next
 
 and normalise_simple_det_process_list p_list else_branch equations disequations f_continuation f_next = match p_list with
@@ -869,6 +1292,15 @@ and normalise_simple_det_process_list p_list else_branch equations disequations 
             | Nil -> f_continuation gather_2 q_1 f_next_2
             | Par p_list_1 -> f_continuation gather_2 (List.rev_append p_list_1 q_1) f_next_2
             | _  -> f_continuation gather_2 (proc::q_1) f_next_2
+        ) f_next_1
+      ) f_next
+
+and normalise_simple_det_channel_process_list p_list else_branch equations disequations f_continuation f_next = match p_list with
+  | [] -> f_continuation { equations = equations; disequations = disequations } [] f_next
+  | (ch,p)::q ->
+      normalise_simple_det_channel_process_list q else_branch equations disequations (fun gather_1 q_1 f_next_1 ->
+        normalise_simple_det_process p else_branch gather_1.equations gather_1.disequations (fun gather_2 proc f_next_2 ->
+          f_continuation gather_2 ((ch,proc)::q_1) f_next_2
         ) f_next_1
       ) f_next
 
@@ -930,7 +1362,7 @@ let apply_start conf =
 
 let apply_start_in snd_var a_conf_list f_apply f_continuation f_next =
 
-  let rec explore a conf acc prev_p  = function
+  let rec explore a conf acc prev_p = function
     | [] -> acc
     | ({ proc = Input(c,x,p',pos); label_p = l } as p)::q_list ->
         let conf' =
@@ -944,9 +1376,40 @@ let apply_start_in snd_var a_conf_list f_apply f_continuation f_next =
     | _ -> Config.internal_error "[process_determinate.ml >> apply_start_in] Unexpected case."
   in
 
+  let rec explore_mult_list a conf acc prev_mult = function
+    | [] -> acc
+    | mult_p::q_mult ->
+        let proc = List.hd mult_p
+        and rest_proc = List.tl mult_p in
+
+        let conf' =
+          if rest_proc = []
+          then { conf with sure_input_mult_proc = List.rev_append prev_mult q_mult }
+          else { conf with sure_input_mult_proc = List.rev_append prev_mult (rest_proc::q_mult) }
+        in
+
+        let acc' = explore_mult a conf' acc [] proc in
+        explore_mult_list a conf acc' (mult_p::prev_mult) q_mult
+
+  and explore_mult a conf acc prev_p = function
+    | [] -> acc
+    | ({ proc = Input(c,x,p',pos); label_p = l } as p)::q_list ->
+        let conf' =
+          { conf with
+            sure_input_proc = List.rev_append prev_p (List.rev_append q_list conf.sure_input_proc);
+            focused_proc = (Some { label_p = l; proc = p' });
+            trace = TrInput(c,snd_var,of_variable x,pos) :: conf.trace
+          }
+        in
+        explore_mult a conf ((f_apply a conf',p' = Nil,x,l)::acc) (p::prev_p) q_list
+    | _ -> Config.internal_error "[process_determinate.ml >> apply_start_in] Unexpected case 3."
+  in
+
   let a_list_list_to_join =
     List.fold_left (fun acc_list (a,conf) ->
-      (explore a conf [] [] conf.sure_input_proc)::acc_list
+      let acc_1 = explore a conf [] [] conf.sure_input_proc in
+      let acc_2 = explore_mult_list a conf acc_1 [] conf.sure_input_mult_proc in
+      acc_2::acc_list
     ) [] a_conf_list in
 
   let rec join_list a_list_list f_next_1 =
@@ -1002,6 +1465,32 @@ let apply_pos_in snd_var conf = match conf.focused_proc with
       (conf',x)
   | _ -> Config.internal_error "[process_determinate.ml >> apply_pos_in] Unexpected case."
 
+let rec search_output_process_list = function
+  | [] -> None
+  | OutputSure(c,t,p',pos)::q -> Some(c,t,pos,p'::q)
+  | p::q ->
+      match search_output_process_list q with
+        | None -> None
+        | Some(c,t,pos,rest_q) -> Some(c,t,pos,p::rest_q)
+
+let rec search_output_channel_process_list = function
+  | [] -> None
+  | (ch,OutputSure(c,t,p',pos))::q -> Some(c,t,pos,(ch,p')::q)
+  | (ch,Par pl)::q ->
+      begin match search_output_process_list pl with
+        | None ->
+            begin match search_output_channel_process_list q with
+              | None -> None
+              | Some(c,t,pos,rest_q) -> Some(c,t,pos,(ch,Par pl)::rest_q)
+            end
+        | Some(c,t,pos,pl') -> Some(c,t,pos,(ch,Par pl')::q)
+      end
+  | ch_p :: q ->
+      begin match search_output_channel_process_list q with
+        | None -> None
+        | Some(c,t,pos,rest_q) -> Some(c,t,pos,ch_p::rest_q)
+      end
+
 let apply_neg_out ax conf =
   let p = List.hd conf.sure_output_proc in
 
@@ -1015,6 +1504,19 @@ let apply_neg_out ax conf =
           }
         in
         (conf', t)
+    | ParMult pl_list ->
+        begin match search_output_channel_process_list pl_list with
+          | None -> Config.internal_error "[process_determinate.ml >> apply_neg_out] Unexpected case 2."
+          | Some(c,t,pos,pl_list') ->
+              let conf' =
+                { conf with
+                  sure_output_proc = List.tl conf.sure_output_proc;
+                  unsure_proc = Some { label_p = p.label_p; proc = ParMult pl_list' };
+                  trace = TrOutput(c,ax,t,pos) :: conf.trace
+                }
+              in
+              (conf',t)
+        end
     | _ -> Config.internal_error "[process_determinate.ml >> apply_neg_out] Unexpected case."
 
 (**************************************
@@ -1024,7 +1526,8 @@ let apply_neg_out ax conf =
 let get_position = function
   | Start _
   | Nil
-  | Par _ -> raise Not_found
+  | Par _
+  | ParMult _ -> raise Not_found
   | Output(_,_,_,pos)
   | OutputSure(_,_,_,pos)
   | Input(_,_,_,pos)
@@ -1162,6 +1665,30 @@ let display_simple_det_process_HTML ?(rho=None) ?(margin_px=15) ?(hidden=false) 
               let str_end = str_div margin ")" in
               str_begin ^ str_p ^ str_q_list ^ str_end
         end
+    | ParMult(p_list) ->
+        Config.debug (fun () ->
+          if p_list = []
+          then Config.internal_error "[process.ml >> display_expansed_process_HTML] The list in Par should not be empty."
+        );
+        begin match p_list with
+          | [_]
+          | []  -> Config.internal_error "[process.ml >> display_expansed_process_HTML] The only case the list in Par contains a single element is if the multiplicity is not 1."
+          | (channels,p)::q_list ->
+              let str_begin = str_div margin (Printf.sprintf "( [%s]" (display_list (Symbol.display Latex) "," channels)) in
+
+              let str_p = sub_display_process (margin+1) false p
+              in
+              let str_q_list =
+                List.fold_left (fun acc_str (channels,p) ->
+                  let str_begin = str_div margin (Printf.sprintf ")&nbsp;|&nbsp;( [%s]" (display_list (Symbol.display Latex) "," channels)) in
+                  let str_p = sub_display_process (margin+1) false p
+                  in
+                  acc_str ^ str_begin ^ str_p
+                ) "" q_list
+              in
+              let str_end = str_div margin ")" in
+              str_begin ^ str_p ^ str_q_list ^ str_end
+        end
   in
 
   if hidden
@@ -1231,10 +1758,12 @@ let display_trace_HTML ?(rho=None) ?(title="Display of the trace") id ?(fst_subs
           ) p_list
         in
         let p_list'' = List.filter (fun p -> p <> Nil) p_list' in
-        match p_list'' with
+        begin match p_list'' with
           | [] -> Nil, !pos_list
           | [p] -> p, !pos_list
           | _ -> Par(p_list''), !pos_list
+        end
+    | _ -> Config.internal_error "[process_determinate.ml >> display_trace_HTML] The initial configuration should not be compressed."
   in
 
   let rec print_trace counter prev_process = function
