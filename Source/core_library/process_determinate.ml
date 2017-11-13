@@ -261,6 +261,396 @@ let exists_else_branch_initial_configuration conf = match conf.sure_input_proc w
 
 let initial_label = [0]
 
+(**************************************
+***              Access             ***
+***************************************)
+
+let rec get_vars_with_list_sdet vars_l = function
+  | Start p -> get_vars_with_list_sdet vars_l p
+  | Nil -> vars_l
+  | Output(_,t,p,_)
+  | OutputSure(_,t,p,_) ->
+      let vars_l' = get_vars_with_list Protocol t (fun _ -> true) vars_l in
+      get_vars_with_list_sdet vars_l' p
+  | Input(_,x,p,_) ->
+      let vars_l' = get_vars_with_list Protocol (of_variable x) (fun _ -> true) vars_l in
+      get_vars_with_list_sdet vars_l' p
+  | IfThenElse(t1,t2,p1,p2,_)
+  | Let(t1,_,t2,p1,p2,_) ->
+      let vars_l1 = get_vars_with_list Protocol t1 (fun _ -> true) vars_l in
+      let vars_l2 = get_vars_with_list Protocol t2 (fun _ -> true) vars_l1 in
+      let vars_l3 = get_vars_with_list_sdet vars_l2 p1 in
+      get_vars_with_list_sdet vars_l3 p2
+  | New(_,p,_) -> get_vars_with_list_sdet vars_l p
+  | Par(p_list) -> List.fold_left get_vars_with_list_sdet vars_l p_list
+  | ParMult p_list -> List.fold_left (fun acc (_,p) -> get_vars_with_list_sdet acc p) vars_l p_list
+
+let get_vars_with_list_det vars_l p = get_vars_with_list_sdet vars_l p.proc
+
+let get_vars_with_list_trace vars_l = function
+  | TrInput(_,_,t,_)
+  | TrOutput(_,_,t,_) -> get_vars_with_list Protocol t (fun _ -> true) vars_l
+
+let get_vars_with_list conf vars_l =
+  let vars_1 = List.fold_left get_vars_with_list_trace vars_l conf.trace in
+  let vars_2 = List.fold_left get_vars_with_list_det vars_1 conf.sure_input_proc in
+  let vars_3 = List.fold_left get_vars_with_list_det vars_2 conf.sure_output_proc in
+  List.fold_left (List.fold_left (List.fold_left get_vars_with_list_det)) vars_3 conf.sure_input_mult_proc
+
+let rec get_names_with_list_sdet names_l = function
+  | Start p -> get_names_with_list_sdet names_l p
+  | Nil -> names_l
+  | Output(_,t,p,_)
+  | OutputSure(_,t,p,_) ->
+      let names_l' = get_names_with_list Protocol t names_l in
+      get_names_with_list_sdet names_l' p
+  | Input(_,_,p,_) ->get_names_with_list_sdet names_l p
+  | IfThenElse(t1,t2,p1,p2,_)
+  | Let(t1,_,t2,p1,p2,_) ->
+      let names_l1 = get_names_with_list Protocol t1 names_l in
+      let names_l2 = get_names_with_list Protocol t2 names_l1 in
+      let names_l3 = get_names_with_list_sdet names_l2 p1 in
+      get_names_with_list_sdet names_l3 p2
+  | New(n,p,_) ->
+      let names_l1 = get_names_with_list Protocol (of_name n) names_l in
+      get_names_with_list_sdet names_l1 p
+  | Par(p_list) -> List.fold_left get_names_with_list_sdet names_l p_list
+  | ParMult p_list -> List.fold_left (fun acc (_,p) -> get_names_with_list_sdet acc p) names_l p_list
+
+let get_names_with_list_det names_l p = get_names_with_list_sdet names_l p.proc
+
+let get_names_with_list_trace names_l = function
+  | TrInput(_,_,t,_)
+  | TrOutput(_,_,t,_) -> get_names_with_list Protocol t names_l
+
+let get_names_with_list conf names_l =
+  let names_1 = List.fold_left get_names_with_list_trace names_l conf.trace in
+  let names_2 = List.fold_left get_names_with_list_det names_1 conf.sure_input_proc in
+  let names_3 = List.fold_left get_names_with_list_det names_2 conf.sure_output_proc in
+  List.fold_left (List.fold_left (List.fold_left get_names_with_list_det)) names_3 conf.sure_input_mult_proc
+
+let size_trace conf = List.length conf.trace
+
+(**************************************
+***             Display             ***
+***************************************)
+
+let get_position = function
+  | Start _
+  | Nil
+  | Par _
+  | ParMult _ -> raise Not_found
+  | Output(_,_,_,pos)
+  | OutputSure(_,_,_,pos)
+  | Input(_,_,_,pos)
+  | IfThenElse(_,_,_,_,pos)
+  | Let(_,_,_,_,_,pos)
+  | New(_,_,pos) -> pos
+
+let compare_for_display p1 p2 = match p1, p2 with
+  | Start _, Start _ -> 0
+  | Nil, Nil -> 0
+  | Start _, _ -> -1
+  | _ , Start _ -> 1
+  | Nil, _ -> 1
+  | _, Nil -> -1
+  | _, _ -> compare (get_position p1) (get_position p2)
+
+let process_of_configuration conf =
+  let unchecked_p = match conf.sure_uncheked_skeletons with
+    | None -> []
+    | Some p -> [p.proc]
+  in
+
+  let unsure_p = match conf.unsure_proc with
+    | None -> unchecked_p
+    | Some p -> p.proc :: unchecked_p
+  in
+
+  let focused_p = match conf.focused_proc with
+    | None -> unsure_p
+    | Some p -> p.proc :: unsure_p
+  in
+
+  let all = (List.map (fun p -> p.proc) conf.sure_output_proc) @ (List.map (fun p -> p.proc) conf.sure_input_proc) @ focused_p in
+  let sorted_all = List.fast_sort compare_for_display all in
+
+  match sorted_all with
+    | [] -> Nil
+    | [p] -> p
+    | _ -> Par(sorted_all)
+
+let display_simple_det_process_HTML ?(rho=None) ?(margin_px=15) ?(hidden=false) ?(highlight=[]) ?(id="") ?(subst=Subst.identity) sdet_proc =
+
+  let apply =
+    if Subst.is_identity subst
+    then (fun t -> Rewrite_rules.normalise t)
+    else (fun t -> Rewrite_rules.normalise (Subst.apply subst t (fun x f -> f x)))
+  in
+
+  let line = ref 1 in
+
+  let str_div margin str =
+    let s = Printf.sprintf "              <div class=\"expansedRow\"><div class=\"expansedLine\">{%d}</div><div class=\"expansedProcess\"><div style=\"margin-left:%dpx\">%s</div></div></div>\n"
+      !line
+      (margin * margin_px)
+      str
+    in
+    incr line;
+    s
+  in
+
+  let rec sub_display_process margin prev_in_out = function
+    | Start p -> sub_display_process margin prev_in_out p
+    | Nil when prev_in_out -> ""
+    | Nil -> str_div margin "0"
+    | Output(ch,t,p,pos)
+    | OutputSure(ch,t,p,pos)->
+        let str =
+          if List.mem pos highlight
+          then str_div margin (Printf.sprintf "<span class=\"highlight\">out(%s,%s);</span>" (Symbol.display HTML ch) (display HTML ~rho:rho Protocol (apply t)))
+          else str_div margin (Printf.sprintf "out(%s,%s);" (Symbol.display HTML ch) (display HTML ~rho:rho Protocol (apply t))) in
+        str^(sub_display_process margin true p)
+    | Input(ch,x,p,pos) ->
+        let str =
+          if List.mem pos highlight
+          then str_div margin (Printf.sprintf "<span class=\"highlight\">in(%s,%s);</span>" (Symbol.display HTML ch) (Variable.display HTML ~rho:rho Protocol x))
+          else str_div margin (Printf.sprintf "in(%s,%s);" (Symbol.display HTML ch) (Variable.display HTML ~rho:rho Protocol x)) in
+        str^(sub_display_process margin true p)
+    | IfThenElse(t1,t2,p_then,Nil,pos) ->
+        let str =
+          if List.mem pos highlight
+          then str_div margin (Printf.sprintf "<span class=\"highlight\">if %s %s %s then</span>" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2)))
+          else str_div margin (Printf.sprintf "if %s %s %s then" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2))) in
+        str^(sub_display_process margin false p_then)
+    | IfThenElse(t1,t2,p_then,p_else,pos) ->
+        let str_test =
+          if List.mem pos highlight
+          then str_div margin (Printf.sprintf "<span class=\"highlight\">if %s %s %s then</span>" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2)))
+          else str_div margin (Printf.sprintf "if %s %s %s then" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2))) in
+        let str_p_then = sub_display_process (margin+1) false p_then in
+        let str_else = str_div margin "else" in
+        let str_p_else = sub_display_process (margin+1) false p_else in
+        str_test ^ str_p_then ^ str_else ^ str_p_else
+    | Let(t1,_,t2,p_then,Nil,pos) ->
+        let str =
+          if List.mem pos highlight
+          then str_div margin (Printf.sprintf "<span class=\"highlight\">let %s %s %s in</span>" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2)))
+          else str_div margin (Printf.sprintf "let %s %s %s in" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2))) in
+        str^(sub_display_process margin false p_then)
+    | Let(t1,_,t2,p_then,p_else,pos) ->
+        let str_test =
+          if List.mem pos highlight
+          then str_div margin (Printf.sprintf "<span class=\"highlight\">let %s %s %s in</span>" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2)))
+          else str_div margin (Printf.sprintf "let %s %s %s in" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2))) in
+        let str_p_then = sub_display_process (margin+1) false p_then in
+        let str_else = str_div margin "else" in
+        let str_p_else = sub_display_process (margin+1) false p_else in
+        str_test ^ str_p_then ^ str_else ^ str_p_else
+    | New(k,p,pos) ->
+        let str =
+        if List.mem pos highlight
+        then str_div margin (Printf.sprintf "<span class=\"highlight\">new %s;</span>" (Name.display HTML ~rho:rho k))
+        else str_div margin (Printf.sprintf "new %s;" (Name.display HTML ~rho:rho k)) in
+        str^(sub_display_process margin false p)
+    | Par(p_list) ->
+        Config.debug (fun () ->
+          if p_list = []
+          then Config.internal_error "[process.ml >> display_expansed_process_HTML] The list in Par should not be empty."
+        );
+        begin match p_list with
+          | [_]
+          | []  -> Config.internal_error "[process.ml >> display_expansed_process_HTML] The only case the list in Par contains a single element is if the multiplicity is not 1."
+          | p::q_list ->
+              let str_begin = str_div margin "(" in
+
+              let str_p = sub_display_process (margin+1) false p
+              in
+              let str_q_list =
+                List.fold_left (fun acc_str p ->
+                  let str_begin = str_div margin ")&nbsp;|&nbsp;(" in
+                  let str_p = sub_display_process (margin+1) false p
+                  in
+                  acc_str ^ str_begin ^ str_p
+                ) "" q_list
+              in
+              let str_end = str_div margin ")" in
+              str_begin ^ str_p ^ str_q_list ^ str_end
+        end
+    | ParMult(p_list) ->
+        Config.debug (fun () ->
+          if p_list = []
+          then Config.internal_error "[process.ml >> display_expansed_process_HTML] The list in Par should not be empty."
+        );
+        begin match p_list with
+          | [_]
+          | []  -> Config.internal_error "[process.ml >> display_expansed_process_HTML] The only case the list in Par contains a single element is if the multiplicity is not 1."
+          | (channels,p)::q_list ->
+              let str_begin = str_div margin (Printf.sprintf "( [%s]" (display_list (Symbol.display Latex) "," channels)) in
+
+              let str_p = sub_display_process (margin+1) false p
+              in
+              let str_q_list =
+                List.fold_left (fun acc_str (channels,p) ->
+                  let str_begin = str_div margin (Printf.sprintf ")&nbsp;|&nbsp;( [%s]" (display_list (Symbol.display Latex) "," channels)) in
+                  let str_p = sub_display_process (margin+1) false p
+                  in
+                  acc_str ^ str_begin ^ str_p
+                ) "" q_list
+              in
+              let str_end = str_div margin ")" in
+              str_begin ^ str_p ^ str_q_list ^ str_end
+        end
+  in
+
+  if hidden
+  then
+    Printf.sprintf "          <div id=\"expansed%s\" class=\"expansedTable\" style=\"display:none;\">\n            <div class=\"expansedBody\">\n%s            </div>\n          </div>\n"
+      id
+      (sub_display_process 1 false sdet_proc)
+  else
+    Printf.sprintf "          <div id=\"expansed%s\" class=\"expansedTable\">\n            <div class=\"expansedBody\">\n%s            </div>\n          </div>\n"
+      id
+      (sub_display_process 1 false sdet_proc)
+
+let display_process_HTML ?(rho=None) ?(margin_px=15) ?(hidden=false) ?(highlight=[]) ?(id="") ?(subst=Subst.identity) conf =
+  display_simple_det_process_HTML ~rho:rho ~margin_px:margin_px ~hidden:hidden ~highlight:highlight ~id:id ~subst:subst (process_of_configuration conf)
+
+let display_trace_HTML ?(rho=None) ?(title="Display of the trace") id ?(fst_subst=Subst.identity) ?(snd_subst=Subst.identity) init_conf attack_conf =
+
+  let rev_trace = List.rev attack_conf.trace in
+
+  let str_id k = Printf.sprintf "%se%d" id k in
+
+  let html_script = ref "" in
+
+  let rec print_action_title counter = function
+    | [] -> ()
+    | action :: q ->
+        let desc = match action with
+          | TrInput(_,_,_,_) -> "Next <span class=\"alert\">observable</span> action: Input"
+          | TrOutput(_,_,_,_) -> "Next <span class=\"alert\">observable</span> action: Output"
+        in
+        html_script := Printf.sprintf "%s                    <span class=\"description-action\" id=\"desc-%se%d\">%s</span>\n" !html_script id counter desc;
+        html_script := Printf.sprintf "%s                    <span class=\"description-action\" id=\"desc-%se%d\">Result</span>\n" !html_script id (counter+1);
+        print_action_title (counter+2) q
+  in
+
+  let rec search_for_position tpos = function
+    | Start p -> search_for_position tpos p
+    | Nil -> raise Not_found
+    | Output(_,_,p,pos)
+    | OutputSure(_,_,p,pos)
+    | Input(_,_,p,pos)
+    | New(_,p,pos) ->
+        if pos = tpos
+        then p, [pos]
+        else
+          let p', pos_l = search_for_position tpos p in
+          p', pos::pos_l
+    | IfThenElse(_,_,p1,p2,pos)
+    | Let(_,_,_,p1,p2,pos) ->
+        let p', pos_l =
+          try
+            search_for_position tpos p1
+          with Not_found -> search_for_position tpos p2
+        in
+        p', pos::pos_l
+    | Par(p_list) ->
+        let pos_list = ref [] in
+
+        let p_list' =
+          List.map (fun p ->
+            try
+              let p',pos_l = search_for_position tpos p in
+              pos_list := pos_l;
+              p'
+            with
+              | Not_found -> p
+          ) p_list
+        in
+        let p_list'' = List.filter (fun p -> p <> Nil) p_list' in
+        begin match p_list'' with
+          | [] -> Nil, !pos_list
+          | [p] -> p, !pos_list
+          | _ -> Par(p_list''), !pos_list
+        end
+    | _ -> Config.internal_error "[process_determinate.ml >> display_trace_HTML] The initial configuration should not be compressed."
+  in
+
+  let rec print_trace counter prev_process = function
+    | [] -> ()
+    | TrInput(_,_,_,pos) :: q
+    | TrOutput(_,_,_,pos) :: q ->
+        (* Script of the highlighted action *)
+        let (next_p, high) = search_for_position pos prev_process in
+        html_script := Printf.sprintf "%s%s" !html_script (display_simple_det_process_HTML ~rho:rho ~id:(str_id counter) ~highlight:high ~hidden:true ~subst:fst_subst prev_process);
+        (* Script of the result process *)
+        html_script := Printf.sprintf "%s%s" !html_script (display_simple_det_process_HTML ~rho:rho ~id:(str_id (counter+1)) ~highlight:[] ~hidden:true ~subst:fst_subst next_p);
+        print_trace (counter + 2) next_p q
+  in
+
+  let internal_counter_for_trace = ref 1 in
+
+  let rec print_action_trace counter = function
+    | [] -> ()
+    | TrInput(ch,t_X,t,_) :: q ->
+        let t_recipe = Subst.apply snd_subst (of_variable t_X) (fun x f -> f x) in
+        let new_t = Subst.apply fst_subst t (fun x f -> f x) in
+        let new_t' = Rewrite_rules.normalise new_t in
+
+        let str_t_recipe =
+          if is_function t_recipe && Symbol.get_arity (root t_recipe) = 0 && Symbol.is_public (root t_recipe)
+          then ""
+          else Printf.sprintf " (computed by \\(%s\\))" (display Latex ~rho:rho Recipe t_recipe)
+        in
+
+        html_script := Printf.sprintf "%s                  <div id=\"action-%se%d\" class=\"action\">%d. Input of \\(%s\\)%s on the channel \\(%s\\).<div>\n"
+          !html_script id (counter+1) !internal_counter_for_trace
+          (display Latex ~rho:rho Protocol new_t') str_t_recipe
+          (Symbol.display Latex ch);
+
+        incr internal_counter_for_trace;
+        print_action_trace (counter+2) q
+    | TrOutput(ch,ax,t,_) :: q ->
+        let new_t = Subst.apply fst_subst t (fun x f -> f x) in
+        let new_t' = Rewrite_rules.normalise new_t in
+
+        html_script := Printf.sprintf "%s                  <div id=\"action-%se%d\" class=\"action\">%d. Output of \\(%s\\) (refered by \\(%s\\)) on the channel \\(%s\\).<div>\n"
+          !html_script id (counter+1) !internal_counter_for_trace
+          (display Latex ~rho:rho Protocol new_t') (display Latex ~rho:rho Recipe (of_axiom ax))
+          (Symbol.display Latex ch);
+
+        incr internal_counter_for_trace;
+        print_action_trace (counter+2) q
+  in
+
+  html_script := Printf.sprintf "%s            <table class=\"processTable\">\n" !html_script;
+  html_script := Printf.sprintf "%s              <tr>\n" !html_script;
+  html_script := Printf.sprintf "%s                <td colspan=\"2\">\n" !html_script;
+  html_script := Printf.sprintf "%s                  <div class=\"title-trace\">%s</div>\n" !html_script title;
+  html_script := Printf.sprintf "%s                  <div class=\"link-trace\">\n" !html_script;
+  html_script := Printf.sprintf "%s                    <button id=\"previous-%s\" type=\"button\" onclick=\"javascript:previous_expansed('%s');\" disabled>Previous</button>\n" !html_script id id;
+  html_script := Printf.sprintf "%s                    <span class=\"description-action\" id=\"desc-%se1\" style=\"display: inline-block;\">Initial process</span>\n" !html_script id;
+  print_action_title 2 rev_trace;
+  html_script := Printf.sprintf "%s                    <button id=\"next-%s\" type=\"button\" onclick=\"javascript:next_expansed('%s');\">Next</button>\n" !html_script id id;
+  html_script := Printf.sprintf "%s                  </div>\n" !html_script;
+  html_script := Printf.sprintf "%s                </td>\n" !html_script;
+  html_script := Printf.sprintf "%s              </tr>\n" !html_script;
+  html_script := Printf.sprintf "%s              <tr class=\"processTableRow\">\n" !html_script;
+  html_script := Printf.sprintf "%s                <td class=\"processDag\">\n" !html_script;
+  html_script := Printf.sprintf "%s%s" !html_script (display_simple_det_process_HTML ~rho:rho ~id:(str_id 1) ~highlight:[] ~hidden:false ~subst:fst_subst (process_of_configuration init_conf));
+  print_trace 2 (process_of_configuration init_conf) rev_trace;
+  html_script := Printf.sprintf "%s                </td>\n" !html_script;
+  html_script := Printf.sprintf "%s                <td class=\"processRenaming\">\n" !html_script;
+  html_script := Printf.sprintf "%s                  <div class=\"subtitle-trace\">Trace</div>\n" !html_script;
+  print_action_trace 2 rev_trace;
+  html_script := Printf.sprintf "%s                </td>\n" !html_script;
+  html_script := Printf.sprintf "%s              </tr>\n" !html_script;
+  html_script := Printf.sprintf "%s            </table>\n" !html_script;
+
+  !html_script
+
 (**** Testing ****)
 
 let rec exists_channel_association c1 c2 = function
@@ -493,9 +883,12 @@ let rec retrieve_par_mult_channels = function
   | Let(_,_,_,p1,p2,_) -> List.rev_append (retrieve_par_mult_channels p1) (retrieve_par_mult_channels p2)
   | Par p_list -> List.fold_left (fun acc p -> List.rev_append (retrieve_par_mult_channels p) acc) [] p_list
   | ParMult pmult_list ->
-      List.fold_left (fun acc (channels,p) ->
-        channels::(List.rev_append (retrieve_par_mult_channels p) acc)
-      ) [] pmult_list
+      let acc' =
+        List.fold_left (fun acc (_,p) ->
+          List.rev_append (retrieve_par_mult_channels p) acc
+        ) [] pmult_list
+      in
+      (List.map (fun (ch,_) -> ch) pmult_list)::acc'
 
 let exists_list_channel ch_list_list ch_list =
   List.exists (List.for_all2 Symbol.is_equal ch_list) ch_list_list
@@ -506,8 +899,6 @@ let rec is_equal_list_channel ch1 ch2 = match ch1,ch2 with
   | [], _ -> false
   | c1::q1, c2::q2 -> (Symbol.is_equal c1 c2) && (is_equal_list_channel q1 q2)
 
-let inter_mult_channels ch_list_list1 ch_list_list2 = List.filter_unordered (exists_list_channel ch_list_list2) ch_list_list1
-
 let rec compare_channels ch1 ch2 = match ch1, ch2 with
   | [], [] -> 0
   | _, []
@@ -516,6 +907,61 @@ let rec compare_channels ch1 ch2 = match ch1, ch2 with
       match Symbol.order c1 c2 with
         | 0 -> compare_channels q1 q2
         | n -> n
+
+let inter_mult_channels (chl_l_l1:symbol list list list) (chl_l_l2:symbol list list list) =
+
+  let rec common_parts (chl_l1:symbol list list) (chl_l2:symbol list list) = match chl_l1, chl_l2 with
+    | [], [] -> ([],[],[])
+    | [], _ -> ([],[],chl_l2)
+    | _, [] -> ([],chl_l1,[])
+    | chl1::q1, chl2::q2 ->
+        match compare_channels chl1 chl2 with
+          | 0 ->
+              let (same,out1,out2) = common_parts q1 q2 in
+              (chl1::same,out1,out2)
+          | -1 ->
+              let (same,out1,out2) = common_parts q1 chl_l2 in
+              (same,chl1::out1,out2)
+          | _ ->
+              let (same,out1,out2) = common_parts chl_l1 q2 in
+              (same,out1,chl2::out2)
+  in
+
+  let kept_channels = ref [] in
+
+  let rec search_list chl prev = function
+    | [] -> None
+    | chl_l::q when exists_list_channel chl_l chl -> Some(chl_l,List.rev_append prev q)
+    | chl_l::q -> search_list chl (chl_l::prev) q
+  in
+
+  let rec explore_channels (chl_l_l1:symbol list list list) (chl_l_l2:symbol list list list) = match chl_l_l1 with
+    | [] -> ()
+    | []::q1 -> explore_channels q1 chl_l_l2
+    | (chl1::ql_l1)::ql_l_l1 ->
+        match search_list chl1 [] chl_l_l2 with
+          | None -> explore_channels (ql_l1::ql_l_l1) chl_l_l2
+          | Some(chl_l2,ql_l_l2) ->
+              let (same,out1,out2) = common_parts (chl1::ql_l1) chl_l2 in
+              let chl_l_l1' =
+                if List.length out1 <= 1
+                then ql_l_l1
+                else out1::ql_l_l1
+              in
+              let chl_l_l2' =
+                if List.length out2 <= 1
+                then ql_l_l2
+                else out2::ql_l_l2
+              in
+              if List.length same > 1
+              then kept_channels := List.rev_append same !kept_channels;
+
+              explore_channels chl_l_l1' chl_l_l2'
+    in
+
+    explore_channels chl_l_l1 chl_l_l2;
+
+    !kept_channels
 
 let decompress_process channels_list p =
 
@@ -575,76 +1021,6 @@ let compress_initial_configuration conf1 conf2 =
   and conf2' = { conf1 with sure_input_proc = [ { det1 with proc = comp_p2'} ] } in
 
   conf1', conf2'
-
-(**************************************
-***              Access             ***
-***************************************)
-
-let rec get_vars_with_list_sdet vars_l = function
-  | Start p -> get_vars_with_list_sdet vars_l p
-  | Nil -> vars_l
-  | Output(_,t,p,_)
-  | OutputSure(_,t,p,_) ->
-      let vars_l' = get_vars_with_list Protocol t (fun _ -> true) vars_l in
-      get_vars_with_list_sdet vars_l' p
-  | Input(_,x,p,_) ->
-      let vars_l' = get_vars_with_list Protocol (of_variable x) (fun _ -> true) vars_l in
-      get_vars_with_list_sdet vars_l' p
-  | IfThenElse(t1,t2,p1,p2,_)
-  | Let(t1,_,t2,p1,p2,_) ->
-      let vars_l1 = get_vars_with_list Protocol t1 (fun _ -> true) vars_l in
-      let vars_l2 = get_vars_with_list Protocol t2 (fun _ -> true) vars_l1 in
-      let vars_l3 = get_vars_with_list_sdet vars_l2 p1 in
-      get_vars_with_list_sdet vars_l3 p2
-  | New(_,p,_) -> get_vars_with_list_sdet vars_l p
-  | Par(p_list) -> List.fold_left get_vars_with_list_sdet vars_l p_list
-  | ParMult p_list -> List.fold_left (fun acc (_,p) -> get_vars_with_list_sdet acc p) vars_l p_list
-
-let get_vars_with_list_det vars_l p = get_vars_with_list_sdet vars_l p.proc
-
-let get_vars_with_list_trace vars_l = function
-  | TrInput(_,_,t,_)
-  | TrOutput(_,_,t,_) -> get_vars_with_list Protocol t (fun _ -> true) vars_l
-
-let get_vars_with_list conf vars_l =
-  let vars_1 = List.fold_left get_vars_with_list_trace vars_l conf.trace in
-  let vars_2 = List.fold_left get_vars_with_list_det vars_1 conf.sure_input_proc in
-  let vars_3 = List.fold_left get_vars_with_list_det vars_2 conf.sure_output_proc in
-  List.fold_left (List.fold_left (List.fold_left get_vars_with_list_det)) vars_3 conf.sure_input_mult_proc
-
-let rec get_names_with_list_sdet names_l = function
-  | Start p -> get_names_with_list_sdet names_l p
-  | Nil -> names_l
-  | Output(_,t,p,_)
-  | OutputSure(_,t,p,_) ->
-      let names_l' = get_names_with_list Protocol t names_l in
-      get_names_with_list_sdet names_l' p
-  | Input(_,_,p,_) ->get_names_with_list_sdet names_l p
-  | IfThenElse(t1,t2,p1,p2,_)
-  | Let(t1,_,t2,p1,p2,_) ->
-      let names_l1 = get_names_with_list Protocol t1 names_l in
-      let names_l2 = get_names_with_list Protocol t2 names_l1 in
-      let names_l3 = get_names_with_list_sdet names_l2 p1 in
-      get_names_with_list_sdet names_l3 p2
-  | New(n,p,_) ->
-      let names_l1 = get_names_with_list Protocol (of_name n) names_l in
-      get_names_with_list_sdet names_l1 p
-  | Par(p_list) -> List.fold_left get_names_with_list_sdet names_l p_list
-  | ParMult p_list -> List.fold_left (fun acc (_,p) -> get_names_with_list_sdet acc p) names_l p_list
-
-let get_names_with_list_det names_l p = get_names_with_list_sdet names_l p.proc
-
-let get_names_with_list_trace names_l = function
-  | TrInput(_,_,t,_)
-  | TrOutput(_,_,t,_) -> get_names_with_list Protocol t names_l
-
-let get_names_with_list conf names_l =
-  let names_1 = List.fold_left get_names_with_list_trace names_l conf.trace in
-  let names_2 = List.fold_left get_names_with_list_det names_1 conf.sure_input_proc in
-  let names_3 = List.fold_left get_names_with_list_det names_2 conf.sure_output_proc in
-  List.fold_left (List.fold_left (List.fold_left get_names_with_list_det)) names_3 conf.sure_input_mult_proc
-
-let size_trace conf = List.length conf.trace
 
 (**************************************
 ***            Utilities            ***
@@ -894,6 +1270,7 @@ let is_equal_skeleton_conf size_frame conf1 conf2 =
               | Nil, Nil -> { conf1 with sure_uncheked_skeletons = None }, { conf2 with sure_uncheked_skeletons = None }
               | _, _ -> Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] This case should not happen since they have the same skeletons."
           else
+            let _ = print_string "sure_unchecked\n" in
             let is_left,f_conf,f_action = find_faulty_skeleton_det size_frame conf1 conf2 p1 p2 in
             raise (Faulty_skeleton (is_left, f_conf, f_action))
       | _, _ -> Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] The unsure processes should be full."
@@ -932,6 +1309,7 @@ let is_equal_skeleton_conf size_frame conf1 conf2 =
               | Nil, Nil -> { conf1 with focused_proc = None }, { conf2 with focused_proc = None }
               | _, _ -> Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] This case should not happen since they have the same skeletons."
           else
+            let _ = print_string "sure_unchecked\n" in
             let is_left,f_conf,f_action = find_faulty_skeleton_det size_frame conf1 conf2 p1 p2 in
             raise (Faulty_skeleton (is_left, f_conf, f_action))
       | _, _ -> Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] The focused processes should be full."
@@ -1531,323 +1909,3 @@ let apply_neg_out ax conf =
               (conf',t)
         end
     | _ -> Config.internal_error "[process_determinate.ml >> apply_neg_out] Unexpected case."
-
-(**************************************
-***             Display             ***
-***************************************)
-
-let get_position = function
-  | Start _
-  | Nil
-  | Par _
-  | ParMult _ -> raise Not_found
-  | Output(_,_,_,pos)
-  | OutputSure(_,_,_,pos)
-  | Input(_,_,_,pos)
-  | IfThenElse(_,_,_,_,pos)
-  | Let(_,_,_,_,_,pos)
-  | New(_,_,pos) -> pos
-
-let compare_for_display p1 p2 = match p1, p2 with
-  | Start _, Start _ -> 0
-  | Nil, Nil -> 0
-  | Start _, _ -> -1
-  | _ , Start _ -> 1
-  | Nil, _ -> 1
-  | _, Nil -> -1
-  | _, _ -> compare (get_position p1) (get_position p2)
-
-let process_of_configuration conf =
-  let unchecked_p = match conf.sure_uncheked_skeletons with
-    | None -> []
-    | Some p -> [p.proc]
-  in
-
-  let unsure_p = match conf.unsure_proc with
-    | None -> unchecked_p
-    | Some p -> p.proc :: unchecked_p
-  in
-
-  let focused_p = match conf.focused_proc with
-    | None -> unsure_p
-    | Some p -> p.proc :: unsure_p
-  in
-
-  let all = (List.map (fun p -> p.proc) conf.sure_output_proc) @ (List.map (fun p -> p.proc) conf.sure_input_proc) @ focused_p in
-  let sorted_all = List.fast_sort compare_for_display all in
-
-  match sorted_all with
-    | [] -> Nil
-    | [p] -> p
-    | _ -> Par(sorted_all)
-
-let display_simple_det_process_HTML ?(rho=None) ?(margin_px=15) ?(hidden=false) ?(highlight=[]) ?(id="") ?(subst=Subst.identity) sdet_proc =
-
-  let apply =
-    if Subst.is_identity subst
-    then (fun t -> Rewrite_rules.normalise t)
-    else (fun t -> Rewrite_rules.normalise (Subst.apply subst t (fun x f -> f x)))
-  in
-
-  let line = ref 1 in
-
-  let str_div margin str =
-    let s = Printf.sprintf "              <div class=\"expansedRow\"><div class=\"expansedLine\">{%d}</div><div class=\"expansedProcess\"><div style=\"margin-left:%dpx\">%s</div></div></div>\n"
-      !line
-      (margin * margin_px)
-      str
-    in
-    incr line;
-    s
-  in
-
-  let rec sub_display_process margin prev_in_out = function
-    | Start p -> sub_display_process margin prev_in_out p
-    | Nil when prev_in_out -> ""
-    | Nil -> str_div margin "0"
-    | Output(ch,t,p,pos)
-    | OutputSure(ch,t,p,pos)->
-        let str =
-          if List.mem pos highlight
-          then str_div margin (Printf.sprintf "<span class=\"highlight\">out(%s,%s);</span>" (Symbol.display HTML ch) (display HTML ~rho:rho Protocol (apply t)))
-          else str_div margin (Printf.sprintf "out(%s,%s);" (Symbol.display HTML ch) (display HTML ~rho:rho Protocol (apply t))) in
-        str^(sub_display_process margin true p)
-    | Input(ch,x,p,pos) ->
-        let str =
-          if List.mem pos highlight
-          then str_div margin (Printf.sprintf "<span class=\"highlight\">in(%s,%s);</span>" (Symbol.display HTML ch) (Variable.display HTML ~rho:rho Protocol x))
-          else str_div margin (Printf.sprintf "in(%s,%s);" (Symbol.display HTML ch) (Variable.display HTML ~rho:rho Protocol x)) in
-        str^(sub_display_process margin true p)
-    | IfThenElse(t1,t2,p_then,Nil,pos) ->
-        let str =
-          if List.mem pos highlight
-          then str_div margin (Printf.sprintf "<span class=\"highlight\">if %s %s %s then</span>" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2)))
-          else str_div margin (Printf.sprintf "if %s %s %s then" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2))) in
-        str^(sub_display_process margin false p_then)
-    | IfThenElse(t1,t2,p_then,p_else,pos) ->
-        let str_test =
-          if List.mem pos highlight
-          then str_div margin (Printf.sprintf "<span class=\"highlight\">if %s %s %s then</span>" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2)))
-          else str_div margin (Printf.sprintf "if %s %s %s then" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2))) in
-        let str_p_then = sub_display_process (margin+1) false p_then in
-        let str_else = str_div margin "else" in
-        let str_p_else = sub_display_process (margin+1) false p_else in
-        str_test ^ str_p_then ^ str_else ^ str_p_else
-    | Let(t1,_,t2,p_then,Nil,pos) ->
-        let str =
-          if List.mem pos highlight
-          then str_div margin (Printf.sprintf "<span class=\"highlight\">let %s %s %s in</span>" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2)))
-          else str_div margin (Printf.sprintf "let %s %s %s in" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2))) in
-        str^(sub_display_process margin false p_then)
-    | Let(t1,_,t2,p_then,p_else,pos) ->
-        let str_test =
-          if List.mem pos highlight
-          then str_div margin (Printf.sprintf "<span class=\"highlight\">let %s %s %s in</span>" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2)))
-          else str_div margin (Printf.sprintf "let %s %s %s in" (display HTML ~rho:rho Protocol (apply t1)) (eqs HTML) (display HTML ~rho:rho Protocol (apply t2))) in
-        let str_p_then = sub_display_process (margin+1) false p_then in
-        let str_else = str_div margin "else" in
-        let str_p_else = sub_display_process (margin+1) false p_else in
-        str_test ^ str_p_then ^ str_else ^ str_p_else
-    | New(k,p,pos) ->
-        let str =
-        if List.mem pos highlight
-        then str_div margin (Printf.sprintf "<span class=\"highlight\">new %s;</span>" (Name.display HTML ~rho:rho k))
-        else str_div margin (Printf.sprintf "new %s;" (Name.display HTML ~rho:rho k)) in
-        str^(sub_display_process margin false p)
-    | Par(p_list) ->
-        Config.debug (fun () ->
-          if p_list = []
-          then Config.internal_error "[process.ml >> display_expansed_process_HTML] The list in Par should not be empty."
-        );
-        begin match p_list with
-          | [_]
-          | []  -> Config.internal_error "[process.ml >> display_expansed_process_HTML] The only case the list in Par contains a single element is if the multiplicity is not 1."
-          | p::q_list ->
-              let str_begin = str_div margin "(" in
-
-              let str_p = sub_display_process (margin+1) false p
-              in
-              let str_q_list =
-                List.fold_left (fun acc_str p ->
-                  let str_begin = str_div margin ")&nbsp;|&nbsp;(" in
-                  let str_p = sub_display_process (margin+1) false p
-                  in
-                  acc_str ^ str_begin ^ str_p
-                ) "" q_list
-              in
-              let str_end = str_div margin ")" in
-              str_begin ^ str_p ^ str_q_list ^ str_end
-        end
-    | ParMult(p_list) ->
-        Config.debug (fun () ->
-          if p_list = []
-          then Config.internal_error "[process.ml >> display_expansed_process_HTML] The list in Par should not be empty."
-        );
-        begin match p_list with
-          | [_]
-          | []  -> Config.internal_error "[process.ml >> display_expansed_process_HTML] The only case the list in Par contains a single element is if the multiplicity is not 1."
-          | (channels,p)::q_list ->
-              let str_begin = str_div margin (Printf.sprintf "( [%s]" (display_list (Symbol.display Latex) "," channels)) in
-
-              let str_p = sub_display_process (margin+1) false p
-              in
-              let str_q_list =
-                List.fold_left (fun acc_str (channels,p) ->
-                  let str_begin = str_div margin (Printf.sprintf ")&nbsp;|&nbsp;( [%s]" (display_list (Symbol.display Latex) "," channels)) in
-                  let str_p = sub_display_process (margin+1) false p
-                  in
-                  acc_str ^ str_begin ^ str_p
-                ) "" q_list
-              in
-              let str_end = str_div margin ")" in
-              str_begin ^ str_p ^ str_q_list ^ str_end
-        end
-  in
-
-  if hidden
-  then
-    Printf.sprintf "          <div id=\"expansed%s\" class=\"expansedTable\" style=\"display:none;\">\n            <div class=\"expansedBody\">\n%s            </div>\n          </div>\n"
-      id
-      (sub_display_process 1 false sdet_proc)
-  else
-    Printf.sprintf "          <div id=\"expansed%s\" class=\"expansedTable\">\n            <div class=\"expansedBody\">\n%s            </div>\n          </div>\n"
-      id
-      (sub_display_process 1 false sdet_proc)
-
-let display_process_HTML ?(rho=None) ?(margin_px=15) ?(hidden=false) ?(highlight=[]) ?(id="") ?(subst=Subst.identity) conf =
-  display_simple_det_process_HTML ~rho:rho ~margin_px:margin_px ~hidden:hidden ~highlight:highlight ~id:id ~subst:subst (process_of_configuration conf)
-
-let display_trace_HTML ?(rho=None) ?(title="Display of the trace") id ?(fst_subst=Subst.identity) ?(snd_subst=Subst.identity) init_conf attack_conf =
-
-  let rev_trace = List.rev attack_conf.trace in
-
-  let str_id k = Printf.sprintf "%se%d" id k in
-
-  let html_script = ref "" in
-
-  let rec print_action_title counter = function
-    | [] -> ()
-    | action :: q ->
-        let desc = match action with
-          | TrInput(_,_,_,_) -> "Next <span class=\"alert\">observable</span> action: Input"
-          | TrOutput(_,_,_,_) -> "Next <span class=\"alert\">observable</span> action: Output"
-        in
-        html_script := Printf.sprintf "%s                    <span class=\"description-action\" id=\"desc-%se%d\">%s</span>\n" !html_script id counter desc;
-        html_script := Printf.sprintf "%s                    <span class=\"description-action\" id=\"desc-%se%d\">Result</span>\n" !html_script id (counter+1);
-        print_action_title (counter+2) q
-  in
-
-  let rec search_for_position tpos = function
-    | Start p -> search_for_position tpos p
-    | Nil -> raise Not_found
-    | Output(_,_,p,pos)
-    | OutputSure(_,_,p,pos)
-    | Input(_,_,p,pos)
-    | New(_,p,pos) ->
-        if pos = tpos
-        then p, [pos]
-        else
-          let p', pos_l = search_for_position tpos p in
-          p', pos::pos_l
-    | IfThenElse(_,_,p1,p2,pos)
-    | Let(_,_,_,p1,p2,pos) ->
-        let p', pos_l =
-          try
-            search_for_position tpos p1
-          with Not_found -> search_for_position tpos p2
-        in
-        p', pos::pos_l
-    | Par(p_list) ->
-        let pos_list = ref [] in
-
-        let p_list' =
-          List.map (fun p ->
-            try
-              let p',pos_l = search_for_position tpos p in
-              pos_list := pos_l;
-              p'
-            with
-              | Not_found -> p
-          ) p_list
-        in
-        let p_list'' = List.filter (fun p -> p <> Nil) p_list' in
-        begin match p_list'' with
-          | [] -> Nil, !pos_list
-          | [p] -> p, !pos_list
-          | _ -> Par(p_list''), !pos_list
-        end
-    | _ -> Config.internal_error "[process_determinate.ml >> display_trace_HTML] The initial configuration should not be compressed."
-  in
-
-  let rec print_trace counter prev_process = function
-    | [] -> ()
-    | TrInput(_,_,_,pos) :: q
-    | TrOutput(_,_,_,pos) :: q ->
-        (* Script of the highlighted action *)
-        let (next_p, high) = search_for_position pos prev_process in
-        html_script := Printf.sprintf "%s%s" !html_script (display_simple_det_process_HTML ~rho:rho ~id:(str_id counter) ~highlight:high ~hidden:true ~subst:fst_subst prev_process);
-        (* Script of the result process *)
-        html_script := Printf.sprintf "%s%s" !html_script (display_simple_det_process_HTML ~rho:rho ~id:(str_id (counter+1)) ~highlight:[] ~hidden:true ~subst:fst_subst next_p);
-        print_trace (counter + 2) next_p q
-  in
-
-  let internal_counter_for_trace = ref 1 in
-
-  let rec print_action_trace counter = function
-    | [] -> ()
-    | TrInput(ch,t_X,t,_) :: q ->
-        let t_recipe = Subst.apply snd_subst (of_variable t_X) (fun x f -> f x) in
-        let new_t = Subst.apply fst_subst t (fun x f -> f x) in
-        let new_t' = Rewrite_rules.normalise new_t in
-
-        let str_t_recipe =
-          if is_function t_recipe && Symbol.get_arity (root t_recipe) = 0 && Symbol.is_public (root t_recipe)
-          then ""
-          else Printf.sprintf " (computed by \\(%s\\))" (display Latex ~rho:rho Recipe t_recipe)
-        in
-
-        html_script := Printf.sprintf "%s                  <div id=\"action-%se%d\" class=\"action\">%d. Input of \\(%s\\)%s on the channel \\(%s\\).<div>\n"
-          !html_script id (counter+1) !internal_counter_for_trace
-          (display Latex ~rho:rho Protocol new_t') str_t_recipe
-          (Symbol.display Latex ch);
-
-        incr internal_counter_for_trace;
-        print_action_trace (counter+2) q
-    | TrOutput(ch,ax,t,_) :: q ->
-        let new_t = Subst.apply fst_subst t (fun x f -> f x) in
-        let new_t' = Rewrite_rules.normalise new_t in
-
-        html_script := Printf.sprintf "%s                  <div id=\"action-%se%d\" class=\"action\">%d. Output of \\(%s\\) (refered by \\(%s\\)) on the channel \\(%s\\).<div>\n"
-          !html_script id (counter+1) !internal_counter_for_trace
-          (display Latex ~rho:rho Protocol new_t') (display Latex ~rho:rho Recipe (of_axiom ax))
-          (Symbol.display Latex ch);
-
-        incr internal_counter_for_trace;
-        print_action_trace (counter+2) q
-  in
-
-  html_script := Printf.sprintf "%s            <table class=\"processTable\">\n" !html_script;
-  html_script := Printf.sprintf "%s              <tr>\n" !html_script;
-  html_script := Printf.sprintf "%s                <td colspan=\"2\">\n" !html_script;
-  html_script := Printf.sprintf "%s                  <div class=\"title-trace\">%s</div>\n" !html_script title;
-  html_script := Printf.sprintf "%s                  <div class=\"link-trace\">\n" !html_script;
-  html_script := Printf.sprintf "%s                    <button id=\"previous-%s\" type=\"button\" onclick=\"javascript:previous_expansed('%s');\" disabled>Previous</button>\n" !html_script id id;
-  html_script := Printf.sprintf "%s                    <span class=\"description-action\" id=\"desc-%se1\" style=\"display: inline-block;\">Initial process</span>\n" !html_script id;
-  print_action_title 2 rev_trace;
-  html_script := Printf.sprintf "%s                    <button id=\"next-%s\" type=\"button\" onclick=\"javascript:next_expansed('%s');\">Next</button>\n" !html_script id id;
-  html_script := Printf.sprintf "%s                  </div>\n" !html_script;
-  html_script := Printf.sprintf "%s                </td>\n" !html_script;
-  html_script := Printf.sprintf "%s              </tr>\n" !html_script;
-  html_script := Printf.sprintf "%s              <tr class=\"processTableRow\">\n" !html_script;
-  html_script := Printf.sprintf "%s                <td class=\"processDag\">\n" !html_script;
-  html_script := Printf.sprintf "%s%s" !html_script (display_simple_det_process_HTML ~rho:rho ~id:(str_id 1) ~highlight:[] ~hidden:false ~subst:fst_subst (process_of_configuration init_conf));
-  print_trace 2 (process_of_configuration init_conf) rev_trace;
-  html_script := Printf.sprintf "%s                </td>\n" !html_script;
-  html_script := Printf.sprintf "%s                <td class=\"processRenaming\">\n" !html_script;
-  html_script := Printf.sprintf "%s                  <div class=\"subtitle-trace\">Trace</div>\n" !html_script;
-  print_action_trace 2 rev_trace;
-  html_script := Printf.sprintf "%s                </td>\n" !html_script;
-  html_script := Printf.sprintf "%s              </tr>\n" !html_script;
-  html_script := Printf.sprintf "%s            </table>\n" !html_script;
-
-  !html_script
