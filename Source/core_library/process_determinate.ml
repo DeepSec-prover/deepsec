@@ -1166,21 +1166,25 @@ let find_faulty_skeleton_det size_frame conf1 conf2 p1 p2 =
 
 let add_par_mult_arguments_in_conf conf label p_list =
 
-  let (_,p_list') =
-    List.fold_right (fun (_,p) (i,acc) -> match p with
-      | Input _ -> (i+1,[{ label_p = label @ [i]; proc = p }]::acc)
-      | Par pl ->
-          let pl' =
-            List.mapi (fun j p' -> match p' with
-              | Input _ -> { label_p = label @ [i;j+1]; proc = p'}
-              | _ -> Config.internal_error "[process_determinate.ml >> add_par_mult_arguments_in_conf] The function should only be applied when no only input are availables 2"
-            ) pl
-          in
-          (i+1,pl'::acc)
-      | Nil -> (i,acc)
-      | _ -> Config.internal_error "[process_determinate.ml >> add_par_mult_arguments_in_conf] The function should only be applied when no only input are availables"
-    ) p_list (1,[])
+  let rec explore i = function
+    | [] -> []
+    | (_,((Input _) as p))::q ->
+        let list_p = explore (i+1) q in
+        [{ label_p = label @ [i]; proc = p }]::list_p
+    | (_,Par pl)::q ->
+        let pl' =
+          List.mapi (fun j p' -> match p' with
+            | Input _ -> { label_p = label @ [i;j+1]; proc = p'}
+            | _ -> Config.internal_error "[process_determinate.ml >> add_par_mult_arguments_in_conf] The function should only be applied when no only input are availables 2"
+          ) pl
+        in
+        let list_p = explore (i+1) q in
+        pl'::list_p
+    | (_,Nil)::q -> explore i q
+    | _ -> Config.internal_error "[process_determinate.ml >> add_par_mult_arguments_in_conf] The function should only be applied when no only input are availables"
   in
+
+  let p_list' = explore 1 p_list in
   if p_list' = []
   then conf
   else { conf with sure_input_mult_proc = p_list'::conf.sure_input_mult_proc }
