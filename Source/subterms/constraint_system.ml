@@ -265,7 +265,7 @@ let apply_substitution csys subst =
   );
 
   let new_df = DF.apply csys.df subst
-  and new_eqfst = Eq.apply_protocol csys.eqfst subst in
+  and new_eqfst = Eq.apply Protocol csys.eqfst subst in
 
   if Eq.is_bot new_eqfst
   then raise Bot;
@@ -337,8 +337,8 @@ let instantiate_when_solved csys =
   let subst_fst, subst_snd =
     DF.fold (fun (acc_fst,acc_snd) bfct ->
       let k = Symbol.fresh_attacker_name () in
-      let fst = Subst.create_protocol (variable_of (BasicFact.get_protocol_term bfct)) (apply_function k []) in
-      let snd = Subst.create_recipe (BasicFact.get_snd_ord_variable bfct) (apply_function k []) in
+      let fst = Subst.create Protocol (variable_of (BasicFact.get_protocol_term bfct)) (apply_function k []) in
+      let snd = Subst.create Recipe (BasicFact.get_snd_ord_variable bfct) (apply_function k []) in
       (Subst.compose acc_fst fst, Subst.compose acc_snd snd)
     ) (Subst.identity, Subst.identity) csys.df
   in
@@ -453,7 +453,7 @@ let mgs csys =
         then None
         else
           try
-            Some(Subst.unify_protocol [(b_term,term)],Subst.create_recipe b_recipe recipe)
+            Some(Subst.unify Protocol [(b_term,term)],Subst.create Recipe b_recipe recipe)
           with
             | Subst.Not_unifiable -> None
       in
@@ -462,11 +462,11 @@ let mgs csys =
         | None -> f_next ()
         | Some(subst_fst,subst_snd) ->
 
-            let new_eq_fst = Eq.apply_protocol csys.simp_EqFst subst_fst in
+            let new_eq_fst = Eq.apply Protocol csys.simp_EqFst subst_fst in
             if Eq.is_bot new_eq_fst
             then f_next ()
             else
-              let new_eq_snd = Eq.apply_recipe csys.simp_EqSnd subst_snd in
+              let new_eq_snd = Eq.apply Recipe csys.simp_EqSnd subst_snd in
               if Eq.is_bot new_eq_snd
               then f_next ()
               else
@@ -517,8 +517,8 @@ let mgs csys =
           if arity = 0
           then
             let recipe = apply_function symb [] in
-            let subst = Subst.create_recipe x_snd recipe in
-            let new_eq_snd = Eq.apply_recipe csys.simp_EqSnd subst in
+            let subst = Subst.create Recipe x_snd recipe in
+            let new_eq_snd = Eq.apply Recipe csys.simp_EqSnd subst in
             if Eq.is_bot new_eq_snd
             then f_next ()
             else
@@ -549,9 +549,9 @@ let mgs csys =
               let vars_snd_as_term = List.map of_variable vars_snd in
 
               let recipe = apply_function symb vars_snd_as_term in
-              let subst = Subst.create_recipe x_snd recipe in
+              let subst = Subst.create Recipe x_snd recipe in
 
-              let new_eq_snd = Eq.apply_recipe csys.simp_EqSnd subst in
+              let new_eq_snd = Eq.apply Recipe csys.simp_EqSnd subst in
               if Eq.is_bot new_eq_snd
               then f_next ()
               else
@@ -596,7 +596,7 @@ let mgs csys =
                 else (SDF.tail_iter_within_var_type [@tailcall]) (Variable.type_of (BasicFact.get_snd_ord_variable basic_fct)) csys.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
           end
       | Uniformity_Set.Substitution(subst,uniset) ->
-          let new_eqsnd = Eq.apply_recipe csys.simp_EqSnd subst in
+          let new_eqsnd = Eq.apply Recipe csys.simp_EqSnd subst in
           if Eq.is_bot new_eqsnd
           then f_next ()
           else
@@ -637,7 +637,7 @@ let mgs csys =
 
       apply_rules csys init_mgs Set_Snd_Ord_Variable.empty (fun () -> ());
       List.fold_left (fun acc_mgs (mgs,var_list) ->
-        (Subst.create_multiple_recipe (List.fold_left (fun acc (r_1,r_2) -> if is_equal Recipe (of_variable r_1) r_2 then acc else (r_1,r_2)::acc) [] mgs), var_list)::acc_mgs
+        (Subst.create_multiple Recipe (List.fold_left (fun acc (r_1,r_2) -> if is_equal Recipe (of_variable r_1) r_2 then acc else (r_1,r_2)::acc) [] mgs), var_list)::acc_mgs
         ) [] !accumulator
     end
 
@@ -663,7 +663,7 @@ let one_mgs csys =
         then None
         else
           try
-            Some(Subst.unify_protocol [(b_term,term)],Subst.create_recipe b_recipe recipe)
+            Some(Subst.unify Protocol [(b_term,term)],Subst.create Recipe b_recipe recipe)
           with
           | Subst.Not_unifiable -> None
       in
@@ -672,11 +672,11 @@ let one_mgs csys =
         | None -> f_next ()
         | Some(subst_fst,subst_snd) ->
 
-            let new_eq_fst = Eq.apply_protocol csys.simp_EqFst subst_fst in
+            let new_eq_fst = Eq.apply Protocol csys.simp_EqFst subst_fst in
             if Eq.is_bot new_eq_fst
             then f_next ()
             else
-              let new_eq_snd = Eq.apply_recipe csys.simp_EqSnd subst_snd in
+              let new_eq_snd = Eq.apply Recipe csys.simp_EqSnd subst_snd in
               if Eq.is_bot new_eq_snd
               then f_next ()
               else
@@ -721,9 +721,9 @@ let one_mgs csys =
           if arity = 0
           then
             let recipe = apply_function symb [] in
-            let subst = Subst.create_recipe x_snd recipe in
+            let subst = Subst.create Recipe x_snd recipe in
 
-            let new_eq_snd = Eq.apply_recipe csys.simp_EqSnd subst in
+            let new_eq_snd = Eq.apply Recipe csys.simp_EqSnd subst in
             if Eq.is_bot new_eq_snd
             then f_next ()
             else
@@ -753,9 +753,9 @@ let one_mgs csys =
             let vars_snd_as_term = List.map of_variable vars_snd in
 
             let recipe = apply_function symb vars_snd_as_term in
-            let subst = Subst.create_recipe x_snd recipe in
+            let subst = Subst.create Recipe x_snd recipe in
 
-            let new_eq_snd = Eq.apply_recipe csys.simp_EqSnd subst in
+            let new_eq_snd = Eq.apply Recipe csys.simp_EqSnd subst in
             if Eq.is_bot new_eq_snd
             then f_next ()
             else
@@ -799,7 +799,7 @@ let one_mgs csys =
                 else SDF.tail_iter_within_var_type (Variable.type_of (BasicFact.get_snd_ord_variable basic_fct)) csys.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
           end
       | Uniformity_Set.Substitution(subst,uniset) ->
-          let new_eqsnd = Eq.apply_recipe csys.simp_EqSnd subst in
+          let new_eqsnd = Eq.apply Recipe csys.simp_EqSnd subst in
           if Eq.is_bot new_eqsnd
           then f_next ()
           else
@@ -843,7 +843,7 @@ let one_mgs csys =
         raise Not_found
       with
       | Found_mgs (mgs,var_list) ->
-          (Subst.create_multiple_recipe (List.filter_unordered (fun (r_1,r_2) -> not (is_equal Recipe (of_variable r_1) r_2)) mgs), var_list)
+          (Subst.create_multiple Recipe (List.filter_unordered (fun (r_1,r_2) -> not (is_equal Recipe (of_variable r_1) r_2)) mgs), var_list)
     end
 
 let simple_of csys =
@@ -865,7 +865,7 @@ let simple_of_formula csys form =
   let mgu_hypothesis_2 = Subst.compose_restricted mgu_hypothesis (Subst.of_renaming fst_renaming) in
 
   let df_0 = DF.apply csys.df mgu_hypothesis_2
-  and eqfst_0 = Eq.apply_protocol csys.eqfst mgu_hypothesis_2
+  and eqfst_0 = Eq.apply Protocol csys.eqfst mgu_hypothesis_2
   and sdf_0 = SDF.apply csys.sdf Subst.identity mgu_hypothesis_2
   and sub_cons_0 = Uniformity_Set.apply csys.sub_cons Subst.identity mgu_hypothesis_2 in
 
@@ -883,7 +883,7 @@ let simple_of_disequation csys diseq =
   let subst = Diseq.substitution_of diseq in
 
   let df_0 = DF.apply csys.df subst
-  and eqfst_0 = Eq.apply_protocol csys.eqfst subst
+  and eqfst_0 = Eq.apply Protocol csys.eqfst subst
   and sdf_0 = SDF.apply csys.sdf Subst.identity subst
   and sub_cons_0 = Uniformity_Set.apply csys.sub_cons Subst.identity subst in
 
@@ -935,7 +935,7 @@ let simple_of_equality_constructor csys symb term stored_cons =
 
     simple_recipe, simple_csys
   else
-    let fst_subst = Subst.create_multiple_protocol (List.map2 (fun x t -> x,t) stored_cons.Tools.fst_vars args) in
+    let fst_subst = Subst.create_multiple Protocol (List.map2 (fun x t -> x,t) stored_cons.Tools.fst_vars args) in
     let new_diseq = Eq.Mixed.apply stored_cons.Tools.mixed_diseq fst_subst Subst.identity in
 
     let vars_snd = stored_cons.Tools.snd_vars in
@@ -968,13 +968,13 @@ let simple_of_skeleton csys id_sdf id_skel =
   let skel = Rewrite_rules.get_skeleton id_skel in
   let symb = root skel.Rewrite_rules.recipe in
   try
-    let fst_subst = Subst.unify_protocol [term_fact,skel.Rewrite_rules.pos_term] in
+    let fst_subst = Subst.unify Protocol [term_fact,skel.Rewrite_rules.pos_term] in
 
-    let new_eq_fst = Eq.apply_protocol csys.eqfst fst_subst in
+    let new_eq_fst = Eq.apply Protocol csys.eqfst fst_subst in
     if Eq.is_bot new_eq_fst
     then None
     else
-      let snd_subst = Subst.create_recipe skel.Rewrite_rules.pos_vars recipe_fact in
+      let snd_subst = Subst.create Recipe skel.Rewrite_rules.pos_vars recipe_fact in
 
       let new_recipe = Subst.apply snd_subst skel.Rewrite_rules.recipe (fun r f -> f r) in
       let (new_lhs,new_bfct_list) =
@@ -986,8 +986,8 @@ let simple_of_skeleton csys id_sdf id_skel =
       in
 
       let hist = List.find (fun hist -> Symbol.is_equal hist.destructor symb) csys.history_skeleton in
-      let fst_subst_hist = Subst.create_multiple_protocol (List.map2 (fun x t -> (x,t)) hist.fst_vars new_lhs) in
-      let snd_subst_hist = Subst.create_multiple_recipe (List.map2 (fun x t -> (x,t)) hist.snd_vars (get_args new_recipe)) in
+      let fst_subst_hist = Subst.create_multiple Protocol (List.map2 (fun x t -> (x,t)) hist.fst_vars new_lhs) in
+      let snd_subst_hist = Subst.create_multiple Recipe (List.map2 (fun x t -> (x,t)) hist.snd_vars (get_args new_recipe)) in
       let mixed_diseq = Eq.Mixed.apply hist.diseq fst_subst_hist snd_subst_hist in
 
       if Eq.Mixed.is_bot mixed_diseq
@@ -1108,8 +1108,8 @@ let apply_mgs_and_gather csys data_shared (subst_snd,list_var) =
   in
 
   try
-    let subst_fst = Subst.unify_protocol equations in
-    let new_eqfst = Eq.apply_protocol csys.eqfst subst_fst in
+    let subst_fst = Subst.unify Protocol equations in
+    let new_eqfst = Eq.apply Protocol csys.eqfst subst_fst in
 
     if Eq.is_bot new_eqfst
     then raise Bot;
@@ -1182,8 +1182,8 @@ let apply_mgs_from_gathering csys data_shared (subst_snd,list_var) =
   in
 
   try
-    let subst_fst = Subst.unify_protocol equations in
-    let new_eqfst = Eq.apply_protocol csys.eqfst subst_fst in
+    let subst_fst = Subst.unify Protocol equations in
+    let new_eqfst = Eq.apply Protocol csys.eqfst subst_fst in
 
     if Eq.is_bot new_eqfst
     then raise Bot;
@@ -1257,7 +1257,7 @@ let exists_match_mgs csys f_pred =
         then f_next ()
         else
           begin
-            let subst_snd = Subst.create_recipe b_recipe recipe in
+            let subst_snd = Subst.create Recipe b_recipe recipe in
 
             let df_1 = DF.remove csys.simp_DF b_recipe in
 
@@ -1270,7 +1270,7 @@ let exists_match_mgs csys f_pred =
 
             let csys' = { csys with
                 simp_DF = df_1;
-                simp_EqSnd = Eq.apply_recipe csys.simp_EqSnd subst_snd;
+                simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst_snd;
                 simp_SDF = SDF.apply csys.simp_SDF subst_snd Subst.identity;
                 simp_Sub_Cons = sub_cons_1
               }
@@ -1301,13 +1301,13 @@ let exists_match_mgs csys f_pred =
           if arity = 0
           then
             let recipe = apply_function symb [] in
-            let subst = Subst.create_recipe x_snd recipe in
+            let subst = Subst.create Recipe x_snd recipe in
             let df_1 = DF.remove csys.simp_DF x_snd in
             let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity in
             let csys' =
               { csys with
                   simp_DF = df_1;
-                  simp_EqSnd = Eq.apply_recipe csys.simp_EqSnd subst;
+                  simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst;
                   simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
                   simp_Sub_Cons = sub_cons_1
               }
@@ -1324,7 +1324,7 @@ let exists_match_mgs csys f_pred =
               let vars_snd_as_term = List.map of_variable vars_snd in
 
               let recipe = apply_function symb vars_snd_as_term in
-              let subst = Subst.create_recipe x_snd recipe in
+              let subst = Subst.create Recipe x_snd recipe in
 
               let ded_fact_list = List.map2 BasicFact.create vars_snd args_of_term in
 
@@ -1336,7 +1336,7 @@ let exists_match_mgs csys f_pred =
 
               let csys' = { csys with
                   simp_DF = df_2;
-                  simp_EqSnd = Eq.apply_recipe csys.simp_EqSnd subst;
+                  simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst;
                   simp_SDF = SDF.apply csys.simp_SDF subst Subst.identity;
                   simp_Sub_Cons = sub_cons_2
                 }
@@ -1363,7 +1363,7 @@ let exists_match_mgs csys f_pred =
                 (SDF.tail_iter_within_var_type [@tailcall]) (Variable.type_of (BasicFact.get_snd_ord_variable basic_fct)) csys.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
           end
       | Uniformity_Set.Substitution(subst,uniset) ->
-          let new_eqsnd = Eq.apply_recipe csys.simp_EqSnd subst in
+          let new_eqsnd = Eq.apply Recipe csys.simp_EqSnd subst in
 
           if Eq.is_bot new_eqsnd
           then f_next ()
@@ -1441,7 +1441,7 @@ let subsume fine_grained csys1 csys2 =
   in
 
   (* Check if the terms are matchables *)
-  match Subst.match_terms t_list_1 t_list_2' with
+  match Subst.match_terms Protocol t_list_1 t_list_2' with
     | None -> false
     | Some sigma ->
         (* Apply the substitution on csys1 *)
@@ -1473,7 +1473,7 @@ let subsume fine_grained csys1 csys2 =
                   then ()
                   else term_sdf := t :: !term_sdf
                 );
-                not (List.exists (fun t1 -> List.exists (fun t2 -> Subst.is_unifiable [t1,t2]) !term_sdf) !term_cons)
+                not (List.exists (fun t1 -> List.exists (fun t2 -> Subst.is_unifiable Protocol [t1,t2]) !term_sdf) !term_cons)
               end
             else false
           in
@@ -1627,7 +1627,7 @@ module Rule = struct
     let rec internal checked_csys to_check_csys f_next_1 = match exploration_normalisation_uniformity checked_csys to_check_csys with
       | None, checked_csys_1 -> f_continuation checked_csys_1 f_next_1
       | Some(snd_subst,uniset,csys,to_check_csys_1), checked_csys_1 ->
-          let new_eqsnd = Eq.apply_recipe csys.eqsnd snd_subst in
+          let new_eqsnd = Eq.apply Recipe csys.eqsnd snd_subst in
 
           if Eq.is_bot new_eqsnd
           then internal checked_csys_1 to_check_csys_1 f_next_1
@@ -1717,7 +1717,7 @@ module Rule = struct
 
                   accumulator_diseq := diseq :: !accumulator_diseq;
 
-                  let new_eqsnd = Eq.apply_recipe csys.eqsnd mgs in
+                  let new_eqsnd = Eq.apply Recipe csys.eqsnd mgs in
                   let new_i_subst_snd = Subst.compose_restricted_generic csys.i_subst_snd mgs (fun x -> Variable.quantifier_of x = Free) in
 
                   Config.debug (fun () ->
@@ -1823,7 +1823,7 @@ module Rule = struct
             List.fold_left (fun acc_f_next (mgs,l_vars) ->
               let diseq = Diseq.of_substitution mgs l_vars in
               accumulator_diseq := diseq :: !accumulator_diseq;
-              let new_eqsnd = Eq.apply_recipe csys.eqsnd mgs in
+              let new_eqsnd = Eq.apply Recipe csys.eqsnd mgs in
               let new_i_subst_snd = Subst.compose_restricted_generic csys.i_subst_snd mgs (fun x -> Variable.quantifier_of x = Free) in
 
               Config.debug (fun () ->
@@ -1891,7 +1891,7 @@ module Rule = struct
             List.fold_left (fun acc_f_next (mgs,l_vars) ->
               let diseq = Diseq.of_substitution mgs l_vars in
               accumulator_diseq := diseq :: !accumulator_diseq;
-              let new_eqsnd = Eq.apply_recipe csys.eqsnd mgs in
+              let new_eqsnd = Eq.apply Recipe csys.eqsnd mgs in
               let new_i_subst_snd = Subst.compose_restricted_generic csys.i_subst_snd mgs (fun x -> Variable.quantifier_of x = Free) in
 
               Config.debug (fun () ->
@@ -2024,7 +2024,7 @@ module Rule = struct
       | Some(csys,(mgs,l_vars),[]), checked_csys_1 ->
           let diseq = Diseq.of_substitution mgs l_vars in
 
-          let new_eqsnd = Eq.apply_recipe csys.eqsnd mgs in
+          let new_eqsnd = Eq.apply Recipe csys.eqsnd mgs in
           let new_i_subst_snd = Subst.compose_restricted_generic csys.i_subst_snd mgs (fun x -> Variable.quantifier_of x = Free) in
 
           Config.debug (fun () ->
@@ -2086,7 +2086,7 @@ module Rule = struct
       | Some(csys,(mgs,l_vars),to_check_csys_1), checked_csys_1 ->
           let diseq = Diseq.of_substitution mgs l_vars in
 
-          let new_eqsnd = Eq.apply_recipe csys.eqsnd mgs in
+          let new_eqsnd = Eq.apply Recipe csys.eqsnd mgs in
           let new_i_subst_snd = Subst.compose_restricted_generic csys.i_subst_snd mgs (fun x -> Variable.quantifier_of x = Free) in
 
           Config.debug (fun () ->
@@ -2204,7 +2204,7 @@ module Rule = struct
       | None, checked_csys_1 -> f_continuation checked_csys_1 f_next_1
       | Some(csys,(mgs,l_vars),to_check_csys_1), checked_csys_1 ->
           let diseq = Diseq.of_substitution mgs l_vars in
-          let new_eqsnd = Eq.apply_recipe csys.eqsnd mgs in
+          let new_eqsnd = Eq.apply Recipe csys.eqsnd mgs in
           let new_i_subst_snd = Subst.compose_restricted_generic csys.i_subst_snd mgs (fun x -> Variable.quantifier_of x = Free) in
 
           Config.debug (fun () ->
@@ -2309,7 +2309,7 @@ module Rule = struct
       | None, checked_csys_1 -> f_continuation checked_csys_1 f_next_1
       | Some(csys,(mgs,l_vars),to_check_csys_1), checked_csys_1 ->
           let diseq = Diseq.of_substitution mgs l_vars in
-          let new_eqsnd = Eq.apply_recipe csys.eqsnd mgs in
+          let new_eqsnd = Eq.apply Recipe csys.eqsnd mgs in
           let new_i_subst_snd = Subst.compose_restricted_generic csys.i_subst_snd mgs (fun x -> Variable.quantifier_of x = Free) in
 
           Config.debug (fun () ->
@@ -2632,7 +2632,7 @@ module Rule = struct
           else
             begin
               let one_csys = List.hd to_check_csys_1 in
-              let new_eqsnd = Eq.apply_recipe one_csys.eqsnd mgs in
+              let new_eqsnd = Eq.apply Recipe one_csys.eqsnd mgs in
               let new_i_subst_snd = Subst.compose_restricted_generic one_csys.i_subst_snd mgs (fun x -> Variable.quantifier_of x = Free) in
               let data_shared =
                 {
@@ -2968,7 +2968,7 @@ module Rule = struct
 
                       let (nb_vars,eq_name_1) = List.fold_left (fun (i,acc) x -> (i+1,(x, apply_function (Symbol.get_fresh_constant i) [])::acc)) (0,[]) not_instantied_vars in
                       let (_,eq_name_2) = List.fold_left (fun (i,acc) x -> (i+1,(x, apply_function (Symbol.get_fresh_constant i) [])::acc)) (nb_vars,eq_name_1) l_vars_form in
-                      let subst_name = Subst.create_multiple_recipe eq_name_2 in
+                      let subst_name = Subst.create_multiple Recipe eq_name_2 in
 
                       let new_mgs_form = Subst.compose mgs_form subst_name in
                       let new_recipe = Subst.apply new_mgs_form recipe (fun r f -> f r) in
@@ -3041,7 +3041,7 @@ module Rule = struct
             end
           else
             begin
-              let new_eqsnd = Eq.apply_recipe csys.eqsnd mgs_csys in
+              let new_eqsnd = Eq.apply Recipe csys.eqsnd mgs_csys in
               let new_i_subst_snd = Subst.compose_restricted_generic csys.i_subst_snd mgs_csys (fun x -> Variable.quantifier_of x = Free) in
               let data_shared =
                 {
@@ -3318,7 +3318,7 @@ module Rule = struct
             end
           else
             begin
-              let new_eqsnd = Eq.apply_recipe csys.eqsnd mgs_csys in
+              let new_eqsnd = Eq.apply Recipe csys.eqsnd mgs_csys in
               let new_i_subst_snd = Subst.compose_restricted_generic csys.i_subst_snd mgs_csys (fun x -> Variable.quantifier_of x = Free) in
               let data_shared =
                 {

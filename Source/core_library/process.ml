@@ -1794,7 +1794,7 @@ let rec next_output_classic_trace_content tau_actions content v_rho n_rho proc e
                   try
                     let new_disequations =
                       List.fold_left (fun acc diseq ->
-                        let new_diseq = Diseq.apply_and_normalise_protocol equations_modulo diseq in
+                        let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
                         if Diseq.is_top new_diseq
                         then acc
                         else if Diseq.is_bot new_diseq
@@ -1859,7 +1859,7 @@ let rec next_output_classic_trace_content tau_actions content v_rho n_rho proc e
                       try
                         let new_disequations =
                           List.fold_left (fun acc diseq ->
-                            let new_diseq = Diseq.apply_and_normalise_protocol equations_modulo diseq in
+                            let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
                             if Diseq.is_top new_diseq
                             then acc
                             else if Diseq.is_bot new_diseq
@@ -1936,7 +1936,7 @@ let rec next_output_classic_trace_content tau_actions content v_rho n_rho proc e
                     try
                       let new_disequations =
                         List.fold_left (fun acc diseq ->
-                          let new_diseq = Diseq.apply_and_normalise_protocol equations_modulo diseq in
+                          let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
                           if Diseq.is_top new_diseq
                           then acc
                           else if Diseq.is_bot new_diseq
@@ -2005,7 +2005,7 @@ let rec next_output_classic_trace_content tau_actions content v_rho n_rho proc e
                     try
                       let new_disequations =
                         List.fold_left (fun acc diseq ->
-                          let new_diseq = Diseq.apply_and_normalise_protocol equations_modulo diseq in
+                          let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
                           if Diseq.is_top new_diseq
                           then acc
                           else if Diseq.is_bot new_diseq
@@ -2116,7 +2116,7 @@ let rec next_output_classic_trace_content tau_actions content v_rho n_rho proc e
                     try
                       let new_disequations =
                         List.fold_left (fun acc diseq ->
-                          let new_diseq = Diseq.apply_and_normalise_protocol equations_modulo diseq in
+                          let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
                           if Diseq.is_top new_diseq
                           then acc
                           else if Diseq.is_bot new_diseq
@@ -2274,7 +2274,7 @@ and next_input_classic_trace_content tau_actions content v_rho n_rho proc equati
                     try
                       let new_disequations =
                         List.fold_left (fun acc diseq ->
-                          let new_diseq = Diseq.apply_and_normalise_protocol equations_modulo diseq in
+                          let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
                           if Diseq.is_top new_diseq
                           then acc
                           else if Diseq.is_bot new_diseq
@@ -2338,7 +2338,7 @@ and next_input_classic_trace_content tau_actions content v_rho n_rho proc equati
                       try
                         let new_disequations =
                           List.fold_left (fun acc diseq ->
-                            let new_diseq = Diseq.apply_and_normalise_protocol equations_modulo diseq in
+                            let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
                             if Diseq.is_top new_diseq
                             then acc
                             else if Diseq.is_bot new_diseq
@@ -2413,7 +2413,7 @@ and next_input_classic_trace_content tau_actions content v_rho n_rho proc equati
                     try
                       let new_disequations =
                         List.fold_left (fun acc diseq ->
-                          let new_diseq = Diseq.apply_and_normalise_protocol equations_modulo diseq in
+                          let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
                           if Diseq.is_top new_diseq
                           then acc
                           else if Diseq.is_bot new_diseq
@@ -2482,7 +2482,7 @@ and next_input_classic_trace_content tau_actions content v_rho n_rho proc equati
                     try
                       let new_disequations =
                         List.fold_left (fun acc diseq ->
-                          let new_diseq = Diseq.apply_and_normalise_protocol equations_modulo diseq in
+                          let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
                           if Diseq.is_top new_diseq
                           then acc
                           else if Diseq.is_bot new_diseq
@@ -2593,7 +2593,7 @@ and next_input_classic_trace_content tau_actions content v_rho n_rho proc equati
                     try
                       let new_disequations =
                         List.fold_left (fun acc diseq ->
-                          let new_diseq = Diseq.apply_and_normalise_protocol equations_modulo diseq in
+                          let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
                           if Diseq.is_top new_diseq
                           then acc
                           else if Diseq.is_bot new_diseq
@@ -2755,7 +2755,7 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
                     try
                       let new_disequations =
                         List.fold_left (fun acc diseq ->
-                          let new_diseq = Diseq.apply_and_normalise_protocol equations_modulo diseq in
+                          let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
                           if Diseq.is_top new_diseq
                           then acc
                           else if Diseq.is_bot new_diseq
@@ -2833,7 +2833,7 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
                           try
                             let new_disequations =
                               List.fold_left (fun acc diseq ->
-                                let new_diseq = Diseq.apply_and_normalise_protocol equations_modulo diseq in
+                                let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
                                 if Diseq.is_top new_diseq
                                 then acc
                                 else if Diseq.is_bot new_diseq
@@ -2918,7 +2918,7 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
                         try
                           let new_disequations =
                             List.fold_left (fun acc diseq ->
-                              let new_diseq = Diseq.apply_and_normalise_protocol equations_modulo diseq in
+                              let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
                               if Diseq.is_top new_diseq
                               then acc
                               else if Diseq.is_bot new_diseq
@@ -2992,7 +2992,7 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
                     try
                       let new_disequations =
                         List.fold_left (fun acc diseq ->
-                          let new_diseq = Diseq.apply_and_normalise_protocol equations_modulo diseq in
+                          let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
                           if Diseq.is_top new_diseq
                           then acc
                           else if Diseq.is_bot new_diseq
@@ -3105,7 +3105,7 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
                     try
                       let new_disequations =
                         List.fold_left (fun acc diseq ->
-                          let new_diseq = Diseq.apply_and_normalise_protocol equations_modulo diseq in
+                          let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
                           if Diseq.is_top new_diseq
                           then acc
                           else if Diseq.is_bot new_diseq
@@ -3263,7 +3263,7 @@ and next_input_private_trace_content tau_actions content v_rho n_rho proc equati
                     try
                       let new_disequations =
                         List.fold_left (fun acc diseq ->
-                          let new_diseq = Diseq.apply_and_normalise_protocol equations_modulo diseq in
+                          let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
                           if Diseq.is_top new_diseq
                           then acc
                           else if Diseq.is_bot new_diseq
@@ -3334,7 +3334,7 @@ and next_input_private_trace_content tau_actions content v_rho n_rho proc equati
                             try
                               let new_disequations =
                                 List.fold_left (fun acc diseq ->
-                                  let new_diseq = Diseq.apply_and_normalise_protocol equations_modulo diseq in
+                                  let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
                                   if Diseq.is_top new_diseq
                                   then acc
                                   else if Diseq.is_bot new_diseq
@@ -3417,7 +3417,7 @@ and next_input_private_trace_content tau_actions content v_rho n_rho proc equati
                         try
                           let new_disequations =
                             List.fold_left (fun acc diseq ->
-                              let new_diseq = Diseq.apply_and_normalise_protocol equations_modulo diseq in
+                              let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
                               if Diseq.is_top new_diseq
                               then acc
                               else if Diseq.is_bot new_diseq
@@ -3490,7 +3490,7 @@ and next_input_private_trace_content tau_actions content v_rho n_rho proc equati
                     try
                       let new_disequations =
                         List.fold_left (fun acc diseq ->
-                          let new_diseq = Diseq.apply_and_normalise_protocol equations_modulo diseq in
+                          let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
                           if Diseq.is_top new_diseq
                           then acc
                           else if Diseq.is_bot new_diseq
@@ -3603,7 +3603,7 @@ and next_input_private_trace_content tau_actions content v_rho n_rho proc equati
                     try
                       let new_disequations =
                         List.fold_left (fun acc diseq ->
-                          let new_diseq = Diseq.apply_and_normalise_protocol equations_modulo diseq in
+                          let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
                           if Diseq.is_top new_diseq
                           then acc
                           else if Diseq.is_bot new_diseq

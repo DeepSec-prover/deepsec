@@ -546,16 +546,12 @@ module Subst : sig
   (** [create at x t] creates the substitution {% $\sigma = \\{x \rightarrow t\\}$. %}
       @raise Debug.Internal_error if the {% $\sigma$ is not acyclic, i.e., if $x \in \vars{t}$, or it the type is not
       satisfied, i.e., if $x \in \Xdeuxi{i}$ and $t \not\in \T(\F,\Xdeux_i \cup \AX_i)$. \highdebug %}*)
-  val create_protocol : fst_ord_variable -> protocol_term -> (fst_ord, name) t
-
-  val create_recipe : snd_ord_variable -> recipe -> (snd_ord, axiom) t
+  val create : ('a, 'b) atom -> ('a, 'b) variable -> ('a, 'b) term -> ('a, 'b) t
 
   (** [create_multiple at] {% $\ell$ creates the substitution $\sigma = \\{x \rightarrow t \mid (x,t) \in \ell \\}$. %}
       @raise Debug.Internal_error if the {% $\sigma$ is not acyclic or it the types are not
       satisfied. \highdebug %}*)
-  val create_multiple_protocol : (fst_ord_variable * protocol_term) list -> (fst_ord, name) t
-
-  val create_multiple_recipe : (snd_ord_variable * recipe) list -> (snd_ord, axiom) t
+  val create_multiple : ('a, 'b) atom -> (('a, 'b) variable * ('a, 'b) term) list -> ('a, 'b) t
 
   (** [of_renaming] {% $\rho$ casts the renaming $\rho$ as a substitution. %} *)
   val of_renaming : ('a, 'b) Variable.Renaming.t -> ('a, 'b) t
@@ -563,14 +559,14 @@ module Subst : sig
   (** [equations_of] {% $\sigma$ %} returns the list [ ({%$x_1$},{%$t_1$}),...,({%$x_1$},{%$t_1$})] where {% $\sigma = \\{ x_i \rightarrow t_i \\}_i^n$. %}*)
   val equations_of : ('a, 'b) t -> (('a, 'b) term * ('a, 'b) term) list
 
-  val split_domain : (snd_ord, axiom) t -> (snd_ord_variable -> bool) -> (snd_ord, axiom) t * (snd_ord, axiom) t
+  val split_domain : ('a, 'b) t -> (('a, 'b) variable -> bool) -> ('a, 'b) t * ('a, 'b) t
 
-  val split_domain_on_term : (snd_ord, axiom) t -> (recipe -> bool) -> (snd_ord, axiom) t * (snd_ord, axiom) t
+  val split_domain_on_term : ('a, 'b) t -> (('a, 'b) term -> bool) -> ('a, 'b) t * ('a, 'b) t
 
   (** [union] {% $\sigma_1$~$\sigma_2$ returns the substitution $\sigma$ such that $\Dom{\sigma} = \Dom{\sigma_1} \cup \Dom{\sigma_2}$ and
       for all $i= 1,2$, for all $x \in \Dom{\sigma_i}$, $x\sigma = x\sigma_i$.%}
       @raise Internal_error if {% $\Dom{\sigma_1} \cap \Dom{\sigma_2} \neq \emptyset$.%} *)
-  val union : (snd_ord, axiom) t -> (snd_ord, axiom) t -> (snd_ord, axiom) t
+  val union : ('a, 'b) t -> ('a, 'b) t -> ('a, 'b) t
 
   (** [compose] {% $\sigma_1$~$\sigma_2$ returns the substitution $\sigma_1\sigma_2$. %}
       @raise Debug.Internal_error if {% $\Dom{\sigma_1} \cap \Dom{\sigma_2} \neq \emptyset$ or if  the resulting substitution is not acyclic. \highdebug %} *)
@@ -602,8 +598,15 @@ module Subst : sig
 
   (** {3 Testing} *)
 
+  (** [is_equal_equations at] {% $\sigma_1$~$\sigma_2$ returns %} [true] if the formulas {% $\bigwedge_{x \in \Dom{\sigma_1}} x \eqs x\sigma_1$
+      and $\bigwedge_{x \in \Dom{\sigma_2}} x \eqs x\sigma_2$ have same solutions. %}*)
+  val is_equal_equations : ('a, 'b) atom -> ('a, 'b) t -> ('a, 'b) t -> bool
+
   (** [is_identity s] returns [true] iff [s] is the identity substitution. *)
   val is_identity : ('a, 'b) t -> bool
+
+  (** [is_in_domain s x] returns [true] iff the variable [x] is in the domain of [s].*)
+  val is_in_domain : ('a, 'b) t -> ('a, 'b) variable -> bool
 
   val not_in_domain : (snd_ord, axiom) t -> (snd_ord, axiom) variable list -> (snd_ord, axiom) variable list
 
@@ -639,20 +642,23 @@ module Subst : sig
         \item $x$ is free implies $y$ is free
       \end{itemize} %}
       @raise Not_unifiable if no unification is possible. *)
-  val unify_protocol : (protocol_term * protocol_term) list -> (fst_ord, name) t
-
-  val unify_recipe : (recipe * recipe) list -> (snd_ord, axiom) t
+  val unify : ('a, 'b) atom -> (('a, 'b) term * ('a, 'b) term) list -> ('a, 'b) t
 
   (** [is_unifiable at l] returns [true] iff the pairs of term in [l] are unifiable, {% $\mguset{l} \neq \bot$. %} *)
-  val is_unifiable : (protocol_term * protocol_term) list -> bool
+  val is_unifiable : ('a, 'b) atom -> (('a, 'b) term * ('a, 'b) term) list -> bool
 
   exception Not_matchable
+
+  (** [is_matchable at [{% $u_1$ %};...;{% $u_n$ %}] [{% $v_1$ %};...;{% $v_n$ %}]] returns [true] iff there exists {% a substitution $\sigma$ such that
+      $\forall i \in \mathbb{N}^n_1$, $u_i\sigma = v_i$. Note that we allow $\sigma$ to be cyclic and to not respect types (for second-order variables). %}
+      @raise Internal_error if the two lists do not have the same length. *)
+  val is_matchable : ('a, 'b) atom -> ('a, 'b) term list -> ('a, 'b) term list -> bool
 
   (** [match_terms at [{% $u_1$ %};...;{% $u_n$ %}] [{% $v_1$ %};...;{% $v_n$ %}]] returns the substitution {% $\sigma$ such that
       $\forall i \in \mathbb{N}^n_1$, $u_i\sigma = v_i$. Note that we allow $\sigma$ to be cyclic and to not respect types (for second-order variables). %}
       @raise Not_matchable if the two lists are not matchable.
       @raise Internal_error if the two lists do not have the same length. *)
-  val match_terms : protocol_term list -> protocol_term list -> (fst_ord, name) t option
+  val match_terms : ('a, 'b) atom -> ('a, 'b) term list -> ('a, 'b) term list -> ('a, 'b) t option
 
   (** [is_extended_by at] {% $\sigma_1$~$\sigma_2$ %} returns [true] iff {% $\exists \sigma. \sigma_2 = \sigma_1\sigma$. %}*)
   val is_extended_by : ('a, 'b) atom -> ('a, 'b) t -> ('a, 'b) t -> bool
@@ -710,9 +716,7 @@ module Diseq : sig
   (** [apply_and_normalise at] {% $\sigma$~$\phi$ applies the substitution $\sigma$ on $\phi$ and normalise
       the disequation, i.e., returns $\phi\sigma\Vnorm$. %}
       @raise Debug.Internal_error if {% $\sigma$ %} contains universal variables. {% \highdebug %} *)
-  val apply_and_normalise_protocol : (fst_ord, name) Subst.t -> (fst_ord, name) t -> (fst_ord, name) t
-
-  val apply_and_normalise_recipe : (snd_ord, axiom) Subst.t -> (snd_ord, axiom) t -> (snd_ord, axiom) t
+  val apply_and_normalise : ('a, 'b) atom -> ('a, 'b) Subst.t -> ('a, 'b) t -> ('a, 'b) t
 
   (** {4 Display} *)
 

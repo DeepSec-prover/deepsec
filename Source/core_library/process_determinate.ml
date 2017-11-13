@@ -1492,7 +1492,7 @@ let rec normalise_simple_det_process proc else_branch equations disequations f_c
                   try
                     let new_disequations =
                       List.fold_left (fun acc diseq ->
-                        let new_diseq = Diseq.apply_and_normalise_protocol equations_modulo diseq in
+                        let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
                         if Diseq.is_top new_diseq
                         then acc
                         else if Diseq.is_bot new_diseq
@@ -1555,7 +1555,7 @@ let rec normalise_simple_det_process proc else_branch equations disequations f_c
                   try
                     let new_disequations =
                       List.fold_left (fun acc diseq ->
-                        let new_diseq = Diseq.apply_and_normalise_protocol equations_modulo diseq in
+                        let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
                         if Diseq.is_top new_diseq
                         then acc
                         else if Diseq.is_bot new_diseq
@@ -1616,7 +1616,7 @@ let rec normalise_simple_det_process proc else_branch equations disequations f_c
                     try
                       let new_disequations =
                         List.fold_left (fun acc diseq ->
-                          let new_diseq = Diseq.apply_and_normalise_protocol equations_modulo diseq in
+                          let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
                           if Diseq.is_top new_diseq
                           then acc
                           else if Diseq.is_bot new_diseq

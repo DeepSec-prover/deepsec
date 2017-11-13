@@ -240,10 +240,7 @@ module Eq : sig
   val wedge : ('a, 'b) t -> ('a, 'b) Diseq.t -> ('a, 'b) t
 
   (** [apply at] {% $\phi$~$\sigma$ returns $\phi\sigma\Vnorm$ following the normalisation rules from \citepaper{Figure}{fig:normalisation_formula}. %}*)
-  val apply_protocol : (fst_ord, name) t -> (fst_ord, name) Subst.t -> (fst_ord, name) t
-
-  (** [apply at] {% $\phi$~$\sigma$ returns $\phi\sigma\Vnorm$ following the normalisation rules from \citepaper{Figure}{fig:normalisation_formula}. %}*)
-  val apply_recipe : (snd_ord, axiom) t -> (snd_ord, axiom) Subst.t -> (snd_ord, axiom) t
+  val apply : ('a, 'b) atom -> ('a, 'b) t -> ('a, 'b) Subst.t -> ('a, 'b) t
 
   (** [extract at] {% $\phi$ %} returns a pair {% $(\forall \tilde{x}. \psi, \phi')$ such that $\phi = \forall \tilde{x}. \psi \wedge \phi'$ when $\phi$ is not top or bot, otherwise it returns%} [None] {% and $\phi$. %} *)
   val extract : ('a, 'b) t -> ('a, 'b) Diseq.t * ('a, 'b) t
@@ -264,6 +261,9 @@ module Eq : sig
 
   (** [is_top] {% $\phi$ returns %} [true] if and only if {% $\phi = \top$.%} *)
   val is_top : ('a, 'b) t -> bool
+
+  (** [implies at] {% $\phi$~$t_1$~$t_2$ returns true if and only if $\phi \Rightarrow t_1 \neqs t_2$ is a tautology.%}*)
+  val implies : ('a, 'b) atom -> ('a, 'b) t -> (('a, 'b) term * ('a, 'b) term) list -> bool
 
   (** {3 Display} *)
 
