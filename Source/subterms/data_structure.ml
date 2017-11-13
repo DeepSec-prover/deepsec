@@ -1229,13 +1229,13 @@ module Eq = struct
 
   exception Is_Bot
 
-  let apply at form subst = match form with
+  let apply_protocol form subst = match form with
     | Top -> Top
     | Bot -> Bot
     | Conj diseq_l ->
         try
           let diseq_l_1 = List.fold_left (fun l diseq ->
-            let diseq_1 = Diseq.apply_and_normalise at subst diseq in
+            let diseq_1 = Diseq.apply_and_normalise_protocol subst diseq in
             if Diseq.is_bot diseq_1
             then raise Is_Bot
             else if Diseq.is_top diseq_1
@@ -1250,12 +1250,26 @@ module Eq = struct
         with
         | Is_Bot -> Bot
 
-  let implies at form term_list =
-    try
-      let subst = Subst.unify at term_list in
-      apply at form subst = Bot
-    with
-      | Subst.Not_unifiable -> true
+  let apply_recipe form subst = match form with
+    | Top -> Top
+    | Bot -> Bot
+    | Conj diseq_l ->
+        try
+          let diseq_l_1 = List.fold_left (fun l diseq ->
+            let diseq_1 = Diseq.apply_and_normalise_recipe subst diseq in
+            if Diseq.is_bot diseq_1
+            then raise Is_Bot
+            else if Diseq.is_top diseq_1
+            then l
+            else diseq_1::l
+            ) [] diseq_l
+          in
+
+          if diseq_l_1 = []
+          then Top
+          else Conj diseq_l_1
+        with
+        | Is_Bot -> Bot
 
   let extract = function
     | Conj [diseq] -> diseq, Top
@@ -1936,7 +1950,7 @@ module Uniformity_Set = struct
         ) uniset.multiple;
 
         try
-          let subst = Subst.unify Recipe !list_of_equations in
+          let subst = Subst.unify_recipe !list_of_equations in
           Config.debug (fun () ->
             if Subst.is_identity subst
             then Config.internal_error "[data_structure.ml >> unify_multiple_opt] The substitution can't be the identity."
