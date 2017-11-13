@@ -300,6 +300,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                       let block = create_block label in
                       let block_1 = add_variable_in_block var_X block in
                       let snd_subst = Constraint_system.get_substitution_solution Recipe csys in
+                      let size_block = List.length complete_blocks_1 in
                       if is_block_list_authorized complete_blocks_1 block_1 snd_subst
                       then
                         let csys_left = Constraint_system.replace_additional_data csys_left { symb_left with configuration = conf_left } in
@@ -308,7 +309,8 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
                         let equiv_pbl_1 = { equiv_pbl with complete_blocks = complete_blocks_1; ongoing_block = Some block_1; csys_set = csys_set_2 } in
                         subsume_continuation equiv_pbl_1 f_next
-                      else f_next ()
+                      else
+                        f_next ()
                   | Faulty (is_left,f_conf,f_action) ->
                       let wit_csys, symb_proc = if is_left then csys_left, symb_left else csys_right, symb_right in
                       begin match f_action with
