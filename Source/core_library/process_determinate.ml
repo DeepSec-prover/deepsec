@@ -910,21 +910,10 @@ let rec compare_channels ch1 ch2 = match ch1, ch2 with
 
 let inter_mult_channels (chl_l_l1:symbol list list list) (chl_l_l2:symbol list list list) =
 
-  let rec common_parts (chl_l1:symbol list list) (chl_l2:symbol list list) = match chl_l1, chl_l2 with
-    | [], [] -> ([],[],[])
-    | [], _ -> ([],[],chl_l2)
-    | _, [] -> ([],chl_l1,[])
-    | chl1::q1, chl2::q2 ->
-        match compare_channels chl1 chl2 with
-          | 0 ->
-              let (same,out1,out2) = common_parts q1 q2 in
-              (chl1::same,out1,out2)
-          | -1 ->
-              let (same,out1,out2) = common_parts q1 chl_l2 in
-              (same,chl1::out1,out2)
-          | _ ->
-              let (same,out1,out2) = common_parts chl_l1 q2 in
-              (same,out1,chl2::out2)
+  let common_parts (chl_l1:symbol list list) (chl_l2:symbol list list) =
+    let same,out1 = List.partition_unordered (exists_list_channel chl_l2) chl_l1 in
+    let out2 = List.filter_unordered (fun chl2 -> not (exists_list_channel same chl2)) chl_l2 in
+    same,out1,out2
   in
 
   let kept_channels = ref [] in
@@ -1009,6 +998,8 @@ let compress_initial_configuration conf1 conf2 =
   let comp_p1,_ = compress_process SymbolSet.empty p1
   and comp_p2,_ = compress_process SymbolSet.empty p2 in
 
+
+
   let extracted_ch1 = retrieve_par_mult_channels comp_p1
   and extracted_ch2 = retrieve_par_mult_channels comp_p2 in
 
@@ -1016,6 +1007,13 @@ let compress_initial_configuration conf1 conf2 =
 
   let comp_p1' = decompress_process inter_channel comp_p1
   and comp_p2' = decompress_process inter_channel comp_p2 in
+
+  Config.debug (fun () ->
+    Printf.printf "Configuration 1:\n%s" (display_simple_det_process_HTML comp_p1');
+    Printf.printf "Configuration 2:\n%s" (display_simple_det_process_HTML comp_p2');
+
+    flush_all ();
+  );
 
   let conf1' = { conf1 with sure_input_proc = [ { det1 with proc = comp_p1'} ] }
   and conf2' = { conf1 with sure_input_proc = [ { det1 with proc = comp_p2'} ] } in
