@@ -796,8 +796,6 @@ module Symbol = struct
 
   let accumulator_nb_symb = ref 0
 
-  let dummy_constant = ref None
-
   let all_constructors = ref []
 
   let all_destructors = ref []
@@ -829,12 +827,11 @@ module Symbol = struct
       all_d : symbol list ;
       nb_c : int ;
       nb_d : int ;
-      cst : symbol
+      nb_symb : int
     }
 
   let set_up_signature setting =
-    accumulator_nb_symb := setting.nb_c + setting.nb_d;
-    dummy_constant := Some setting.cst;
+    accumulator_nb_symb := setting.nb_symb;
     all_constructors := setting.all_c;
     all_destructors := setting.all_d;
     all_tuple := setting.all_t;
@@ -854,12 +851,12 @@ module Symbol = struct
       all_d = !all_destructors;
       nb_c = !number_of_constructors;
       nb_d = !number_of_destructors;
-      cst = (match !dummy_constant with None -> Config.internal_error "[term.ml >> get_setting] A constant should be present" | Some c -> c)
+      nb_symb = !accumulator_nb_symb
     }
 
   (********* Symbols functions *********)
 
-  let is_equal sym_1 sym_2 =
+  let is_equal (sym_1:symbol) (sym_2:symbol) =
     sym_1 == sym_2
 
   let is_constructor sym =
@@ -871,10 +868,6 @@ module Symbol = struct
   let is_destructor sym = match sym.cat with
     | Destructor _ -> true
     | _ -> false
-
-  let reg_proj = Str.regexp "proj_{\\([0-9]+\\),\\([0-9]+\\)}"
-
-  let is_proj sym = Str.string_match reg_proj sym.name 0
 
   let is_public sym = sym.public
 
@@ -901,16 +894,14 @@ module Symbol = struct
   let new_constructor ar public is_name s =
     let symb = { name = s; arity = ar; cat = Constructor; index_s = !accumulator_nb_symb; public = public; represents = (if is_name then UserName else UserDefined) } in
     incr accumulator_nb_symb;
-    all_constructors := List.sort order (symb::!all_constructors);
-    number_of_constructors := !number_of_constructors + 1;
-    if ar = 0 && public
-    then dummy_constant := Some symb;
+    all_constructors := symb::!all_constructors;
+    incr number_of_constructors;
     symb
 
   let new_destructor ar public s rw_rules =
     let symb = { name = s; arity = ar; cat = Destructor rw_rules; index_s = !accumulator_nb_symb; public = public; represents = UserDefined } in
     incr accumulator_nb_symb;
-    all_destructors := List.sort order (symb::!all_destructors);
+    all_destructors := symb::!all_destructors;
     number_of_destructors := !number_of_destructors + 1;
     symb
 
@@ -929,8 +920,6 @@ module Symbol = struct
             represents = UserDefined
           }
         in
-        all_destructors := symb :: !all_destructors;
-        incr number_of_destructors;
         incr accumulator_nb_symb;
         new_projection (symb::acc) tuple_symb (i-1)
 
@@ -941,7 +930,7 @@ module Symbol = struct
       begin
         let symb = { name = (Printf.sprintf "tuple%d" ar); arity = ar; cat = Tuple; index_s = !accumulator_nb_symb; public = true; represents = UserDefined } in
         incr accumulator_nb_symb;
-        all_constructors := List.sort order (symb::!all_constructors);
+        all_constructors := symb::!all_constructors;
         all_tuple := symb::!all_tuple;
         number_of_constructors := !number_of_constructors + 1;
 
@@ -956,35 +945,24 @@ module Symbol = struct
       Hashtbl.find special_constructor n
     with
     | Not_found ->
-        let c = { name = "__dummy_c"; arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
+        let c = { name = "_c"; arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
         Hashtbl.add special_constructor n c;
         incr accumulator_nb_symb;
         c
-
-  let get_constant () = match !dummy_constant with
-    | None ->
-        let symb = { name = "_c"; arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
-        incr accumulator_nb_symb;
-        all_constructors := List.sort order (symb::!all_constructors);
-        number_of_constructors := !number_of_constructors + 1;
-        dummy_constant := Some symb;
-        symb
-    | Some c -> c
 
   let fresh_attacker_name =
     let acc = ref 0 in
 
     let f () =
       let c = { name = (Printf.sprintf "kI_%d" !acc); arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
-      incr accumulator_nb_symb;
-      all_constructors := List.sort order (c::!all_constructors);
-      number_of_constructors := !number_of_constructors + 1;
       incr acc;
       c
     in
     f
 
   (******** Display function *******)
+
+  let reg_proj = Str.regexp "proj_{\\([0-9]+\\),\\([0-9]+\\)}"
 
   let display out f =
     if Str.string_match reg_proj f.name 0
@@ -1584,6 +1562,28 @@ module Subst = struct
   let apply subst elt f_iter_elt =
     if subst = []
     then elt
+    else
+      begin
+        Config.debug (fun () ->
+          if List.exists (fun (v,_) -> v.link <> NoLink) subst
+          then Config.internal_error "[term.ml >> Subst.apply_substitution] Variables in the domain should not be linked"
+        );
+
+        (* Link the variables of the substitution *)
+        List.iter (fun (v,t) -> v.link <- (TLink t)) subst;
+
+        (* Apply the substitution on the element *)
+        let new_elt = f_iter_elt elt apply_on_term in
+
+        (* Unlink the variables of the substitution *)
+        List.iter (fun (v,_) -> v.link <- NoLink) subst;
+
+        new_elt
+      end
+
+  let apply_forced subst elt f_iter_elt =
+    if subst = []
+    then f_iter_elt elt (fun t -> t)
     else
       begin
         Config.debug (fun () ->
@@ -3328,11 +3328,14 @@ module Rewrite_rules = struct
     in
 
     (* Generate optimised skeletons *)
+
+    let dest_without_proj = !Symbol.all_destructors in
+
     List.iter (fun f ->
       if f.public
       then
       match f.cat with
-      | Destructor rw_rules ->
+      | Destructor rw_rules->
           List.iter (fun (args,r) ->
             explore_skel_term_list (fun x_snd x_term recipe_l b_fct_list ->
               let skel =
@@ -3361,7 +3364,7 @@ module Rewrite_rules = struct
             ) args
           ) rw_rules
       | _ -> Config.internal_error "[term.ml >> Tools_Subterm.initialise_skeletons] There should not be any constructor function symbols in this list."
-    ) !Symbol.all_destructors;
+    ) dest_without_proj;
 
     (* Generate the array *)
 
@@ -3407,6 +3410,21 @@ module Rewrite_rules = struct
     if nb_skeletons <> 0
     then index_skeletons := generate_index (nb_skeletons - 1)
 
+  let retrieve_stored_skeletons () = Array.to_list !storage_skeletons
+
+  let setup_stored_skeletons l =
+    let ar = Array.of_list l in
+    let n = Array.length ar in
+
+    let rec generate_index = function
+      | 0 -> [0]
+      | n -> n::(generate_index (n-1))
+    in
+
+    if n <> 0
+    then index_skeletons := generate_index (n - 1);
+    storage_skeletons := ar
+
   (****** Access function ******)
 
   let get_skeleton i = !storage_skeletons.(i).skeleton
@@ -3432,7 +3450,7 @@ module Rewrite_rules = struct
   (****** Display function ******)
 
   let display_all_rewrite_rules out ?(per_line = 3) ?(tab = 0) rho =
-    let dest_without_proj = List.filter (fun f -> not (Symbol.is_proj f)) !Symbol.all_destructors in
+    let dest_without_proj = !Symbol.all_destructors in
 
     match out with
       | Testing ->
@@ -4045,11 +4063,17 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) (Eq: EqMixed)= struct
       mixed_diseq : Eq.t
     }
 
-  let storage_functions: stored_constructor HashtblSymb.t ref = ref (HashtblSymb.create 0)
+  let storage_functions: stored_constructor HashtblSymb.t = (HashtblSymb.create 10)
+
+  let retrieve_stored_constructors () =
+    HashtblSymb.fold (fun symb stored acc -> (symb,stored)::acc) storage_functions []
+
+  let setup_stored_constructors l =
+    HashtblSymb.reset storage_functions;
+    List.iter (fun (symb,stored) -> HashtblSymb.add storage_functions symb stored) l
 
   let initialise_constructor () =
     let list_constructor = List.filter_unordered (fun f -> (not (Symbol.is_tuple f)) && f.public && (f.arity > 0)) !Symbol.all_constructors in
-    let nb_cons = List.length list_constructor in
 
     let list_single_skeletons =
       let list_storage = Array.to_list !Rewrite_rules.storage_skeletons in
@@ -4124,8 +4148,6 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) (Eq: EqMixed)= struct
       ) args
     ) list_single_skeletons;
 
-    storage_functions := HashtblSymb.create nb_cons;
-
     List.iter (fun f ->
       let snd_vars = Variable.fresh_list Recipe Existential (-1) f.arity in
       let fst_vars = Variable.fresh_list Protocol Existential NoType f.arity in
@@ -4169,9 +4191,8 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) (Eq: EqMixed)= struct
         if not (Eq.is_bot diseq_form) && not (Eq.is_top diseq_form)
         then Printf.printf "Function symbol with special diseq : %s\n" (Symbol.display Latex f);
       );
-      HashtblSymb.add !storage_functions f { snd_vars = snd_vars; fst_vars = fst_vars ; mixed_diseq = diseq_form }
+      HashtblSymb.add storage_functions f { snd_vars = snd_vars; fst_vars = fst_vars ; mixed_diseq = diseq_form }
     ) list_constructor
 
-  let get_stored_constructor f =
-    HashtblSymb.find !storage_functions f
+  let get_stored_constructor f = HashtblSymb.find storage_functions f
 end

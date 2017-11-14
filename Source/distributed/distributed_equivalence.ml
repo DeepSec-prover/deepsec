@@ -35,7 +35,6 @@ struct
 
   type job =
     {
-      cst : symbol;
       variable_counter : int;
       name_counter : int;
       all_tuples : symbol list;
@@ -44,6 +43,9 @@ struct
       all_destructors : symbol list;
       number_of_constructors : int;
       number_of_destructors : int;
+      number_of_symbols : int;
+      stored_skeletons : Rewrite_rules.stored_skeleton list;
+      stored_constructors : (symbol * Data_structure.Tools.stored_constructor) list;
 
       data_equiv : data_equivalence
     }
@@ -71,14 +73,18 @@ struct
         Symbol.all_d = job.all_destructors;
         Symbol.nb_c = job.number_of_constructors;
         Symbol.nb_d = job.number_of_destructors;
-        Symbol.cst = job.cst
+        Symbol.nb_symb = job.number_of_symbols
       };
+    Rewrite_rules.setup_stored_skeletons job.stored_skeletons;
+    Data_structure.Tools.setup_stored_constructors job.stored_constructors;
 
     match job.data_equiv with
       | DStandard data ->
           Config.display_trace := data.display_trace;
           let rec apply_rules csys_set frame_size f_next =
-            Equivalence.apply_one_transition_and_rules_for_trace_equivalence data.chosen_semantics csys_set frame_size apply_rules f_next
+            Equivalence.apply_one_transition_and_rules_for_trace_equivalence data.chosen_semantics csys_set frame_size (fun csys_set size f_next ->
+              apply_rules csys_set size f_next
+            ) f_next
           in
 
           begin try
@@ -89,7 +95,9 @@ struct
           end
       | DDeterminate data ->
           let rec apply_rules equiv_pbl f_next =
-            Equivalence_determinate.apply_one_transition_and_rules equiv_pbl apply_rules f_next
+            Equivalence_determinate.apply_one_transition_and_rules equiv_pbl (fun eq_pbl_1 f_next_1 ->
+              apply_rules eq_pbl_1 f_next_1
+            ) f_next
           in
 
           begin try
@@ -118,9 +126,10 @@ struct
         Symbol.all_d = job.all_destructors;
         Symbol.nb_c = job.number_of_constructors;
         Symbol.nb_d = job.number_of_destructors;
-        Symbol.cst = job.cst
+        Symbol.nb_symb = job.number_of_symbols
       };
-
+    Rewrite_rules.setup_stored_skeletons job.stored_skeletons;
+    Data_structure.Tools.setup_stored_constructors job.stored_constructors;
 
     match job.data_equiv with
       | DStandard data ->
@@ -148,6 +157,7 @@ struct
                 f_next_1 ()
               )
               (fun () -> ());
+
             if !job_list = []
             then Result Equivalent
             else Jobs !job_list
@@ -160,6 +170,11 @@ end
 module DistribEquivalence = Distrib.Distrib(EquivJob)
 
 let trace_equivalence semantics proc1 proc2 =
+
+  (*** Initialise skeletons ***)
+
+  Rewrite_rules.initialise_skeletons ();
+  Data_structure.Tools.initialise_constructor ();
 
   (*** Generate the initial constraint systems ***)
 
@@ -206,7 +221,6 @@ let trace_equivalence semantics proc1 proc2 =
 
   let job =
     {
-      EquivJob.cst = setting.Term.Symbol.cst;
       EquivJob.variable_counter = v_counter;
       EquivJob.name_counter = n_counter;
       EquivJob.all_tuples = setting.Term.Symbol.all_t;
@@ -215,6 +229,9 @@ let trace_equivalence semantics proc1 proc2 =
       EquivJob.all_destructors = setting.Term.Symbol.all_d;
       EquivJob.number_of_constructors = setting.Term.Symbol.nb_c;
       EquivJob.number_of_destructors = setting.Term.Symbol.nb_d;
+      EquivJob.number_of_symbols = setting.Term.Symbol.nb_symb;
+      EquivJob.stored_skeletons = Rewrite_rules.retrieve_stored_skeletons ();
+      EquivJob.stored_constructors = Data_structure.Tools.retrieve_stored_constructors ();
 
       EquivJob.data_equiv = EquivJob.DStandard data_standard
     }
@@ -237,6 +254,11 @@ let trace_equivalence semantics proc1 proc2 =
 
 let trace_equivalence_determinate conf1 conf2 =
 
+  (*** Initialise skeletons ***)
+
+  Rewrite_rules.initialise_skeletons ();
+  Data_structure.Tools.initialise_constructor ();
+
   (*** Generate the initial constraint systems ***)
 
   let symb_proc_1 =
@@ -253,8 +275,14 @@ let trace_equivalence_determinate conf1 conf2 =
   let else_branch =
     Process_determinate.exists_else_branch_initial_configuration symb_proc_1.Equivalence_determinate.configuration ||
     Process_determinate.exists_else_branch_initial_configuration symb_proc_2.Equivalence_determinate.configuration in
-  let csys_1 = Constraint_system.empty symb_proc_1 in
-  let csys_2 = Constraint_system.empty symb_proc_2 in
+
+  let comp_conf1, comp_conf2 = Process_determinate.compress_initial_configuration symb_proc_1.Equivalence_determinate.configuration symb_proc_2.Equivalence_determinate.configuration in
+
+  let symb_proc_1' = { symb_proc_1 with Equivalence_determinate.configuration = comp_conf1 }
+  and symb_proc_2' = { symb_proc_2 with Equivalence_determinate.configuration = comp_conf2 } in
+
+  let csys_1 = Constraint_system.empty symb_proc_1' in
+  let csys_2 = Constraint_system.empty symb_proc_2' in
 
   (**** Generate the initial set ****)
 
@@ -278,7 +306,6 @@ let trace_equivalence_determinate conf1 conf2 =
 
   let job =
     {
-      EquivJob.cst = setting.Term.Symbol.cst;
       EquivJob.variable_counter = v_counter;
       EquivJob.name_counter = n_counter;
       EquivJob.all_tuples = setting.Term.Symbol.all_t;
@@ -287,6 +314,9 @@ let trace_equivalence_determinate conf1 conf2 =
       EquivJob.all_destructors = setting.Term.Symbol.all_d;
       EquivJob.number_of_constructors = setting.Term.Symbol.nb_c;
       EquivJob.number_of_destructors = setting.Term.Symbol.nb_d;
+      EquivJob.number_of_symbols = setting.Term.Symbol.nb_symb;
+      EquivJob.stored_skeletons = Rewrite_rules.retrieve_stored_skeletons ();
+      EquivJob.stored_constructors = Data_structure.Tools.retrieve_stored_constructors ();
 
       EquivJob.data_equiv = EquivJob.DDeterminate data
     }

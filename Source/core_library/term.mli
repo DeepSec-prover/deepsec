@@ -79,8 +79,6 @@ val generate_display_renaming_for_testing : name list -> fst_ord_variable list -
 module Symbol : sig
   (** A symbol can be a destructor or a constructor.*)
 
-  val get_constant : unit -> symbol
-
   val get_fresh_constant : int -> symbol
 
   (** The list of all constructors (included the tupple function symbol) used in the algorithm.*)
@@ -111,8 +109,8 @@ module Symbol : sig
       all_c : symbol list ;
       all_d : symbol list ;
       nb_c : int ;
-      nb_d : int ;
-      cst : symbol
+      nb_d : int;
+      nb_symb : int
     }
 
   val set_up_signature : setting -> unit
@@ -621,6 +619,8 @@ module Subst : sig
       *)
   val apply : ('a, 'b) t -> 'c -> ('c -> (('a, 'b) term -> ('a, 'b) term) -> 'c) -> 'c
 
+  val apply_forced : ('a, 'b) t -> 'c -> ('c -> (('a, 'b) term -> ('a, 'b) term) -> 'c) -> 'c
+
   val apply_both : (fst_ord, name) t -> (snd_ord, axiom) t -> 'a -> ('a  -> ((fst_ord, name) term -> (fst_ord, name) term) -> ((snd_ord, axiom) term -> (snd_ord, axiom) term) -> 'a) -> 'a
 
   val apply_generalised : ('a, 'b) t -> 'c -> ('c -> (('a, 'b) term -> ('a, 'b) term) -> 'd) -> 'd
@@ -993,7 +993,13 @@ module Rewrite_rules : sig
       rhs : protocol_term
     }
 
+  type stored_skeleton
+
   val initialise_skeletons : unit -> unit
+
+  val retrieve_stored_skeletons : unit -> stored_skeleton list
+
+  val setup_stored_skeletons : stored_skeleton list -> unit
 
   (* Access function *)
 
@@ -1130,6 +1136,10 @@ module Tools_Subterm :
         fst_vars : fst_ord_variable list;
         mixed_diseq : Eq.t
       }
+
+    val retrieve_stored_constructors : unit -> (symbol * stored_constructor) list
+
+    val setup_stored_constructors : (symbol * stored_constructor) list -> unit
 
     val get_stored_constructor : symbol -> stored_constructor
   end

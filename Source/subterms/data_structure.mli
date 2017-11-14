@@ -383,5 +383,9 @@ module Tools : sig
       mixed_diseq : Eq.Mixed.t
     }
 
+  val retrieve_stored_constructors : unit -> (symbol * stored_constructor) list
+
+  val setup_stored_constructors : (symbol * stored_constructor) list -> unit
+
   val get_stored_constructor : symbol -> stored_constructor
 end

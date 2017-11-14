@@ -24,8 +24,6 @@ val add_axiom_in_block : axiom -> block -> block
 
 val initial_label : label
 
-val display_block : block list -> (snd_ord, axiom) Subst.t -> bool
-
 (** {3 Access} *)
 
 val get_vars_with_list : configuration -> fst_ord_variable list -> fst_ord_variable list

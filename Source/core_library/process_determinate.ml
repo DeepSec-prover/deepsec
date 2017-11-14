@@ -651,14 +651,6 @@ let display_trace_HTML ?(rho=None) ?(title="Display of the trace") id ?(fst_subs
 
   !html_script
 
-let display_label l = Display.display_list string_of_int "." l
-
-let display_configuration conf =
-  Printf.printf "------Configuration :------\n";
-  Printf.printf "Sure_input_proc :%s\n" (display_list (fun pdet -> Printf.sprintf "Label = %s\nProcess = %s\n" (display_label pdet.label_p) (display_simple_det_process_HTML pdet.proc)) "\n" conf.sure_input_proc);
-  Printf.printf "Sure_output_proc :%s\n" (display_list (fun pdet -> Printf.sprintf "Label = %s\nProcess = %s\n" (display_label pdet.label_p) (display_simple_det_process_HTML pdet.proc)) "\n" conf.sure_output_proc);
-  Printf.printf "Sure_input_mult_proc :%s\n" (display_list (fun pdet -> Printf.sprintf "Label = %s\nProcess = %s\n" (display_label pdet.label_p) (display_simple_det_process_HTML pdet.proc)) "\n" (List.flatten (List.flatten conf.sure_input_mult_proc)))
-
 (**** Testing ****)
 
 let rec exists_channel_association c1 c2 = function
@@ -1326,11 +1318,12 @@ let is_equal_skeleton_conf size_frame conf1 conf2 =
 ***            Blocks               ***
 ***************************************)
 
-let display_block b_list snd_subst  =
+let display_block b_list snd_subst =
   let str = ref "Begining of block:\n" in
   let counter = ref (List.length b_list) in
   let _ =
-    Subst.apply snd_subst b_list (fun l f ->
+    Printf.printf "Substitution is empty ? %b <br><br>" (Subst.is_identity snd_subst);
+    Subst.apply_forced snd_subst b_list (fun l f ->
       List.iter (fun block ->
         str := Printf.sprintf "%sBlock %d: label = %s ; min_ax %d ; max_ax %d ; vars =" !str !counter (Display.display_list string_of_int "." block.label_b) block.minimal_axiom block.maximal_axiom;
         counter := !counter -1;
@@ -1344,7 +1337,7 @@ let display_block b_list snd_subst  =
       b_list
     )
   in
-  !str
+  (!str:string)
 
 let rec is_faulty_block block = function
   | [] -> false

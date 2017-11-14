@@ -166,7 +166,7 @@ let display out ?(rho=None) ?(hidden=false) ?(id=0) csys = match out with
               (display_list (fun (x,t) -> Printf.sprintf "%s %s %s" (display Latex ~rho:rho Protocol x) (eqs Latex) (display Latex ~rho:rho Protocol t)) (Printf.sprintf " %s " (wedge Latex)) equations)
       in
       let display_subst_eq_snd =
-        let equations = Subst.equations_of csys.i_subst_snd in
+        let equations = Subst.equations_of (Subst.compose csys.i_subst_ground_snd  csys.i_subst_snd) in
         match equations = [], Eq.is_top csys.eqsnd with
           | true, true -> top Latex
           | true, false -> Eq.display Latex ~rho:rho Recipe csys.eqsnd
@@ -197,7 +197,6 @@ let display out ?(rho=None) ?(hidden=false) ?(id=0) csys = match out with
       str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Uni%d\" class=\"csys%d\"%s>\\({\\sf R}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (Uniformity_Set.display Latex ~rho:rho csys.sub_cons);
 
       Printf.sprintf "%s            </div>\n" !str
-
   | _ -> Config.internal_error "[constraint_system.ml >> display] This display mode is not implemented yet."
 
 (********* Generators *********)
