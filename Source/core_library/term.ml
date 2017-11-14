@@ -485,15 +485,6 @@ module Variable = struct
           new_elt
         end
 
-    let rename : 'a 'b. ('a,'b) atom -> quantifier -> 'a -> ('a,'b) variable -> ('a,'b) variable = fun (type a) (type b) (at:(a,b) atom) quantifier (ord_type:a) (v:(a,b) variable) ->
-      match v.link with
-        | VLink(v') -> v'
-        | NoLink ->
-            let v' = variable_fresh_shortcut at quantifier ord_type in
-            link at v v';
-            v'
-        | _ -> Config.internal_error "[term.ml >> Subst.Renaming.rename] Unexpected link"
-
     let rec rename_term : 'a 'b. ('a,'b) atom -> quantifier -> 'a -> ('a,'b) term -> ('a,'b) term = fun (type a) (type b) (at:(a,b) atom) quantifier (ord_type:a) (t:(a,b) term) ->
       Config.debug (fun () ->
         if t.ground <> is_ground_debug t
@@ -773,11 +764,11 @@ module Axiom = struct
     then Config.internal_error "[term.ml >> Axiom.create] An axiom should always be positive";
     i
 
-  let order ax1 ax2 = compare ax1 ax2
+  let order (ax1:int) (ax2:int) = compare ax1 ax2
 
   let index_of ax = ax
 
-  let is_equal ax1 ax2 = ax1 = ax2
+  let is_equal (ax1:int) (ax2:int) = ax1 = ax2
 
   let display out ax = match out with
     | Testing -> Printf.sprintf "_ax_%d" ax
@@ -796,11 +787,11 @@ module Symbol = struct
 
   let accumulator_nb_symb = ref 0
 
-  let all_constructors = ref []
+  let all_constructors = ref ([]:symbol list)
 
-  let all_destructors = ref []
+  let all_destructors = ref ([]:symbol list)
 
-  let all_tuple = ref []
+  let all_tuple = ref ([]:symbol list)
 
   let number_of_constructors = ref 0
 
@@ -940,7 +931,7 @@ module Symbol = struct
         symb
       end
 
-  let get_fresh_constant n =
+  let get_fresh_constant (n:int) =
     try
       Hashtbl.find special_constructor n
     with
@@ -1249,9 +1240,10 @@ let rec internal_var_occurs_or_out_of_world (var:snd_ord_variable) (r:recipe) =
   then false
   else
     match r.term with
-      | Var(v) when Variable.is_equal v var || v.var_type = -1 || v.var_type > var.var_type -> true
+      | Var(v) when Variable.is_equal v var -> true
       | Var({link = TLink t; _}) -> internal_var_occurs_or_out_of_world var t
-      | AxName(ax) when ax > var.var_type -> true
+      | Var v when v.var_type = -1 || v.var_type > var.var_type -> true
+      | AxName ax when ax > var.var_type -> true
       | Func(_,args) -> List.exists (internal_var_occurs_or_out_of_world var) args
       | _ -> false
 
@@ -1622,23 +1614,6 @@ module Subst = struct
 
     new_elt
 
-  let apply_generalised subst elt f_iter_elt =
-    Config.debug (fun () ->
-      if List.exists (fun (v,_) -> v.link <> NoLink) subst
-      then Config.internal_error "[term.ml >> Subst.apply_substitution] Variables in the domain should not be linked"
-    );
-
-    (* Link the variables of the substitution *)
-    List.iter (fun (v,t) -> v.link <- (TLink t)) subst;
-
-    (* Apply the substitution on the element *)
-    let new_elt = f_iter_elt elt apply_on_term in
-
-    (* Unlink the variables of the substitution *)
-    List.iter (fun (v,_) -> v.link <- NoLink) subst;
-
-    new_elt
-
   (*********** Iterators ************)
 
   let fold f elt subst = List.fold_left (fun e (x,t) -> f e x t) elt subst
@@ -1844,7 +1819,43 @@ module Subst = struct
 
   exception Not_unifiable
 
-  let rec unify_term : 'a 'b. ('a,'b) atom -> ('a,'b) term -> ('a,'b) term -> unit = fun (type a) (type b) (at:(a, b) atom) (t1:(a, b) term) (t2:(a, b) term) -> match t1.term,t2.term with
+  let rec unify_term_protocol (t1:protocol_term) (t2:protocol_term) = match t1.term, t2.term with
+    | Var v1, Var v2 when v1 == v2 -> ()
+    | Var {link = TLink t ; _}, _ -> unify_term_protocol t t2
+    | _, Var {link = TLink t; _} -> unify_term_protocol t1 t
+    | Var v1, Var v2 ->
+        if v1.quantifier = Universal || (v1.quantifier = Existential && v2.quantifier = Free) || (v1.quantifier = v2.quantifier && v1.index < v2.index)
+        then (v1.link <- TLink t2; linked_variables_fst := v1 :: !linked_variables_fst)
+        else (v2.link <- TLink t1; linked_variables_fst := v2 :: !linked_variables_fst)
+    | Var v1, _ -> if var_occurs v1 t2 then raise Not_unifiable else (v1.link <- TLink t2; linked_variables_fst := v1 :: !linked_variables_fst)
+    | _, Var v2 -> if var_occurs v2 t1 then raise Not_unifiable else (v2.link <- TLink t1; linked_variables_fst := v2 :: !linked_variables_fst)
+    | AxName n1, AxName n2 when n1 == n2 -> ()
+    | Func(f1,args1), Func(f2,args2) when f1 == f2 -> List.iter2 unify_term_protocol args1 args2
+    | _ -> raise Not_unifiable
+
+  let rec unify_term_recipe (t1:recipe) (t2:recipe) = match t1.term, t2.term with
+    | Var v1, Var v2 when v1 == v2 -> ()
+    | Var {link = TLink t ; _}, _ -> unify_term_recipe t t2
+    | _, Var {link = TLink t; _} -> unify_term_recipe t1 t
+    | Var v1, Var v2 ->
+        if v2.var_type = -1
+        then (v2.link <- TLink t1; linked_variables_snd := v2 :: !linked_variables_snd)
+        else if v1.var_type = -1
+        then (v1.link <- TLink t2; linked_variables_snd := v1 :: !linked_variables_snd)
+        else if v1.var_type < v2.var_type
+        then (v2.link <- TLink t1; linked_variables_snd := v2 :: !linked_variables_snd)
+        else if v1.var_type > v2.var_type
+        then (v1.link <- TLink t2; linked_variables_snd := v1 :: !linked_variables_snd)
+        else if v1.quantifier = Universal || (v1.quantifier = Existential && v2.quantifier = Free) || (v1.quantifier = v2.quantifier &&  (v1.var_type < v2.var_type || (v1.var_type = v2.var_type && v1.index < v2.index)))
+        then (v1.link <- TLink t2; linked_variables_snd := v1 :: !linked_variables_snd)
+        else (v2.link <- TLink t1; linked_variables_snd := v2 :: !linked_variables_snd)
+    | Var v1, _ -> if var_occurs_or_out_of_world v1 t2 then raise Not_unifiable else (v1.link <- TLink t2; linked_variables_snd := v1 :: !linked_variables_snd)
+    | _, Var v2 -> if var_occurs_or_out_of_world v2 t1 then raise Not_unifiable else (v2.link <- TLink t1; linked_variables_snd := v2 :: !linked_variables_snd)
+    | AxName n1, AxName n2 when n1 = n2 -> ()
+    | Func(f1,args1), Func(f2,args2) when f1 == f2 -> List.iter2 unify_term_recipe args1 args2
+    | _ -> raise Not_unifiable
+
+  (*let rec unify_term : 'a 'b. ('a,'b) atom -> ('a,'b) term -> ('a,'b) term -> unit = fun (type a) (type b) (at:(a, b) atom) (t1:(a, b) term) (t2:(a, b) term) -> match t1.term,t2.term with
     | Var(v1), Var(v2) when Variable.is_equal v1 v2 -> ()
     | Var({link = TLink t ; _}), _ -> unify_term at t t2
     | _, Var({link = TLink t; _}) -> unify_term at t1 t
@@ -1881,8 +1892,39 @@ module Subst = struct
     | Func(f1,args1), Func(f2,args2) ->
         if Symbol.is_equal f1 f2 then List.iter2 (unify_term at) args1 args2 else raise Not_unifiable
     | _,_ -> raise Not_unifiable
+  *)
 
-  let unify : 'a 'b. ('a,'b) atom -> (('a,'b) term * ('a, 'b) term) list -> ('a, 'b) t = fun (type a) (type b) (at:(a,b) atom) (eq_list:((a,b) term * (a,b) term) list) ->
+  let unify_protocol (eq_list:(protocol_term * protocol_term) list) =
+    try
+      List.iter (fun (t1,t2) -> unify_term_protocol t1 t2) eq_list;
+
+      let subst = List.fold_left (fun acc var -> (var,follow_link_var var)::acc) [] !linked_variables_fst in
+
+      List.iter (fun var -> var.link <- NoLink) !linked_variables_fst;
+      linked_variables_fst := [];
+
+      subst
+    with Not_unifiable ->
+      List.iter (fun var -> var.link <- NoLink) !linked_variables_fst;
+      linked_variables_fst := [];
+      raise Not_unifiable
+
+  let unify_recipe (eq_list:(recipe * recipe) list) =
+    try
+      List.iter (fun (t1,t2) -> unify_term_recipe t1 t2) eq_list;
+
+      let subst = List.fold_left (fun acc var -> (var,follow_link_var var)::acc) [] !linked_variables_snd in
+
+      List.iter (fun var -> var.link <- NoLink) !linked_variables_snd;
+      linked_variables_snd := [];
+
+      subst
+    with Not_unifiable ->
+      List.iter (fun var -> var.link <- NoLink) !linked_variables_snd;
+      linked_variables_snd := [];
+      raise Not_unifiable
+
+  (*let unify : 'a 'b. ('a,'b) atom -> (('a,'b) term * ('a, 'b) term) list -> ('a, 'b) t = fun (type a) (type b) (at:(a,b) atom) (eq_list:((a,b) term * (a,b) term) list) ->
     Config.debug (fun () ->
       if retrieve at <> []
       then Config.internal_error "[term.ml >> Subst.unify_generic] The list of linked variables should be empty"
@@ -1918,9 +1960,23 @@ module Subst = struct
       subst
     with Not_unifiable ->
       cleanup at;
-      raise Not_unifiable
+      raise Not_unifiable*)
 
-  let is_unifiable (type a) (type b) (at:(a,b) atom) (eq_list:((a, b) term * (a, b) term) list) =
+  let is_unifiable (eq_list:(protocol_term * protocol_term) list) =
+    try
+      List.iter (fun (t1,t2) -> unify_term_protocol t1 t2) eq_list;
+
+      List.iter (fun var -> var.link <- NoLink) !linked_variables_fst;
+      linked_variables_fst := [];
+
+      true
+
+    with Not_unifiable ->
+      List.iter (fun var -> var.link <- NoLink) !linked_variables_fst;
+      linked_variables_fst := [];
+      false
+
+  (*let is_unifiable (type a) (type b) (at:(a,b) atom) (eq_list:((a, b) term * (a, b) term) list) =
     Config.debug (fun () ->
       if retrieve at <> []
       then Config.internal_error "[term.ml >> Subst.is_unifiable] The list of linked variables should be empty"
@@ -1930,7 +1986,7 @@ module Subst = struct
       List.iter (fun (t1,t2) -> unify_term at t1 t2) eq_list;
       cleanup at;
       true
-    with Not_unifiable -> cleanup at; false
+    with Not_unifiable -> cleanup at; false*)
 
   (*********** Display ************)
 
@@ -2173,7 +2229,59 @@ module Diseq = struct
     in
     explore [] var_list
 
-  let apply_and_normalise at subst = function
+  let apply_and_normalise_protocol (subst:(fst_ord,name) Subst.t) (diseq:((fst_ord,name) term * (fst_ord,name) term) list) =
+    (* Link the variables of the substitution *)
+    List.iter (fun (v,t) -> v.link <- (TLink t)) subst;
+
+    try
+      List.iter (fun (t1,t2) -> Subst.unify_term_protocol t1 t2) diseq;
+
+      let diseq' = List.fold_left (fun acc var -> if var.quantifier = Universal then acc else ({ term = Var var; ground = false},Subst.follow_link_var var)::acc) [] !Subst.linked_variables_fst in
+
+      List.iter (fun (v,_) -> v.link <- NoLink) subst;
+      List.iter (fun var -> var.link <- NoLink) !Subst.linked_variables_fst;
+      Subst.linked_variables_fst := [];
+
+      if diseq' = []
+      then Bot
+      else Diseq diseq'
+    with Subst.Not_unifiable ->
+      List.iter (fun (v,_) -> v.link <- NoLink) subst;
+      List.iter (fun var -> var.link <- NoLink) !Subst.linked_variables_fst;
+      Subst.linked_variables_fst := [];
+      Top
+
+  let apply_and_normalise_recipe (subst:(snd_ord,axiom) Subst.t) (diseq:((snd_ord,axiom) term * (snd_ord,axiom) term) list) =
+    (* Link the variables of the substitution *)
+    List.iter (fun (v,t) -> v.link <- (TLink t)) subst;
+
+    try
+      List.iter (fun (t1,t2) -> Subst.unify_term_recipe t1 t2) diseq;
+
+      let diseq' = List.fold_left (fun acc var -> if var.quantifier = Universal then acc else ({ term = Var var; ground = false},Subst.follow_link_var var)::acc) [] !Subst.linked_variables_snd in
+
+      List.iter (fun (v,_) -> v.link <- NoLink) subst;
+      List.iter (fun var -> var.link <- NoLink) !Subst.linked_variables_snd;
+      Subst.linked_variables_snd := [];
+
+      if diseq' = []
+      then Bot
+      else Diseq diseq'
+    with Subst.Not_unifiable ->
+      List.iter (fun (v,_) -> v.link <- NoLink) subst;
+      List.iter (fun var -> var.link <- NoLink) !Subst.linked_variables_snd;
+      Subst.linked_variables_snd := [];
+      Top
+
+  let apply_and_normalise (type a) (type b) (at:(a, b) atom) (subst:(a,b) Subst.t) (dis:(a,b) t) = match dis with
+    | Top -> (Top:(a,b) t)
+    | Bot -> (Bot:(a,b) t)
+    | Diseq diseq ->
+        match at with
+          | Protocol -> ((apply_and_normalise_protocol subst diseq):(a,b) t)
+          | Recipe -> ((apply_and_normalise_recipe subst diseq):(a,b) t)
+
+  (*let apply_and_normalise at subst = function
     | Top -> Top
     | Bot -> Bot
     | Diseq diseq ->
@@ -2207,7 +2315,7 @@ module Diseq = struct
         with Subst.Not_unifiable ->
           Subst.cleanup at;
           List.iter (fun (v,_) -> v.link <- NoLink) subst;
-          Top
+          Top*)
 
   let display out ?(rho=None) at = function
     | Top -> top out
@@ -2294,7 +2402,7 @@ module Diseq = struct
           let apply_term () =
             List.iter (fun (v,t) -> v.link <- (TLink t)) fst_subst;
 
-            List.iter (fun (t1,t2) -> Subst.unify_term Protocol t1 t2) term_l;
+            List.iter (fun (t1,t2) -> Subst.unify_term_protocol t1 t2) term_l;
 
             let result =
               List.fold_left (fun acc v ->
@@ -2313,7 +2421,7 @@ module Diseq = struct
           let apply_recipe () =
             List.iter (fun (v,t) -> v.link <- (TLink t)) snd_subst;
 
-            List.iter (fun (t1,t2) -> Subst.unify_term Recipe t1 t2) recipe_l;
+            List.iter (fun (t1,t2) -> Subst.unify_term_recipe t1 t2) recipe_l;
 
             let result =
               List.fold_left (fun acc v ->
@@ -2455,7 +2563,7 @@ module Modulo = struct
                   Subst.linked_variables_fst := [];
 
                   begin try
-                    List.iter2 (Subst.unify_term Protocol) lhs' args';
+                    List.iter2 (Subst.unify_term_protocol) lhs' args';
                     let saved_linked_variables_from_unify = !Subst.linked_variables_fst in
                     Subst.linked_variables_fst := List.rev_append !Subst.linked_variables_fst saved_linked_variables;
 
@@ -2504,7 +2612,7 @@ module Modulo = struct
                 Subst.linked_variables_fst := [];
 
                 begin try
-                  Subst.unify_term Protocol t1' t2';
+                  Subst.unify_term_protocol t1' t2';
                   let saved_linked_variables_from_unify = !Subst.linked_variables_fst in
                   Subst.linked_variables_fst := List.rev_append !Subst.linked_variables_fst saved_linked_variables;
 
@@ -2561,7 +2669,7 @@ module Modulo = struct
         Subst.linked_variables_fst := [];
 
         begin try
-          Subst.unify_term Protocol t1' t2';
+          Subst.unify_term_protocol t1' t2';
           let saved_linked_variables_from_unify = !Subst.linked_variables_fst in
           Subst.linked_variables_fst := List.rev_append !Subst.linked_variables_fst saved_linked_variables;
 
@@ -2669,7 +2777,7 @@ module Fact = struct
   let create (type a) (fct: a t) (head: a) equations =
 
     try
-      List.iter (fun (t1,t2) -> Subst.unify_term Protocol t1 t2) equations;
+      List.iter (fun (t1,t2) -> Subst.unify_term_protocol t1 t2) equations;
 
       if Subst.retrieve Protocol = []
       then ({ head = head ; equation_subst = []} : a formula)
@@ -2863,7 +2971,7 @@ module Fact = struct
     List.iter (fun (v,t) -> v.link <- (TLink t)) subst_fst;
 
     try
-      List.iter (fun (x,t) -> Subst.unify_term Protocol {term = Var x; ground = false} t) psi.equation_subst;
+      List.iter (fun (x,t) -> Subst.unify_term_protocol {term = Var x; ground = false} t) psi.equation_subst;
 
       begin match fct with
         | Deduction ->
@@ -3388,7 +3496,7 @@ module Rewrite_rules = struct
               let rhs' = Variable.Renaming.rename_term Protocol Universal Variable.fst_ord_type rhs in
               Variable.Renaming.cleanup Protocol;
 
-              if Subst.is_unifiable Protocol (List.combine lhs' arg_term)
+              if Subst.is_unifiable (List.combine lhs' arg_term)
               then (lhs',rhs')::acc
               else acc
             ) [] rw_rules
@@ -4158,8 +4266,8 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) (Eq: EqMixed)= struct
           then acc
           else
             begin
-              List.iter2 (fun x t -> Subst.unify_term Protocol (of_variable x) t) fst_vars term_list;
-              List.iter2 (fun x t -> Subst.unify_term Recipe (of_variable x) t) snd_vars recipe_list;
+              List.iter2 (fun x t -> Subst.unify_term_protocol (of_variable x) t) fst_vars term_list;
+              List.iter2 (fun x t -> Subst.unify_term_recipe (of_variable x) t) snd_vars recipe_list;
 
               let fst_diseq =
                 List.fold_left (fun acc v ->

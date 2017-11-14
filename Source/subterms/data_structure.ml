@@ -1250,13 +1250,6 @@ module Eq = struct
         with
         | Is_Bot -> Bot
 
-  let implies at form term_list =
-    try
-      let subst = Subst.unify at term_list in
-      apply at form subst = Bot
-    with
-      | Subst.Not_unifiable -> true
-
   let extract = function
     | Conj [diseq] -> diseq, Top
     | Conj (diseq::q) -> diseq, Conj q
@@ -1936,7 +1929,7 @@ module Uniformity_Set = struct
         ) uniset.multiple;
 
         try
-          let subst = Subst.unify Recipe !list_of_equations in
+          let subst = Subst.unify_recipe !list_of_equations in
           Config.debug (fun () ->
             if Subst.is_identity subst
             then Config.internal_error "[data_structure.ml >> unify_multiple_opt] The substitution can't be the identity."

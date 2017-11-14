@@ -1477,7 +1477,7 @@ let rec normalise_simple_det_process proc else_branch equations disequations f_c
             f_continuation gather Nil f_next
         | EqTop ->
             let gather = { equations = equations; disequations = disequations } in
-            f_continuation gather (OutputSure(ch,t_2,p,pos)) f_next
+            f_continuation gather (OutputSure(ch,t,p,pos)) f_next
         | EqList equations_modulo_list ->
             let f_next_equations =
               List.fold_left (fun acc_f_next equations_modulo ->
@@ -1502,10 +1502,8 @@ let rec normalise_simple_det_process proc else_branch equations disequations f_c
                  | None -> acc_f_next
                  | Some new_disequations ->
                     let new_equations = Subst.compose equations equations_modulo in
-                    let t_3 = Subst.apply equations_modulo t_2 (fun x f -> f x) in
-                    let t_4 = Rewrite_rules.normalise t_3 in
                     let gather = { equations = new_equations; disequations = new_disequations } in
-                    (fun () -> f_continuation gather (OutputSure(ch,t_4,p,pos)) acc_f_next)
+                    (fun () -> f_continuation gather (OutputSure(ch,t,p,pos)) acc_f_next)
               ) f_next equations_modulo_list
             in
 

@@ -262,9 +262,6 @@ module Eq : sig
   (** [is_top] {% $\phi$ returns %} [true] if and only if {% $\phi = \top$.%} *)
   val is_top : ('a, 'b) t -> bool
 
-  (** [implies at] {% $\phi$~$t_1$~$t_2$ returns true if and only if $\phi \Rightarrow t_1 \neqs t_2$ is a tautology.%}*)
-  val implies : ('a, 'b) atom -> ('a, 'b) t -> (('a, 'b) term * ('a, 'b) term) list -> bool
-
   (** {3 Display} *)
 
   val display : Display.output -> ?rho:display_renamings option -> ('a, 'b) atom -> ('a, 'b) t -> string

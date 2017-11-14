@@ -251,7 +251,7 @@ let empty data =
     skeletons_checked = [];
     skeletons_to_check = [];
 
-    history_skeleton = List.rev_map generate_history !Symbol.all_destructors
+    history_skeleton = List.fold_left (fun acc f -> if Symbol.is_public f then (generate_history f)::acc else acc) [] !Symbol.all_destructors
   }
 
 let apply_substitution csys subst =
@@ -452,7 +452,7 @@ let mgs csys =
         then None
         else
           try
-            Some(Subst.unify Protocol [(b_term,term)],Subst.create Recipe b_recipe recipe)
+            Some(Subst.unify_protocol [(b_term,term)],Subst.create Recipe b_recipe recipe)
           with
             | Subst.Not_unifiable -> None
       in
@@ -662,7 +662,7 @@ let one_mgs csys =
         then None
         else
           try
-            Some(Subst.unify Protocol [(b_term,term)],Subst.create Recipe b_recipe recipe)
+            Some(Subst.unify_protocol [(b_term,term)],Subst.create Recipe b_recipe recipe)
           with
           | Subst.Not_unifiable -> None
       in
@@ -967,7 +967,7 @@ let simple_of_skeleton csys id_sdf id_skel =
   let skel = Rewrite_rules.get_skeleton id_skel in
   let symb = root skel.Rewrite_rules.recipe in
   try
-    let fst_subst = Subst.unify Protocol [term_fact,skel.Rewrite_rules.pos_term] in
+    let fst_subst = Subst.unify_protocol [term_fact,skel.Rewrite_rules.pos_term] in
 
     let new_eq_fst = Eq.apply Protocol csys.eqfst fst_subst in
     if Eq.is_bot new_eq_fst
@@ -1107,7 +1107,7 @@ let apply_mgs_and_gather csys data_shared (subst_snd,list_var) =
   in
 
   try
-    let subst_fst = Subst.unify Protocol equations in
+    let subst_fst = Subst.unify_protocol equations in
     let new_eqfst = Eq.apply Protocol csys.eqfst subst_fst in
 
     if Eq.is_bot new_eqfst
@@ -1181,7 +1181,7 @@ let apply_mgs_from_gathering csys data_shared (subst_snd,list_var) =
   in
 
   try
-    let subst_fst = Subst.unify Protocol equations in
+    let subst_fst = Subst.unify_protocol equations in
     let new_eqfst = Eq.apply Protocol csys.eqfst subst_fst in
 
     if Eq.is_bot new_eqfst
@@ -1472,7 +1472,7 @@ let subsume fine_grained csys1 csys2 =
                   then ()
                   else term_sdf := t :: !term_sdf
                 );
-                not (List.exists (fun t1 -> List.exists (fun t2 -> Subst.is_unifiable Protocol [t1,t2]) !term_sdf) !term_cons)
+                not (List.exists (fun t1 -> List.exists (fun t2 -> Subst.is_unifiable [t1,t2]) !term_sdf) !term_cons)
               end
             else false
           in
@@ -2186,6 +2186,7 @@ module Rule = struct
         match UF.pop_equality_formula_option csys.uf with
           | None -> exploration_sat_equality_formula (csys::prev_set) q
           | Some form ->
+              Printf.printf "The formula %s" (Fact.display_formula Latex Fact.Equality form);
               let simple_csys = simple_of_formula csys form in
 
               begin try
@@ -2208,7 +2209,11 @@ module Rule = struct
 
           Config.debug (fun () ->
             if Diseq.is_bot diseq
-            then Config.internal_error "[constraint_system.ml >> rule_sat_formula] The disequation should not be the bot.";
+            then
+              begin
+                Printf.printf "The mgs = %s" (Subst.display Latex Recipe mgs);
+                Config.internal_error "[constraint_system.ml >> rule_sat_formula] The disequation should not be the bot.";
+              end;
 
             if Subst.is_identity mgs
             then Config.internal_error "[constraint_system.ml >> internal_sat_formula] It should not be the identity mgs (otherwise the formula would have been solved)."

@@ -623,8 +623,6 @@ module Subst : sig
 
   val apply_both : (fst_ord, name) t -> (snd_ord, axiom) t -> 'a -> ('a  -> ((fst_ord, name) term -> (fst_ord, name) term) -> ((snd_ord, axiom) term -> (snd_ord, axiom) term) -> 'a) -> 'a
 
-  val apply_generalised : ('a, 'b) t -> 'c -> ('c -> (('a, 'b) term -> ('a, 'b) term) -> 'd) -> 'd
-
   (* [fold f elt] {% $\sigma$ %} returns [f (... (f (f elt] {% $x_1$~$t_1$%}[)] {% $x_2$~$t_2$%}[) ...)]{% $x_n$~$t_n$ where $\sigma = \{ x_i \rightarrow t_i \}_{i=1}^n$.
     Note that the order of the variables in $\sigma$ is unspecified. %}*)
   val fold : ('c -> ('a, 'b) variable -> ('a, 'b) term -> 'c) -> 'c -> ('a, 'b) t -> 'c
@@ -642,10 +640,12 @@ module Subst : sig
         \item $x$ is free implies $y$ is free
       \end{itemize} %}
       @raise Not_unifiable if no unification is possible. *)
-  val unify : ('a, 'b) atom -> (('a, 'b) term * ('a, 'b) term) list -> ('a, 'b) t
+  val unify_protocol : (protocol_term * protocol_term) list -> (fst_ord, name) t
+
+  val unify_recipe : (recipe * recipe) list -> (snd_ord, axiom) t
 
   (** [is_unifiable at l] returns [true] iff the pairs of term in [l] are unifiable, {% $\mguset{l} \neq \bot$. %} *)
-  val is_unifiable : ('a, 'b) atom -> (('a, 'b) term * ('a, 'b) term) list -> bool
+  val is_unifiable : (protocol_term * protocol_term) list -> bool
 
   exception Not_matchable
 

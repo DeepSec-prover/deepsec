@@ -63,7 +63,6 @@ let rec is_subsumed_or_subsume equiv_pbl csys origin prev = function
       else is_subsumed_or_subsume equiv_pbl csys origin (eq_pbl::prev) q
 
 let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
-
   Config.debug (fun () ->
     match Constraint_system.Set.elements equiv_pbl.csys_set with
       | [csys_1; csys_2] when
@@ -466,8 +465,9 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           let fst_subst = Constraint_system.get_substitution_solution Protocol csys in
 
           normalise_configuration conf else_branch fst_subst (fun gathering conf_1 ->
-            let term' = Subst.apply gathering.equations term (fun x f -> f x) in
-
+            let term_0 = Subst.apply gathering.equations term (fun x f -> f x) in
+            let term' = Rewrite_rules.normalise term_0 in
+            
             try
               let csys_1 = Constraint_system.apply_substitution csys gathering.equations in
               let csys_2 = Constraint_system.add_axiom csys_1 axiom term' in
