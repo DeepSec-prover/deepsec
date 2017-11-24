@@ -498,7 +498,6 @@ let rec expansed_of_content var_subst name_rho content = match content.action wi
 let is_equal_action act1 act2 =
     act1.content_mult.content == act2.content_mult.content && Variable.Renaming.is_equal Protocol act1.var_renaming act2.var_renaming && Name.Renaming.is_equal act1.name_renaming act2.name_renaming
 
-
 let expansed_of_process highlight ?(fst_subst=Subst.identity) process =
 
   let rec explore_process k = function

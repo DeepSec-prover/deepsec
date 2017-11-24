@@ -68,6 +68,7 @@ module Map = struct
     val equal: ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
     val iter: (key -> 'a -> unit) -> 'a t -> unit
     val fold: (key -> 'a -> 'b -> 'b) -> 'a t -> 'b -> 'b
+    val tail_iter : ('a -> (unit -> unit) -> unit) -> 'a t -> (unit -> unit) -> unit
     val tail_iter_until : ('a -> (unit -> unit) -> unit) -> ('a -> bool) -> 'a t -> (unit -> unit) -> unit
     val for_all: (key -> 'a -> bool) -> 'a t -> bool
     val exists: (key -> 'a -> bool) -> 'a t -> bool
@@ -424,6 +425,15 @@ module Map = struct
               (f [@tailcall]) d (fun () ->
                 (tail_iter_until [@tailcall]) f f_stop r f_next
               )
+          )
+
+    let rec tail_iter f m f_next = match m with
+      | Empty -> f_next ()
+      | Node {l; d; r; _} ->
+          tail_iter f l (fun () ->
+            f d (fun () ->
+              tail_iter f r f_next
+            )
           )
 
     let rec for_all p = function

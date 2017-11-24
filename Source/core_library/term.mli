@@ -79,8 +79,6 @@ val generate_display_renaming_for_testing : name list -> fst_ord_variable list -
 module Symbol : sig
   (** A symbol can be a destructor or a constructor.*)
 
-  val get_constant : unit -> symbol
-
   val get_fresh_constant : int -> symbol
 
   (** The list of all constructors (included the tupple function symbol) used in the algorithm.*)
@@ -104,7 +102,16 @@ module Symbol : sig
   (** Empty the signature from all function symbols (constructor, destructor and tuple) *)
   val empty_signature : unit -> unit
 
-  type setting = { all_t : symbol list ; all_p : (int * symbol list) list ; all_c : symbol list ; all_d : symbol list ; nb_c : int ; nb_d : int ; cst : symbol }
+  type setting =
+    {
+      all_t : symbol list ;
+      all_p : (symbol * symbol list) list ;
+      all_c : symbol list ;
+      all_d : symbol list ;
+      nb_c : int ;
+      nb_d : int;
+      nb_symb : int
+    }
 
   val set_up_signature : setting -> unit
 
@@ -134,16 +141,8 @@ module Symbol : sig
       At last, the associated projection function symbol are automatically added into [all_projection].*)
   val get_tuple : int -> symbol
 
-  (** [nth_projection f i] returns the projection function symbol of the [i]{^ th} element of tuple function symbol [f].
-      Note that for a tuple of arity [n], the range of [i] is [1...n].
-
-      @raise Internal_error if [f] is not a tuple.
-      @raise Not_found if [f] was not previously introduced by [get_tuple].*)
-  val nth_projection : symbol -> int -> symbol
-
   (** [get_projections f] returns the list [[f_1;...;f_n]] with [f_i] is the projection
       function symbol of the [i]{^ th} element of the tuple function symbol [f].
-      It returns the same result as [[nth_projection f 1; ...; nth_projection f n]].
 
       @raise Internal_error if [f] is not a tuple.
       @raise Not_found if [f] was not previously introduced by [get_tuple].*)
@@ -202,6 +201,8 @@ module Variable : sig
   (** The variables of {% $\Xdeux$ %} are typed by an integer. Hence, [snd_ord_type i] corresponds to the type of variables in {% $\Xdeuxi{i}$ %} *)
   val snd_ord_type : int -> snd_ord
 
+  val infinite_snd_ord_type : snd_ord
+
   (** [fresh at q ty] creates a fresh variable quantified by [q] with type [ty]. *)
   val fresh : ('a, 'b) atom -> quantifier -> 'a -> ('a, 'b) variable
 
@@ -223,6 +224,10 @@ module Variable : sig
 
   (** [type_of] {% $X$ returns the type in which the second-variable $X$ is defined, that is returns $i$ when $X \in \Xdeuxi{i}$. %} *)
   val type_of : snd_ord_variable -> int
+
+  val has_infinite_type : snd_ord_variable -> bool
+
+  val has_not_infinite_type : snd_ord_variable -> bool
 
   (** A total ordering function over variables. This is a three-argument function [order] such that  [order at x1 x2] is zero if
       the [x1] and [x2] are equal, [order at x1 x2] is strictly negative if [x1] is smaller than [x2], and
@@ -601,6 +606,8 @@ module Subst : sig
   (** [is_in_domain s x] returns [true] iff the variable [x] is in the domain of [s].*)
   val is_in_domain : ('a, 'b) t -> ('a, 'b) variable -> bool
 
+  val not_in_domain : (snd_ord, axiom) t -> (snd_ord, axiom) variable list -> (snd_ord, axiom) variable list
+
   (** [apply_substitution subst elt map_elt] applies the substitution [subst] on the element [elt]. The function
       [map_elt] should map the terms contained in the element [elt] on which [subst] should be applied.
 
@@ -612,9 +619,9 @@ module Subst : sig
       *)
   val apply : ('a, 'b) t -> 'c -> ('c -> (('a, 'b) term -> ('a, 'b) term) -> 'c) -> 'c
 
-  val apply_both : (fst_ord, name) t -> (snd_ord, axiom) t -> 'a -> ('a  -> ((fst_ord, name) term -> (fst_ord, name) term) -> ((snd_ord, axiom) term -> (snd_ord, axiom) term) -> 'a) -> 'a
+  val apply_forced : ('a, 'b) t -> 'c -> ('c -> (('a, 'b) term -> ('a, 'b) term) -> 'c) -> 'c
 
-  val apply_generalised : ('a, 'b) t -> 'c -> ('c -> (('a, 'b) term -> ('a, 'b) term) -> 'd) -> 'd
+  val apply_both : (fst_ord, name) t -> (snd_ord, axiom) t -> 'a -> ('a  -> ((fst_ord, name) term -> (fst_ord, name) term) -> ((snd_ord, axiom) term -> (snd_ord, axiom) term) -> 'a) -> 'a
 
   (* [fold f elt] {% $\sigma$ %} returns [f (... (f (f elt] {% $x_1$~$t_1$%}[)] {% $x_2$~$t_2$%}[) ...)]{% $x_n$~$t_n$ where $\sigma = \{ x_i \rightarrow t_i \}_{i=1}^n$.
     Note that the order of the variables in $\sigma$ is unspecified. %}*)
@@ -633,10 +640,12 @@ module Subst : sig
         \item $x$ is free implies $y$ is free
       \end{itemize} %}
       @raise Not_unifiable if no unification is possible. *)
-  val unify : ('a, 'b) atom -> (('a, 'b) term * ('a, 'b) term) list -> ('a, 'b) t
+  val unify_protocol : (protocol_term * protocol_term) list -> (fst_ord, name) t
+
+  val unify_recipe : (recipe * recipe) list -> (snd_ord, axiom) t
 
   (** [is_unifiable at l] returns [true] iff the pairs of term in [l] are unifiable, {% $\mguset{l} \neq \bot$. %} *)
-  val is_unifiable : ('a, 'b) atom -> (('a, 'b) term * ('a, 'b) term) list -> bool
+  val is_unifiable : (protocol_term * protocol_term) list -> bool
 
   exception Not_matchable
 
@@ -657,18 +666,6 @@ module Subst : sig
   (** {3 Display function} *)
 
   val display : Display.output -> ?rho:display_renamings option -> ('a, 'b) atom -> ('a, 'b) t -> string
-
-  (** {3 Tested functions} *)
-
-  val update_test_unify : ('a, 'b) atom -> ((('a, 'b) term * ('a, 'b) term) list -> ('a, 'b) t option -> unit) -> unit
-
-  val update_test_is_matchable : ('a, 'b) atom -> (('a, 'b) term list -> ('a, 'b) term list -> bool -> unit) -> unit
-
-  val update_test_is_extended_by : ('a, 'b) atom -> (('a, 'b) t -> ('a, 'b) t -> bool -> unit) -> unit
-
-  val update_test_is_equal_equations: ('a, 'b) atom -> (('a, 'b) t -> ('a, 'b) t -> bool -> unit) -> unit
-
-  val check_good_recipes : (snd_ord, axiom) t -> bool
 end
 
 (** {% A valuation in this section corresponds to a triplet of substitutions $(\Phi,\Sigma,\sigma)$ where $\Phi : \AX \rightarrow \T(\Fc,\N)$,
@@ -707,13 +704,13 @@ module Diseq : sig
   (** {4 Generation} *)
 
   (** [of_substitution] {% $\sigma$~$S$ generates the normalisation of the disequation $\forall S. \bigvee_{x \in \Dom{\sigma}} x \neqs x\sigma$. %} *)
-  val of_substitution : ('a, 'b) atom -> ('a, 'b) Subst.t -> ('a, 'b) variable list -> ('a, 'b) t
+  val of_substitution : (snd_ord, axiom) Subst.t -> (snd_ord, axiom) variable list -> (snd_ord, axiom) t
 
   (** [substitution_of_diseq at] {% $\forall \tilde{x}. \bigvee^n_1 x_i \neqs v_i$ generates the pair $(\sigma,\rho)$ where
       $\rho$ is a fresh renaming of $\tilde{x}$ to existential variables and
       $\sigma = \\{ x_i \rightarrow v_i\rho\\}_i^n$.%}
       @raise Internal_error if the disequation is bot. *)
-  val substitution_of : ('a, 'b) atom -> ('a, 'b) t -> ('a, 'b) Subst.t * ('a, 'b) Variable.Renaming.t
+  val substitution_of : (fst_ord, name) t -> (fst_ord, name) Subst.t
 
 
   (** [apply_and_normalise at] {% $\sigma$~$\phi$ applies the substitution $\sigma$ on $\phi$ and normalise
@@ -728,6 +725,17 @@ module Diseq : sig
   (** {4 Testing} *)
 
   val create_for_testing : (('a, 'b) term * ('a, 'b) term) list -> ('a, 'b) t
+
+  module Mixed : sig
+
+    type t
+
+    val is_top : t -> bool
+
+    val is_bot : t -> bool
+
+    val apply_and_normalise : (fst_ord, name) Subst.t -> (snd_ord, axiom) Subst.t -> t -> t
+  end
 end
 
 (** {2 (Dis)equations modulo the rewriting system} *)
@@ -886,9 +894,7 @@ module Fact : sig
 
   exception Bot
 
-  val create : 'a t -> 'a -> BasicFact.t list -> (protocol_term * protocol_term) list -> 'a formula
-
-  val create_for_testing : 'a -> BasicFact.t list -> (fst_ord, name)Subst.t -> 'a formula
+  val create : 'a t -> 'a -> (protocol_term * protocol_term) list -> 'a formula
 
   (** {3 Access} *)
 
@@ -907,9 +913,6 @@ module Fact : sig
   (** [get_mgu_hypothesis] {% $\psi$ returns the substitution $\Fmgu{\psi}$. %} *)
   val get_mgu_hypothesis : 'a formula -> (fst_ord, name) Subst.t
 
-  (** [get_basic_fact_hypothesis] {% $\psi$ returns $\Df(\psi)$. %} *)
-  val get_basic_fact_hypothesis : 'a formula -> BasicFact.t list
-
   (** [get_vars_with_list at fct] {% $\psi$ %} [f_q l] adds the [at] variables in the [fct] formula {% $\psi$ %} whose quantifier satisfies [f_q] in the list [l]. The addition of a variable as the union of sets, i.e. there is no dupplicate in the resulting list. *)
   val get_vars_with_list : ('a, 'b) atom -> 'c t -> 'c formula -> (quantifier -> bool) -> ('a, 'b) variable list -> ('a, 'b) variable list
 
@@ -919,43 +922,39 @@ module Fact : sig
   (** [get_axioms_with_list t fct] {% $\psi$ %} [f_i l] adds the axiom in the [fct] formula {% $\psi$ %} whose index satisfies [f_i] in the list [l]. The addition of an axiom as the union of sets, i.e. there is no dupplicate in the resulting list..*)
   val get_axioms_with_list : 'c t -> 'c formula -> (int -> bool) -> axiom list -> axiom list
 
-  (** [universal_variables form] returns the first-order and second-order universal variables in the formula [form] *)
-  val universal_variables : 'a formula -> (fst_ord, name) variable list * (snd_ord, axiom) variable list
+  (** [universal_variables form] returns the first-order universal variables in the formula [form] *)
+  val universal_variables : 'a formula -> (fst_ord, name) variable list
 
   (** {3 Testing} *)
-
-  (** [is_solved] {% $\psi$ %} returns [true] iff {% $\psi$ is a solved formula (see~\citepaper{Definition}{def:clause}). %} *)
-  val is_solved : 'a formula  -> bool
-
-  (** [is_equation_free] {% $\psi$ %} returns [true] iff {% $\psi = \clause{S}{H}{\varphi}$ with $\Equn(\varphi) = \top$. %} *)
-  val is_equation_free : 'a formula -> bool
 
   (** [is_fact] {% $\psi$ %}) returns [true] iff $\psi$ is a fact, i.e. no universal variables and equation free *)
   val is_fact : 'a formula -> bool
 
-  (** [is_recipe_equivalent] {% $\psi$~$\psi'$ %} returns [true] iff {% $\psi \receq^\rho \psi'$ with $\rho$ being the identity. %} *)
-  val is_recipe_equivalent : 'a t -> 'a formula -> 'a formula -> bool
+  (** {3 Application of substitutions} *)
 
-  (** {3 Modification} *)
+  val apply_fst_on_deduction_fact : (fst_ord, name) Subst.t -> deduction -> deduction
+
+  val apply_snd_on_fact : 'a t -> (snd_ord, axiom) Subst.t -> 'a -> 'a
+
+  val apply_on_deduction_fact : (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t -> deduction -> deduction
+
+  val apply_fst_on_formula : 'a t -> (fst_ord, name) Subst.t -> 'a formula -> 'a formula
+
+  val apply_snd_on_formula : 'a t -> (snd_ord, axiom) Subst.t -> 'a formula -> 'a formula
+
+  (** {3 Replacement of recipes} *)
+
+  val replace_recipe_in_deduction_fact : recipe -> deduction -> deduction
+
+  val replace_recipe_in_deduction_formula : recipe -> deduction_formula -> deduction_formula
+
+  val replace_head_in_equality_formula : equality -> equality_formula -> equality_formula
 
   (** [apply fct] {% $\psi$~$\Sigma$~$\sigma$ applies the subsitutions $\Sigma$ and $\sigma$ on $\psi$ and normalise the resulting formula
       with respect to the normalisation rules in \citepaper{Figure}{fig:normalisation_formula}, i.e. $\psi\Sigma\sigma\Vnorm$. %}
       @raise Bot if {% $\psi\Sigma\sigma\Vnorm = \bot$. %} *)
-  val apply : 'a t -> 'a formula -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t -> 'a formula
 
-  val apply_fst_ord : 'a t -> 'a formula -> (fst_ord, name) Subst.t -> 'a formula
 
-  val apply_snd_ord : 'a t -> 'a formula -> (snd_ord, axiom) Subst.t -> 'a formula
-
-  val apply_snd_ord_on_fact : 'a t -> 'a -> (snd_ord, axiom) Subst.t -> 'a
-
-  val apply_ded_with_gathering : deduction formula -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t -> recipe option ref -> deduction formula
-
-  val apply_eq_with_gathering : equality formula -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t -> equality option ref -> equality formula
-
-  val apply_snd_ord_ded_with_gathering : deduction formula -> (snd_ord, axiom) Subst.t -> recipe option ref -> deduction formula
-
-  val apply_snd_ord_eq_with_gathering : equality formula -> (snd_ord, axiom) Subst.t ->  equality option ref -> equality formula
 
   (** {3 Display functions} *)
 
@@ -965,6 +964,14 @@ module Fact : sig
 
   val display_formula : Display.output -> ?rho:display_renamings option -> 'a t -> 'a formula -> string
 end
+
+(** {2 Pattern} *)
+
+type pattern
+
+val is_equal_pattern : pattern -> pattern -> bool
+
+val extract_pattern_of_deduction_fact : Fact.deduction -> (pattern * Fact.deduction list) option
 
 (** {2 Rewrite rules} *)
 
@@ -977,44 +984,30 @@ module Rewrite_rules : sig
 
   type skeleton =
     {
-      variable_at_position : snd_ord_variable;
+      pos_vars : snd_ord_variable;
+      pos_term : protocol_term;
+      snd_vars : snd_ord_variable list; (* Contains variables of recipe without pos_vars *)
       recipe : recipe;
-      p_term : protocol_term;
       basic_deduction_facts : BasicFact.t list;
-      rewrite_rule : symbol * protocol_term list * protocol_term
+      lhs : protocol_term list;
+      rhs : protocol_term
     }
 
-  val reset_skeletons : unit -> unit
+  type stored_skeleton
 
-  val has_constant_as_rhs : symbol -> bool
+  val initialise_skeletons : unit -> unit
 
-  (** [skeletons] {% $u$~$\ffun$~$k$ returns the list of skeletons $(\xi,t,D) = \Skel{\ell}{p}$ such that $\vars{\xi} \in \Xdeuxi{k}$, $\ell \rightarrow r \in \R$, $\rootsymb{\ell} = \ffun$,
-      $\getpos{\ell}{p} \not\in \Xun$, $\mguset{\getpos{\ell}{p} \eqs u} \neq \bot$ and $\vars{\getpos{\ell}{p}} \cap \vars{r} \neq \emptyset$. Note that we consider that $\Skel{\ell}{p}$ is unique with fresh variable (this differs slightly
-      from~\citepaper{Section}{sec:transformation rules} where it is define as a set that contains all possible renaming.%}
-      @raise Internal_error when [f] is not a destructor. *)
+  val retrieve_stored_skeletons : unit -> stored_skeleton list
 
-  val skeletons : bool -> protocol_term -> symbol -> int -> skeleton list
+  val setup_stored_skeletons : stored_skeleton list -> unit
 
-  val rename_skeletons : skeleton -> snd_ord -> skeleton
+  (* Access function *)
 
-  val rename_skeletons_with_basic_facts : skeleton -> BasicFact.t list -> snd_ord -> skeleton * BasicFact.t list
+  val get_skeleton : int -> skeleton
 
-  (** The function [skeletons] will be used for the application of the rule {% \Rew. However, we use it
-      in a different but equivalent way than in~\paper. Typically, in~\paper, to apply the rule \Rew,
-      we need at least a deduction fact $\dedfact{\xi_0}{u_0} \in \Solved(\C)$, a rewrite rule $\ell \rightarrow r \in \R$, a recipe $\xi$, a position $p$ and a formula $\psi_0 \in \RewF{\xi}{\ell \rightarrow r}{p}$ such that
-      such that there exists $\Sigma \in \mgs{\FRestr{\C}{\FApply{\Sigma_0}{\psi_0}{\C}}{}}$ where $\Sigma_0 = \\{ \getpos{\xi}{p} \rightarrow \xi_0\\}$.
-      However, it is unecessary to calculate the most general solutions for all cases. In particular, when $u_0$ is not unifiable with $\getpos{\ell}{p}$ then we directly obtain that
-      $\mgs{\FRestr{\C}{\FApply{\Sigma_0}{\psi_0}{\C}}{}} = \emptyset$. Therefore by inputing $u_0$ to the function %} [skeletons], {% we already reduces considerably the
-      number of times we have to calculate most general solutions. Moreover, we also require that $\getpos{\ell}{p} \not\in \Xun$ but for a different reason. In such a case, we
-      we would most probably obtain some most general solutions but these cases would either lead to consequential term or they would be covered by other application of the rule \Rew.%} *)
+  val get_compatible_rewrite_rules : int -> (protocol_term list * protocol_term) list
 
-  (** Assuming that {% $(\xi,t,D) = \Skel{\ell}{p}$ for some $\ell \rightarrow r \in \R$ and $p$ a position of $\ell$, and assuming that $\rootsymb{\ell} = \ffun$, %}
-      [generic_rewrite_rules_formula] {% $\ffun$~$(\xi,t,D)$ returns the set $\RewF{\xi}{\ell \rightarrow r}{p}\Vnorm$ whete $t$ and $D$ are used for the
-      protocol terms.%} *)
-  val generic_rewrite_rules_formula : Fact.deduction -> skeleton -> Fact.deduction_formula list
-
-  (** The function [specific_rewrite_rules_formula] directly applies the deduction facts on the formulas generated by the skeleton. *)
-  val specific_rewrite_rules_formula : Fact.deduction -> skeleton -> Fact.deduction_formula
+  val get_all_skeleton_indices : unit -> int list
 
   (** [get_vars_with_list l] adds the variables of the rewriting system in the list [l]. The addition of a variable as the union of sets, i.e. there is no dupplicate in the resulting list. *)
   val get_vars_with_list : fst_ord_variable list -> fst_ord_variable list
@@ -1024,14 +1017,6 @@ module Rewrite_rules : sig
   val display_skeleton : Display.output -> ?rho:display_renamings option -> skeleton -> string
 
   val display_all_rewrite_rules : Display.output -> ?per_line:int -> ?tab:int -> display_renamings option -> string
-
-  (** {3 Tested functions} *)
-
-  val update_test_normalise : (protocol_term -> protocol_term  -> unit) -> unit
-
-  val update_test_skeletons : (protocol_term -> symbol -> int -> skeleton list -> unit) -> unit
-
-  val update_test_generic_rewrite_rules_formula : (Fact.deduction -> skeleton -> Fact.deduction_formula list -> unit) -> unit
 end
 
 (** {2 Tools} *)
@@ -1098,14 +1083,26 @@ module type Uni =
     val exists : t -> recipe -> protocol_term -> bool
   end
 
+module type EqMixed =
+  sig
+    type t
+
+    val top : t
+
+    val bot : t
+
+    val wedge : t -> Diseq.Mixed.t -> t
+
+    val is_bot : t -> bool
+
+    val is_top : t -> bool
+  end
+
 module Tools_Subterm :
-  functor (SDF : SDF) (DF : DF) (Uni : Uni)->
+  functor (SDF : SDF) (DF : DF) (Uni : Uni) (Eq:EqMixed) ->
     sig
 
     (** {3 Consequence} *)
-
-    (** [consequence] {% $\Solved$~$\Df$~$\xi$~$t$ %} returns [true] iff {% $(\xi,t) \in \Consequence{\Solved \cup \Df}$.%}*)
-    val consequence : SDF.t -> DF.t -> recipe -> protocol_term -> bool
 
     (** [partial_consequence] is related to [consequence]. When [at = Protocol] (resp. [Recipe]), [partial_consequence at] {% $\Solved$~$\Df$~$t$ (resp. $\xi$)
         \begin{itemize}
@@ -1127,11 +1124,22 @@ module Tools_Subterm :
 
     val add_in_uniset : Uni.t -> SDF.t -> DF.t -> recipe -> Uni.t * SDF.t
 
-    (** {3 Tested functions} *)
+    (** {3 Skeletons and formulas} *)
 
-    val update_test_partial_consequence : ('a, 'b) atom -> (SDF.t -> DF.t -> ('a, 'b) term ->  (recipe * protocol_term) option -> unit) -> unit
+    val mixed_diseq_for_skeletons : SDF.t -> DF.t -> (fst_ord, name) variable list -> (snd_ord, axiom) variable list -> recipe -> Diseq.Mixed.t
 
-    val update_test_partial_consequence_additional : ('a, 'b) atom -> (SDF.t -> DF.t -> BasicFact.t list -> ('a, 'b) term -> (recipe * protocol_term) option -> unit) -> unit
+    val initialise_constructor : unit -> unit
 
-    val update_test_uniform_consequence : (SDF.t -> DF.t -> Uni.t -> protocol_term -> recipe option -> unit) -> unit
+    type stored_constructor =
+      {
+        snd_vars : snd_ord_variable list;
+        fst_vars : fst_ord_variable list;
+        mixed_diseq : Eq.t
+      }
+
+    val retrieve_stored_constructors : unit -> (symbol * stored_constructor) list
+
+    val setup_stored_constructors : (symbol * stored_constructor) list -> unit
+
+    val get_stored_constructor : symbol -> stored_constructor
   end

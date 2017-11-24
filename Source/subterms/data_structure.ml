@@ -57,18 +57,27 @@ module SDF = struct
     try
       if sdf.last_entry_ground
       then
+        let _, cell = SDF_Map.max_binding sdf.map_ground in
+        cell.g_fact
+      else
+        let _, cell = SDF_Map.max_binding sdf.map in
+        cell.fact
+    with
+      | Not_found -> Config.internal_error "[Data_structure.ml >> last_entry] Should not apply last entry on an empty SDF."
+
+  let last_entry_with_id sdf =
+    try
+      if sdf.last_entry_ground
+      then
         let id,cell = SDF_Map.max_binding sdf.map_ground in
         cell.g_fact, id
       else
         let id,cell = SDF_Map.max_binding sdf.map in
         cell.fact, id
     with
-      | Not_found -> Config.internal_error "[Data_structure.ml >> last_entry] Should not apply last entry on an empty SDF."
+      | Not_found -> Config.internal_error "[Data_structure.ml >> last_entry_with_id] Should not apply last entry on an empty SDF."
 
-  let last_entry_id sdf =
-    if sdf.size = 0
-    then Config.internal_error "[Data_structure.ml >> last_entry] Should not apply last_entry_id on an empty SDF."
-    else sdf.size
+  let last_entry_id sdf = sdf.size
 
   let all_id sdf = sdf.all_id
 
@@ -102,12 +111,6 @@ module SDF = struct
     SDF_Map.iter (fun id cell -> if not cell.g_marked_uniset then f id cell.g_fact) sdf.map_ground;
     SDF_Map.iter (fun id cell -> if not cell.marked_uniset then f id cell.fact) sdf.map
 
-  let remove sdf id =
-    { sdf with
-      map = SDF_Map.remove id sdf.map;
-      map_ground = SDF_Map.remove id sdf.map_ground
-    }
-
   let iter_within_var_type k sdf f =
     begin try
       SDF_Map.iter (fun _ cell ->
@@ -130,6 +133,10 @@ module SDF = struct
   let tail_iter_within_var_type k sdf f f_next =
     SDF_Map.tail_iter_until (fun cell f_next_1 -> f cell.g_fact f_next_1) (fun cell -> cell.g_var_type > k) sdf.map_ground
       (fun () -> SDF_Map.tail_iter_until (fun cell f_next_1 -> f cell.fact f_next_1) (fun cell -> cell.var_type > k) sdf.map f_next)
+
+  let tail_iter sdf f f_next =
+    SDF_Map.tail_iter (fun cell f_next_1 -> f cell.g_fact f_next_1) sdf.map_ground
+      (fun () -> SDF_Map.tail_iter (fun cell f_next_1 -> f cell.fact f_next_1) sdf.map f_next)
 
   let map_protocol_term sdf f =
     if sdf.last_entry_ground
@@ -768,12 +775,12 @@ end
 module UF = struct
 
   type state_ded_form =
-    | DedSolved of Fact.deduction_formula
+    | DedSolved of Fact.deduction list
     | DedUnsolved of Fact.deduction_formula list
     | DedNone
 
   type state_eq_form =
-    | EqSolved of Fact.equality_formula
+    | EqSolved of Fact.equality
     | EqUnsolved of Fact.equality_formula
     | EqNone
 
@@ -791,38 +798,69 @@ module UF = struct
       eq_formula = EqNone
     }
 
-  let add_equality uf form =
+  let add_equality_fact uf fact =
     Config.debug (fun () ->
       if uf.eq_formula <> EqNone
-      then Config.internal_error "[Data_structure.ml >> add_equality] There is already an equality formula in UF."
-      );
+      then Config.internal_error "[Data_structure.ml >> add_equality_fact] There is already an equality formula or fact in UF."
+    );
 
-    if Fact.is_solved form
-    then { uf with eq_formula = EqSolved form }
-    else { uf with eq_formula = EqUnsolved form }
+    { uf with eq_formula = EqSolved fact }
 
-  let add_deduction uf form_list =
+  let add_equality_formula uf form =
+    Config.debug (fun () ->
+      if uf.eq_formula <> EqNone
+      then Config.internal_error "[Data_structure.ml >> add_equality_formula] There is already an equality formula in UF.";
+
+      if Fact.is_fact form
+      then Config.internal_error "[Data_structure.ml >> add_equality_formula] The formula should not be solved."
+    );
+
+    { uf with eq_formula = EqUnsolved form }
+
+  let add_deduction_fact uf fact =
     Config.debug (fun () ->
       if uf.ded_formula <> DedNone
-      then Config.internal_error "[Data_structure.ml >> add_deduction] There is already a deduction formula in UF.";
-
-      if form_list = []
-      then Config.internal_error "[Data_structure.ml >> add_deduction] The list of deduction formulas given as argument should not be empty."
+      then Config.internal_error "[Data_structure.ml >> add_deduction_fact] There is already a deduction formula or fact in UF."
       );
 
-    try
-      let solved_form = List.find Fact.is_solved form_list in
-      { uf with ded_formula = DedSolved solved_form }
-    with
-      | Not_found -> { uf with ded_formula = DedUnsolved form_list }
+    { uf with ded_formula = DedSolved [fact] }
 
-  let remove_solved (type a) (fct: a Fact.t) uf = match fct with
-    | Fact.Deduction ->
-        { uf with ded_formula = DedNone }
-    | Fact.Equality ->
-        { uf with eq_formula = EqNone }
+  let add_deduction_formulas uf form_list =
+    Config.debug (fun () ->
+      if uf.ded_formula <> DedNone
+      then Config.internal_error "[Data_structure.ml >> UF.add_deduction_formulas] There is already a deduction formula in UF.";
 
-  let remove_unsolved_equality uf =
+      if form_list = []
+      then Config.internal_error "[Data_structure.ml >> UF.add_deduction_formulas] The list of deduction formulas given as argument should not be empty.";
+
+      if List.exists Fact.is_fact form_list
+      then Config.internal_error "[Data_structure.ml >> UF.add_deduction_formulas] The list should only contain unsolved deduction formulas."
+      );
+
+    { uf with ded_formula = DedUnsolved form_list }
+
+  let replace_deduction_facts uf fact_list =
+    Config.debug (fun () ->
+      match uf.ded_formula, uf.eq_formula with
+        | DedSolved [_], EqNone -> ()
+        | _ -> Config.internal_error "[Data_structure.ml >> UF.replace_deduction_facts] There should be only one deduction fact and no equality fact."
+    );
+    { ded_formula = DedSolved fact_list; eq_formula = EqNone}
+
+  let remove_one_deduction_fact uf = match uf.ded_formula with
+    | DedSolved [_] -> { uf with ded_formula = DedNone }
+    | DedSolved (_::q) -> { uf with ded_formula = DedSolved q }
+    | _ -> Config.internal_error "[data_structure.ml >> UF.remove_one_deduction_facts] There should be at least one deduction fact."
+
+  let remove_equality_fact uf =
+    Config.debug (fun () ->
+      match uf.eq_formula with
+        | EqSolved _ -> ()
+        | _ -> Config.internal_error "[data_structure.ml >> UF.remove_equality_fact] There should be an equality fact."
+    );
+    { uf with eq_formula = EqNone }
+
+  let remove_one_unsolved_equality_formula uf =
     Config.debug (fun () ->
       match uf.eq_formula with
         | EqUnsolved _ -> ()
@@ -830,277 +868,277 @@ module UF = struct
     );
     { uf with eq_formula = EqNone }
 
-  let filter (type a) (fct: a Fact.t) uf (f: a Fact.formula -> bool) = match fct with
-    | Fact.Deduction ->
-        begin match uf.ded_formula with
-          | DedNone -> uf
-          | DedSolved form when f form -> uf
-          | DedSolved _ -> { uf with ded_formula = DedNone }
-          | DedUnsolved form_list ->
-              let result = List.filter_unordered f form_list in
-              if result = []
-              then { uf with ded_formula = DedNone }
-              else { uf with ded_formula = DedUnsolved result }
-        end
-    | Fact.Equality ->
-        begin match uf.eq_formula with
-          | EqNone -> uf
-          | EqSolved form when f form -> uf
-          | EqUnsolved form  when f form -> uf
-          | _ -> { uf with eq_formula = EqNone }
-        end
+  let remove_one_unsolved_deduction_formula uf = match uf.ded_formula with
+    | DedUnsolved (_::q) -> { uf with ded_formula = DedUnsolved q }
+    | _ -> Config.internal_error "[data_structure.ml >> UF.remove_usolved] UF should contain an unsolved deduction formula."
 
-  let solved_occurs (type a) (fct: a Fact.t) uf = match fct with
-    | Fact.Deduction ->
-        begin match uf.ded_formula with
-          | DedSolved _ -> true
-          | _ -> false
-        end
-    | Fact.Equality ->
-        begin match uf.eq_formula with
-          | EqSolved _ -> true
-          | _ -> false
-        end
+  let filter_unsolved uf f = match uf.ded_formula with
+    | DedUnsolved form_list ->
+        let result = List.filter_unordered f form_list in
+        if result = []
+        then { uf with ded_formula = DedNone }
+        else { uf with ded_formula = DedUnsolved result }
+    | _ -> Config.internal_error "[data_structure.ml >> UF.filter_unsolved] There should be unsolved formula."
 
-  let unsolved_occurs (type a) (fct: a Fact.t) uf = match fct with
-    | Fact.Deduction ->
-        begin match uf.ded_formula with
-          | DedUnsolved _ -> true
-          | _ -> false
-        end
-    | Fact.Equality ->
-        begin match uf.eq_formula with
-          | EqUnsolved _ -> true
-          | _ -> false
-        end
+  let exists_equality_fact uf = match uf.eq_formula with
+    | EqSolved _ -> true
+    | _ -> false
 
-  let choose_solved (type a) (fct: a Fact.t) uf = match fct with
-    | Fact.Deduction ->
-        begin match uf.ded_formula with
-          | DedSolved form -> (form:a Fact.formula)
-          | _ -> raise Not_found
-        end
-    | Fact.Equality ->
-        begin match uf.eq_formula with
-          | EqSolved form -> (form: a Fact.formula)
-          | _ -> raise Not_found
-        end
+  let exists_deduction_fact uf = match uf.ded_formula with
+    | DedSolved _ -> true
+    | _ -> false
 
-  let choose_solved_option (type a) (fct: a Fact.t) uf = match fct with
-    | Fact.Deduction ->
-        begin match uf.ded_formula with
-          | DedSolved form -> ((Some form):a Fact.formula option )
-          | _ -> None
-        end
-    | Fact.Equality ->
-        begin match uf.eq_formula with
-          | EqSolved form -> ((Some form): a Fact.formula option)
-          | _ -> None
-        end
+  let exists_unsolved_equality_formula uf = match uf.eq_formula with
+    | EqUnsolved _ -> true
+    | _ -> false
 
-  let choose_unsolved_option (type a) (fct: a Fact.t) uf = match fct with
-    | Fact.Deduction ->
-        begin match uf.ded_formula with
-          | DedUnsolved [] -> Config.internal_error "[Data_structure.ml >> UF.choose_unsolved] The list should not be empty."
-          | DedUnsolved form_list -> (Some (List.hd form_list): a Fact.formula option)
-          | _ -> None
-        end
-    | Fact.Equality ->
-        begin match uf.eq_formula with
-          | EqUnsolved form -> ((Some form): a Fact.formula option)
-          | _ -> None
-        end
+  let pop_deduction_fact uf = match uf.ded_formula with
+    | DedSolved (t::_) -> t
+    | _ -> Config.internal_error "[data_structure.ml >> UF.pop_deduction_fact] There should be at least one deduction fact."
 
-  let iter (type a) (fct:a Fact.t) uf (f:a Fact.formula -> unit) = match fct with
-    | Fact.Deduction ->
-        begin match uf.ded_formula with
-          | DedNone -> ()
-          | DedUnsolved [] -> Config.internal_error "[Data_structure.ml >> UF.iter] The list should not be empty."
-          | DedUnsolved form_list -> List.iter f form_list
-          | DedSolved form -> f form
-        end
-    | Fact.Equality ->
-        begin match uf.eq_formula with
-          | EqNone -> ()
-          | EqSolved form | EqUnsolved form -> f form
-        end
+  let pop_deduction_fact_option uf = match uf.ded_formula with
+    | DedSolved (t::_) -> Some t
+    | _ -> None
 
-  exception Solved_ded of Fact.deduction_formula
+  let pop_equality_fact_option uf = match uf.eq_formula with
+    | EqSolved t -> Some t
+    | _ -> None
 
-  let apply uf subst_snd subst_fst =
-    let fst_identity = Subst.is_identity subst_fst
-    and snd_identity = Subst.is_identity subst_snd in
+  let pop_deduction_formula_option uf = match uf.ded_formula with
+    | DedUnsolved (t::_) -> Some t
+    | _ -> None
 
-    if fst_identity && snd_identity
+  let pop_equality_formula_option uf = match uf.eq_formula with
+    | EqUnsolved t -> Some t
+    | _ -> None
+
+  let number_of_deduction_facts uf = match uf.ded_formula with
+    | DedSolved l -> List.length l
+    | _ -> 0
+
+  exception Solved_ded of Fact.deduction
+
+  let apply uf subst =
+
+    if (uf.ded_formula = DedNone && uf.eq_formula = EqNone) || Subst.is_identity subst
     then uf
     else
-      begin
-        let apply_subst_on_ded_formula, apply_subst_on_eq_formula = match fst_identity, snd_identity with
-          | false, false ->
-              (fun (form: Fact.deduction Fact.formula) -> Fact.apply Fact.Deduction form subst_snd subst_fst),
-              (fun (form: Fact.equality Fact.formula) -> Fact.apply Fact.Equality form subst_snd subst_fst)
-          | false, true ->
-              (fun (form: Fact.deduction Fact.formula) -> Fact.apply_fst_ord Fact.Deduction form subst_fst),
-              (fun (form: Fact.equality Fact.formula) -> Fact.apply_fst_ord Fact.Equality form subst_fst)
-          | true, false ->
-              (fun (form: Fact.deduction Fact.formula) -> Fact.apply_snd_ord Fact.Deduction form subst_snd),
-              (fun (form: Fact.equality Fact.formula) -> Fact.apply_snd_ord Fact.Equality form subst_snd)
-          | true, true -> Config.internal_error "[data_structure.ml >> apply] Impossible case"
-        in
+      let new_ded_formula = match uf.ded_formula with
+        | DedNone -> DedNone
+        | DedSolved fact_list -> DedSolved (List.map (Fact.apply_fst_on_deduction_fact subst) fact_list)
+        | DedUnsolved form_list ->
+            begin try
+              let form_list' =
+                List.fold_left (fun acc form ->
+                  try
+                    let form_1 = Fact.apply_fst_on_formula Fact.Deduction subst form in
+                    if Fact.is_fact form_1
+                    then raise (Solved_ded (Fact.get_head form_1))
+                    else form_1 :: acc
+                  with Fact.Bot -> acc
+                ) [] form_list
+              in
 
-        let new_ded_formula = match uf.ded_formula with
-          | DedNone -> DedNone
-          | DedSolved form ->
-              Config.debug (fun () ->
-                try
-                  let _ = apply_subst_on_ded_formula form in
-                  ()
-                with
-                  | Fact.Bot -> Config.internal_error "[Data_structure.ml >> UF.apply] Applying a substitution on a solved formula should not result into bot."
-              );
+              if form_list' = []
+              then DedNone
+              else DedUnsolved form_list'
+            with Solved_ded fact -> DedSolved [fact]
+            end
+      in
 
-              DedSolved (apply_subst_on_ded_formula form)
-          | DedUnsolved form_list ->
-              begin
-                let result_list = ref [] in
+      let new_eq_formula = match uf.eq_formula with
+        | EqUnsolved form ->
+            begin try
+              let form_1 = Fact.apply_fst_on_formula Fact.Equality subst form in
+              if Fact.is_fact form_1
+              then EqSolved (Fact.get_head form_1)
+              else EqUnsolved form_1
+            with
+              | Fact.Bot -> EqNone
+            end
+        | _ -> uf.eq_formula
+      in
 
-                try
-                  List.iter (fun form ->
-                    try
-                      let form_1 = apply_subst_on_ded_formula form in
-                      if Fact.is_solved form_1
-                      then raise (Solved_ded form_1)
-                      else result_list := form_1 :: !result_list
-                    with
-                      | Fact.Bot -> ()
-                    ) form_list;
-
-                  if !result_list = []
-                  then DedNone
-                  else DedUnsolved !result_list
-                with
-                  | Solved_ded form -> DedSolved form
-              end
-        in
-
-        let new_eq_formula = match uf.eq_formula with
-          | EqNone -> EqNone
-          | EqSolved form ->
-              Config.debug (fun () ->
-                try
-                  let _ = apply_subst_on_eq_formula form in
-                  ()
-                with
-                  | Fact.Bot -> Config.internal_error "[Data_structure.ml >> UF.apply] Applying a substitution on a solved formula should not result into bot.(2)"
-              );
-
-              EqSolved(apply_subst_on_eq_formula form)
-          | EqUnsolved form ->
-              begin
-                try
-                  let form_1 = apply_subst_on_eq_formula form in
-                  if Fact.is_solved form_1
-                  then EqSolved form_1
-                  else EqUnsolved form_1
-                with
-                  | Fact.Bot -> EqNone
-              end
-        in
-
-        { ded_formula = new_ded_formula ; eq_formula = new_eq_formula }
-      end
+      { ded_formula = new_ded_formula ; eq_formula = new_eq_formula }
 
   let apply_with_gathering uf subst_snd subst_fst ded_ref eq_ref =
-    let fst_identity = Subst.is_identity subst_fst
-    and snd_identity = Subst.is_identity subst_snd in
-
-    if fst_identity && snd_identity
+    if (uf.ded_formula = DedNone && uf.eq_formula = EqNone)
     then uf
     else
-      begin
-        let apply_subst_on_ded_formula, apply_subst_on_eq_formula = match fst_identity, snd_identity with
-          | false, false ->
-              (fun (form: Fact.deduction Fact.formula) -> Fact.apply_ded_with_gathering form subst_snd subst_fst ded_ref),
-              (fun (form: Fact.equality Fact.formula) -> Fact.apply_eq_with_gathering form subst_snd subst_fst eq_ref)
-          | false, true ->
-              (fun (form: Fact.deduction Fact.formula) -> Fact.apply_fst_ord Fact.Deduction form subst_fst),
-              (fun (form: Fact.equality Fact.formula) -> Fact.apply_fst_ord Fact.Equality form subst_fst)
-          | true, false ->
-              (fun (form: Fact.deduction Fact.formula) -> Fact.apply_snd_ord_ded_with_gathering form subst_snd ded_ref),
-              (fun (form: Fact.equality Fact.formula) -> Fact.apply_snd_ord_eq_with_gathering form subst_snd eq_ref)
-          | true, true -> Config.internal_error "[data_structure.ml >> apply] Impossible case"
-        in
+      match Subst.is_identity subst_fst, Subst.is_identity subst_snd with
+        | true,true -> uf
+        | true,false ->
+            let new_ded_formula = match uf.ded_formula with
+              | DedNone -> DedNone
+              | DedSolved fact_list ->
+                  if !ded_ref = []
+                  then
+                    begin
+                      let fact_list' = List.map (Fact.apply_snd_on_fact Fact.Deduction subst_snd) fact_list in
+                      let recipe_list = List.map (fun fact -> Fact.get_recipe fact) fact_list' in
+                      ded_ref := recipe_list;
+                      DedSolved fact_list'
+                    end
+                  else DedSolved (List.map2 Fact.replace_recipe_in_deduction_fact !ded_ref fact_list)
+              | DedUnsolved form_list ->
+                  if !ded_ref = []
+                  then
+                    begin
+                      let form = List.hd form_list in
+                      let form' = Fact.apply_snd_on_formula Fact.Deduction subst_snd form in
+                      let recipe = Fact.get_recipe (Fact.get_head form') in
+                      let q_form = List.rev_map (Fact.replace_recipe_in_deduction_formula recipe) (List.tl form_list) in
+                      ded_ref := [recipe];
+                      DedUnsolved (form'::q_form)
+                    end
+                  else DedUnsolved (List.rev_map (Fact.replace_recipe_in_deduction_formula (List.hd !ded_ref)) form_list)
+            in
 
-        let new_ded_formula = match uf.ded_formula with
-          | DedNone -> DedNone
-          | DedSolved form ->
-              Config.debug (fun () ->
-                try
-                  let _ = apply_subst_on_ded_formula form in
-                  ()
-                with
-                  | Fact.Bot -> Config.internal_error "[Data_structure.ml >> UF.apply] Applying a substitution on a solved formula should not result into bot."
-              );
+            let new_eq_formula = match uf.eq_formula with
+              | EqNone -> EqNone
+              | EqSolved fact ->
+                  begin match !eq_ref with
+                    | None ->
+                        let fact' = Fact.apply_snd_on_fact Fact.Equality subst_snd fact in
+                        eq_ref := Some fact';
+                        EqSolved fact'
+                    | Some eq_fact -> EqSolved eq_fact
+                  end
+              | EqUnsolved form ->
+                  begin match !eq_ref with
+                    | None ->
+                        let form' = Fact.apply_snd_on_formula Fact.Equality subst_snd form in
+                        eq_ref := Some (Fact.get_head form');
+                        EqUnsolved form'
+                    | Some eq_fact -> EqUnsolved (Fact.replace_head_in_equality_formula eq_fact form)
+                  end
+            in
 
-              DedSolved (apply_subst_on_ded_formula form)
-          | DedUnsolved form_list ->
-              begin
-                let result_list = ref [] in
+            { ded_formula = new_ded_formula ; eq_formula = new_eq_formula }
+        | false,true ->
+            let new_ded_formula = match uf.ded_formula with
+              | DedNone -> DedNone
+              | DedSolved fact_list -> DedSolved (List.map (Fact.apply_fst_on_deduction_fact subst_fst) fact_list)
+              | DedUnsolved form_list ->
+                  begin try
+                    let form_list' =
+                      List.fold_left (fun acc form ->
+                        try
+                          let form_1 = Fact.apply_fst_on_formula Fact.Deduction subst_fst form in
+                          if Fact.is_fact form_1
+                          then raise (Solved_ded (Fact.get_head form_1))
+                          else form_1 :: acc
+                        with Fact.Bot -> acc
+                      ) [] form_list
+                    in
 
-                try
-                  List.iter (fun form ->
-                    try
-                      let form_1 = apply_subst_on_ded_formula form in
-                      if Fact.is_solved form_1
-                      then raise (Solved_ded form_1)
-                      else result_list := form_1 :: !result_list
-                    with
-                      | Fact.Bot -> ()
-                    ) form_list;
+                    if form_list' = []
+                    then DedNone
+                    else DedUnsolved form_list'
+                  with Solved_ded fact -> DedSolved [fact]
+                  end
+            in
 
-                  if !result_list = []
-                  then DedNone
-                  else DedUnsolved !result_list
-                with
-                  | Solved_ded form -> DedSolved form
-              end
-        in
+            let new_eq_formula = match uf.eq_formula with
+              | EqUnsolved form ->
+                  begin try
+                    let form_1 = Fact.apply_fst_on_formula Fact.Equality subst_fst form in
+                    if Fact.is_fact form_1
+                    then EqSolved (Fact.get_head form_1)
+                    else EqUnsolved form_1
+                  with
+                    | Fact.Bot -> EqNone
+                  end
+              | _ -> uf.eq_formula
+            in
 
-        let new_eq_formula = match uf.eq_formula with
-          | EqNone -> EqNone
-          | EqSolved form ->
-              Config.debug (fun () ->
-                try
-                  let _ = apply_subst_on_eq_formula form in
-                  ()
-                with
-                  | Fact.Bot -> Config.internal_error "[Data_structure.ml >> UF.apply] Applying a substitution on a solved formula should not result into bot.(2)"
-              );
+            { ded_formula = new_ded_formula ; eq_formula = new_eq_formula }
+        | false,false ->
+            let new_ded_formula = match uf.ded_formula with
+              | DedNone -> DedNone
+              | DedSolved fact_list ->
+                  if !ded_ref = []
+                  then
+                    begin
+                      let fact_list' = List.map (Fact.apply_on_deduction_fact subst_snd subst_fst) fact_list in
+                      let recipe_list = List.map (fun fact -> Fact.get_recipe fact) fact_list' in
+                      ded_ref := recipe_list;
+                      DedSolved fact_list'
+                    end
+                  else
+                    let fact_list' = List.map (Fact.apply_fst_on_deduction_fact subst_fst) fact_list in
+                    DedSolved (List.map2 Fact.replace_recipe_in_deduction_fact !ded_ref fact_list')
+              | DedUnsolved form_list ->
+                  begin try
+                    let form_list' =
+                      List.fold_left (fun acc form ->
+                        try
+                          let form_1 = Fact.apply_fst_on_formula Fact.Deduction subst_fst form in
+                          if Fact.is_fact form_1
+                          then raise (Solved_ded (Fact.get_head form_1))
+                          else form_1 :: acc
+                        with Fact.Bot -> acc
+                      ) [] form_list
+                    in
 
-              EqSolved(apply_subst_on_eq_formula form)
-          | EqUnsolved form ->
-              begin
-                try
-                  let form_1 = apply_subst_on_eq_formula form in
-                  if Fact.is_solved form_1
-                  then EqSolved form_1
-                  else EqUnsolved form_1
-                with
-                  | Fact.Bot -> EqNone
-              end
-        in
+                    if form_list' = []
+                    then DedNone
+                    else
+                      if !ded_ref = []
+                      then
+                        begin
+                          let form = Fact.apply_snd_on_formula Fact.Deduction subst_snd (List.hd form_list') in
+                          let recipe = Fact.get_recipe (Fact.get_head form) in
+                          ded_ref := [recipe];
+                          DedUnsolved (form::(List.rev_map (Fact.replace_recipe_in_deduction_formula recipe) (List.tl form_list')))
+                        end
+                      else DedUnsolved (List.rev_map (Fact.replace_recipe_in_deduction_formula (List.hd !ded_ref)) form_list')
+                  with Solved_ded fact -> DedSolved [Fact.replace_recipe_in_deduction_fact (List.hd !ded_ref) fact]
+                  end
+            in
 
-        { ded_formula = new_ded_formula ; eq_formula = new_eq_formula }
-      end
+            let new_eq_formula = match uf.eq_formula with
+              | EqNone -> EqNone
+              | EqSolved fact ->
+                  begin match !eq_ref with
+                    | None ->
+                        let fact' = Fact.apply_snd_on_fact Fact.Equality subst_snd fact in
+                        eq_ref := Some fact';
+                        EqSolved fact'
+                    | Some fact' -> EqSolved fact'
+                  end
+              | EqUnsolved form ->
+                  begin try
+                    let form_1 = Fact.apply_fst_on_formula Fact.Equality subst_fst form in
+                    match !eq_ref with
+                      | None ->
+                          let form_2 = Fact.apply_snd_on_formula Fact.Equality subst_snd form_1 in
+                          let head = Fact.get_head form_2 in
+                          eq_ref := Some head;
+                          if Fact.is_fact form_2
+                          then EqSolved head
+                          else EqUnsolved form_2
+                      | Some eq_fact ->
+                          if Fact.is_fact form_1
+                          then EqSolved eq_fact
+                          else EqUnsolved (Fact.replace_head_in_equality_formula eq_fact form_1)
+                  with Fact.Bot -> EqNone
+                  end
+            in
+
+            { ded_formula = new_ded_formula ; eq_formula = new_eq_formula }
+
+  (**** Display functions ****)
 
   let gather_deduction_formula uf = match uf.ded_formula with
     | DedNone -> []
-    | DedSolved form -> [form]
+    | DedSolved fact_list -> List.map (fun fact -> Fact.create Fact.Deduction fact []) fact_list
     | DedUnsolved form_list -> form_list
 
   let gather_equality_formula uf = match uf.eq_formula with
     | EqNone -> []
-    | EqSolved form | EqUnsolved form -> [form]
+    | EqSolved fact -> [Fact.create Fact.Equality fact []]
+    | EqUnsolved form -> [form]
 
   let display out ?(rho = None) uf = match out with
     | Testing -> Printf.sprintf "{{%s}{%s}}"
@@ -1212,25 +1250,60 @@ module Eq = struct
         with
         | Is_Bot -> Bot
 
-  let implies at form term_list =
-    try
-      let subst = Subst.unify at term_list in
-      apply at form subst = Bot
-    with
-      | Subst.Not_unifiable -> true
-
   let extract = function
-    | Top -> None, Top
-    | Bot -> None, Bot
-    | Conj [] -> Config.internal_error "[data_structure.ml >> DF.extract] The list should not be empty"
-    | Conj [diseq] -> Some diseq, Top
-    | Conj (diseq::q) -> Some diseq, Conj q
+    | Conj [diseq] -> diseq, Top
+    | Conj (diseq::q) -> diseq, Conj q
+    | _ -> Config.internal_error "[data_structure.ml >> DF.extract] There should be at least one disequation."
 
   let display out ?(rho=None) at = function
     | Top -> Display.top out
     | Bot -> Display.bot out
     | Conj diseq_list -> Display.display_list (Diseq.display out ~rho:rho at) (Printf.sprintf " %s " (Display.wedge out)) diseq_list
 
+  module Mixed = struct
+
+    type t =
+      | MTop
+      | MBot
+      | MConj of Diseq.Mixed.t list
+
+    let top = MTop
+
+    let bot = MBot
+
+    let wedge form diseq = match form with
+      | MTop -> MConj [diseq]
+      | MBot -> MBot
+      | MConj diseq_l -> MConj (diseq::diseq_l)
+
+    let apply form fst_subst snd_subst = match form with
+      | MTop -> MTop
+      | MBot -> MBot
+      | MConj diseq_l ->
+          try
+            let diseq_l' =
+              List.fold_left (fun acc diseq ->
+                let diseq' = Diseq.Mixed.apply_and_normalise fst_subst snd_subst diseq in
+                if Diseq.Mixed.is_bot diseq'
+                then raise Is_Bot
+                else if Diseq.Mixed.is_top diseq'
+                then acc
+                else diseq'::acc
+              ) [] diseq_l
+            in
+            if diseq_l' = []
+            then MTop
+            else MConj diseq_l'
+          with Is_Bot -> MBot
+
+    let is_top = function
+      | MTop -> true
+      | _ -> false
+
+    let is_bot = function
+      | MBot -> true
+      | _ -> false
+  end
 end
 
 (*****************************************
@@ -1430,7 +1503,7 @@ module Uniformity_Set = struct
 
   let add uniset recipe pterm =
     try
-      { uniset with multiple = Subterm.replace pterm (fun recipe_set -> Recipe_Set.add recipe recipe_set)  uniset.multiple }
+      { uniset with multiple = Subterm.replace pterm (fun recipe_set -> Recipe_Set.add recipe recipe_set) uniset.multiple }
     with
       | Not_found ->
           let multiple_ref = ref uniset.multiple in
@@ -1777,6 +1850,8 @@ module Uniformity_Set = struct
 
   (******* Testing ********)
 
+  let exists_recipes_deducing_same_protocol_term uniset = Subterm.is_empty uniset.multiple
+
   let exists uniset recipe term =
     if is_ground term
     then
@@ -1831,7 +1906,12 @@ module Uniformity_Set = struct
             end
         | r -> r
 
-  let unify_multiple_opt uniset =
+  type uniformity_check =
+    | Not_uniform
+    | Uniform
+    | Substitution of (snd_ord, axiom) Subst.t * t
+
+  let unify_recipes_deducing_same_protocol_term uniset =
     Config.debug (fun () ->
       Subterm.iter (fun _ set_recipe ->
         if Recipe_Set.is_singleton set_recipe || Recipe_Set.is_empty set_recipe
@@ -1839,7 +1919,7 @@ module Uniformity_Set = struct
       ) uniset.multiple
     );
     if Subterm.is_empty uniset.multiple
-    then Some(Subst.identity,uniset)
+    then Uniform
     else
       begin
         let list_of_equations = ref [] in
@@ -1849,7 +1929,7 @@ module Uniformity_Set = struct
         ) uniset.multiple;
 
         try
-          let subst = Subst.unify Recipe !list_of_equations in
+          let subst = Subst.unify_recipe !list_of_equations in
           Config.debug (fun () ->
             if Subst.is_identity subst
             then Config.internal_error "[data_structure.ml >> unify_multiple_opt] The substitution can't be the identity."
@@ -1879,23 +1959,14 @@ module Uniformity_Set = struct
               }
             )
           in
-          Some (subst,new_uniset)
+          Substitution (subst,new_uniset)
         with
-          | Subst.Not_unifiable -> None
+          | Subst.Not_unifiable -> Not_uniform
       end
-
-  let exists_pair_with_same_protocol_term uniset f =
-    let list_of_equations = ref [] in
-
-    Subterm.iter (fun _ set_recipe ->
-      Recipe_Set.choose_and_apply (fun r1 r2 -> list_of_equations := (r1,r2) :: !list_of_equations) set_recipe
-    ) uniset.multiple;
-
-    f !list_of_equations
 end
 
 (*****************************************
 ***                Tools               ***
 ******************************************)
 
-module Tools = Tools_Subterm(SDF)(DF)(Uniformity_Set)
+module Tools = Tools_Subterm(SDF)(DF)(Uniformity_Set)(Eq.Mixed)

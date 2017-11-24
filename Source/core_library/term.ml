@@ -127,6 +127,16 @@ let rec is_ground_debug term = match term.term with
   | Func(_,args) -> List.for_all is_ground_debug args
   | _ -> true
 
+module HashSymb = struct
+  type t = symbol
+
+  let equal = (==)
+
+  let hash = Hashtbl.hash
+end
+
+module HashtblSymb = Hashtbl.Make(HashSymb)
+
 (************************************
 ***            Variables          ***
 *************************************)
@@ -142,6 +152,12 @@ module Variable = struct
   let fst_ord_type = NoType
 
   let snd_ord_type n = n
+
+  let infinite_snd_ord_type = -1
+
+  let has_infinite_type v = v.var_type = -1
+
+  let has_not_infinite_type v = v.var_type <> -1
 
   let fresh_with_label q ty s =
     let var = { label = s; index = !accumulator; link = NoLink; quantifier = q; var_type = ty } in
@@ -469,15 +485,6 @@ module Variable = struct
           new_elt
         end
 
-    let rename : 'a 'b. ('a,'b) atom -> quantifier -> 'a -> ('a,'b) variable -> ('a,'b) variable = fun (type a) (type b) (at:(a,b) atom) quantifier (ord_type:a) (v:(a,b) variable) ->
-      match v.link with
-        | VLink(v') -> v'
-        | NoLink ->
-            let v' = variable_fresh_shortcut at quantifier ord_type in
-            link at v v';
-            v'
-        | _ -> Config.internal_error "[term.ml >> Subst.Renaming.rename] Unexpected link"
-
     let rec rename_term : 'a 'b. ('a,'b) atom -> quantifier -> 'a -> ('a,'b) term -> ('a,'b) term = fun (type a) (type b) (at:(a,b) atom) quantifier (ord_type:a) (t:(a,b) term) ->
       Config.debug (fun () ->
         if t.ground <> is_ground_debug t
@@ -757,11 +764,11 @@ module Axiom = struct
     then Config.internal_error "[term.ml >> Axiom.create] An axiom should always be positive";
     i
 
-  let order ax1 ax2 = compare ax1 ax2
+  let order (ax1:int) (ax2:int) = compare ax1 ax2
 
   let index_of ax = ax
 
-  let is_equal ax1 ax2 = ax1 = ax2
+  let is_equal (ax1:int) (ax2:int) = ax1 = ax2
 
   let display out ax = match out with
     | Testing -> Printf.sprintf "_ax_%d" ax
@@ -780,19 +787,17 @@ module Symbol = struct
 
   let accumulator_nb_symb = ref 0
 
-  let dummy_constant = ref None
+  let all_constructors = ref ([]:symbol list)
 
-  let all_constructors = ref []
+  let all_destructors = ref ([]:symbol list)
 
-  let all_destructors = ref []
-
-  let all_tuple = ref []
+  let all_tuple = ref ([]:symbol list)
 
   let number_of_constructors = ref 0
 
   let number_of_destructors = ref 0
 
-  let all_projection = Hashtbl.create 7
+  let all_projection = HashtblSymb.create 7
 
   let special_constructor = Hashtbl.create 7
 
@@ -802,40 +807,47 @@ module Symbol = struct
     all_tuple := [];
     number_of_constructors :=0;
     number_of_destructors := 0;
-    Hashtbl.reset all_projection;
+    HashtblSymb.reset all_projection;
     Hashtbl.reset special_constructor
 
-  type setting = { all_t : symbol list ; all_p : (int * symbol list) list ; all_c : symbol list ; all_d : symbol list ; nb_c : int ; nb_d : int ; cst : symbol }
+  type setting =
+    {
+      all_t : symbol list ;
+      all_p : (symbol * symbol list) list ;
+      all_c : symbol list ;
+      all_d : symbol list ;
+      nb_c : int ;
+      nb_d : int ;
+      nb_symb : int
+    }
 
   let set_up_signature setting =
-    accumulator_nb_symb := setting.nb_c + setting.nb_d;
-    dummy_constant := Some setting.cst;
+    accumulator_nb_symb := setting.nb_symb;
     all_constructors := setting.all_c;
     all_destructors := setting.all_d;
     all_tuple := setting.all_t;
     number_of_constructors := setting.nb_c;
     number_of_destructors := setting.nb_d;
-    Hashtbl.reset all_projection;
+    HashtblSymb.reset all_projection;
     Hashtbl.reset special_constructor;
-    List.iter (fun (ar,list_proj) ->
-      let array_proj = Array.of_list list_proj in
-      Hashtbl.add all_projection ar array_proj
+    List.iter (fun (f,list_proj) ->
+      HashtblSymb.add all_projection f list_proj
     ) setting.all_p
 
   let get_settings () =
     {
       all_t = !all_tuple;
-      all_p = Hashtbl.fold (fun ar array_proj acc -> (ar,Array.to_list array_proj)::acc) all_projection [];
+      all_p = HashtblSymb.fold (fun f list_proj acc -> (f,list_proj)::acc) all_projection [];
       all_c = !all_constructors;
       all_d = !all_destructors;
       nb_c = !number_of_constructors;
       nb_d = !number_of_destructors;
-      cst = (match !dummy_constant with None -> Config.internal_error "[term.ml >> get_setting] A constant should be present" | Some c -> c)
+      nb_symb = !accumulator_nb_symb
     }
 
   (********* Symbols functions *********)
 
-  let is_equal sym_1 sym_2 =
+  let is_equal (sym_1:symbol) (sym_2:symbol) =
     sym_1 == sym_2
 
   let is_constructor sym =
@@ -847,10 +859,6 @@ module Symbol = struct
   let is_destructor sym = match sym.cat with
     | Destructor _ -> true
     | _ -> false
-
-  let reg_proj = Str.regexp "proj_{\\([0-9]+\\),\\([0-9]+\\)}"
-
-  let is_proj sym = Str.string_match reg_proj sym.name 0
 
   let is_public sym = sym.public
 
@@ -868,14 +876,8 @@ module Symbol = struct
 
   (********* Tuple ************)
 
-  let nth_projection symb_tuple i = match symb_tuple.cat with
-    | Tuple ->
-        let ar = symb_tuple.arity in
-        (Hashtbl.find all_projection ar).(i-1)
-    | _ -> Config.internal_error "[term.ml >> Symbol.nth_projection] The function symbol should be a tuple"
-
   let get_projections symb_tuple = match symb_tuple.cat with
-    | Tuple -> Array.to_list (Hashtbl.find all_projection (symb_tuple.arity))
+    | Tuple -> HashtblSymb.find all_projection symb_tuple
     | _ -> Config.internal_error "[term.ml >> Symbol.get_projections] The function symbol should be a tuple"
 
   (********* Addition ************)
@@ -883,34 +885,34 @@ module Symbol = struct
   let new_constructor ar public is_name s =
     let symb = { name = s; arity = ar; cat = Constructor; index_s = !accumulator_nb_symb; public = public; represents = (if is_name then UserName else UserDefined) } in
     incr accumulator_nb_symb;
-    all_constructors := List.sort order (symb::!all_constructors);
-    number_of_constructors := !number_of_constructors + 1;
-    if ar = 0 && public
-    then dummy_constant := Some symb;
+    all_constructors := symb::!all_constructors;
+    incr number_of_constructors;
     symb
 
   let new_destructor ar public s rw_rules =
     let symb = { name = s; arity = ar; cat = Destructor rw_rules; index_s = !accumulator_nb_symb; public = public; represents = UserDefined } in
     incr accumulator_nb_symb;
-    all_destructors := List.sort order (symb::!all_destructors);
+    all_destructors := symb::!all_destructors;
     number_of_destructors := !number_of_destructors + 1;
     symb
 
-  let new_projection tuple_symb i =
-    let args = Variable.fresh_term_list Protocol Existential Variable.fst_ord_type tuple_symb.arity in
-    let x = List.nth args i in
-    let symb =
-      {
-        name = (Printf.sprintf "proj_{%d,%d}" (i+1) tuple_symb.arity);
-        arity = 1;
-        cat = Destructor([([{ term = Func(tuple_symb,args) ; ground = false } ],x)]);
-        index_s = !accumulator_nb_symb;
-        public = true;
-        represents = UserDefined
-      }
-    in
-    incr accumulator_nb_symb;
-    symb
+  let rec new_projection acc tuple_symb i = match i with
+    | 0 -> acc
+    | i ->
+        let args = Variable.fresh_term_list Protocol Existential Variable.fst_ord_type tuple_symb.arity in
+        let x = List.nth args (i-1) in
+        let symb =
+          {
+            name = (Printf.sprintf "proj_{%d,%d}" i tuple_symb.arity);
+            arity = 1;
+            cat = Destructor([([{ term = Func(tuple_symb,args) ; ground = false } ],x)]);
+            index_s = !accumulator_nb_symb;
+            public = true;
+            represents = UserDefined
+          }
+        in
+        incr accumulator_nb_symb;
+        new_projection (symb::acc) tuple_symb (i-1)
 
   let get_tuple ar =
     try
@@ -919,56 +921,39 @@ module Symbol = struct
       begin
         let symb = { name = (Printf.sprintf "tuple%d" ar); arity = ar; cat = Tuple; index_s = !accumulator_nb_symb; public = true; represents = UserDefined } in
         incr accumulator_nb_symb;
-        all_constructors := List.sort order (symb::!all_constructors);
+        all_constructors := symb::!all_constructors;
         all_tuple := symb::!all_tuple;
         number_of_constructors := !number_of_constructors + 1;
 
-        let array_proj = Array.init ar (new_projection symb) in
-        Hashtbl.add all_projection ar array_proj;
+        let list_proj = new_projection [] symb ar in
+        HashtblSymb.add all_projection symb list_proj;
 
-        let rec add_proj = function
-          | 0 -> all_destructors := List.sort order ((array_proj.(0))::!all_destructors)
-          | n -> all_destructors := List.sort order ((array_proj.(n))::!all_destructors); add_proj (n-1)
-        in
-
-        add_proj (ar-1);
-        number_of_destructors := ar + !number_of_destructors;
         symb
-      end;;
+      end
 
-  let get_fresh_constant n =
+  let get_fresh_constant (n:int) =
     try
       Hashtbl.find special_constructor n
     with
     | Not_found ->
-        let c = { name = "__dummy_c"; arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
+        let c = { name = "_c"; arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
+        Hashtbl.add special_constructor n c;
         incr accumulator_nb_symb;
         c
-
-  let get_constant () = match !dummy_constant with
-    | None ->
-        let symb = { name = "_c"; arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
-        incr accumulator_nb_symb;
-        all_constructors := List.sort order (symb::!all_constructors);
-        number_of_constructors := !number_of_constructors + 1;
-        dummy_constant := Some symb;
-        symb
-    | Some c -> c
 
   let fresh_attacker_name =
     let acc = ref 0 in
 
     let f () =
       let c = { name = (Printf.sprintf "kI_%d" !acc); arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
-      incr accumulator_nb_symb;
-      all_constructors := List.sort order (c::!all_constructors);
-      number_of_constructors := !number_of_constructors + 1;
       incr acc;
       c
     in
     f
 
   (******** Display function *******)
+
+  let reg_proj = Str.regexp "proj_{\\([0-9]+\\),\\([0-9]+\\)}"
 
   let display out f =
     if Str.string_match reg_proj f.name 0
@@ -1245,20 +1230,27 @@ let rec var_occurs var term =
       | _ -> false
 
 (* [var_occurs_or_wrong_type] {% $\quanti{X}{i}$ $\xi$ %} returns [true] iff {% $X \in \varsdeux{\xi}$ or $\xi \not\in \T(\F,\AX_i \cup \Xdeux_i)$. %} *)
-let rec var_occurs_or_out_of_world (var:snd_ord_variable) (r:recipe) =
+let rec internal_var_occurs_or_out_of_world (var:snd_ord_variable) (r:recipe) =
   Config.debug (fun () ->
     if r.ground <> is_ground_debug r
     then Config.internal_error "[term.ml >> var_occurs_or_out_of_world] Conflict with ground."
   );
+
   if r.ground
   then false
   else
     match r.term with
-      | Var(v) when Variable.is_equal v var || v.var_type > var.var_type -> true
-      | Var({link = TLink t; _}) -> var_occurs_or_out_of_world var t
-      | AxName(ax) when ax > var.var_type -> true
-      | Func(_,args) -> List.exists (var_occurs_or_out_of_world var) args
+      | Var(v) when Variable.is_equal v var -> true
+      | Var({link = TLink t; _}) -> internal_var_occurs_or_out_of_world var t
+      | Var v when v.var_type = -1 || v.var_type > var.var_type -> true
+      | AxName ax when ax > var.var_type -> true
+      | Func(_,args) -> List.exists (internal_var_occurs_or_out_of_world var) args
       | _ -> false
+
+let var_occurs_or_out_of_world (var:snd_ord_variable) (r:recipe) =
+  if var.var_type = -1
+  then var_occurs var r
+  else internal_var_occurs_or_out_of_world var r
 
 let rec quantified_var_occurs quantifier term =
   if term.ground
@@ -1453,7 +1445,7 @@ let rec iter_variables_and_axioms f recipe = match recipe.term with
 (********** Display **********)
 
 let rec display out ?(rho=None) at term = match term.term with
-  | Var(v) -> Variable.display out ~rho:rho at v
+  | Var(v) -> Variable.display out ~rho:rho ~v_type:true at v
   | AxName(axn) -> AxName.display out ~rho:rho at axn
   | Func(f_symb,_) when f_symb.arity = 0 ->
       Printf.sprintf "%s" (Symbol.display out f_symb)
@@ -1469,56 +1461,6 @@ let rec display out ?(rho=None) at term = match term.term with
 module Subst = struct
 
   type ('a, 'b) t = (('a, 'b) variable * ('a, 'b) term) list
-
-  (******* Tested function *********)
-
-  let test_unify_Protocol : (((fst_ord, name) term * (fst_ord, name) term) list-> (fst_ord, name) t option -> unit) ref = ref (fun _ _ -> ())
-
-  let test_unify_Recipe : (((snd_ord, axiom) term * (snd_ord, axiom) term) list-> (snd_ord, axiom) t option -> unit) ref = ref (fun _ _ -> ())
-
-  let test_unify (type a) (type b) (at:(a,b) atom) (subst: ((a,b) term * (a,b) term) list) (res:(a,b) t option) = match at with
-    | Protocol -> !test_unify_Protocol subst res
-    | Recipe -> !test_unify_Recipe subst res
-
-  let update_test_unify (type a) (type b) (at:(a,b) atom) (f: ((a,b) term * (a,b) term) list -> (a,b) t option -> unit) = match at with
-    | Protocol -> test_unify_Protocol := f
-    | Recipe -> test_unify_Recipe := f
-
-  let test_is_matchable_Protocol : ((fst_ord, name) term list -> (fst_ord, name) term list -> bool -> unit) ref = ref (fun _ _ _ -> ())
-
-  let test_is_matchable_Recipe : ((snd_ord, axiom) term list -> (snd_ord, axiom) term list -> bool -> unit) ref = ref (fun _ _ _ -> ())
-
-  let test_is_matchable (type a) (type b) (at:(a,b) atom) (t_list_1: (a,b) term list) (t_list_2: (a,b) term list) res = match at with
-    | Protocol -> !test_is_matchable_Protocol t_list_1 t_list_2 res
-    | Recipe -> !test_is_matchable_Recipe t_list_1 t_list_2 res
-
-  let update_test_is_matchable (type a) (type b) (at:(a,b) atom) (f: (a,b) term list -> (a,b) term list -> bool -> unit) = match at with
-    | Protocol -> test_is_matchable_Protocol := f
-    | Recipe -> test_is_matchable_Recipe := f
-
-  let test_is_extended_by_Protocol : ((fst_ord, name) t -> (fst_ord, name) t -> bool -> unit) ref = ref (fun _ _ _ -> ())
-
-  let test_is_extended_by_Recipe : ((snd_ord, axiom) t -> (snd_ord, axiom) t -> bool -> unit) ref = ref (fun _ _ _ -> ())
-
-  let test_is_extended_by (type a) (type b) (at:(a,b) atom) (subst_1: (a,b) t) (subst_2: (a,b) t) res = match at with
-    | Protocol -> !test_is_extended_by_Protocol subst_1 subst_2 res
-    | Recipe -> !test_is_extended_by_Recipe subst_1 subst_2 res
-
-  let update_test_is_extended_by (type a) (type b) (at:(a,b) atom) (f: (a,b) t -> (a,b) t -> bool -> unit) = match at with
-    | Protocol -> test_is_extended_by_Protocol := f
-    | Recipe -> test_is_extended_by_Recipe := f
-
-  let test_is_equal_equations_Protocol : ((fst_ord, name) t -> (fst_ord, name) t -> bool -> unit) ref = ref (fun _ _ _ -> ())
-
-  let test_is_equal_equations_Recipe : ((snd_ord, axiom) t -> (snd_ord, axiom) t -> bool -> unit) ref = ref (fun _ _ _ -> ())
-
-  let test_is_equal_equations (type a) (type b) (at:(a,b) atom) (subst_1: (a,b) t) (subst_2: (a,b) t) res = match at with
-    | Protocol -> !test_is_equal_equations_Protocol subst_1 subst_2 res
-    | Recipe -> !test_is_equal_equations_Recipe subst_1 subst_2 res
-
-  let update_test_is_equal_equations (type a) (type b) (at:(a,b) atom) (f: (a,b) t -> (a,b) t -> bool -> unit) = match at with
-    | Protocol -> test_is_equal_equations_Protocol := f
-    | Recipe -> test_is_equal_equations_Recipe := f
 
   (******* Generation **********)
 
@@ -1631,6 +1573,28 @@ module Subst = struct
         new_elt
       end
 
+  let apply_forced subst elt f_iter_elt =
+    if subst = []
+    then f_iter_elt elt (fun t -> t)
+    else
+      begin
+        Config.debug (fun () ->
+          if List.exists (fun (v,_) -> v.link <> NoLink) subst
+          then Config.internal_error "[term.ml >> Subst.apply_substitution] Variables in the domain should not be linked"
+        );
+
+        (* Link the variables of the substitution *)
+        List.iter (fun (v,t) -> v.link <- (TLink t)) subst;
+
+        (* Apply the substitution on the element *)
+        let new_elt = f_iter_elt elt apply_on_term in
+
+        (* Unlink the variables of the substitution *)
+        List.iter (fun (v,_) -> v.link <- NoLink) subst;
+
+        new_elt
+      end
+
   let apply_both (subst_1:(fst_ord,name) t) (subst_2:(snd_ord,axiom) t) elt f_iter_elt =
     Config.debug (fun () ->
       if List.exists (fun (v,_) -> v.link <> NoLink) subst_1 || List.exists (fun (v,_) -> v.link <> NoLink) subst_2
@@ -1647,24 +1611,6 @@ module Subst = struct
     (* Unlink the variables of the substitution *)
     List.iter (fun (v,_) -> v.link <- NoLink) subst_1;
     List.iter (fun (v,_) -> v.link <- NoLink) subst_2;
-
-    new_elt
-
-
-  let apply_generalised subst elt f_iter_elt =
-    Config.debug (fun () ->
-      if List.exists (fun (v,_) -> v.link <> NoLink) subst
-      then Config.internal_error "[term.ml >> Subst.apply_substitution] Variables in the domain should not be linked"
-    );
-
-    (* Link the variables of the substitution *)
-    List.iter (fun (v,t) -> v.link <- (TLink t)) subst;
-
-    (* Apply the substitution on the element *)
-    let new_elt = f_iter_elt elt apply_on_term in
-
-    (* Unlink the variables of the substitution *)
-    List.iter (fun (v,_) -> v.link <- NoLink) subst;
 
     new_elt
 
@@ -1790,6 +1736,20 @@ module Subst = struct
     cleanup_search Protocol;
     subst'
 
+  let not_in_domain (subst:(snd_ord,axiom) t) (l:(snd_ord,axiom) variable list) =
+    List.iter (fun (x,_) -> link_search Recipe x) subst;
+
+    let l' =
+      List.fold_left (fun acc x ->
+        match x.link with
+          | FLink -> acc
+          | NoLink -> x::acc
+          | _ -> Config.internal_error "[term.ml >> Subst.not_in_domain] Unexpected link"
+      ) [] l
+    in
+    cleanup_search Recipe;
+    l'
+
   let is_extended_by (type a) (type b) (at:(a,b) atom) (subst_1:(a,b) t) (subst_2:(a,b) t) =
 
     let subst = apply subst_2 subst_1 (fun s f ->
@@ -1807,20 +1767,7 @@ module Subst = struct
 
     List.iter (fun (x,_) -> x.link <- NoLink) subst;
 
-    Config.test (fun () -> test_is_extended_by at subst_1 subst_2 result);
-
     result
-
-  (*********** Display ************)
-
-  let display out ?(rho=None) at subst =
-    let display_element (x,t) =
-      Printf.sprintf "%s %s %s" (Variable.display out ~rho:rho at x) (rightarrow out) (display out ~rho:rho at t)
-    in
-
-    if subst = []
-    then emptyset out
-    else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list display_element ", " subst) (rcurlybracket out)
 
   (*********** Unification **********)
 
@@ -1872,7 +1819,43 @@ module Subst = struct
 
   exception Not_unifiable
 
-  let rec unify_term : 'a 'b. ('a,'b) atom -> ('a,'b) term -> ('a,'b) term -> unit = fun (type a) (type b) (at:(a, b) atom) (t1:(a, b) term) (t2:(a, b) term) -> match t1.term,t2.term with
+  let rec unify_term_protocol (t1:protocol_term) (t2:protocol_term) = match t1.term, t2.term with
+    | Var v1, Var v2 when v1 == v2 -> ()
+    | Var {link = TLink t ; _}, _ -> unify_term_protocol t t2
+    | _, Var {link = TLink t; _} -> unify_term_protocol t1 t
+    | Var v1, Var v2 ->
+        if v1.quantifier = Universal || (v1.quantifier = Existential && v2.quantifier = Free) || (v1.quantifier = v2.quantifier && v1.index < v2.index)
+        then (v1.link <- TLink t2; linked_variables_fst := v1 :: !linked_variables_fst)
+        else (v2.link <- TLink t1; linked_variables_fst := v2 :: !linked_variables_fst)
+    | Var v1, _ -> if var_occurs v1 t2 then raise Not_unifiable else (v1.link <- TLink t2; linked_variables_fst := v1 :: !linked_variables_fst)
+    | _, Var v2 -> if var_occurs v2 t1 then raise Not_unifiable else (v2.link <- TLink t1; linked_variables_fst := v2 :: !linked_variables_fst)
+    | AxName n1, AxName n2 when n1 == n2 -> ()
+    | Func(f1,args1), Func(f2,args2) when f1 == f2 -> List.iter2 unify_term_protocol args1 args2
+    | _ -> raise Not_unifiable
+
+  let rec unify_term_recipe (t1:recipe) (t2:recipe) = match t1.term, t2.term with
+    | Var v1, Var v2 when v1 == v2 -> ()
+    | Var {link = TLink t ; _}, _ -> unify_term_recipe t t2
+    | _, Var {link = TLink t; _} -> unify_term_recipe t1 t
+    | Var v1, Var v2 ->
+        if v2.var_type = -1
+        then (v2.link <- TLink t1; linked_variables_snd := v2 :: !linked_variables_snd)
+        else if v1.var_type = -1
+        then (v1.link <- TLink t2; linked_variables_snd := v1 :: !linked_variables_snd)
+        else if v1.var_type < v2.var_type
+        then (v2.link <- TLink t1; linked_variables_snd := v2 :: !linked_variables_snd)
+        else if v1.var_type > v2.var_type
+        then (v1.link <- TLink t2; linked_variables_snd := v1 :: !linked_variables_snd)
+        else if v1.quantifier = Universal || (v1.quantifier = Existential && v2.quantifier = Free) || (v1.quantifier = v2.quantifier &&  (v1.var_type < v2.var_type || (v1.var_type = v2.var_type && v1.index < v2.index)))
+        then (v1.link <- TLink t2; linked_variables_snd := v1 :: !linked_variables_snd)
+        else (v2.link <- TLink t1; linked_variables_snd := v2 :: !linked_variables_snd)
+    | Var v1, _ -> if var_occurs_or_out_of_world v1 t2 then raise Not_unifiable else (v1.link <- TLink t2; linked_variables_snd := v1 :: !linked_variables_snd)
+    | _, Var v2 -> if var_occurs_or_out_of_world v2 t1 then raise Not_unifiable else (v2.link <- TLink t1; linked_variables_snd := v2 :: !linked_variables_snd)
+    | AxName n1, AxName n2 when n1 = n2 -> ()
+    | Func(f1,args1), Func(f2,args2) when f1 == f2 -> List.iter2 unify_term_recipe args1 args2
+    | _ -> raise Not_unifiable
+
+  (*let rec unify_term : 'a 'b. ('a,'b) atom -> ('a,'b) term -> ('a,'b) term -> unit = fun (type a) (type b) (at:(a, b) atom) (t1:(a, b) term) (t2:(a, b) term) -> match t1.term,t2.term with
     | Var(v1), Var(v2) when Variable.is_equal v1 v2 -> ()
     | Var({link = TLink t ; _}), _ -> unify_term at t t2
     | _, Var({link = TLink t; _}) -> unify_term at t1 t
@@ -1883,7 +1866,11 @@ module Subst = struct
               then link at v1 t2
               else link at v2 t1
           | Recipe ->
-              if v1.var_type < v2.var_type
+              if v2.var_type = -1
+              then link at v2 t1
+              else if v1.var_type = -1
+              then link at v1 t2
+              else if v1.var_type < v2.var_type
               then link at v2 t1
               else if v1.var_type > v2.var_type
               then link at v1 t2
@@ -1905,8 +1892,39 @@ module Subst = struct
     | Func(f1,args1), Func(f2,args2) ->
         if Symbol.is_equal f1 f2 then List.iter2 (unify_term at) args1 args2 else raise Not_unifiable
     | _,_ -> raise Not_unifiable
+  *)
 
-  let unify : 'a 'b. ('a,'b) atom -> (('a,'b) term * ('a, 'b) term) list -> ('a, 'b) t = fun (type a) (type b) (at:(a,b) atom) (eq_list:((a,b) term * (a,b) term) list) ->
+  let unify_protocol (eq_list:(protocol_term * protocol_term) list) =
+    try
+      List.iter (fun (t1,t2) -> unify_term_protocol t1 t2) eq_list;
+
+      let subst = List.fold_left (fun acc var -> (var,follow_link_var var)::acc) [] !linked_variables_fst in
+
+      List.iter (fun var -> var.link <- NoLink) !linked_variables_fst;
+      linked_variables_fst := [];
+
+      subst
+    with Not_unifiable ->
+      List.iter (fun var -> var.link <- NoLink) !linked_variables_fst;
+      linked_variables_fst := [];
+      raise Not_unifiable
+
+  let unify_recipe (eq_list:(recipe * recipe) list) =
+    try
+      List.iter (fun (t1,t2) -> unify_term_recipe t1 t2) eq_list;
+
+      let subst = List.fold_left (fun acc var -> (var,follow_link_var var)::acc) [] !linked_variables_snd in
+
+      List.iter (fun var -> var.link <- NoLink) !linked_variables_snd;
+      linked_variables_snd := [];
+
+      subst
+    with Not_unifiable ->
+      List.iter (fun var -> var.link <- NoLink) !linked_variables_snd;
+      linked_variables_snd := [];
+      raise Not_unifiable
+
+  (*let unify : 'a 'b. ('a,'b) atom -> (('a,'b) term * ('a, 'b) term) list -> ('a, 'b) t = fun (type a) (type b) (at:(a,b) atom) (eq_list:((a,b) term * (a,b) term) list) ->
     Config.debug (fun () ->
       if retrieve at <> []
       then Config.internal_error "[term.ml >> Subst.unify_generic] The list of linked variables should be empty"
@@ -1916,14 +1934,49 @@ module Subst = struct
       List.iter (fun (t1,t2) -> unify_term at t1 t2) eq_list;
       let subst = List.fold_left (fun acc var -> (var,follow_link_var var)::acc) [] (retrieve at) in
       cleanup at;
-      Config.test (fun () -> test_unify at eq_list (Some subst));
+      Config.debug (fun () ->
+        match at with
+          | Protocol ->
+              if not (check_disjoint_domain subst)
+              then Config.internal_error "[term.ml >> Subst.unify] A variable appears twice in the domain";
+
+              if List.exists (fun (x,_) -> List.exists (fun (_,t) -> var_occurs x t) subst) subst
+              then Config.internal_error "[term.ml >> Subst.unify] The substution is not acyclic"
+          | Recipe ->
+              if not (check_disjoint_domain subst)
+              then Config.internal_error "[term.ml >> Subst.unify] A variable appears twice in the domain";
+
+              if List.exists (fun (x,_) -> List.exists (fun (_,t) -> var_occurs x t) subst) subst
+              then Config.internal_error "[term.ml >> Subst.unify] The substution is not acyclic";
+
+              if List.exists (fun (x,t) -> var_occurs_or_out_of_world x t) subst
+              then
+                begin
+                  Printf.printf "Terms %s" (display_list (fun (t1,t2) -> Printf.sprintf "%s = %s\n" (display Latex Recipe t1) (display Latex Recipe t2)) "\n" eq_list);
+                  Printf.printf "The subst %s" (display_list (fun (x,t2) -> Printf.sprintf "%s = %s\n" (display Latex Recipe (of_variable x)) (display Latex Recipe t2)) "\n" subst);
+                  Config.internal_error "[term.ml >> Subst.unify] The substitution is not unifiable (type issue)"
+                end
+      );
       subst
     with Not_unifiable ->
       cleanup at;
-      Config.test (fun () -> test_unify at eq_list None);
-      raise Not_unifiable
+      raise Not_unifiable*)
 
-  let is_unifiable (type a) (type b) (at:(a,b) atom) (eq_list:((a, b) term * (a, b) term) list) =
+  let is_unifiable (eq_list:(protocol_term * protocol_term) list) =
+    try
+      List.iter (fun (t1,t2) -> unify_term_protocol t1 t2) eq_list;
+
+      List.iter (fun var -> var.link <- NoLink) !linked_variables_fst;
+      linked_variables_fst := [];
+
+      true
+
+    with Not_unifiable ->
+      List.iter (fun var -> var.link <- NoLink) !linked_variables_fst;
+      linked_variables_fst := [];
+      false
+
+  (*let is_unifiable (type a) (type b) (at:(a,b) atom) (eq_list:((a, b) term * (a, b) term) list) =
     Config.debug (fun () ->
       if retrieve at <> []
       then Config.internal_error "[term.ml >> Subst.is_unifiable] The list of linked variables should be empty"
@@ -1933,7 +1986,18 @@ module Subst = struct
       List.iter (fun (t1,t2) -> unify_term at t1 t2) eq_list;
       cleanup at;
       true
-    with Not_unifiable -> cleanup at; false
+    with Not_unifiable -> cleanup at; false*)
+
+  (*********** Display ************)
+
+  let display out ?(rho=None) at subst =
+    let display_element (x,t) =
+      Printf.sprintf "%s %s %s" (Variable.display out ~rho:rho at x) (rightarrow out) (display out ~rho:rho at t)
+    in
+
+    if subst = []
+    then emptyset out
+    else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list display_element ", " subst) (rcurlybracket out)
 
   (******* Syntactic match *******)
 
@@ -1962,11 +2026,9 @@ module Subst = struct
     try
       List.iter2 (match_term at) term_list1 term_list2;
       cleanup at;
-      Config.test (fun () -> test_is_matchable at term_list1 term_list2 true);
       true
     with Not_matchable ->
       cleanup at;
-      Config.test (fun () -> test_is_matchable at term_list1 term_list2 false);
       false
 
   let match_terms at term_list1 term_list2 =
@@ -2016,37 +2078,8 @@ module Subst = struct
     let result = List.for_all (fun (v,t) -> is_equal_linked_terms at ({ term = Var v; ground = false }) t) subst_2 in
 
     cleanup at;
-    Config.test (fun () -> test_is_equal_equations at subst_1 subst_2 result);
     result
 
-  let rec check_good_recipes_term term = match term.term with
-    | Var _ -> true
-    | AxName _ -> true
-    | Func(f,args) when f.cat = Tuple ->
-        let projections = Symbol.get_projections f in
-        let result = ref false in
-        let term_proj = ref None in
-        List.iter2 (fun t f_proj ->
-          if is_function t
-          then
-            let symb = root t in
-            if Symbol.is_equal f_proj symb
-            then
-              match !term_proj, get_args t  with
-                | Some t', [t''] when is_equal Recipe t' t'' -> ()
-                | Some _, _ -> result := true
-                | None, [t''] -> term_proj := Some t''
-                | None, _ -> Config.internal_error "[term.ml >> check_good_recipes_term] Projections should always have one unique argument."
-            else result := true
-          else result := true
-        ) args projections;
-        if !result
-        then List.for_all check_good_recipes_term args
-        else false
-    | Func(_,args) -> List.for_all check_good_recipes_term args
-
-  let check_good_recipes subst =
-    List.for_all (fun (_,t) -> check_good_recipes_term t) subst
 end
 
 (***********************************
@@ -2114,21 +2147,20 @@ module Diseq = struct
           get_axioms_with_list t2 (fun _ -> true) (get_axioms_with_list t1 (fun _ -> true) acc)
         ) ax_list diseq_l
 
-  let of_substitution (type a) (type b) (at:(a,b) atom) (sigma:(a,b) Subst.t) (l:(a,b) variable list) =
+  let of_substitution (sigma:(snd_ord,axiom) Subst.t) (l:(snd_ord, axiom) variable list) =
     if sigma = []
-    then (Bot:(a,b) t)
+    then Bot
     else if l = []
-    then (Diseq (Subst.equations_of sigma):(a,b) t)
+    then Diseq (Subst.equations_of sigma)
     else
       begin
         Config.test (fun () ->
-          if retrieve_search at <> [] ||  Variable.Renaming.retrieve at <> []
+          if retrieve_search Recipe <> [] ||  Variable.Renaming.retrieve Recipe <> []
           then Config.internal_error "[terml.ml >> of_substitution] Linked variables should be empty."
         );
-        List.iter (fun (v:(a,b) variable) ->
-          match at with
-            | Protocol -> let (v':(a,b) variable) = Variable.fresh at Universal Variable.fst_ord_type in Variable.Renaming.link at v v'
-            | Recipe -> let (v':(a,b) variable) = Variable.fresh at Universal (Variable.snd_ord_type (Variable.type_of v)) in Variable.Renaming.link at v v'
+        List.iter (fun v ->
+          let v' = Variable.fresh Recipe Universal (Variable.snd_ord_type (Variable.type_of v)) in
+          Variable.Renaming.link Recipe v v'
         ) l;
         let diseq = List.fold_left (fun acc (v,t) ->
           if v.link = NoLink
@@ -2137,10 +2169,10 @@ module Diseq = struct
           ) [] sigma
         in
 
-        Variable.Renaming.cleanup at;
+        Variable.Renaming.cleanup Recipe;
         if diseq = []
-        then (Bot:(a,b) t)
-        else (Diseq diseq:(a,b) t)
+        then Bot
+        else Diseq diseq
       end
 
   let rec rename_universal_to_existential at term =
@@ -2167,38 +2199,26 @@ module Diseq = struct
         then false
         else check_disjoint_domain at q
 
-  let substitution_of (type a) (type b) (at:(a,b) atom) (form:(a,b) t) = match form with
-    | Top -> [],[]
+  let substitution_of (form:(fst_ord, name) t) = match form with
+    | Top -> []
     | Bot -> Config.internal_error "[term.ml >> Diseq.substitution_of] The disequation should not be bot."
     | Diseq diseq ->
         Config.debug (fun () ->
           if List.exists (fun (t,_) -> not (is_variable t) || Variable.quantifier_of (variable_of t) = Universal) diseq
           then Config.internal_error "[term.ml >> Diseq.substitution_of] The disequation should not be in normal form (1)";
 
-          match at with
-            | Protocol ->
-                if not (check_disjoint_domain at diseq)
-                then Config.internal_error "[term.ml >> Diseq.substitution_of] The disequation should not be in normal form (2)";
+          if not (check_disjoint_domain Protocol diseq)
+          then Config.internal_error "[term.ml >> Diseq.substitution_of] The disequation should not be in normal form (2)";
 
-                if List.exists (fun (x,_) -> List.exists (fun (_,t) -> var_occurs (variable_of x) t) diseq) diseq
-                then Config.internal_error "[term.ml >> Diseq.substitution_of] The disequation should not be in normal form (3)"
-            | Recipe ->
-                if not (check_disjoint_domain at diseq)
-                then Config.internal_error "[term.ml >> Diseq.substitution_of] The disequation should not be in normal form (4)";
-
-                if List.exists (fun (x,_) -> List.exists (fun (_,t) -> var_occurs (variable_of x) t) diseq) diseq
-                then Config.internal_error "[term.ml >> Diseq.substitution_of] The disequation should not be in normal form (5)";
-
-                if List.exists (fun (x,t) -> var_occurs_or_out_of_world (variable_of x) t) diseq
-                then Config.internal_error "[term.ml >> Diseq.substitution_of] The disequation should not be in normal form (6)"
+          if List.exists (fun (x,_) -> List.exists (fun (_,t) -> var_occurs (variable_of x) t) diseq) diseq
+          then Config.internal_error "[term.ml >> Diseq.substitution_of] The disequation should not be in normal form (3)"
         );
 
 
-        let subst = List.fold_left (fun acc (t1,t2) -> (variable_of t1, rename_universal_to_existential at t2)::acc) [] diseq in
+        let subst = List.fold_left (fun acc (t1,t2) -> (variable_of t1, rename_universal_to_existential Protocol t2)::acc) [] diseq in
 
-        let renaming = List.fold_left (fun acc var -> (var,Variable.Renaming.apply_variable var)::acc) [] (Variable.Renaming.retrieve at) in
-        Variable.Renaming.cleanup at;
-        subst, renaming
+        Variable.Renaming.cleanup Protocol;
+        subst
 
   let elim_universal_variables var_list =
 
@@ -2209,7 +2229,59 @@ module Diseq = struct
     in
     explore [] var_list
 
-  let apply_and_normalise at subst = function
+  let apply_and_normalise_protocol (subst:(fst_ord,name) Subst.t) (diseq:((fst_ord,name) term * (fst_ord,name) term) list) =
+    (* Link the variables of the substitution *)
+    List.iter (fun (v,t) -> v.link <- (TLink t)) subst;
+
+    try
+      List.iter (fun (t1,t2) -> Subst.unify_term_protocol t1 t2) diseq;
+
+      let diseq' = List.fold_left (fun acc var -> if var.quantifier = Universal then acc else ({ term = Var var; ground = false},Subst.follow_link_var var)::acc) [] !Subst.linked_variables_fst in
+
+      List.iter (fun (v,_) -> v.link <- NoLink) subst;
+      List.iter (fun var -> var.link <- NoLink) !Subst.linked_variables_fst;
+      Subst.linked_variables_fst := [];
+
+      if diseq' = []
+      then Bot
+      else Diseq diseq'
+    with Subst.Not_unifiable ->
+      List.iter (fun (v,_) -> v.link <- NoLink) subst;
+      List.iter (fun var -> var.link <- NoLink) !Subst.linked_variables_fst;
+      Subst.linked_variables_fst := [];
+      Top
+
+  let apply_and_normalise_recipe (subst:(snd_ord,axiom) Subst.t) (diseq:((snd_ord,axiom) term * (snd_ord,axiom) term) list) =
+    (* Link the variables of the substitution *)
+    List.iter (fun (v,t) -> v.link <- (TLink t)) subst;
+
+    try
+      List.iter (fun (t1,t2) -> Subst.unify_term_recipe t1 t2) diseq;
+
+      let diseq' = List.fold_left (fun acc var -> if var.quantifier = Universal then acc else ({ term = Var var; ground = false},Subst.follow_link_var var)::acc) [] !Subst.linked_variables_snd in
+
+      List.iter (fun (v,_) -> v.link <- NoLink) subst;
+      List.iter (fun var -> var.link <- NoLink) !Subst.linked_variables_snd;
+      Subst.linked_variables_snd := [];
+
+      if diseq' = []
+      then Bot
+      else Diseq diseq'
+    with Subst.Not_unifiable ->
+      List.iter (fun (v,_) -> v.link <- NoLink) subst;
+      List.iter (fun var -> var.link <- NoLink) !Subst.linked_variables_snd;
+      Subst.linked_variables_snd := [];
+      Top
+
+  let apply_and_normalise (type a) (type b) (at:(a, b) atom) (subst:(a,b) Subst.t) (dis:(a,b) t) = match dis with
+    | Top -> (Top:(a,b) t)
+    | Bot -> (Bot:(a,b) t)
+    | Diseq diseq ->
+        match at with
+          | Protocol -> ((apply_and_normalise_protocol subst diseq):(a,b) t)
+          | Recipe -> ((apply_and_normalise_recipe subst diseq):(a,b) t)
+
+  (*let apply_and_normalise at subst = function
     | Top -> Top
     | Bot -> Bot
     | Diseq diseq ->
@@ -2243,7 +2315,7 @@ module Diseq = struct
         with Subst.Not_unifiable ->
           Subst.cleanup at;
           List.iter (fun (v,_) -> v.link <- NoLink) subst;
-          Top
+          Top*)
 
   let display out ?(rho=None) at = function
     | Top -> top out
@@ -2296,6 +2368,123 @@ module Diseq = struct
       then Config.internal_error "[term.ml >> Diseq.create_for_testing] Should only be used for non top and bot disequations"
     );
     Diseq l
+
+  module Mixed = struct
+
+    type t =
+      | MTop
+      | MBot
+      | MDiseq of (protocol_term * protocol_term) list * (recipe * recipe) list
+
+    let is_top = function
+      | MTop -> true
+      | _ -> false
+
+    let is_bot = function
+      | MBot -> true
+      | _ -> false
+
+    let apply_and_normalise (fst_subst:(fst_ord,name) Subst.t) (snd_subst:(snd_ord,axiom) Subst.t) = function
+      | MTop -> MTop
+      | MBot -> MBot
+      | MDiseq(term_l,recipe_l) ->
+          Config.debug (fun () ->
+            if List.exists (fun (v,_) -> v.link <> NoLink) fst_subst || List.exists (fun (v,_) -> v.link <> NoLink) snd_subst
+            then Config.internal_error "[term.ml >> Diseq.Mixed.apply_and_normalise] Variables in the domain should not be linked"
+          );
+
+          Config.debug (fun () ->
+            if List.exists (fun (v,t) -> Variable.quantifier_of v = Universal || quantified_var_occurs Universal t) fst_subst ||
+               List.exists (fun (v,t) -> Variable.quantifier_of v = Universal || quantified_var_occurs Universal t) snd_subst
+            then Config.internal_error "[term.ml >> Diseq.apply_and_normalise] Variables in the substitutions should not be universal"
+          );
+
+          let apply_term () =
+            List.iter (fun (v,t) -> v.link <- (TLink t)) fst_subst;
+
+            List.iter (fun (t1,t2) -> Subst.unify_term_protocol t1 t2) term_l;
+
+            let result =
+              List.fold_left (fun acc v ->
+                if v.quantifier = Universal
+                then acc
+                else ({ term = Var v; ground = false}, Subst.follow_link_var v)::acc
+              ) [] (Subst.retrieve Protocol)
+            in
+
+            Subst.cleanup Protocol;
+            List.iter (fun (v,_) -> v.link <- NoLink) fst_subst;
+
+            result
+          in
+
+          let apply_recipe () =
+            List.iter (fun (v,t) -> v.link <- (TLink t)) snd_subst;
+
+            List.iter (fun (t1,t2) -> Subst.unify_term_recipe t1 t2) recipe_l;
+
+            let result =
+              List.fold_left (fun acc v ->
+                if v.quantifier = Universal
+                then acc
+                else ({ term = Var v; ground = false}, Subst.follow_link_var v)::acc
+              ) [] (Subst.retrieve Recipe)
+            in
+
+            Subst.cleanup Recipe;
+            List.iter (fun (v,_) -> v.link <- NoLink) snd_subst;
+
+            result
+          in
+
+          if term_l = [] || fst_subst = []
+          then
+            if recipe_l = [] || snd_subst = []
+            then MDiseq(term_l,recipe_l)
+            else
+              begin try
+                let new_recipe_l = apply_recipe () in
+                if term_l = [] && new_recipe_l = []
+                then MBot
+                else MDiseq(term_l,new_recipe_l)
+              with Subst.Not_unifiable ->
+                Subst.cleanup Recipe;
+                List.iter (fun (v,_) -> v.link <- NoLink) snd_subst;
+                MTop
+              end
+          else
+            if recipe_l = [] || snd_subst = []
+            then
+              begin try
+                let new_term_l = apply_term () in
+                if new_term_l = [] && recipe_l = []
+                then MBot
+                else MDiseq(new_term_l,recipe_l)
+              with Subst.Not_unifiable ->
+                Subst.cleanup Protocol;
+                List.iter (fun (v,_) -> v.link <- NoLink) fst_subst;
+                MTop
+              end
+            else
+              begin try
+                let new_term_l = apply_term () in
+
+                begin try
+                  let new_recipe_l = apply_recipe () in
+                  if new_term_l = [] && new_recipe_l = []
+                  then MBot
+                  else MDiseq(new_term_l,new_recipe_l)
+                with Subst.Not_unifiable ->
+                  Subst.cleanup Recipe;
+                  List.iter (fun (v,_) -> v.link <- NoLink) snd_subst;
+                  MTop
+                end
+              with Subst.Not_unifiable ->
+                Subst.cleanup Protocol;
+                List.iter (fun (v,_) -> v.link <- NoLink) fst_subst;
+                MTop
+              end
+  end
 
 end
 
@@ -2374,7 +2563,7 @@ module Modulo = struct
                   Subst.linked_variables_fst := [];
 
                   begin try
-                    List.iter2 (Subst.unify_term Protocol) lhs' args';
+                    List.iter2 (Subst.unify_term_protocol) lhs' args';
                     let saved_linked_variables_from_unify = !Subst.linked_variables_fst in
                     Subst.linked_variables_fst := List.rev_append !Subst.linked_variables_fst saved_linked_variables;
 
@@ -2423,7 +2612,7 @@ module Modulo = struct
                 Subst.linked_variables_fst := [];
 
                 begin try
-                  Subst.unify_term Protocol t1' t2';
+                  Subst.unify_term_protocol t1' t2';
                   let saved_linked_variables_from_unify = !Subst.linked_variables_fst in
                   Subst.linked_variables_fst := List.rev_append !Subst.linked_variables_fst saved_linked_variables;
 
@@ -2480,7 +2669,7 @@ module Modulo = struct
         Subst.linked_variables_fst := [];
 
         begin try
-          Subst.unify_term Protocol t1' t2';
+          Subst.unify_term_protocol t1' t2';
           let saved_linked_variables_from_unify = !Subst.linked_variables_fst in
           Subst.linked_variables_fst := List.rev_append !Subst.linked_variables_fst saved_linked_variables;
 
@@ -2570,7 +2759,6 @@ module Fact = struct
   type 'a formula =
     {
       head : 'a;
-      ded_fact_list : BasicFact.t list;
       equation_subst : (fst_ord, name) Subst.t
     }
 
@@ -2586,38 +2774,27 @@ module Fact = struct
 
   let create_equality_fact recipe_1 recipe_2 = { ef_recipe_1 = recipe_1; ef_recipe_2 = recipe_2 }
 
-  let create (type a) (fct: a t) (head: a) b_fct_list equations =
+  let create (type a) (fct: a t) (head: a) equations =
 
     try
-      List.iter (fun (t1,t2) -> Subst.unify_term Protocol t1 t2) equations;
+      List.iter (fun (t1,t2) -> Subst.unify_term_protocol t1 t2) equations;
 
       if Subst.retrieve Protocol = []
-      then ({ head = head ; ded_fact_list = b_fct_list; equation_subst = []} : a formula)
+      then ({ head = head ; equation_subst = []} : a formula)
       else
         begin match fct with
           | Deduction ->
-
               let new_head = { head with df_term = Subst.follow_link head.df_term }
-              and new_b_fct_list = List.fold_left  (fun acc b_fct -> { b_fct with BasicFact.pterm = Subst.follow_link b_fct.BasicFact.pterm}::acc) [] b_fct_list
               and subst = List.fold_left (fun acc var -> if var.quantifier = Universal then acc else (var,Subst.follow_link_var var)::acc ) [] (Subst.retrieve Protocol) in
-
               Subst.cleanup Protocol;
-              ({ head = new_head; ded_fact_list = new_b_fct_list; equation_subst = subst }: a formula)
+              ({ head = new_head; equation_subst = subst }: a formula)
           | Equality ->
-              let new_b_fct_list = List.fold_left (fun acc b_fct -> { b_fct with BasicFact.pterm = Subst.follow_link b_fct.BasicFact.pterm}::acc) [] b_fct_list
-              and subst = List.fold_left (fun acc var -> (var,Subst.follow_link_var var)::acc) [] (Subst.retrieve Protocol) in
-
+              let subst = List.fold_left (fun acc var -> (var,Subst.follow_link_var var)::acc) [] (Subst.retrieve Protocol) in
               Subst.cleanup Protocol;
-              ({ head = head; ded_fact_list = new_b_fct_list; equation_subst = subst }: a formula)
+              ({ head = head; equation_subst = subst }: a formula)
         end
     with Subst.Not_unifiable -> Subst.cleanup Protocol; raise Bot
 
-  let create_for_testing head b_fct_list subst =
-    {
-      head = head;
-      ded_fact_list = b_fct_list;
-      equation_subst = subst
-    }
   (********* Access ********)
 
   let get_recipe fct = fct.df_recipe
@@ -2629,8 +2806,6 @@ module Fact = struct
   let get_head form = form.head
 
   let get_mgu_hypothesis form = form.equation_subst
-
-  let get_basic_fact_hypothesis form = form.ded_fact_list
 
   let get_vars_with_list (type a) (type b) (type c) (at: (a,b) atom) (fct: c t) (form: c formula) f_quanti (v_list: (a,b) variable list) = match at with
     | Protocol ->
@@ -2650,8 +2825,6 @@ module Fact = struct
           get_vars_term Protocol f_quanti t
         ) form.equation_subst;
 
-        List.iter (fun b_fct -> get_vars_term Protocol f_quanti b_fct.BasicFact.pterm) form.ded_fact_list;
-
         begin match fct with
           | Deduction -> get_vars_term Protocol f_quanti form.head.df_term
           | Equality -> ()
@@ -2667,14 +2840,6 @@ module Fact = struct
         );
         List.iter (link_search Recipe) v_list;
 
-        List.iter (fun b_fct ->
-          begin match b_fct.BasicFact.var.link with
-            | NoLink when f_quanti b_fct.BasicFact.var.quantifier -> link_search Recipe b_fct.BasicFact.var
-            | FLink | NoLink -> ()
-            | _ -> Config.internal_error "[term.ml >> Fact.get_wars_with_list] Unexpected link"
-          end;
-        ) form.ded_fact_list;
-
         begin match fct with
           | Deduction -> get_vars_term Recipe f_quanti form.head.df_recipe
           | Equality -> get_vars_term Recipe f_quanti form.head.ef_recipe_1; get_vars_term Recipe f_quanti form.head.ef_recipe_2
@@ -2688,8 +2853,6 @@ module Fact = struct
     List.iter Name.link_search n_list;
 
     List.iter (fun (_,t) -> get_names_protocol t) form.equation_subst;
-
-    List.iter (fun b_fct -> get_names_protocol b_fct.BasicFact.pterm) form.ded_fact_list;
 
     begin match fct with
       | Deduction ->
@@ -2731,258 +2894,148 @@ module Fact = struct
       then Config.internal_error "[terml.ml >> Fact.universal_variables] Linked variables should be empty.(2)"
     );
     search_equation_subst form.equation_subst;
-    List.iter (fun b_fct -> link_search Recipe b_fct.BasicFact.var; search_term b_fct.BasicFact.pterm) form.ded_fact_list;
 
-    let vars_fst = retrieve_search Protocol
-    and vars_snd = retrieve_search Recipe in
+    let vars_fst = retrieve_search Protocol in
 
     cleanup_search Protocol;
-    cleanup_search Recipe;
-    vars_fst, vars_snd
+    vars_fst
 
   (********* Testing *********)
 
-  let is_fact psi =
-    psi.ded_fact_list = [] && psi.equation_subst = []
+  let is_fact psi = psi.equation_subst = []
 
-  let is_solved psi =
-    Config.test (fun () ->
-      if retrieve_search Protocol <> []
-      then Config.internal_error "[terml.ml >> Fact.is_solved] Linked variables should be empty.";
+  (********** Application of substitution *********)
+
+  let apply_fst_on_deduction_fact (subst_fst: (fst_ord,name) Subst.t) fact =
+    Config.debug (fun () ->
+      if List.exists (fun (v,_) -> v.link <> NoLink) subst_fst
+      then Config.internal_error "[term.ml >> Fact.apply_fst_on_deduction_fact] Variables in the domain should not be linked"
     );
 
-    let rec go_through_ded_fact = function
-      | [] -> cleanup_search Protocol; true
-      | ded::q ->
-          if is_variable ded.BasicFact.pterm
-          then
-            let v = variable_of ded.BasicFact.pterm in
-            match v.link with
-              | FLink -> cleanup_search Protocol; false
-              | NoLink ->
-                  if v.quantifier = Universal
-                  then (link_search Protocol v; go_through_ded_fact q)
-                  else (cleanup_search Protocol; false)
-              | _ -> Config.internal_error "[term.ml >> Fact.is_solved] Unexpected link"
-          else (cleanup_search Protocol; false)
-    in
+    (* Link the variables of the substitution *)
+    List.iter (fun (v,t) -> v.link <- (TLink t)) subst_fst;
 
-    Subst.is_identity psi.equation_subst && go_through_ded_fact psi.ded_fact_list
+    let fact' = { fact with df_term = Subst.apply_on_term fact.df_term } in
 
-  let is_equation_free psi = Subst.is_identity psi.equation_subst
+    (* Clean the variables of the substitution *)
+    List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
 
-  let is_recipe_equivalent (type a) (fct:a t) (psi_1: a formula) (psi_2:a formula) = match fct with
-    | Deduction -> is_equal Recipe psi_1.head.df_recipe psi_2.head.df_recipe
+    fact'
+
+  let apply_snd_on_fact (type a) (fct: a t) (subst_snd: (snd_ord,axiom) Subst.t) (fact:a) =
+    Config.debug (fun () ->
+      if List.exists (fun (v,_) -> v.link <> NoLink) subst_snd
+      then Config.internal_error "[term.ml >> Fact.apply_snd_on_fact] Variables in the domain should not be linked"
+    );
+
+    (* Link the variables of the substitution *)
+    List.iter (fun (v,t) -> v.link <- (TLink t)) subst_snd;
+
+    match fct with
+      | Deduction ->
+          let fact' = { fact with df_recipe = Subst.apply_on_term fact.df_recipe } in
+          (* Clean the variables of the substitution *)
+          List.iter (fun (v,_) -> v.link <- NoLink) subst_snd;
+          (fact':a)
+      | Equality ->
+          let fact' = { ef_recipe_1 = Subst.apply_on_term fact.ef_recipe_1; ef_recipe_2 = Subst.apply_on_term fact.ef_recipe_2 } in
+          (* Clean the variables of the substitution *)
+          List.iter (fun (v,_) -> v.link <- NoLink) subst_snd;
+          (fact':a)
+
+  let apply_on_deduction_fact (subst_snd: (snd_ord,axiom) Subst.t) (subst_fst: (fst_ord,name) Subst.t) fact =
+    Config.debug (fun () ->
+      if List.exists (fun (v,_) -> v.link <> NoLink) subst_fst || List.exists (fun (v,_) -> v.link <> NoLink) subst_snd
+      then Config.internal_error "[term.ml >> Fact.apply_fst_on_deduction_fact] Variables in the domain should not be linked"
+    );
+
+    (* Link the variables of the substitution *)
+    List.iter (fun (v,t) -> v.link <- (TLink t)) subst_fst;
+    List.iter (fun (v,t) -> v.link <- (TLink t)) subst_snd;
+
+    let fact' = { df_recipe = Subst.apply_on_term fact.df_recipe; df_term = Subst.apply_on_term fact.df_term } in
+
+    (* Clean the variables of the substitution *)
+    List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
+    List.iter (fun (v,_) -> v.link <- NoLink) subst_snd;
+
+    fact'
+
+  let apply_fst_on_formula (type a) (fct: a t) (subst_fst: (fst_ord,name) Subst.t) (psi: a formula) =
+    Config.debug (fun () ->
+      if List.exists (fun (v,_) -> v.link <> NoLink) subst_fst
+      then Config.internal_error "[term.ml >> Fact.apply_fst_on_formula] Variables in the domain should not be linked"
+    );
+
+    (* Link the variables of the substitution *)
+    List.iter (fun (v,t) -> v.link <- (TLink t)) subst_fst;
+
+    try
+      List.iter (fun (x,t) -> Subst.unify_term_protocol {term = Var x; ground = false} t) psi.equation_subst;
+
+      begin match fct with
+        | Deduction ->
+            let head = { psi.head with df_term = Subst.follow_link psi.head.df_term }
+            and equation_subst = List.fold_left (fun acc var -> if var.quantifier = Universal then acc else (var,Subst.follow_link_var var)::acc) [] (Subst.retrieve Protocol) in
+
+            let psi_1 = { head = head; equation_subst = equation_subst } in
+
+            Subst.cleanup Protocol;
+
+            (* Unlink the variables of the substitution *)
+            List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
+
+            (* Apply the second-order substitution *)
+
+            (psi_1: a formula)
+
+        | Equality ->
+            let equation_subst = List.fold_left (fun acc var -> if var.quantifier = Universal then acc else (var,Subst.follow_link_var var)::acc) [] (Subst.retrieve Protocol) in
+
+            let psi_1 = { psi with equation_subst = equation_subst } in
+
+            Subst.cleanup Protocol;
+
+            (* Unlink the variables of the substitution *)
+            List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
+
+            (psi_1: a formula)
+      end
+    with Subst.Not_unifiable ->
+      Subst.cleanup Protocol;
+      (* Unlink the variables of the substitution *)
+      List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
+      raise Bot
+
+  let apply_snd_on_formula (type a) (fct: a t) (subst_snd : (snd_ord,axiom) Subst.t) (psi: a formula) = match fct with
+    | Deduction ->
+        (* Link the variables of the substitution *)
+        List.iter (fun (v,t) -> v.link <- TLink t) subst_snd;
+
+        let psi' = { psi with head = { psi.head with df_recipe = Subst.apply_on_term psi.head.df_recipe } } in
+
+        (* Unlink the variables of the substitution *)
+        List.iter (fun (v,_) -> v.link <- NoLink) subst_snd;
+
+        (psi': a formula)
     | Equality ->
-        is_equal Recipe psi_1.head.ef_recipe_1 psi_2.head.ef_recipe_1 &&
-        is_equal Recipe psi_1.head.ef_recipe_2 psi_2.head.ef_recipe_2
+        (* Link the variables of the substitution *)
+        List.iter (fun (v,t) -> v.link <- TLink t) subst_snd;
 
-  (********** Modification *********)
+        let psi' = { psi with head = { ef_recipe_1 = Subst.apply_on_term psi.head.ef_recipe_1; ef_recipe_2 = Subst.apply_on_term psi.head.ef_recipe_2 } } in
 
-  let apply (type a) (fct: a t) (psi: a formula)  (subst_snd : (snd_ord,axiom) Subst.t) (subst_fst : (fst_ord,name) Subst.t) =
-    Config.debug (fun () ->
-      if List.exists (fun (v,_) -> v.link <> NoLink) subst_fst
-      then Config.internal_error "[term.ml >> Fact.apply] Variables in the domain should not be linked"
-    );
+        (* Unlink the variables of the substitution *)
+        List.iter (fun (v,_) -> v.link <- NoLink) subst_snd;
 
-    (* Link the variables of the substitution *)
-    List.iter (fun (v,t) -> v.link <- (TLink t)) subst_fst;
+        (psi': a formula)
 
-    try
-      List.iter (fun (x,t) -> Subst.unify_term Protocol ({ term = Var x; ground = false }) t) psi.equation_subst;
+  (********** Replacement of recipes *********)
 
-      begin match fct with
-        | Deduction ->
-            let head = { psi.head with df_term = Subst.follow_link psi.head.df_term }
-            and ded_fact_list = List.fold_left (fun acc b_fact -> { b_fact with BasicFact.pterm = Subst.follow_link b_fact.BasicFact.pterm }::acc) [] psi.ded_fact_list
-            and equation_subst = List.fold_left (fun acc var -> (var,Subst.follow_link_var var)::acc) [] (Subst.retrieve Protocol) in
+  let replace_recipe_in_deduction_fact r fact = { fact with df_recipe = r }
 
-            let psi_1 = { head = head; ded_fact_list = ded_fact_list; equation_subst = equation_subst } in
+  let replace_recipe_in_deduction_formula r form = { form with head = { form.head with df_recipe = r} }
 
-            Subst.cleanup Protocol;
-
-            (* Unlink the variables of the substitution *)
-            List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
-
-            (* Apply the second-order substitution *)
-
-            ({ psi_1 with head = Subst.apply subst_snd psi_1.head (fun d_fact f -> { d_fact with df_recipe = f d_fact.df_recipe }) }: a formula)
-
-        | Equality ->
-            let ded_fact_list = List.fold_left (fun acc b_fact -> { b_fact with BasicFact.pterm = Subst.follow_link b_fact.BasicFact.pterm }::acc) [] psi.ded_fact_list
-            and equation_subst = List.fold_left (fun acc var -> (var,Subst.follow_link_var var)::acc) [] (Subst.retrieve Protocol) in
-
-            let psi_1 = { psi with ded_fact_list = ded_fact_list; equation_subst = equation_subst } in
-
-            Subst.cleanup Protocol;
-
-            (* Unlink the variables of the substitution *)
-            List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
-
-            (* Apply the second-order substitution *)
-
-            ({ psi_1 with head = Subst.apply subst_snd psi_1.head (fun d_fact f -> { ef_recipe_1 = f d_fact.ef_recipe_1; ef_recipe_2 = f d_fact.ef_recipe_2 }) }: a formula)
-      end
-    with Subst.Not_unifiable ->
-      Subst.cleanup Protocol;
-      (* Unlink the variables of the substitution *)
-      List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
-      raise Bot
-
-  let apply_snd_ord (type a) (fct: a t) (psi: a formula) (subst_snd : (snd_ord,axiom) Subst.t) = match fct with
-    | Deduction ->  ({ psi with head = Subst.apply subst_snd psi.head (fun d_fact f -> { d_fact with df_recipe = f d_fact.df_recipe }) }: a formula)
-    | Equality -> ({ psi with head = Subst.apply subst_snd psi.head (fun d_fact f -> { ef_recipe_1 = f d_fact.ef_recipe_1; ef_recipe_2 = f d_fact.ef_recipe_2 }) }: a formula)
-
-  let apply_fst_ord (type a) (fct: a t) (psi: a formula) subst_fst =
-    Config.debug (fun () ->
-      if List.exists (fun (v,_) -> v.link <> NoLink) subst_fst
-      then Config.internal_error "[term.ml >> Fact.apply_fst_ord] Variables in the domain should not be linked"
-    );
-
-    (* Link the variables of the substitution *)
-    List.iter (fun (v,t) -> v.link <- (TLink t)) subst_fst;
-
-    try
-      List.iter (fun (x,t) -> Subst.unify_term Protocol ({term = Var x; ground = false}) t) psi.equation_subst;
-
-      begin match fct with
-        | Deduction ->
-            let head = { psi.head with df_term = Subst.follow_link psi.head.df_term }
-            and ded_fact_list = List.fold_left (fun acc b_fact -> { b_fact with BasicFact.pterm = Subst.follow_link b_fact.BasicFact.pterm }::acc) [] psi.ded_fact_list
-            and equation_subst = List.fold_left (fun acc var -> (var,Subst.follow_link_var var)::acc) [] (Subst.retrieve Protocol) in
-
-            let psi_1 = { head = head; ded_fact_list = ded_fact_list; equation_subst = equation_subst } in
-
-            Subst.cleanup Protocol;
-
-            (* Unlink the variables of the substitution *)
-            List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
-
-            (* Apply the second-order substitution *)
-
-            (psi_1: a formula)
-
-        | Equality ->
-            let ded_fact_list = List.fold_left (fun acc b_fact -> { b_fact with BasicFact.pterm = Subst.follow_link b_fact.BasicFact.pterm }::acc) [] psi.ded_fact_list
-            and equation_subst = List.fold_left (fun acc var -> (var,Subst.follow_link_var var)::acc) [] (Subst.retrieve Protocol) in
-
-            let psi_1 = { psi with ded_fact_list = ded_fact_list; equation_subst = equation_subst } in
-
-            Subst.cleanup Protocol;
-
-            (* Unlink the variables of the substitution *)
-            List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
-
-            (psi_1: a formula)
-      end
-    with Subst.Not_unifiable ->
-      Subst.cleanup Protocol;
-      (* Unlink the variables of the substitution *)
-      List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
-      raise Bot
-
-  let apply_snd_ord_on_fact (type a) (fct: a t) (fact: a) (subst_snd : (snd_ord,axiom) Subst.t) = match fct with
-    | Deduction -> (Subst.apply subst_snd fact (fun fact f -> {fact with df_recipe = f fact.df_recipe}) : a)
-    | Equality -> (Subst.apply subst_snd fact (fun fact f -> {ef_recipe_1 = f fact.ef_recipe_1; ef_recipe_2 = f fact.ef_recipe_2}) : a)
-
-  let apply_ded_with_gathering psi subst_snd subst_fst ded_ref =
-    Config.debug (fun () ->
-      if List.exists (fun (v,_) -> v.link <> NoLink) subst_fst
-      then Config.internal_error "[term.ml >> Fact.apply_ded_with_gathering] Variables in the domain should not be linked"
-    );
-
-    (* Link the variables of the substitution *)
-    List.iter (fun (v,t) -> v.link <- (TLink t)) subst_fst;
-
-    try
-      List.iter (fun (x,t) -> Subst.unify_term Protocol ({ term = Var x; ground = false }) t) psi.equation_subst;
-
-      let head = { psi.head with df_term = Subst.follow_link psi.head.df_term }
-      and ded_fact_list = List.fold_left (fun acc b_fact -> { b_fact with BasicFact.pterm = Subst.follow_link b_fact.BasicFact.pterm }::acc) [] psi.ded_fact_list
-      and equation_subst = List.fold_left (fun acc var -> (var,Subst.follow_link_var var)::acc) [] (Subst.retrieve Protocol) in
-
-      let psi_1 = { head = head; ded_fact_list = ded_fact_list; equation_subst = equation_subst } in
-
-      Subst.cleanup Protocol;
-
-      (* Unlink the variables of the substitution *)
-      List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
-
-      (* Apply the second-order substitution *)
-
-      begin match !ded_ref with
-        | None ->
-            { psi_1 with
-              head =
-                Subst.apply subst_snd psi_1.head (fun d_fact f ->
-                  let recipe = f d_fact.df_recipe in
-                  ded_ref := Some recipe;
-                  { d_fact with df_recipe = recipe }
-                )
-            }
-        | Some recipe -> { psi_1 with head = { psi_1.head with df_recipe = recipe} }
-      end
-    with Subst.Not_unifiable ->
-      Subst.cleanup Protocol;
-      (* Unlink the variables of the substitution *)
-      List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
-      raise Bot
-
-  let apply_eq_with_gathering psi subst_snd subst_fst eq_ref =
-    Config.debug (fun () ->
-      if List.exists (fun (v,_) -> v.link <> NoLink) subst_fst
-      then Config.internal_error "[term.ml >> Fact.apply] Variables in the domain should not be linked"
-    );
-
-    (* Link the variables of the substitution *)
-    List.iter (fun (v,t) -> v.link <- (TLink t)) subst_fst;
-
-    try
-      List.iter (fun (x,t) -> Subst.unify_term Protocol ({ term = Var x; ground = false }) t) psi.equation_subst;
-
-      let ded_fact_list = List.fold_left (fun acc b_fact -> { b_fact with BasicFact.pterm = Subst.follow_link b_fact.BasicFact.pterm }::acc) [] psi.ded_fact_list
-      and equation_subst = List.fold_left (fun acc var -> (var,Subst.follow_link_var var)::acc) [] (Subst.retrieve Protocol) in
-
-      let psi_1 = { psi with ded_fact_list = ded_fact_list; equation_subst = equation_subst } in
-
-      Subst.cleanup Protocol;
-
-      (* Unlink the variables of the substitution *)
-      List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
-
-      (* Apply the second-order substitution *)
-
-      begin match !eq_ref with
-        | None ->
-            let head = Subst.apply subst_snd psi_1.head (fun d_fact f -> { ef_recipe_1 = f d_fact.ef_recipe_1; ef_recipe_2 = f d_fact.ef_recipe_2 }) in
-            eq_ref := Some head;
-            { psi_1 with head = head }
-        | Some head -> { psi_1 with head = head }
-      end
-    with Subst.Not_unifiable ->
-      Subst.cleanup Protocol;
-      (* Unlink the variables of the substitution *)
-      List.iter (fun (v,_) -> v.link <- NoLink) subst_fst;
-      raise Bot
-
-  let apply_snd_ord_ded_with_gathering psi subst_snd ded_ref = match !ded_ref with
-    | None ->
-        let head =
-          Subst.apply subst_snd psi.head (fun d_fact f ->
-            let recipe = f d_fact.df_recipe in
-            ded_ref := Some recipe;
-            { d_fact with df_recipe = recipe }
-          )
-        in
-        { psi with head = head }
-    | Some recipe -> { psi with head = { psi.head with df_recipe = recipe } }
-
-  let apply_snd_ord_eq_with_gathering psi subst_snd eq_ref = match !eq_ref with
-    | None ->
-        let head = Subst.apply subst_snd psi.head (fun d_fact f -> { ef_recipe_1 = f d_fact.ef_recipe_1; ef_recipe_2 = f d_fact.ef_recipe_2 }) in
-        eq_ref := Some head;
-        { psi with head = head }
-    | Some head -> { psi with head = head }
+  let replace_head_in_equality_formula (fact:equality) (form:equality_formula) = { form with head = fact }
 
   (********* Display functions *******)
 
@@ -3005,11 +3058,9 @@ module Fact = struct
 
   let display_formula (type a) out ?(rho=None) (fct:a t) (psi:a formula) = match out with
     | Testing ->
-        Printf.sprintf "%s %s %s %s %s"
+        Printf.sprintf "%s %s %s"
           (display_fact out ~rho:rho fct psi.head)
           (lLeftarrow out)
-          (display_list (BasicFact.display out ~rho:rho) (Printf.sprintf " %s " (wedge out)) psi.ded_fact_list)
-          "; "
           (Subst.display out ~rho:rho Protocol psi.equation_subst)
     | _ ->
         begin
@@ -3028,12 +3079,6 @@ module Fact = struct
                 find_univ_var Recipe psi.head.ef_recipe_2
           end;
 
-          List.iter (fun bdf ->
-            find_univ_var Protocol bdf.BasicFact.pterm;
-            if bdf.BasicFact.var.link <> FLink && bdf.BasicFact.var.quantifier = Universal
-            then link_search Recipe bdf.BasicFact.var
-          ) psi.ded_fact_list;
-
           List.iter (fun (t1,t2) ->
             find_univ_var Protocol t2;
             if t1.link <> FLink && t1.quantifier = Universal
@@ -3051,27 +3096,46 @@ module Fact = struct
           cleanup_search Protocol;
           cleanup_search Recipe;
 
-          match psi.ded_fact_list, psi.equation_subst with
-            | [],[] -> display_fact out ~rho:rho fct psi.head
-            | _,[] -> Printf.sprintf "%s %s %s %s"
+          match psi.equation_subst with
+            | [] -> display_fact out ~rho:rho fct psi.head
+            | _ -> Printf.sprintf "%s %s %s %s"
                 forall_str
                 (display_fact out ~rho:rho fct psi.head)
                 (lLeftarrow out)
-                (display_list (BasicFact.display out ~rho:rho) (Printf.sprintf " %s " (wedge out)) psi.ded_fact_list)
-            | [],_ -> Printf.sprintf "%s %s %s %s"
-                forall_str
-                (display_fact out ~rho:rho fct psi.head)
-                (lLeftarrow out)
-                (display_list (fun (t1,t2) -> Printf.sprintf "%s %s %s" (display out ~rho:rho Protocol ({ term = Var t1; ground = false})) (eqs out) (display out ~rho:rho Protocol t2)) (Printf.sprintf " %s " (wedge out)) psi.equation_subst)
-            | _,_ -> Printf.sprintf "%s %s %s %s %s %s"
-                forall_str
-                (display_fact out ~rho:rho fct psi.head)
-                (lLeftarrow out)
-                (display_list (BasicFact.display out ~rho:rho) (Printf.sprintf " %s " (wedge out)) psi.ded_fact_list)
-                (wedge out)
                 (display_list (fun (t1,t2) -> Printf.sprintf "%s %s %s" (display out ~rho:rho Protocol ({ term = Var t1; ground = false})) (eqs out) (display out ~rho:rho Protocol t2)) (Printf.sprintf " %s " (wedge out)) psi.equation_subst)
         end
 end
+
+(***************************************************
+***                Patterns                      ***
+****************************************************)
+
+type pattern =
+  | PatOther
+  | PatTuple of symbol * pattern list
+
+let rec is_equal_pattern pat1 pat2 = match pat1,pat2 with
+  | PatOther, PatOther -> true
+  | PatTuple(f1,args1), PatTuple(f2,args2) -> f1 == f2 && List.for_all2 is_equal_pattern args1 args2
+  | _, _ -> false
+
+let extract_pattern_of_deduction_fact fact =
+
+  let acc_facts = ref [] in
+
+  let rec internal recipe term = match term.term with
+    | Func(f,args) when f.cat = Tuple ->
+        let projections = HashtblSymb.find Symbol.all_projection f in
+        let pat_args = List.map2 (fun f_proj t -> internal { term = Func(f_proj,[recipe]); ground = recipe.ground } t) projections args in
+        PatTuple(f,pat_args)
+    | _ ->
+        acc_facts := { Fact.df_recipe = recipe; Fact.df_term = term} :: !acc_facts;
+        PatOther
+  in
+
+  match internal fact.Fact.df_recipe fact.Fact.df_term with
+    | PatOther -> None
+    | pat -> Some (pat, !acc_facts)
 
 (***************************************************
 ***    Rewrite rules   ***
@@ -3081,52 +3145,51 @@ module Rewrite_rules = struct
 
   type skeleton =
     {
-      variable_at_position : snd_ord_variable;
+      pos_vars : snd_ord_variable;
+      pos_term : protocol_term;
+      snd_vars : snd_ord_variable list;
       recipe : recipe;
-      p_term : protocol_term;
       basic_deduction_facts : BasicFact.t list;
-      rewrite_rule : symbol * protocol_term list * protocol_term
+
+      lhs : protocol_term list;
+      rhs : protocol_term
     }
 
-  (****** Tested functions ********)
+  type stored_skeleton =
+    {
+      skeleton : skeleton;
+      compat_rewrite_rules : (protocol_term list * protocol_term) list
+    }
 
-  let test_normalise : (protocol_term -> protocol_term -> unit) ref = ref (fun _ _ -> ())
+  let dummy_skeleton =
+    let dummy_var_snd = Variable.fresh Recipe Existential 0
+    and dummy_var_fst = Variable.fresh Protocol Existential NoType in
+    {
+      pos_vars = dummy_var_snd;
+      pos_term = of_variable dummy_var_fst;
+      snd_vars = [];
+      recipe = of_variable dummy_var_snd;
+      basic_deduction_facts = [];
 
-  let update_test_normalise f = test_normalise := f
+      lhs = [];
+      rhs = of_variable dummy_var_fst;
+    }
 
-  let test_skeletons : (protocol_term -> symbol -> int -> skeleton list -> unit) ref = ref (fun _ _ _ _ -> ())
+  let storage_skeletons = ref (Array.make 0 { skeleton = dummy_skeleton; compat_rewrite_rules = [] })
 
-  let update_test_skeletons f = test_skeletons := f
+  let index_skeletons = ref []
 
-  let test_generic_rewrite_rules_formula : (Fact.deduction -> skeleton -> Fact.deduction_formula list -> unit) ref = ref (fun _ _ _ -> ())
-
-  let update_test_generic_rewrite_rules_formula f = test_generic_rewrite_rules_formula := f
-
-  (****** Access ******)
-
-  let get_vars_with_list l =
-    List.fold_left (fun acc f ->
-        match f.cat with
-          | Destructor rw_rules ->
-              if Str.string_match Symbol.reg_proj f.name 0
-              then acc
-              else
-                List.fold_left (fun acc_1 (arg_l,r) ->
-                  let var_arg_l = List.fold_left (fun acc_2 t -> get_vars_with_list Protocol t (fun _ -> true) acc_2) acc_1 arg_l in
-                  get_vars_with_list Protocol r (fun _ -> true) var_arg_l
-                ) acc rw_rules
-          | _ -> Config.internal_error "[term.ml >> get_vars_signature] all_destructors should only contain destructors."
-    ) l !Symbol.all_destructors
+  (****** Normalisation ******)
 
   exception Found_normalise of protocol_term
 
-  let rec internal_normalise t = match t.term with
+  let rec normalise t = match t.term with
     | Func(f1,args) ->
         begin match f1.cat with
           | Constructor | Tuple ->
               let (ground,args') =
                 List.fold_right (fun t (g,t_list) ->
-                  let t' = internal_normalise t in
+                  let t' = normalise t in
                   (g&&t'.ground,t'::t_list)
                 ) args (true,[])
               in
@@ -3134,7 +3197,7 @@ module Rewrite_rules = struct
           | Destructor (rw_rules) ->
               let (ground,args') =
                 List.fold_right (fun t (g,t_list) ->
-                  let t' = internal_normalise t in
+                  let t' = normalise t in
                   (g&&t'.ground,t'::t_list)
                 ) args (true,[])
               in
@@ -3143,7 +3206,7 @@ module Rewrite_rules = struct
                   (***[BEGIN DEBUG]***)
                   Config.debug (fun () ->
                     if !Variable.Renaming.linked_variables_fst <> []
-                    then Config.internal_error "[term.ml >> Rewrite_rules.internal_normalise] The list of linked variables for renaming should be empty";
+                    then Config.internal_error "[term.ml >> Rewrite_rules.normalise] The list of linked variables for renaming should be empty";
 
                   );
                   (***[END DEBUG]***)
@@ -3166,403 +3229,336 @@ module Rewrite_rules = struct
         end
     | _ -> t
 
-  let normalise t =
-      let result = internal_normalise t in
-      Config.test (fun () -> !test_normalise t result);
-      result
+  let rewrite_rule_recipe (lhs,rhs) =
 
-  (****** Generation ******)
+    let assoc_list = ref [] in
 
-  let all_deduction_skeletons = Hashtbl.create 5
-  let all_equality_skeletons = Hashtbl.create 5
+    let rec explore_term term = match term.term with
+      | Var v ->
+          let v_recipe =
+            try
+              List.assq v !assoc_list
+            with
+              | Not_found ->
+                  let v_r = Variable.fresh Recipe Existential (-1) in
+                  assoc_list := (v,v_r) :: !assoc_list;
+                  v_r
+          in
+          { term = Var v_recipe; ground = false }
+      | Func(f,args) -> { term = Func(f,List.map explore_term args); ground = term.ground }
+      | _ -> Config.internal_error "[term.ml >> Rewrite_rules.rewrite_rule_recipe] A rewrite rule should not contain any name."
+    in
 
-  let reset_skeletons () =
-    Hashtbl.reset all_equality_skeletons;
-    Hashtbl.reset all_deduction_skeletons
+    (List.map explore_term lhs, explore_term rhs)
 
-  let rec is_r_subterm r term =
-    if is_equal Protocol term r
-    then true
-    else
-      match term.term with
-        | Var _ -> false
-        | Func(_,args) -> List.exists (is_r_subterm r) args
-        | _ -> Config.internal_error "[term.ml >> Rewrite_rules.is_r_subterm] There should not be any names in the rewrite rules."
+  exception Found_normalise_recipe of recipe
 
-  let rec create_all_but_one_fresh snd_type k term recipe b_fcts ar = function
-    | n when n = k ->
-        let (l_t,l_r,l_fct) = create_all_but_one_fresh snd_type k term recipe b_fcts ar (n+1) in
-        (term::l_t, recipe::l_r, l_fct)
-    | n when n = ar -> ([],[],b_fcts)
-    | n ->
-        let (l_t,l_r,l_fct) = create_all_but_one_fresh snd_type k term recipe b_fcts ar (n+1) in
+  let rec normalise_recipe t = match t.term with
+    | Func(f1,args) ->
+        begin match f1.cat with
+          | Constructor | Tuple ->
+              let (ground,args') =
+                List.fold_right (fun t (g,t_list) ->
+                  let t' = normalise_recipe t in
+                  (g&&t'.ground,t'::t_list)
+                ) args (true,[])
+              in
+              {term = Func(f1,args'); ground = ground}
+          | Destructor (rw_rules) ->
+              let (ground,args') =
+                List.fold_right (fun t (g,t_list) ->
+                  let t' = normalise_recipe t in
+                  (g&&t'.ground,t'::t_list)
+                ) args (true,[])
+              in
+              begin try
+                List.iter (fun (lhs,rhs) ->
+                  let (lhs',rhs') = rewrite_rule_recipe (lhs,rhs) in
 
-        let x_snd = Variable.fresh Recipe Universal snd_type
-        and x_fst = Variable.fresh Protocol Universal Variable.fst_ord_type in
-
-        let b_fct = BasicFact.create x_snd ({ term = Var x_fst; ground = false}) in
-
-        (({ term = Var x_fst; ground = false})::l_t, ({term = Var x_snd; ground = false})::l_r, b_fct::l_fct)
-
-  let rec explore_term_subterm (r:protocol_term) snd_type (f_continuation:snd_ord_variable -> protocol_term -> recipe -> protocol_term -> BasicFact.t list -> unit) (term:protocol_term) =
-    if is_equal Protocol term r
-    then true
-    else
-      match term.term with
-        | Var _ -> false
-        | Func(f,_) when f.arity = 0 -> false
-        | Func(f,args) ->
-            let is_sub =
-              if f.public
-              then
-                explore_term_subterm_list r snd_type 0 f.arity (fun x_snd x_term recipe_l term_l b_fct_l ->
-                  f_continuation x_snd x_term ({ term = Func(f,recipe_l); ground = false}) ({ term = Func(f,term_l); ground = false}) b_fct_l
-                ) args
-              else List.exists (is_r_subterm r) args
-            in
-
-            if is_sub
-            then
-              begin
-                Config.test (fun () ->
-                  if retrieve_search Protocol <> []
-                  then Config.internal_error "[terml.ml >> Rewrite_rules.explore_term] Linked variables should be empty.";
-                );
-                let x_snd = Variable.fresh Recipe Universal snd_type
-                and x_fst = Variable.fresh Protocol Universal Variable.fst_ord_type in
-                let b_fct = BasicFact.create x_snd ({ term = Var x_fst; ground = false}) in
-                f_continuation x_snd term ({ term = Var x_snd; ground = false}) ({term = Var x_fst; ground = false}) [b_fct];
-                true
+                  try
+                    List.iter2 (Subst.match_term Recipe) lhs' args';
+                    let rhs'' = Subst.follow_link rhs' in
+                    Subst.cleanup Recipe;
+                    raise (Found_normalise_recipe rhs'')
+                  with Subst.Not_matchable ->  Subst.cleanup Recipe
+                ) rw_rules;
+                { term = Func(f1, args'); ground = ground }
+              with Found_normalise_recipe t' -> t'
               end
-            else false
-        | _ -> Config.internal_error "[term.ml >> Rewrite_rules.explore_term_subterm] There should not be any names in the rewrite rules."
+        end
+    | _ -> t
 
-  and explore_term_subterm_list r snd_type k ar f_continuation = function
-    | [] -> false
-    | t::q ->
-        let is_sub =
-          explore_term_subterm r snd_type (fun x_snd x_term recipe term b_fct_list ->
-            let (t_list, r_list, fct_list) = create_all_but_one_fresh snd_type k term recipe b_fct_list ar 0 in
+  (****** Initialisation of skeletons ******)
 
-            f_continuation x_snd x_term r_list t_list fct_list
-            ) t
-        in
-        let is_sub_list = explore_term_subterm_list r snd_type (k+1) ar f_continuation q in
-        is_sub || is_sub_list
-
-  let rec explore_term_equality snd_type (f_continuation:snd_ord_variable -> protocol_term -> recipe -> protocol_term -> BasicFact.t list -> unit) (term:protocol_term) = match term.term with
+  let rec explore_skel_term (f_continuation:snd_ord_variable -> protocol_term -> recipe -> BasicFact.t list -> unit) (term:protocol_term) = match term.term with
     | Var _ -> ()
-    | Func(f,_) when f.arity = 0 -> ()
+    | Func(f,_) when f.arity = 0 ->
+        if not f.public
+        then
+          begin
+            Config.test (fun () ->
+              if retrieve_search Protocol <> []
+              then Config.internal_error "[terml.ml >> Rewrite_rules.explore_skel_term] Linked variables should be empty (1).";
+            );
+
+            let x_snd = Variable.fresh Recipe Existential (-1) in
+            let b_fct = BasicFact.create x_snd term in
+            f_continuation x_snd term ({ term = Var x_snd; ground = false}) [b_fct]
+          end
     | Func(f,args) ->
         if f.public
         then
-          explore_term_equality_list snd_type 0 f.arity (fun x_snd x_term recipe_l term_l b_fct_l ->
-            f_continuation x_snd x_term ({ term = Func(f,recipe_l); ground = false}) ({ term = Func(f,term_l); ground = false}) b_fct_l
+          explore_skel_term_list (fun x_snd x_term recipe_l b_fct_l ->
+            f_continuation x_snd x_term ({ term = Func(f,recipe_l); ground = false}) b_fct_l
           ) args
         else ();
 
         Config.test (fun () ->
           if retrieve_search Protocol <> []
-          then Config.internal_error "[terml.ml >> Rewrite_rules.explore_term] Linked variables should be empty.";
+          then Config.internal_error "[terml.ml >> Rewrite_rules.explore_skel_term] Linked variables should be empty (2).";
         );
-        let x_snd = Variable.fresh Recipe Universal snd_type
-        and x_fst = Variable.fresh Protocol Universal Variable.fst_ord_type in
-        let b_fct = BasicFact.create x_snd ({ term = Var x_fst; ground = false}) in
-        f_continuation x_snd term ({ term = Var x_snd; ground = false}) ({term = Var x_fst; ground = false}) [b_fct]
-    | _ -> Config.internal_error "[term.ml >> Rewrite_rules.explore_term_subterm] There should not be any names in the rewrite rules."
 
-  and explore_term_equality_list snd_type k ar f_continuation = function
-    | [] -> ()
-    | t::q ->
-        explore_term_equality snd_type (fun x_snd x_term recipe term b_fct_list ->
-          let (t_list, r_list, fct_list) = create_all_but_one_fresh snd_type k term recipe b_fct_list ar 0 in
+        let x_snd = Variable.fresh Recipe Existential (-1) in
+        let b_fct = BasicFact.create x_snd term in
+        f_continuation x_snd term ({ term = Var x_snd; ground = false}) [b_fct]
+    | _ -> Config.internal_error "[term.ml >> Rewrite_rules.explore_skel_term] There should not be any names in the rewrite rules."
 
-          f_continuation x_snd x_term r_list t_list fct_list
+  and explore_skel_term_list f_continuation args =
+    let (r_list,fct_list) =
+      List.fold_right (fun t (acc_r,acc_fct) ->
+        let x_snd = Variable.fresh Recipe Existential (-1) in
+        let b_fct = BasicFact.create x_snd t in
+        ((of_variable x_snd)::acc_r, b_fct::acc_fct)
+      ) args ([],[])
+    in
+
+    let rec go_through prev_r prev_fct next_r next_fct = function
+      | [] -> ()
+      | t::q ->
+          explore_skel_term (fun x_snd x_term recipe b_fct_list ->
+            f_continuation x_snd x_term (prev_r @ (recipe :: List.tl next_r)) (prev_fct @ b_fct_list @ (List.tl next_fct))
           ) t;
-        explore_term_equality_list snd_type (k+1) ar f_continuation q
+          go_through (prev_r @ [List.hd next_r]) ((List.hd next_fct)::prev_fct) (List.tl next_r) (List.tl next_fct) q
+    in
 
-  let generate_skeletons_subterm f k = match f.cat with
-    | Destructor rw_rules ->
-        let accumulator = ref [] in
+    go_through [] [] r_list fct_list args
 
-        List.iter (fun (args,r) ->
-          let _ =
-            explore_term_subterm_list r (Variable.snd_ord_type k) 0 f.arity (fun x_snd x_term recipe_l term_l b_fct_list ->
-              let skel =
-                {
-                  variable_at_position = x_snd;
-                  recipe = { term = Func(f,recipe_l); ground = false };
-                  p_term = { term = Func(f,term_l); ground = false };
-                  basic_deduction_facts = b_fct_list;
-                  rewrite_rule = f, args, r;
-                } in
-              accumulator := (x_term,skel)::!accumulator
-            ) args
-          in
-          ()
-        ) rw_rules;
+  let consequence_protocol_term (b_fct_list:BasicFact.t list) (term:protocol_term) =
 
-        !accumulator
-    | _ -> Config.internal_error "[term.ml >> Rewrite_rules.generate_skeletons_subterm] The function symbol should be a destructor."
+    let rec mem_list = function
+      | [] -> Config.internal_error "[term.ml >> Rewrite_rules.consequence_protocol_term] The list should not be empty"
+      | [t] ->
+          begin match mem_term t with
+            | None -> None
+            | Some r -> Some (r.ground,[r])
+          end
+      | t::q_t ->
+          begin match mem_term t with
+            | None -> None
+            | Some r ->
+              begin match mem_list q_t with
+                | None -> None
+                | Some (g,l_r) -> Some(g&&r.ground,r::l_r)
+              end
+          end
 
-  let generate_skeletons_equality f k = match f.cat with
-    | Destructor rw_rules ->
-        let accumulator = ref [] in
-
-        List.iter (fun (args,r) ->
-          let _ =
-            explore_term_equality_list (Variable.snd_ord_type k) 0 f.arity (fun x_snd x_term recipe_l term_l b_fct_list ->
-              let skel =
-                {
-                  variable_at_position = x_snd;
-                  recipe = { term = Func(f,recipe_l); ground = false };
-                  p_term = { term = Func(f,term_l); ground = false };
-                  basic_deduction_facts = b_fct_list;
-                  rewrite_rule = f, args, r;
-                } in
-              accumulator := (x_term,skel)::!accumulator
-            ) args
-          in
-          ()
-        ) rw_rules;
-
-        !accumulator
-    | _ -> Config.internal_error "[term.ml >> Rewrite_rules.generate_skeletons_constant] The function symbol should be a destructor."
-
-  let has_constant_as_rhs f = match f.cat with
-    | Destructor rw_rules ->
-        let (_,r) =
-          Config.debug (fun () ->
-            if rw_rules = []
-            then Config.internal_error "Should not happen."
-          );
-          List.hd rw_rules
-        in
-
-        is_ground r
-    | _ -> Config.internal_error "[term.ml >> Rewrite_rules.has_constant_as_rhs] The function symbol should be a destructor."
-
-  let get_skeletons for_deduction f k =
-    if for_deduction && not (has_constant_as_rhs f)
-    then
-      if has_constant_as_rhs f
-      then []
-      else
-        begin
-          try
-            Hashtbl.find all_deduction_skeletons (f,k)
+    and mem_term pterm = match pterm.term with
+      | Func(f,_) when f.arity = 0 && f.public -> Some ({term = Func(f,[]); ground = true})
+      | Func(f,args_t) when f.public ->
+          begin match mem_list args_t with
+            | None ->
+                begin try
+                  let b_fct = List.find (fun b_fct -> is_equal Protocol pterm b_fct.BasicFact.pterm) b_fct_list in
+                  Some ({term = Var b_fct.BasicFact.var; ground = false})
+                with
+                  | Not_found -> None
+                end
+            | Some (g,t_r) -> Some ({term = Func(f,t_r); ground = g})
+          end
+      | _ ->
+          begin try
+            let b_fct = List.find (fun b_fct -> is_equal Protocol pterm b_fct.BasicFact.pterm) b_fct_list in
+            Some ({term = Var b_fct.BasicFact.var; ground = false})
           with
-          | Not_found ->
-              let skels_and_term = generate_skeletons_subterm f k in
-              Hashtbl.add all_deduction_skeletons (f,k) skels_and_term;
-              skels_and_term
-        end
-    else
-      begin
-        try
-          Hashtbl.find all_equality_skeletons (f,k)
-        with
-        | Not_found ->
-            let skels_and_term = generate_skeletons_equality f k in
-            Hashtbl.add all_equality_skeletons (f,k) skels_and_term;
-            skels_and_term
-      end
-
-  let skeletons for_deduction u f k =
-    Config.debug (fun () ->
-      if not f.public
-      then Config.internal_error "[term.ml >> Rewrite_rules.skeletons] The destructor should be public."
-    );
-
-    let list_skel_term = get_skeletons for_deduction f k in
-
-    Config.debug (fun () ->
-      if !Variable.Renaming.linked_variables_fst <> [] || !Variable.Renaming.linked_variables_snd <> []
-      then Config.internal_error "[term.ml >> Rewrite_rules.skeletons] The list of linked variables for renaming should be empty"
-    );
-
-    let snd_type = Variable.snd_ord_type k in
-
-    List.fold_left (fun acc (term,skel) ->
-      if Subst.is_unifiable Protocol [u,term]
-      then
-        let p_term_1 = Variable.Renaming.rename_term Protocol Universal Variable.fst_ord_type skel.p_term in
-        let bfact_list_1 =
-          List.fold_left (fun acc' b_fct ->
-            { b_fct with
-              BasicFact.pterm = Variable.Renaming.rename_term Protocol Universal Variable.fst_ord_type b_fct.BasicFact.pterm
-            }::acc'
-          ) [] skel.basic_deduction_facts
-        in
-        let (f,lhs,rhs) = skel.rewrite_rule in
-        let lhs' =  List.map (Variable.Renaming.rename_term Protocol Existential Variable.fst_ord_type) lhs in
-        let rhs' = Variable.Renaming.rename_term Protocol Existential Variable.fst_ord_type rhs in
-        Variable.Renaming.cleanup Protocol;
-
-        let variable_at_position' = Variable.Renaming.rename Recipe Universal snd_type skel.variable_at_position in
-        let recipe' = Variable.Renaming.rename_term Recipe Universal snd_type skel.recipe in
-        let bfact_list_2 =
-          List.fold_left (fun acc' b_fct ->
-            { b_fct with
-              BasicFact.var = Variable.Renaming.rename Recipe Universal snd_type b_fct.BasicFact.var
-            }::acc'
-          ) [] bfact_list_1
-        in
-        Variable.Renaming.cleanup Recipe;
-
-        let skel' =
-          {
-            variable_at_position = variable_at_position';
-            recipe = recipe';
-            p_term = p_term_1;
-            basic_deduction_facts = bfact_list_2;
-            rewrite_rule = (f,lhs',rhs')
-          }
-        in
-        skel'::acc
-      else acc
-    ) [] list_skel_term
-
-  let rename_skeletons skel v_type =
-
-    let rec rename_recipe term = match term.term with
-      | Var(v) ->
-          begin match v.link with
-            | VLink(v') -> { term with term = Var(v') }
-            | NoLink ->
-                let v' = Variable.fresh Recipe v.quantifier v_type in
-                Variable.Renaming.link Recipe v v';
-                { term with term = Var(v') }
-            | _ -> Config.internal_error "[term.ml >> Rewrite_rules.rename_skeletons] Unexpected link"
+            | Not_found -> None
           end
-      | Func(f,args) -> {term with term = Func(f,List.map rename_recipe args)}
-      | _ -> term
+
     in
 
-    let rename_var v = match v.link with
-      | VLink(v') -> v'
-      | NoLink ->
-          let v' = Variable.fresh Recipe v.quantifier v_type in
-          Variable.Renaming.link Recipe v v';
-          v'
-      | _ -> Config.internal_error "[term.ml >> Rewrite_rules.rename_skeletons] Unexpected link (2)"
-    in
+    mem_term term
 
-    let skel' =
-      { skel with
-        variable_at_position = rename_var skel.variable_at_position;
-        recipe = rename_recipe skel.recipe;
-        basic_deduction_facts = List.fold_left (fun acc bfct -> { bfct with BasicFact.var = rename_var bfct.BasicFact.var}::acc) [] skel.basic_deduction_facts
-      }
-    in
-    Variable.Renaming.cleanup Recipe;
-    skel'
+  let rename_recipe_in_protocol_term (recipe:recipe) =
+    let assoc_list = ref [] in
 
-  let rename_skeletons_with_basic_facts skel ded_facts v_type =
-
-    let rec rename_recipe term = match term.term with
-      | Var(v) ->
-          begin match v.link with
-            | VLink(v') -> { term with term = Var(v') }
-            | NoLink ->
-                let v' = Variable.fresh Recipe v.quantifier v_type in
-                Variable.Renaming.link Recipe v v';
-                { term with term = Var(v') }
-            | _ -> Config.internal_error "[term.ml >> Rewrite_rules.rename_skeletons] Unexpected link"
-          end
-      | Func(f,args) -> {term with term = Func(f,List.map rename_recipe args)}
-      | _ -> term
-    in
-
-    let rename_var v = match v.link with
-      | VLink(v') -> v'
-      | NoLink ->
-          let v' = Variable.fresh Recipe v.quantifier v_type in
-          Variable.Renaming.link Recipe v v';
-          v'
-      | _ -> Config.internal_error "[term.ml >> Rewrite_rules.rename_skeletons] Unexpected link (2)"
-    in
-
-
-    let skel' =
-      { skel with
-        variable_at_position = rename_var skel.variable_at_position;
-        recipe = rename_recipe skel.recipe;
-        basic_deduction_facts = List.fold_left (fun acc bfct -> { bfct with BasicFact.var = rename_var bfct.BasicFact.var}::acc) [] skel.basic_deduction_facts
-      }
-    in
-
-    let ded_facts' = List.fold_left (fun acc bfct -> { bfct with BasicFact.var = rename_var bfct.BasicFact.var}::acc) [] ded_facts in
-
-    Variable.Renaming.cleanup Recipe;
-    skel',ded_facts'
-
-  let rec explore_list x_snd = function
-    | [] -> Config.internal_error "[term.ml >> Rewrite_rules.explore_list] The list should not be empty"
-    | bfct::q when Variable.is_equal bfct.BasicFact.var x_snd -> (bfct,q)
-    | bfct::q -> let (bfct',l) = explore_list x_snd q in
-        (bfct',bfct::l)
-
-  let generic_rewrite_rules_formula fct skel =
-    let (f,_,_) = skel.rewrite_rule
-    and x_snd = skel.variable_at_position
-    and recipe = skel.recipe
-    and term = skel.p_term
-    and b_fct_list = skel.basic_deduction_facts in
-
-    match f.cat with
-    | Destructor rw_rules ->
-        let result =
-          List.fold_left (fun acc (args,r) ->
+    let rec explore_term term = match term.term with
+      | Var v ->
+          let v_term =
             try
-              let args' = List.map (Variable.Renaming.rename_term Protocol Universal Variable.fst_ord_type) args in
-              let ground = List.for_all (fun t -> t.ground) args in
-              let r' = Variable.Renaming.rename_term Protocol Universal Variable.fst_ord_type r in
+              List.assq v !assoc_list
+            with
+              | Not_found ->
+                  let v_t = Variable.fresh Protocol Existential NoType in
+                  assoc_list := (v,v_t) :: !assoc_list;
+                  v_t
+          in
+          { term = Var v_term; ground = false }
+      | Func(f,args) -> { term = Func(f,List.map explore_term args); ground = term.ground }
+      | _ -> Config.internal_error "[term.ml >> Rewrite_rules.rename_recipe_in_protocol_term] A rewrite rule should not contain any name."
+    in
 
+    explore_term recipe
+
+  let initialise_skeletons () =
+    let accumulator = ref [] in
+
+    let rec optimise_skeletons skel prev_fct_list = function
+      | [] ->
+          let r_norm = normalise_recipe skel.recipe in
+          if is_equal Recipe r_norm skel.recipe
+          then Some skel
+          else None
+      | fct :: q_fct ->
+          let reduced_b_fact_list = List.rev_append q_fct prev_fct_list in
+          begin match consequence_protocol_term reduced_b_fact_list fct.BasicFact.pterm with
+            | Some r ->
+                if Variable.is_equal fct.BasicFact.var skel.pos_vars
+                then None
+                else
+                  begin
+                    fct.BasicFact.var.link <- TLink r;
+                    let new_recipe = Subst.apply_on_term skel.recipe in
+                    fct.BasicFact.var.link <- NoLink;
+                    let new_skel = { skel with recipe = new_recipe; basic_deduction_facts = reduced_b_fact_list } in
+                    optimise_skeletons new_skel [] reduced_b_fact_list
+                  end
+            | None -> optimise_skeletons skel (fct::prev_fct_list) q_fct
+          end
+    in
+
+    (* Generate optimised skeletons *)
+
+    let dest_without_proj = !Symbol.all_destructors in
+
+    List.iter (fun f ->
+      if f.public
+      then
+      match f.cat with
+      | Destructor rw_rules->
+          List.iter (fun (args,r) ->
+            explore_skel_term_list (fun x_snd x_term recipe_l b_fct_list ->
+              let skel =
+                {
+                  pos_vars = x_snd;
+                  pos_term = x_term;
+                  snd_vars = [];
+                  recipe = { term = Func(f,recipe_l); ground = false };
+                  basic_deduction_facts = b_fct_list;
+
+                  lhs = args;
+                  rhs = r
+                }
+              in
+              match optimise_skeletons skel [] b_fct_list with
+                | None -> ()
+                | Some skel' ->
+                    let (snd_vars, bfct_list) =
+                      List.fold_left (fun (acc_vars,acc_bfct) bfct ->
+                        if bfct.BasicFact.var == skel'.pos_vars
+                        then (acc_vars,acc_bfct)
+                        else (bfct.BasicFact.var::acc_vars,bfct::acc_bfct)
+                      ) ([],[]) skel'.basic_deduction_facts
+                    in
+                    accumulator := { skel' with snd_vars = snd_vars; basic_deduction_facts = bfct_list } :: !accumulator
+            ) args
+          ) rw_rules
+      | _ -> Config.internal_error "[term.ml >> Tools_Subterm.initialise_skeletons] There should not be any constructor function symbols in this list."
+    ) dest_without_proj;
+
+    (* Generate the array *)
+
+    let nb_skeletons = List.length !accumulator in
+
+    let skeleton_storage = Array.make nb_skeletons { skeleton = dummy_skeleton; compat_rewrite_rules = [] } in
+
+    List.iteri (fun i skel ->
+      let p_term = rename_recipe_in_protocol_term skel.recipe in
+      let arg_term = get_args p_term in
+      let f = root p_term in
+      let compa_rw_rules = match f.cat with
+        | Destructor rw_rules ->
+            List.fold_left (fun acc (lhs,rhs) ->
+              Config.debug (fun () ->
+                if !Variable.Renaming.linked_variables_fst <> []
+                then Config.internal_error "[term.ml >> Rewrite_rules.initialise_skeletons] The list of linked variables for renaming should be empty";
+
+              );
+              let lhs' = List.map (Variable.Renaming.rename_term Protocol Universal Variable.fst_ord_type) lhs in
+              let rhs' = Variable.Renaming.rename_term Protocol Universal Variable.fst_ord_type rhs in
               Variable.Renaming.cleanup Protocol;
 
-              let b_fct, rest_b_fct = explore_list x_snd  b_fct_list in
+              if Subst.is_unifiable (List.combine lhs' arg_term)
+              then (lhs',rhs')::acc
+              else acc
+            ) [] rw_rules
+        | _ -> Config.internal_error "[term.ml >> Rewrite_rules.initialise_skeletons] There should not be any constructor function symbolc in this list (2)."
+      in
+      let stored_skel = { skeleton = skel; compat_rewrite_rules = compa_rw_rules } in
+      skeleton_storage.(i) <- stored_skel
+    ) !accumulator;
 
-              Subst.link Recipe x_snd fct.Fact.df_recipe;
-              let new_recipe = Subst.apply_on_term recipe in
-              Subst.cleanup Recipe;
+    storage_skeletons := skeleton_storage;
 
-              let head = Fact.create_deduction_fact new_recipe r' in
+    (* Generate the index *)
 
-              (Fact.create Fact.Deduction head rest_b_fct [{term = Func(f,args'); ground = ground},term; b_fct.BasicFact.pterm, fct.Fact.df_term])::acc
-            with
-            | Fact.Bot -> acc
-          ) [] rw_rules
-        in
-        Config.test (fun () -> !test_generic_rewrite_rules_formula fct skel result);
-        result
-    | _ -> Config.internal_error "[term.ml >> Rewrite_rules.generic_rewrite_rules_formula] The function symbol should be a destructor."
+    let rec generate_index = function
+      | 0 -> [0]
+      | n -> n::(generate_index (n-1))
+    in
 
-  let specific_rewrite_rules_formula fct skel  =
-    let (f,args,r) = skel.rewrite_rule
-    and x_snd = skel.variable_at_position
-    and recipe = skel.recipe
-    and term = skel.p_term
-    and b_fct_list = skel.basic_deduction_facts in
+    if nb_skeletons <> 0
+    then index_skeletons := generate_index (nb_skeletons - 1)
 
-    let args' = List.map (Variable.Renaming.rename_term Protocol Universal Variable.fst_ord_type) args in
-    let ground = List.for_all (fun t -> t.ground) args in
-    let r' = Variable.Renaming.rename_term Protocol Universal Variable.fst_ord_type r in
+  let retrieve_stored_skeletons () = Array.to_list !storage_skeletons
 
-    Variable.Renaming.cleanup Protocol;
+  let setup_stored_skeletons l =
+    let ar = Array.of_list l in
+    let n = Array.length ar in
 
-    let b_fct, rest_b_fct = explore_list x_snd  b_fct_list in
+    let rec generate_index = function
+      | 0 -> [0]
+      | n -> n::(generate_index (n-1))
+    in
 
-    Subst.link Recipe x_snd fct.Fact.df_recipe;
-    let new_recipe = Subst.apply_on_term recipe in
-    Subst.cleanup Recipe;
+    if n <> 0
+    then index_skeletons := generate_index (n - 1);
+    storage_skeletons := ar
 
-    let head = Fact.create_deduction_fact new_recipe r' in
+  (****** Access function ******)
 
-    (Fact.create Fact.Deduction head rest_b_fct [{term= Func(f,args'); ground = ground},term; b_fct.BasicFact.pterm, fct.Fact.df_term])
+  let get_skeleton i = !storage_skeletons.(i).skeleton
+
+  let get_compatible_rewrite_rules i = !storage_skeletons.(i).compat_rewrite_rules
+
+  let get_all_skeleton_indices () = !index_skeletons
+
+  let get_vars_with_list l =
+    List.fold_left (fun acc f ->
+        match f.cat with
+          | Destructor rw_rules ->
+              if Str.string_match Symbol.reg_proj f.name 0
+              then acc
+              else
+                List.fold_left (fun acc_1 (arg_l,r) ->
+                  let var_arg_l = List.fold_left (fun acc_2 t -> get_vars_with_list Protocol t (fun _ -> true) acc_2) acc_1 arg_l in
+                  get_vars_with_list Protocol r (fun _ -> true) var_arg_l
+                ) acc rw_rules
+          | _ -> Config.internal_error "[term.ml >> get_vars_signature] all_destructors should only contain destructors."
+    ) l !Symbol.all_destructors
+
+  (****** Display function ******)
 
   let display_all_rewrite_rules out ?(per_line = 3) ?(tab = 0) rho =
-    let dest_without_proj = List.filter (fun f -> not (Symbol.is_proj f)) !Symbol.all_destructors in
+    let dest_without_proj = !Symbol.all_destructors in
 
     match out with
       | Testing ->
@@ -3673,21 +3669,16 @@ module Rewrite_rules = struct
                 !str
           end
 
-    let display_skeleton out ?(rho=None) skel =
-      let (f,args,r) = skel.rewrite_rule in
-      let ground = List.for_all (fun t -> t.ground) args in
-
-      Printf.sprintf "(%s, %s, %s, %s, %s %s %s)"
-        (Variable.display out ~rho:rho Recipe skel.variable_at_position)
-        (display out ~rho:rho Recipe skel.recipe)
-        (display out ~rho:rho Protocol skel.p_term)
-        (display_list (BasicFact.display out ~rho:rho) (Printf.sprintf " %s " (wedge out)) skel.basic_deduction_facts)
-        (display out ~rho:rho Protocol ({term = Func(f,args); ground = ground}))
-        (rightarrow out)
-        (display out ~rho:rho Protocol r)
-
+  let display_skeleton out ?(rho=None) skel =
+    let f = root skel.recipe in
+    let ground = List.for_all (fun t -> t.ground) skel.lhs in
+    Printf.sprintf "(%s, %s, %s, %s, %s)"
+      (Variable.display out ~rho:rho Recipe skel.pos_vars)
+      (display out ~rho:rho Protocol skel.pos_term)
+      (display out ~rho:rho Recipe skel.recipe)
+      (display_list (BasicFact.display out ~rho:rho) (Printf.sprintf " %s " (wedge out)) skel.basic_deduction_facts)
+      (display out ~rho:rho Protocol ({term = Func(f,skel.lhs); ground = ground}))
 end
-
 
 (**************************
 ***    Consequence      ***
@@ -3743,40 +3734,24 @@ module type Uni =
     val exists : t -> recipe -> protocol_term -> bool
   end
 
-module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) = struct
+module type EqMixed =
+  sig
+    type t
 
-  (***** Tested function *******)
+    val top : t
 
-  let test_partial_consequence_Protocol : (SDF.t -> DF.t -> protocol_term ->  (recipe * protocol_term) option -> unit) ref = ref (fun _ _ _ _ -> ())
+    val bot : t
 
-  let test_partial_consequence_Recipe : (SDF.t -> DF.t -> recipe ->  (recipe * protocol_term) option -> unit) ref = ref (fun _ _ _ _ -> ())
+    val wedge : t -> Diseq.Mixed.t -> t
 
-  let update_test_partial_consequence (type a) (type b) (at:(a,b) atom) (f: SDF.t -> DF.t -> (a,b) term -> (recipe * protocol_term) option -> unit) = match at with
-    | Protocol -> test_partial_consequence_Protocol := f
-    | Recipe -> test_partial_consequence_Recipe := f
+    val is_bot : t -> bool
 
-  let test_partial_consequence_additional_Protocol : (SDF.t -> DF.t -> BasicFact.t list -> protocol_term ->  (recipe * protocol_term) option -> unit) ref = ref (fun _ _ _ _ _ -> ())
+    val is_top : t -> bool
+  end
 
-  let test_partial_consequence_additional_Recipe : (SDF.t -> DF.t -> BasicFact.t list -> recipe ->  (recipe * protocol_term) option -> unit) ref = ref (fun _ _ _ _ _ -> ())
-
-  let update_test_partial_consequence_additional (type a) (type b) (at:(a,b) atom) (f: SDF.t -> DF.t -> BasicFact.t list -> (a,b) term -> (recipe * protocol_term) option -> unit) = match at with
-    | Protocol -> test_partial_consequence_additional_Protocol := f
-    | Recipe -> test_partial_consequence_additional_Recipe := f
-
-  let test_uniform_consequence : (SDF.t -> DF.t -> Uni.t -> protocol_term -> recipe option -> unit) ref = ref (fun _ _ _ _ _ -> ())
-
-  let update_test_uniform_consequence f = test_uniform_consequence := f
+module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) (Eq: EqMixed)= struct
 
   (***** Consequence ******)
-
-  let rec consequence sdf df recipe term = match recipe.term, term.term with
-    | Func(f,args_r), Func(f',args_t) when Symbol.is_equal f f' ->
-        List.for_all2 (consequence sdf df)  args_r args_t
-    | Func(f,_), _ when Symbol.is_constructor f -> false
-    | Func(_,_), _
-    | AxName _, _ ->
-        SDF.exists sdf (fun fct -> (is_equal Recipe fct.Fact.df_recipe recipe) && (is_equal Protocol fct.Fact.df_term term))
-    | Var(v),_ -> DF.exists_within_var_type (Variable.type_of v) df (fun b_fct -> (Variable.is_equal b_fct.BasicFact.var v) && (is_equal Protocol b_fct.BasicFact.pterm term))
 
   let partial_mem_recipe sdf df recipe =
 
@@ -3856,21 +3831,13 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) = struct
   let partial_consequence (type a) (type b) (at:(a,b) atom) sdf df (term:(a,b) term) = match at with
     | Protocol ->
         begin match partial_mem_protocol sdf df term with
-          | None ->
-              Config.test (fun () -> !test_partial_consequence_Protocol sdf df term None);
-              None
-          | Some r ->
-              Config.test (fun () -> !test_partial_consequence_Protocol sdf df term (Some (r,term)));
-              (Some (r,term):(recipe * protocol_term) option)
+          | None -> None
+          | Some r -> (Some (r,term):(recipe * protocol_term) option)
         end
     | Recipe ->
         begin match partial_mem_recipe sdf df term with
-          | None ->
-              Config.test (fun () -> !test_partial_consequence_Recipe sdf df term None);
-              None
-          | Some t ->
-              Config.test (fun () -> !test_partial_consequence_Recipe sdf df term (Some (term,t)));
-              (Some (term,t):(recipe * protocol_term) option)
+          | None -> None
+          | Some t -> (Some (term,t):(recipe * protocol_term) option)
         end
 
   let partial_mem_additional_recipe sdf df b_fct_list recipe =
@@ -3981,22 +3948,14 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) = struct
     | Protocol ->
         Config.debug (fun () -> compare_variables df b_fct_list);
         begin match partial_mem_additional_protocol sdf df b_fct_list term with
-          | None ->
-              Config.test (fun () -> !test_partial_consequence_additional_Protocol sdf df b_fct_list term None);
-              None
-          | Some r ->
-              Config.test (fun () -> !test_partial_consequence_additional_Protocol sdf df b_fct_list term (Some (r,term)));
-              (Some (r,term):(recipe * protocol_term) option)
+          | None -> None
+          | Some r -> (Some (r,term):(recipe * protocol_term) option)
         end
     | Recipe ->
         Config.debug (fun () -> compare_variables df b_fct_list);
         begin match partial_mem_additional_recipe sdf df b_fct_list term with
-          | None ->
-              Config.test (fun () -> !test_partial_consequence_additional_Recipe sdf df b_fct_list term None);
-              None
-          | Some t ->
-              Config.test (fun () -> !test_partial_consequence_additional_Recipe sdf df b_fct_list term (Some (term,t)));
-              (Some (term,t):(recipe * protocol_term) option)
+          | None -> None
+          | Some t -> (Some (term,t):(recipe * protocol_term) option)
         end
 
   exception Found
@@ -4076,9 +4035,7 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) = struct
           end
     in
 
-    let result = mem_term term in
-    Config.test (fun () -> !test_uniform_consequence sdf df uni term result);
-    result
+    mem_term term
 
   let is_df_solved df =
     try
@@ -4143,4 +4100,207 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) = struct
 
     let (_,uniset_1,sdf_1) = explore_recipe uniset sdf recipe in
     (uniset_1,sdf_1)
+
+  (* Generation of mixed disequation from rewrite rules *)
+
+  let mixed_diseq_for_skeletons sdf df fst_vars snd_vars recipe =
+
+    let rec mem_list attacker = function
+      | [] -> (true,[],[],attacker)
+      | r::q_r ->
+          let term, recipe_op = mem_term r in
+          begin match recipe_op with
+            | None ->
+                let (is_ground,term_l,recipe_l,attacker_l) = mem_list attacker q_r in
+                if attacker_l
+                then
+                  let y_snd = Variable.fresh Recipe Universal (-1) in
+                  (term.ground && is_ground, term::term_l, { term = Var y_snd; ground = false} :: recipe_l, true)
+                else
+                  (term.ground && is_ground, term::term_l, [], false)
+            | Some r_c ->
+                let (is_ground,term_l,recipe_l,_) = mem_list true q_r in
+                (term.ground && is_ground, term::term_l, r_c::recipe_l, true)
+          end
+
+    and mem_term recipe = match recipe.term with
+      | Func(f,args_r) when Symbol.is_constructor f ->
+          if f.arity = 0
+          then
+            if f.represents = AttackerPublicName
+            then
+              let y_fst = Variable.fresh Protocol Universal NoType
+              and y_snd = Variable.fresh Recipe Universal (-1) in
+              { term = Var y_fst; ground = false }, Some { term = Var y_snd; ground = false }
+            else
+              { term = Func(f,[]); ground = true}, None
+          else
+            let is_ground, term_l, recipe_l, attacker = mem_list false args_r in
+            if attacker
+            then { term = Func(f,term_l); ground = is_ground }, Some { term = Func(f,recipe_l); ground = false }
+            else { term = Func(f,term_l); ground = is_ground }, None
+      | Func(_,_)
+      | AxName _ ->
+          begin match SDF.find sdf (fun fct -> if is_equal Recipe fct.Fact.df_recipe recipe then Some fct.Fact.df_term else None) with
+            | None -> Config.internal_error "[term.ml >> Tools.mixed_diseq_for_skeletons] Recipe should be consequence."
+            | Some term -> term, None
+          end
+      | Var v ->
+          begin match DF.find_term df v with
+            | None -> Config.internal_error "[term.ml >> Tools.mixed_diseq_for_skeletons] Recipe should be consequence (2)."
+            | Some term -> term, None
+          end
+    in
+
+    let args = get_args recipe in
+    let (_,term_l,recipe_l,attacker) = mem_list false args in
+    if attacker
+    then
+      let eq_fst = List.fold_left2 (fun acc x t -> if is_variable t && (variable_of t).quantifier = Universal then acc else (of_variable x,t)::acc) [] fst_vars term_l
+      and eq_snd = List.fold_left2 (fun acc x t -> if is_variable t && (variable_of t).quantifier = Universal then acc else (of_variable x,t)::acc) [] snd_vars recipe_l in
+      Diseq.Mixed.MDiseq(eq_fst,eq_snd)
+    else
+      Diseq.Mixed.MDiseq(List.fold_left2 (fun acc x t -> (of_variable x,t)::acc) [] fst_vars term_l, [])
+
+  (* Generation of stored constructor *)
+
+  type stored_constructor =
+    {
+      snd_vars : snd_ord_variable list;
+      fst_vars : fst_ord_variable list;
+      mixed_diseq : Eq.t
+    }
+
+  let storage_functions: stored_constructor HashtblSymb.t = (HashtblSymb.create 10)
+
+  let retrieve_stored_constructors () =
+    HashtblSymb.fold (fun symb stored acc -> (symb,stored)::acc) storage_functions []
+
+  let setup_stored_constructors l =
+    HashtblSymb.reset storage_functions;
+    List.iter (fun (symb,stored) -> HashtblSymb.add storage_functions symb stored) l
+
+  let initialise_constructor () =
+    let list_constructor = List.filter_unordered (fun f -> (not (Symbol.is_tuple f)) && f.public && (f.arity > 0)) !Symbol.all_constructors in
+
+    let list_single_skeletons =
+      let list_storage = Array.to_list !Rewrite_rules.storage_skeletons in
+      List.filter (fun stored_skel ->
+        let single_rw_rule = List.length stored_skel.Rewrite_rules.compat_rewrite_rules = 1 in
+        let f = root stored_skel.Rewrite_rules.skeleton.Rewrite_rules.recipe in
+        let f_c = root stored_skel.Rewrite_rules.skeleton.Rewrite_rules.pos_term in
+        if f.public && (not (Symbol.is_tuple f_c)) && f_c.public && f_c.arity > 0
+        then
+          let list_same_dest = List.filter (fun stored_skel' -> (root stored_skel'.Rewrite_rules.skeleton.Rewrite_rules.recipe) == f) list_storage in
+          single_rw_rule && List.length list_same_dest = 1
+        else false
+      ) list_storage
+    in
+
+    let rec explore_term f_next t = match t.term with
+      | Var _ ->
+          let x_snd = Variable.fresh Recipe Universal (-1) in
+          f_next (of_variable x_snd) [BasicFact.create x_snd t]
+      | Func(f,args) ->
+          let x_snd = Variable.fresh Recipe Universal (-1) in
+          f_next (of_variable x_snd) [BasicFact.create x_snd t];
+          if f.public && f.arity > 0
+          then
+            explore_term_list (fun recipe_list bfct_list ->
+              f_next (apply_function f recipe_list) bfct_list
+            ) args
+      | _ -> Config.internal_error "[term.ml >> Rewrtie_rules.initialise_constructor] Rewrite rules should not contain names."
+
+    and explore_term_list f_next = function
+      | [] -> f_next [] []
+      | t::q ->
+          explore_term_list (fun recipe_q bfct_list_q ->
+            explore_term (fun recipe bfct_list ->
+              f_next (recipe::recipe_q) (List.rev_append bfct_list bfct_list_q)
+            ) t
+          ) q
+    in
+
+    let check_conditions skel args bfct_r bfct_list =
+      let test_1 =
+        List.for_all (fun bfct ->
+          match Rewrite_rules.consequence_protocol_term bfct_list bfct.BasicFact.pterm with
+            | None -> false
+            | Some _ -> true
+        ) skel.Rewrite_rules.basic_deduction_facts
+      in
+      if test_1
+      then
+        List.for_all (fun t ->
+          match Rewrite_rules.consequence_protocol_term (bfct_r::skel.Rewrite_rules.basic_deduction_facts) t with
+            | None -> false
+            | Some _ -> true
+        ) args
+      else false
+    in
+
+    let list_found_symb = ref [] in
+
+    List.iter (fun stored_skel ->
+      let f_c = root stored_skel.Rewrite_rules.skeleton.Rewrite_rules.pos_term in
+      let args = get_args stored_skel.Rewrite_rules.skeleton.Rewrite_rules.pos_term in
+      let bfct_r = BasicFact.create (Variable.fresh Recipe Universal (-1)) stored_skel.Rewrite_rules.skeleton.Rewrite_rules.rhs in
+      explore_term_list (fun recipe_list bfct_list ->
+        if check_conditions stored_skel.Rewrite_rules.skeleton args bfct_r bfct_list
+        then
+          begin
+            let pterm_uni = Variable.Renaming.rename_term Protocol Universal NoType stored_skel.Rewrite_rules.skeleton.Rewrite_rules.pos_term in
+            Variable.Renaming.cleanup Protocol;
+            list_found_symb := (f_c,get_args pterm_uni,recipe_list) :: !list_found_symb
+          end
+      ) args
+    ) list_single_skeletons;
+
+    List.iter (fun f ->
+      let snd_vars = Variable.fresh_list Recipe Existential (-1) f.arity in
+      let fst_vars = Variable.fresh_list Protocol Existential NoType f.arity in
+
+      let diseq_form =
+        List.fold_left (fun acc (f_c,term_list,recipe_list) ->
+          if Eq.is_bot acc || not (f == f_c)
+          then acc
+          else
+            begin
+              List.iter2 (fun x t -> Subst.unify_term_protocol (of_variable x) t) fst_vars term_list;
+              List.iter2 (fun x t -> Subst.unify_term_recipe (of_variable x) t) snd_vars recipe_list;
+
+              let fst_diseq =
+                List.fold_left (fun acc v ->
+                  if v.quantifier = Universal
+                  then acc
+                  else ({ term = Var v; ground = false}, Subst.follow_link_var v)::acc
+                ) [] (Subst.retrieve Protocol)
+              in
+              let snd_diseq =
+                List.fold_left (fun acc v ->
+                  if v.quantifier = Universal
+                  then acc
+                  else ({ term = Var v; ground = false}, Subst.follow_link_var v)::acc
+                ) [] (Subst.retrieve Recipe)
+              in
+              Subst.cleanup Protocol;
+              Subst.cleanup Recipe;
+              if fst_diseq = [] && snd_diseq = []
+              then Eq.bot
+              else Eq.wedge acc (Diseq.Mixed.MDiseq (fst_diseq,snd_diseq))
+            end
+        ) Eq.top !list_found_symb
+      in
+
+      Config.debug (fun () ->
+        if Eq.is_bot diseq_form
+        then Printf.printf "Function symbol removed from Equality : %s\n" (Symbol.display Latex f);
+
+        if not (Eq.is_bot diseq_form) && not (Eq.is_top diseq_form)
+        then Printf.printf "Function symbol with special diseq : %s\n" (Symbol.display Latex f);
+      );
+      HashtblSymb.add storage_functions f { snd_vars = snd_vars; fst_vars = fst_vars ; mixed_diseq = diseq_form }
+    ) list_constructor
+
+  let get_stored_constructor f = HashtblSymb.find storage_functions f
 end
