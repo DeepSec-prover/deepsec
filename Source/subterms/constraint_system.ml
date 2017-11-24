@@ -2186,7 +2186,6 @@ module Rule = struct
         match UF.pop_equality_formula_option csys.uf with
           | None -> exploration_sat_equality_formula (csys::prev_set) q
           | Some form ->
-              Printf.printf "The formula %s" (Fact.display_formula Latex Fact.Equality form);
               let simple_csys = simple_of_formula csys form in
 
               begin try
