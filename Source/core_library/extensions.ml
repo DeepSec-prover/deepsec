@@ -92,6 +92,9 @@ module Map = struct
     val find_and_replace : (key -> 'a -> bool) -> ('a -> 'a) -> 'a t -> ('a * 'a t) option
     val map: ('a -> 'b) -> 'a t -> 'b t
     val mapi: (key -> 'a -> 'b) -> 'a t -> 'b t
+    val search : ('a -> bool) -> 'a t -> 'a
+    val search_opt : ('a -> bool) -> 'a t -> 'a option
+    val search_key_opt : ('a -> bool) -> 'a t -> key option
   end
 
   module Make(Ord: OrderedType) = struct
@@ -607,6 +610,28 @@ module Map = struct
     let choose = min_binding
 
     let choose_opt = min_binding_opt
+
+    let rec tail_search_opt f_next f = function
+      | Empty -> f_next ()
+      | Node n when f n.d -> Some n.d
+      | Node n -> tail_search_opt (fun () -> tail_search_opt f_next f n.r) f n.l
+
+    let search_opt f m = tail_search_opt (fun () -> None) f m
+
+    let rec tail_search_key_opt f_next f = function
+      | Empty -> f_next ()
+      | Node n when f n.d -> Some n.v
+      | Node n -> tail_search_key_opt (fun () -> tail_search_key_opt f_next f n.r) f n.l
+
+    let search_key_opt f m = tail_search_key_opt (fun () -> None) f m
+
+
+    let rec tail_search f_next f = function
+      | Empty -> f_next ()
+      | Node n when f n.d -> n.d
+      | Node n -> tail_search (fun () -> tail_search f_next f n.r) f n.l
+
+    let search f m = tail_search (fun () -> raise Not_found) f m
 
   end
 end

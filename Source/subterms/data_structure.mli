@@ -8,7 +8,7 @@ val fresh_id_recipe_equivalent : unit -> id_recipe_equivalent
 
 (** {2 {% The set of deduction facts \texorpdfstring{$\Solved$}{SDF} %}}*)
 
-module SDF : sig
+module K : sig
 
   (** The type represents the set of solved deduction formulas that will be used in constraint systems, {% i.e. $\Solved$. %} *)
   type t
@@ -29,14 +29,6 @@ module SDF : sig
   (** [cardinal] {% $\Solved$ %} returns the number of deduction facts in {% $\Solved$ %} *)
   val cardinal : t -> int
 
-  val last_entry : t -> Fact.deduction
-
-  (** [last_entry] {% $\Solved$ %} returns the last deduction fact added to {% $\Solved$ %} with its recipe equivalent id. *)
-  val last_entry_with_id : t -> Fact.deduction * id_recipe_equivalent
-
-  (** [last_entry_id] {% $\Solved$ %} is the same as [let _,id = last_entry] {% $\Solved$ %} [in id] but more efficient. *)
-  val last_entry_id : t -> id_recipe_equivalent
-
   (** [add_id] {% $\Solved$ %} returns the list of recipe equivalence id of all deduction facts in {% $\Solved$ %}.*)
   val all_id : t -> id_recipe_equivalent list
 
@@ -50,11 +42,6 @@ module SDF : sig
 
   val tail_iter : t -> (Fact.deduction -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
 
-  (** [iter_id] {% $\Solved$ %} [g] applies the function [g] on every deduction fact [psi] of {% $\Solved$ %}. *)
-  val iter_id : t -> (id_recipe_equivalent -> Fact.deduction -> unit) -> unit
-
-  val iter_unmarked : t -> (id_recipe_equivalent -> Fact.deduction -> unit) -> unit
-
   (** [iter_within_var_type k] {% $\Solved$ %} [f g] applies the function [g] on every deduction fact [psi] of {% $\SetRestr{\Solved}{k}$. %} *)
   val iter_within_var_type : int -> t -> (Fact.deduction -> unit) -> unit
 
@@ -63,23 +50,31 @@ module SDF : sig
   (** [apply] {% $\Solved$~$\Sigma$~$\sigma$ %} returns the set {% $\Solved\Sigma\sigma$.%}*)
   val apply : t -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t  -> t
 
-  val apply_snd_and_gather : t -> (snd_ord, axiom) Subst.t -> (recipe * bool) array -> t
+  val apply_protocol : t -> (fst_ord, name) Subst.t -> t
 
-  val apply_snd_from_gathering : t -> (recipe * bool) array -> t
+  val apply_recipe : t -> (snd_ord, axiom) Subst.t -> t
+
+  val apply_recipe_and_gather : t -> (snd_ord, axiom) Subst.t -> recipe array -> t
+
+  val apply_recipe_from_gathering : t -> recipe array -> t
 
   (** {3 Testing} *)
 
-  (** [exists] {% $\Solved$ %} [f] returns [true] iff there exists a deduction fact [psi]  of {% $\Solved$ %}
-      such that [f psi] returns [true]. *)
-  val exists : t -> (Fact.deduction -> bool) -> bool
-
-  (** [exists_within_var_type] {% $k$~$\Solved$ %} [f] returns [true] iff there exists a deduction fact [psi]  of {% $\SetRestr{\Solved}{k}$ %}
-      such that [f psi] returns [true]. *)
-  val exists_within_var_type : int -> t -> (Fact.deduction -> bool) -> bool
-
   (** [find] {% $\Solved$ %} [f] returns [f psi] where [psi] is a deduction fact of {% $\Solved$ %} such that [f psi] is
       different from [None], when such [psi] exists. Otherwise it returns [None]. *)
-  val find : t -> (Fact.deduction -> 'a option) -> 'a option
+  val find_protocol_opt : t -> protocol_term -> recipe option
+
+  val find_recipe : t -> recipe -> protocol_term
+
+  val find_recipe_opt : t -> recipe -> protocol_term option
+
+  val find_recipe_with_var_type : t -> recipe -> protocol_term * int
+
+  val find_recipe_with_var_type_opt : t -> recipe -> (protocol_term * int) option
+
+  val find_unifier : t -> protocol_term -> int -> ((fst_ord, name) Subst.t -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
+
+  val find_unifier_with_recipe : t -> protocol_term -> int -> (recipe -> (fst_ord, name) Subst.t -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
 
   (** {3 Display} *)
 
@@ -87,6 +82,45 @@ module SDF : sig
       when [out = Terminal] or [out = Pretty_Terminal] and when the number of elements in {% $\Solved$ %} is strictly bigger than [n] then
       {% $\Solved$ %} is displayed on a new line and each line is preceded by [k] tabulations. *)
   val display : Display.output -> ?rho:display_renamings option -> ?per_line:int -> ?tab:int -> t -> string
+end
+
+module IK : sig
+
+  type t
+
+  val last_entry_with_id : t -> int * Fact.deduction
+
+  val last_entry : t -> Fact.deduction 
+
+  val last_entry_id : t -> int
+
+  val all_id : t -> int list
+
+  val get : t -> int -> Fact.deduction
+
+  val iter : t -> (Fact.deduction -> unit) -> unit
+
+  val tail_iter : t -> (Fact.deduction -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
+
+  val apply : t -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t -> t
+
+  val apply_recipe : t -> (snd_ord, axiom) Subst.t -> t
+
+  val apply_protocol : t -> (fst_ord, name) Subst.t -> t
+
+  val empty : t
+
+  val add : t -> Fact.deduction -> t
+
+  val remove_last : t -> t
+
+  val remove : int -> t -> t
+
+  val find_recipe : t -> recipe -> protocol_term
+
+  val find_protocol_opt : t -> protocol_term -> recipe option
+
+  val find_unifier_with_recipe : t -> protocol_term -> (recipe -> (fst_ord, name) Subst.t -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
 end
 
 (** {2 {% The set of basic deduction facts formulas \texorpdfstring{$\Df$}{DF} %}}*)
@@ -115,31 +149,19 @@ module DF : sig
   (** {3 Access} *)
 
   (** [get] {% $\Df$~$X$ %} returns [Some] {% $\dedfact{X}{u}$ if $\dedfact{X}{u} \in \Df$, %} and returns [None] otherwise.  *)
-  val get : t -> snd_ord_variable -> BasicFact.t option
+  val get_protocol_term : t -> snd_ord_variable -> protocol_term
 
   (** {3 Testing} *)
-
-  (** [exists_within_var_type] {% $k$~$\Df$ %} [f] returns [true] iff there exists a basic deduction fact [ded] of {% $\SetRestr{\Df}{k}$ %}
-      such that [f ded] returns [true]. *)
-  val exists_within_var_type : int -> t -> (BasicFact.t -> bool) -> bool
-
-  (** [find] {% $\Df$ %} [f] returns [f ded] where [ded] is a basic deduction fact of {% $\Df$ %}
-      such that [f ded] is not [None], when such [ded] exists. Otherwise, it returns [None]. *)
-  val find : t -> (BasicFact.t -> 'a option) -> 'a option
-
-  (** [find_within_var_type] {% $k$~$\Df$ %} [f] returns [f ded] where [ded] is a basic deduction fact of {% $\SetRestr{\Df}{k}$ %}
-      such that [f ded] is not [None], when such [ded] exists. Otherwise, it returns [None]. *)
-  val find_within_var_type : int -> t -> (BasicFact.t -> 'a option) -> 'a option
 
   (** {3 Iterators} *)
 
   (** [iter] {% $\Df$ %} [f] returns [f] {% $\dedfact{\xi_1}{t_1}$%}[; ... ; f] {% $\dedfact{\xi_n}{t_n}$ where $\Df = \\{ \dedfact{\xi_i}{t_i} \\}_{i=1}^n$.
       Warning : The order in which the function [iter] goes through the elements of the set $\Df$ is unspecified. %}*)
-  val iter : t -> (BasicFact.t -> unit) -> unit
+  val iter : t -> (snd_ord_variable -> protocol_term -> unit) -> unit
 
   (** [fold f elt] {% $\Df$ %} returns [f (... (f (f elt] {% $\dedfact{\xi_1}{t_1}$%}[)] {% $\dedfact{\xi_2}{t_2}$%}[) ...)]{% $\dedfact{\xi_n}{t_n}$ where $\Df = \{ \dedfact{\xi_i}{t_i} \}_{i=1}^n$.
       Warning : The order in which the function [fold] goes through the elements of the set $\Df$ is unspecified. %}*)
-  val fold : ('a -> BasicFact.t -> 'a) -> 'a -> t -> 'a
+  val fold : ('a -> snd_ord_variable -> protocol_term -> 'a) -> 'a -> t -> 'a
 
   (** {3 Display} *)
 
@@ -290,7 +312,7 @@ end
 
 (** {2 The set of subterm consequence} *)
 
-module Uniformity_Set : sig
+(* module Uniformity_Set : sig
 
   (** The type [set] represents sets of pairs of recipes and protocol terms. Intuitively, {% the set of subterm consequence of a constraint system
       $\C$ is the set $\\{ (\xi,u) \in \Consequence{\Solved(\C) \cup \Df(\C)} \mid \xi \in \st{\InitInput(\C)} \cup \sstdeux{\Solved(\C)}\\}$. %}*)
@@ -335,7 +357,7 @@ module Uniformity_Set : sig
       when [out = Terminal] or [out = Pretty_Terminal] and when the number of elements in [set] is strictly bigger than [n] then
       [set] is displayed on a new line and each line is preceded by [k] tabulations. *)
   val display : Display.output -> ?rho:display_renamings option -> ?per_line:int -> ?tab:int -> t -> string
-end
+end *)
 
 (** {2 The instantiated Tools module} *)
 
@@ -352,24 +374,31 @@ module Tools : sig
       \item %} returns [None] if {% for all $\xi$ (resp. for all $t$),%} [mem] {% $\Solved$~$\Df$~$\xi$~$t$ %} returns [false]; {% otherwise
       \item %} returns [Some(]{% $\xi$%}[)] (resp. [Some(]{% $t$%}[)]) such that [mem] {% $\Solved$~$\Df$~$\xi$~$t$ %} returns [true]. {%
       \end{itemize} %}*)
-  val partial_consequence : ('a, 'b) atom -> SDF.t -> DF.t -> ('a, 'b) term -> (recipe * protocol_term) option
+  val consequence_recipe : K.t -> DF.t -> recipe -> protocol_term
 
-  (** Similar to [partial_consequence] but consider the consequence with an additional set of basic deduction fact. *)
-  val partial_consequence_additional : ('a, 'b) atom -> SDF.t -> DF.t -> BasicFact.t list -> ('a, 'b) term -> (recipe * protocol_term) option
+  val consequence_recipe_with_IK : K.t -> IK.t -> DF.t -> recipe -> protocol_term
 
-  (** [uniform_consequence] {% $\Solved$~$\Df$~$\Set$~$t$ %} returns [Some(]{% $\xi$%}[)] if {% $(\xi,t) \in \Set$ or if $\forall \zeta. (\zeta,t) \not\in S$ and $(\xi,t) \in \Consequence{\Solved \cup \Df}$. %}*)
-  val uniform_consequence : SDF.t -> DF.t -> Uniformity_Set.t -> protocol_term -> recipe option
+  val consequence_uniform_recipe : K.t -> DF.t -> (fst_ord, name) Eq.t -> recipe -> protocol_term * (fst_ord, name) Eq.t
+
+  val consequence_uniform_recipe_with_IK : K.t -> int -> IK.t -> DF.t -> (fst_ord, name) Eq.t -> recipe -> protocol_term * (fst_ord, name) Eq.t
+
+  val consequence_protocol : K.t -> IK.t -> DF.t -> protocol_term -> recipe option
 
   (** {3 Others} *)
 
-  (** [is_df_solved DF] returns [true] if and only if all basic deduction facts in [DF] have distinct variables as right hand terms. *)
-  val is_df_solved : DF.t -> bool
+  type unsolved_status =
+    | Solved
+    | UnifyVariables of (snd_ord, axiom) Subst.t
+    | UnsolvedFact of BasicFact.t
 
-  val add_in_uniset : Uniformity_Set.t -> SDF.t -> DF.t -> recipe -> Uniformity_Set.t * SDF.t
+  (** [is_df_solved DF] returns [true] if and only if all basic deduction facts in [DF] have distinct variables as right hand terms. *)
+  val unsolved_DF : DF.t -> unsolved_status
+
+  val is_solved_DF : DF.t -> bool
 
   (** {3 Skeletons and formulas} *)
 
-  val mixed_diseq_for_skeletons : SDF.t -> DF.t -> (fst_ord, name) variable list -> (snd_ord, axiom) variable list -> recipe -> Diseq.Mixed.t
+  val mixed_diseq_for_skeletons : K.t -> IK.t -> DF.t -> (fst_ord, name) variable list -> (snd_ord, axiom) variable list -> recipe -> Diseq.Mixed.t
 
   val initialise_constructor : unit -> unit
 

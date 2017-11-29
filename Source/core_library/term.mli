@@ -642,6 +642,8 @@ module Subst : sig
       @raise Not_unifiable if no unification is possible. *)
   val unify_protocol : (protocol_term * protocol_term) list -> (fst_ord, name) t
 
+  val unify_protocol_opt : (protocol_term * protocol_term) list -> (fst_ord, name) t option
+
   val unify_recipe : (recipe * recipe) list -> (snd_ord, axiom) t
 
   (** [is_unifiable at l] returns [true] iff the pairs of term in [l] are unifiable, {% $\mguset{l} \neq \bot$. %} *)
@@ -704,7 +706,9 @@ module Diseq : sig
   (** {4 Generation} *)
 
   (** [of_substitution] {% $\sigma$~$S$ generates the normalisation of the disequation $\forall S. \bigvee_{x \in \Dom{\sigma}} x \neqs x\sigma$. %} *)
-  val of_substitution : (snd_ord, axiom) Subst.t -> (snd_ord, axiom) variable list -> (snd_ord, axiom) t
+  val of_substitution_recipe : (snd_ord, axiom) Subst.t -> (snd_ord, axiom) variable list -> (snd_ord, axiom) t
+
+  val of_substitution_protocol : (fst_ord, name) Subst.t -> (fst_ord, name) t
 
   (** [substitution_of_diseq at] {% $\forall \tilde{x}. \bigvee^n_1 x_i \neqs v_i$ generates the pair $(\sigma,\rho)$ where
       $\rho$ is a fresh renaming of $\tilde{x}$ to existential variables and
@@ -925,6 +929,14 @@ module Fact : sig
   (** [universal_variables form] returns the first-order universal variables in the formula [form] *)
   val universal_variables : 'a formula -> (fst_ord, name) variable list
 
+  (** {3 Modification} *)
+
+  val apply_fst_function_on_deduction_fact : (protocol_term -> protocol_term) -> deduction -> deduction
+
+  val apply_snd_function_on_deduction_fact : (recipe -> recipe) -> deduction -> deduction
+
+  val apply_both_functions_on_deduction_fact : (protocol_term -> protocol_term) -> (recipe -> recipe) -> deduction -> deduction
+
   (** {3 Testing} *)
 
   (** [is_fact] {% $\psi$ %}) returns [true] iff $\psi$ is a fact, i.e. no universal variables and equation free *)
@@ -953,8 +965,6 @@ module Fact : sig
   (** [apply fct] {% $\psi$~$\Sigma$~$\sigma$ applies the subsitutions $\Sigma$ and $\sigma$ on $\psi$ and normalise the resulting formula
       with respect to the normalisation rules in \citepaper{Figure}{fig:normalisation_formula}, i.e. $\psi\Sigma\sigma\Vnorm$. %}
       @raise Bot if {% $\psi\Sigma\sigma\Vnorm = \bot$. %} *)
-
-
 
   (** {3 Display functions} *)
 
@@ -1021,66 +1031,58 @@ end
 
 (** {2 Tools} *)
 
-module type SDF =
+module type K =
   sig
 
     type t
 
-    (** [exists] {% $\Solved$ %} [f] returns [true] iff there exists a deduction fact [psi]  of {% $\Solved$ %}
-        such that [f psi] returns [true]. *)
-    val exists : t -> (Fact.deduction -> bool) -> bool
+    val find_protocol_opt : t -> protocol_term -> recipe option
 
-    (** [find] {% $\Solved$ %} [f] returns [f psi] where [psi] is the a deductin fact of {% $\Solved$ %}
-        such that [f psi] is not [None], when such [psi] exists. Otherwise, it returns [None]. *)
-    val find : t -> (Fact.deduction -> 'a option) -> 'a option
+    val find_recipe : t -> recipe -> protocol_term
 
-    type marked_result =
-      | Not_in_SDF
-      | Marked of protocol_term
-      | Unmarked of protocol_term * t
+    val find_recipe_opt : t -> recipe -> protocol_term option
 
-    val find_term_and_mark : t -> recipe -> marked_result
+    val find_recipe_with_var_type : t -> recipe -> protocol_term * int
+
+    val find_recipe_with_var_type_opt : t -> recipe -> (protocol_term * int) option
+
+    val find_unifier : t -> protocol_term -> int -> ((fst_ord, name) Subst.t -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
+  end
+
+module type IK =
+  sig
+
+    type t
+
+    val find_protocol_opt : t -> protocol_term -> recipe option
+
+    val find_recipe : t -> recipe -> protocol_term
   end
 
 module type DF =
   sig
     type t
 
-    (** [exists_within_var_type] {% $k$~$\Df$ %} [f] returns [true] iff there exists a basic deduction fact [ded] of {% $\SetRestr{\Df}{k}$ %}
-        such that [f ded] returns [true]. *)
-    val exists_within_var_type : int -> t -> (BasicFact.t -> bool) -> bool
+    val find_protocol_opt : t -> protocol_term -> recipe option
 
-    (** [find_within_var_type] {% $k$~$\Df$ %} [f] returns [f ded] where [ded] is a basic deduction fact of {% $\SetRestr{\Df}{k}$ %}
-        such that [f ded] is not [None], when such [ded] exists. Otherwise, it returns [None]. *)
-    val find_within_var_type : int -> t -> (BasicFact.t -> 'a option) -> 'a option
+    val find_recipe : t -> snd_ord_variable -> protocol_term
 
-    (** [find] {% $\Df$ %} [f] returns [f ded] where [ded] is a basic deduction fact of {% $\Df$ %}
-        such that [f ded] is not [None], when such [ded] exists. Otherwise, it returns [None]. *)
-    val find : t -> (BasicFact.t -> 'a option) -> 'a option
-
-    val find_term : t -> snd_ord_variable -> protocol_term option
-
-    (** [iter] {% $\Df$ %} [f] returns [f] {% $\dedfact{\xi_1}{t_1}$%}[; ... ; f] {% $\dedfact{\xi_n}{t_n}$ where $\Df = \\{ \dedfact{\xi_i}{t_i} \\}_{i=1}^n$.
-        Warning : The order in which the function [iter] goes through the elements of the set $\Df$ is unspecified. %}*)
-    val iter : t -> (BasicFact.t -> unit) -> unit
+    val iter : t -> (snd_ord_variable -> protocol_term -> unit) -> unit
   end
 
-module type Uni =
+module type EqFst =
   sig
-    (** The type [set] represents sets of pairs of recipes and protocol terms. Intuitively, {% the set of subterm consequence of a constraint system
-        $\C$ is the set $\\{ (\xi,u) \in \Consequence{\Solved(\C) \cup \Df(\C)} \mid \xi \in \st{\InitInput(\C)} \cup \sstdeux{\Solved(\C)}\\}$. %}*)
-    type t
+    type ('a,'b) t
 
-    (** [find_protocol] {% $\Set$~$t$%} [f] returns [Some] {% $\xi$ if $(\xi,t) \in \Set$ %} and [f] {% $\xi$ %} returns [true]. Otherwise it returns [None].*)
-    val find_protocol_term : t -> protocol_term -> recipe option
+    val top : ('a, 'b) t
 
-    (** [iter] {% $\Set$ %} [f] applies the function [f] to all pairs {% $(\xi,t) \in \Set$.
-        Warning : The order in which the function [iter] goes through the pairs of $\Set$ is unspecified. %}*)
-    val iter : t -> (recipe -> protocol_term -> unit) -> unit
+    val bot : ('a, 'b) t
 
-    val add : t -> recipe -> protocol_term -> t
+    val wedge : ('a, 'b) t -> ('a, 'b) Diseq.t -> ('a, 'b) t
 
-    val exists : t -> recipe -> protocol_term -> bool
+    val is_bot : ('a, 'b) t -> bool
+
+    val is_top : ('a, 'b) t -> bool
   end
 
 module type EqMixed =
@@ -1099,7 +1101,7 @@ module type EqMixed =
   end
 
 module Tools_Subterm :
-  functor (SDF : SDF) (DF : DF) (Uni : Uni) (Eq:EqMixed) ->
+  functor (K:K) (IK:IK) (DF:DF) (Eq:EqMixed) (EqFst:EqFst) ->
     sig
 
     (** {3 Consequence} *)
@@ -1109,24 +1111,31 @@ module Tools_Subterm :
         \item %} returns [None] if {% for all $\xi$ (resp. for all $t$),%} [mem] {% $\Solved$~$\Df$~$\xi$~$t$ %} returns [false]; {% otherwise
         \item %} returns [Some(]{% $\xi$%}[)] (resp. [Some(]{% $t$%}[)]) such that [mem] {% $\Solved$~$\Df$~$\xi$~$t$ %} returns [true]. {%
         \end{itemize} %}*)
-    val partial_consequence : ('a, 'b) atom -> SDF.t -> DF.t -> ('a, 'b) term -> (recipe * protocol_term) option
+    val consequence_recipe : K.t -> DF.t -> recipe -> protocol_term
 
-    (** Similar to [partial_consequence] but consider the consequence with an additional set of basic deduction fact. *)
-    val partial_consequence_additional : ('a, 'b) atom -> SDF.t -> DF.t -> BasicFact.t list -> ('a, 'b) term -> (recipe * protocol_term) option
+    val consequence_recipe_with_IK : K.t -> IK.t -> DF.t -> recipe -> protocol_term
 
-    (** [uniform_consequence] {% $\Solved$~$\Df$~$\Set$~$t$ returns %} returns [Some(]{% $\xi$%}[)] if {% $(\xi,t) \in \Set$ or if $\forall \zeta. (\zeta,t) \not\in S$ and $(\xi,t) \in \Consequence{\Solved \cup \Df}$. %}*)
-    val uniform_consequence : SDF.t -> DF.t -> Uni.t -> protocol_term -> recipe option
+    val consequence_uniform_recipe : K.t -> DF.t -> (fst_ord, name) EqFst.t -> recipe -> protocol_term * (fst_ord, name) EqFst.t
+
+    val consequence_uniform_recipe_with_IK : K.t -> int -> IK.t -> DF.t -> (fst_ord, name) EqFst.t -> recipe -> protocol_term * (fst_ord, name) EqFst.t
+
+    val consequence_protocol : K.t -> IK.t -> DF.t -> protocol_term -> recipe option
 
     (** {3 Others} *)
 
-    (** [is_df_solved DF] returns [true] if and only if all basic deduction facts in [DF] have distinct variables as right hand terms. *)
-    val is_df_solved : DF.t -> bool
+    type unsolved_status =
+      | Solved
+      | UnifyVariables of (snd_ord, axiom) Subst.t
+      | UnsolvedFact of BasicFact.t
 
-    val add_in_uniset : Uni.t -> SDF.t -> DF.t -> recipe -> Uni.t * SDF.t
+    (** [is_df_solved DF] returns [true] if and only if all basic deduction facts in [DF] have distinct variables as right hand terms. *)
+    val unsolved_DF : DF.t -> unsolved_status
+
+    val is_solved_DF : DF.t -> bool
 
     (** {3 Skeletons and formulas} *)
 
-    val mixed_diseq_for_skeletons : SDF.t -> DF.t -> (fst_ord, name) variable list -> (snd_ord, axiom) variable list -> recipe -> Diseq.Mixed.t
+    val mixed_diseq_for_skeletons : K.t -> IK.t -> DF.t -> (fst_ord, name) variable list -> (snd_ord, axiom) variable list -> recipe -> Diseq.Mixed.t
 
     val initialise_constructor : unit -> unit
 
