@@ -3178,6 +3178,13 @@ module Rule = struct
 
                     if Eq.Mixed.is_bot stored_constructor.Tools.mixed_diseq
                     then
+                      exploration_equality_constructor prev_set (
+                        { csys with
+                          equality_constructor_to_checked = List.tl csys.equality_constructor_to_checked;
+                          equality_constructor_checked = csys.equality_constructor_checked
+                        } ::q
+                      )
+                    else
                       let simple_recipe, simple_csys = simple_of_equality_constructor csys symb term stored_constructor in
 
                       try
@@ -3188,7 +3195,7 @@ module Rule = struct
                           then Config.internal_error "[Constraint_system.ml >> rule_equality_constructor] The list l_vars should not contain second-order variable with the maximal type var."
                         );
 
-                        let mgs_csys, mgs_form = Subst.split_domain mgs (fun x -> Variable.type_of x <> csys.size_frame) in
+                        let mgs_csys, mgs_form = Subst.split_domain mgs Variable.has_not_infinite_type in
 
                         let recipe = Subst.apply mgs_form simple_recipe (fun r f -> f r) in
 
@@ -3200,13 +3207,6 @@ module Rule = struct
                             equality_constructor_checked = id_sdf::csys.equality_constructor_checked
                           } ::q
                         )
-                    else
-                      exploration_equality_constructor prev_set (
-                        { csys with
-                          equality_constructor_to_checked = List.tl csys.equality_constructor_to_checked;
-                          equality_constructor_checked = csys.equality_constructor_checked
-                        } ::q
-                      )
                   end
                 else
                   exploration_equality_constructor prev_set (
