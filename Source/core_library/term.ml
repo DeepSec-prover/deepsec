@@ -154,11 +154,11 @@ module Variable = struct
 
   let snd_ord_type n = n
 
-  let infinite_snd_ord_type = -1
+  let infinite_snd_ord_type = max_int
 
-  let has_infinite_type v = v.var_type = -1
+  let has_infinite_type v = v.var_type = max_int
 
-  let has_not_infinite_type v = v.var_type <> -1
+  let has_not_infinite_type v = v.var_type <> max_int
 
   let fresh_with_label q ty s =
     let var = { label = s; index = !accumulator; link = NoLink; quantifier = q; var_type = ty } in
@@ -1243,13 +1243,13 @@ let rec internal_var_occurs_or_out_of_world (var:snd_ord_variable) (r:recipe) =
     match r.term with
       | Var(v) when Variable.is_equal v var -> true
       | Var({link = TLink t; _}) -> internal_var_occurs_or_out_of_world var t
-      | Var v when v.var_type = -1 || v.var_type > var.var_type -> true
+      | Var v when v.var_type > var.var_type -> true
       | AxName ax when ax > var.var_type -> true
       | Func(_,args) -> List.exists (internal_var_occurs_or_out_of_world var) args
       | _ -> false
 
 let var_occurs_or_out_of_world (var:snd_ord_variable) (r:recipe) =
-  if var.var_type = -1
+  if var.var_type = max_int
   then var_occurs var r
   else internal_var_occurs_or_out_of_world var r
 
@@ -1462,7 +1462,6 @@ let rec display out ?(rho=None) at term = match term.term with
 module Subst = struct
 
   type ('a, 'b) t = (('a, 'b) variable * ('a, 'b) term) list
-
   (******* Generation **********)
 
   let identity = []
@@ -1493,6 +1492,18 @@ module Subst = struct
         then false
         else check_disjoint_domain q
 
+  (*********** Display ************)
+
+  let display out ?(rho=None) at subst =
+    let display_element (x,t) =
+      Printf.sprintf "%s %s %s" (Variable.display out ~rho:rho at x) (rightarrow out) (display out ~rho:rho at t)
+    in
+
+    if subst = []
+    then emptyset out
+    else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list display_element ", " subst) (rcurlybracket out)
+
+
   let create_multiple (type a) (type b) (at:(a,b) atom) (l_subst:((a,b) variable * (a,b) term) list) =
     Config.debug (fun () ->
       match at with
@@ -1510,7 +1521,11 @@ module Subst = struct
             then Config.internal_error "[term.ml >> Subst.create_multiple] The substution is not acyclic";
 
             if List.exists (fun (x,t) -> var_occurs_or_out_of_world x t) l_subst
-            then Config.internal_error "[term.ml >> Subst.create_multiple] The substitution is not unifiable (type issue)"
+            then
+              begin
+                Printf.printf "The substitution = %s\n" (display Latex at l_subst);
+                Config.internal_error "[term.ml >> Subst.create_multiple] The substitution is not unifiable (type issue)"
+              end
     );
 
     l_subst
@@ -1839,11 +1854,7 @@ module Subst = struct
     | Var {link = TLink t ; _}, _ -> unify_term_recipe t t2
     | _, Var {link = TLink t; _} -> unify_term_recipe t1 t
     | Var v1, Var v2 ->
-        if v2.var_type = -1
-        then (v2.link <- TLink t1; linked_variables_snd := v2 :: !linked_variables_snd)
-        else if v1.var_type = -1
-        then (v1.link <- TLink t2; linked_variables_snd := v1 :: !linked_variables_snd)
-        else if v1.var_type < v2.var_type
+        if v1.var_type < v2.var_type
         then (v2.link <- TLink t1; linked_variables_snd := v2 :: !linked_variables_snd)
         else if v1.var_type > v2.var_type
         then (v1.link <- TLink t2; linked_variables_snd := v1 :: !linked_variables_snd)
@@ -1855,45 +1866,6 @@ module Subst = struct
     | AxName n1, AxName n2 when n1 = n2 -> ()
     | Func(f1,args1), Func(f2,args2) when f1 == f2 -> List.iter2 unify_term_recipe args1 args2
     | _ -> raise Not_unifiable
-
-  (*let rec unify_term : 'a 'b. ('a,'b) atom -> ('a,'b) term -> ('a,'b) term -> unit = fun (type a) (type b) (at:(a, b) atom) (t1:(a, b) term) (t2:(a, b) term) -> match t1.term,t2.term with
-    | Var(v1), Var(v2) when Variable.is_equal v1 v2 -> ()
-    | Var({link = TLink t ; _}), _ -> unify_term at t t2
-    | _, Var({link = TLink t; _}) -> unify_term at t1 t
-    | Var(v1),Var(v2) ->
-        begin match at with
-          | Protocol ->
-              if v1.quantifier = Universal || (v1.quantifier = Existential && v2.quantifier = Free) || (v1.quantifier = v2.quantifier && Variable.order at v1 v2 < 0)
-              then link at v1 t2
-              else link at v2 t1
-          | Recipe ->
-              if v2.var_type = -1
-              then link at v2 t1
-              else if v1.var_type = -1
-              then link at v1 t2
-              else if v1.var_type < v2.var_type
-              then link at v2 t1
-              else if v1.var_type > v2.var_type
-              then link at v1 t2
-              else if v1.quantifier = Universal || (v1.quantifier = Existential && v2.quantifier = Free) || (v1.quantifier = v2.quantifier &&  Variable.order at v1 v2 < 0)
-              then link at v1 t2
-              else link at v2 t1
-        end
-    | Var(v1), _ ->
-        begin match at with
-          | Protocol -> if var_occurs v1 t2 then raise Not_unifiable else link at v1 t2
-          | Recipe -> if var_occurs_or_out_of_world v1 t2 then raise Not_unifiable else link at v1 t2
-        end
-    | _, Var(v2) ->
-        begin match at with
-          | Protocol -> if var_occurs v2 t1  then raise Not_unifiable else link at v2 t1
-          | Recipe -> if var_occurs_or_out_of_world v2 t1 then raise Not_unifiable else link at v2 t1
-        end
-    | AxName(n1), AxName(n2) when AxName.is_equal at n1 n2 -> ()
-    | Func(f1,args1), Func(f2,args2) ->
-        if Symbol.is_equal f1 f2 then List.iter2 (unify_term at) args1 args2 else raise Not_unifiable
-    | _,_ -> raise Not_unifiable
-  *)
 
   let unify_protocol (eq_list:(protocol_term * protocol_term) list) =
     try
@@ -2003,17 +1975,6 @@ module Subst = struct
       cleanup at;
       true
     with Not_unifiable -> cleanup at; false*)
-
-  (*********** Display ************)
-
-  let display out ?(rho=None) at subst =
-    let display_element (x,t) =
-      Printf.sprintf "%s %s %s" (Variable.display out ~rho:rho at x) (rightarrow out) (display out ~rho:rho at t)
-    in
-
-    if subst = []
-    then emptyset out
-    else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list display_element ", " subst) (rcurlybracket out)
 
   (******* Syntactic match *******)
 
@@ -3269,7 +3230,7 @@ module Rewrite_rules = struct
               List.assq v !assoc_list
             with
               | Not_found ->
-                  let v_r = Variable.fresh Recipe Existential (-1) in
+                  let v_r = Variable.fresh Recipe Existential max_int in
                   assoc_list := (v,v_r) :: !assoc_list;
                   v_r
           in
@@ -3330,7 +3291,7 @@ module Rewrite_rules = struct
               then Config.internal_error "[terml.ml >> Rewrite_rules.explore_skel_term] Linked variables should be empty (1).";
             );
 
-            let x_snd = Variable.fresh Recipe Existential (-1) in
+            let x_snd = Variable.fresh Recipe Existential max_int in
             let b_fct = BasicFact.create x_snd term in
             f_continuation x_snd term ({ term = Var x_snd; ground = false}) [b_fct]
           end
@@ -3347,7 +3308,7 @@ module Rewrite_rules = struct
           then Config.internal_error "[terml.ml >> Rewrite_rules.explore_skel_term] Linked variables should be empty (2).";
         );
 
-        let x_snd = Variable.fresh Recipe Existential (-1) in
+        let x_snd = Variable.fresh Recipe Existential max_int in
         let b_fct = BasicFact.create x_snd term in
         f_continuation x_snd term ({ term = Var x_snd; ground = false}) [b_fct]
     | _ -> Config.internal_error "[term.ml >> Rewrite_rules.explore_skel_term] There should not be any names in the rewrite rules."
@@ -3355,7 +3316,7 @@ module Rewrite_rules = struct
   and explore_skel_term_list f_continuation args =
     let (r_list,fct_list) =
       List.fold_right (fun t (acc_r,acc_fct) ->
-        let x_snd = Variable.fresh Recipe Existential (-1) in
+        let x_snd = Variable.fresh Recipe Existential max_int in
         let b_fct = BasicFact.create x_snd t in
         ((of_variable x_snd)::acc_r, b_fct::acc_fct)
       ) args ([],[])
@@ -4034,7 +3995,7 @@ module Tools_Subterm (K:K) (IK:IK) (DF:DF) (Eq: EqMixed) (EqFst:EqFst) = struct
                 let (is_ground,term_l,recipe_l,attacker_l) = mem_list attacker q_r in
                 if attacker_l
                 then
-                  let y_snd = Variable.fresh Recipe Universal (-1) in
+                  let y_snd = Variable.fresh Recipe Universal max_int in
                   (term.ground && is_ground, term::term_l, { term = Var y_snd; ground = false} :: recipe_l, true)
                 else
                   (term.ground && is_ground, term::term_l, [], false)
@@ -4050,7 +4011,7 @@ module Tools_Subterm (K:K) (IK:IK) (DF:DF) (Eq: EqMixed) (EqFst:EqFst) = struct
             if f.represents = AttackerPublicName
             then
               let y_fst = Variable.fresh Protocol Universal NoType
-              and y_snd = Variable.fresh Recipe Universal (-1) in
+              and y_snd = Variable.fresh Recipe Universal max_int in
               { term = Var y_fst; ground = false }, Some { term = Var y_snd; ground = false }
             else
               { term = Func(f,[]); ground = true}, None
@@ -4115,10 +4076,10 @@ module Tools_Subterm (K:K) (IK:IK) (DF:DF) (Eq: EqMixed) (EqFst:EqFst) = struct
 
     let rec explore_term f_next t = match t.term with
       | Var _ ->
-          let x_snd = Variable.fresh Recipe Universal (-1) in
+          let x_snd = Variable.fresh Recipe Universal max_int in
           f_next (of_variable x_snd) [BasicFact.create x_snd t]
       | Func(f,args) ->
-          let x_snd = Variable.fresh Recipe Universal (-1) in
+          let x_snd = Variable.fresh Recipe Universal max_int in
           f_next (of_variable x_snd) [BasicFact.create x_snd t];
           if f.public && f.arity > 0
           then
@@ -4160,7 +4121,7 @@ module Tools_Subterm (K:K) (IK:IK) (DF:DF) (Eq: EqMixed) (EqFst:EqFst) = struct
     List.iter (fun stored_skel ->
       let f_c = root stored_skel.Rewrite_rules.skeleton.Rewrite_rules.pos_term in
       let args = get_args stored_skel.Rewrite_rules.skeleton.Rewrite_rules.pos_term in
-      let bfct_r = BasicFact.create (Variable.fresh Recipe Universal (-1)) stored_skel.Rewrite_rules.skeleton.Rewrite_rules.rhs in
+      let bfct_r = BasicFact.create (Variable.fresh Recipe Universal max_int) stored_skel.Rewrite_rules.skeleton.Rewrite_rules.rhs in
       explore_term_list (fun recipe_list bfct_list ->
         if check_conditions stored_skel.Rewrite_rules.skeleton args bfct_r bfct_list
         then
@@ -4173,7 +4134,7 @@ module Tools_Subterm (K:K) (IK:IK) (DF:DF) (Eq: EqMixed) (EqFst:EqFst) = struct
     ) list_single_skeletons;
 
     List.iter (fun f ->
-      let snd_vars = Variable.fresh_list Recipe Existential (-1) f.arity in
+      let snd_vars = Variable.fresh_list Recipe Existential max_int f.arity in
       let fst_vars = Variable.fresh_list Protocol Existential NoType f.arity in
 
       let diseq_form =

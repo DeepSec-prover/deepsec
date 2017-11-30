@@ -139,6 +139,26 @@ module IK = struct
         | None -> f_next_1 ()
         | Some subst -> f_continuation (Fact.get_recipe fact) subst f_next_1
     ) ik.map f_next
+
+  let display _ ?(rho = None) ?(per_line = 8) ?(tab = 0) ik =
+    let size = IntMap.cardinal ik.map in
+    if IntMap.is_empty ik.map
+    then emptyset Latex
+    else
+      begin
+        let str = ref "\\left\\{ \\begin{array}{l} " in
+        let current_number = ref 1 in
+        IntMap.iter (fun _ fact ->
+          if !current_number >= size
+          then str := Printf.sprintf "%s%s \\end{array}\\right\\}" !str (Fact.display_deduction_fact Latex ~rho:rho fact)
+          else if (!current_number / per_line)*per_line = !current_number
+          then str := Printf.sprintf "%s%s,\\\\" !str (Fact.display_deduction_fact Latex ~rho:rho fact)
+          else str := Printf.sprintf "%s%s, " !str (Fact.display_deduction_fact Latex ~rho:rho fact);
+
+          incr current_number
+        ) ik.map;
+        !str
+      end
 end
 
 module K = struct
@@ -370,7 +390,7 @@ module K = struct
 
   let find_unifier k t i f_continuation f_next =
     Config.debug (fun () ->
-      if i = -1
+      if i = max_int
       then Config.internal_error "[data_structure.ml >> find_unifier] The var type should not be unbounded."
     );
 
@@ -401,7 +421,7 @@ module K = struct
       )
 
   let find_unifier_with_recipe k t i f_continuation f_next =
-    if i = k.max_var_type || i = -1
+    if i = k.max_var_type || i = max_int
     then
       IntMap.tail_iter (fun cell f_next_1 ->
         match Subst.unify_protocol_opt [t,Fact.get_protocol_term cell.g_fact] with

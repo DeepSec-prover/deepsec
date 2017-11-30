@@ -123,6 +123,8 @@ module IK : sig
   val find_protocol_opt : t -> protocol_term -> recipe option
 
   val find_unifier_with_recipe : t -> protocol_term -> (recipe -> (fst_ord, name) Subst.t -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
+
+  val display : Display.output -> ?rho:display_renamings option -> ?per_line:int -> ?tab:int -> t -> string
 end
 
 (** {2 {% The set of basic deduction facts formulas \texorpdfstring{$\Df$}{DF} %}}*)

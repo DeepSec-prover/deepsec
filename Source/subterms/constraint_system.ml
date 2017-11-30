@@ -406,11 +406,12 @@ let display_mgs out ?(rho=None) (subst,v_list) = match out with
 
 let display_simple out ?(rho=None) ?(hidden=false) ?(id=0) csys = match out with
   | Testing ->
-      Printf.sprintf "( %s, %s, %s, %s, %s )"
+      Printf.sprintf "( %s, %s, %s, %s, %s, %s )"
         (DF.display out ~rho:rho csys.simp_DF)
         (Eq.display out ~rho:rho Protocol csys.simp_EqFst)
         (Eq.display out ~rho:rho Recipe csys.simp_EqSnd)
         (K.display out ~rho:rho csys.simp_SDF)
+        (IK.display out ~rho:rho csys.simp_IK)
         (Eq.display out ~rho:rho Protocol csys.simp_Sub_Cons)
   | HTML ->
       let str = ref "" in
@@ -424,18 +425,20 @@ let display_simple out ?(rho=None) ?(hidden=false) ?(id=0) csys = match out with
 
       let link_Df = Printf.sprintf "<a href=\"javascript:show_single('Df%d');\">\\({\\sf D}%s\\)</a>" id_j id_s in
       let link_Sdf = Printf.sprintf "<a href=\"javascript:show_single('Sdf%d');\">\\({\\sf SDF}%s\\)</a>" id_j id_s in
+      let link_Ik = Printf.sprintf "<a href=\"javascript:show_single('Sdf%d');\">\\({\\sf IK}%s\\)</a>" id_j id_s in
       let link_Eq1 = Printf.sprintf "<a href=\"javascript:show_single('Equn%d');\">\\({\\sf E}^1%s\\)</a>" id_j id_s in
       let link_Eq2 = Printf.sprintf "<a href=\"javascript:show_single('Eqdeux%d');\">\\({\\sf E}^2%s\\)</a>" id_j id_s in
       let link_Uni = Printf.sprintf "<a href=\"javascript:show_single('Uni%d');\">\\({\\sf R}%s\\)</a>" id_j id_s in
 
-      str := Printf.sprintf "\\( \\mathcal{C}%s =~(\\)%s, %s, %s, %s, %s\\()\\) &nbsp;&nbsp;&nbsp; <a href=\"javascript:show_class('csys%d');\">All</a>\n"
-        id_s link_Df link_Eq1 link_Eq2 link_Sdf link_Uni id_j;
+      str := Printf.sprintf "\\( \\mathcal{C}%s =~(\\)%s, %s, %s, %s, %s, %s\\()\\) &nbsp;&nbsp;&nbsp; <a href=\"javascript:show_class('csys%d');\">All</a>\n"
+        id_s link_Df link_Eq1 link_Eq2 link_Sdf link_Ik link_Uni id_j;
 
       str := Printf.sprintf "%s            <div class=\"csys\">\n" !str;
       str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Df%d\" class=\"csys%d\"%s>\\({\\sf D}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (DF.display Latex ~rho:rho csys.simp_DF);
       str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Equn%d\" class=\"csys%d\"%s>\\({\\sf E}^1%s = %s\\)</div></div>\n" !str id_j id_j style id_s (Eq.display Latex ~rho:rho Protocol csys.simp_EqFst);
       str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Eqdeux%d\" class=\"csys%d\"%s>\\({\\sf E}^2%s = %s\\)</div></div>\n" !str id_j id_j style id_s (Eq.display Latex ~rho:rho Recipe csys.simp_EqSnd);
       str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Sdf%d\" class=\"csys%d\"%s>\\({\\sf SDF}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (K.display Latex ~rho:rho csys.simp_SDF);
+      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Sdf%d\" class=\"csys%d\"%s>\\({\\sf IK}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (IK.display Latex ~rho:rho csys.simp_IK);
       str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Uni%d\" class=\"csys%d\"%s>\\({\\sf R}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (Eq.display Latex ~rho:rho Protocol csys.simp_Sub_Cons);
 
       Printf.sprintf "%s            </div>\n" !str
@@ -763,7 +766,7 @@ let one_mgs csys =
           in
 
           K.find_unifier_with_recipe csys.simp_SDF t var_type_x_snd apply_resolution (fun () ->
-            if var_type_x_snd = -1
+            if var_type_x_snd = max_int
             then IK.find_unifier_with_recipe csys.simp_IK t apply_resolution apply_cons
             else apply_cons ()
           )
@@ -782,7 +785,8 @@ let one_mgs csys =
 
   match !result with
     | None -> None
-    | Some (mgs,var_list) -> Some (Subst.create_multiple Recipe (List.filter_unordered (fun (r_1,r_2) -> not (is_equal Recipe (of_variable r_1) r_2)) mgs), var_list)
+    | Some (mgs,var_list) ->
+        Some (Subst.create_multiple Recipe (List.filter_unordered (fun (r_1,r_2) -> not (is_equal Recipe (of_variable r_1) r_2)) mgs), var_list)
 
 let simple_of csys =
   {
