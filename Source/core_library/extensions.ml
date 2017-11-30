@@ -68,6 +68,7 @@ module Map = struct
     val equal: ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
     val iter: (key -> 'a -> unit) -> 'a t -> unit
     val fold: (key -> 'a -> 'b -> 'b) -> 'a t -> 'b -> 'b
+    val fold_right : ('b  -> 'a -> 'b) -> 'b -> 'a t -> 'b
     val tail_iter : ('a -> (unit -> unit) -> unit) -> 'a t -> (unit -> unit) -> unit
     val tail_iter_until : ('a -> (unit -> unit) -> unit) -> ('a -> bool) -> 'a t -> (unit -> unit) -> unit
     val for_all: (key -> 'a -> bool) -> 'a t -> bool
@@ -417,6 +418,12 @@ module Map = struct
         Empty -> accu
       | Node {l; v; d; r; _} ->
           fold f r (f v d (fold f l accu))
+
+    let rec fold_right f accu m =
+      match m with
+        Empty -> accu
+      | Node {l; d; r; _} ->
+          fold_right f (f (fold_right f accu r) d) l
 
     let rec tail_iter_until f f_stop m f_next = match m with
       | Empty -> f_next ()

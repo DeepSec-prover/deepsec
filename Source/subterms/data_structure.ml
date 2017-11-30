@@ -51,6 +51,8 @@ module IK = struct
 
   let tail_iter ik f f_next = IntMap.tail_iter f ik.map f_next
 
+  let fold_right f acc ik = IntMap.fold_right f acc ik.map
+
   (******* Modification ********)
 
   let apply ik subst_snd subst_fst =

@@ -90,13 +90,15 @@ module IK : sig
 
   val last_entry_with_id : t -> int * Fact.deduction
 
-  val last_entry : t -> Fact.deduction 
+  val last_entry : t -> Fact.deduction
 
   val last_entry_id : t -> int
 
   val all_id : t -> int list
 
   val get : t -> int -> Fact.deduction
+
+  val fold_right : ('a -> Fact.deduction -> 'a) -> 'a -> t -> 'a
 
   val iter : t -> (Fact.deduction -> unit) -> unit
 

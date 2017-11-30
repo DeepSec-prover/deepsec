@@ -5,73 +5,13 @@ open Display
 type origin_process =
   | Left
   | Right
-(*
-let bad_recipes = ref 0
-let good_recipes = ref 0
-let general_count = ref 0
-
-let display_count_recipes () =
-  if (!general_count /100)*100 = !general_count
-  then
-    begin
-      Printf.printf "Good recipes = %d, Bad recipes = %d\n" !good_recipes !bad_recipes;
-      flush_all ()
-    end*)
 
 type symbolic_process =
   {
     current_process : process;
     origin_process : origin_process;
-    trace : Trace.t;
-    id: int
+    trace : Trace.t
   }
-
-(***** Subsumption functions *****)
-
-let retrieve_length_and_representative csys_set =
-  let size = ref 0 in
-  let repr = ref (Constraint_system.Set.choose csys_set) in
-  let id_repr = ref (Constraint_system.get_additional_data !repr).id in
-  Constraint_system.Set.iter (fun csys ->
-    let id = (Constraint_system.get_additional_data csys).id in
-    incr size;
-    if id < !id_repr
-    then
-      begin
-        repr := csys;
-        id_repr := id
-      end
-  ) csys_set;
-  (!id_repr,!repr,!size)
-
-let is_subsumed_or_subsume array_csys_set csys_set =
-  let (id,csys,size) = retrieve_length_and_representative csys_set in
-
-  let rec subsume prev = function
-    | [] -> (id,csys,csys_set) :: prev
-    | ((id',csys',_) as t)::q ->
-        if id = id'
-        then
-          if Constraint_system.subsume false csys csys'
-          then subsume prev q
-          else subsume (t::prev) q
-        else subsume (t::prev) q
-  in
-
-  let rec explore prev = function
-    | [] -> (id,csys,csys_set) :: prev
-    | ((id',csys',_) as t)::q ->
-        if id = id'
-        then
-          if Constraint_system.subsume false csys csys'
-          then subsume prev q
-          else if Constraint_system.subsume false csys' csys
-          then List.rev_append prev (t::q)
-          else explore (t::prev) q
-        else explore (t::prev) q
-  in
-
-  array_csys_set.(size-1) <- explore [] array_csys_set.(size-1)
 
 (*********************)
 
@@ -87,8 +27,6 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
 
   let var_X_ch = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
   let var_X_var = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
-
-  let in_uniform = ref false in
 
   Constraint_system.Set.iter (fun csys ->
     let symb_proc = Constraint_system.get_additional_data csys in
@@ -121,9 +59,6 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
           }
         in
 
-        if Constraint_system.exists_recipes_deducing_same_protocol_term new_csys_5
-        then in_uniform := true;
-
         csys_set_for_input := Constraint_system.Set.add new_csys_5 !csys_set_for_input
       with
         | Constraint_system.Bot -> ()
@@ -149,8 +84,6 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
 
   let var_X_ch = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
   let axiom = Axiom.create (size_frame + 1) in
-
-  let out_uniform = ref false in
 
   Constraint_system.Set.iter (fun csys ->
     let symb_proc = Constraint_system.get_additional_data csys in
@@ -181,9 +114,6 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
           }
         in
 
-        if Constraint_system.exists_recipes_deducing_same_protocol_term new_csys_5
-        then out_uniform := true;
-
         csys_set_for_output := Constraint_system.Set.add new_csys_5 !csys_set_for_output
       with
         | Constraint_system.Bot -> ()
@@ -203,20 +133,10 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
       else f_continuation csys_set (size_frame + 1) f_next
   in
 
-  Constraint_system.Rule.apply_rules_after_output false !out_uniform !csys_set_for_output out_apply_final_test
-    (fun () -> Constraint_system.Rule.apply_rules_after_input false !in_uniform !csys_set_for_input in_apply_final_test f_next)
+  Constraint_system.Rule.apply_rules_after_output false out_apply_final_test !csys_set_for_output
+    (fun () -> Constraint_system.Rule.apply_rules_after_input false in_apply_final_test !csys_set_for_input f_next)
 
 let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_continuation f_next =
-
-  let rec explore ar_csys max_i cur_i size_frame_1 f_next_1 = match ar_csys.(cur_i) with
-    | [] ->
-        if cur_i = max_i
-        then f_next_1 ()
-        else explore ar_csys max_i (cur_i + 1) size_frame_1 f_next_1
-    | (_,_,csys_set) :: q ->
-        ar_csys.(cur_i) <- q;
-        f_continuation csys_set size_frame_1 (fun () -> explore ar_csys max_i cur_i size_frame_1 f_next_1)
-  in
 
   (*** Generate the set for the next input ***)
 
@@ -225,9 +145,6 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
 
   let var_X_ch = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
   let var_X_var = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
-
-  let counter_id_in = ref 0 in
-  let in_uniform = ref false in
 
   Constraint_system.Set.iter (fun csys ->
     let symb_proc = Constraint_system.get_additional_data csys in
@@ -261,27 +178,15 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
         let new_csys_6 = Constraint_system.replace_additional_data new_csys_5
           { symb_proc with
             current_process = proc;
-            trace = trace;
-            id = !counter_id_in
+            trace = trace
           }
         in
 
-        if Constraint_system.exists_recipes_deducing_same_protocol_term new_csys_6
-        then in_uniform := true;
-
-        incr counter_id_in;
         csys_set_for_input := Constraint_system.Set.add new_csys_6 !csys_set_for_input
       with
         | Constraint_system.Bot -> ()
     )
   ) csys_set;
-
-  Config.debug (fun () ->
-    if (Constraint_system.Set.size !csys_set_for_input) <> !counter_id_in
-    then Config.internal_error "[equivalence.ml >> apply_one_transition_and_rules] Should be the same size for input"
-  );
-
-  let array_csys_set_in = Array.make !counter_id_in [] in
 
   (*** Application of the tranformation rules ***)
 
@@ -294,11 +199,8 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
       if Constraint_system.Set.for_all (fun csys -> (Constraint_system.get_additional_data csys).origin_process = origin_process) csys_set
       then raise (Not_Trace_Equivalent csys)
       else
-        begin
-          let opti_csys_set = Constraint_system.Set.optimise_snd_ord_recipes csys_set in
-          is_subsumed_or_subsume array_csys_set_in opti_csys_set;
-          f_next ()
-        end
+        let opti_csys_set = Constraint_system.Set.optimise_snd_ord_recipes csys_set in
+        f_continuation opti_csys_set size_frame f_next
   in
 
   (*** Generate the set for the next output ***)
@@ -308,9 +210,6 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
 
   let var_X_ch = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
   let axiom = Axiom.create (size_frame + 1) in
-
-  let counter_id_out = ref 0 in
-  let out_uniform = ref false in
 
   Constraint_system.Set.iter (fun csys ->
     let symb_proc = Constraint_system.get_additional_data csys in
@@ -342,27 +241,15 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
         let new_csys_6 = Constraint_system.replace_additional_data new_csys_5
           { symb_proc with
             current_process = proc;
-            trace = trace;
-            id = !counter_id_out
+            trace = trace
           }
         in
 
-        if Constraint_system.exists_recipes_deducing_same_protocol_term new_csys_6
-        then out_uniform := true;
-
-        incr counter_id_out;
         csys_set_for_output := Constraint_system.Set.add new_csys_6 !csys_set_for_output
       with
         | Constraint_system.Bot -> ()
     )
   ) csys_set;
-
-  Config.debug (fun () ->
-    if (Constraint_system.Set.size !csys_set_for_output) <> !counter_id_out
-    then Config.internal_error "[equivalence.ml >> apply_one_transition_and_rules] Should be the same size for output"
-  );
-
-  let array_csys_set_out = Array.make !counter_id_out [] in
 
   (*** Application of the tranformation rules ***)
 
@@ -376,28 +263,12 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
       then raise (Not_Trace_Equivalent csys)
       else
         let opti_csys_set = Constraint_system.Set.optimise_snd_ord_recipes csys_set in
-        is_subsumed_or_subsume array_csys_set_out opti_csys_set;
-        f_next ()
+        f_continuation opti_csys_set (size_frame + 1) f_next
   in
 
-  match !counter_id_out, !counter_id_in with
-    | 0, 0 -> f_next ()
-    | 0, _ ->
-        Constraint_system.Rule.apply_rules_after_input !private_channels_input !in_uniform !csys_set_for_input in_apply_final_test (fun () ->
-          explore array_csys_set_in (!counter_id_in - 1) 0 size_frame f_next
-        )
-    | _, 0 ->
-        Constraint_system.Rule.apply_rules_after_output !private_channels_output !out_uniform !csys_set_for_output out_apply_final_test (fun () ->
-          explore array_csys_set_out (!counter_id_out - 1) 0 (size_frame + 1) f_next
-        )
-    | _, _ ->
-        Constraint_system.Rule.apply_rules_after_output !private_channels_output !out_uniform !csys_set_for_output out_apply_final_test (fun () ->
-          explore array_csys_set_out (!counter_id_out - 1) 0 (size_frame + 1) (fun () ->
-            Constraint_system.Rule.apply_rules_after_input !private_channels_input !in_uniform !csys_set_for_input in_apply_final_test (fun () ->
-              explore array_csys_set_in (!counter_id_in - 1) 0 size_frame f_next
-            )
-          )
-        )
+  Constraint_system.Rule.apply_rules_after_output !private_channels_output out_apply_final_test !csys_set_for_output (fun () ->
+    Constraint_system.Rule.apply_rules_after_input !private_channels_input in_apply_final_test !csys_set_for_input f_next
+  )
 
 let apply_one_transition_and_rules_for_trace_equivalence = function
   | Classic -> apply_one_transition_and_rules_for_trace_in_classic
@@ -421,15 +292,13 @@ let trace_equivalence_classic proc1 proc2 =
     {
       origin_process = Left;
       current_process = proc1;
-      trace = Trace.empty;
-      id = 0
+      trace = Trace.empty
     }
   and symb_proc_2 =
     {
       origin_process = Right;
       current_process = proc2;
-      trace = Trace.empty;
-      id = 0
+      trace = Trace.empty
     }
   in
 
@@ -464,15 +333,13 @@ let trace_equivalence_private proc1 proc2 =
     {
       origin_process = Left;
       current_process = proc1;
-      trace = Trace.empty;
-      id = 0
+      trace = Trace.empty
     }
   and symb_proc_2 =
     {
       origin_process = Right;
       current_process = proc2;
-      trace = Trace.empty;
-      id = 0
+      trace = Trace.empty
     }
   in
 

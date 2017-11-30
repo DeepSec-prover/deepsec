@@ -71,13 +71,6 @@ val apply_substitution : 'a t -> (fst_ord, name) Subst.t -> 'a t
     @raise Internal_error if {% $\C$ %} is not in solved form. *)
 val instantiate_when_solved : 'a t -> (fst_ord, name) Subst.t * (snd_ord, axiom) Subst.t
 
-(** {3 Scanning} *)
-
-(** [subsume b] {% $\C_1$~$\C_2$ %} returns [true] if {% $\C_1$ subsume $\C_2$.%} If [b = true] then the fine grained subsumption test is applied. *)
-val subsume : bool -> 'a t -> 'a t -> bool
-
-val exists_recipes_deducing_same_protocol_term : 'a t -> bool
-
 (** {3 Display function} *)
 
 val display : Display.output -> ?rho: display_renamings option -> ?hidden:bool -> ?id:int -> 'a t -> string
@@ -105,7 +98,7 @@ val mgs : simple -> mgs list
 
 (** [one_mgs] {% $\C$ %} returns one element of the list returned by [most_general_solutions] {% $\C$ %}.
     @raise Not_found when [most_general_solutions] {% $\C$ %} returns the empty list. *)
-val one_mgs : simple -> mgs
+val one_mgs : simple -> mgs option
 
 (** {3 Access} *)
 
@@ -174,8 +167,8 @@ end
 module Rule : sig
 
   val apply_rules_after_input :
-    bool -> bool -> 'a Set.t -> ('a Set.t -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
+    bool -> ('a Set.t -> (unit -> unit) -> unit) -> 'a Set.t -> (unit -> unit) -> unit
 
   val apply_rules_after_output :
-    bool -> bool -> 'a Set.t -> ('a Set.t -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
+    bool -> ('a Set.t -> (unit -> unit) -> unit) -> 'a Set.t -> (unit -> unit) -> unit
 end

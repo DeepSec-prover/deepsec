@@ -51,6 +51,9 @@ type 'a t =
     equality_constructor_checked : int list;
     equality_constructor_to_checked : int list;
 
+    equality_constructor_checked_IK : int list;
+    equality_constructor_to_checked_IK : int list;
+
     (*** Similar behaviour for the list equality_to_checked. Note that when no mgs is found, the element is removed and never put back
       even if a new element of SDF is added (since all the second order variable in the equality formula have a type stricly smaller
       then any new added element in SDF). Finally, each id in the list represents the element of SDF that is compared with the
@@ -247,6 +250,9 @@ let empty data =
 
     equality_constructor_checked = [];
     equality_constructor_to_checked = [];
+
+    equality_constructor_checked_IK = [];
+    equality_constructor_to_checked_IK = [];
 
     equality_to_checked = [];
     equality_to_checked_IK = [];
@@ -593,218 +599,6 @@ let mgs csys =
     (Subst.create_multiple Recipe (List.filter_unordered (fun (r_1,r_2) -> not (is_equal Recipe (of_variable r_1) r_2)) mgs), var_list)::acc_mgs
     ) [] !accumulator
 
-(* let mgs csys =
-  let accumulator = ref [] in
-
-  let rec apply_rules csys mgs snd_ord_vars f_next =
-
-    let test_not_solved basic_fct =
-      if not (is_variable (BasicFact.get_protocol_term basic_fct))
-      then Some basic_fct
-      else None
-    in
-
-    let apply_res basic_fct fct f_next =
-      let b_term = BasicFact.get_protocol_term basic_fct
-      and b_recipe = BasicFact.get_snd_ord_variable basic_fct
-      and term = Fact.get_protocol_term fct
-      and recipe = Fact.get_recipe fct in
-
-      let unif_opt =
-        if var_occurs b_recipe recipe
-        then None
-        else
-          try
-            Some(Subst.unify_protocol [(b_term,term)],Subst.create Recipe b_recipe recipe)
-          with
-            | Subst.Not_unifiable -> None
-      in
-
-      match unif_opt with
-        | None -> f_next ()
-        | Some(subst_fst,subst_snd) ->
-
-            let new_eq_fst = Eq.apply Protocol csys.simp_EqFst subst_fst in
-            if Eq.is_bot new_eq_fst
-            then f_next ()
-            else
-              let new_eq_snd = Eq.apply Recipe csys.simp_EqSnd subst_snd in
-              if Eq.is_bot new_eq_snd
-              then f_next ()
-              else
-                let new_mixed = Eq.Mixed.apply csys.simp_Mixed_Eq subst_fst subst_snd in
-                if Eq.Mixed.is_bot new_mixed
-                then f_next ()
-                else
-                  begin
-                    let df_1 = DF.remove csys.simp_DF b_recipe in
-                    let df_2 = DF.apply df_1 subst_fst in
-
-                    Config.debug (fun () ->
-                      if not (Uniformity_Set.exists csys.simp_Sub_Cons (of_variable b_recipe) b_term)
-                      then Config.internal_error "[Constraint_system.ml >> mgs] Elements of DF should always be in the uniformity set."
-                    );
-                    (*let sub_cons_1 = Uniformity_Set.add csys.simp_Sub_Cons recipe term in*)
-                    let sub_cons_2 = Uniformity_Set.apply csys.simp_Sub_Cons subst_snd subst_fst in
-
-                    let csys' = {
-                        simp_DF = df_2;
-                        simp_EqFst = new_eq_fst;
-                        simp_EqSnd = new_eq_snd;
-                        simp_SDF = K.apply csys.simp_SDF subst_snd subst_fst;
-                        simp_Sub_Cons = sub_cons_2;
-                        simp_Mixed_Eq = new_mixed
-                      }
-
-                    in
-
-                    let mgs' = Subst.apply subst_snd mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
-                    and snd_ord_vars' = Set_Snd_Ord_Variable.remove b_recipe snd_ord_vars in
-                    (apply_rules [@tailcall]) csys' mgs' snd_ord_vars' f_next
-                  end
-    in
-
-    let apply_cons basic_fct f_next =
-      let term = BasicFact.get_protocol_term basic_fct
-      and x_snd = BasicFact.get_snd_ord_variable basic_fct in
-
-      if is_name term
-      then f_next ()
-      else
-        let symb = root term in
-        if Symbol.is_public symb
-        then
-          let arity = Symbol.get_arity symb in
-
-          if arity = 0
-          then
-            let recipe = apply_function symb [] in
-            let subst = Subst.create Recipe x_snd recipe in
-            let new_eq_snd = Eq.apply Recipe csys.simp_EqSnd subst in
-            if Eq.is_bot new_eq_snd
-            then f_next ()
-            else
-              let new_mixed = Eq.Mixed.apply csys.simp_Mixed_Eq Subst.identity subst in
-              if Eq.Mixed.is_bot new_mixed
-              then f_next ()
-              else
-                let df_1 = DF.remove csys.simp_DF x_snd in
-                let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity in
-                let csys' =
-                  { csys with
-                      simp_DF = df_1;
-                      simp_EqSnd = new_eq_snd;
-                      simp_SDF = K.apply csys.simp_SDF subst Subst.identity;
-                      simp_Sub_Cons = sub_cons_1;
-                      simp_Mixed_Eq = new_mixed
-                  }
-                in
-
-                let mgs' = Subst.apply subst mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
-                and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_snd snd_ord_vars in
-                (apply_rules [@tailcall]) csys' mgs' snd_ord_vars' f_next
-          else
-            begin
-              let args_of_term = get_args term in
-
-              let vars_snd = Variable.fresh_list Recipe Existential (Variable.snd_ord_type (Variable.type_of x_snd)) arity in
-              let vars_snd_as_term = List.map of_variable vars_snd in
-
-              let recipe = apply_function symb vars_snd_as_term in
-              let subst = Subst.create Recipe x_snd recipe in
-
-              let new_eq_snd = Eq.apply Recipe csys.simp_EqSnd subst in
-              if Eq.is_bot new_eq_snd
-              then f_next ()
-              else
-                let new_mixed = Eq.Mixed.apply csys.simp_Mixed_Eq Subst.identity subst in
-                if Eq.Mixed.is_bot new_mixed
-                then f_next ()
-                else
-                  let ded_fact_list = List.map2 BasicFact.create vars_snd args_of_term in
-
-                  let df_1 = DF.remove csys.simp_DF x_snd in
-                  let df_2 = List.fold_left (fun df b_fct -> DF.add df b_fct) df_1 ded_fact_list in
-
-                  let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity in
-                  let sub_cons_2 = List.fold_left2 (fun subc x t -> Uniformity_Set.add subc x t) sub_cons_1  vars_snd_as_term args_of_term in
-
-                  let csys' = { csys with
-                      simp_DF = df_2;
-                      simp_EqSnd = new_eq_snd;
-                      simp_SDF = K.apply csys.simp_SDF subst Subst.identity;
-                      simp_Sub_Cons = sub_cons_2;
-                      simp_Mixed_Eq = new_mixed
-                    }
-                  in
-
-                  let mgs' = Subst.apply subst mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
-                  and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_snd snd_ord_vars in
-                  let snd_ord_vars'' = List.fold_left (fun set x -> Set_Snd_Ord_Variable.add x set) snd_ord_vars' vars_snd in
-
-                  (apply_rules [@tailcall]) csys' mgs' snd_ord_vars'' f_next
-            end
-        else f_next ()
-    in
-
-    match Uniformity_Set.unify_recipes_deducing_same_protocol_term csys.simp_Sub_Cons with
-      | Uniformity_Set.Not_uniform -> f_next ()
-      | Uniformity_Set.Uniform ->
-          begin match DF.find csys.simp_DF test_not_solved with
-            | None -> accumulator := (mgs,Set_Snd_Ord_Variable.elements snd_ord_vars) :: !accumulator; f_next ()
-            | Some basic_fct ->
-                if Variable.has_infinite_type (BasicFact.get_snd_ord_variable basic_fct)
-                then (K.tail_iter [@tailcall]) csys.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
-                else (K.tail_iter_within_var_type [@tailcall]) (Variable.type_of (BasicFact.get_snd_ord_variable basic_fct)) csys.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
-          end
-      | Uniformity_Set.Substitution(subst,uniset) ->
-          let new_eqsnd = Eq.apply Recipe csys.simp_EqSnd subst in
-          if Eq.is_bot new_eqsnd
-          then f_next ()
-          else
-            let new_mixed = Eq.Mixed.apply csys.simp_Mixed_Eq Subst.identity subst in
-            if Eq.Mixed.is_bot new_mixed
-            then f_next ()
-            else
-              let new_df,snd_ord_vars' = Subst.fold (fun (df,snd_ord) x _ -> DF.remove df x, Set_Snd_Ord_Variable.remove x snd_ord) (csys.simp_DF,snd_ord_vars) subst in
-              let mgs' = Subst.apply subst mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs) in
-              let csys' =
-                { csys with
-                  simp_DF = new_df;
-                  simp_EqSnd = new_eqsnd;
-                  simp_SDF = K.apply csys.simp_SDF subst Subst.identity;
-                  simp_Sub_Cons = uniset;
-                  simp_Mixed_Eq = new_mixed
-                }
-              in
-              match DF.find csys'.simp_DF test_not_solved with
-                | None -> accumulator := (mgs',Set_Snd_Ord_Variable.elements snd_ord_vars') :: !accumulator; f_next ()
-                | Some basic_fct ->
-                    if Variable.has_infinite_type (BasicFact.get_snd_ord_variable basic_fct)
-                    then (K.tail_iter [@tailcall]) csys'.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
-                    else (K.tail_iter_within_var_type [@tailcall]) (Variable.type_of (BasicFact.get_snd_ord_variable basic_fct)) csys'.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
-  in
-
-  (* We first check if the constraint is not directly bot *)
-
-  if Eq.is_bot csys.simp_EqFst || Eq.is_bot csys.simp_EqSnd || Eq.Mixed.is_bot csys.simp_Mixed_Eq
-  then []
-  else
-    begin
-      let init_mgs = DF.fold (fun acc b_fct ->
-        let x = BasicFact.get_snd_ord_variable b_fct in
-        (x, of_variable x)::acc
-        ) [] csys.simp_DF
-      in
-
-      apply_rules csys init_mgs Set_Snd_Ord_Variable.empty (fun () -> ());
-      List.fold_left (fun acc_mgs (mgs,var_list) ->
-        (Subst.create_multiple Recipe (List.fold_left (fun acc (r_1,r_2) -> if is_equal Recipe (of_variable r_1) r_2 then acc else (r_1,r_2)::acc) [] mgs), var_list)::acc_mgs
-        ) [] !accumulator
-    end
-
-exception Found_mgs of (snd_ord_variable * recipe) list * (snd_ord_variable list) *)
-
 let one_mgs csys =
   let result = ref None in
 
@@ -990,210 +784,6 @@ let one_mgs csys =
     | None -> None
     | Some (mgs,var_list) -> Some (Subst.create_multiple Recipe (List.filter_unordered (fun (r_1,r_2) -> not (is_equal Recipe (of_variable r_1) r_2)) mgs), var_list)
 
-(* let one_mgs csys =
-
-  let rec apply_rules csys mgs snd_ord_vars f_next =
-
-    let test_not_solved basic_fct =
-      if not (is_variable (BasicFact.get_protocol_term basic_fct))
-      then Some basic_fct
-      else None
-    in
-
-    let apply_res basic_fct fct f_next =
-      let b_term = BasicFact.get_protocol_term basic_fct
-      and b_recipe = BasicFact.get_snd_ord_variable basic_fct
-      and term = Fact.get_protocol_term fct
-      and recipe = Fact.get_recipe fct in
-
-      let unif_opt =
-        if var_occurs b_recipe recipe
-        then None
-        else
-          try
-            Some(Subst.unify_protocol [(b_term,term)],Subst.create Recipe b_recipe recipe)
-          with
-          | Subst.Not_unifiable -> None
-      in
-
-      match unif_opt with
-        | None -> f_next ()
-        | Some(subst_fst,subst_snd) ->
-
-            let new_eq_fst = Eq.apply Protocol csys.simp_EqFst subst_fst in
-            if Eq.is_bot new_eq_fst
-            then f_next ()
-            else
-              let new_eq_snd = Eq.apply Recipe csys.simp_EqSnd subst_snd in
-              if Eq.is_bot new_eq_snd
-              then f_next ()
-              else
-                let new_mixed = Eq.Mixed.apply csys.simp_Mixed_Eq subst_fst subst_snd in
-                if Eq.Mixed.is_bot new_mixed
-                then f_next ()
-                else
-                  let df_1 = DF.remove csys.simp_DF b_recipe in
-                  let df_2 = DF.apply df_1 subst_fst in
-
-                  (*let sub_cons_1 = Uniformity_Set.add csys.simp_Sub_Cons recipe term in*)
-                  let sub_cons_2 = Uniformity_Set.apply csys.simp_Sub_Cons subst_snd subst_fst in
-
-                  let csys' = {
-                      simp_DF = df_2;
-                      simp_EqFst = new_eq_fst;
-                      simp_EqSnd = new_eq_snd;
-                      simp_SDF = K.apply csys.simp_SDF subst_snd subst_fst;
-                      simp_Sub_Cons = sub_cons_2;
-                      simp_Mixed_Eq = new_mixed
-                    }
-
-                  in
-
-                  let mgs' = Subst.apply subst_snd mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
-                  and snd_ord_vars' = Set_Snd_Ord_Variable.remove b_recipe snd_ord_vars in
-                  (apply_rules [@tailcall]) csys' mgs' snd_ord_vars' f_next
-    in
-
-    let apply_cons basic_fct f_next =
-      let term = BasicFact.get_protocol_term basic_fct
-      and x_snd = BasicFact.get_snd_ord_variable basic_fct in
-
-      if is_name term
-      then f_next ()
-      else
-        let symb = root term in
-        if Symbol.is_public symb
-        then
-          let arity = Symbol.get_arity symb in
-
-          if arity = 0
-          then
-            let recipe = apply_function symb [] in
-            let subst = Subst.create Recipe x_snd recipe in
-
-            let new_eq_snd = Eq.apply Recipe csys.simp_EqSnd subst in
-            if Eq.is_bot new_eq_snd
-            then f_next ()
-            else
-              let new_mixed = Eq.Mixed.apply csys.simp_Mixed_Eq Subst.identity subst in
-              if Eq.Mixed.is_bot new_mixed
-              then f_next ()
-              else
-                let df_1 = DF.remove csys.simp_DF x_snd in
-                let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity in
-                let csys' =
-                  { csys with
-                      simp_DF = df_1;
-                      simp_EqSnd = new_eq_snd;
-                      simp_SDF = K.apply csys.simp_SDF subst Subst.identity;
-                      simp_Sub_Cons = sub_cons_1;
-                      simp_Mixed_Eq = new_mixed
-                  }
-                in
-
-                let mgs' = Subst.apply subst mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
-                and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_snd snd_ord_vars in
-                (apply_rules [@tailcall]) csys' mgs' snd_ord_vars' f_next
-          else
-            let args_of_term = get_args term in
-
-            let vars_snd = Variable.fresh_list Recipe Existential (Variable.snd_ord_type (Variable.type_of x_snd)) arity in
-            let vars_snd_as_term = List.map of_variable vars_snd in
-
-            let recipe = apply_function symb vars_snd_as_term in
-            let subst = Subst.create Recipe x_snd recipe in
-
-            let new_eq_snd = Eq.apply Recipe csys.simp_EqSnd subst in
-            if Eq.is_bot new_eq_snd
-            then f_next ()
-            else
-              let new_mixed = Eq.Mixed.apply csys.simp_Mixed_Eq Subst.identity subst in
-              if Eq.Mixed.is_bot new_mixed
-              then f_next ()
-              else
-                let ded_fact_list = List.map2 BasicFact.create vars_snd args_of_term in
-
-                let df_1 = DF.remove csys.simp_DF x_snd in
-                let df_2 = List.fold_left (fun df b_fct -> DF.add df b_fct) df_1 ded_fact_list in
-
-                let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity in
-                let sub_cons_2 = List.fold_left2 (fun subc x t -> Uniformity_Set.add subc x t) sub_cons_1  vars_snd_as_term args_of_term in
-
-                let csys' = { csys with
-                    simp_DF = df_2;
-                    simp_EqSnd = new_eq_snd;
-                    simp_SDF = K.apply csys.simp_SDF subst Subst.identity;
-                    simp_Sub_Cons = sub_cons_2;
-                    simp_Mixed_Eq = new_mixed
-                  }
-                in
-
-                let mgs' = Subst.apply subst mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
-                and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_snd snd_ord_vars in
-                let snd_ord_vars'' = List.fold_left (fun set x -> Set_Snd_Ord_Variable.add x set) snd_ord_vars' vars_snd in
-
-                (apply_rules [@tailcall]) csys' mgs' snd_ord_vars'' f_next
-        else f_next ()
-    in
-
-    match Uniformity_Set.unify_recipes_deducing_same_protocol_term csys.simp_Sub_Cons with
-      | Uniformity_Set.Not_uniform -> f_next ()
-      | Uniformity_Set.Uniform ->
-          begin match DF.find csys.simp_DF test_not_solved with
-            | None -> raise (Found_mgs (mgs,Set_Snd_Ord_Variable.elements snd_ord_vars))
-            | Some basic_fct ->
-                if Variable.has_infinite_type (BasicFact.get_snd_ord_variable basic_fct)
-                then K.tail_iter csys.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
-                else K.tail_iter_within_var_type (Variable.type_of (BasicFact.get_snd_ord_variable basic_fct)) csys.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
-          end
-      | Uniformity_Set.Substitution(subst,uniset) ->
-          let new_eqsnd = Eq.apply Recipe csys.simp_EqSnd subst in
-          if Eq.is_bot new_eqsnd
-          then f_next ()
-          else
-            let new_mixed = Eq.Mixed.apply csys.simp_Mixed_Eq Subst.identity subst in
-            if Eq.Mixed.is_bot new_mixed
-            then f_next ()
-            else
-              let new_df,snd_ord_vars' = Subst.fold (fun (df,snd_ord) x _ -> DF.remove df x, Set_Snd_Ord_Variable.remove x snd_ord) (csys.simp_DF,snd_ord_vars) subst in
-              let mgs' = Subst.apply subst mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs) in
-              let csys' =
-                { csys with
-                  simp_DF = new_df;
-                  simp_EqSnd = new_eqsnd;
-                  simp_SDF = K.apply csys.simp_SDF subst Subst.identity;
-                  simp_Sub_Cons = uniset;
-                  simp_Mixed_Eq = new_mixed
-                }
-              in
-              match DF.find csys'.simp_DF test_not_solved with
-                | None -> raise (Found_mgs (mgs',Set_Snd_Ord_Variable.elements snd_ord_vars'))
-                | Some basic_fct ->
-                    if Variable.has_infinite_type (BasicFact.get_snd_ord_variable basic_fct)
-                    then (K.tail_iter [@tailcall]) csys'.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
-                    else (K.tail_iter_within_var_type [@tailcall]) (Variable.type_of (BasicFact.get_snd_ord_variable basic_fct)) csys'.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
-  in
-
-  (* We first check if the constraint is not directly bot *)
-
-  if Eq.is_bot csys.simp_EqFst || Eq.is_bot csys.simp_EqSnd || Eq.Mixed.is_bot csys.simp_Mixed_Eq
-  then raise Not_found
-  else
-    begin
-      let init_mgs = DF.fold (fun acc b_fct ->
-        let x = BasicFact.get_snd_ord_variable b_fct in
-        (x, of_variable x)::acc
-        ) [] csys.simp_DF
-      in
-
-      try
-        apply_rules csys init_mgs Set_Snd_Ord_Variable.empty (fun () -> ());
-        raise Not_found
-      with
-      | Found_mgs (mgs,var_list) ->
-          (Subst.create_multiple Recipe (List.filter_unordered (fun (r_1,r_2) -> not (is_equal Recipe (of_variable r_1) r_2)) mgs), var_list)
-    end *)
-
 let simple_of csys =
   {
     simp_DF = csys.df;
@@ -1320,6 +910,29 @@ let simple_of_equality_constructor csys symb term stored_cons =
       in
 
       Some(simple_recipe, simple_csys)
+
+let simple_of_equality_constructor_IK csys symb term =
+  let args = get_args term in
+  let vars_snd = Variable.fresh_list Recipe Existential Variable.infinite_snd_ord_type (Symbol.get_arity symb) in
+  let simple_recipe = apply_function symb (List.map of_variable vars_snd) in
+
+  let b_fct_list = List.map2 (fun x t -> BasicFact.create x t) vars_snd args in
+
+  let df_1 = List.fold_left DF.add csys.df b_fct_list in
+
+  let simple_csys =
+    {
+      simp_DF = df_1;
+      simp_EqFst = csys.eqfst;
+      simp_EqSnd = csys.eqsnd;
+      simp_SDF = csys.sdf;
+      simp_IK = csys.ik;
+      simp_Sub_Cons = csys.sub_cons;
+      simp_Mixed_Eq = Eq.Mixed.top
+    }
+  in
+
+  simple_recipe, simple_csys
 
 let simple_of_skeleton csys id_sdf id_skel =
   let fact = K.get csys.sdf id_sdf in
@@ -1609,253 +1222,6 @@ let apply_mgs_from_gathering csys data_shared (subst_snd,list_var) =
     new_csys
   with
     | Subst.Not_unifiable  -> raise Bot
-
-(**** Subsumption *****)
-
-(* let exists_match_mgs csys f_pred =
-  let result = ref false in
-
-  let rec apply_rules csys f_next =
-
-    let test_not_solved basic_fct =
-      if not (is_variable (BasicFact.get_protocol_term basic_fct))
-      then Some basic_fct
-      else None
-    in
-
-    let apply_res basic_fct fct f_next =
-      let b_term = BasicFact.get_protocol_term basic_fct
-      and b_recipe = BasicFact.get_snd_ord_variable basic_fct
-      and term = Fact.get_protocol_term fct
-      and recipe = Fact.get_recipe fct in
-
-      if is_equal Protocol term b_term
-      then
-        if var_occurs b_recipe recipe
-        then f_next ()
-        else
-          begin
-            let subst_snd = Subst.create Recipe b_recipe recipe in
-
-            let df_1 = DF.remove csys.simp_DF b_recipe in
-
-            Config.debug (fun () ->
-              if not (Uniformity_Set.exists csys.simp_Sub_Cons (of_variable b_recipe) b_term)
-              then Config.internal_error "[Constraint_system.ml >> exists_match_mgs] Elements of DF should always be in the uniformity set."
-            );
-
-            let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst_snd Subst.identity in
-
-            let csys' = { csys with
-                simp_DF = df_1;
-                simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst_snd;
-                simp_SDF = K.apply csys.simp_SDF subst_snd Subst.identity;
-                simp_Sub_Cons = sub_cons_1
-              }
-
-            in
-
-            (* Check that eqfst and eqsnd are not bot and that the normalisation rule for unification is not triggered *)
-
-            if Eq.is_bot csys'.simp_EqSnd
-            then f_next ()
-            else (apply_rules [@tailcall]) csys' f_next
-          end
-      else f_next ()
-    in
-
-    let apply_cons basic_fct f_next =
-      let term = BasicFact.get_protocol_term basic_fct
-      and x_snd = BasicFact.get_snd_ord_variable basic_fct in
-
-      if is_name term
-      then f_next ()
-      else
-        let symb = root term in
-        if Symbol.is_public symb
-        then
-          let arity = Symbol.get_arity symb in
-
-          if arity = 0
-          then
-            let recipe = apply_function symb [] in
-            let subst = Subst.create Recipe x_snd recipe in
-            let df_1 = DF.remove csys.simp_DF x_snd in
-            let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity in
-            let csys' =
-              { csys with
-                  simp_DF = df_1;
-                  simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst;
-                  simp_SDF = K.apply csys.simp_SDF subst Subst.identity;
-                  simp_Sub_Cons = sub_cons_1
-              }
-            in
-
-            if Eq.is_bot csys'.simp_EqSnd
-            then f_next ()
-            else (apply_rules [@tailcall]) csys' f_next
-          else
-            begin
-              let args_of_term = get_args term in
-
-              let vars_snd = Variable.fresh_list Recipe Existential (Variable.snd_ord_type (Variable.type_of x_snd)) arity in
-              let vars_snd_as_term = List.map of_variable vars_snd in
-
-              let recipe = apply_function symb vars_snd_as_term in
-              let subst = Subst.create Recipe x_snd recipe in
-
-              let ded_fact_list = List.map2 BasicFact.create vars_snd args_of_term in
-
-              let df_1 = DF.remove csys.simp_DF x_snd in
-              let df_2 = List.fold_left (fun df b_fct -> DF.add df b_fct) df_1 ded_fact_list in
-
-              let sub_cons_1 = Uniformity_Set.apply csys.simp_Sub_Cons subst Subst.identity in
-              let sub_cons_2 = List.fold_left2 (fun subc x t -> Uniformity_Set.add subc x t) sub_cons_1  vars_snd_as_term args_of_term in
-
-              let csys' = { csys with
-                  simp_DF = df_2;
-                  simp_EqSnd = Eq.apply Recipe csys.simp_EqSnd subst;
-                  simp_SDF = K.apply csys.simp_SDF subst Subst.identity;
-                  simp_Sub_Cons = sub_cons_2
-                }
-              in
-
-              (* Check that eqsnd is not bot and that the normalisation rule for unification is not triggered *)
-
-              if Eq.is_bot csys'.simp_EqSnd
-              then f_next ()
-              else (apply_rules [@tailcall]) csys' f_next
-            end
-        else f_next ()
-    in
-
-    match Uniformity_Set.unify_recipes_deducing_same_protocol_term csys.simp_Sub_Cons with
-      | Uniformity_Set.Not_uniform -> f_next ()
-      | Uniformity_Set.Uniform ->
-          begin match DF.find csys.simp_DF test_not_solved with
-            | None ->
-                if f_pred csys
-                then result := true
-                else f_next ()
-            | Some basic_fct ->
-                (K.tail_iter_within_var_type [@tailcall]) (Variable.type_of (BasicFact.get_snd_ord_variable basic_fct)) csys.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
-          end
-      | Uniformity_Set.Substitution(subst,uniset) ->
-          let new_eqsnd = Eq.apply Recipe csys.simp_EqSnd subst in
-
-          if Eq.is_bot new_eqsnd
-          then f_next ()
-          else
-            let new_df = Subst.fold (fun df x _ -> DF.remove df x) csys.simp_DF subst in
-            let csys' =
-              { csys with
-                simp_DF = new_df;
-                simp_EqSnd = new_eqsnd;
-                simp_SDF = K.apply csys.simp_SDF subst Subst.identity;
-                simp_Sub_Cons = uniset
-              }
-            in
-            match DF.find csys'.simp_DF test_not_solved with
-              | None ->
-                  if f_pred csys
-                  then result := true
-                  else f_next ()
-              | Some basic_fct ->
-                  (K.tail_iter_within_var_type [@tailcall]) (Variable.type_of (BasicFact.get_snd_ord_variable basic_fct)) csys'.simp_SDF (apply_res basic_fct) (fun () -> (apply_cons [@tailcall]) basic_fct f_next)
-  in
-
-  (* We first check if the constraint is not directly bot *)
-
-  if Eq.is_bot csys.simp_EqFst || Eq.is_bot csys.simp_EqSnd
-  then false
-  else
-    begin
-      apply_rules csys (fun () -> ());
-      !result
-    end
-
-let subsume fine_grained csys1 csys2 =
-  (* We check that csys1 subsume csys2,
-    i.e. solutions of csys1 include the one of csys2.
-    Not that we should only take argument that we know comes from
-    the same original constraint system. *)
-
-  (* Retreive the terms and free recipes variables of csys2 *)
-  let (t_list,v_list) =
-    DF.fold (fun (acc_t,acc_v) bfct ->
-      let v = BasicFact.get_snd_ord_variable bfct in
-      if Variable.quantifier_of v = Free
-      then
-        let t = BasicFact.get_protocol_term bfct in
-        (t::acc_t,(of_variable v)::acc_v)
-      else (acc_t,acc_v)
-    ) ([],[]) csys2.df
-  in
-  let (t_list_2,v_list') =
-    Subst.fold (fun (acc_t,acc_v) x r ->
-      match Tools.partial_consequence Recipe csys2.sdf csys2.df r with
-        | None -> Config.internal_error "[constraint_system.ml >> subsume] The recipe should be consequence."
-        | Some(_,t) -> (t::acc_t,(of_variable x)::acc_v)
-    ) (t_list,v_list) csys2.i_subst_snd
-  in
-  let (t_list_2',v_list'') =
-    Subst.fold (fun (acc_t,acc_v) x r ->
-      match Tools.partial_consequence Recipe csys2.sdf csys2.df r with
-        | None -> Config.internal_error "[constraint_system.ml >> subsume] The recipe should be consequence (3)."
-        | Some(_,t) -> (t::acc_t,(of_variable x)::acc_v)
-    ) (t_list_2,v_list') csys2.i_subst_ground_snd
-  in
-
-  (* Apply the recipe substitution of csys1 on the variable list *)
-  let subst2 = Subst.union csys1.i_subst_snd csys1.i_subst_ground_snd in
-  let rev_r_list = Subst.apply subst2 v_list'' (fun vl f -> List.rev_map f vl) in
-  (* Compute the corresponding protocol terms in csys1 *)
-  let t_list_1 =
-    List.rev_map (fun r ->
-      match Tools.partial_consequence Recipe csys1.sdf csys1.df r with
-        | None -> Config.internal_error "[constraint_system.ml >> subsume] The recipe should be consequence (2)."
-        | Some(_,t) -> t
-    ) rev_r_list
-  in
-
-  (* Check if the terms are matchables *)
-  match Subst.match_terms Protocol t_list_1 t_list_2' with
-    | None -> false
-    | Some sigma ->
-        (* Apply the substitution on csys1 *)
-        let new_csys1 = simple_of csys1 in
-        let new_csys2 =
-          { new_csys1 with
-            simp_DF = DF.apply new_csys1.simp_DF sigma;
-            simp_SDF = K.apply new_csys1.simp_SDF Subst.identity sigma;
-            simp_Sub_Cons = Uniformity_Set.apply new_csys1.simp_Sub_Cons Subst.identity sigma
-          }
-        in
-
-        if fine_grained
-        then false
-        else
-          let f_pred csys =
-            if Eq.is_top csys.simp_EqSnd
-            then
-              begin
-                let term_sdf = ref [] in
-                let term_cons = ref [] in
-                Uniformity_Set.iter csys.simp_Sub_Cons (fun r t ->
-                  if is_function r
-                  then
-                    if Symbol.is_constructor (root r)
-                    then term_cons := t :: !term_cons
-                    else term_sdf := t :: !term_sdf
-                  else if is_variable r
-                  then ()
-                  else term_sdf := t :: !term_sdf
-                );
-                not (List.exists (fun t1 -> List.exists (fun t2 -> Subst.is_unifiable [t1,t2]) !term_sdf) !term_cons)
-              end
-            else false
-          in
-          exists_match_mgs new_csys2 f_pred *)
 
 (**********************************
 **** Set of constraint systems ****
@@ -3323,29 +2689,13 @@ module Rule = struct
       else raise Fact.Bot
     else raise Fact.Bot
 
-  let create_eq_constructor_formula_IK csys id_ik recipe symbol =
-    let fact = IK.get csys.ik id_ik in
-    let term = Fact.get_protocol_term fact in
-
-    if is_function term
-    then
-      let symb = root term in
-
-      if Symbol.is_equal symb symbol
-      then
-        let t = Tools.consequence_recipe_with_IK csys.sdf csys.ik csys.df recipe in
-        let head = Fact.create_equality_fact (Fact.get_recipe fact) recipe in
-        Fact.create Fact.Equality head [term,t]
-      else raise Fact.Bot
-    else raise Fact.Bot
-
   let rec exploration_equality_constructor (prev_set:'a Set.t) = function
     | [] -> None, prev_set
     | csys::q ->
         if csys.equality_constructor_to_checked = []
         then exploration_equality_constructor (csys::prev_set) q
         else
-          let sub_explore equality_constructor_checked = function
+          let rec sub_explore equality_constructor_checked = function
             | [] -> exploration_equality_constructor ({ csys with equality_constructor_checked = equality_constructor_checked; equality_constructor_to_checked = [] }::prev_set) q
             | id_sdf::q_id ->
                 let fact = K.get csys.sdf id_sdf in
@@ -3358,83 +2708,34 @@ module Rule = struct
                   then
                     let stored_constructor = Tools.get_stored_constructor symb in
                     if Eq.Mixed.is_bot stored_constructor.Tools.mixed_diseq
-                    then
-                      match simple_of_equality_constructor csys symb term stored_constructor with
-                        | None ->
-                        | Some (simple_recipe,simple_csys) ->
-                  else
-                else sub_explore equality_constructor_checked q_id
-          begin
-            let id_sdf = List.hd csys.equality_constructor_to_checked in
-            let fact = K.get csys.sdf id_sdf in
-
-            let term = Fact.get_protocol_term fact in
-
-            if is_function term
-            then
-              begin
-                let symb = root term in
-
-                Config.debug (fun () ->
-                  if Symbol.get_arity symb = 0 && Symbol.is_public symb
-                  then Config.internal_error "[constraint_system.ml >> internal_equality_constructor] A public function symbol should not be in K."
-                );
-
-                if Symbol.is_public symb
-                then
-                  begin
-                    let stored_constructor = Tools.get_stored_constructor symb in
-
-                    if Eq.Mixed.is_bot stored_constructor.Tools.mixed_diseq
-                    then
-                      let simple_recipe, simple_csys = simple_of_equality_constructor csys symb term stored_constructor in
-
-                      try
-                        let (mgs,l_vars) = one_mgs simple_csys in
-                        (* Need to restrict the mgs  to the variables of the constraint system *)
-                        Config.debug (fun () ->
-                          if List.exists (fun x -> Variable.type_of x = csys.size_frame) l_vars
-                          then Config.internal_error "[Constraint_system.ml >> rule_equality_constructor] The list l_vars should not contain second-order variable with the maximal type var."
-                        );
-
-                        let mgs_csys, mgs_form = Subst.split_domain mgs Variable.has_not_infinite_type in
-
-                        let recipe = Subst.apply mgs_form simple_recipe (fun r f -> f r) in
-
-                        Some (mgs_csys, l_vars, id_sdf, recipe, symb, csys,q), prev_set
-                      with Not_found ->
-                        exploration_equality_constructor prev_set (
-                          { csys with
-                            equality_constructor_to_checked = List.tl csys.equality_constructor_to_checked;
-                            equality_constructor_checked = id_sdf::csys.equality_constructor_checked
-                          } ::q
-                        )
+                    then sub_explore equality_constructor_checked q_id
                     else
-                      exploration_equality_constructor prev_set (
-                        { csys with
-                          equality_constructor_to_checked = List.tl csys.equality_constructor_to_checked;
-                          equality_constructor_checked = csys.equality_constructor_checked
-                        } ::q
-                      )
-                  end
-                else
-                  exploration_equality_constructor prev_set (
-                    { csys with
-                      equality_constructor_to_checked = List.tl csys.equality_constructor_to_checked;
-                      equality_constructor_checked = csys.equality_constructor_checked
-                    } ::q
-                  )
-              end
-            else
-              exploration_equality_constructor prev_set (
-                { csys with
-                  equality_constructor_to_checked = List.tl csys.equality_constructor_to_checked;
-                  equality_constructor_checked = csys.equality_constructor_checked
-                } ::q
-              )
-          end
+                      begin match simple_of_equality_constructor csys symb term stored_constructor with
+                        | None -> sub_explore equality_constructor_checked q_id
+                        | Some (simple_recipe,simple_csys) ->
+                            match one_mgs simple_csys with
+                              | None -> sub_explore (id_sdf::equality_constructor_checked) q_id
+                              | Some (mgs,l_vars) ->
+                                  Config.debug (fun () ->
+                                    if List.exists Variable.has_infinite_type l_vars
+                                    then Config.internal_error "[Constraint_system.ml >> rule_equality_constructor] The list l_vars should not contain second-order variable with unbounded type."
+                                  );
+                                  let mgs_csys, mgs_form = Subst.split_domain mgs Variable.has_not_infinite_type in
+                                  let recipe = Subst.apply mgs_form simple_recipe (fun r f -> f r) in
+                                  let csys' =
+                                    { csys with
+                                      equality_constructor_checked = equality_constructor_checked;
+                                      equality_constructor_to_checked = id_sdf::q_id
+                                    }
+                                  in
+                                  Some (mgs_csys,l_vars,id_sdf,recipe,symb,csys',q), prev_set
+                      end
+                  else sub_explore equality_constructor_checked q_id
+                else sub_explore equality_constructor_checked q_id
+          in
+          sub_explore csys.equality_constructor_checked csys.equality_constructor_to_checked
 
-  let equality_constructor (csys_set:'a Set.t) (f_continuation: 'a Set.t -> (unit -> unit) -> unit) (f_next:unit -> unit) =
+  let equality_constructor (f_continuation: 'a Set.t -> (unit -> unit) -> unit) (csys_set:'a Set.t) (f_next:unit -> unit) =
 
     let rec internal checked_csys to_check_csys f_next = match exploration_equality_constructor checked_csys to_check_csys with
       | None, checked_csys_1 -> f_continuation checked_csys_1 f_next
@@ -3488,45 +2789,24 @@ module Rule = struct
                 ) positive_checked_list to_check_csys_1
               in
 
+              let final_apply csys_set f_next =
+                let csys_set_1 =
+                  List.rev_map (fun csys ->
+                    { csys with
+                      equality_constructor_to_checked = remove_id_from_list id_sdf csys.equality_constructor_to_checked;
+                      uf = UF.remove_equality_fact csys.uf
+                    }
+                  ) csys_set
+                in
+                internal [] csys_set_1 f_next
+              in
+
               if !exists_unsolved
-              then
-                sat_equality_formula positive_all_csys_list (fun csys_set_2 f_next_2 ->
-                  normalisation_split_equality csys_set_2 (fun csys_set_3 f_next_3 ->
-                    let csys_set_4 =
-                      List.rev_map (fun csys ->
-                        { csys with
-                          equality_constructor_to_checked = remove_id_from_list id_sdf csys.equality_constructor_to_checked;
-                          uf = UF.remove_equality_fact csys.uf
-                        }
-                      ) csys_set_3
-                    in
-                    internal [] csys_set_4 f_next_3
-                  ) (internal []) f_next_2
-                ) f_next
+              then sat_equality_formula (normalisation_split_equality final_apply (internal [])) positive_all_csys_list f_next
               else
                 if !all_exists
-                then
-                  let csys_set_2 =
-                    List.rev_map (fun csys ->
-                      { csys with
-                        equality_constructor_to_checked = remove_id_from_list id_sdf csys.equality_constructor_to_checked;
-                        uf = UF.remove_equality_fact csys.uf
-                      }
-                    ) positive_all_csys_list
-                  in
-                  internal [] csys_set_2 f_next
-                else
-                  normalisation_split_equality positive_all_csys_list (fun csys_set_2 f_next_2 ->
-                    let csys_set_3 =
-                      List.rev_map (fun csys ->
-                        { csys with
-                          equality_constructor_to_checked = remove_id_from_list id_sdf csys.equality_constructor_to_checked;
-                          uf = UF.remove_equality_fact csys.uf
-                        }
-                      ) csys_set_2
-                    in
-                    internal [] csys_set_3 f_next_2
-                  ) (internal []) f_next
+                then final_apply positive_all_csys_list f_next
+                else normalisation_split_equality final_apply (internal []) positive_all_csys_list f_next
             end
           else
             begin
@@ -3534,7 +2814,7 @@ module Rule = struct
               let new_i_subst_snd = Subst.compose_restricted_generic csys.i_subst_snd mgs_csys (fun x -> Variable.quantifier_of x = Free) in
               let data_shared =
                 {
-                  share_sdf = (Array.make (K.cardinal csys.sdf) (dummy_recipe,false));
+                  share_sdf = (Array.make (K.cardinal csys.sdf) dummy_recipe);
                   share_eqsnd = new_eqsnd;
                   share_ded = ref [];
                   share_eq = ref None;
@@ -3548,15 +2828,11 @@ module Rule = struct
 
               let exists_unsolved = ref false in
               let all_exists = ref true in
-              let uniformity_to_apply = ref false in
 
               let positive_to_check_csys_list =
                 List.fold_left (fun set csys ->
                   try
                     let csys_1 = apply_mgs_from_gathering csys data_shared (mgs_csys,l_vars) in
-
-                    if Uniformity_Set.exists_recipes_deducing_same_protocol_term csys_1.sub_cons
-                    then uniformity_to_apply := true;
 
                     begin try
                       let form_1 = create_eq_constructor_formula csys_1 id_sdf recipe symb in
@@ -3580,9 +2856,6 @@ module Rule = struct
                   try
                     let csys_1 = apply_mgs_from_gathering csys data_shared (mgs_csys,l_vars) in
 
-                    if Uniformity_Set.exists_recipes_deducing_same_protocol_term csys_1.sub_cons
-                    then uniformity_to_apply := true;
-
                     begin try
                       let form_1 = create_eq_constructor_formula csys_1 id_sdf recipe symb in
 
@@ -3601,123 +2874,358 @@ module Rule = struct
                   ) positive_to_check_csys_list checked_csys_1
               in
 
-              let diseq = Diseq.of_substitution mgs_csys l_vars in
+              let diseq = Diseq.of_substitution_recipe mgs_csys l_vars in
               let new_eqsnd = Eq.wedge csys.eqsnd diseq in
 
               let negative_checked_list = List.rev_map (fun csys -> { csys with eqsnd = new_eqsnd }) checked_csys_1 in
               let negative_to_check_list = List.rev_map (fun csys -> { csys with eqsnd = new_eqsnd }) (csys::to_check_csys_1) in
 
-              let next_positive_function csys_set_1 f_next_1 =
-                if !exists_unsolved
-                then
-                  sat_equality_formula csys_set_1 (fun csys_set_2 f_next_2 ->
-                    normalisation_split_equality csys_set_2 (fun csys_set_3 f_next_3 ->
-                      let csys_set_4 =
-                        List.rev_map (fun csys ->
-                          { csys with
-                            equality_constructor_to_checked = remove_id_from_list id_sdf csys.equality_constructor_to_checked;
-                            uf = UF.remove_equality_fact csys.uf
-                          }
-                        ) csys_set_3
-                      in
-                      internal [] csys_set_4 f_next_3
-                    ) (internal []) f_next_2
-                  ) f_next_1
-                else
-                  if !all_exists
-                  then
-                    let csys_set_2 =
-                      List.rev_map (fun csys ->
-                        { csys with
-                          equality_constructor_to_checked = remove_id_from_list id_sdf csys.equality_constructor_to_checked;
-                          uf = UF.remove_equality_fact csys.uf
-                        }
-                      ) csys_set_1
-                    in
-                    internal [] csys_set_2 f_next_1
-                  else
-                    normalisation_split_equality csys_set_1 (fun csys_set_2 f_next_2 ->
-                      let csys_set_3 =
-                        List.rev_map (fun csys ->
-                          { csys with
-                            equality_constructor_to_checked = remove_id_from_list id_sdf csys.equality_constructor_to_checked;
-                            uf = UF.remove_equality_fact csys.uf
-                          }
-                        ) csys_set_2
-                      in
-                      internal [] csys_set_3 f_next_2
-                    ) (internal []) f_next_1
+              let final_apply csys_set f_next =
+                let csys_set_1 =
+                  List.rev_map (fun csys ->
+                    { csys with
+                      equality_constructor_to_checked = remove_id_from_list id_sdf csys.equality_constructor_to_checked;
+                      uf = UF.remove_equality_fact csys.uf
+                    }
+                  ) csys_set
+                in
+                internal [] csys_set_1 f_next
               in
 
-              if !uniformity_to_apply
-              then normalisation_uniformity positive_all_csys_list next_positive_function (fun () -> internal negative_checked_list negative_to_check_list f_next)
-              else next_positive_function positive_all_csys_list (fun () -> internal negative_checked_list negative_to_check_list f_next)
+              let next_negative_function () = internal negative_checked_list negative_to_check_list f_next in
+
+              if !exists_unsolved
+              then sat_equality_formula (normalisation_split_equality final_apply (internal [])) positive_all_csys_list next_negative_function
+              else
+                if !all_exists
+                then final_apply positive_all_csys_list next_negative_function
+                else normalisation_split_equality final_apply (internal []) positive_all_csys_list next_negative_function
             end
     in
 
     internal [] csys_set f_next
 
+  (**** The rule Equality Constructor IK ****)
+
+  let create_eq_constructor_formula_IK csys id_ik recipe symbol =
+    let fact = IK.get csys.ik id_ik in
+    let term = Fact.get_protocol_term fact in
+
+    if is_function term
+    then
+      let symb = root term in
+
+      if Symbol.is_equal symb symbol
+      then
+        let t = Tools.consequence_recipe_with_IK csys.sdf csys.ik csys.df recipe in
+        let head = Fact.create_equality_fact (Fact.get_recipe fact) recipe in
+        Fact.create Fact.Equality head [term,t]
+      else raise Fact.Bot
+    else raise Fact.Bot
+
+  let rec exploration_equality_constructor_IK (prev_set:'a Set.t) = function
+    | [] -> None, prev_set
+    | csys::q ->
+        if csys.equality_constructor_to_checked_IK = []
+        then exploration_equality_constructor_IK (csys::prev_set) q
+        else
+          let rec sub_explore equality_constructor_checked_IK = function
+            | [] -> exploration_equality_constructor_IK ({ csys with equality_constructor_checked_IK = equality_constructor_checked_IK; equality_constructor_to_checked_IK = [] }::prev_set) q
+            | id_ik::q_id ->
+                let fact = IK.get csys.ik id_ik in
+                let term = Fact.get_protocol_term fact in
+
+                if is_function term
+                then
+                  let symb = root term in
+                  if Symbol.is_public symb
+                  then
+                    let (simple_recipe,simple_csys) = simple_of_equality_constructor_IK csys symb term in
+                    begin match one_mgs simple_csys with
+                      | None -> sub_explore (id_ik::equality_constructor_checked_IK) q_id
+                      | Some (mgs,l_vars) ->
+                          Config.debug (fun () ->
+                            if List.exists Variable.has_infinite_type l_vars
+                            then Config.internal_error "[Constraint_system.ml >> rule_equality_constructor] The list l_vars should not contain second-order variable with unbounded type."
+                          );
+                          let mgs_csys, mgs_form = Subst.split_domain mgs Variable.has_not_infinite_type in
+                          let recipe = Subst.apply mgs_form simple_recipe (fun r f -> f r) in
+                          let csys' =
+                            { csys with
+                              equality_constructor_checked_IK = equality_constructor_checked_IK;
+                              equality_constructor_to_checked_IK = id_ik::q_id
+                            }
+                          in
+                          Some (mgs_csys,l_vars,id_ik,recipe,symb,csys',q), prev_set
+                    end
+                  else sub_explore equality_constructor_checked_IK q_id
+                else sub_explore equality_constructor_checked_IK q_id
+          in
+          sub_explore csys.equality_constructor_checked_IK csys.equality_constructor_to_checked_IK
+
+  let equality_constructor_IK (f_continuation: 'a Set.t -> (unit -> unit) -> unit) (csys_set:'a Set.t) (f_next:unit -> unit) =
+
+    let rec internal checked_csys to_check_csys f_next = match exploration_equality_constructor_IK checked_csys to_check_csys with
+      | None, checked_csys_1 -> f_continuation checked_csys_1 f_next
+      | Some (mgs_csys,l_vars,id_ik,recipe,symb,csys,to_check_csys_1), checked_csys_1 ->
+          if Subst.is_identity mgs_csys
+          then
+            begin
+              Config.debug (fun () ->
+                if l_vars <> []
+                then Config.internal_error "[Constraint_system.ml >> internal_equality] An identity substitution should imply an empty list of created variables"
+              );
+              let fact = IK.get csys.ik id_ik in
+              let head = Fact.create_equality_fact (Fact.get_recipe fact) recipe in
+              let csys' = { csys with uf = UF.add_equality_fact csys.uf head } in
+
+              let exists_unsolved = ref false in
+              let all_exists = ref true in
+
+              let positive_checked_list =
+                List.fold_left (fun set csys ->
+                  try
+                    let form = create_eq_constructor_formula_IK csys id_ik recipe symb in
+
+                    if Fact.is_fact form
+                    then { csys with uf = UF.add_equality_fact csys.uf head } :: set
+                    else
+                      begin
+                        exists_unsolved := true;
+                        { csys with uf = UF.add_equality_formula csys.uf form } :: set
+                      end
+                  with Fact.Bot ->
+                    all_exists := false;
+                    csys::set
+                ) [csys'] checked_csys_1
+              in
+              let positive_all_csys_list =
+                List.fold_left (fun set csys ->
+                  try
+                    let form = create_eq_constructor_formula_IK csys id_ik recipe symb in
+
+                    if Fact.is_fact form
+                    then { csys with uf = UF.add_equality_fact csys.uf head } :: set
+                    else
+                      begin
+                        exists_unsolved := true;
+                        { csys with uf = UF.add_equality_formula csys.uf form } :: set
+                      end
+                  with Fact.Bot ->
+                    all_exists := false;
+                    csys::set
+                ) positive_checked_list to_check_csys_1
+              in
+
+              let final_apply csys_set f_next =
+                let csys_set_1 =
+                  List.rev_map (fun csys ->
+                    { csys with
+                      equality_constructor_to_checked_IK = remove_id_from_list id_ik csys.equality_constructor_to_checked_IK;
+                      ik = IK.remove id_ik csys.ik;
+                      uf = UF.remove_equality_fact csys.uf
+                    }
+                  ) csys_set
+                in
+                internal [] csys_set_1 f_next
+              in
+
+              if !exists_unsolved
+              then sat_equality_formula (normalisation_split_equality final_apply (internal [])) positive_all_csys_list f_next
+              else
+                if !all_exists
+                then final_apply positive_all_csys_list f_next
+                else normalisation_split_equality final_apply (internal []) positive_all_csys_list f_next
+            end
+          else
+            begin
+              let new_eqsnd = Eq.apply Recipe csys.eqsnd mgs_csys in
+              let new_i_subst_snd = Subst.compose_restricted_generic csys.i_subst_snd mgs_csys (fun x -> Variable.quantifier_of x = Free) in
+              let data_shared =
+                {
+                  share_sdf = (Array.make (K.cardinal csys.sdf) dummy_recipe);
+                  share_eqsnd = new_eqsnd;
+                  share_ded = ref [];
+                  share_eq = ref None;
+                  share_i_subst_snd = new_i_subst_snd
+                }
+              in
+              let csys' = apply_mgs_and_gather csys data_shared (mgs_csys,l_vars) in
+              let fact = IK.get csys'.ik id_ik in
+              let head = Fact.create_equality_fact (Fact.get_recipe fact) recipe in
+              let csys'' = { csys' with uf = UF.add_equality_fact csys'.uf head } in
+
+              let exists_unsolved = ref false in
+              let all_exists = ref true in
+
+              let positive_to_check_csys_list =
+                List.fold_left (fun set csys ->
+                  try
+                    let csys_1 = apply_mgs_from_gathering csys data_shared (mgs_csys,l_vars) in
+
+                    begin try
+                      let form_1 = create_eq_constructor_formula_IK csys_1 id_ik recipe symb in
+
+                      if Fact.is_fact form_1
+                      then { csys with uf = UF.add_equality_fact csys.uf head } :: set
+                      else
+                        begin
+                          exists_unsolved := true;
+                          { csys with uf = UF.add_equality_formula csys.uf form_1 } :: set
+                        end
+                    with Fact.Bot ->
+                      all_exists := false;
+                      csys_1::set
+                    end
+                  with Bot -> set
+                  ) [csys''] to_check_csys_1
+              in
+              let positive_all_csys_list =
+                List.fold_left (fun set csys ->
+                  try
+                    let csys_1 = apply_mgs_from_gathering csys data_shared (mgs_csys,l_vars) in
+
+                    begin try
+                      let form_1 = create_eq_constructor_formula_IK csys_1 id_ik recipe symb in
+
+                      if Fact.is_fact form_1
+                      then { csys with uf = UF.add_equality_fact csys.uf head } :: set
+                      else
+                        begin
+                          exists_unsolved := true;
+                          { csys with uf = UF.add_equality_formula csys.uf form_1 } :: set
+                        end
+                    with Fact.Bot ->
+                      all_exists := false;
+                      csys_1::set
+                    end
+                  with Bot -> set
+                  ) positive_to_check_csys_list checked_csys_1
+              in
+
+              let diseq = Diseq.of_substitution_recipe mgs_csys l_vars in
+              let new_eqsnd = Eq.wedge csys.eqsnd diseq in
+
+              let negative_checked_list = List.rev_map (fun csys -> { csys with eqsnd = new_eqsnd }) checked_csys_1 in
+              let negative_to_check_list = List.rev_map (fun csys -> { csys with eqsnd = new_eqsnd }) (csys::to_check_csys_1) in
+
+              let final_apply csys_set f_next =
+                let csys_set_1 =
+                  List.rev_map (fun csys ->
+                    { csys with
+                      equality_constructor_to_checked_IK = remove_id_from_list id_ik csys.equality_constructor_to_checked_IK;
+                      ik = IK.remove id_ik csys.ik;
+                      uf = UF.remove_equality_fact csys.uf
+                    }
+                  ) csys_set
+                in
+                internal [] csys_set_1 f_next
+              in
+
+              let next_negative_function () = internal negative_checked_list negative_to_check_list f_next in
+
+              if !exists_unsolved
+              then sat_equality_formula (normalisation_split_equality final_apply (internal [])) positive_all_csys_list next_negative_function
+              else
+                if !all_exists
+                then final_apply positive_all_csys_list next_negative_function
+                else normalisation_split_equality final_apply (internal []) positive_all_csys_list next_negative_function
+            end
+    in
+
+    internal [] csys_set f_next
+
+  let initialise_equality_constructor_IK (f_continuation: 'a Set.t -> (unit -> unit) -> unit) (csys_set:'a Set.t) (f_next:unit -> unit) =
+    if csys_set = []
+    then f_continuation csys_set f_next
+    else
+      let one_csys = List.hd csys_set in
+      let all_id = IK.all_id one_csys.ik in
+
+      let csys_set' =
+        List.rev_map (fun csys ->
+          Config.debug (fun () ->
+            if csys.equality_constructor_to_checked_IK <> []
+            then Config.internal_error "[constraint_system.ml >> initialise_equality_constructor_IK] The list equality constructor to check IK";
+
+            if csys.equality_constructor_checked_IK <> []
+            then Config.internal_error "[constraint_system.ml >> initialise_equality_constructor_IK] The list equality constructor checked IK";
+          );
+          { csys with equality_constructor_to_checked_IK = all_id }
+        ) csys_set
+      in
+
+      f_continuation csys_set' f_next
+
+  let transfer_IK_into_K (f_continuation: 'a Set.t -> (unit -> unit) -> unit) (csys_set:'a Set.t) (f_next:unit -> unit) =
+    if csys_set = []
+    then f_continuation csys_set f_next
+    else
+      let one_csys = List.hd csys_set in
+      let all_id = IK.all_id one_csys.ik in
+
+      if all_id = []
+      then f_continuation csys_set f_next
+      else
+        let last_id = K.cardinal one_csys.sdf in
+
+        let rec generate_assoc_list n = function
+          | [] -> []
+          | id_ik::q_id -> (id_ik,n)::(generate_assoc_list (n+1) q_id)
+        in
+
+        let assoc_list = generate_assoc_list (last_id + 1) all_id in
+
+        let csys_set' =
+          List.rev_map (fun csys ->
+            let skeletons_checked =
+              List.fold_left (fun acc (id,id_skel) ->
+                let id' = List.assoc id assoc_list in
+                (id',id_skel)::acc
+              ) csys.skeletons_checked csys.skeletons_checked_IK
+            in
+            let equality_constructor_checked =
+              List.fold_left (fun acc id ->
+                (List.assoc id assoc_list)::acc
+              ) csys.equality_constructor_checked csys.equality_constructor_checked_IK
+            in
+            let sdf' =
+              IK.fold_right (fun acc_sdf fact ->
+                K.add acc_sdf csys.size_frame fact
+              ) csys.sdf csys.ik
+            in
+
+            { csys with
+              skeletons_checked = skeletons_checked;
+              equality_constructor_checked = equality_constructor_checked;
+              skeletons_checked_IK = [];
+              equality_constructor_checked_IK = [];
+              ik = IK.empty;
+              sdf = sdf'
+            }
+          ) csys_set
+        in
+
+        f_continuation csys_set' f_next
+
+  let complete_equality_constructor_IK (f_continuation: 'a Set.t -> (unit -> unit) -> unit) =
+    initialise_equality_constructor_IK (equality_constructor_IK (transfer_IK_into_K f_continuation))
+
   (**** The main rule after an input ****)
 
-  let apply_rules_after_input exists_private apply_uniform (csys_set:'a Set.t) (f_continuation: 'a Set.t -> (unit -> unit) -> unit) (f_next:unit -> unit) =
+  let apply_rules_after_input exists_private (f_continuation: 'a Set.t -> (unit -> unit) -> unit) =
     if exists_private
-    then
-      let apply_functions csys_set_0 f_next_0 =
-        sat csys_set_0 (fun csys_set_1 f_next_1 ->
-          sat_private csys_set_1 (fun csys_set_2 f_next_2 ->
-            sat_disequation csys_set_2 f_continuation f_next_2
-          ) f_next_1
-        ) f_next_0
-      in
-      if apply_uniform
-      then normalisation_uniformity csys_set apply_functions f_next
-      else apply_functions csys_set f_next
-    else
-      let apply_functions csys_set_0 f_next_0 =
-        sat csys_set_0 (fun csys_set_1 f_next_1 ->
-          sat_disequation csys_set_1 f_continuation f_next_1
-        ) f_next_0
-      in
-      if apply_uniform
-      then normalisation_uniformity csys_set apply_functions f_next
-      else apply_functions csys_set f_next
+    then sat (sat_private (sat_disequation f_continuation))
+    else sat (sat_disequation f_continuation)
 
-  let apply_rules_after_output exists_private apply_uniform (csys_set:'a Set.t) (f_continuation: 'a Set.t -> (unit -> unit) -> unit) (f_next:unit -> unit) =
+  let apply_rules_after_output exists_private (f_continuation: 'a Set.t -> (unit -> unit) -> unit) =
     if exists_private
     then
-      let apply_functions csys_set_0 f_next_0 =
-        sat csys_set_0 (fun csys_set_1 f_next_1 ->
-          sat_private csys_set_1 (fun csys_set_2 f_next_2 ->
-            sat_disequation csys_set_2 (fun csys_set_3 f_next_3 ->
-              normalisation_split_deduction_axiom csys_set_3 (fun csys_set_4 f_next_4 ->
-                normalisation_deduction_consequence csys_set_4 (fun csys_set_5 f_next_5 ->
-                  rewrite csys_set_5 (fun csys_set_6 f_next_6 ->
-                    equality_constructor csys_set_6 f_continuation f_next_6
-                  ) f_next_5
-                ) f_next_4
-              ) f_next_3
-            ) f_next_2
-          ) f_next_1
-        ) f_next_0
-      in
-      if apply_uniform
-      then normalisation_uniformity csys_set apply_functions f_next
-      else apply_functions csys_set f_next
+      sat (sat_private (sat_disequation (normalisation_split_deduction_axiom (
+        normalisation_deduction_consequence (rewrite (equality_constructor (complete_equality_constructor_IK f_continuation)))
+      ))))
     else
-      let apply_functions csys_set_0 f_next_0 =
-        sat csys_set_0 (fun csys_set_1 f_next_1 ->
-          sat_disequation csys_set_1 (fun csys_set_2 f_next_2 ->
-            normalisation_split_deduction_axiom csys_set_2 (fun csys_set_3 f_next_3 ->
-              normalisation_deduction_consequence csys_set_3 (fun csys_set_4 f_next_4 ->
-                rewrite csys_set_4 (fun csys_set_5 f_next_5 ->
-                  equality_constructor csys_set_5 f_continuation f_next_5
-                ) f_next_4
-              ) f_next_3
-            ) f_next_2
-          ) f_next_1
-        ) f_next_0
-      in
-      if apply_uniform
-      then normalisation_uniformity csys_set apply_functions f_next
-      else apply_functions csys_set f_next
+      sat (sat_disequation (normalisation_split_deduction_axiom (
+        normalisation_deduction_consequence (rewrite (equality_constructor (complete_equality_constructor_IK f_continuation)))
+      )))
 end
