@@ -1503,7 +1503,6 @@ module Subst = struct
     then emptyset out
     else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list display_element ", " subst) (rcurlybracket out)
 
-
   let create_multiple (type a) (type b) (at:(a,b) atom) (l_subst:((a,b) variable * (a,b) term) list) =
     Config.debug (fun () ->
       match at with
@@ -1912,44 +1911,6 @@ module Subst = struct
       linked_variables_snd := [];
       raise Not_unifiable
 
-  (*let unify : 'a 'b. ('a,'b) atom -> (('a,'b) term * ('a, 'b) term) list -> ('a, 'b) t = fun (type a) (type b) (at:(a,b) atom) (eq_list:((a,b) term * (a,b) term) list) ->
-    Config.debug (fun () ->
-      if retrieve at <> []
-      then Config.internal_error "[term.ml >> Subst.unify_generic] The list of linked variables should be empty"
-    );
-
-    try
-      List.iter (fun (t1,t2) -> unify_term at t1 t2) eq_list;
-      let subst = List.fold_left (fun acc var -> (var,follow_link_var var)::acc) [] (retrieve at) in
-      cleanup at;
-      Config.debug (fun () ->
-        match at with
-          | Protocol ->
-              if not (check_disjoint_domain subst)
-              then Config.internal_error "[term.ml >> Subst.unify] A variable appears twice in the domain";
-
-              if List.exists (fun (x,_) -> List.exists (fun (_,t) -> var_occurs x t) subst) subst
-              then Config.internal_error "[term.ml >> Subst.unify] The substution is not acyclic"
-          | Recipe ->
-              if not (check_disjoint_domain subst)
-              then Config.internal_error "[term.ml >> Subst.unify] A variable appears twice in the domain";
-
-              if List.exists (fun (x,_) -> List.exists (fun (_,t) -> var_occurs x t) subst) subst
-              then Config.internal_error "[term.ml >> Subst.unify] The substution is not acyclic";
-
-              if List.exists (fun (x,t) -> var_occurs_or_out_of_world x t) subst
-              then
-                begin
-                  Printf.printf "Terms %s" (display_list (fun (t1,t2) -> Printf.sprintf "%s = %s\n" (display Latex Recipe t1) (display Latex Recipe t2)) "\n" eq_list);
-                  Printf.printf "The subst %s" (display_list (fun (x,t2) -> Printf.sprintf "%s = %s\n" (display Latex Recipe (of_variable x)) (display Latex Recipe t2)) "\n" subst);
-                  Config.internal_error "[term.ml >> Subst.unify] The substitution is not unifiable (type issue)"
-                end
-      );
-      subst
-    with Not_unifiable ->
-      cleanup at;
-      raise Not_unifiable*)
-
   let is_unifiable (eq_list:(protocol_term * protocol_term) list) =
     try
       List.iter (fun (t1,t2) -> unify_term_protocol t1 t2) eq_list;
@@ -1958,23 +1919,10 @@ module Subst = struct
       linked_variables_fst := [];
 
       true
-
     with Not_unifiable ->
       List.iter (fun var -> var.link <- NoLink) !linked_variables_fst;
       linked_variables_fst := [];
       false
-
-  (*let is_unifiable (type a) (type b) (at:(a,b) atom) (eq_list:((a, b) term * (a, b) term) list) =
-    Config.debug (fun () ->
-      if retrieve at <> []
-      then Config.internal_error "[term.ml >> Subst.is_unifiable] The list of linked variables should be empty"
-    );
-
-    try
-      List.iter (fun (t1,t2) -> unify_term at t1 t2) eq_list;
-      cleanup at;
-      true
-    with Not_unifiable -> cleanup at; false*)
 
   (******* Syntactic match *******)
 
@@ -2262,42 +2210,6 @@ module Diseq = struct
         match at with
           | Protocol -> ((apply_and_normalise_protocol subst diseq):(a,b) t)
           | Recipe -> ((apply_and_normalise_recipe subst diseq):(a,b) t)
-
-  (*let apply_and_normalise at subst = function
-    | Top -> Top
-    | Bot -> Bot
-    | Diseq diseq ->
-        Config.debug (fun () ->
-          if List.exists (fun (v,_) -> v.link <> NoLink) subst
-          then Config.internal_error "[term.ml >> Diseq.apply_substitution_and_normalise] Variables in the domain should not be linked"
-        );
-
-        Config.debug (fun () ->
-          if List.exists (fun (v,t) -> Variable.quantifier_of v = Universal || quantified_var_occurs Universal t) subst
-          then Config.internal_error "[term.ml >> Diseq.apply_substitution_and_normalise] Variables in the substitutions should not be universal"
-        );
-
-        (* Link the variables of the substitution *)
-        List.iter (fun (v,t) -> v.link <- (TLink t)) subst;
-
-        try
-          List.iter (fun (t1,t2) -> Subst.unify_term at t1 t2) diseq;
-
-          let linked_variables = elim_universal_variables (Subst.retrieve at) in
-
-          let result =
-            if linked_variables = []
-            then Bot
-            else Diseq(linked_variables)
-          in
-
-          Subst.cleanup at;
-          List.iter (fun (v,_) -> v.link <- NoLink) subst;
-          result
-        with Subst.Not_unifiable ->
-          Subst.cleanup at;
-          List.iter (fun (v,_) -> v.link <- NoLink) subst;
-          Top*)
 
   let display out ?(rho=None) at = function
     | Top -> top out
@@ -3727,7 +3639,6 @@ module type EqFst =
 
     val is_top : ('a, 'b) t -> bool
   end
-
 
 module type EqMixed =
   sig

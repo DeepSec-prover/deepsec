@@ -140,7 +140,7 @@ module IK = struct
         | Some subst -> f_continuation (Fact.get_recipe fact) subst f_next_1
     ) ik.map f_next
 
-  let display _ ?(rho = None) ?(per_line = 8) ?(tab = 0) ik =
+  let display _ ?(rho = None) ?(per_line = 8) ik =
     let size = IntMap.cardinal ik.map in
     if IntMap.is_empty ik.map
     then emptyset Latex
