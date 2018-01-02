@@ -314,55 +314,6 @@ module Eq : sig
   end
 end
 
-(** {2 The set of subterm consequence} *)
-
-(* module Uniformity_Set : sig
-
-  (** The type [set] represents sets of pairs of recipes and protocol terms. Intuitively, {% the set of subterm consequence of a constraint system
-      $\C$ is the set $\\{ (\xi,u) \in \Consequence{\Solved(\C) \cup \Df(\C)} \mid \xi \in \st{\InitInput(\C)} \cup \sstdeux{\Solved(\C)}\\}$. %}*)
-  type t
-
-  (** {3 Generation} *)
-
-  (** The empty set *)
-  val empty : t
-
-  (** [add] {% $\Set$~$\xi$~$t$ returns the set $\Set \cup \\{ (\xi,t) \\}$. %}*)
-  val add : t -> recipe -> protocol_term -> t
-
-  (** [apply] {% $\Set$~$\Sigma$~$\sigma$ returns the set $\Set\Sigma\sigma$. %}*)
-  val apply : t -> (snd_ord, axiom) Subst.t -> (fst_ord, name) Subst.t -> t
-
-  (** {3 Iterator} *)
-
-  (** [iter] {% $\Set$ %} [f] applies the function [f] to all pairs {% $(\xi,t) \in \Set$.
-      Warning : The order in which the function [iter] goes through the pairs of $\Set$ is unspecified. %}*)
-  val iter : t -> (recipe -> protocol_term -> unit) -> unit
-
-  type uniformity_check =
-    | Not_uniform
-    | Uniform
-    | Substitution of (snd_ord, axiom) Subst.t * t
-
-  val unify_recipes_deducing_same_protocol_term : t -> uniformity_check
-
-  (** {3 Testing} *)
-
-  val exists_recipes_deducing_same_protocol_term : t -> bool
-
-  val exists : t -> recipe -> protocol_term -> bool
-
-  (** [find_protocol] {% $\Set$~$t$%} [f] returns [Some] {% $\xi$ if $(\xi,t) \in \Set$ %} and [f] {% $\xi$ %} returns [true]. Otherwise it returns [None].*)
-  val find_protocol_term : t -> protocol_term -> recipe option
-
-  (** {3 Display} *)
-
-  (** [display out ~rho:rho ~per_line:n ~tab:k set] displays [set] with at most [n] formulas per line. Moreover,
-      when [out = Terminal] or [out = Pretty_Terminal] and when the number of elements in [set] is strictly bigger than [n] then
-      [set] is displayed on a new line and each line is preceded by [k] tabulations. *)
-  val display : Display.output -> ?rho:display_renamings option -> ?per_line:int -> ?tab:int -> t -> string
-end *)
-
 (** {2 The instantiated Tools module} *)
 
 (** This module is an instantiation of the functor {!module:Term.Tools_Subterm}, i.e.
