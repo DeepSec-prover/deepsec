@@ -184,7 +184,7 @@ let process_file path =
     begin
       Distributed_equivalence.DistribEquivalence.minimum_nb_of_jobs := !Distributed_equivalence.DistribEquivalence.nb_workers * !Config.core_factor
     end;
-  
+
   if !Config.path_deepsec = "" then
     begin
       Config.path_deepsec:=

@@ -29,7 +29,7 @@ OCAMLFLAGS = $(INCLUDES) $(V4OPTIONS) -w Ae $(INCLUDES_MOD)
 GENERATED_SOURCES_NAME = parser/grammar.ml parser/lexer.ml parser/grammar.mli
 GENERATED_SOURCES = $(GENERATED_SOURCES_NAME:%=$(SOURCE)%)
 
-CORE_ML_NAME = extensions.ml display.ml term.ml process.ml process_determinate.ml
+CORE_ML_NAME = extensions.ml display.ml term.ml process.ml process_determinate.ml process_trace.ml
 CORE_ML = $(CORE_ML_NAME:%.ml=$(SOURCE)core_library/%.ml)
 
 SUBTERMS_ML_NAME = data_structure.ml constraint_system.ml equivalence.ml equivalence_determinate.ml
