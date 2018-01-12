@@ -30,7 +30,7 @@ type 'a conjunction = 'a list and 'a disjunction = 'a list
 type query =
   [ event_atom | temporal_atom | attacker_atom ] conjunction
   *
-  [ event_atom | temporal_atom ] disjunction conjunction
+  [ event_atom | temporal_atom ] conjunction disjunction
 
 
 
