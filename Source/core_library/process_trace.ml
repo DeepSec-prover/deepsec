@@ -4,19 +4,20 @@ open Term
 
 
 (* defining processes *)
+type label = int list
+
 type process =
   | Nil
-  | Output of protocol_term * protocol_term * process
-  | OutputSure of protocol_term * protocol_term * process
-  | Input of protocol_term * fst_ord_variable * process
-  | IfThenElse of protocol_term * protocol_term * process * process
-  | Let of protocol_term * protocol_term * protocol_term * process * process
-  | New of name * process
-  | Par of (process * int) list (* processes + multiplicity *)
-  | Event of protocol_term list * process
+  | Output of protocol_term * protocol_term * lab_process
+  | OutputSure of protocol_term * protocol_term * lab_process
+  | Input of protocol_term * fst_ord_variable * lab_process
+  | IfThenElse of protocol_term * protocol_term * lab_process * lab_process
+  | Let of protocol_term * protocol_term * protocol_term * lab_process * lab_process
+  | New of name * lab_process
+  | Par of (lab_process * int) list (* processes + multiplicity *)
+  | Event of protocol_term list * lab_process
 
-type label = int list
-type lab_process = { proc : process ; lab : label }
+and lab_process = { proc : process ; lab : label }
 
 
 (* about reachability properties *)
