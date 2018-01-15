@@ -13,6 +13,9 @@ module List = struct
     | [] -> accu
     | x :: l -> if p x then find (x :: accu) l else find accu l in
     find []
+
+  (* overwriting fold_right with a composition of tail_recursive functions *)
+  let fold_right f l a = fold_left (fun x a -> f a x) a (List.rev l)
 end
 
 

@@ -1,6 +1,6 @@
 open Term
 (* open Display *)
-(* open Extensions *)
+open Extensions
 
 
 (* defining processes *)
@@ -27,6 +27,8 @@ type temporal_atom = [`Lt of temp_var * temp_var | `Eq of temp_var * temp_var]
 type attacker_atom = [`Attacker of protocol_term]
 type 'a conjunction = 'a list and 'a disjunction = 'a list
 
+(* the type of security properties we consider:
+conjunction on the left => DNF on the right *)
 type query =
   [ event_atom | temporal_atom | attacker_atom ] conjunction
   *
@@ -35,7 +37,7 @@ type query =
 
 
 (* definitions for the reduced semantics *)
-(* module IntSet = Set.Make(struct type t = int let compare = compare end)
+module IntSet = Set.Make(struct type t = int let compare = compare end)
 
 type block =
   {
@@ -58,62 +60,67 @@ type configuration =
     sure_input_proc : lab_process list;
     sure_output_proc : lab_process list;
 
+    (* NB useful ?... *)
     sure_input_mult_proc : lab_process list list list;
     sure_uncheked_skeletons : lab_process option;
 
     (* The processes where we don't know if outputs can be done. *)
     unsure_proc : lab_process option;
+
+    (* the potential focused process *)
     focused_proc : lab_process option;
 
+    (* the trace used to reach this configuration *)
     trace : trace list;
   }
 
 
 
+(* conversion from expansed_process, i.e. assigning labels to each node and
+computing the negative pattern of the Let constructor *)
+let of_expensed_process (p:Process.expansed_process) : lab_process =
 
-let rec simple_det_process_of_expansed_process vars = function
-  | Process.Nil -> Nil
-  | Process.Output(ch,t,p) ->
-      Config.debug (fun () ->
-        if not (is_function ch) || not (Symbol.is_public (root ch))
-        then Config.internal_error "[process_determinate.ml >> simple_det_process_of_expansed_process] Outputs should only be done on public channels."
-      );
-      let det_p = simple_det_process_of_expansed_process vars p in
-      Output(root ch,t,det_p,fresh_position ())
-  | Process.Input(ch,x,p) ->
-      Config.debug (fun () ->
-        if not (is_function ch) || not (Symbol.is_public (root ch))
-        then Config.internal_error "[process_determinate.ml >> simple_det_process_of_expansed_process] Inputs should only be done on public channels."
-      );
-      let det_p = simple_det_process_of_expansed_process (x::vars) p in
-      Input(root ch,x,det_p,fresh_position ())
-  | Process.IfThenElse(t1,t2,pthen,pelse) ->
-      let det_pthen = simple_det_process_of_expansed_process vars pthen in
-      let det_pelse = simple_det_process_of_expansed_process vars pelse in
-      IfThenElse(t1,t2,det_pthen,det_pelse,fresh_position ())
-  | Process.Let(pat,t,pthen,pelse) ->
-      let new_vars = get_vars_not_in Protocol pat vars in
-      let rho = Variable.Renaming.fresh Protocol new_vars Universal in
+  (* recursive folding, tracking first-order variables and the label *)
+  let rec fold vars lab p =
+    match p with
+    | Process.Nil -> Nil
+    | Process.New(n,p) -> New(n,fold vars lab p)
+    | Process.Output(ch,t,p) -> Output(ch,t,fold vars lab p)
+    | Process.Input(ch,x,p) -> Input(ch,x,fold (x::vars) lab p)
 
-      let pat_else = Variable.Renaming.apply_on_terms rho pat (fun x f -> f x) in
+    | Process.IfThenElse(t1,t2,pthen,pelse) ->
+        let p0 = fold vars lab pthen in
+        let p1 = fold vars lab pelse in
+        IfThenElse(t1,t2,p0,p1)
 
-      let vars' = List.rev_append new_vars vars in
-      let det_pthen = simple_det_process_of_expansed_process vars' pthen in
-      let det_pelse = simple_det_process_of_expansed_process vars pelse in
+    | Process.Choice l ->
+        Choice (List.fold_right (fun ac p -> fold vars lab p :: ac) [] l)
 
-      Let(pat,pat_else,t,det_pthen,det_pelse,fresh_position ())
-  | Process.New(n,p) ->
-      let det_p = simple_det_process_of_expansed_process vars p in
-      New(n,det_p,fresh_position ())
-  | Process.Par(mult_p) ->
-      Config.debug (fun () ->
-        if List.exists (fun (_,i) -> i <> 1) mult_p
-        then Config.internal_error "[process_determinate.ml >> simple_det_process_of_expansed_process] The should not be any replication in determinate processes."
-      );
+    | Process.Let(pat,t,pthen,pelse) ->
+        (* gathering and renaming new variables *)
+        let new_vars = get_vars_not_in Protocol pat vars in
+        let rho = Variable.Renaming.fresh Protocol new_vars Universal in
 
-      let list_p = List.rev_map (fun (p,_) -> simple_det_process_of_expansed_process vars p) mult_p in
-      Par(list_p)
-  | Process.Choice _ -> Config.internal_error "[process_determinate.ml >> simple_det_process_of_expansed_process] There should not be any choice operator in determinate processes."
+        (* building the negative pattern of the Let constructor *)
+        let pat_else = Variable.Renaming.apply_on_terms rho pat (|>) in
+
+        (* returned process *)
+        let p0 = fold (List.rev_append new_vars vars) lab pthen in
+        let p1 = fold vars lab pelse in
+        Let(pat,pat_else,t,p0,p1)
+
+    (*---------------------------------------------*)
+    (*---------------------------------------------*)
+    (*---------------------------------------------*)
+    | Process.Par(mult_p) ->
+        let list_p = List.rev_map (fun (p,_) -> simple_det_process_of_expansed_process vars p) mult_p in
+        Par(list_p)
+    (*---------------------------------------------*)
+    (*---------------------------------------------*)
+    (*---------------------------------------------*)
+
+
+
 
 let is_action_determinate proc =
   let rec explore = function
@@ -1889,4 +1896,4 @@ let apply_neg_out ax conf =
               in
               (conf',t)
         end
-    | _ -> Config.internal_error "[process_determinate.ml >> apply_neg_out] Unexpected case." *)
+    | _ -> Config.internal_error "[process_determinate.ml >> apply_neg_out] Unexpected case."
