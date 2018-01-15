@@ -1733,8 +1733,12 @@ let search_next_rule conf = match conf.focused_proc with
       then RNegOut
       else
         match conf.sure_input_proc with
-          | [] -> RNothing
           | [ { proc = Start _; _ } ] -> RStart
+          | [] ->
+              begin match conf.sure_input_mult_proc with
+                | [] -> RNothing
+                | _ -> RStartIn
+              end
           | _ -> RStartIn
 
 let apply_start conf =
