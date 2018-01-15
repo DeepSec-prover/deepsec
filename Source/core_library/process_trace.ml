@@ -8,23 +8,22 @@ type label = int list
 
 type process =
   | Nil
-  | Output of protocol_term * protocol_term * lab_process
-  | OutputSure of protocol_term * protocol_term * lab_process
-  | Input of protocol_term * fst_ord_variable * lab_process
-  | IfThenElse of protocol_term * protocol_term * lab_process * lab_process
-  | Let of protocol_term * protocol_term * protocol_term * lab_process * lab_process
-  | New of name * lab_process
-  | Par of (lab_process * int) list (* processes + multiplicity *)
-  | Event of protocol_term list * lab_process
-
-and lab_process = { proc : process ; lab : label }
+  | Output of protocol_term * protocol_term * process
+  | OutputSure of protocol_term * protocol_term * process
+  | Input of protocol_term * fst_ord_variable * process
+  | IfThenElse of protocol_term * protocol_term * process * process
+  | Let of protocol_term * protocol_term * protocol_term * process * process
+  | New of name * process
+  | Par of (process * int) list (* processes + multiplicity *)
+  | Choice of process list
+  | Event of protocol_term list * process
 
 
 (* about reachability properties *)
 type temp_var = string
-type event_atom = [`Event of protocol_term list * temp_var]
-type temporal_atom = [`Lt of temp_var * temp_var | `Eq of temp_var * temp_var]
-type attacker_atom = [`Attacker of protocol_term]
+type event_atom = [ `Event of protocol_term list * temp_var ]
+type temporal_atom = [ `Lt of temp_var * temp_var | `Eq of temp_var * temp_var ]
+type attacker_atom = [ `Attacker of protocol_term ]
 type 'a conjunction = 'a list and 'a disjunction = 'a list
 
 (* the type of security properties we consider:
@@ -57,18 +56,18 @@ type trace =
 type configuration =
   {
     (* The processes where we know that outputs and input are doable. *)
-    sure_input_proc : lab_process list;
-    sure_output_proc : lab_process list;
+    sure_input_proc : process list;
+    sure_output_proc : process list;
 
     (* NB useful ?... *)
-    sure_input_mult_proc : lab_process list list list;
-    sure_uncheked_skeletons : lab_process option;
+    sure_input_mult_proc : process list list list;
+    sure_uncheked_skeletons : process option;
 
     (* The processes where we don't know if outputs can be done. *)
-    unsure_proc : lab_process option;
+    unsure_proc : process option;
 
     (* the potential focused process *)
-    focused_proc : lab_process option;
+    focused_proc : process option;
 
     (* the trace used to reach this configuration *)
     trace : trace list;
@@ -76,9 +75,9 @@ type configuration =
 
 
 
-(* conversion from expansed_process, i.e. assigning labels to each node and
-computing the negative pattern of the Let constructor *)
-let of_expensed_process (p:Process.expansed_process) : lab_process =
+(* conversion from expansed_process, i.e. computing the negative pattern of the
+Let constructor *)
+let of_expensed_process : Process.expansed_process -> process =
 
   (* recursive folding, tracking first-order variables and the label *)
   let rec fold vars lab p =
@@ -87,14 +86,13 @@ let of_expensed_process (p:Process.expansed_process) : lab_process =
     | Process.New(n,p) -> New(n,fold vars lab p)
     | Process.Output(ch,t,p) -> Output(ch,t,fold vars lab p)
     | Process.Input(ch,x,p) -> Input(ch,x,fold (x::vars) lab p)
+    | Process.Choice lp -> Choice (List.map (fold vars lab) lp)
+    | Process.Par lp -> Par (List.map (fun (p,i) -> fold vars lab p,i) lp)
 
     | Process.IfThenElse(t1,t2,pthen,pelse) ->
         let p0 = fold vars lab pthen in
         let p1 = fold vars lab pelse in
         IfThenElse(t1,t2,p0,p1)
-
-    | Process.Choice l ->
-        Choice (List.fold_right (fun ac p -> fold vars lab p :: ac) [] l)
 
     | Process.Let(pat,t,pthen,pelse) ->
         (* gathering and renaming new variables *)
@@ -107,22 +105,13 @@ let of_expensed_process (p:Process.expansed_process) : lab_process =
         (* returned process *)
         let p0 = fold (List.rev_append new_vars vars) lab pthen in
         let p1 = fold vars lab pelse in
-        Let(pat,pat_else,t,p0,p1)
+        Let(pat,pat_else,t,p0,p1) in
 
-    (*---------------------------------------------*)
-    (*---------------------------------------------*)
-    (*---------------------------------------------*)
-    | Process.Par(mult_p) ->
-        let list_p = List.rev_map (fun (p,_) -> simple_det_process_of_expansed_process vars p) mult_p in
-        Par(list_p)
-    (*---------------------------------------------*)
-    (*---------------------------------------------*)
-    (*---------------------------------------------*)
+  fold [] []
 
 
 
-
-let is_action_determinate proc =
+(* let is_action_determinate proc =
   let rec explore = function
     | Process.Nil -> ActionSet.empty
     | Process.Output(ch,_,p) ->
@@ -1896,4 +1885,4 @@ let apply_neg_out ax conf =
               in
               (conf',t)
         end
-    | _ -> Config.internal_error "[process_determinate.ml >> apply_neg_out] Unexpected case."
+    | _ -> Config.internal_error "[process_determinate.ml >> apply_neg_out] Unexpected case." *)
