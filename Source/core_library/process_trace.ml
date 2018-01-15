@@ -11,12 +11,15 @@ type process =
   | Output of protocol_term * protocol_term * process
   | OutputSure of protocol_term * protocol_term * process
   | Input of protocol_term * fst_ord_variable * process
+  | InputSure of protocol_term * fst_ord_variable * process
   | IfThenElse of protocol_term * protocol_term * process * process
   | Let of protocol_term * protocol_term * protocol_term * process * process
   | New of name * process
   | Par of (process * int) list (* processes + multiplicity *)
   | Choice of process list
   | Event of protocol_term list * process
+
+type lab_process = { proc : process ; label : label }
 
 
 (* about reachability properties *)
@@ -40,7 +43,7 @@ module IntSet = Set.Make(struct type t = int let compare = compare end)
 
 type block =
   {
-    lab : label;
+    label_b : label;
     recipes : snd_ord_variable list;
     min_axiom : int;
     max_axiom : int;
@@ -56,18 +59,18 @@ type trace =
 type configuration =
   {
     (* The processes where we know that outputs and input are doable. *)
-    sure_input_proc : process list;
-    sure_output_proc : process list;
+    sure_input_proc : lab_process list;
+    sure_output_proc : lab_process list;
 
     (* NB useful ?... *)
-    sure_input_mult_proc : process list list list;
-    sure_uncheked_skeletons : process option;
+    sure_input_mult_proc : lab_process list list list;
+    sure_uncheked_skeletons : lab_process option;
 
     (* The processes where we don't know if outputs can be done. *)
-    unsure_proc : process option;
+    unsure_proc : lab_process option;
 
     (* the potential focused process *)
-    focused_proc : process option;
+    focused_proc : lab_process option;
 
     (* the trace used to reach this configuration *)
     trace : trace list;
@@ -77,7 +80,7 @@ type configuration =
 
 (* conversion from expansed_process, i.e. computing the negative pattern of the
 Let constructor *)
-let of_expensed_process : Process.expansed_process -> process =
+let process_of_expansed_process : Process.expansed_process -> process =
 
   (* recursive folding, tracking first-order variables and the label *)
   let rec fold vars lab p =
@@ -111,82 +114,46 @@ let of_expensed_process : Process.expansed_process -> process =
 
 
 
-(* let is_action_determinate proc =
-  let rec explore = function
-    | Process.Nil -> ActionSet.empty
-    | Process.Output(ch,_,p) ->
-        if is_function ch
-        then
-          let symb = root ch in
-          if Symbol.is_public symb
-          then
-            let act_set = explore p in
-            ActionSet.add (true,symb) act_set
-          else raise Not_found
-        else raise Not_found
-    | Process.Input(ch,_,p) ->
-        if is_function ch
-        then
-          let symb = root ch in
-          if Symbol.is_public symb
-          then
-            let act_set = explore p in
-            ActionSet.add (false,symb) act_set
-          else raise Not_found
-        else raise Not_found
-    | Process.IfThenElse(_,_,p1,p2)
-    | Process.Let(_,_,p1,p2) ->
-        let act_set_1 = explore p1
-        and act_set_2 = explore p2 in
-        ActionSet.union act_set_1 act_set_2
-    | Process.New(_,p) -> explore p
-    | Process.Par mult_p_list ->
-        List.fold_left (fun acc_set (p,n) ->
-          if n <> 1
-          then raise Not_found
-          else
-            let set = explore p in
-            let inter = ActionSet.inter acc_set set in
-            if ActionSet.is_empty inter
-            then ActionSet.union set acc_set
-            else raise Not_found
-        ) ActionSet.empty mult_p_list
-    | Process.Choice _ -> raise Not_found
-  in
-
-  try
-    let _ = explore proc in
-    true
-  with
-    | Not_found -> false
-
-let configuration_of_expansed_process p =
-  let sdet_p = simple_det_process_of_expansed_process [] p in
-  let det_p = { label_p = [0]; proc = Start sdet_p } in
-
+(* convert an expansed process into an initial configuration *)
+let config_of_expansed_process (p:Process.expansed_process) : configuration =
   {
-    sure_input_proc = [det_p];
+    sure_input_proc = [ {proc = process_of_expansed_process p ; label = [0]} ];
     sure_output_proc = [];
-
     sure_input_mult_proc = [];
-
     sure_uncheked_skeletons = None;
     unsure_proc = None;
     focused_proc = None;
     trace = []
   }
 
-let rec exists_input_or_output = function
-  | Start _ -> Config.internal_error "[Process_determinate.ml >> exists_input_or_output] Unexpected case."
+(* checks whether a process has an input or output available (syntactically)
+at toplevel *)
+let rec exists_input_or_output (p:process) : bool =
   | Nil -> false
   | Output _
   | OutputSure _
-  | Input _ -> true
+  | Input _
+  | InputSure _ -> true
   | IfThenElse(_,_,p1,p2,_)
   | Let(_,_,_,p1,p2,_) -> exists_input_or_output p1 || exists_input_or_output p2
   | New(_,p,_) -> exists_input_or_output p
   | Par p_list -> List.exists exists_input_or_output p_list
-  | ParMult p_list -> List.exists (fun (_,p) -> exists_input_or_output p) p_list
+
+
+(* trim processes after inputs when no IO is possible after it. This simplifies
+processes and does not affect reachability.
+NB one could also trim sequences containing only public inputs. E.g. where
+public is soundly approximised as ``on channel ch which does not contain
+bound names syntactically''. Do we want that ? *)
+
+(* ------------------------------------------------------- *)
+(* ------------------------------------------------------- *)
+(* ------------------------------------------------------- *)
+(* ------------------------------------------------------- *)
+(* ------------------------------------------------------- *)
+
+
+
 
 let rec clean_simple_process = function
   | Start p -> Start (clean_simple_process p)
@@ -1885,4 +1852,4 @@ let apply_neg_out ax conf =
               in
               (conf',t)
         end
-    | _ -> Config.internal_error "[process_determinate.ml >> apply_neg_out] Unexpected case." *)
+    | _ -> Config.internal_error "[process_determinate.ml >> apply_neg_out] Unexpected case."
