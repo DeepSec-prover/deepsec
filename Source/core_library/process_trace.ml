@@ -198,7 +198,6 @@ let rec trim_process (p:process) : process =
       if tpl = [] then Nil else Par tpl
 
 
-
 let trim_initial_config (c:configuration) : configuration =
   match c.sure_input_proc with
   | [p] -> { c with sure_input_proc = [ {p with proc = trim_process p.proc} ]}
