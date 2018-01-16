@@ -195,45 +195,22 @@ let rec trim_process (p:process) : process =
 
 
 
-
-(* ------------------------------------------------------- *)
-(* ------------------------------------------------------- *)
-(* ------------------------------------------------------- *)
-(* ------------------------------------------------------- *)
-(* ------------------------------------------------------- *)
-
-
-
-
-let clean_inital_configuration conf = match conf.sure_input_proc with
-  | [p] -> { conf with sure_input_proc = [{ p with proc = clean_simple_process p.proc}] }
+let trim_initial_config (c:configuration) : configuration =
+  match c.sure_input_proc with
+  | [p] -> { c with sure_input_proc = [ {p with proc = trim_process p.proc} ]}
   | _ -> Config.internal_error "[Process_determinate.ml >> clean_inital_configuration] Unexpected case."
 
-let rec exists_else_branch_simple_process after_in = function
-  | Start p -> exists_else_branch_simple_process after_in p
-  | Nil -> false
-  | Output(_,_,p,_) -> exists_else_branch_simple_process after_in p
-  | OutputSure(_,_,p,_) -> exists_else_branch_simple_process after_in p
-  | Input(_,_,p,_) -> exists_else_branch_simple_process true p
-  | IfThenElse(_,_,p1,Nil,_) -> exists_else_branch_simple_process after_in p1
-  | IfThenElse _ -> true
-  | Let(_,_,_,p1,Nil,_) -> exists_else_branch_simple_process after_in p1
-  | Let _ -> true
-  | New(_,p,_) -> exists_else_branch_simple_process after_in p
-  | Par p_list ->
-      if after_in
-      then true
-      else List.exists (exists_else_branch_simple_process after_in) p_list
-  | ParMult p_list ->
-      if after_in
-      then true
-      else List.exists (fun (_,p) -> exists_else_branch_simple_process after_in p) p_list
-
-let exists_else_branch_initial_configuration conf = match conf.sure_input_proc with
-  | [p] -> exists_else_branch_simple_process false p.proc
-  | _ -> Config.internal_error "[Process_determinate.ml >> exists_else_branch_initial_configuration] Unexpected case."
-
 let initial_label = [0]
+
+
+(* ------------------------------------------------------- *)
+(* ------------------------------------------------------- *)
+(* ------------------------------------------------------- *)
+(* ------------------------------------------------------- *)
+(* ------------------------------------------------------- *)
+
+
+
 
 (**************************************
 ***              Access             ***
