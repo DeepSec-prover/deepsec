@@ -150,12 +150,14 @@ let rec trim_process (p:process) : process =
 
   | Input(c,x,p) ->
       let tp = trim_process p in
-      if tp = Nil && is_trivially_constructible c then Nil
+      if tp = Nil && is_trivially_constructible c
+      then Nil
       else Input(c,x,tp)
 
   | InputSure(c,x,p) ->
       let tp = trim_process p in
-      if tp = Nil && is_trivially_constructible c then Nil
+      if tp = Nil && is_trivially_constructible c
+      then Nil
       else InputSure(c,x,tp)
 
   | New(n,p) ->
@@ -166,13 +168,15 @@ let rec trim_process (p:process) : process =
   | IfThenElse(t1,t2,p1,p2) ->
       let tp1 = trim_process p1 in
       let tp2 = trim_process p2 in
-      if tp1 = Nil && tp2 = Nil then Nil
+      if tp1 = Nil && tp2 = Nil
+      then Nil
       else IfThenElse(t1,t2,tp1,tp2)
 
   | Let(t1,t1uni,t2,p1,p2) ->
       let tp1 = trim_process p1 in
       let tp2 = trim_process p2 in
-      if tp1 = Nil && tp2 = Nil then Nil
+      if tp1 = Nil && tp2 = Nil
+      then Nil
       else Let(t1,t1uni,t2,tp1,tp2)
 
   | Choice l ->
@@ -203,12 +207,23 @@ let trim_initial_config (c:configuration) : configuration =
 let initial_label = [0]
 
 
-(* ------------------------------------------------------- *)
-(* ------------------------------------------------------- *)
-(* ------------------------------------------------------- *)
-(* ------------------------------------------------------- *)
-(* ------------------------------------------------------- *)
+let add_variable_in_block (snd_var:snd_ord_variable) (block:block) : block =
+  { block with recipes = (snd_var :: block.recipes) }
 
+let add_axiom_in_block (ax:axiom) (b:block) : block =
+  if b.min_axiom = 0
+  then { b with min_axiom = Axiom.index_of ax ; max_axiom = Axiom.index_of ax }
+  else { b with max_axiom = Axiom.index_of ax }
+
+let create_block (label:label) : block =
+  {
+    label_b = label;
+    recipes = [];
+    min_axiom = 0;
+    max_axiom = 0;
+    max_var = 0;
+    axioms = IntSet.empty
+  }
 
 
 
@@ -216,71 +231,75 @@ let initial_label = [0]
 ***              Access             ***
 ***************************************)
 
-let rec get_vars_with_list_sdet vars_l = function
-  | Start p -> get_vars_with_list_sdet vars_l p
-  | Nil -> vars_l
-  | Output(_,t,p,_)
-  | OutputSure(_,t,p,_) ->
-      let vars_l' = get_vars_with_list Protocol t (fun _ -> true) vars_l in
-      get_vars_with_list_sdet vars_l' p
-  | Input(_,x,p,_) ->
-      let vars_l' = get_vars_with_list Protocol (of_variable x) (fun _ -> true) vars_l in
-      get_vars_with_list_sdet vars_l' p
-  | IfThenElse(t1,t2,p1,p2,_)
-  | Let(t1,_,t2,p1,p2,_) ->
-      let vars_l1 = get_vars_with_list Protocol t1 (fun _ -> true) vars_l in
-      let vars_l2 = get_vars_with_list Protocol t2 (fun _ -> true) vars_l1 in
-      let vars_l3 = get_vars_with_list_sdet vars_l2 p1 in
-      get_vars_with_list_sdet vars_l3 p2
-  | New(_,p,_) -> get_vars_with_list_sdet vars_l p
-  | Par(p_list) -> List.fold_left get_vars_with_list_sdet vars_l p_list
-  | ParMult p_list -> List.fold_left (fun acc (_,p) -> get_vars_with_list_sdet acc p) vars_l p_list
+(* extracts some atoms (defined by a function `get') from a process and adds
+it to an accumulator. Avoids duplicates. *)
+let get_in_proc (get:protocol_term -> 'a list -> 'a list) (p:process)
+                (ac:'a list) : 'a list =
 
-let get_vars_with_list_det vars_l p = get_vars_with_list_sdet vars_l p.proc
+  let rec get_rec p ac =
+    match p with
+    | Nil -> ac
+    | New(_,p) -> get_rec p ac
+    | Output(c,t,p)
+    | OutputSure(c,t,p) -> ac |> get c |> get t |> get_rec p
+    | Input(c,x,p)
+    | InputSure(c,x,p) -> ac |> get c |> get (Term.of_variable x) |> get_rec p
+    | IfThenElse(t1,t2,p1,p2)
+    | Let(t1,_,t2,p1,p2) -> ac |> get t1 |> get t2 |> get_rec p1 |> get_rec p2
+    | Event(l,p) -> ac |> List.foldl get l |> get_rec p
+    | Choice l -> List.foldl get_rec l ac
+    | Par l -> List.foldl (fun (p,_) ac -> get_rec p ac) l ac in
 
-let get_vars_with_list_trace vars_l = function
-  | TrInput(_,_,t,_)
-  | TrOutput(_,_,t,_) -> get_vars_with_list Protocol t (fun _ -> true) vars_l
+  get_rec p ac
 
-let get_vars_with_list conf vars_l =
-  let vars_1 = List.fold_left get_vars_with_list_trace vars_l conf.trace in
-  let vars_2 = List.fold_left get_vars_with_list_det vars_1 conf.sure_input_proc in
-  let vars_3 = List.fold_left get_vars_with_list_det vars_2 conf.sure_output_proc in
-  List.fold_left (List.fold_left (List.fold_left get_vars_with_list_det)) vars_3 conf.sure_input_mult_proc
+(* getting atoms from labelled processes *)
+let get_in_lproc (get:protocol_term -> 'a list -> 'a list) (p:lab_process)
+                 (ac:'a list) : 'a list =
+  get_in_proc get p.proc ac
 
-let rec get_names_with_list_sdet names_l = function
-  | Start p -> get_names_with_list_sdet names_l p
-  | Nil -> names_l
-  | Output(_,t,p,_)
-  | OutputSure(_,t,p,_) ->
-      let names_l' = get_names_with_list Protocol t names_l in
-      get_names_with_list_sdet names_l' p
-  | Input(_,_,p,_) ->get_names_with_list_sdet names_l p
-  | IfThenElse(t1,t2,p1,p2,_)
-  | Let(t1,_,t2,p1,p2,_) ->
-      let names_l1 = get_names_with_list Protocol t1 names_l in
-      let names_l2 = get_names_with_list Protocol t2 names_l1 in
-      let names_l3 = get_names_with_list_sdet names_l2 p1 in
-      get_names_with_list_sdet names_l3 p2
-  | New(n,p,_) ->
-      let names_l1 = get_names_with_list Protocol (of_name n) names_l in
-      get_names_with_list_sdet names_l1 p
-  | Par(p_list) -> List.fold_left get_names_with_list_sdet names_l p_list
-  | ParMult p_list -> List.fold_left (fun acc (_,p) -> get_names_with_list_sdet acc p) names_l p_list
+(* extracts atoms from a trace action *)
+let get_in_tr (get:protocol_term -> 'a list -> 'a list) (t:trace) (ac:'a list)
+              : 'a list =
+  match t with
+  | TrInput(c,_,t)
+  | TrOutput(c,_,t) -> ac |> get c |> get t
 
-let get_names_with_list_det names_l p = get_names_with_list_sdet names_l p.proc
+(* extracts atoms from a configuration *)
+let get_in_cfg (get:protocol_term -> 'a list -> 'a list) (cf:configuration)
+                  (ac:'a list) : 'a list =
+  ac
+  |> List.foldl (get_in_tr get) cf.trace
+  |> List.foldl (get_in_lproc get) cf.sure_input_proc
+  |> List.foldl (get_in_lproc get) cf.sure_output_proc
+  |> List.foldl (List.foldl (List.foldl (get_in_lproc get)))
+      cf.sure_input_mult_proc
 
-let get_names_with_list_trace names_l = function
-  | TrInput(_,_,t,_)
-  | TrOutput(_,_,t,_) -> get_names_with_list Protocol t names_l
 
-let get_names_with_list conf names_l =
-  let names_1 = List.fold_left get_names_with_list_trace names_l conf.trace in
-  let names_2 = List.fold_left get_names_with_list_det names_1 conf.sure_input_proc in
-  let names_3 = List.fold_left get_names_with_list_det names_2 conf.sure_output_proc in
-  List.fold_left (List.fold_left (List.fold_left get_names_with_list_det)) names_3 conf.sure_input_mult_proc
+(* application of the extraction to variables and names *)
+let get_vars_with_list
+  : configuration -> fst_ord_variable list -> fst_ord_variable list =
+  get_in_cfg (fun t -> Term.get_vars_with_list Protocol t (fun _ -> true))
 
-let size_trace conf = List.length conf.trace
+let get_names_with_list : configuration -> name list -> name list =
+  get_in_cfg (Term.get_names_with_list Protocol)
+
+(* size of a trace *)
+let size_trace (cf:configuration) : int = List.length cf.trace
+
+
+
+
+
+(* ------------------------------------------------------- *)
+(* ------------------------------------------------------- *)
+(* ------------------------------------------------------- *)
+(* ------------------------------------------------------- *)
+(* ------------------------------------------------------- *)
+
+
+
+
+
 
 (**************************************
 ***             Display             ***
@@ -1345,23 +1364,7 @@ let is_block_list_authorized b_list cur_block snd_subst = match b_list with
 
       explore_block b_list_1
 
-let add_variable_in_block snd_var block =
-  { block with recipes = (snd_var :: block.recipes) }
 
-let add_axiom_in_block ax block =
-  if block.minimal_axiom = 0
-  then { block with minimal_axiom = Axiom.index_of ax ; maximal_axiom = Axiom.index_of ax }
-  else { block with maximal_axiom = Axiom.index_of ax }
-
-let create_block label =
-  {
-    label_b = label;
-    recipes = [];
-    minimal_axiom = 0;
-    maximal_axiom = 0;
-    maximal_var = 0;
-    used_axioms = IntSet.empty
-  }
 
 (**************************************
 ***            Transition           ***
