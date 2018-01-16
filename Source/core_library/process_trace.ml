@@ -126,47 +126,84 @@ let config_of_expansed_process (p:Process.expansed_process) : configuration =
     trace = []
   }
 
-(* checks whether a process has an input or output available (syntactically)
-at toplevel *)
-let rec exists_input_or_output (p:process) : bool =
-  | Nil -> false
-  | Output _
-  | OutputSure _
-  | Input _
-  | InputSure _ -> true
-  | IfThenElse(_,_,p1,p2,_)
-  | Let(_,_,_,p1,p2,_) -> exists_input_or_output p1 || exists_input_or_output p2
-  | New(_,p,_) -> exists_input_or_output p
-  | Par p_list -> List.exists exists_input_or_output p_list
 
+(* checks whether a term is only made of public constructors and public names.
+In particular such terms as channels are always known to the attacker. *)
+let rec is_trivially_constructible (t:protocol_term) : bool =
+  is_variable t ||
+  (
+    is_function t &&
+    Symbol.is_public (root t) &&
+    Symbol.is_constructor (root t) &&
+    List.for_all is_trivially_constructible (get_args t)
+  )
 
-(* trim processes after inputs when no IO is possible after it. This simplifies
-processes and does not affect reachability.
-NB one could also trim sequences containing only public inputs. E.g. where
-public is soundly approximised as ``on channel ch which does not contain
-bound names syntactically''. Do we want that ? *)
-
-(* ------------------------------------------------------- *)
-(* ------------------------------------------------------- *)
-(* ------------------------------------------------------- *)
-(* ------------------------------------------------------- *)
-(* ------------------------------------------------------- *)
-
-
-
-
-let rec clean_simple_process = function
-  | Start p -> Start (clean_simple_process p)
+(* trim processes when no private inputs, public/private outputs, nor events are
+available. This simplifies processes and does not affect reachability
+properties. *)
+let rec trim_process (p:process) : process =
+  match p with
   | Nil -> Nil
-  | Output(c,t,p,pos) -> Output(c,t,clean_simple_process p,pos)
-  | OutputSure(c,t,p,pos) -> OutputSure(c,t,clean_simple_process p, pos)
-  | Input(c,x,p,pos) when exists_input_or_output p -> Input(c,x,clean_simple_process p, pos)
-  | Input(c,x,_,pos) -> Input(c,x,Nil,pos)
-  | IfThenElse(t1,t2,p1,p2,pos) -> IfThenElse(t1,t2,clean_simple_process p1, clean_simple_process p2, pos)
-  | Let(t1,t1uni,t2,p1,p2,pos) -> Let(t1,t1uni,t2,clean_simple_process p1, clean_simple_process p2,pos)
-  | New(n,p,pos) -> New(n,clean_simple_process p,pos)
-  | Par p_list -> Par (List.map clean_simple_process p_list)
-  | ParMult p_list -> ParMult (List.map (fun (ch,p) -> (ch,clean_simple_process p)) p_list)
+  | Output(c,t,p) -> Output(c,t,trim_process p)
+  | OutputSure(c,t,p) -> OutputSure(c,t,trim_process p)
+  | Event(l,p) -> Event(l,trim_process p)
+
+  | Input(c,x,p) ->
+      let tp = trim_process p in
+      if tp = Nil && is_trivially_constructible c then Nil
+      else Input(c,x,tp)
+
+  | InputSure(c,x,p) ->
+      let tp = trim_process p in
+      if tp = Nil && is_trivially_constructible c then Nil
+      else InputSure(c,x,tp)
+
+  | New(n,p) ->
+      let tp = trim_process p in
+      if tp = Nil then Nil
+      else New(n,tp)
+
+  | IfThenElse(t1,t2,p1,p2) ->
+      let tp1 = trim_process p1 in
+      let tp2 = trim_process p2 in
+      if tp1 = Nil && tp2 = Nil then Nil
+      else IfThenElse(t1,t2,tp1,tp2)
+
+  | Let(t1,t1uni,t2,p1,p2) ->
+      let tp1 = trim_process p1 in
+      let tp2 = trim_process p2 in
+      if tp1 = Nil && tp2 = Nil then Nil
+      else Let(t1,t1uni,t2,tp1,tp2)
+
+  | Choice l ->
+      let trim_and_delete p ac =
+        let tp = trim_process p in
+        if tp = Nil then ac else tp :: ac in
+      (
+        match List.fold_right trim_and_delete l [] with
+        | [] -> Nil
+        | tp :: [] -> tp
+        | tpl -> Choice tpl
+      )
+
+  | Par l ->
+      let trim_and_delete (p,i) ac =
+        let tp = trim_process p in
+        if tp = Nil then ac else (tp,i) :: ac in
+      let tpl = List.fold_right trim_and_delete l [] in
+      if tpl = [] then Nil else Par tpl
+
+
+
+
+(* ------------------------------------------------------- *)
+(* ------------------------------------------------------- *)
+(* ------------------------------------------------------- *)
+(* ------------------------------------------------------- *)
+(* ------------------------------------------------------- *)
+
+
+
 
 let clean_inital_configuration conf = match conf.sure_input_proc with
   | [p] -> { conf with sure_input_proc = [{ p with proc = clean_simple_process p.proc}] }
