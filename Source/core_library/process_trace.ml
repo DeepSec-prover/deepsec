@@ -302,50 +302,20 @@ let size_trace (cf:configuration) : int = List.length cf.trace
 ***             Display             ***
 ***************************************)
 
-let get_position = function
-  | Start _
-  | Nil
-  | Par _
-  | ParMult _ -> raise Not_found
-  | Output(_,_,_,pos)
-  | OutputSure(_,_,_,pos)
-  | Input(_,_,_,pos)
-  | IfThenElse(_,_,_,_,pos)
-  | Let(_,_,_,_,_,pos)
-  | New(_,_,pos) -> pos
+let get_position = failwith "lol"
 
-let compare_for_display p1 p2 = match p1, p2 with
-  | Start _, Start _ -> 0
-  | Nil, Nil -> 0
-  | Start _, _ -> -1
-  | _ , Start _ -> 1
-  | Nil, _ -> 1
-  | _, Nil -> -1
-  | _, _ -> compare (get_position p1) (get_position p2)
+let compare_for_display = compare
 
 let process_of_configuration conf =
-  let unchecked_p = match conf.sure_uncheked_skeletons with
-    | None -> []
-    | Some p -> [p.proc]
-  in
-
-  let unsure_p = match conf.unsure_proc with
-    | None -> unchecked_p
-    | Some p -> p.proc :: unchecked_p
-  in
-
-  let focused_p = match conf.focused_proc with
-    | None -> unsure_p
-    | Some p -> p.proc :: unsure_p
-  in
-
-  let all = (List.map (fun p -> p.proc) conf.sure_output_proc) @ (List.map (fun p -> p.proc) conf.sure_input_proc) @ focused_p in
-  let sorted_all = List.fast_sort compare_for_display all in
-
-  match sorted_all with
-    | [] -> Nil
-    | [p] -> p
-    | _ -> Par(sorted_all)
+  let extr opt ac = match opt with None -> ac | Some p -> p.proc :: ac in
+  []
+  |> extr conf.sure_uncheked_skeletons
+  |> extr conf.unsure_proc
+  |> extr conf.focused_proc
+  |> (@) (List.map (fun p -> p.proc) conf.sure_output_proc)
+  |> (@) (List.map (fun p -> p.proc) conf.sure_input_proc)
+  |> List.fast_sort compare_for_display
+  |> (fun sorted -> match sorted with [] -> Nil | [p] -> p | _ -> Par(sorted))
 
 let display_simple_det_process_HTML ?(rho=None) ?(margin_px=15) ?(hidden=false) ?(highlight=[]) ?(id="") ?(subst=Subst.identity) sdet_proc =
 

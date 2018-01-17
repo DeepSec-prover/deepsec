@@ -356,6 +356,7 @@ let compare_for_display p1 p2 = match p1, p2 with
   | _, Nil -> -1
   | _, _ -> compare (get_position p1) (get_position p2)
 
+
 let process_of_configuration conf =
   let unchecked_p = match conf.sure_uncheked_skeletons with
     | None -> []
@@ -379,6 +380,23 @@ let process_of_configuration conf =
     | [] -> Nil
     | [p] -> p
     | _ -> Par(sorted_all)
+
+
+
+(* alternative, more compact code for `process_of_configuration' *)
+(*
+let process_of_configuration conf =
+  let extr opt ac = match opt with None -> ac | Some p -> p.proc :: ac in
+  []
+  |> extr conf.sure_uncheked_skeletons
+  |> extr conf.unsure_proc
+  |> extr conf.focused_proc
+  |> (@) (List.map (fun p -> p.proc) conf.sure_output_proc)
+  |> (@) (List.map (fun p -> p.proc) conf.sure_input_proc)
+  |> List.fast_sort compare_for_display
+  |> (fun sorted -> match sorted with [] -> Nil | [p] -> p | _ -> Par(sorted))
+*)
+
 
 let display_simple_det_process_HTML ?(rho=None) ?(margin_px=15) ?(hidden=false) ?(highlight=[]) ?(id="") ?(subst=Subst.identity) sdet_proc =
 

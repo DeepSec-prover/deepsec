@@ -17,6 +17,7 @@ module List = struct
   (* overwriting some functions with tail-recursive versions *)
   let fold_right f l a = fold_left (fun x a -> f a x) a (List.rev l)
   let map f l = fold_right (fun x ac -> f x :: ac) l []
+  let (@) l1 l2 = fold_right (fun a ac -> a :: ac) l1 l2
   (* fold_left with arguments in the same order as fold_right *)
   let foldl f l a = fold_left (fun a x -> f x a) a l
 end
