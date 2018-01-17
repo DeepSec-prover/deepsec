@@ -384,18 +384,17 @@ let process_of_configuration conf =
 
 
 (* alternative, more compact code for `process_of_configuration' *)
-(*
-let process_of_configuration conf =
+
+(* let process_of_configuration cf =
   let extr opt ac = match opt with None -> ac | Some p -> p.proc :: ac in
   []
-  |> extr conf.sure_uncheked_skeletons
-  |> extr conf.unsure_proc
-  |> extr conf.focused_proc
-  |> (@) (List.map (fun p -> p.proc) conf.sure_output_proc)
-  |> (@) (List.map (fun p -> p.proc) conf.sure_input_proc)
+  |> List.foldl extr [cf.sure_uncheked_skeletons;cf.unsure_proc;cf.focused_proc]
+  |> (@) (List.map (fun p -> p.proc) cf.sure_output_proc)
+  |> (@) (List.map (fun p -> p.proc) cf.sure_input_proc)
   |> List.fast_sort compare_for_display
   |> (fun sorted -> match sorted with [] -> Nil | [p] -> p | _ -> Par(sorted))
 *)
+
 
 
 let display_simple_det_process_HTML ?(rho=None) ?(margin_px=15) ?(hidden=false) ?(highlight=[]) ?(id="") ?(subst=Subst.identity) sdet_proc =
