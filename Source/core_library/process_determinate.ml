@@ -384,8 +384,8 @@ let process_of_configuration conf =
 
 
 (* alternative, more compact code for `process_of_configuration' *)
-
-(* let process_of_configuration cf =
+(*
+let process_of_configuration cf =
   let extr opt ac = match opt with None -> ac | Some p -> p.proc :: ac in
   []
   |> List.foldl extr [cf.sure_uncheked_skeletons;cf.unsure_proc;cf.focused_proc]
