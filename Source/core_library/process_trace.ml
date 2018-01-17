@@ -232,8 +232,9 @@ let create_block (label:label) : block =
 
 (* extracts some atoms (defined by a function `get') from a process and adds
 it to an accumulator. Avoids duplicates. *)
-let get_in_proc (get:protocol_term -> 'a list -> 'a list) (p:process)
-                (ac:'a list) : 'a list =
+type 'a extractor = protocol_term -> 'a list -> 'a list
+
+let get_in_proc (get:'a extractor) (p:process) (ac:'a list) : 'a list =
 
   let rec get_rec p ac =
     match p with
@@ -252,20 +253,17 @@ let get_in_proc (get:protocol_term -> 'a list -> 'a list) (p:process)
   get_rec p ac
 
 (* getting atoms from labelled processes *)
-let get_in_lproc (get:protocol_term -> 'a list -> 'a list) (p:lab_process)
-                 (ac:'a list) : 'a list =
+let get_in_lproc (get:'a extractor) (p:lab_process) (ac:'a list) : 'a list =
   get_in_proc get p.proc ac
 
 (* extracts atoms from a trace action *)
-let get_in_tr (get:protocol_term -> 'a list -> 'a list) (t:trace) (ac:'a list)
-              : 'a list =
+let get_in_tr (get:'a extractor) (t:trace) (ac:'a list) : 'a list =
   match t with
   | TrInput(c,_,t)
   | TrOutput(c,_,t) -> ac |> get c |> get t
 
 (* extracts atoms from a configuration *)
-let get_in_cfg (get:protocol_term -> 'a list -> 'a list) (cf:configuration)
-                  (ac:'a list) : 'a list =
+let get_in_cfg (get:'a extractor) (cf:configuration) (ac:'a list) : 'a list =
   ac
   |> List.foldl (get_in_tr get) cf.trace
   |> List.foldl (get_in_lproc get) cf.sure_input_proc
