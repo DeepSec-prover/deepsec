@@ -3077,7 +3077,8 @@ module Rewrite_rules = struct
       rhs = of_variable dummy_var_fst;
     }
 
-  let storage_skeletons = ref (Array.make 0 { skeleton = dummy_skeleton; compat_rewrite_rules = [] })
+  (* let storage_skeletons = ref (Array.make 0 { skeleton = dummy_skeleton; compat_rewrite_rules = [] }) *)
+  let storage_skeletons : stored_skeleton array ref = ref [||]
 
   let index_skeletons = ref []
 
@@ -3109,7 +3110,6 @@ module Rewrite_rules = struct
                   Config.debug (fun () ->
                     if !Variable.Renaming.linked_variables_fst <> []
                     then Config.internal_error "[term.ml >> Rewrite_rules.normalise] The list of linked variables for renaming should be empty";
-
                   );
                   (***[END DEBUG]***)
 
@@ -3456,6 +3456,25 @@ module Rewrite_rules = struct
                 ) acc rw_rules
           | _ -> Config.internal_error "[term.ml >> get_vars_signature] all_destructors should only contain destructors."
     ) l !Symbol.all_destructors
+
+
+
+  (***** checking subterm convergence ****)
+  (* the test of convergence is particularly easy in the subterm destructor
+  setting, since critical pairs can only appear at the root of rewrite rules. *)
+
+  (* checks whether t1 is a syntactic subterm of t2 *)
+  let is_subterm (t1:protocol_term) (t2:protocol_term) : bool =
+    let rec browse t1 t2 =
+      match t1.term, t2.term with
+      | AxName _, _
+      | _, AxName _ -> invalid_arg "name"
+      | Var x, Var y -> Variable.is_equal x y
+      | Var _, Func(_,l) -> List.exists (is_subterm t1) l
+      | Func _, Var _ -> false
+      | Func(_,l1), Func(_,l2) ->
+
+
 
   (****** Display function ******)
 
