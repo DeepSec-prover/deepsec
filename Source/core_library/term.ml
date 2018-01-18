@@ -3463,17 +3463,41 @@ module Rewrite_rules = struct
   (* the test of convergence is particularly easy in the subterm destructor
   setting, since critical pairs can only appear at the root of rewrite rules. *)
 
-  (* checks whether t1 is a syntactic subterm of t2 *)
-  let is_subterm (t1:protocol_term) (t2:protocol_term) : bool =
-    let rec browse t1 t2 =
-      match t1.term, t2.term with
-      | AxName _, _
-      | _, AxName _ -> invalid_arg "name"
-      | Var x, Var y -> Variable.is_equal x y
-      | Var _, Func(_,l) -> List.exists (is_subterm t1) l
-      | Func _, Var _ -> false
-      | Func(_,l1), Func(_,l2) ->
+  (* convert a term into a string for message printing. Assumes that no name
+  appear. *)
+  let rec string_of_term (t:protocol_term) : string =
+    match t.term with
+    | AxName _ -> Config.internal_error (fun () -> "[term.ml >> term_to_string] rewrite rules should not contain names")
+    | Var x -> x.label
+    | Func(s,[]) -> s.name
+    | Func(s,t::args) ->
+        s.name^"("^
+        string_of_term t^
+        (List.fold_right (fun tt ac -> ","^string_of_term tt^ac) ")" args)
 
+  (* checks whether t1 is a syntactic subterm of t2. Assumes that rewrite
+  rules do not contain names. *)
+  let rec is_subterm (t1:protocol_term) (t2:protocol_term) : bool =
+    match t1.term, t2.term with
+    | AxName _, _
+    | _, AxName _ -> Config.internal_error (fun () -> "[term.ml >> is_subterm] rewrite rules should not contain names")
+    | Var x, Var y -> Variable.is_equal x y
+    | Var _, Func(_,l) -> List.exists (is_subterm t1) l
+    | Func _, Var _ -> false
+    | Func(f1,l1), Func(f2,l2) ->
+        (Symbol.is_equal f1 f2 && List.for_all2 (is_equal Protocol) l1 l2)
+        || List.exists (is_subterm t1) l2
+
+  (* checks whether a rewrite rule satisfies the subterm property *)
+  let rule_is_subterm (lhs:protocol_term) (rhs:protocol_term) : unit =
+    if not (rhs.ground && is_equal rhs (normalise rhs))
+    then match lhs with
+      | Var _
+      | AxName _
+      | Func(_,l) when not (List.exists (is_subterm rhs) l) ->
+          Printf.printf "Error! Rewrite rule %s -> %s is not subterm\n"
+            (string_of_term lhs) (string_of_term rhs)
+      | _ -> ()
 
 
   (****** Display function ******)
