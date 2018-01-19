@@ -258,8 +258,7 @@ let get_in_cfg (get:'a extractor) (cf:configuration) (ac:'a list) : 'a list =
 
 
 (* application of the extraction to variables and names *)
-let get_vars_with_list
-  : configuration -> fst_ord_variable list -> fst_ord_variable list =
+let get_vars_with_list : configuration -> fst_ord_variable list -> fst_ord_variable list =
   get_in_cfg (fun t -> Term.get_vars_with_list Protocol t (fun _ -> true))
 
 let get_names_with_list : configuration -> name list -> name list =

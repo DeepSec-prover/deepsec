@@ -40,7 +40,7 @@ type representation =
 type symbol_cat =
   | Tuple
   | Constructor
-  | Destructor of ((fst_ord, name) term list *  (fst_ord, name) term) list
+  | Destructor of ((fst_ord, name) term list * (fst_ord, name) term) list
 
 and symbol =
   {
@@ -3466,21 +3466,24 @@ module Rewrite_rules = struct
   (* convert a term into a string for message printing. Assumes that no name
   appear. *)
   let rec string_of_term (t:protocol_term) : string =
-    match t.term with
-    | AxName _ -> Config.internal_error (fun () -> "[term.ml >> term_to_string] rewrite rules should not contain names")
+    string_of_generic_term t.term
+
+  and string_of_generic_term (t:(fst_ord,name) generic_term) : string =
+    match t with
+    | AxName _ -> Config.internal_error "[term.ml >> term_to_string] rewrite rules should not contain names"
     | Var x -> x.label
     | Func(s,[]) -> s.name
     | Func(s,t::args) ->
         s.name^"("^
         string_of_term t^
-        (List.fold_right (fun tt ac -> ","^string_of_term tt^ac) ")" args)
+        List.fold_right (fun tt ac -> ","^string_of_term tt^ac) args ")"
 
   (* checks whether t1 is a syntactic subterm of t2. Assumes that rewrite
   rules do not contain names. *)
   let rec is_subterm (t1:protocol_term) (t2:protocol_term) : bool =
     match t1.term, t2.term with
     | AxName _, _
-    | _, AxName _ -> Config.internal_error (fun () -> "[term.ml >> is_subterm] rewrite rules should not contain names")
+    | _, AxName _ -> Config.internal_error "[term.ml >> is_subterm] rewrite rules should not contain names"
     | Var x, Var y -> Variable.is_equal x y
     | Var _, Func(_,l) -> List.exists (is_subterm t1) l
     | Func _, Var _ -> false
@@ -3489,15 +3492,74 @@ module Rewrite_rules = struct
         || List.exists (is_subterm t1) l2
 
   (* checks whether a rewrite rule satisfies the subterm property *)
-  let rule_is_subterm (lhs:protocol_term) (rhs:protocol_term) : unit =
-    if not (rhs.ground && is_equal rhs (normalise rhs))
-    then match lhs with
-      | Var _
-      | AxName _
-      | Func(_,l) when not (List.exists (is_subterm rhs) l) ->
-          Printf.printf "Error! Rewrite rule %s -> %s is not subterm\n"
-            (string_of_term lhs) (string_of_term rhs)
-      | _ -> ()
+  let rule_is_subterm (lhs:protocol_term list) (rhs:protocol_term) : bool =
+    (rhs.ground && is_equal Protocol rhs (normalise rhs))
+    || List.exists (is_subterm rhs) lhs
+
+
+  (* checks whether a pair of constructor-destructor rules (with same root)
+  verifies the local-convergence property (critical pair---which, if any,
+  needs be at the root---joinable). Left-hand sides are represented as the
+  list of direct subterms of the root.
+  @raise NonConvergent + witness of non convergence (that is a term + 2 normal
+  forms) when the critical pair is joinable. *)
+  type witness_non_conv = protocol_term list * protocol_term * protocol_term
+
+  let critical_pair_joinable (lhs1:protocol_term list) (rhs1:protocol_term) (lhs2:protocol_term list) (rhs2:protocol_term) : witness_non_conv option =
+    match Subst.unify_protocol_opt (List.combine lhs1 lhs2) with
+    | None -> None
+    | Some subst ->
+        match Subst.apply subst (rhs1 :: rhs2 :: lhs1) (flip List.map) with
+        | rhs1' :: rhs2' :: lhs ->
+            if is_equal Protocol rhs1' rhs2'
+            then None
+            else Some(lhs,rhs1',rhs2')
+        | _ -> Config.internal_error "[term.ml >> critical_pair_joinable] unexpected case"
+
+  (* verifies that the reduction rules of a given destructor are subterm
+  convergent *)
+  let is_subterm_convergent_symbol (s:symbol) : unit =
+    match s.cat with
+    | Tuple
+    | Constructor -> Config.internal_error "[term.ml >> subterm_convergent_symbol] only destructor symbols should be considered"
+
+    | Destructor rw_rules ->
+
+        let check_pair (lhs1,rhs1) (lhs2,rhs2) =
+          match critical_pair_joinable lhs1 rhs1 lhs2 rhs2 with
+          | None -> ()
+          | Some(tl,nf1,nf2) ->
+            Printf.printf "Error! Reduction rules are not confluent, e.g. %s has normal forms %s and %s\n"
+              (string_of_generic_term (Func(s,tl)))
+              (string_of_term nf1)
+              (string_of_term nf2);
+            exit 0 in
+
+        let check_subterm (lhs,rhs) =
+          if not(rule_is_subterm lhs rhs)
+          then
+          (
+            Printf.printf "Error! Reduction rule %s -> %s is not subterm\n"
+              (string_of_generic_term (Func(s,lhs)))
+              (string_of_term rhs);
+            exit 0
+          ) in
+
+        let rec check_all_pairs l =
+          match l with
+          | [] -> ()
+          | r :: rl ->
+            check_subterm r;
+            List.iter (check_pair r) rl;
+            check_all_pairs rl in
+
+        check_all_pairs rw_rules
+
+    (* checks subterm convergence of a set of rewrite rules. Exit with an
+    error when not the case *)
+    let is_subterm_convergent : symbol list -> unit =
+      List.iter is_subterm_convergent_symbol
+
 
 
   (****** Display function ******)

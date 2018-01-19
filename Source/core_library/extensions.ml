@@ -22,6 +22,7 @@ module List = struct
   let foldl f l a = fold_left (fun a x -> f x a) a l
 end
 
+let flip (f:'a->'b->'c) : 'b->'a->'c = fun x y -> f y x
 
 module Map = struct
   (**************************************************************************)
