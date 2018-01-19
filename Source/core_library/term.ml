@@ -1213,7 +1213,7 @@ let is_ground term = term.ground
 let rec no_axname term = match term.term with
   | Var _ -> true
   | AxName _ -> false
-  | Func (_,tlist) -> List.for_all no_axname tlist
+  | Func (s,tlist) -> s.represents <> UserName && List.for_all no_axname tlist
 
 (* In the function var_occurs and name_occurs, we go through the TLink when there is one. *)
 let rec var_occurs var term =
@@ -3471,7 +3471,7 @@ module Rewrite_rules = struct
   and string_of_generic_term (t:(fst_ord,name) generic_term) : string =
     match t with
     | AxName _ -> Config.internal_error "[term.ml >> term_to_string] rewrite rules should not contain names"
-    | Var x -> x.label
+    | Var x -> Printf.sprintf "%s%d" x.label x.index
     | Func(s,[]) -> s.name
     | Func(s,t::args) ->
         s.name^"("^
@@ -3518,7 +3518,7 @@ module Rewrite_rules = struct
 
   (* verifies that the reduction rules of a given destructor are subterm
   convergent *)
-  let is_subterm_convergent_symbol (s:symbol) : unit =
+  let is_subterm_convergent_symbol (line:int) (s:symbol) : unit =
     match s.cat with
     | Tuple
     | Constructor -> Config.internal_error "[term.ml >> subterm_convergent_symbol] only destructor symbols should be considered"
@@ -3529,7 +3529,7 @@ module Rewrite_rules = struct
           match critical_pair_joinable lhs1 rhs1 lhs2 rhs2 with
           | None -> ()
           | Some(tl,nf1,nf2) ->
-            Printf.printf "Error! Rewrite rules are not confluent, e.g. %s has normal forms %s and %s\n"
+            Printf.printf "Error! Rewrite system is not confluent, e.g. %s has normal forms %s and %s.\n"
               (string_of_generic_term (Func(s,tl)))
               (string_of_term nf1)
               (string_of_term nf2);
@@ -3539,7 +3539,8 @@ module Rewrite_rules = struct
           if not(rule_is_subterm lhs rhs)
           then
           (
-            Printf.printf "Error! Rewrite rule %s -> %s is not subterm\n"
+            Printf.printf "Error! Line %d : Rewrite rule %s -> %s is not subterm.\n"
+              line
               (string_of_generic_term (Func(s,lhs)))
               (string_of_term rhs);
             exit 0
@@ -3549,6 +3550,9 @@ module Rewrite_rules = struct
           match l with
           | [] -> ()
           | r :: rl ->
+            (* Printf.printf "checking rule %s -> %s\n"
+              (string_of_generic_term (Func(s,fst r)))
+              (string_of_term (snd r)); *)
             check_subterm r;
             List.iter (check_pair r) rl;
             check_all_pairs rl in

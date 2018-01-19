@@ -1023,9 +1023,9 @@ module Rewrite_rules : sig
   val get_vars_with_list : fst_ord_variable list -> fst_ord_variable list
 
 
-  (** [is_subterm_convergent_symbol symb] checks whether the rewrite rules associated to a destructor symbol [symb] satisfy the subterm convergence property. In case it does not, the programs exits with an error message.
+  (** [is_subterm_convergent_symbol line symb] checks whether the rewrite rules associated to a destructor symbol [symb] satisfy the subterm convergence property ([line] is the line in the code for user-friendly error messages). In case it does not, the programs exits with an error message.
   Note that, since the rewrite system is constructor-destructor, critical pairs can only occur at the root of rules and subterm-convergence can therefore be performed separately on subsets of rules with identical root. **)
-  val is_subterm_convergent_symbol : symbol -> unit
+  val is_subterm_convergent_symbol : int -> symbol -> unit
 
 
   (** {3 Display functions} *)
