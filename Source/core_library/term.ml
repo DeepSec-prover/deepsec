@@ -3529,7 +3529,7 @@ module Rewrite_rules = struct
           match critical_pair_joinable lhs1 rhs1 lhs2 rhs2 with
           | None -> ()
           | Some(tl,nf1,nf2) ->
-            Printf.printf "Error! Reduction rules are not confluent, e.g. %s has normal forms %s and %s\n"
+            Printf.printf "Error! Rewrite rules are not confluent, e.g. %s has normal forms %s and %s\n"
               (string_of_generic_term (Func(s,tl)))
               (string_of_term nf1)
               (string_of_term nf2);
@@ -3539,7 +3539,7 @@ module Rewrite_rules = struct
           if not(rule_is_subterm lhs rhs)
           then
           (
-            Printf.printf "Error! Reduction rule %s -> %s is not subterm\n"
+            Printf.printf "Error! Rewrite rule %s -> %s is not subterm\n"
               (string_of_generic_term (Func(s,lhs)))
               (string_of_term rhs);
             exit 0
@@ -3555,10 +3555,6 @@ module Rewrite_rules = struct
 
         check_all_pairs rw_rules
 
-    (* checks subterm convergence of a set of rewrite rules. Exit with an
-    error when not the case *)
-    let is_subterm_convergent : symbol list -> unit =
-      List.iter is_subterm_convergent_symbol
 
 
 

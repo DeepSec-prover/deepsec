@@ -330,7 +330,7 @@ let parse_rewrite_rule line env (lhs,rhs) = match lhs with
       let rhs' = parse_term env rhs in
       if Term.no_axname rhs' && Term.is_constructor rhs'
       then (s,[],rhs')
-      else error_message line "The right hand term of a rewrite rule should be a free-name constructor term."
+      else error_message line "The right-hand side of a rewrite rule should be a name-free constructor term."
   | FuncApp((s,line),args) ->
       if Env.mem s env
       then error_message line (Printf.sprintf "The identifier %s is already defined." s);
@@ -339,8 +339,8 @@ let parse_rewrite_rule line env (lhs,rhs) = match lhs with
       let rhs' = parse_term env' rhs in
       if Term.no_axname rhs' && Term.is_constructor rhs'
       then (s,args',rhs')
-      else error_message line "The right hand term of a rewrite rule should be a free-name constructor term."
-  | _ -> error_message line "The left hand term of a rewrite rule cannot be a tuple."
+      else error_message line "The right-hand side of a rewrite rule should be a name-free constructor term."
+  | _ -> error_message line "The left-hand side of a rewrite rule cannot be a tuple."
 
 let parse_functions env = function
   | Constructor((s,line),n,public) ->
@@ -357,7 +357,7 @@ let parse_functions env = function
         List.fold_left (fun acc rw_rule ->
           let (s,args',rhs') = parse_rewrite_rule line env rw_rule in
           if s <> symb
-          then error_message line "The rewrite rules should all have the same root for the left hand term.";
+          then error_message line "The rewrite rules should all have the same root for the left-hand side.";
 
           if List.length args' <> ar
           then error_message line "The rewrite rules should have the same arity.";
@@ -366,6 +366,7 @@ let parse_functions env = function
         ) [lhs,rhs] (List.tl rw_rules)
       in
       let f = Term.Symbol.new_destructor ar public symb rw_rules' in
+      Term.Rewrite_rules.is_subterm_convergent_symbol f;
       Env.add symb (Func f) env
 
 (****** Parse setting *******)
