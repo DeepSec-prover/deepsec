@@ -3435,27 +3435,7 @@ module Rewrite_rules = struct
     then index_skeletons := generate_index (n - 1);
     storage_skeletons := ar
 
-  (****** Access function ******)
 
-  let get_skeleton i = !storage_skeletons.(i).skeleton
-
-  let get_compatible_rewrite_rules i = !storage_skeletons.(i).compat_rewrite_rules
-
-  let get_all_skeleton_indices () = !index_skeletons
-
-  let get_vars_with_list l =
-    List.fold_left (fun acc f ->
-        match f.cat with
-          | Destructor rw_rules ->
-              if Str.string_match Symbol.reg_proj f.name 0
-              then acc
-              else
-                List.fold_left (fun acc_1 (arg_l,r) ->
-                  let var_arg_l = List.fold_left (fun acc_2 t -> get_vars_with_list Protocol t (fun _ -> true) acc_2) acc_1 arg_l in
-                  get_vars_with_list Protocol r (fun _ -> true) var_arg_l
-                ) acc rw_rules
-          | _ -> Config.internal_error "[term.ml >> get_vars_signature] all_destructors should only contain destructors."
-    ) l !Symbol.all_destructors
 
 
 
@@ -3463,20 +3443,34 @@ module Rewrite_rules = struct
   (* the test of convergence is particularly easy in the subterm destructor
   setting, since critical pairs can only appear at the root of rewrite rules. *)
 
+  (* for printing, normalise the indexes of the variables of a term *)
+  let normalised_indexes (tl:protocol_term list) : int -> int =
+    let mapping =
+      []
+      |> List.foldl (fun t -> get_vars_with_list Protocol t (fun _ -> true)) tl
+      |> List.fast_sort (fun x y -> compare x.index y.index)
+      |> List.mapi (fun i x -> (x.index,i)) in
+    fun i ->
+      match List.assoc_opt i mapping with
+      | None -> Config.internal_error "[term.ml >> naormalised_indexes] Unexpected error"
+      | Some j -> j
+
+
+
   (* convert a term into a string for message printing. Assumes that no name
   appear. *)
-  let rec string_of_term (t:protocol_term) : string =
-    string_of_generic_term t.term
+  let rec string_of_term (t:protocol_term) (norm:int->int) : string =
+    string_of_generic_term t.term norm
 
-  and string_of_generic_term (t:(fst_ord,name) generic_term) : string =
+  and string_of_generic_term (t:(fst_ord,name) generic_term) (norm:int->int) : string =
     match t with
     | AxName _ -> Config.internal_error "[term.ml >> term_to_string] rewrite rules should not contain names"
-    | Var x -> Printf.sprintf "%s%d" x.label x.index
+    | Var x -> Printf.sprintf "%s%d" x.label (norm x.index)
     | Func(s,[]) -> s.name
     | Func(s,t::args) ->
-        s.name^"("^
-        string_of_term t^
-        List.fold_right (fun tt ac -> ","^string_of_term tt^ac) args ")"
+        s.name ^ "(" ^
+        string_of_term t norm ^
+        List.fold_right (fun t ac -> "," ^ string_of_term t norm ^ ac) args ")"
 
   (* checks whether t1 is a syntactic subterm of t2. Assumes that rewrite
   rules do not contain names. *)
@@ -3529,20 +3523,22 @@ module Rewrite_rules = struct
           match critical_pair_joinable lhs1 rhs1 lhs2 rhs2 with
           | None -> ()
           | Some(tl,nf1,nf2) ->
+            let norm = normalised_indexes tl in
             Printf.printf "Error! Rewrite system is not confluent, e.g. %s has normal forms %s and %s.\n"
-              (string_of_generic_term (Func(s,tl)))
-              (string_of_term nf1)
-              (string_of_term nf2);
+              (string_of_generic_term (Func(s,tl)) norm)
+              (string_of_term nf2 norm)
+              (string_of_term nf1 norm);
             exit 0 in
 
         let check_subterm (lhs,rhs) =
           if not(rule_is_subterm lhs rhs)
           then
           (
+            let norm = normalised_indexes lhs in
             Printf.printf "Error! Line %d : Rewrite rule %s -> %s is not subterm.\n"
               line
-              (string_of_generic_term (Func(s,lhs)))
-              (string_of_term rhs);
+              (string_of_generic_term (Func(s,lhs)) norm)
+              (string_of_term rhs norm);
             exit 0
           ) in
 
@@ -3550,15 +3546,36 @@ module Rewrite_rules = struct
           match l with
           | [] -> ()
           | r :: rl ->
-            (* Printf.printf "checking rule %s -> %s\n"
-              (string_of_generic_term (Func(s,fst r)))
-              (string_of_term (snd r)); *)
-            check_subterm r;
             List.iter (check_pair r) rl;
             check_all_pairs rl in
 
+        List.iter check_subterm rw_rules;
         check_all_pairs rw_rules
 
+
+
+
+  (****** Access function ******)
+
+  let get_skeleton i = !storage_skeletons.(i).skeleton
+
+  let get_compatible_rewrite_rules i = !storage_skeletons.(i).compat_rewrite_rules
+
+  let get_all_skeleton_indices () = !index_skeletons
+
+  let get_vars_with_list l =
+    List.fold_left (fun acc f ->
+        match f.cat with
+          | Destructor rw_rules ->
+              if Str.string_match Symbol.reg_proj f.name 0
+              then acc
+              else
+                List.fold_left (fun acc_1 (arg_l,r) ->
+                  let var_arg_l = List.fold_left (fun acc_2 t -> get_vars_with_list Protocol t (fun _ -> true) acc_2) acc_1 arg_l in
+                  get_vars_with_list Protocol r (fun _ -> true) var_arg_l
+                ) acc rw_rules
+          | _ -> Config.internal_error "[term.ml >> get_vars_signature] all_destructors should only contain destructors."
+    ) l !Symbol.all_destructors
 
 
 

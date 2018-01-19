@@ -74,7 +74,10 @@ let display_env_elt_type = function
   | Var _ -> "a variable"
   | Name _ -> "a name"
   | PublicName _ -> "a public name"
-  | Func _ -> "a function"
+  | Func s ->
+      if Term.Symbol.is_destructor s
+      then "a destructor function"
+      else "a constructor function"
   | Proc _ -> "a process"
 
 (**** Error message ****)
@@ -106,7 +109,7 @@ let rec parse_term env = function
           | PublicName(n) -> Term.apply_function n []
           | Func(f) when Term.Symbol.get_arity f = 0 -> Term.apply_function f []
           | ArgVar(t) -> t
-          | env_elt -> error_message line (Printf.sprintf "The identifiant %s is declared as %s but a name, a variable or constant is expected." s (display_env_elt_type env_elt))
+          | env_elt -> error_message line (Printf.sprintf "The identifiant %s is declared as %s (expected a name, a variable or a constant)." s (display_env_elt_type env_elt))
       with
         | Not_found -> error_message line (Printf.sprintf "The identifiant %s is not declared" s)
       end
@@ -285,7 +288,7 @@ let rec parse_rewrite_rule_term env = function
         match Env.find s env with
           | Var(v) -> Term.of_variable v, env
           | Func(f) when Term.Symbol.get_arity f = 0 && Term.Symbol.is_constructor f -> Term.apply_function f [], env
-          | env_elt -> error_message line (Printf.sprintf "The identifiant %s is declared as %s (expected a variable or constant constructor symbol)" s (display_env_elt_type env_elt))
+          | env_elt -> error_message line (Printf.sprintf "The identifiant %s is declared as %s (expected a variable or a constant)." s (display_env_elt_type env_elt))
       with
         | _ ->
             let x = Term.Variable.fresh Term.Protocol Term.Existential Term.Variable.fst_ord_type in
@@ -302,7 +305,7 @@ let rec parse_rewrite_rule_term env = function
               let args', env' = parse_rewrite_rule_term_list env args in
 
               Term.apply_function f args', env'
-          | env_elt -> error_message line (Printf.sprintf "The identifiant %s is declared as %s but a constructor function symbol is expected." s (display_env_elt_type env_elt))
+          | env_elt -> error_message line (Printf.sprintf "The identifiant %s is declared as %s (expected a constructor function)." s (display_env_elt_type env_elt))
       with
         Not_found -> error_message line (Printf.sprintf "The function %s is not declared" s)
       end
