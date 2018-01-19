@@ -3524,7 +3524,7 @@ module Rewrite_rules = struct
           | None -> ()
           | Some(tl,nf1,nf2) ->
             let norm = normalised_indexes tl in
-            Printf.printf "Error! Rewrite system is not confluent, e.g. %s has normal forms %s and %s.\n"
+            Printf.printf "Error! The rewrite system is not convergent, e.g. %s has normal forms %s and %s.\n"
               (string_of_generic_term (Func(s,tl)) norm)
               (string_of_term nf2 norm)
               (string_of_term nf1 norm);
@@ -3535,7 +3535,7 @@ module Rewrite_rules = struct
           then
           (
             let norm = normalised_indexes lhs in
-            Printf.printf "Error! Line %d : Rewrite rule %s -> %s is not subterm.\n"
+            Printf.printf "Error! Line %d : the rewrite rule %s -> %s is not subterm.\n"
               line
               (string_of_generic_term (Func(s,lhs)) norm)
               (string_of_term rhs norm);

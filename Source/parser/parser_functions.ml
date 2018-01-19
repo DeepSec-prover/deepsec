@@ -360,7 +360,7 @@ let parse_functions env = function
         List.fold_left (fun acc rw_rule ->
           let (s,args',rhs') = parse_rewrite_rule line env rw_rule in
           if s <> symb
-          then error_message line "The rewrite rules should all have the same root for the left-hand side.";
+          then error_message line "Rewrite rules declared under the same `reduc' should all have the same root for the left-hand side.";
 
           if List.length args' <> ar
           then error_message line "The rewrite rules should have the same arity.";
