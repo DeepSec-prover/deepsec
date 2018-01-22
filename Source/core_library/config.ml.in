@@ -41,3 +41,5 @@ let display_trace = ref true
 let distributed = ref false
 let core_factor = ref 30
   
+(**** Generalized POR ****)
+let por_gen = ref false

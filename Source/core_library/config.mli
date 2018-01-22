@@ -40,4 +40,5 @@ val distributed : bool ref
 
 val core_factor : int ref
 
+val por_gen : bool ref
   

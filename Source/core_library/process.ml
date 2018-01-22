@@ -1679,6 +1679,14 @@ module Trace = struct
     (html,javascript)
 end
 
+type visAct =
+  | InS of protocol_term
+  | OutS of protocol_term
+
+let displayVisAction = function
+  | InS t -> Printf.sprintf "In(%s)" "TODO" (* (Term.display_term t) *)
+  | OutS t -> Printf.sprintf "Out(%s)" "TODO" (* (Term.display_term t) *)
+
 
 (*******************************************************
 ***             Transition in semantics              ***

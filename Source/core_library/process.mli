@@ -283,3 +283,12 @@ val next_input :
 val update_test_next_output : (semantics -> equivalence -> process -> (fst_ord, name) Subst.t -> (process * output_gathering) list -> unit) -> unit
 
 val update_test_next_input : (semantics -> equivalence -> process -> (fst_ord, name) Subst.t -> (process * input_gathering) list -> unit) -> unit
+
+(** {4 Generalized POR} *)
+
+(** Simplified symbolic representation of actions (term denotes channel). Used by generalized POR. *)
+type visAct =
+  | InS of protocol_term
+  | OutS of protocol_term
+	      
+val displayVisAction : visAct -> string

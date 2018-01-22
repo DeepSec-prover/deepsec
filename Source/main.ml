@@ -107,13 +107,15 @@ let parse_file path =
 
 let start_time = ref (Unix.time ())
 
+let print_debug_por_gen_showExplo = ref false
+
 let rec excecute_queries id = function
   | [] -> []
   | (Process.Trace_Equivalence,exproc1,exproc2)::q ->
     start_time :=  (Unix.time ());
 
     let result =
-      if Process_determinate.is_action_determinate exproc1 && Process_determinate.is_action_determinate exproc2
+      if not(!Config.por_gen) && Process_determinate.is_action_determinate exproc1 && Process_determinate.is_action_determinate exproc2
       then
         let conf1 = Process_determinate.configuration_of_expansed_process exproc1 in
         let conf2 = Process_determinate.configuration_of_expansed_process exproc2 in
@@ -143,6 +145,22 @@ let rec excecute_queries id = function
 
         Printf.printf "Executing query %d...\n" id;
         flush_all ();
+        
+        (* If generalized POR is enable, compute symbolic traces to be explored *)
+        let trs =
+          if !Config.por_gen
+          then begin
+	      Printf.printf "[G-POR] Applying generalized POR engine and computing set of reduced, symbolic traces to be explored...\n%!";
+	      let t = Sys.time() in
+	      let p1 = Por.importProcess proc1
+	      and p2 = Por.importProcess proc2 in
+	      Printf.printf "[G-POR] Symbolic processes living in the symbolic LTS have been computed in %fs.\n%!" (Sys.time() -. t);
+	      let trs = Por.computeTraces p1 p2 in
+	      Printf.printf "[G-POR] A set of symbolic traces to be explored has been computed in %fs.\n%!" (Sys.time() -. t);
+	      if !print_debug_por_gen_showExplo then begin Printf.printf "[G-POR] Set of reduced traces: \n"; Por.displaySetTraces trs; end;
+	      trs
+            end
+          else Por.emptySetTraces in
 
         if !Config.distributed
         then
@@ -286,6 +304,11 @@ let _ =
       "-no_display_attack_trace",
       Arg.Clear(Config.display_trace),
       " Do not display the attack trace and only indicate whether queries are true or false. This could be activated for efficiency purposes."
+    );
+    (
+      "-with_por_gen",
+      Arg.Set Config.por_gen,
+      " [!Experimental!] Uses generic Partial Order Reductions (POR) techniques to significantly improve performance. Contrary to the built-in POR optimizations, those do not assume protocols given as inputs are action-determinate.\n"
     );
   ]
   in
