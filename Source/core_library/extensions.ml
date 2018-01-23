@@ -68,6 +68,7 @@ module Map = struct
     val equal: ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
     val iter: (key -> 'a -> unit) -> 'a t -> unit
     val fold: (key -> 'a -> 'b -> 'b) -> 'a t -> 'b -> 'b
+    val fold_right : ('b  -> 'a -> 'b) -> 'b -> 'a t -> 'b
     val tail_iter : ('a -> (unit -> unit) -> unit) -> 'a t -> (unit -> unit) -> unit
     val tail_iter_until : ('a -> (unit -> unit) -> unit) -> ('a -> bool) -> 'a t -> (unit -> unit) -> unit
     val for_all: (key -> 'a -> bool) -> 'a t -> bool
@@ -92,6 +93,9 @@ module Map = struct
     val find_and_replace : (key -> 'a -> bool) -> ('a -> 'a) -> 'a t -> ('a * 'a t) option
     val map: ('a -> 'b) -> 'a t -> 'b t
     val mapi: (key -> 'a -> 'b) -> 'a t -> 'b t
+    val search : ('a -> bool) -> 'a t -> 'a
+    val search_opt : ('a -> bool) -> 'a t -> 'a option
+    val search_key_opt : ('a -> bool) -> 'a t -> key option
   end
 
   module Make(Ord: OrderedType) = struct
@@ -415,6 +419,12 @@ module Map = struct
       | Node {l; v; d; r; _} ->
           fold f r (f v d (fold f l accu))
 
+    let rec fold_right f accu m =
+      match m with
+        Empty -> accu
+      | Node {l; d; r; _} ->
+          fold_right f (f (fold_right f accu r) d) l
+
     let rec tail_iter_until f f_stop m f_next = match m with
       | Empty -> f_next ()
       | Node {l; d; r; _} ->
@@ -607,6 +617,28 @@ module Map = struct
     let choose = min_binding
 
     let choose_opt = min_binding_opt
+
+    let rec tail_search_opt f_next f = function
+      | Empty -> f_next ()
+      | Node n when f n.d -> Some n.d
+      | Node n -> tail_search_opt (fun () -> tail_search_opt f_next f n.r) f n.l
+
+    let search_opt f m = tail_search_opt (fun () -> None) f m
+
+    let rec tail_search_key_opt f_next f = function
+      | Empty -> f_next ()
+      | Node n when f n.d -> Some n.v
+      | Node n -> tail_search_key_opt (fun () -> tail_search_key_opt f_next f n.r) f n.l
+
+    let search_key_opt f m = tail_search_key_opt (fun () -> None) f m
+
+
+    let rec tail_search f_next f = function
+      | Empty -> f_next ()
+      | Node n when f n.d -> n.d
+      | Node n -> tail_search (fun () -> tail_search f_next f n.r) f n.l
+
+    let search f m = tail_search (fun () -> raise Not_found) f m
 
   end
 end

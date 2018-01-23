@@ -63,7 +63,7 @@ let print_index path n res_list =
               | _ -> "not equivalent"
             )
       	    (Display.mkRuntime rt)
-      	    (if !Config.distributed then "Workers: "^(Distributed_equivalence.DistribEquivalence.display_workers ()) else "Not distributed")
+      	    (if !Config.distributed then "Workers: "^(Distributed_equivalence.DistribEquivalence.display_workers ())^" - nb_sets="^(string_of_int !Distributed_equivalence.DistribEquivalence.minimum_nb_of_jobs) else "Not distributed")
       	    k !Config.tmp_file;
                 print_queries ((k+1), tl)
       	| (_ , _) -> Config.internal_error "Number of queries and number of results differ"
