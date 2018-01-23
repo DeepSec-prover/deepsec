@@ -479,7 +479,7 @@ let display_simple_det_process_HTML ?(rho=None) ?(margin_px=15) ?(hidden=false) 
           | [_]
           | []  -> Config.internal_error "[process.ml >> display_expansed_process_HTML] The only case the list in Par contains a single element is if the multiplicity is not 1."
           | p::q_list ->
-              let str_begin = str_div margin "( PAR " in
+              let str_begin = str_div margin "(" in
 
               let str_p = sub_display_process (margin+1) false p
               in
@@ -502,14 +502,14 @@ let display_simple_det_process_HTML ?(rho=None) ?(margin_px=15) ?(hidden=false) 
         begin match p_list with
           | [_]
           | []  -> Config.internal_error "[process.ml >> display_expansed_process_HTML] The only case the list in Par contains a single element is if the multiplicity is not 1."
-          | (channels,p)::q_list ->
-              let str_begin = str_div margin (Printf.sprintf "( MULT [%s]" (display_list (Symbol.display Latex) "," channels)) in
+          | (_,p)::q_list ->
+              let str_begin = str_div margin "(" in
 
               let str_p = sub_display_process (margin+1) false p
               in
               let str_q_list =
-                List.fold_left (fun acc_str (channels,p) ->
-                  let str_begin = str_div margin (Printf.sprintf ")&nbsp;|&nbsp;( [%s]" (display_list (Symbol.display Latex) "," channels)) in
+                List.fold_left (fun acc_str (_,p) ->
+                  let str_begin = str_div margin ")&nbsp;|&nbsp;(" in
                   let str_p = sub_display_process (margin+1) false p
                   in
                   acc_str ^ str_begin ^ str_p
