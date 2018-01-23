@@ -42,7 +42,13 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
       | [csys_1; csys_2] when
           ((Constraint_system.get_additional_data csys_1).origin_process = Left && (Constraint_system.get_additional_data csys_2).origin_process = Right) ||
           ((Constraint_system.get_additional_data csys_1).origin_process = Right && (Constraint_system.get_additional_data csys_2).origin_process = Left)
-          -> ()
+          ->
+            Printf.printf "<p>Application of one transition <br><br>";
+            Printf.printf "<p>Configuration 1\n";
+            Process_determinate.display_configuration (Constraint_system.get_additional_data csys_1).configuration;
+            Printf.printf "</p><p>Configuration 2\n";
+            Process_determinate.display_configuration (Constraint_system.get_additional_data csys_2).configuration;
+            Printf.printf "</p></p>\n";
       | _ -> Config.internal_error "[equivalence_determinate >> apply_one_transition_and_rules] There should be only two constraint systems: one left, one right."
   );
 
