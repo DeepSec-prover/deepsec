@@ -43,15 +43,21 @@ let freshName s =
     else search (n+1) in
   search !freshNames
 
-let str_of_name ch =
-  if Term.is_name ch
-  then let name = Term.name_of ch in
+let str_of_name n =
+  if Term.is_name n
+  then let name = Term.name_of n in
        Term.Name.display out_mode ~rho:rho name
-  else err (Printf.sprintf "The following term is not a name: %s." (Term.display out_mode ~rho:rho at ch))
-  
+  else err (Printf.sprintf "The following term is not a name: %s." (Term.display out_mode ~rho:rho at n))
+
+let is_constant c = Term.is_function c && Term.Symbol.get_arity (Term.root c) = 0
+
+let str_of_constant c =
+  if is_constant c
+  then Term.Symbol.display out_mode (Term.root c)
+  else err (Printf.sprintf "The following term is not a constant: %s." (Term.display out_mode ~rho:rho at c))
 
 let importChannel ch =          (* channels are names in Deepsec *)
-  let str_ch = str_of_name ch in
+  let str_ch = str_of_constant ch in
   let intCh = try Hashtbl.find tblChannel str_ch
               with Not_found -> begin Hashtbl.add tblChannel str_ch !intChannel;
                                       incr(intChannel);
@@ -71,6 +77,7 @@ let importName n =
 let rec importTerm = function
   | t when Term.is_variable t -> importVar (Term.variable_of t)
   | t when Term.is_name t -> importName (Term.name_of t)
+  | t when is_constant t ->  Porridge.Frame.Term.var (str_of_constant t)
   | t when Term.is_function t ->
      let symb = Term.root t in
      let args = Term.get_args t in
@@ -183,7 +190,7 @@ let tracesPersistentSleepEquiv p1 p2 =
   RedLTS.traces sinit
 	       
 let isSameChannel chPOR ch =
-  let strCh = str_of_name ch in
+  let strCh = str_of_constant ch in
   let intCh = try Hashtbl.find tblChannel strCh
 	      with Not_found -> err "[Internal error] Channel is not present in HashTbl." in
   chPOR == Porridge.Channel.of_int intCh (* == since channel are private int, OK? *)
@@ -220,7 +227,7 @@ let displaySetTraces trs = RedLTS.display_traces trs
 
 let displayActPor act =
   let aux ch =
-    let strCh = str_of_name ch in
+    let strCh = str_of_constant ch in
     let intCh = try Hashtbl.find tblChannel strCh
 		with Not_found -> err "[Internal error] Channel is not present in HashTbl." in
     Porridge.Channel.to_char (Porridge.Channel.of_int intCh) in
