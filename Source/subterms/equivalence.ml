@@ -20,17 +20,21 @@ type symbolic_process =
 (*********************)
 
 let por_continue csys_set trs =
-  (* if !print_debug_por_gen_showExplo
-   * then begin Printf.printf "Current set of symbolic traces to explore: \n"; Por.displaySetTraces trs; Printf.printf "\n%!"; end; *)
+  if !print_debug_por_gen_showExplo
+  then begin Printf.printf "Current set of symbolic traces to explore: \n"; Por.displaySetTraces trs; Printf.printf "\n\n%!"; end;
   let csys = Constraint_system.Set.choose csys_set in
   let trace = (Constraint_system.get_additional_data csys).trace in
   match Por.isEnable trace trs with
   | None ->
      if !print_debug_por_gen_showExplo then
        Printf.printf "[G-POR] ---- Last visible action is not enabled in symbolic POR so this exploration is stopped.\n%!" ;
-     Printf.printf "Set of constraint systems: %s\n" (Constraint_system.Set.display Display.HTML ~rho:None csys_set) ;
+     (* DEBUG: *)
+     (* Printf.printf "Set of constraint systems:\n";
+      * List.iter (fun csys -> Printf.printf "Proc(s)=<<<%s>>>\n\n" (Process.display_process_testing None (fun i -> i) csys))
+      *   (List.map (fun csys -> (Constraint_system.get_additional_data csys).current_process) (Constraint_system.Set.elements csys_set)) ; *)
+     (* begin Printf.printf "Current set of symbolic traces to explore: \n"; Por.displaySetTraces trs; Printf.printf "\n%!"; end; *)
      incr(count_stop) ;
-     false, trs
+     true, trs
   | Some (act, trs_next) -> 
      if !print_debug_por_gen_showExplo then
        (match act with
@@ -46,7 +50,7 @@ let apply_one_transition_and_rules_for_trace_in_classic trs csys_set size_frame 
   
   let opti_csys_set = Constraint_system.Set.optimise_snd_ord_recipes csys_set in
 
-  let continue, trs_new = 
+  let continue, trs_next = 
     (* ** [Generalized POR] stop exploration if trace explores so far is not in the reduced set of traces computed by Porridge *)
     if !Config.por_gen
     then por_continue opti_csys_set trs
@@ -109,7 +113,7 @@ let apply_one_transition_and_rules_for_trace_in_classic trs csys_set size_frame 
         let origin_process = (Constraint_system.get_additional_data csys).origin_process in
         if Constraint_system.Set.for_all (fun csys -> (Constraint_system.get_additional_data csys).origin_process = origin_process) csys_set
         then raise (Not_Trace_Equivalent csys)
-        else f_continuation csys_set size_frame f_next
+        else f_continuation trs_next csys_set size_frame f_next
     in
 
     (*** Generate the set for the next output ***)
@@ -164,7 +168,7 @@ let apply_one_transition_and_rules_for_trace_in_classic trs csys_set size_frame 
         let origin_process = (Constraint_system.get_additional_data csys).origin_process in
         if Constraint_system.Set.for_all (fun csys -> (Constraint_system.get_additional_data csys).origin_process = origin_process) csys_set
         then raise (Not_Trace_Equivalent csys)
-        else f_continuation csys_set (size_frame + 1) f_next
+        else f_continuation trs_next csys_set (size_frame + 1) f_next
     in
 
     Constraint_system.Rule.apply_rules_after_output false out_apply_final_test !csys_set_for_output
@@ -172,7 +176,7 @@ let apply_one_transition_and_rules_for_trace_in_classic trs csys_set size_frame 
 
 let apply_one_transition_and_rules_for_trace_in_private trs csys_set size_frame f_continuation f_next =
 
-  let continue, trs_new = 
+  let continue, trs_next = 
     (* ** [Generalized POR] stop exploration if trace explores so far is not in the reduced set of traces computed by Porridge *)
     if !Config.por_gen
     then por_continue csys_set trs
@@ -243,7 +247,7 @@ let apply_one_transition_and_rules_for_trace_in_private trs csys_set size_frame 
       then raise (Not_Trace_Equivalent csys)
       else
         let opti_csys_set = Constraint_system.Set.optimise_snd_ord_recipes csys_set in
-        f_continuation opti_csys_set size_frame f_next
+        f_continuation trs_next opti_csys_set size_frame f_next
   in
 
   (*** Generate the set for the next output ***)
@@ -306,7 +310,7 @@ let apply_one_transition_and_rules_for_trace_in_private trs csys_set size_frame 
       then raise (Not_Trace_Equivalent csys)
       else
         let opti_csys_set = Constraint_system.Set.optimise_snd_ord_recipes csys_set in
-        f_continuation opti_csys_set (size_frame + 1) f_next
+        f_continuation trs_next opti_csys_set (size_frame + 1) f_next
   in
 
   Constraint_system.Rule.apply_rules_after_output !private_channels_output out_apply_final_test !csys_set_for_output (fun () ->
@@ -353,12 +357,12 @@ let trace_equivalence_classic proc1 proc2 trs =
   let csys_set_1 = Constraint_system.Set.add csys_1 Constraint_system.Set.empty in
   let csys_set_2 = Constraint_system.Set.add csys_2 csys_set_1 in
 
-  let rec apply_rules csys_set frame_size f_next =
+  let rec apply_rules trs csys_set frame_size f_next =
     apply_one_transition_and_rules_for_trace_in_classic trs csys_set frame_size apply_rules f_next
   in
 
   try
-    apply_rules csys_set_2 0 (fun () -> ());
+    apply_rules trs csys_set_2 0 (fun () -> ());
     Equivalent
   with
     | Not_Trace_Equivalent csys -> Not_Equivalent csys
@@ -394,12 +398,12 @@ let trace_equivalence_private proc1 proc2 trs =
   let csys_set_1 = Constraint_system.Set.add csys_1 Constraint_system.Set.empty in
   let csys_set_2 = Constraint_system.Set.add csys_2 csys_set_1 in
 
-  let rec apply_rules csys_set frame_size f_next =
+  let rec apply_rules trs csys_set frame_size f_next =
     apply_one_transition_and_rules_for_trace_in_private trs csys_set frame_size apply_rules f_next
   in
 
   try
-    apply_rules csys_set_2 0 (fun () -> ());
+    apply_rules trs csys_set_2 0 (fun () -> ());
     Equivalent
   with
     | Not_Trace_Equivalent csys -> Not_Equivalent csys

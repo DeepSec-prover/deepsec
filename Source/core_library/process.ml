@@ -537,12 +537,12 @@ let display_action_testing rho id_rho = function
   | AChoice(c_mult_list) -> Printf.sprintf "_Choice(%s)" (display_list (display_content_mult_testing id_rho) "," c_mult_list)
 
 let display_content_testing rho id_rho c =
-  Printf.sprintf "{ %d; %s }"
+  Printf.sprintf "{ ID: %d; Action: %s }"
     (id_rho c.id)
     (display_action_testing rho id_rho c.action)
 
 let display_action_process_testing rho id_rho symb =
-  Printf.sprintf "{ %s; %s; %s }"
+  Printf.sprintf "{cont_mult: %s; var_renaming: %s; name_renaming: %s }"
     (display_content_mult_testing id_rho symb.content_mult)
     (Variable.Renaming.display Testing ~rho:rho Protocol symb.var_renaming)
     (Name.Renaming.display Testing ~rho:rho symb.name_renaming)
@@ -572,7 +572,7 @@ let get_list_of_contents process =
 let display_process_testing rho id_rho process =
   let content_list = get_list_of_contents process in
 
-  Printf.sprintf "{ [ %s ], [ %s ] }"
+  Printf.sprintf "{ [content: %s ]  -----  [proc: %s ] }"
     (display_list (display_content_testing rho id_rho) ";" content_list)
     (display_list (display_action_process_testing rho id_rho) ";" process)
 

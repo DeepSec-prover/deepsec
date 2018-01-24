@@ -17,7 +17,7 @@ exception Not_Trace_Equivalent of symbolic_process Constraint_system.t
 
 val apply_one_transition_and_rules_for_trace_equivalence :
   semantics -> Por.trs -> symbolic_process Constraint_system.Set.t -> int ->
-  (symbolic_process Constraint_system.Set.t -> int -> (unit -> unit) -> unit) ->
+  (Por.trs -> symbolic_process Constraint_system.Set.t -> int -> (unit -> unit) -> unit) ->
   (unit -> unit) ->
   unit
 

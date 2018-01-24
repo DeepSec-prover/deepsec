@@ -212,10 +212,10 @@ let isEnableAction actApte = function
 let rec isEnable trace trs =
   let rec look_action = function
     | Process.Trace.TrOutput(_,ch,_,_,_,_) :: _ ->
-       Printf.printf "[G-POR] ---- Found last action: In(%s)\n%!" (str_of_constant ch) ;
+       Printf.printf "[G-POR] ---- Found last action: Out(%s)\n%!" (str_of_constant ch) ;
        if is_constant ch then Some (Process.OutS ch) else err "CACA1"
     | Process.Trace.TrInput(_,ch,_,_,_,_) :: _ ->
-       Printf.printf "[G-POR] ---- Found last action: Out(%s)\n%!" (str_of_constant ch) ;
+       Printf.printf "[G-POR] ---- Found last action: In(%s)\n%!" (str_of_constant ch) ;
        if is_constant ch then Some (Process.InS ch) else err "CACA2"
     | _ :: tl -> look_action tl
     | [] -> None in
