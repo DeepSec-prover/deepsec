@@ -380,6 +380,23 @@ let process_of_configuration conf =
     | [p] -> p
     | _ -> Par(sorted_all)
 
+let display_trace = function
+  | TrInput(f,xsnd,t,pos) ->
+      Printf.sprintf "\\(Input(%s,%s,%s,%d)\\)"
+        (Symbol.display Latex f)
+        (Variable.display Latex Recipe ~v_type:true xsnd)
+        (display Latex Protocol t)
+        pos
+  | TrOutput(f,ax,t,pos) ->
+      Printf.sprintf "\\(Output(%s,%s,%s,%d)\\)"
+        (Symbol.display Latex f)
+        (Axiom.display Latex ax)
+        (display Latex Protocol t)
+        pos
+
+let display_label label =
+  Display.display_list string_of_int "." label
+
 let display_simple_det_process_HTML ?(rho=None) ?(margin_px=15) ?(hidden=false) ?(highlight=[]) ?(id="") ?(subst=Subst.identity) sdet_proc =
 
   let apply =
@@ -485,14 +502,14 @@ let display_simple_det_process_HTML ?(rho=None) ?(margin_px=15) ?(hidden=false) 
         begin match p_list with
           | [_]
           | []  -> Config.internal_error "[process.ml >> display_expansed_process_HTML] The only case the list in Par contains a single element is if the multiplicity is not 1."
-          | (channels,p)::q_list ->
-              let str_begin = str_div margin (Printf.sprintf "( [%s]" (display_list (Symbol.display Latex) "," channels)) in
+          | (_,p)::q_list ->
+              let str_begin = str_div margin "(" in
 
               let str_p = sub_display_process (margin+1) false p
               in
               let str_q_list =
-                List.fold_left (fun acc_str (channels,p) ->
-                  let str_begin = str_div margin (Printf.sprintf ")&nbsp;|&nbsp;( [%s]" (display_list (Symbol.display Latex) "," channels)) in
+                List.fold_left (fun acc_str (_,p) ->
+                  let str_begin = str_div margin ")&nbsp;|&nbsp;(" in
                   let str_p = sub_display_process (margin+1) false p
                   in
                   acc_str ^ str_begin ^ str_p
@@ -650,6 +667,35 @@ let display_trace_HTML ?(rho=None) ?(title="Display of the trace") id ?(fst_subs
   html_script := Printf.sprintf "%s            </table>\n" !html_script;
 
   !html_script
+
+let display_configuration conf =
+  let display_det_process det_proc =
+    Printf.sprintf "Label = %s\nProcess =\n%s" (display_label det_proc.label_p) (display_simple_det_process_HTML det_proc.proc)
+  in
+
+  Printf.printf "=======Configuration======\n";
+  Printf.printf "Sure_input_proc:<br>\n%s" (display_list display_det_process "//////\n" conf.sure_input_proc);
+  Printf.printf "Sure_output_proc:<br>\n%s" (display_list display_det_process "//////\n" conf.sure_output_proc);
+
+  let display_det_process_list l =
+    display_list display_det_process "1-------\n" l
+  in
+  let display_det_process_list_list l =
+    display_list display_det_process_list "2-------\n" l
+  in
+  Printf.printf "Sure_input_mult_proc:<br>\n%s" (display_list display_det_process_list_list "//////\n" conf.sure_input_mult_proc);
+
+  let display_option_det_process op = match op with
+    | None -> print_string "None\n"
+    | Some p -> Printf.printf "%s" (display_det_process p)
+  in
+  Printf.printf "sure_uncheked_skeletons:<br>\n";
+  display_option_det_process conf.sure_uncheked_skeletons;
+  Printf.printf "unsure_proc:\n";
+  display_option_det_process conf.unsure_proc;
+  Printf.printf "focused_proc\n";
+  display_option_det_process conf.focused_proc;
+  Printf.printf "trace:<br>\n%s" (display_list display_trace "; " conf.trace)
 
 (**** Testing ****)
 
@@ -998,6 +1044,13 @@ let compress_initial_configuration conf1 conf2 =
   let comp_p1,_ = compress_process SymbolSet.empty p1
   and comp_p2,_ = compress_process SymbolSet.empty p2 in
 
+  Config.debug (fun () ->
+    Printf.printf "Compress Configuration 1:\n%s" (display_simple_det_process_HTML comp_p1);
+    Printf.printf "Compress Configuration 2:\n%s" (display_simple_det_process_HTML comp_p2);
+
+    flush_all ();
+  );
+
   let extracted_ch1 = retrieve_par_mult_channels comp_p1
   and extracted_ch2 = retrieve_par_mult_channels comp_p2 in
 
@@ -1345,7 +1398,7 @@ let rec is_faulty_block block = function
       begin match compare_label block.label_b b_i.label_b with
         | -1 ->
             block.maximal_var < b_i.minimal_axiom &&
-              IntSet.for_all (fun ax -> ax < b_i.minimal_axiom || b_i.maximal_axiom < ax) block.used_axioms
+              IntSet.for_all (fun ax -> ax < b_i.minimal_axiom) block.used_axioms
         | 1 -> is_faulty_block block q
         | _ -> false
       end
@@ -1733,8 +1786,12 @@ let search_next_rule conf = match conf.focused_proc with
       then RNegOut
       else
         match conf.sure_input_proc with
-          | [] -> RNothing
           | [ { proc = Start _; _ } ] -> RStart
+          | [] ->
+              begin match conf.sure_input_mult_proc with
+                | [] -> RNothing
+                | _ -> RStartIn
+              end
           | _ -> RStartIn
 
 let apply_start conf =

@@ -95,3 +95,5 @@ val display_block : block list -> (snd_ord, axiom) Subst.t -> string
 val display_process_HTML : ?rho: display_renamings option -> ?margin_px:int -> ?hidden:bool -> ?highlight:int list -> ?id:string -> ?subst: (fst_ord, name) Subst.t -> configuration -> string
 
 val display_trace_HTML : ?rho: display_renamings option ->  ?title: string -> string ->  ?fst_subst: (fst_ord, name) Subst.t -> ?snd_subst: (snd_ord, axiom) Subst.t -> configuration -> configuration -> string
+
+val display_configuration : configuration -> unit

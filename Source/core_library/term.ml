@@ -57,6 +57,7 @@ and ('a,'b) link =
   | TLink of ('a, 'b) term
   | VLink of ('a, 'b) variable
   | FLink
+  | XLink of (snd_ord, axiom) variable
 
 and ('a,'b) variable =
   {
@@ -153,11 +154,11 @@ module Variable = struct
 
   let snd_ord_type n = n
 
-  let infinite_snd_ord_type = -1
+  let infinite_snd_ord_type = max_int
 
-  let has_infinite_type v = v.var_type = -1
+  let has_infinite_type v = v.var_type = max_int
 
-  let has_not_infinite_type v = v.var_type <> -1
+  let has_not_infinite_type v = v.var_type <> max_int
 
   let fresh_with_label q ty s =
     let var = { label = s; index = !accumulator; link = NoLink; quantifier = q; var_type = ty } in
@@ -1242,13 +1243,13 @@ let rec internal_var_occurs_or_out_of_world (var:snd_ord_variable) (r:recipe) =
     match r.term with
       | Var(v) when Variable.is_equal v var -> true
       | Var({link = TLink t; _}) -> internal_var_occurs_or_out_of_world var t
-      | Var v when v.var_type = -1 || v.var_type > var.var_type -> true
+      | Var v when v.var_type > var.var_type -> true
       | AxName ax when ax > var.var_type -> true
       | Func(_,args) -> List.exists (internal_var_occurs_or_out_of_world var) args
       | _ -> false
 
 let var_occurs_or_out_of_world (var:snd_ord_variable) (r:recipe) =
-  if var.var_type = -1
+  if var.var_type = max_int
   then var_occurs var r
   else internal_var_occurs_or_out_of_world var r
 
@@ -1461,7 +1462,6 @@ let rec display out ?(rho=None) at term = match term.term with
 module Subst = struct
 
   type ('a, 'b) t = (('a, 'b) variable * ('a, 'b) term) list
-
   (******* Generation **********)
 
   let identity = []
@@ -1492,6 +1492,17 @@ module Subst = struct
         then false
         else check_disjoint_domain q
 
+  (*********** Display ************)
+
+  let display out ?(rho=None) at subst =
+    let display_element (x,t) =
+      Printf.sprintf "%s %s %s" (Variable.display out ~rho:rho at x) (rightarrow out) (display out ~rho:rho at t)
+    in
+
+    if subst = []
+    then emptyset out
+    else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list display_element ", " subst) (rcurlybracket out)
+
   let create_multiple (type a) (type b) (at:(a,b) atom) (l_subst:((a,b) variable * (a,b) term) list) =
     Config.debug (fun () ->
       match at with
@@ -1509,7 +1520,11 @@ module Subst = struct
             then Config.internal_error "[term.ml >> Subst.create_multiple] The substution is not acyclic";
 
             if List.exists (fun (x,t) -> var_occurs_or_out_of_world x t) l_subst
-            then Config.internal_error "[term.ml >> Subst.create_multiple] The substitution is not unifiable (type issue)"
+            then
+              begin
+                Printf.printf "The substitution = %s\n" (display Latex at l_subst);
+                Config.internal_error "[term.ml >> Subst.create_multiple] The substitution is not unifiable (type issue)"
+              end
     );
 
     l_subst
@@ -1838,11 +1853,7 @@ module Subst = struct
     | Var {link = TLink t ; _}, _ -> unify_term_recipe t t2
     | _, Var {link = TLink t; _} -> unify_term_recipe t1 t
     | Var v1, Var v2 ->
-        if v2.var_type = -1
-        then (v2.link <- TLink t1; linked_variables_snd := v2 :: !linked_variables_snd)
-        else if v1.var_type = -1
-        then (v1.link <- TLink t2; linked_variables_snd := v1 :: !linked_variables_snd)
-        else if v1.var_type < v2.var_type
+        if v1.var_type < v2.var_type
         then (v2.link <- TLink t1; linked_variables_snd := v2 :: !linked_variables_snd)
         else if v1.var_type > v2.var_type
         then (v1.link <- TLink t2; linked_variables_snd := v1 :: !linked_variables_snd)
@@ -1854,45 +1865,6 @@ module Subst = struct
     | AxName n1, AxName n2 when n1 = n2 -> ()
     | Func(f1,args1), Func(f2,args2) when f1 == f2 -> List.iter2 unify_term_recipe args1 args2
     | _ -> raise Not_unifiable
-
-  (*let rec unify_term : 'a 'b. ('a,'b) atom -> ('a,'b) term -> ('a,'b) term -> unit = fun (type a) (type b) (at:(a, b) atom) (t1:(a, b) term) (t2:(a, b) term) -> match t1.term,t2.term with
-    | Var(v1), Var(v2) when Variable.is_equal v1 v2 -> ()
-    | Var({link = TLink t ; _}), _ -> unify_term at t t2
-    | _, Var({link = TLink t; _}) -> unify_term at t1 t
-    | Var(v1),Var(v2) ->
-        begin match at with
-          | Protocol ->
-              if v1.quantifier = Universal || (v1.quantifier = Existential && v2.quantifier = Free) || (v1.quantifier = v2.quantifier && Variable.order at v1 v2 < 0)
-              then link at v1 t2
-              else link at v2 t1
-          | Recipe ->
-              if v2.var_type = -1
-              then link at v2 t1
-              else if v1.var_type = -1
-              then link at v1 t2
-              else if v1.var_type < v2.var_type
-              then link at v2 t1
-              else if v1.var_type > v2.var_type
-              then link at v1 t2
-              else if v1.quantifier = Universal || (v1.quantifier = Existential && v2.quantifier = Free) || (v1.quantifier = v2.quantifier &&  Variable.order at v1 v2 < 0)
-              then link at v1 t2
-              else link at v2 t1
-        end
-    | Var(v1), _ ->
-        begin match at with
-          | Protocol -> if var_occurs v1 t2 then raise Not_unifiable else link at v1 t2
-          | Recipe -> if var_occurs_or_out_of_world v1 t2 then raise Not_unifiable else link at v1 t2
-        end
-    | _, Var(v2) ->
-        begin match at with
-          | Protocol -> if var_occurs v2 t1  then raise Not_unifiable else link at v2 t1
-          | Recipe -> if var_occurs_or_out_of_world v2 t1 then raise Not_unifiable else link at v2 t1
-        end
-    | AxName(n1), AxName(n2) when AxName.is_equal at n1 n2 -> ()
-    | Func(f1,args1), Func(f2,args2) ->
-        if Symbol.is_equal f1 f2 then List.iter2 (unify_term at) args1 args2 else raise Not_unifiable
-    | _,_ -> raise Not_unifiable
-  *)
 
   let unify_protocol (eq_list:(protocol_term * protocol_term) list) =
     try
@@ -1909,6 +1881,21 @@ module Subst = struct
       linked_variables_fst := [];
       raise Not_unifiable
 
+  let unify_protocol_opt (eq_list:(protocol_term * protocol_term) list) =
+    try
+      List.iter (fun (t1,t2) -> unify_term_protocol t1 t2) eq_list;
+
+      let subst = List.fold_left (fun acc var -> (var,follow_link_var var)::acc) [] !linked_variables_fst in
+
+      List.iter (fun var -> var.link <- NoLink) !linked_variables_fst;
+      linked_variables_fst := [];
+
+      Some subst
+    with Not_unifiable ->
+      List.iter (fun var -> var.link <- NoLink) !linked_variables_fst;
+      linked_variables_fst := [];
+      None
+
   let unify_recipe (eq_list:(recipe * recipe) list) =
     try
       List.iter (fun (t1,t2) -> unify_term_recipe t1 t2) eq_list;
@@ -1924,44 +1911,6 @@ module Subst = struct
       linked_variables_snd := [];
       raise Not_unifiable
 
-  (*let unify : 'a 'b. ('a,'b) atom -> (('a,'b) term * ('a, 'b) term) list -> ('a, 'b) t = fun (type a) (type b) (at:(a,b) atom) (eq_list:((a,b) term * (a,b) term) list) ->
-    Config.debug (fun () ->
-      if retrieve at <> []
-      then Config.internal_error "[term.ml >> Subst.unify_generic] The list of linked variables should be empty"
-    );
-
-    try
-      List.iter (fun (t1,t2) -> unify_term at t1 t2) eq_list;
-      let subst = List.fold_left (fun acc var -> (var,follow_link_var var)::acc) [] (retrieve at) in
-      cleanup at;
-      Config.debug (fun () ->
-        match at with
-          | Protocol ->
-              if not (check_disjoint_domain subst)
-              then Config.internal_error "[term.ml >> Subst.unify] A variable appears twice in the domain";
-
-              if List.exists (fun (x,_) -> List.exists (fun (_,t) -> var_occurs x t) subst) subst
-              then Config.internal_error "[term.ml >> Subst.unify] The substution is not acyclic"
-          | Recipe ->
-              if not (check_disjoint_domain subst)
-              then Config.internal_error "[term.ml >> Subst.unify] A variable appears twice in the domain";
-
-              if List.exists (fun (x,_) -> List.exists (fun (_,t) -> var_occurs x t) subst) subst
-              then Config.internal_error "[term.ml >> Subst.unify] The substution is not acyclic";
-
-              if List.exists (fun (x,t) -> var_occurs_or_out_of_world x t) subst
-              then
-                begin
-                  Printf.printf "Terms %s" (display_list (fun (t1,t2) -> Printf.sprintf "%s = %s\n" (display Latex Recipe t1) (display Latex Recipe t2)) "\n" eq_list);
-                  Printf.printf "The subst %s" (display_list (fun (x,t2) -> Printf.sprintf "%s = %s\n" (display Latex Recipe (of_variable x)) (display Latex Recipe t2)) "\n" subst);
-                  Config.internal_error "[term.ml >> Subst.unify] The substitution is not unifiable (type issue)"
-                end
-      );
-      subst
-    with Not_unifiable ->
-      cleanup at;
-      raise Not_unifiable*)
-
   let is_unifiable (eq_list:(protocol_term * protocol_term) list) =
     try
       List.iter (fun (t1,t2) -> unify_term_protocol t1 t2) eq_list;
@@ -1970,34 +1919,10 @@ module Subst = struct
       linked_variables_fst := [];
 
       true
-
     with Not_unifiable ->
       List.iter (fun var -> var.link <- NoLink) !linked_variables_fst;
       linked_variables_fst := [];
       false
-
-  (*let is_unifiable (type a) (type b) (at:(a,b) atom) (eq_list:((a, b) term * (a, b) term) list) =
-    Config.debug (fun () ->
-      if retrieve at <> []
-      then Config.internal_error "[term.ml >> Subst.is_unifiable] The list of linked variables should be empty"
-    );
-
-    try
-      List.iter (fun (t1,t2) -> unify_term at t1 t2) eq_list;
-      cleanup at;
-      true
-    with Not_unifiable -> cleanup at; false*)
-
-  (*********** Display ************)
-
-  let display out ?(rho=None) at subst =
-    let display_element (x,t) =
-      Printf.sprintf "%s %s %s" (Variable.display out ~rho:rho at x) (rightarrow out) (display out ~rho:rho at t)
-    in
-
-    if subst = []
-    then emptyset out
-    else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list display_element ", " subst) (rcurlybracket out)
 
   (******* Syntactic match *******)
 
@@ -2147,7 +2072,7 @@ module Diseq = struct
           get_axioms_with_list t2 (fun _ -> true) (get_axioms_with_list t1 (fun _ -> true) acc)
         ) ax_list diseq_l
 
-  let of_substitution (sigma:(snd_ord,axiom) Subst.t) (l:(snd_ord, axiom) variable list) =
+  let of_substitution_recipe (sigma:(snd_ord,axiom) Subst.t) (l:(snd_ord, axiom) variable list) =
     if sigma = []
     then Bot
     else if l = []
@@ -2174,6 +2099,11 @@ module Diseq = struct
         then Bot
         else Diseq diseq
       end
+
+  let of_substitution_protocol (sigma:(fst_ord,name) Subst.t) =
+    if sigma = []
+    then Bot
+    else Diseq (Subst.equations_of sigma)
 
   let rec rename_universal_to_existential at term =
     if term.ground
@@ -2280,42 +2210,6 @@ module Diseq = struct
         match at with
           | Protocol -> ((apply_and_normalise_protocol subst diseq):(a,b) t)
           | Recipe -> ((apply_and_normalise_recipe subst diseq):(a,b) t)
-
-  (*let apply_and_normalise at subst = function
-    | Top -> Top
-    | Bot -> Bot
-    | Diseq diseq ->
-        Config.debug (fun () ->
-          if List.exists (fun (v,_) -> v.link <> NoLink) subst
-          then Config.internal_error "[term.ml >> Diseq.apply_substitution_and_normalise] Variables in the domain should not be linked"
-        );
-
-        Config.debug (fun () ->
-          if List.exists (fun (v,t) -> Variable.quantifier_of v = Universal || quantified_var_occurs Universal t) subst
-          then Config.internal_error "[term.ml >> Diseq.apply_substitution_and_normalise] Variables in the substitutions should not be universal"
-        );
-
-        (* Link the variables of the substitution *)
-        List.iter (fun (v,t) -> v.link <- (TLink t)) subst;
-
-        try
-          List.iter (fun (t1,t2) -> Subst.unify_term at t1 t2) diseq;
-
-          let linked_variables = elim_universal_variables (Subst.retrieve at) in
-
-          let result =
-            if linked_variables = []
-            then Bot
-            else Diseq(linked_variables)
-          in
-
-          Subst.cleanup at;
-          List.iter (fun (v,_) -> v.link <- NoLink) subst;
-          result
-        with Subst.Not_unifiable ->
-          Subst.cleanup at;
-          List.iter (fun (v,_) -> v.link <- NoLink) subst;
-          Top*)
 
   let display out ?(rho=None) at = function
     | Top -> top out
@@ -2900,6 +2794,14 @@ module Fact = struct
     cleanup_search Protocol;
     vars_fst
 
+  (********* Modification *********)
+
+  let apply_fst_function_on_deduction_fact f fact = { fact with df_term = f fact.df_term }
+
+  let apply_snd_function_on_deduction_fact f fact = { fact with df_recipe = f fact.df_recipe }
+
+  let apply_both_functions_on_deduction_fact f_fst f_snd fact = { df_term = f_fst fact.df_term; df_recipe = f_snd fact.df_recipe }
+
   (********* Testing *********)
 
   let is_fact psi = psi.equation_subst = []
@@ -3240,7 +3142,7 @@ module Rewrite_rules = struct
               List.assq v !assoc_list
             with
               | Not_found ->
-                  let v_r = Variable.fresh Recipe Existential (-1) in
+                  let v_r = Variable.fresh Recipe Existential max_int in
                   assoc_list := (v,v_r) :: !assoc_list;
                   v_r
           in
@@ -3301,7 +3203,7 @@ module Rewrite_rules = struct
               then Config.internal_error "[terml.ml >> Rewrite_rules.explore_skel_term] Linked variables should be empty (1).";
             );
 
-            let x_snd = Variable.fresh Recipe Existential (-1) in
+            let x_snd = Variable.fresh Recipe Existential max_int in
             let b_fct = BasicFact.create x_snd term in
             f_continuation x_snd term ({ term = Var x_snd; ground = false}) [b_fct]
           end
@@ -3318,7 +3220,7 @@ module Rewrite_rules = struct
           then Config.internal_error "[terml.ml >> Rewrite_rules.explore_skel_term] Linked variables should be empty (2).";
         );
 
-        let x_snd = Variable.fresh Recipe Existential (-1) in
+        let x_snd = Variable.fresh Recipe Existential max_int in
         let b_fct = BasicFact.create x_snd term in
         f_continuation x_snd term ({ term = Var x_snd; ground = false}) [b_fct]
     | _ -> Config.internal_error "[term.ml >> Rewrite_rules.explore_skel_term] There should not be any names in the rewrite rules."
@@ -3326,7 +3228,7 @@ module Rewrite_rules = struct
   and explore_skel_term_list f_continuation args =
     let (r_list,fct_list) =
       List.fold_right (fun t (acc_r,acc_fct) ->
-        let x_snd = Variable.fresh Recipe Existential (-1) in
+        let x_snd = Variable.fresh Recipe Existential max_int in
         let b_fct = BasicFact.create x_snd t in
         ((of_variable x_snd)::acc_r, b_fct::acc_fct)
       ) args ([],[])
@@ -3684,54 +3586,58 @@ end
 ***    Consequence      ***
 ***************************)
 
-module type SDF =
+module type K =
   sig
 
     type t
 
-    val exists : t -> (Fact.deduction -> bool) -> bool
+    val find_protocol_opt : t -> protocol_term -> recipe option
 
-    val find : t -> (Fact.deduction -> 'a option) -> 'a option
+    val find_recipe : t -> recipe -> protocol_term
 
-    type marked_result =
-      | Not_in_SDF
-      | Marked of protocol_term
-      | Unmarked of protocol_term * t
+    val find_recipe_opt : t -> recipe -> protocol_term option
 
-    val find_term_and_mark : t -> recipe -> marked_result
+    val find_recipe_with_var_type : t -> recipe -> protocol_term * int
+
+    val find_recipe_with_var_type_opt : t -> recipe -> (protocol_term * int) option
+
+    val find_unifier : t -> protocol_term -> int -> ((fst_ord, name) Subst.t -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
+  end
+
+module type IK =
+  sig
+
+    type t
+
+    val find_protocol_opt : t -> protocol_term -> recipe option
+
+    val find_recipe : t -> recipe -> protocol_term
   end
 
 module type DF =
   sig
     type t
 
-    val exists_within_var_type : int -> t -> (BasicFact.t -> bool) -> bool
+    val find_protocol_opt : t -> protocol_term -> recipe option
 
-    val find_within_var_type : int -> t -> (BasicFact.t -> 'a option) -> 'a option
+    val find_recipe : t -> snd_ord_variable -> protocol_term
 
-    val find : t -> (BasicFact.t -> 'a option) -> 'a option
-
-    val find_term : t -> snd_ord_variable -> protocol_term option
-
-    val iter : t -> (BasicFact.t -> unit) -> unit
+    val iter : t -> (snd_ord_variable -> protocol_term -> unit) -> unit
   end
 
-module type Uni =
+module type EqFst =
   sig
-    (** The type [set] represents sets of pairs of recipes and protocol terms. Intuitively, {% the set of subterm consequence of a constraint system
-        $\C$ is the set $\\{ (\xi,u) \in \Consequence{\Solved(\C) \cup \Df(\C)} \mid \xi \in \st{\InitInput(\C)} \cup \sstdeux{\Solved(\C)}\\}$. %}*)
-    type t
+    type ('a,'b) t
 
-    (** [find_protocol] {% $\Set$~$t$%} [f] returns [Some] {% $\xi$ if $(\xi,t) \in \Set$ %} and [f] {% $\xi$ %} returns [true]. Otherwise it returns [None].*)
-    val find_protocol_term : t -> protocol_term -> recipe option
+    val top : ('a, 'b) t
 
-    (** [iter] {% $\Set$ %} [f] applies the function [f] to all pairs {% $(\xi,t) \in \Set$.
-        Warning : The order in which the function [iter] goes through the pairs of $\Set$ is unspecified. %}*)
-    val iter : t -> (recipe -> protocol_term -> unit) -> unit
+    val bot : ('a, 'b) t
 
-    val add: t -> recipe -> protocol_term -> t
+    val wedge : ('a, 'b) t -> ('a, 'b) Diseq.t -> ('a, 'b) t
 
-    val exists : t -> recipe -> protocol_term -> bool
+    val is_bot : ('a, 'b) t -> bool
+
+    val is_top : ('a, 'b) t -> bool
   end
 
 module type EqMixed =
@@ -3749,361 +3655,247 @@ module type EqMixed =
     val is_top : t -> bool
   end
 
-module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) (Eq: EqMixed)= struct
+module Tools_Subterm (K:K) (IK:IK) (DF:DF) (Eq: EqMixed) (EqFst:EqFst) = struct
 
-  (***** Consequence ******)
+  (***** Consequence Recipe ******)
 
-  let partial_mem_recipe sdf df recipe =
+  let consequence_recipe (k:K.t) (df:DF.t) (recipe:recipe) =
 
-    let rec mem_list = function
-      | [] -> Config.internal_error "[term.ml >> Consequence_Subterm.partial_mem_recipe] The list should not be empty"
-      | [r] ->
-          begin match mem_term r with
-            | None -> None
-            | Some t -> Some (t.ground,[t])
-          end
+    let rec mem_list : recipe list -> bool * protocol_term list = function
+      | [] -> (true,[])
       | r::q_r ->
-          begin match mem_term r with
-            | None -> None
-            | Some t ->
-              begin match mem_list q_r with
-                | None -> None
-                | Some (g,l_t) -> Some(g&&t.ground,t::l_t)
-              end
-          end
+          let t = mem_term r in
+          let (g_l,t_l) = mem_list q_r in
+          (g_l&&t.ground,t::t_l)
 
-    and mem_term recipe = match recipe.term with
+    and mem_term : recipe -> protocol_term = fun recipe -> match recipe.term with
       | Func(f,args_r) when Symbol.is_constructor f ->
           if f.arity = 0
-          then Some ({term = Func(f,[]); ground = true})
+          then { term = Func(f,[]); ground = true }
           else
-            begin match mem_list args_r with
-              | None -> None
-              | Some (g,t_l) -> Some ({term = Func(f,t_l); ground = g})
-            end
-      | Func(_,_)
-      | AxName _ -> SDF.find sdf (fun fct -> if is_equal Recipe fct.Fact.df_recipe recipe then Some fct.Fact.df_term else None)
-      | Var v -> DF.find_term df v
-
+            let (g,t_l) = mem_list args_r in
+            { term = Func(f,t_l); ground = g}
+      | Func _
+      | AxName _ -> K.find_recipe k recipe
+      | Var v -> DF.find_recipe df v
     in
 
     mem_term recipe
 
-  let partial_mem_protocol sdf df pterm =
+  let consequence_recipe_with_IK k ik df recipe =
 
-    let rec mem_list = function
-      | [] -> Config.internal_error "[term.ml >> Consequence_Subterm.partial_mem_protocol] The list should not be empty"
-      | [t] ->
-          begin match mem_term t with
-            | None -> None
-            | Some r -> Some (r.ground,[r])
-          end
-      | t::q_t ->
-          begin match mem_term t with
-            | None -> None
-            | Some r ->
-              begin match mem_list q_t with
-                | None -> None
-                | Some (g,l_r) -> Some(g&&r.ground,r::l_r)
-              end
-          end
-
-    and mem_term pterm = match pterm.term with
-      | Func(f,_) when f.arity = 0 && f.public -> Some ({term = Func(f,[]); ground = true})
-      | Func(f,args_t) when f.public ->
-          begin match mem_list args_t with
-            | None ->
-                begin match SDF.find sdf (fun fct -> if is_equal Protocol fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
-                  | None -> DF.find df (fun b_fct -> if is_equal Protocol b_fct.BasicFact.pterm pterm then Some ({term = Var b_fct.BasicFact.var; ground = false}) else None)
-                  | Some r -> Some r
-                end
-            | Some (g,t_r) -> Some ({term = Func(f,t_r); ground = g})
-          end
-      | _ ->
-          begin match SDF.find sdf (fun fct -> if is_equal Protocol fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
-            | None -> DF.find df (fun b_fct -> if is_equal Protocol b_fct.BasicFact.pterm pterm then Some ({term = Var b_fct.BasicFact.var; ground = false}) else None)
-            | Some r -> Some r
-          end
-    in
-
-    mem_term pterm
-
-  let partial_consequence (type a) (type b) (at:(a,b) atom) sdf df (term:(a,b) term) = match at with
-    | Protocol ->
-        begin match partial_mem_protocol sdf df term with
-          | None -> None
-          | Some r -> (Some (r,term):(recipe * protocol_term) option)
-        end
-    | Recipe ->
-        begin match partial_mem_recipe sdf df term with
-          | None -> None
-          | Some t -> (Some (term,t):(recipe * protocol_term) option)
-        end
-
-  let partial_mem_additional_recipe sdf df b_fct_list recipe =
-
-    let rec mem_list = function
-      | [] -> Config.internal_error "[term.ml >> Consequence_Subterm.partial_mem_recipe] The list should not be empty"
-      | [r] ->
-          begin match mem_term r with
-            | None -> None
-            | Some t -> Some (t.ground,[t])
-          end
+    let rec mem_list : recipe list -> bool * protocol_term list = function
+      | [] -> (true,[])
       | r::q_r ->
-          begin match mem_term r with
-            | None -> None
-            | Some t ->
-              begin match mem_list q_r with
-                | None -> None
-                | Some (g,l_t) -> Some(g&&t.ground,t::l_t)
-              end
-          end
+          let t = mem_term r in
+          let (g_l,t_l) = mem_list q_r in
+          (g_l&&t.ground,t::t_l)
 
-    and mem_term recipe = match recipe.term with
+    and mem_term : recipe -> protocol_term = fun recipe -> match recipe.term with
       | Func(f,args_r) when Symbol.is_constructor f ->
           if f.arity = 0
-          then Some ({term = Func(f,[]); ground = true})
+          then { term = Func(f,[]); ground = true }
           else
-            begin match mem_list args_r with
-              | None -> None
-              | Some (g,t_l) -> Some ({term = Func(f,t_l); ground = g})
-            end
-      | Func(_,_)
-      | AxName _ -> SDF.find sdf (fun fct -> if is_equal Recipe fct.Fact.df_recipe recipe then Some fct.Fact.df_term else None)
-      | Var v ->
-          begin try
-            let b_fct = List.find (fun b_fct -> Variable.is_equal v b_fct.BasicFact.var) b_fct_list in
-            Some b_fct.BasicFact.pterm
-          with
-            | Not_found -> DF.find_term df v
-          end
-
-    in
-
-    mem_term recipe
-
-  let partial_mem_additional_protocol sdf df b_fct_list pterm =
-
-    let rec mem_list = function
-      | [] -> Config.internal_error "[term.ml >> Consequence_Subterm.partial_mem_protocol] The list should not be empty"
-      | [t] ->
-          begin match mem_term t with
-            | None -> None
-            | Some r -> Some (r.ground,[r])
-          end
-      | t::q_t ->
-          begin match mem_term t with
-            | None -> None
-            | Some r ->
-              begin match mem_list q_t with
-                | None -> None
-                | Some (g,l_r) -> Some(g&&r.ground,r::l_r)
-              end
-          end
-
-    and mem_term pterm = match pterm.term with
-      | Func(f,_) when f.arity = 0 && f.public -> Some ({term = Func(f,[]); ground = true})
-      | Func(f,args_t) when f.public ->
-          begin match mem_list args_t with
-            | None ->
-                begin try
-                  let b_fct = List.find (fun b_fct -> is_equal Protocol pterm b_fct.BasicFact.pterm) b_fct_list in
-                  Some ({term = Var b_fct.BasicFact.var; ground = false})
-                with
-                  | Not_found ->
-                      begin match SDF.find sdf (fun fct -> if is_equal Protocol fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
-                        | None -> DF.find df (fun b_fct -> if is_equal Protocol b_fct.BasicFact.pterm pterm then Some ({term = Var b_fct.BasicFact.var; ground = false}) else None)
-                        | Some r -> Some r
-                      end
-                end
-            | Some (g,t_r) -> Some ({term = Func(f,t_r); ground = g})
-          end
-      | _ ->
-          begin try
-            let b_fct = List.find (fun b_fct -> is_equal Protocol pterm b_fct.BasicFact.pterm) b_fct_list in
-            Some ({term = Var b_fct.BasicFact.var; ground = false})
-          with
-            | Not_found ->
-              begin match SDF.find sdf (fun fct -> if is_equal Protocol fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
-                | None -> DF.find df (fun b_fct -> if is_equal Protocol b_fct.BasicFact.pterm pterm then Some ({term = Var b_fct.BasicFact.var; ground = false}) else None)
-                | Some r -> Some r
-              end
-          end
-
-    in
-
-    mem_term pterm
-
-  let compare_variables df bfct_list =
-    List.iter (fun bfct ->
-      let xsnd = BasicFact.get_snd_ord_variable bfct in
-      DF.iter df (fun bfct_df ->
-        let xsnd' = BasicFact.get_snd_ord_variable bfct_df in
-        if Variable.order Recipe xsnd xsnd' <= 0
-        then Config.internal_error "[term.ml >> Tools_Subterm.compare_variables] The second-order variables in the addition list of basic deduction fact should be bigger than the variables in DF (in the sense of Variable.order)."
-      )
-    ) bfct_list
-
-  let partial_consequence_additional (type a) (type b) (at:(a,b) atom) sdf df b_fct_list (term:(a,b) term) = match at with
-    | Protocol ->
-        Config.debug (fun () -> compare_variables df b_fct_list);
-        begin match partial_mem_additional_protocol sdf df b_fct_list term with
-          | None -> None
-          | Some r -> (Some (r,term):(recipe * protocol_term) option)
-        end
-    | Recipe ->
-        Config.debug (fun () -> compare_variables df b_fct_list);
-        begin match partial_mem_additional_recipe sdf df b_fct_list term with
-          | None -> None
-          | Some t -> (Some (term,t):(recipe * protocol_term) option)
-        end
-
-  exception Found
-
-  let vars_occurs_in_df (type a) (type b) (at:(a,b) atom) df (x:(a,b) variable) =
-    try
-      DF.iter df (fun bfct ->
-        match at with
-          | Recipe ->
-              let xsnd = BasicFact.get_snd_ord_variable bfct in
-              if x = xsnd
-              then raise Found
-          | Protocol ->
-              let term = BasicFact.get_protocol_term bfct in
-              if var_occurs x term
-              then raise Found
-      );
-      false
-    with
-      | Found -> true
-
-  let uniform_consequence sdf df uni term =
-    Config.debug (fun () ->
-      Uni.iter uni (fun recipe term ->
-        let xsnd_l = get_vars Recipe recipe
-        and xfst_l = get_vars Protocol term in
-        List.iter (fun x ->
-          if not (vars_occurs_in_df Recipe df x)
-          then Config.internal_error "[term.ml >> Tools_Subterm.uniform_consequence] The second-order variable in the uniformity set should be in DF."
-        ) xsnd_l;
-        List.iter (fun x ->
-          if not (vars_occurs_in_df Protocol df x)
-          then Config.internal_error "[term.ml >> Tools_Subterm.uniform_consequence] The first-order variable in the uniformity set should be in DF."
-        ) xfst_l;
-      );
-    );
-
-    let rec mem_list = function
-      | [] -> Config.internal_error "[term.ml >> Tools_Subterm.uniform_consequence] The list should not be empty"
-      | [t] ->
-          begin match mem_term t with
-            | None -> None
-            | Some r -> Some (r.ground,[r])
-          end
-      | t::q_t ->
-          begin match mem_term t with
-            | None -> None
-            | Some r ->
-              begin match mem_list q_t with
-                | None -> None
-                | Some (g,l_r) -> Some(g&&r.ground,r::l_r)
-              end
-          end
-
-    and mem_term pterm = match pterm.term with
-      | Func(f,_) when f.arity = 0 && f.public -> Some ({term = Func(f,[]); ground = true})
-      | _ ->
-          begin match Uni.find_protocol_term uni pterm with
-            | None ->
-                begin match pterm.term with
-                  | Func(f,args_t) when f.public ->
-                      begin match mem_list args_t with
-                        | None ->
-                            begin match SDF.find sdf (fun fct -> if is_equal Protocol fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
-                              | None -> DF.find df (fun b_fct -> if is_equal Protocol b_fct.BasicFact.pterm pterm then Some ({ term = Var b_fct.BasicFact.var; ground = false}) else None)
-                              | Some r -> Some r
-                            end
-                        | Some (g,t_r) -> Some ({term = Func(f,t_r); ground = g})
-                      end
-                  | _ ->
-                      begin match SDF.find sdf (fun fct -> if is_equal Protocol fct.Fact.df_term pterm then Some fct.Fact.df_recipe else None) with
-                        | None -> DF.find df (fun b_fct -> if is_equal Protocol b_fct.BasicFact.pterm pterm then Some ({term = Var b_fct.BasicFact.var; ground = false}) else None)
-                        | Some r -> Some r
-                      end
-                end
-            | Some recipe -> Some recipe
-          end
-    in
-
-    mem_term term
-
-  let is_df_solved df =
-    try
-      DF.iter df (fun b_fct ->
-        if not (is_variable b_fct.BasicFact.pterm)
-        then raise Found
-        else
-          let v = variable_of (b_fct.BasicFact.pterm) in
-          match v.link with
-            | NoLink -> link_search Protocol v
-            | FLink -> raise Found
-            | _ -> Config.internal_error "[term.ml >> is_df_solved] Unexpected link"
-        );
-      cleanup_search Protocol;
-      true
-    with
-      | Found ->
-          cleanup_search Protocol;
-          false
-
-  let add_in_uniset uniset sdf df recipe =
-
-    let rec explore_recipe uniset sdf recipe = match recipe.term with
-      | Func(f,args_r) when Symbol.is_constructor f ->
-          (* Constructor case *)
-          if args_r = []
-          then ({term = Func(f,[]); ground = true},Uni.add uniset recipe ({term = Func(f,[]); ground = true}),sdf)
-          else
-            let (g,args_t,uniset_1,sdf_1) = explore_recipe_list uniset sdf args_r in
-            let t = {term = Func(f,args_t); ground = g} in
-            (t,Uni.add uniset_1 recipe t,sdf_1)
+            let (g,t_l) = mem_list args_r in
+            { term = Func(f,t_l); ground = g}
       | Func(_,_)
       | AxName _ ->
-          (* Destructor case *)
-          begin match SDF.find_term_and_mark sdf recipe with
-            | SDF.Not_in_SDF  -> Config.internal_error "[term.ml >> Tools.add_in_uniset] The recipe should be consequence."
-            | SDF.Marked t ->
-                Config.debug (fun () ->
-                  if not (Uni.exists uniset recipe t)
-                  then Config.internal_error "[term.ml >> Tools.add_in_uniset] The pair of recipe / term should already be in uniset."
-                );
-                (t,uniset,sdf)
-            | SDF.Unmarked (t,sdf_1) ->
-                let uniset_1 = Uni.add uniset recipe t in
-                (t,uniset_1,sdf_1)
+          begin match K.find_recipe_opt k recipe with
+            | Some t -> t
+            | None -> IK.find_recipe ik recipe
           end
-      | Var v ->
-          begin match DF.find_term df v with
-            | Some t -> (t,Uni.add uniset recipe t,sdf)
-            | None -> Config.internal_error "[term.ml >> Tools.add_in_uniset] The second-order variable should be in DF."
-          end
-
-
-    and explore_recipe_list uniset sdf = function
-      | [] -> (true,[],uniset,sdf)
-      | r::q ->
-          let (t,uniset_1,sdf_1) = explore_recipe uniset sdf r in
-          let (g,q_t,uniset_2,sdf_2) = explore_recipe_list uniset_1 sdf_1 q in
-          (g&&t.ground,t::q_t,uniset_2,sdf_2)
-
+      | Var v -> DF.find_recipe df v
     in
 
-    let (_,uniset_1,sdf_1) = explore_recipe uniset sdf recipe in
-    (uniset_1,sdf_1)
+    mem_term recipe
+
+  let consequence_uniform_recipe k df eq_fst recipe =
+
+    let rec mem_list : (fst_ord, name) EqFst.t -> recipe list ->  (fst_ord, name) EqFst.t * bool * int * protocol_term list = fun eq_fst -> function
+      | [] -> (eq_fst,true,0,[])
+      | r::q_r ->
+          let (eq_fst',t,v_t) = mem_term eq_fst r in
+          let (eq_fst'',g_l,v_l,t_l) = mem_list eq_fst' q_r in
+          (eq_fst'',g_l && t.ground, max v_t v_l, t::t_l)
+
+    and mem_term : (fst_ord, name) EqFst.t -> recipe -> (fst_ord, name) EqFst.t * protocol_term * int = fun eq_fst recipe -> match recipe.term with
+      | Func(f,args_r) when Symbol.is_constructor f ->
+          if f.arity = 0
+          then eq_fst, { term = Func(f,[]); ground = true }, 0
+          else
+            let (eq_fst',g,v,t_l) = mem_list eq_fst args_r in
+            let t = { term = Func(f,t_l); ground = g } in
+            let eq_fst'' =
+              let acc_eq = ref eq_fst' in
+              K.find_unifier k t v (fun subst f_next ->
+                if subst = []
+                then acc_eq := EqFst.bot
+                else
+                  begin
+                    acc_eq := EqFst.wedge !acc_eq (Diseq.Diseq (Subst.equations_of subst));
+                    f_next ()
+                  end
+              ) (fun () -> ());
+              !acc_eq
+            in
+            eq_fst'', t, v
+      | Func _
+      | AxName _ ->
+          let t,v = K.find_recipe_with_var_type k recipe in
+          eq_fst, t, v
+      | Var v -> eq_fst, DF.find_recipe df v, v.var_type
+    in
+
+    let (phi,t,_) = mem_term eq_fst recipe in
+    t,phi
+
+  let consequence_uniform_recipe_with_IK k ik_var_type ik df eq_fst recipe =
+
+    let rec mem_list : (fst_ord, name) EqFst.t -> recipe list ->  (fst_ord, name) EqFst.t * bool * int * protocol_term list = fun eq_fst -> function
+      | [] -> (eq_fst,true,0,[])
+      | r::q_r ->
+          let (eq_fst',t,v_t) = mem_term eq_fst r in
+          let (eq_fst'',g_l,v_l,t_l) = mem_list eq_fst' q_r in
+          (eq_fst'',g_l && t.ground, max v_t v_l, t::t_l)
+
+    and mem_term : (fst_ord, name) EqFst.t -> recipe -> (fst_ord, name) EqFst.t * protocol_term * int = fun eq_fst recipe -> match recipe.term with
+      | Func(f,args_r) when Symbol.is_constructor f ->
+          if f.arity = 0
+          then eq_fst, { term = Func(f,[]); ground = true }, 0
+          else
+            let (eq_fst',g,v,t_l) = mem_list eq_fst args_r in
+            let t = { term = Func(f,t_l); ground = g } in
+            let eq_fst'' =
+              let acc_eq = ref eq_fst' in
+              K.find_unifier k t v (fun subst f_next ->
+                if subst = []
+                then acc_eq := EqFst.bot
+                else
+                  begin
+                    acc_eq := EqFst.wedge !acc_eq (Diseq.Diseq (Subst.equations_of subst));
+                    f_next ()
+                  end
+              ) (fun () -> ());
+              !acc_eq
+            in
+            eq_fst'', t, v
+      | Func _
+      | AxName _ ->
+          begin match K.find_recipe_with_var_type_opt k recipe with
+            | None -> eq_fst, IK.find_recipe ik recipe, ik_var_type
+            | Some (t,v) -> eq_fst, t, v
+          end
+      | Var v -> eq_fst, DF.find_recipe df v, v.var_type
+    in
+
+    let (phi,t,_) = mem_term eq_fst recipe in
+    t,phi
+
+  let consequence_protocol k ik df t =
+
+    let rec mem_list = function
+      | [] -> Config.internal_error "[term.ml >> Consequence_Subterm.consequence_protocol] The list should not be empty"
+      | [t] ->
+          begin match mem_term t with
+            | None -> None
+            | Some r -> Some (r.ground,[r])
+          end
+      | t::q_t ->
+          begin match mem_term t with
+            | None -> None
+            | Some r ->
+              begin match mem_list q_t with
+                | None -> None
+                | Some (g,l_r) -> Some(g&&r.ground,r::l_r)
+              end
+          end
+
+    and mem_term pterm = match pterm.term with
+      | Func(f,_) when f.arity = 0 && f.public -> Some ({term = Func(f,[]); ground = true})
+      | Func(f,args_t) when f.public ->
+          begin match mem_list args_t with
+            | None ->
+                begin match K.find_protocol_opt k pterm with
+                  | None ->
+                      begin match IK.find_protocol_opt ik pterm with
+                        | None -> DF.find_protocol_opt df pterm
+                        | r_opt -> r_opt
+                      end
+                  | r_opt -> r_opt
+                end
+            | Some (g,r_l) -> Some ({term = Func(f,r_l); ground = g})
+          end
+      | _ ->
+          begin match K.find_protocol_opt k pterm with
+            | None ->
+                begin match IK.find_protocol_opt ik pterm with
+                  | None -> DF.find_protocol_opt df pterm
+                  | r_opt -> r_opt
+                end
+            | r_opt -> r_opt
+          end
+    in
+
+    mem_term t
+
+  type unsolved_status =
+    | Solved
+    | UnifyVariables of (snd_ord, axiom) Subst.t
+    | UnsolvedFact of BasicFact.t
+
+  exception FoundF of BasicFact.t
+  exception Found
+
+  let unsolved_DF df =
+    let subst = ref [] in
+    let linked_vars = ref [] in
+
+    try
+      DF.iter df (fun v t ->
+        if not (is_variable t)
+        then raise (FoundF { BasicFact.var = v; BasicFact.pterm = t})
+        else
+          begin
+            let x = variable_of t in
+            match x.link with
+              | NoLink -> x.link <- XLink v; linked_vars := x :: !linked_vars
+              | XLink v' -> subst := (v, { ground = false; term = Var v'}) :: !subst
+              | _ -> Config.internal_error "[term.ml >> Tools_Subterm.unsolved_DF] Unexpected link."
+          end
+      );
+      List.iter (fun v -> v.link <- NoLink) !linked_vars;
+      if !subst = []
+      then Solved
+      else UnifyVariables !subst
+    with FoundF fct ->
+      List.iter (fun v -> v.link <- NoLink) !linked_vars;
+      UnsolvedFact fct
+
+  let is_solved_DF df =
+    let linked_vars = ref [] in
+
+    try
+      DF.iter df (fun _ t ->
+        if not (is_variable t)
+        then raise Found
+        else
+          begin
+            let x = variable_of t in
+            match x.link with
+              | NoLink -> x.link <- FLink; linked_vars := x :: !linked_vars
+              | FLink -> raise Found
+              | _ -> Config.internal_error "[term.ml >> Tools_Subterm.unsolved_DF] Unexpected link."
+          end
+      );
+      List.iter (fun v -> v.link <- NoLink) !linked_vars;
+      true
+    with Found ->
+      List.iter (fun v -> v.link <- NoLink) !linked_vars;
+      false
 
   (* Generation of mixed disequation from rewrite rules *)
 
-  let mixed_diseq_for_skeletons sdf df fst_vars snd_vars recipe =
+  let mixed_diseq_for_skeletons k ik df fst_vars snd_vars recipe =
 
     let rec mem_list attacker = function
       | [] -> (true,[],[],attacker)
@@ -4114,7 +3906,7 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) (Eq: EqMixed)= struct
                 let (is_ground,term_l,recipe_l,attacker_l) = mem_list attacker q_r in
                 if attacker_l
                 then
-                  let y_snd = Variable.fresh Recipe Universal (-1) in
+                  let y_snd = Variable.fresh Recipe Universal max_int in
                   (term.ground && is_ground, term::term_l, { term = Var y_snd; ground = false} :: recipe_l, true)
                 else
                   (term.ground && is_ground, term::term_l, [], false)
@@ -4130,7 +3922,7 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) (Eq: EqMixed)= struct
             if f.represents = AttackerPublicName
             then
               let y_fst = Variable.fresh Protocol Universal NoType
-              and y_snd = Variable.fresh Recipe Universal (-1) in
+              and y_snd = Variable.fresh Recipe Universal max_int in
               { term = Var y_fst; ground = false }, Some { term = Var y_snd; ground = false }
             else
               { term = Func(f,[]); ground = true}, None
@@ -4141,15 +3933,11 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) (Eq: EqMixed)= struct
             else { term = Func(f,term_l); ground = is_ground }, None
       | Func(_,_)
       | AxName _ ->
-          begin match SDF.find sdf (fun fct -> if is_equal Recipe fct.Fact.df_recipe recipe then Some fct.Fact.df_term else None) with
-            | None -> Config.internal_error "[term.ml >> Tools.mixed_diseq_for_skeletons] Recipe should be consequence."
+          begin match K.find_recipe_opt k recipe with
+            | None -> IK.find_recipe ik recipe, None
             | Some term -> term, None
           end
-      | Var v ->
-          begin match DF.find_term df v with
-            | None -> Config.internal_error "[term.ml >> Tools.mixed_diseq_for_skeletons] Recipe should be consequence (2)."
-            | Some term -> term, None
-          end
+      | Var v -> DF.find_recipe df v, None
     in
 
     let args = get_args recipe in
@@ -4199,10 +3987,10 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) (Eq: EqMixed)= struct
 
     let rec explore_term f_next t = match t.term with
       | Var _ ->
-          let x_snd = Variable.fresh Recipe Universal (-1) in
+          let x_snd = Variable.fresh Recipe Universal max_int in
           f_next (of_variable x_snd) [BasicFact.create x_snd t]
       | Func(f,args) ->
-          let x_snd = Variable.fresh Recipe Universal (-1) in
+          let x_snd = Variable.fresh Recipe Universal max_int in
           f_next (of_variable x_snd) [BasicFact.create x_snd t];
           if f.public && f.arity > 0
           then
@@ -4244,7 +4032,7 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) (Eq: EqMixed)= struct
     List.iter (fun stored_skel ->
       let f_c = root stored_skel.Rewrite_rules.skeleton.Rewrite_rules.pos_term in
       let args = get_args stored_skel.Rewrite_rules.skeleton.Rewrite_rules.pos_term in
-      let bfct_r = BasicFact.create (Variable.fresh Recipe Universal (-1)) stored_skel.Rewrite_rules.skeleton.Rewrite_rules.rhs in
+      let bfct_r = BasicFact.create (Variable.fresh Recipe Universal max_int) stored_skel.Rewrite_rules.skeleton.Rewrite_rules.rhs in
       explore_term_list (fun recipe_list bfct_list ->
         if check_conditions stored_skel.Rewrite_rules.skeleton args bfct_r bfct_list
         then
@@ -4257,7 +4045,7 @@ module Tools_Subterm (SDF: SDF) (DF: DF) (Uni : Uni) (Eq: EqMixed)= struct
     ) list_single_skeletons;
 
     List.iter (fun f ->
-      let snd_vars = Variable.fresh_list Recipe Existential (-1) f.arity in
+      let snd_vars = Variable.fresh_list Recipe Existential max_int f.arity in
       let fst_vars = Variable.fresh_list Protocol Existential NoType f.arity in
 
       let diseq_form =
