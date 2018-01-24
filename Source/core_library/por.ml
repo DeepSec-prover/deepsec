@@ -7,9 +7,14 @@ let intChannel = ref 0
 let freshVars = ref 0	
 let freshNames = ref 0
 	   
-let err s = Printf.printf s ; exit 0
+let err s = Printf.printf "[G-POR] CRITICAL ERROR: %s\n" s ; exit 0
 let pp s = Printf.printf s
-	   
+
+let out_mode = Display.Testing
+let v_type = false
+let at = Term.Protocol
+let rho=None
+
 let initRefs () = begin importVars := []; importNames := []; freshVars := 0; freshNames := 0; end
 		    
 let addVar str = if not(List.mem str !importVars) then importVars := str :: !importVars
@@ -28,7 +33,8 @@ let freshVar () =
 	 
 let freshName s =
   let rec search n =
-    let name = (Term.display_name_short s)^"_"^(string_of_int n) in
+    let name_ = s in
+    let name = (Term.Name.display out_mode ~rho:rho name_)^"_"^(string_of_int n) in
     if not(List.mem name !importNames)
     then begin incr(freshNames);
 	       addName name;
@@ -37,119 +43,99 @@ let freshName s =
     else search (n+1) in
   search !freshNames
 
-let importChannel = function
-  | Term.Name n ->
-     let strCh = Term.display_name_short n in
-     let intCh = try Hashtbl.find tblChannel strCh
-		 with Not_found -> begin Hashtbl.add tblChannel strCh !intChannel;
-					 incr(intChannel);
-					 !intChannel - 1;
-				   end in
-     Porridge.Channel.of_int intCh
-  | _ -> err "In generalized POR mode, channels must be constants."
-	     	     
+let str_of_name ch =
+  if Term.is_name ch
+  then let name = Term.name_of ch in
+       Term.Name.display out_mode ~rho:rho name
+  else err (Printf.sprintf "The following term is not a name: %s." (Term.display out_mode ~rho:rho at ch))
+  
+
+let importChannel ch =          (* channels are names in Deepsec *)
+  let str_ch = str_of_name ch in
+  let intCh = try Hashtbl.find tblChannel str_ch
+              with Not_found -> begin Hashtbl.add tblChannel str_ch !intChannel;
+                                      incr(intChannel);
+                                      !intChannel - 1;
+                                end in
+  Porridge.Channel.of_int intCh
+           
 let importVar x =
-  let str = Term.display_variable_short x in
+  let str = Term.Variable.display out_mode ~v_type:v_type at x in
   addVar str;
   Porridge.Frame.Term.var str
 			  
-let importName n = Porridge.Frame.Term.var (Term.display_name_short n)
-    
-let importSymb s t1 = 		(*  workaround to get a more compact function *)
-  if Term.is_equal_symbol Term.senc s then 2, Porridge.Frame.Term.senc t1
-  else if Term.is_equal_symbol Term.sdec s then 2, Porridge.Frame.Term.sdec t1
-  else if Term.is_equal_symbol Term.aenc s then 2, Porridge.Frame.Term.aenc t1
-  else if Term.is_equal_symbol Term.adec s then 2, Porridge.Frame.Term.adec t1
-  else if Term.is_equal_symbol Term.hash s then 1, Porridge.Frame.Term.hash_tm
-  else if Term.is_equal_symbol Term.pk s then 1, Porridge.Frame.Term.pk
-  else if Term.is_equal_symbol Term.vk s then 1, Porridge.Frame.Term.vk
-  else if Term.is_equal_symbol Term.sign s then 2, Porridge.Frame.Term.sign t1
-  else if Term.is_equal_symbol Term.checksign s then 2, Porridge.Frame.Term.checksign t1
-  else if Term.display_symbol_without_arity s = "mac" then 2, Porridge.Frame.Term.mac t1
-  else if Term.display_symbol_without_arity s = "h" then 1, Porridge.Frame.Term.hash_tm
-  else raise Not_found
-	     
+let importName n =
+  let str = Term.Name.display out_mode ~rho:rho n in
+  Porridge.Frame.Term.var str
+	                  
 let rec importTerm = function
-  | Term.Func (symb, tl) when Term.is_tuple symb ->
-     Porridge.Frame.Term.tuple (List.map importTerm tl)
-  | Term.Func (symb, []) -> Porridge.Frame.Term.var (Term.display_symbol_without_arity symb) (* constants are abstacted away by variables *)
-  | Term.Func (symb, tl) ->
-     let t1 = List.hd tl in
-     let pt1 = importTerm t1 in
-     (try (match importSymb symb pt1 with
-	   | 1,f -> f pt1
-	   | 2,f ->  let t2 = List.hd (List.tl tl) in
-		     let pt2 = importTerm t2 in
-		     f pt2
-	   | _ -> err "[Internal error] Should never happen.")
-      with
-      | Not_found -> Porridge.Frame.Term.user_fun (symb.Term.name) (List.map importTerm tl)
-      | _ -> err "[Internal error] Arity does not match.")
-  | Term.Var x ->  importVar x
-  | Term.Name n -> importName n
+  | t when Term.is_variable t -> importVar (Term.variable_of t)
+  | t when Term.is_name t -> importName (Term.name_of t)
+  | t when Term.is_function t ->
+     let symb = Term.root t in
+     let args = Term.get_args t in
+     if Term.Symbol.is_tuple symb
+     then Porridge.Frame.Term.tuple (List.map importTerm args)
+     else let symb_str = Term.Symbol.display out_mode symb in
+          Porridge.Frame.Term.user_fun symb_str (List.map importTerm args)
+  | _ -> err "[10] Should never happens."
 
-(* For a pattern "Tuple [x_i] = term", computes a list of (x_i,u_i) such that u_i is the
-   compiled i-th projection of "term". *)
-let rec importPat term = function
-  | Process.Var v -> [(importVar v, term)]
-  | Process.Tuple (s, tl) when Term.is_tuple s ->
-     snd(List.fold_left
-	   (fun (n,tl) -> (fun tp ->
-			   match tp with
-			   | Process.Var x -> (n+1, (importVar x, Porridge.Frame.Term.proj term n) :: tl)
-			   | _ -> err "In generalized POR mode, in let p = t in ..., p must be made of (non-tested) tuples and variables only."
-			  )
-	   ) (1,[]) tl)
-  | _ -> err "In generalized POR mode, in let p = t in ..., p must be made of tuples and variables only."
-	     
-(* Deprecated *)
-let rec importFormula = function
-  | Process.Eq (t1,t2) -> Porridge.Formula.form_eq (importTerm t1) (importTerm t2)
-  | Process.Neq (t1,t2) -> Porridge.Formula.form_neq (importTerm t1) (importTerm t2)
-  | Process.And (f1,f2) -> Porridge.Formula.form_and (importFormula f1) (importFormula f2)
-  | Process.Or (f1,f2) -> Porridge.Formula.form_or (importFormula f1) (importFormula f2)
-						   
+(* For a pattern "Tuple [x_i] = term", computes a list of (x_i,u_i) such that u_i is the compiled i-th projection of "term". *)
+let importPat term pat =
+  let proj = ref 0 in
+  let acc = ref [] in
+  let rec aux = function
+    | t when Term.is_variable t ->
+       let var = Term.variable_of t in
+       acc := (importVar var, Porridge.Frame.Term.proj term !proj) :: !acc
+    | t when Term.is_name t -> () (* TODO: check that *)
+    | t when Term.is_function t ->
+       let symb = Term.root t in
+       let args = Term.get_args t in
+       (if Term.Symbol.is_tuple symb
+        then List.iter (fun tp -> incr(proj); aux tp) (Term.get_args t)
+        else err "[1] In generalized POR mode, in let p = t in ..., p must be made of tuples and variables only.")
+    | _ -> err "[2] In generalized POR mode, in let p = t in ..., p must be made of tuples and variables only." in
+  aux pat ;
+  !acc
+    
 let importProcess proc =
   let rec flatten_choice = function
-    | Process.Choice(p1,p2) -> (flatten_choice p1) @ (flatten_choice p2)
-    | Process.New(n,p,label) -> flatten_choice p
+    | Process.Choice ps -> List.flatten (List.map flatten_choice ps)
+    | Process.New(n,p) -> flatten_choice p (* TODO: check *)
     | p -> [build p]
   and flatten_par = function
-    | Process.Par(p1,p2) -> (flatten_par p1) @ (flatten_par p2)
-    | Process.New(n,p,label) -> [build (Process.New(n,p,label))]
+    | Process.Par ps -> List.flatten (List.map flatten_par (List.map fst ps))
+    | Process.New(n,p) -> flatten_par p (* TODO: check *)
     | p -> [build p]
-  and flattenFormula t e = function
-    | Process.Eq (t1,t2) -> Porridge.Process.if_eq (importTerm t1) (importTerm t2) t e
-    | Process.Neq (t1,t2) -> Porridge.Process.if_neq (importTerm t1) (importTerm t2) t e
-    | Process.And (f1,f2) -> let pt2 = flattenFormula t e f2 in
-			     flattenFormula pt2 e f2
-    | Process.Or (f1,f2) -> let pt2 = flattenFormula t e f2 in
-			    flattenFormula t pt2 f2
   and build = function
     | Process.Nil -> zero
-    | Process.Choice(p1,p2) -> plus ((flatten_choice p1) @ (flatten_choice p2))
-    | Process.Par(p1,p2) -> par ((flatten_par p1) @ (flatten_par p2))
-    | Process.New(n,p,label) -> (* names will be abstracted away by "fresh" variable freshN *)
+    | Process.Choice ps -> plus (List.flatten (List.map flatten_choice ps))
+    | Process.Par ps -> par (List.flatten (List.map flatten_par (List.map fst ps)))
+    | Process.New(n,p) -> (* names will be abstracted away by "fresh" variable freshN *)
        let freshN = freshName n in
        let importProc = build p in
        Porridge.Process.subst importProc (importName n) freshN 
-    | Process.In(t,pat,proc,label) -> let c = (importChannel t) in input c (importVar pat) (build proc)
+    | Process.Input(t,x,proc) -> let c = (importChannel t) in input c (importVar x) (build proc)
     (* let freshV = freshVar () in *)
        (* let x = importVar pat in  *)
        (* let importProc = input (importChannel t) x (build proc) in *)
        (* Porridge.Process.subst importProc (importVar pat) freshV *) 
-    | Process.Out(t1,t2,proc,label) -> let c = (importChannel t1) in output c (importTerm t2) (build proc)
-    | Process.Let(pat,t,proc,label) ->
-       (* "let (x1,..,xn)=t in P" are compiled into "P{pi_i(t)/x_i}".
-          The fact that the let construct may fail or not is not translated into a test in Porridge since
-          Let constructs in APTE should be understood as syntactica sugar. *)
+    | Process.Output(t1,t2,proc) -> let c = (importChannel t1) in output c (importTerm t2) (build proc)
+    | Process.Let(pat,t,proc_then,proc_else) ->
+       (* "let (x1,..,xn)=t in P" are compiled into "if freshVar = t then P{pi_i(t)/x_i}" 
+           The test should always be considered as true or false because Porridge has no
+           information on t and its potential failure. Hence our use of freshVar. *)
+       let freshV = freshVar () in
        let importT = importTerm t in
        let listSubTerms = importPat importT pat in
-       let importProc = build proc in
-       let importProcSubst = List.fold_left (fun p -> (fun (xi,ti) -> Porridge.Process.subst p xi ti )) importProc listSubTerms in
-       importProcSubst
-    | Process.IfThenElse(f,proc_then,proc_else,label) ->
-       flattenFormula (build proc_then) (build proc_else) f
+       let importProc_then = build proc_then in
+       let importProc_else = build proc_else in
+       let importProcSubst_then = List.fold_left (fun p -> (fun (xi,ti) -> Porridge.Process.subst p xi ti )) importProc_then listSubTerms in
+       let importProcSubst_else = List.fold_left (fun p -> (fun (xi,ti) -> Porridge.Process.subst p xi ti )) importProc_else listSubTerms in       
+       Porridge.Process.if_eq freshV importT importProcSubst_then importProcSubst_else
+    | Process.IfThenElse(t1,t2,proc_then,proc_else) ->
+       Porridge.Process.if_eq (importTerm t1) (importTerm t2) (build proc_then) (build proc_else)
   in
   let proc_por = build proc in
   initRefs () ;
@@ -196,14 +182,12 @@ let tracesPersistentSleepEquiv p1 p2 =
   Printf.printf "\n%!" ;
   RedLTS.traces sinit
 	       
-let isSameChannel chPOR = function
-  | Term.Name n ->
-     let strCh = Term.display_name_short n in
-     let intCh = try Hashtbl.find tblChannel strCh
-		 with Not_found -> err "[Internal error] Channel is not present in HashTbl." in
-     chPOR == Porridge.Channel.of_int intCh (* == since channel are private int, OK? *)
-  | _ -> err "In generalized POR mode, channels must be constants."
-	     
+let isSameChannel chPOR ch =
+  let strCh = str_of_name ch in
+  let intCh = try Hashtbl.find tblChannel strCh
+	      with Not_found -> err "[Internal error] Channel is not present in HashTbl." in
+  chPOR == Porridge.Channel.of_int intCh (* == since channel are private int, OK? *)
+
 let isSameAction = function
   | (Process.InS chApte, Porridge.Trace_equiv.Action.In (chPOR,_,_)) -> isSameChannel chPOR chApte
   | (Process.OutS chApte, Porridge.Trace_equiv.Action.Out (chPOR,_)) -> isSameChannel chPOR chApte
@@ -235,13 +219,11 @@ let computeTraces p1 p2 =
 let displaySetTraces trs = RedLTS.display_traces trs
 
 let displayActPor act =
-  let aux = function
-    | Term.Name n ->
-       let strCh = Term.display_name_short n in
-       let intCh = try Hashtbl.find tblChannel strCh
-		   with Not_found -> err "[Internal error] Channel is not present in HashTbl." in
-       Porridge.Channel.to_char (Porridge.Channel.of_int intCh)
-    | _ -> err "[Internal error] Call displayActPor only on channels names." in
+  let aux ch =
+    let strCh = str_of_name ch in
+    let intCh = try Hashtbl.find tblChannel strCh
+		with Not_found -> err "[Internal error] Channel is not present in HashTbl." in
+    Porridge.Channel.to_char (Porridge.Channel.of_int intCh) in
   match act with
   | Process.InS chApte -> Printf.sprintf "In(%c)" (aux chApte)
   | Process.OutS chApte -> Printf.sprintf "Out(%c)" (aux chApte)

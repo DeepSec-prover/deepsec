@@ -152,8 +152,8 @@ let rec excecute_queries id = function
           then begin
 	      Printf.printf "[G-POR] Applying generalized POR engine and computing set of reduced, symbolic traces to be explored...\n%!";
 	      let t = Sys.time() in
-	      let p1 = Por.importProcess proc1
-	      and p2 = Por.importProcess proc2 in
+	      let p1 = Por.importProcess exproc1
+	      and p2 = Por.importProcess exproc2 in
 	      Printf.printf "[G-POR] Symbolic processes living in the symbolic LTS have been computed in %fs.\n%!" (Sys.time() -. t);
 	      let trs = Por.computeTraces p1 p2 in
 	      Printf.printf "[G-POR] A set of symbolic traces to be explored has been computed in %fs.\n%!" (Sys.time() -. t);

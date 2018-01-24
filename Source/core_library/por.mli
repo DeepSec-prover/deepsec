@@ -14,7 +14,7 @@ val isEnable : actionA -> trs -> bool
 val forwardTraces : actionA -> trs -> trs
 
 (** [importProcess p] gives the LTS representation of a process [p]*)
-val importProcess : Process.process -> Porridge.Process.t
+val importProcess : Process.expansed_process -> Porridge.Process.t
 
 (* (\** [simplCondProcess p] simplifies conditionals (only Eq,Neq) by flatteting [p]*\) *)
 (* val simplCondProcess : Porridge.Process.t -> Porridge.Process.t *)
