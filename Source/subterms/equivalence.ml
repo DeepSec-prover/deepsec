@@ -2,7 +2,7 @@ open Term
 open Process
 open Display
 
-let print_debug_por_gen_showExplo = ref false
+let print_debug_por_gen_showExplo = ref true
 let count_explo = ref 0
 let count_stop = ref 0
 
@@ -20,14 +20,15 @@ type symbolic_process =
 (*********************)
 
 let por_continue csys_set trs =
-  if !print_debug_por_gen_showExplo
-  then begin Printf.printf "Current set of symbolic traces to explore: \n"; Por.displaySetTraces trs; Printf.printf "\n%!"; end;
+  (* if !print_debug_por_gen_showExplo
+   * then begin Printf.printf "Current set of symbolic traces to explore: \n"; Por.displaySetTraces trs; Printf.printf "\n%!"; end; *)
   let csys = Constraint_system.Set.choose csys_set in
   let trace = (Constraint_system.get_additional_data csys).trace in
   match Por.isEnable trace trs with
   | None ->
      if !print_debug_por_gen_showExplo then
        Printf.printf "[G-POR] ---- Last visible action is not enabled in symbolic POR so this exploration is stopped.\n%!" ;
+     Printf.printf "Set of constraint systems: %s\n" (Constraint_system.Set.display Display.HTML ~rho:None csys_set) ;
      incr(count_stop) ;
      false, trs
   | Some (act, trs_next) -> 
