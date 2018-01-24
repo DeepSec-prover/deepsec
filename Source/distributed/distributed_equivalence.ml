@@ -62,6 +62,8 @@ struct
 
   let result_equivalence = ref Equivalent
 
+  let trs = Por.emptySetTraces
+
   let evaluation job =
     Variable.set_up_counter job.variable_counter;
     Name.set_up_counter job.name_counter;
@@ -82,7 +84,7 @@ struct
       | DStandard data ->
           Config.display_trace := data.display_trace;
           let rec apply_rules csys_set frame_size f_next =
-            Equivalence.apply_one_transition_and_rules_for_trace_equivalence data.chosen_semantics csys_set frame_size (fun csys_set size f_next ->
+            Equivalence.apply_one_transition_and_rules_for_trace_equivalence data.chosen_semantics trs csys_set frame_size (fun csys_set size f_next ->
               apply_rules csys_set size f_next
             ) f_next
           in
@@ -136,7 +138,7 @@ struct
           Config.display_trace := data.display_trace;
           begin try
             let job_list = ref [] in
-            Equivalence.apply_one_transition_and_rules_for_trace_equivalence data.chosen_semantics data.csys_set data.frame_size
+            Equivalence.apply_one_transition_and_rules_for_trace_equivalence data.chosen_semantics trs data.csys_set data.frame_size
               (fun csys_set_1 frame_size_1 f_next_1 ->
                 job_list := { job with data_equiv = DStandard { data with csys_set = csys_set_1; frame_size = frame_size_1 }; variable_counter = Variable.get_counter (); name_counter = Name.get_counter () } :: !job_list;
                 f_next_1 ()
@@ -169,7 +171,7 @@ end
 
 module DistribEquivalence = Distrib.Distrib(EquivJob)
 
-let trace_equivalence semantics proc1 proc2 =
+let trace_equivalence semantics proc1 proc2 trs =
 
   (*** Initialise skeletons ***)
 

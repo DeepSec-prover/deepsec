@@ -205,9 +205,23 @@ let isSameZAction = function
   | (Process.OutS chApte, Porridge.Trace_equiv.ZAction.Output (chPOR)) -> isSameChannel chPOR chApte
   | _ -> false
 	   
-let isEnable actApte = function
-  | RedLTS.Traces tl -> List.exists (fun (actPOR,_) -> isSameZAction (actApte, actPOR)) tl
-				    
+let isEnableAction actApte = function
+  | RedLTS.Traces tl ->
+     List.find_opt (fun (actPOR,_) -> isSameZAction (actApte, actPOR)) tl
+
+let rec isEnable trace trs =
+  let rec look_action = function
+    | Process.Trace.TrOutput(_,ch,_,_,_,_) :: _ -> if is_constant ch then Some (Process.OutS ch) else err "CACA1"
+    | Process.Trace.TrInput(_,ch,_,_,_,_) :: _ -> if is_constant ch then Some (Process.InS ch) else err "CACA2"
+    | _ :: tl -> look_action tl
+    | [] -> None in
+  match look_action trace with
+  | None -> Some (None, trs)
+  | Some act ->
+     (match isEnableAction act trs with
+      | Some (_,trs_next) -> Some (Some act,trs_next)
+      | None -> None)
+
 let forwardTraces actApte trs =
   let rec extractFromList = function
     | [] -> err "[Internal error] isEnable has not been called before forwardTraces."

@@ -16,7 +16,7 @@ type symbolic_process =
 exception Not_Trace_Equivalent of symbolic_process Constraint_system.t
 
 val apply_one_transition_and_rules_for_trace_equivalence :
-  semantics -> symbolic_process Constraint_system.Set.t -> int ->
+  semantics -> Por.trs -> symbolic_process Constraint_system.Set.t -> int ->
   (symbolic_process Constraint_system.Set.t -> int -> (unit -> unit) -> unit) ->
   (unit -> unit) ->
   unit
@@ -25,6 +25,6 @@ type result_trace_equivalence =
   | Equivalent
   | Not_Equivalent of symbolic_process Constraint_system.t
 
-val trace_equivalence : semantics -> process -> process -> result_trace_equivalence
+val trace_equivalence : semantics -> process -> process -> Por.trs -> result_trace_equivalence
 
 val publish_trace_equivalence_result : int -> semantics -> process -> process -> result_trace_equivalence -> float -> unit

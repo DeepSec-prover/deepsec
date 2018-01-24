@@ -118,8 +118,18 @@ module Trace : sig
 
   (** This module handle the gathering of information about the attack trace. *)
 
+    type trace_actions =
+    | TrComm of action_process * action_process * process
+    | TrNew of action_process * process
+    | TrChoice of action_process * process
+    | TrTest of action_process * process
+    | TrLet of action_process * process
+    | TrInput of snd_ord_variable * protocol_term * snd_ord_variable * protocol_term * action_process * process
+    | TrOutput of snd_ord_variable * protocol_term * axiom * protocol_term * action_process * process
+    | TrEavesdrop of snd_ord_variable * protocol_term * axiom * protocol_term * action_process * action_process * process
+
   (** The type of a trace *)
-  type t
+  type t = trace_actions list
 
   (** {3 Generatio} *)
 

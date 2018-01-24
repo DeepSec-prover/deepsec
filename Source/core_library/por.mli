@@ -8,7 +8,7 @@ type actionA = Process.visAct
 val emptySetTraces : trs
 		       
 (** Returns true when a given term representing a IN/Out(channel) in Apte is enable in the given set of traces. *)
-val isEnable : actionA -> trs -> bool
+val isEnable : Process.Trace.t -> trs -> (actionA option * trs) option
 				   
 (** Returns continuation of traces after some Apte-action. Raise Not_found when the action is not enable. *)
 val forwardTraces : actionA -> trs -> trs

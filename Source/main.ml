@@ -165,7 +165,7 @@ let rec excecute_queries id = function
         if !Config.distributed
         then
           begin
-            let result,init_proc1, init_proc2 = Distributed_equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 in
+            let result,init_proc1, init_proc2 = Distributed_equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 trs in
   	        let running_time = ( Unix.time () -. !start_time ) in
             if !Config.display_trace
             then Equivalence.publish_trace_equivalence_result id !Process.chosen_semantics init_proc1 init_proc2 result running_time;
@@ -173,7 +173,7 @@ let rec excecute_queries id = function
           end
         else
           begin
-            let result = Equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 in
+            let result = Equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 trs in
   	        let running_time = ( Unix.time () -. !start_time ) in
             if !Config.display_trace
             then Equivalence.publish_trace_equivalence_result id !Process.chosen_semantics proc1 proc2 result running_time;
@@ -308,7 +308,7 @@ let _ =
     (
       "-with_por_gen",
       Arg.Set Config.por_gen,
-      " [!Experimental!] Uses generic Partial Order Reductions (POR) techniques to significantly improve performance. Contrary to the built-in POR optimizations, those do not assume protocols given as inputs are action-determinate.\n"
+      " [!Experimental!] Uses generic Partial Order Reductions (POR) techniques to significantly improve performance. Contrary to the built-in POR optimizations, those do not assume protocols given as inputs are action-determinate. It is currently compatible with the classical semantics only. Currently no implem for distributed computing.\n"
     );
   ]
   in
