@@ -83,9 +83,7 @@ struct
       | DStandard data ->
           Config.display_trace := data.display_trace;
           let rec apply_rules trs csys_set frame_size f_next =
-            Equivalence.apply_one_transition_and_rules_for_trace_equivalence data.chosen_semantics trs csys_set frame_size (fun trs csys_set size f_next ->
-              apply_rules trs csys_set size f_next
-            ) f_next
+            Equivalence.apply_one_transition_and_rules_for_trace_equivalence data.chosen_semantics trs csys_set frame_size apply_rules f_next
           in
 
           begin try
@@ -138,8 +136,8 @@ struct
           begin try
             let job_list = ref [] in
             Equivalence.apply_one_transition_and_rules_for_trace_equivalence data.chosen_semantics job.trs data.csys_set data.frame_size
-              (fun trs csys_set_1 frame_size_1 f_next_1 ->
-                job_list := { job with data_equiv = DStandard { data with csys_set = csys_set_1; frame_size = frame_size_1 }; variable_counter = Variable.get_counter (); name_counter = Name.get_counter () } :: !job_list;
+              (fun trs_new csys_set_1 frame_size_1 f_next_1 ->
+                job_list := { job with data_equiv = DStandard { data with csys_set = csys_set_1; frame_size = frame_size_1 }; variable_counter = Variable.get_counter (); name_counter = Name.get_counter (); trs = trs_new } :: !job_list;
                 f_next_1 ()
               )
               (fun () -> ());
