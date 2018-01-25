@@ -46,6 +46,7 @@ struct
       number_of_symbols : int;
       stored_skeletons : Rewrite_rules.stored_skeleton list;
       stored_constructors : (symbol * Data_structure.Tools.stored_constructor) list;
+      trs : Por.trs;
 
       data_equiv : data_equivalence
     }
@@ -61,8 +62,6 @@ struct
   let initialise () = ()
 
   let result_equivalence = ref Equivalent
-
-  let trs = Por.emptySetTraces
 
   let evaluation job =
     Variable.set_up_counter job.variable_counter;
@@ -83,14 +82,14 @@ struct
     match job.data_equiv with
       | DStandard data ->
           Config.display_trace := data.display_trace;
-          let rec apply_rules csys_set frame_size f_next =
+          let rec apply_rules trs csys_set frame_size f_next =
             Equivalence.apply_one_transition_and_rules_for_trace_equivalence data.chosen_semantics trs csys_set frame_size (fun trs csys_set size f_next ->
-              apply_rules csys_set size f_next
+              apply_rules trs csys_set size f_next
             ) f_next
           in
 
           begin try
-            apply_rules data.csys_set data.frame_size (fun () -> ());
+            apply_rules job.trs data.csys_set data.frame_size (fun () -> ());
             Equivalent
           with
             | Equivalence.Not_Trace_Equivalent csys -> Not_Equivalent (OStandard (csys, data.init_proc1, data.init_proc2))
@@ -138,7 +137,7 @@ struct
           Config.display_trace := data.display_trace;
           begin try
             let job_list = ref [] in
-            Equivalence.apply_one_transition_and_rules_for_trace_equivalence data.chosen_semantics trs data.csys_set data.frame_size
+            Equivalence.apply_one_transition_and_rules_for_trace_equivalence data.chosen_semantics job.trs data.csys_set data.frame_size
               (fun trs csys_set_1 frame_size_1 f_next_1 ->
                 job_list := { job with data_equiv = DStandard { data with csys_set = csys_set_1; frame_size = frame_size_1 }; variable_counter = Variable.get_counter (); name_counter = Name.get_counter () } :: !job_list;
                 f_next_1 ()
@@ -232,7 +231,8 @@ let trace_equivalence semantics proc1 proc2 trs =
       EquivJob.number_of_symbols = setting.Term.Symbol.nb_symb;
       EquivJob.stored_skeletons = Rewrite_rules.retrieve_stored_skeletons ();
       EquivJob.stored_constructors = Data_structure.Tools.retrieve_stored_constructors ();
-
+      EquivJob.trs = trs;
+      
       EquivJob.data_equiv = EquivJob.DStandard data_standard
     }
   in
@@ -317,6 +317,7 @@ let trace_equivalence_determinate conf1 conf2 =
       EquivJob.number_of_symbols = setting.Term.Symbol.nb_symb;
       EquivJob.stored_skeletons = Rewrite_rules.retrieve_stored_skeletons ();
       EquivJob.stored_constructors = Data_structure.Tools.retrieve_stored_constructors ();
+      EquivJob.trs = Por.emptySetTraces;
 
       EquivJob.data_equiv = EquivJob.DDeterminate data
     }

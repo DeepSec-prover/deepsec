@@ -40,4 +40,8 @@ val distributed : bool ref
 
 val core_factor : int ref
 
+(** Generalized POR *)
 val por_gen : bool ref
+
+(** POR for determinate processes *)
+val no_por : bool ref

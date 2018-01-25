@@ -2,7 +2,7 @@ open Term
 open Process
 open Display
 
-let print_debug_por_gen_showExplo = ref true
+let print_debug_por_gen_showExplo = ref false
 let count_explo = ref 0
 let count_stop = ref 0
 
@@ -19,7 +19,7 @@ type symbolic_process =
 
 (*********************)
 
-let por_continue csys_set trs =
+let por_continue csys_set trs = 
   if !print_debug_por_gen_showExplo
   then begin Printf.printf "Current set of symbolic traces to explore: \n"; Por.displaySetTraces trs; Printf.printf "\n\n%!"; end;
   let csys = Constraint_system.Set.choose csys_set in
@@ -34,13 +34,12 @@ let por_continue csys_set trs =
       *   (List.map (fun csys -> (Constraint_system.get_additional_data csys).current_process) (Constraint_system.Set.elements csys_set)) ; *)
      (* begin Printf.printf "Current set of symbolic traces to explore: \n"; Por.displaySetTraces trs; Printf.printf "\n%!"; end; *)
      incr(count_stop) ;
-     true, trs
+     false, trs
   | Some (act, trs_next) -> 
      if !print_debug_por_gen_showExplo then
        (match act with
         | None -> Printf.printf "[G-POR] ---- No last visible action so this exploration continues.\n%!" ;
         | Some act -> Printf.printf "[G-POR] ---- Last visible action %s is enabled in symbolic POR so this exploration continues.\n%!" (Por.displayActPor act)) ;
-     incr(count_explo) ;
      true, trs_next
 
 exception Not_Trace_Equivalent of symbolic_process Constraint_system.t
@@ -50,13 +49,14 @@ let apply_one_transition_and_rules_for_trace_in_classic trs csys_set size_frame 
   
   let opti_csys_set = Constraint_system.Set.optimise_snd_ord_recipes csys_set in
 
+  incr(count_explo) ; 
   let continue, trs_next = 
     (* ** [Generalized POR] stop exploration if trace explores so far is not in the reduced set of traces computed by Porridge *)
     if !Config.por_gen
     then por_continue opti_csys_set trs
     else true, trs in
 
-  if not(continue) then ()	(* [G-POR] Stop exploration *)
+  if not(continue) then f_next ()	(* [G-POR] Stop exploration *)
   else
 
     (*** Generate the set for the next input ***)
@@ -176,13 +176,14 @@ let apply_one_transition_and_rules_for_trace_in_classic trs csys_set size_frame 
 
 let apply_one_transition_and_rules_for_trace_in_private trs csys_set size_frame f_continuation f_next =
 
+  incr(count_explo) ; 
   let continue, trs_next = 
     (* ** [Generalized POR] stop exploration if trace explores so far is not in the reduced set of traces computed by Porridge *)
     if !Config.por_gen
     then por_continue csys_set trs
     else true, trs in
 
-  if not(continue) then ()	(* [G-POR] Stop exploration *)
+  if not(continue) then f_next ()	(* [G-POR] Stop exploration *)
   else
 
   (*** Generate the set for the next input ***)
@@ -440,8 +441,8 @@ let publish_trace_equivalence_result id sem proc1 proc2 result runtime =
   let template_line = "<!-- Content of the file -->" in
 
   if !Config.por_gen
-  then Printf.printf "[G-POR] (Stats) ---- Number of explorations [%d], number of blocked explorations [%d].\n%!" !count_explo !count_stop;
-
+  then Printf.printf "[G-POR] (Stats) ---- Number of explorations [%d], number of blocked explorations [%d].\n%!" !count_explo !count_stop
+  else Printf.printf "        (Stats) ---- Number of explorations [%d].\n%!" !count_explo ;
   
   let line = ref (input_line in_template) in
   while !line <> template_stylesheet do

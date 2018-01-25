@@ -115,7 +115,7 @@ let rec excecute_queries id = function
     start_time :=  (Unix.time ());
 
     let result =
-      if not(!Config.por_gen) && Process_determinate.is_action_determinate exproc1 && Process_determinate.is_action_determinate exproc2
+      if not(!Config.por_gen) && not(!Config.no_por) && Process_determinate.is_action_determinate exproc1 && Process_determinate.is_action_determinate exproc2
       then
         let conf1 = Process_determinate.configuration_of_expansed_process exproc1 in
         let conf2 = Process_determinate.configuration_of_expansed_process exproc2 in
@@ -308,7 +308,12 @@ let _ =
     (
       "-with_por_gen",
       Arg.Set Config.por_gen,
-      " [!Experimental!] Uses generic Partial Order Reductions (POR) techniques to significantly improve performance. Contrary to the built-in POR optimizations, those do not assume protocols given as inputs are action-determinate. It is currently compatible with the classical semantics only. Currently no implem for distributed computing.\n"
+      " [!Experimental!] Uses generic Partial Order Reductions (POR) techniques to significantly improve performance. Contrary to the built-in POR optimizations, those do not assume protocols given as inputs are action-determinate. Currently not implemented for distributed computing."
+    );
+    (
+      "-no_por",
+      Arg.Set Config.no_por,
+      " Desactivates Partial Order Reduction (POR) techniques for action-determinate processes (useful for benchmarks)."
     );
   ]
   in
