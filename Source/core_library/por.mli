@@ -4,6 +4,9 @@
 type trs
 type actionA = Process.visAct
 
+(** Need to be marshaled: Associates channel representation from DeepSec to channel representation of Porridge. *)
+val hash_channel : (string, int) Hashtbl.t ref
+  
 (** Empty set of traces. *)
 val emptySetTraces : trs
 		       

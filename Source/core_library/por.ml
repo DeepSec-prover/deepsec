@@ -1,6 +1,8 @@
 open Porridge.Process
 
-let tblChannel = Hashtbl.create 5
+let hash_channel =
+  let h_init = Hashtbl.create 5 in
+  ref h_init
 let importVars = ref []
 let importNames = ref []
 let intChannel = ref 0
@@ -58,8 +60,8 @@ let str_of_constant c =
 
 let importChannel ch =          (* channels are names in Deepsec *)
   let str_ch = str_of_constant ch in
-  let intCh = try Hashtbl.find tblChannel str_ch
-              with Not_found -> begin Hashtbl.add tblChannel str_ch !intChannel;
+  let intCh = try Hashtbl.find !hash_channel str_ch
+              with Not_found -> begin Hashtbl.add !hash_channel str_ch !intChannel;
                                       incr(intChannel);
                                       !intChannel - 1;
                                 end in
@@ -191,7 +193,7 @@ let tracesPersistentSleepEquiv p1 p2 =
 	       
 let isSameChannel chPOR ch =
   let strCh = str_of_constant ch in
-  let intCh = try Hashtbl.find tblChannel strCh
+  let intCh = try Hashtbl.find !hash_channel strCh
 	      with Not_found -> err "[Internal error] Channel is not present in HashTbl." in
   chPOR == Porridge.Channel.of_int intCh (* == since channel are private int, OK? *)
 
@@ -213,10 +215,10 @@ let rec isEnable trace trs =
   let rec look_action = function
     | Process.Trace.TrOutput(_,ch,_,_,_,_) :: _ ->
        (* Printf.printf "[G-POR] ---- Found last action: Out(%s)\n%!" (str_of_constant ch) ; *)
-       if is_constant ch then Some (Process.OutS ch) else err "CACA1"
+       Some (Process.OutS ch)
     | Process.Trace.TrInput(_,ch,_,_,_,_) :: _ ->
        (* Printf.printf "[G-POR] ---- Found last action: In(%s)\n%!" (str_of_constant ch) ; *)
-       if is_constant ch then Some (Process.InS ch) else err "CACA2"
+       Some (Process.InS ch)
     | _ :: tl -> look_action tl
     | [] -> None in
   match look_action trace with
@@ -246,7 +248,7 @@ let displaySetTraces trs = RedLTS.display_traces trs
 let displayActPor act =
   let aux ch =
     let strCh = str_of_constant ch in
-    let intCh = try Hashtbl.find tblChannel strCh
+    let intCh = try Hashtbl.find !hash_channel strCh
 		with Not_found -> err "[Internal error] Channel is not present in HashTbl." in
     Porridge.Channel.to_char (Porridge.Channel.of_int intCh) in
   match act with

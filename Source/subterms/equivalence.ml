@@ -20,26 +20,26 @@ type symbolic_process =
 (*********************)
 
 let por_continue csys_set trs = 
-  if !print_debug_por_gen_showExplo
-  then begin Printf.printf "Current set of symbolic traces to explore: \n"; Por.displaySetTraces trs; Printf.printf "\n\n%!"; end;
+  (* if !print_debug_por_gen_showExplo
+   * then begin Printf.fprintf !Config.output "Current set of symbolic traces to explore: \n"; Por.displaySetTraces trs; Printf.fprintf !Config.output "\n\n%!"; end; *)
   let csys = Constraint_system.Set.choose csys_set in
   let trace = (Constraint_system.get_additional_data csys).trace in
   match Por.isEnable trace trs with
   | None ->
      if !print_debug_por_gen_showExplo then
-       Printf.printf "[G-POR] ---- Last visible action is not enabled in symbolic POR so this exploration is stopped.\n%!" ;
+       Printf.fprintf !Config.output "[G-POR] ---- Last visible action is not enabled in symbolic POR so this exploration is stopped.\n%!" ;
      (* DEBUG: *)
-     (* Printf.printf "Set of constraint systems:\n";
-      * List.iter (fun csys -> Printf.printf "Proc(s)=<<<%s>>>\n\n" (Process.display_process_testing None (fun i -> i) csys))
+     (* Printf.fprintf !Config.output "Set of constraint systems:\n";
+      * List.iter (fun csys -> Printf.fprintf !Config.output "Proc(s)=<<<%s>>>\n\n" (Process.display_process_testing None (fun i -> i) csys))
       *   (List.map (fun csys -> (Constraint_system.get_additional_data csys).current_process) (Constraint_system.Set.elements csys_set)) ; *)
-     (* begin Printf.printf "Current set of symbolic traces to explore: \n"; Por.displaySetTraces trs; Printf.printf "\n%!"; end; *)
+     (* begin Printf.fprintf !Config.output "Current set of symbolic traces to explore: \n"; Por.displaySetTraces trs; Printf.fprintf !Config.output "\n%!"; end; *)
      incr(count_stop) ;
      false, trs
   | Some (act, trs_next) -> 
      if !print_debug_por_gen_showExplo then
        (match act with
-        | None -> Printf.printf "[G-POR] ---- No last visible action so this exploration continues.\n%!" ;
-        | Some act -> Printf.printf "[G-POR] ---- Last visible action %s is enabled in symbolic POR so this exploration continues.\n%!" (Por.displayActPor act)) ;
+        | None -> Printf.fprintf !Config.output "[G-POR] ---- No last visible action so this exploration continues.\n%!" ;
+        | Some act -> Printf.fprintf !Config.output "[G-POR] ---- Last visible action %s is enabled in symbolic POR so this exploration continues.\n%!" (Por.displayActPor act)) ;
      true, trs_next
 
 exception Not_Trace_Equivalent of symbolic_process Constraint_system.t
@@ -441,8 +441,8 @@ let publish_trace_equivalence_result id sem proc1 proc2 result runtime =
   let template_line = "<!-- Content of the file -->" in
 
   if !Config.por_gen
-  then Printf.printf "[G-POR] (Stats) ---- Number of explorations [%d], number of blocked explorations [%d].\n%!" !count_explo !count_stop
-  else Printf.printf "        (Stats) ---- Number of explorations [%d].\n%!" !count_explo ;
+  then Printf.fprintf !Config.output "[G-POR] (Stats) ---- Number of explorations [%d], number of blocked explorations [%d].\n%!" !count_explo !count_stop
+  else Printf.fprintf !Config.output "        (Stats) ---- Number of explorations [%d].\n%!" !count_explo ;
   
   let line = ref (input_line in_template) in
   while !line <> template_stylesheet do

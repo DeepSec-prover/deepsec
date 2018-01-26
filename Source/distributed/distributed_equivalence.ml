@@ -9,6 +9,9 @@ struct
     {
       chosen_semantics : semantics;
       display_trace : bool;
+      no_por : bool;
+      por_gen : bool;
+      hash_channel : (string, int) Hashtbl.t;
 
       init_proc1 : Process.process;
       init_proc2 : Process.process;
@@ -21,6 +24,8 @@ struct
     {
       init_conf1 : Process_determinate.configuration;
       init_conf2 : Process_determinate.configuration;
+      no_por : bool;
+      por_gen : bool;
 
       equiv_problem : Equivalence_determinate.equivalence_problem
     }
@@ -48,7 +53,7 @@ struct
       stored_constructors : (symbol * Data_structure.Tools.stored_constructor) list;
       trs : Por.trs;
 
-      data_equiv : data_equivalence
+      data_equiv : data_equivalence;
     }
 
   type result =
@@ -82,6 +87,9 @@ struct
     match job.data_equiv with
       | DStandard data ->
           Config.display_trace := data.display_trace;
+          Config.no_por := data.no_por ;
+          Config.por_gen := data.por_gen ;
+          Por.hash_channel := data.hash_channel  ;
           let rec apply_rules trs csys_set frame_size f_next =
             Equivalence.apply_one_transition_and_rules_for_trace_equivalence data.chosen_semantics trs csys_set frame_size apply_rules f_next
           in
@@ -207,6 +215,9 @@ let trace_equivalence semantics proc1 proc2 trs =
     {
       EquivJob.chosen_semantics = semantics;
       EquivJob.display_trace = !Config.display_trace;
+      EquivJob.no_por = !Config.no_por;
+      EquivJob.por_gen = !Config.por_gen;
+      EquivJob.hash_channel = !Por.hash_channel;
 
       EquivJob.init_proc1 = proc1;
       EquivJob.init_proc2 = proc2;
@@ -231,7 +242,7 @@ let trace_equivalence semantics proc1 proc2 trs =
       EquivJob.stored_constructors = Data_structure.Tools.retrieve_stored_constructors ();
       EquivJob.trs = trs;
       
-      EquivJob.data_equiv = EquivJob.DStandard data_standard
+      EquivJob.data_equiv = EquivJob.DStandard data_standard;
     }
   in
 
@@ -297,6 +308,8 @@ let trace_equivalence_determinate conf1 conf2 =
     {
       EquivJob.init_conf1 = conf1;
       EquivJob.init_conf2 = conf2;
+      EquivJob.no_por = !Config.no_por;
+      EquivJob.por_gen = !Config.por_gen;
 
       EquivJob.equiv_problem = equiv_pbl
     }
@@ -317,7 +330,7 @@ let trace_equivalence_determinate conf1 conf2 =
       EquivJob.stored_constructors = Data_structure.Tools.retrieve_stored_constructors ();
       EquivJob.trs = Por.emptySetTraces;
 
-      EquivJob.data_equiv = EquivJob.DDeterminate data
+      EquivJob.data_equiv = EquivJob.DDeterminate data ;
     }
   in
 

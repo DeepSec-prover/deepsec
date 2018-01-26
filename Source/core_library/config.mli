@@ -45,3 +45,7 @@ val por_gen : bool ref
 
 (** POR for determinate processes *)
 val no_por : bool ref
+
+(** Debugging for distributed computations *)
+val file_name : unit -> string
+val output : out_channel ref

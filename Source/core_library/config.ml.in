@@ -46,3 +46,10 @@ let no_por = ref false
 
 (**** Generalized POR ****)
 let por_gen = ref false
+
+(**** Debugging for distributed computations ****)
+let file_name () =
+  Random.self_init() ;
+  Printf.sprintf "WORKER_%d" (Random.int 1000)
+
+let output = ref stdout
