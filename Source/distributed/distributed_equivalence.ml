@@ -11,6 +11,7 @@ struct
       display_trace : bool;
       no_por : bool;
       por_gen : bool;
+      distributed : bool;
       hash_channel : (string, int) Hashtbl.t;
 
       init_proc1 : Process.process;
@@ -26,6 +27,7 @@ struct
       init_conf2 : Process_determinate.configuration;
       no_por : bool;
       por_gen : bool;
+      distributed : bool;
 
       equiv_problem : Equivalence_determinate.equivalence_problem
     }
@@ -89,6 +91,7 @@ struct
           Config.display_trace := data.display_trace;
           Config.no_por := data.no_por ;
           Config.por_gen := data.por_gen ;
+          Config.distributed := data.distributed ;
           Por.hash_channel := data.hash_channel  ;
           let rec apply_rules trs csys_set frame_size f_next =
             Equivalence.apply_one_transition_and_rules_for_trace_equivalence data.chosen_semantics trs csys_set frame_size apply_rules f_next
@@ -101,7 +104,8 @@ struct
             | Equivalence.Not_Trace_Equivalent csys -> Not_Equivalent (OStandard (csys, data.init_proc1, data.init_proc2))
           end
       | DDeterminate data ->
-          let rec apply_rules equiv_pbl f_next =
+         Config.distributed := data.distributed ;
+         let rec apply_rules equiv_pbl f_next =
             Equivalence_determinate.apply_one_transition_and_rules equiv_pbl (fun eq_pbl_1 f_next_1 ->
               apply_rules eq_pbl_1 f_next_1
             ) f_next
@@ -217,6 +221,7 @@ let trace_equivalence semantics proc1 proc2 trs =
       EquivJob.display_trace = !Config.display_trace;
       EquivJob.no_por = !Config.no_por;
       EquivJob.por_gen = !Config.por_gen;
+      EquivJob.distributed = !Config.distributed;
       EquivJob.hash_channel = !Por.hash_channel;
 
       EquivJob.init_proc1 = proc1;
@@ -310,7 +315,7 @@ let trace_equivalence_determinate conf1 conf2 =
       EquivJob.init_conf2 = conf2;
       EquivJob.no_por = !Config.no_por;
       EquivJob.por_gen = !Config.por_gen;
-
+      EquivJob.distributed = !Config.distributed;
       EquivJob.equiv_problem = equiv_pbl
     }
   in
