@@ -1,0 +1,61 @@
+(**********)
+(* THEORY *)
+(**********)
+
+(* public communication channel *)
+free c.
+free ci.
+free cr.
+(* constant values *)
+free ok.
+free error.
+
+(* Diffie-Hellman exponentiation *)
+(* Symmetric Encryption *)
+fun enc/2.
+reduc dec(enc(x,y),y) -> x.
+			       
+(*************)
+(* PROTOCOLS *)
+(*************)
+
+(* Feldhofer Protocol *)
+let I (k) =
+    new nI;
+(* I ----[n]---> R *)
+    out(ci, nI);
+(* I <---[{nI,nR}_k]--- R *)
+    in(ci, x);
+    let (=nI, xnr) = dec(x, k)
+(* I ----[{nI,nI}_k]---> R *)
+    in out(ci, enc((xnr,nI),k))
+    else out(ci,error).
+
+let R (k) =
+    new nR;
+(* R <---[nI]--- I *)
+    in(cr, ynI);
+(* R ----[{nI,nR}_k]---> I *)
+    out(cr, enc((ynI, nR), k));
+(* R <---[{nR,nI}_k]--- I *)
+    in(cr, y);
+    let (=nR,=ynI) = dec(y,k)
+    in out(cr, ok)
+    else out(cr,error).
+
+(**** PARAMETRIZED SYSTEMS *****)
+let Pair(k) = I(k) | R(k). 
+let fPair = new k; Pair(k).
+let fTag = new k; I(k).
+(* M2: something to link *)
+let M2 =    new k; ( Pair(k) | Pair(k) ).
+(* M2: nothing to link *)
+let S2 =             fPair   | fPair.
+
+(* Additional fresh pairs of tag-reader *)
+let More = fPair.
+let M = M2 | More.
+let S = S2 | More.
+
+(* We check that M is trace-included in S using the encoding 'S ~ S+M'.*)
+query trace_equiv(S,S+M).
