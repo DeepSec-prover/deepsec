@@ -184,9 +184,9 @@ def main():
                                   ", nbStop: " + str(nbStop) +                                  
                                  ", date: " + date + ", time: " + str(timeString) + "  |  ")
                     parse = timeString
-                    time = (int(parse.split(":")[0])*3600 +
-                            int(parse.split(":")[1].split(".")[0])*60 +
-                            int(parse.split(":")[1].split(".")[1]))
+                    time = (float(parse.split(":")[0])*60 +
+                            float(parse.split(":")[1].split(".")[0]) +
+                            float(parse.split(":")[1].split(".")[1])/100)
                     
                     testDico = {
                         "new" : True,        # bool
