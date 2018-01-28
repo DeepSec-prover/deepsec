@@ -14,6 +14,8 @@ import data
 import utils
 
 DEFAULT_CORES = 10
+local = False                    # set to True requires configuration of DeepSeec and Porridge roots below
+
 
 def sortSize(listEx):
    listAssoc = [(int(ex.split(".dps")[0].split("_")[-1]), ex) for ex in listEx]
@@ -75,13 +77,13 @@ def main():
         if args.version:
             print(args.version)
             list_binaries = []
-            if "none" in args.version:
-                list_binaries.append(bina_default + "-no_por ")
             if "old" in args.version:
-                list_binaries.append(bina_default)
+                list_binaries.append([bina_default, "old"])
             if "new" in args.version:
                 bina = bina_default + "-with_por_gen "
-                list_binaries.append(bina)
+                list_binaries.append([bina, "new"])
+            if "none" in args.version:
+                list_binaries.append([bina_default + "-no_por ", "none"])
 
     if args.filter_tests:
        list_tests = filter(lambda s: args.filter_tests in s, list_tests)
@@ -101,6 +103,10 @@ def main():
        
     pprint_all("="*15 + " STARTING A NEW BENCHMARK " + "="*15 +"\n")
     pprint_all("Date: " + str(datetime.now()) + "\n")
+    if local:
+       pass
+       # TODO
+       # pprint_all("DeepSec GIT: " + deepsec_git + ", Porridge GIT: " + porridge_git + "\n")    
     if not(args.version):
         print("You have used no option, are you sure? Look at the helping message above.")
     pprint_all("You chose those versions: " + str(args.version) + "\n" +
@@ -113,9 +119,9 @@ def main():
     IND = " " * 50
 
     # defLimit()                  # limit of CPU and memory usage
-    list_binaries.sort()
-    for binary in list_binaries:
-        b_name = binary.split('../')[1]
+    for b in list_binaries:
+        binary = b[0]
+        b_name = b[1]
         pprint_all("\n" + HEAD + "Starting a benchmark version: " + b_name + HEAD)
         log_all.write("\n")
         pprint_all(IND + str(datetime.now()) + "\n")
