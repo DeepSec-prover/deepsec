@@ -152,20 +152,22 @@ let rec excecute_queries id = function
           then begin
 	      Printf.printf "[G-POR] Applying generalized POR engine and computing set of reduced, symbolic traces to be explored...\n%!";
 	      let t = Sys.time() in
-              let proc1,proc2 = match exproc1,exproc2 with
-                | Choice [p1_1;p1_2],p2_ when (p1_2 = p2_) || Process.same_structure p1_2 p2_
-                  -> let () = Porridge.Trace_equiv.inclusion := true in
-                     p1_1, p2_
-                | Choice [p1_2;p1_1],p2_ when (p1_2 = p2_) || Process.same_structure p1_2 p2_
-                  -> let () = Porridge.Trace_equiv.inclusion := true in
-                     p1_1, p2_
-                | p1_,Choice [p2_1;p2_2] when (p2_1 = p1_) || Process.same_structure p2_1 p1_
-                  -> let () = Porridge.Trace_equiv.inclusion := true in
-                     p1_, p2_2
-                | p1_,Choice [p2_2;p2_1] when (p2_1 = p1_) || Process.same_structure p2_1 p1_
-                  -> let () = Porridge.Trace_equiv.inclusion := true in
-                     p1_, p2_2
-                  | _ -> exproc1, exproc2 in
+              let proc1,proc2 =
+                if not(!Config.inclusion_detect) then exproc1, exproc2
+                else match exproc1,exproc2 with
+                     | Choice [p1_1;p1_2],p2_ when Process.same_structure p1_2 p2_
+                       -> let () = Porridge.Trace_equiv.inclusion := true in
+                          p1_1, p2_
+                     | Choice [p1_2;p1_1],p2_ when Process.same_structure p1_2 p2_
+                       -> let () = Porridge.Trace_equiv.inclusion := true in
+                          p1_1, p2_
+                     | p1_,Choice [p2_1;p2_2] when Process.same_structure p2_1 p1_
+                       -> let () = Porridge.Trace_equiv.inclusion := true in
+                          p1_, p2_2
+                     | p1_,Choice [p2_2;p2_1] when Process.same_structure p2_1 p1_
+                       -> let () = Porridge.Trace_equiv.inclusion := true in
+                          p1_, p2_2
+                     | _ -> exproc1, exproc2 in
               let p1 = Por.importProcess proc1
               and p2 = Por.importProcess proc2 in
 	      Printf.printf "[G-POR] Symbolic processes living in the symbolic LTS have been computed in %fs.\n%!" (Sys.time() -. t);
@@ -325,6 +327,11 @@ let _ =
       "-with_por_gen",
       Arg.Set Config.por_gen,
       " [!Experimental!] Uses generic Partial Order Reductions (POR) techniques to significantly improve performance. Contrary to the built-in POR optimizations, those do not assume protocols given as inputs are action-determinate. Currently not implemented for distributed computing."
+    );
+    (
+      "-detection_inclusion",
+      Arg.Set Config.inclusion_detect,
+      " [!Experimental!] Detect when given inputs correspond to an inclusion between processes and simpligy the system given to Porroidge."
     );
     (
       "-no_por",

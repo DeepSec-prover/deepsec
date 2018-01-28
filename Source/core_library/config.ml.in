@@ -46,6 +46,7 @@ let no_por = ref false
 
 (**** Generalized POR ****)
 let por_gen = ref false
+let inclusion_detect = ref false
 
 (**** Debugging for distributed computations ****)
 let file_name () =
