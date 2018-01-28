@@ -3824,3 +3824,30 @@ let next_input =
   if Config.test_activated
   then test_next_input
   else internal_next_input
+
+let same_constant c1 c2 =
+false&&  Term.is_function c1 && Term.Symbol.get_arity (Term.root c1) = 0 &&
+    Term.is_function c2 && Term.Symbol.get_arity (Term.root c2) = 0 &&
+      Term.Symbol.is_equal (Term.root c1) (Term.root c2)
+
+let same_structure  p1 p2 =
+  let rec aux = function
+    | Nil,Nil -> true
+    | Output(ch_1,_,proc_1), Output(ch_2,_,proc_2) ->
+       same_constant ch_1 ch_2 &&
+         aux (proc_1,proc_2)
+    | Input(ch_1,_,proc_1), Input(ch_2,_,proc_2) ->
+       same_constant ch_1 ch_2 &&
+         aux (proc_1,proc_2)
+    | IfThenElse(_,_,p1_t,p1_e), IfThenElse(_,_,p2_t,p2_e)
+      | Let(_,_,p1_t,p1_e),Let(_,_,p2_t,p2_e) ->
+       aux (p1_t,p2_t) && aux (p1_e,p2_e)
+    | New(_,p1), New(_,p2) -> aux (p1,p2)
+    | Par(tl_1),Par(tl_2) ->
+       (try List.fold_left2 (fun res (p1,_) (p2,_) -> res && aux (p1,p2)) true tl_1 tl_2
+        with _ -> false)
+    | Choice(ps_1),Choice(ps_2) ->
+       (try List.fold_left2 (fun res p1 p2 -> res && aux (p1,p2)) true ps_1 ps_2
+        with _ -> false)
+    | _ -> false in
+  aux (p1,p2)

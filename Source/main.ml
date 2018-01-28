@@ -152,8 +152,17 @@ let rec excecute_queries id = function
           then begin
 	      Printf.printf "[G-POR] Applying generalized POR engine and computing set of reduced, symbolic traces to be explored...\n%!";
 	      let t = Sys.time() in
-	      let p1 = Por.importProcess exproc1
-	      and p2 = Por.importProcess exproc2 in
+              let () = Porridge.Trace_equiv.inclusion := true in
+              let proc1,proc2 = match exproc1,exproc2 with
+                | Choice [p1_1;p1_2],p2_
+                | Choice [p1_2;p1_1],p2_ when Process.same_structure p1_2 p2_
+                  -> p1_1, p2_
+                | p1_,Choice [p2_1;p2_2]
+                | p1_,Choice [p2_2;p2_1]  when Process.same_structure p2_1  p1_
+                  -> p1_, p2_2
+                | _ -> exproc1, exproc2 in
+              let p1 = Por.importProcess proc1
+              and p2 = Por.importProcess proc2 in
 	      Printf.printf "[G-POR] Symbolic processes living in the symbolic LTS have been computed in %fs.\n%!" (Sys.time() -. t);
 	      let trs = Por.computeTraces p1 p2 in
 	      Printf.printf "[G-POR] A set of symbolic traces to be explored has been computed in %fs.\n%!" (Sys.time() -. t);

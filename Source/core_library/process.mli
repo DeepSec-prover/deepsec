@@ -302,3 +302,6 @@ type visAct =
   | OutS of protocol_term
 	      
 val displayVisAction : visAct -> string
+
+(** Returns true when the two processes are equal when omitting all terms (except channels that mush be constants). *)
+val same_structure : expansed_process -> expansed_process -> bool
