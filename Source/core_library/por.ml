@@ -186,8 +186,8 @@ let make_state p1 p2 =
     
 let tracesPersistentSleepEquiv p1 p2 =
   let sinit = make_state p1 p2 in
-  Printf.printf "[G-POR] Initial state:\n" ;
-  Porridge.Trace_equiv.State.pp Format.std_formatter (fst sinit) ;
+  Format.printf "[G-POR] Initial state:@.%a@."
+    Porridge.Trace_equiv.State.pp (fst sinit);
   Printf.printf "\n%!" ;
   RedLTS.traces sinit
 	       

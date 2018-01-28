@@ -3826,7 +3826,7 @@ let next_input =
   else internal_next_input
 
 let same_constant c1 c2 =
-false&&  Term.is_function c1 && Term.Symbol.get_arity (Term.root c1) = 0 &&
+  Term.is_function c1 && Term.Symbol.get_arity (Term.root c1) = 0 &&
     Term.is_function c2 && Term.Symbol.get_arity (Term.root c2) = 0 &&
       Term.Symbol.is_equal (Term.root c1) (Term.root c2)
 
