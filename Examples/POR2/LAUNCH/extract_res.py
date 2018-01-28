@@ -187,7 +187,6 @@ def main():
                     time = (float(parse.split(":")[0])*60 +
                             float(parse.split(":")[1].split(".")[0]) +
                             float(parse.split(":")[1].split(".")[1])/100)
-                    
                     testDico = {
                         "new" : True,        # bool
                         "file": testFile,    # str
