@@ -46,28 +46,30 @@ def extractVers(text):
     return(listVers2)
 
 def extractTests(text):
-    SEP = "---"
+    SEP = "--- Benchmark"
     if not(SEP in text):
         return []
     listTests = text.split(SEP)[1:]
     listTests2 = []
     i = 0
-    while(i <len(listTests)):
-        vers = listTests[i].split(": ")[1]
-        benchTests = listTests[i+1]
-        listTests2.append((vers, benchTests))
-        i = i+2
+    for test in listTests:
+        header = test.split(" --- ")[0]
+        body = " --- ".join(test.split(" --- ")[1:])
+        vers = header.split(": ")[1]
+        listTests2.append((vers, body))
     return(listTests2)
 
 def findVers(call, dicoVersions):
     res = {}
     resKey = ""
     for versKey in dicoVersions:
-        vers = dicoVersions[versKey]
-        if (vers["call"].strip() == call.strip()):
-            res = vers
-            resKey = versKey
-    return(resKey)
+        if versKey.strip() == call.strip():
+            return(versKey)
+        # vers = dicoVersions[versKey]
+    #     if (vers["call"].strip() == call.strip()):
+    #         res = vers
+    #         resKey = versKey
+    # return(resKey)
 
 def findTest(fileName, dicoTests):
     res = {}
@@ -155,7 +157,7 @@ def cmpGraph(ex1, ex2):
         return(cmp(ex1,ex2))
 
 def fromVersToTests(dicoVersions, dicoTests, toLatex=False, vers="all", tests="all", disp=None):
-    sortedVersions = ['ref', 'comp',  'red']
+    sortedVersions = ['none', 'new', 'old']
     listTestsKey = sorted(dicoTests.keys(), cmp = cmpGraph)
     listTestsFile = map(lambda x: dicoTests[x]['file'], listTestsKey)
     # first line of the matrix:

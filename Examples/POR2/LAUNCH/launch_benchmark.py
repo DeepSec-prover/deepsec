@@ -64,7 +64,8 @@ def main():
 
     list_tests = glob.glob('../*/*.dps')
     list_tests = filter(lambda s : new(s), list_tests)
-    bina_default = '../../../deepsec  -deepsec_dir ../../../ '
+    timing = "/usr/bin/time -f 'Time %E / Memory %Mk' "
+    bina_default = timing + '../../../deepsec  -deepsec_dir ../../../ '
     if not(args.distributed):
        bina_default += "-distributed " + str(DEFAULT_CORES) + " "
     elif int(args.distributed[0]) <= 0:
@@ -100,9 +101,11 @@ def main():
        #    list_tests = sortAKA(list_tests)
 
     list_tests = sortSize(list_tests)
-       
+    git_hash = subprocess.Popen(["git", "rev-parse", "HEAD"], stdout = subprocess.PIPE).communicate()[0]
     pprint_all("="*15 + " STARTING A NEW BENCHMARK " + "="*15 +"\n")
     pprint_all("Date: " + str(datetime.now()) + "\n")
+    pprint_all("Git Hash: " + str(git_hash) + "\n")
+
     if local:
        pass
        # TODO
@@ -137,10 +140,11 @@ def main():
             print(args)
             proc = subprocess.Popen(args,
                                     stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT,
                                     preexec_fn=defLimit())
             for line in iter(proc.stdout.readline,''):
                 line_t = line.rstrip()
-                if ("Query" in line_t) or ("Running" in line_t) or ("s." in line_t) or ("[G-POR]" in line_t and ("traces" in line_t or "Stats" in line_t)):
+                if ("Time " in line_t or "Query" in line_t) or ("Running" in line_t) or ("s." in line_t) or ("[G-POR]" in line_t and ("traces" in line_t or "Stats" in line_t)):
                     if "Query" in line_t:
                        killed = False
                     print_all(line_t + "\n")

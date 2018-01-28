@@ -24,7 +24,7 @@ DICO = {
         "branch" : "",
         "benchs": {}
     },
-    'red' : {
+    'new' : {
         "name" : "New Generalized POR",
         "call" : "deepsec -with_por_gen",
         "branch" : "",
@@ -32,7 +32,12 @@ DICO = {
     },
 }
 
-TESTS = {}
+TESTS = {
+    'PA_ANO_nd_2': {'res': True, 'name': ' ', 'file': 'PA_ANO_nd_2.txt', 'cat': 12},
+    'PA_ANO_nd_3': {'res': True, 'name': ' ', 'file': 'PA_ANO_nd_3.txt', 'cat': 12},
+    'PA_ANO_nd_4': {'res': True, 'name': ' ', 'file': 'PA_ANO_nd_4.txt', 'cat': 12},
+    'PA_ANO_nd_5': {'res': True, 'name': ' ', 'file': 'PA_ANO_nd_5.txt', 'cat': 12},
+}
 
 def get_versDico():
     return(DICO)
