@@ -15,6 +15,7 @@ import utils
 
 DEFAULT_CORES = 10
 local = False                    # set to True requires configuration of DeepSeec and Porridge roots below
+git_hash = str(subprocess.Popen(["git", "rev-parse", "HEAD"], stdout = subprocess.PIPE).communicate()[0])
 
 
 def sortSize(listEx):
@@ -50,6 +51,12 @@ def main():
     nameFile = "BENCH_results"
     if args.file_log:
         nameFile = args.file_log
+    else:
+       if args.version:
+          nameFile = nameFile + "_" + "-".join(args.version)
+       if args.filter_tests:
+          nameFile = nameFile + "_" + args.filter_tests
+       nameFile = nameFile + "_" + git_hash[0:5]
     log_all = open("log/" + nameFile + ".log", "a")
     def print_all(s):
 #        print s
@@ -101,10 +108,10 @@ def main():
        #    list_tests = sortAKA(list_tests)
 
     list_tests = sortSize(list_tests)
-    git_hash = subprocess.Popen(["git", "rev-parse", "HEAD"], stdout = subprocess.PIPE).communicate()[0]
     pprint_all("="*15 + " STARTING A NEW BENCHMARK " + "="*15 +"\n")
-    pprint_all("Date: " + str(datetime.now()) + "\n")
-    pprint_all("Git Hash: " + str(git_hash) + "\n")
+    pprint_all("Date: " + str(datetime.now()))
+    pprint_all("Git Hash: " + git_hash)
+    pprint_all("Location of log File: " + "log/" + nameFile + ".log" + "\n")
 
     if local:
        pass
