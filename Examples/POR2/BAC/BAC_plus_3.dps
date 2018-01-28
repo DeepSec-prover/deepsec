@@ -1,0 +1,63 @@
+// Unlinkability of the BAC protocol for a fixed number of sessions
+
+free c.
+free cr.
+free cp.
+
+
+free Error_nonce.
+free Error_mac.
+free Error.
+
+fun mac/2.
+fun senc/2.
+reduc sdec(senc(x,y),y) -> x.
+reduc proj1((x,y)) -> x.
+reduc proj2((x,y)) -> y.
+
+// Description of the reader role
+
+let reader(c,k_e,k_m) =
+  in(c,xn_t);
+  new n_r;
+  new k_r;
+  out(cr,(senc((n_r,xn_t,k_r),k_e),mac(senc((n_r,xn_t,k_r),k_e),k_m))).
+
+// Description of the passport role
+ 
+let passport(c,k_e,k_m,error_nonce,error_mac) =
+    new n_t;
+    new k_t;
+    out(c,n_t);
+    in(c,y);
+    if proj2(y) = mac(proj1(y),k_m) then
+       if proj1(proj2(sdec(proj1(y),k_e))) = n_t then 
+       out(c, (senc((n_t,(proj1(sdec(proj1(y),k_e)),k_t)),k_e),
+                 mac(senc((n_t,(proj1(sdec(proj1(y),k_e)),k_t)),k_e),k_m)))
+                                          else out(c,error_nonce)
+                                    else out(c,error_mac).
+
+let I(k_e,k_m) =
+ passport(cp,k_e,k_m,Error,Error).
+
+let R(k_e,k_m) =
+ reader(cr,k_e,k_m).
+
+
+(**** PARAMETRIZED SYSTEMS *****)
+let Pair(k,k_) = I(k,k_) | R(k,k_). 
+let fPair = new k;new k_; Pair(k,k_).
+let fTag = new k;new k_; I(k,k_).
+(* M2: something to link *)
+let M2 = new k;new k_; ( Pair(k,k_) | Pair(k,k_) ).
+(* M2: nothing to link *)
+let S2 = fPair   | fPair.
+
+(* Additional fresh pairs of tag-reader *)
+let More = 0.
+let M = M2 | fTag.
+let S = S2 | fTag.
+
+// Unlinkability
+(* We check that M is trace-included in S using the encoding 'S ~ S+M'.*)
+query trace_equiv(S,S+M).
