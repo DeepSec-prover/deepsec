@@ -60,9 +60,9 @@ def main():
     def new(s):
         return(not("OLD/" in s))
 
-    list_tests = glob.glob('*/*.dps')
+    list_tests = glob.glob('../*/*.dps')
     list_tests = filter(lambda s : new(s), list_tests)
-    bina_default = '../../deepsec  -deepsec_dir ../../ '
+    bina_default = '../../../deepsec  -deepsec_dir ../../../ '
     if not(args.distributed):
        bina_default += "-distributed " + str(DEFAULT_CORES) + " "
     elif int(args.distributed[0]) <= 0:
