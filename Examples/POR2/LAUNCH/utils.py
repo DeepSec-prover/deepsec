@@ -123,16 +123,16 @@ def extractResults(dicoV, sortedV, dicoT, keyT, disp=None):
             if (not(found) and
                 versionBenchs[bench]["file"].strip() == dicoT[keyT]["file"].strip()):
                 #res.append((versionBenchs[bench]["time"], versionBenchs[bench]["nbExplo"]))
-                if versionBenchs[bench]["res"] != dicoT[keyT]["res"]:
+                if versionBenchs[bench]["killed"] != "":
+#                    res.append(">(" + prettyFloat(versionBenchs[bench]["time"]) + ")")
+                    res.append(">(%s)" % versionBenchs[bench]["killed"])
+                elif versionBenchs[bench]["res"] != dicoT[keyT]["res"]:
                     res.append("> X <")
                 elif versionBenchs[bench]["new"]:
                     if disp:
                         res.append("->" + prettyFloat(versionBenchs[bench]["nbExplo"]) + "<-")
                     else:
                         res.append("->" + prettyFloat(versionBenchs[bench]["time"]) + "<-")
-                elif not(None == versionBenchs[bench].get("killed")) and versionBenchs[bench]["killed"]:
-#                    res.append(">(" + prettyFloat(versionBenchs[bench]["time"]) + ")")
-                    res.append(">(NonTerm)")
                 elif dateutil.parser.parse(versionBenchs[bench]["date"]) > datetime.now() + timedelta(hours=-2):
                     if disp:
                         res.append("[" + prettyFloat(versionBenchs[bench]["nbExplo"]) + "]")

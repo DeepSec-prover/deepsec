@@ -136,7 +136,7 @@ def main():
             # listTests: list of pairs (test, raw bench)
             for el in listTests:
                 (test, benchTests) = el
-                if not("Running time: " in benchTests):
+                if not("Running time: " in benchTests and not("KILLED" in benchTests)):
                     logging.debug("new test: " + test)
                     logging.debug("Test is not yet finished...")
                 else:
@@ -173,20 +173,29 @@ def main():
                         nbExplo = -1
                         nbStop = -1
                     if "KILLED" in benchTests:
-                        logging.critical("TODO TIME")
-                        print("TODO TIME")
-                        time = 3600*float(benchTests.split("[>")[1].split("h]")[0])
                         killed = True
                     else:
                         timeString = benchTests.split("Time ")[1].split("/")[0].strip()
                         killed = False
                     logging.debug("New test: " + testName + "|: True? " + str(isTrue) + ", nbExplo: " + str(nbExplo) +
-                                  ", nbStop: " + str(nbStop) +                                  
+                                  ", nbStop: " + str(nbStop) + ", killed?: " + str(killed) + 
                                  ", date: " + date + ", time: " + str(timeString) + "  |  ")
                     parse = timeString
-                    time = (float(parse.split(":")[0])*60 +
-                            float(parse.split(":")[1].split(".")[0]) +
-                            float(parse.split(":")[1].split(".")[1])/100)
+                    if not "." in parse:
+                        time = (float(parse.split(":")[0])*60*60 +
+                                float(parse.split(":")[1])*60 +
+                                float(parse.split(":")[2]))
+                    else:
+                        time = (float(parse.split(":")[0])*60 +
+                                float(parse.split(":")[1].split(".")[0]) +
+                                float(parse.split(":")[1].split(".")[1])/100)
+                    if killed:
+                        if "[MEMORY]" in benchTests:
+                            killed = "MemOut"
+                        else:
+                            killed = "TimeOut"
+                    else:
+                        killed = ""
                     testDico = {
                         "new" : True,        # bool
                         "file": testFile,    # str
@@ -194,7 +203,7 @@ def main():
                         "date" : date,       # string
                         "time_string" : timeString,       # str
                         "time" : time,        # int
-                        "killed" : killed,   # bool
+                        "killed" : killed,   # string
                         "nbExplo" : nbExplo, # int
                         "fileFrom": log,     # string
                     }
@@ -261,7 +270,7 @@ def main():
 
 
     print(toPrintColor)
-    print2("Captions: [> X <] if the returned result is false, [.] if is there is no benchmark, [-> t <-] for new tests, [NonTerm] if we killed the process because either it took more tahn 20 hours or it consumed more than 15GO of RAM , and [[t]] if test performed in the last 2 hours.")
+    print2("Captions: [> X <] if the returned result is false, [.] if is there is no benchmark, [-> t <-] for new tests, [TimeOut] if we killed the process because either it took more than 2 hours, [MemOut] when it consumed more than 15GO of RAM (warning: the reason of the kill may be missinterpreted), and [[t]] if test performed in the last 2 hours.")
     logging.error("#" * 80 + "\n")
 
     dicoFile = open(dicoPath, 'wb')
