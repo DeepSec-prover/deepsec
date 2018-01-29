@@ -140,14 +140,15 @@ def main():
             # listTests: list of pairs (test, raw bench)
             for el in listTests:
                 (test, benchTests) = el
-                if not("Running time: " in benchTests and not("KILLED" in benchTests)):
+                isKilled = "KILLED" in benchTests or "Out of memory" in benchTests or "Stack overflow" in benchTests
+                if not("Running time: " in benchTests) and not(isKilled):
                     logging.debug("new test: " + test)
                     logging.debug("Test is not yet finished...")
                 else:
                     nbTests = nbTests + 1
                     testName = test.split(".")[0]
                     testFile = test.strip() + ".txt"
-                    isTrue = ("Equivalent " in benchTests or "KILLED" in benchTests)
+                    isTrue = ("Equivalent " in benchTests or isKilled)
                     date = benchTests.splitlines()[1].strip()
                     testKey = findTest(testFile, TestsDico)
                     if testKey == "" or testKey == None:
@@ -166,7 +167,7 @@ def main():
                         dicoAppend[testKey] = testDico
                     else:
                         testDico = TestsDico[testKey]
-                    if testDico['res'] != isTrue:
+                    if not(isKilled) and (testDico['res'] != isTrue):
                         print("NOT EXPECTED RESULT. The version %s on test %s answerd %s."
                               % (versionName, testName, str(isTrue)))
                     if "Number of explorations" in benchTests:
@@ -176,7 +177,7 @@ def main():
                     else:
                         nbExplo = -1
                         nbStop = -1
-                    if "KILLED" in benchTests:
+                    if "KILLED" in benchTests or "Out of memory" in benchTests:
                         killed = True
                     else:
                         timeString = benchTests.split("Time ")[1].split("/")[0].strip()
@@ -194,7 +195,7 @@ def main():
                                 float(parse.split(":")[1].split(".")[0]) +
                                 float(parse.split(":")[1].split(".")[1])/100)
                     if killed:
-                        if "[MEMORY]" in benchTests:
+                        if "[MEMORY]" in benchTests or "Out of memory" in benchTests or "Stack overflow" in benchTests:
                             killed = "MemOut"
                         else:
                             killed = "TimeOut"
@@ -237,6 +238,7 @@ def main():
                             logging.info(toPrint)
                         elif diffRel > 0.2:
                             logging.critical(toPrint)
+                            print(toPrint)
                         elif diffRel > 0.07:
                             logging.error(toPrint)
                         elif isOverWrite:

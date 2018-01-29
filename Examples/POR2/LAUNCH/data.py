@@ -64,8 +64,20 @@ TESTS = {
     'PA_ANO_nd_11': {'res': True, 'name': ' ', 'file': 'PA_ANO_nd_11.txt', 'cat': 12},
     'PA_ANO_nd_10': {'res': True, 'name': ' ', 'file': 'PA_ANO_nd_10.txt', 'cat': 12},
     'PA_ANO_nd_9': {'res': True, 'name': ' ', 'file': 'PA_ANO_nd_9.txt', 'cat': 12},
-    'PA_UK_nd_5': {'res': True, 'name': ' ', 'file': 'PA_UK_nd_5.txt', 'cat': 12}
-}
+    'PA_UK_nd_5': {'res': True, 'name': ' ', 'file': 'PA_UK_nd_5.txt', 'cat': 12},
+    'PA_ANO_d_10': {'res': True, 'name': ' ', 'file': 'PA_ANO_d_10.txt', 'cat': 12},
+    'PA_ANO_d_8': {'res': True, 'name': ' ', 'file': 'PA_ANO_d_8.txt', 'cat': 12},
+    'PA_ANO_d_9': {'res': True, 'name': ' ', 'file': 'PA_ANO_d_9.txt', 'cat': 12},
+    'PA_ANO_d_2': {'res': True, 'name': ' ', 'file': 'PA_ANO_d_2.txt', 'cat': 12},
+    'PA_ANO_d_3': {'res': True, 'name': ' ', 'file': 'PA_ANO_d_3.txt', 'cat': 12},
+    'PA_ANO_d_6': {'res': True, 'name': ' ', 'file': 'PA_ANO_d_6.txt', 'cat': 12},
+    'PA_ANO_d_7': {'res': True, 'name': ' ', 'file': 'PA_ANO_d_7.txt', 'cat': 12},
+    'PA_ANO_d_4': {'res': True, 'name': ' ', 'file': 'PA_ANO_d_4.txt', 'cat': 12},
+    'PA_ANO_d_5': {'res': True, 'name': ' ', 'file': 'PA_ANO_d_5.txt', 'cat': 12},
+    'PA_UK_nd_8': {'res': True, 'name': ' ', 'file': 'PA_UK_nd_8.txt', 'cat': 12},
+    'PA_UK_nd_6': {'res': True, 'name': ' ', 'file': 'PA_UK_nd_6.txt', 'cat': 12},
+    'PA_UK_nd_7': {'res': True, 'name': ' ', 'file': 'PA_UK_nd_7.txt', 'cat': 12}
+    }
 def get_versDico():
     return(DICO)
 

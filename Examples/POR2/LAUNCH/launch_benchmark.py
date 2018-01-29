@@ -30,15 +30,21 @@ def defLimit():
    cpu_limit = DEFAULT_CORES*maxRealTime
    # cpu_limit = maxRealTime
    # Limit of Memory usage (in bytes)
-   mem_limit = 10*1000*1000*1000          # 10 GO
-   resource.setrlimit(resource.RLIMIT_CPU, (cpu_limit,cpu_limit))
-   resource.setrlimit(resource.RLIMIT_AS, (mem_limit,mem_limit))
+   mem_limit = 10*1024*1024*1024          # 10 GO ??
+   soft_CPU, hard_CPU = resource.getrlimit(resource.RLIMIT_CPU)
+   soft_AS, hard_AS = resource.getrlimit(resource.RLIMIT_AS)   
+   resource.setrlimit(resource.RLIMIT_CPU, (cpu_limit,hard_CPU))
+   resource.setrlimit(resource.RLIMIT_AS, (mem_limit,hard_AS))
+   # print "CPU limit of child (pid %d)" % os.getpid(), resource.getrlimit(resource.RLIMIT_CPU)
+   # print "MEMORY limit of child (pid %d)" % os.getpid(), resource.getrlimit(resource.RLIMIT_AS)
    
 def main():
     # PARSING ARGSSS
     parser = argparse.ArgumentParser(description='Launch some benchmarks om DeepSec.')
     parser.add_argument('-f', '--file_log',
                         help='you can choose a name of the log file')
+    parser.add_argument('-logs', '--folder_logs',
+                        help='you can choose the location where log files will be put')
     parser.add_argument('-v', '--version', nargs='*',
                         help='you can choose the version of POR (none, old POR, new POR) [none,old,new]')
     parser.add_argument('-ft', '--filter_tests',
@@ -57,7 +63,11 @@ def main():
        if args.filter_tests:
           nameFile = nameFile + "_" + args.filter_tests
        nameFile = nameFile + "_" + git_hash[0:5]
-    log_all = open("log/" + nameFile + ".log", "a")
+   
+    path_logs = "log/"
+    if args.folder_logs:
+        path_logs = args.folder_logs
+    log_all = open(path_logs + nameFile + ".log", "a")
     def print_all(s):
 #        print s
         log_all.write(s)
@@ -111,7 +121,7 @@ def main():
     pprint_all("="*15 + " STARTING A NEW BENCHMARK " + "="*15 +"\n")
     pprint_all("Date: " + str(datetime.now()))
     pprint_all("Git Hash: " + git_hash)
-    pprint_all("Location of log File: " + "log/" + nameFile + ".log" + "\n")
+    pprint_all("Location of log File: " + path_logs + nameFile + ".log" + "\n")
 
     if local:
        pass
@@ -141,7 +151,7 @@ def main():
             pprint_all(HEADA + "Benchmark of Protocol: " + t_name + HEADA)
             log_all.write("\n")
             pprint_all(IND + str(datetime.now()) + "\n") # timestamp
-            log_t_b = open("log/byFiles/" + t_name + "_" + b_name + ".log", "w+")
+            log_t_b = open(path_logs + "byFiles/" + t_name + "_" + b_name + ".log", "w+")
             log_t_b.write(IND + str(datetime.now()))
             args = shlex.split(binary + " " +  file)
             memoryKilled = False
@@ -153,7 +163,7 @@ def main():
                                        preexec_fn=defLimit())
                for line in iter(proc.stdout.readline,''):
                   line_t = line.rstrip()
-                  if ("Time " in line_t or "Query" in line_t) or ("Running" in line_t) or ("s." in line_t) or ("[G-POR]" in line_t and ("traces" in line_t or "Stats" in line_t)):
+                  if ("Time " in line_t or "Query" in line_t) or ("Running" in line_t) or ("s." in line_t) or ("[G-POR]" in line_t and ("traces" in line_t or "Stats" in line_t)) or "Out of memory" in line_t or "exception" in line_t or "Stack overflow" in line_t:
                      if "Query" in line_t:
                         killed = False
                      print_all(line_t + "\n")
