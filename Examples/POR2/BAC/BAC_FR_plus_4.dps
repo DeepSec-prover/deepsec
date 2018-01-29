@@ -21,7 +21,7 @@ let reader(c,k_e,k_m) =
   in(c,xn_t);
   new n_r;
   new k_r;
-  out(cr,(senc((n_r,xn_t,k_r),k_e),mac(senc((n_r,xn_t,k_r),k_e),k_m))).
+  out(cr,(senc((n_r,(xn_t,k_r)),k_e),mac(senc((n_r,(xn_t,k_r)),k_e),k_m))).
 
 // Description of the passport role
  

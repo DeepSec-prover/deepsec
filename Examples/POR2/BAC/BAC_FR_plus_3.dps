@@ -20,9 +20,9 @@ reduc proj2((x,y)) -> y.
 let reader(c,k_e,k_m) =
   in(c,xn_t);
   new n_r;
-  new k_r;
-  out(cr,(senc((n_r,xn_t,k_r),k_e),mac(senc((n_r,xn_t,k_r),k_e),k_m))).
-
+  new k_r; 
+  out(cr,(senc((n_r,(xn_t,k_r)),k_e),mac(senc((n_r,(xn_t,k_r)),k_e),k_m))).
+  
 // Description of the passport role
  
 let passport(c,k_e,k_m,error_nonce,error_mac) =
