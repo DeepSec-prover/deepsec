@@ -25,6 +25,8 @@ parser.add_argument('--latex',
                     help='you can choose to write all extracted results in a Latex file')
 parser.add_argument('--explo',
                     help='to display number of explorations instead of time')
+parser.add_argument('--logs', nargs='*',
+                    help='location of log files. Default=.')
 
 args = parser.parse_args()
 isLoad = True
@@ -103,10 +105,12 @@ def main():
     nbRewrite = 0
     list_binaries_tout = glob.glob('../../deepsec*')
     listLog = glob.glob('log/*.log')
+    if args.logs:
+        listLog = glob.glob(args.logs[0] + '/log/*.log')
     print("There are %d log files." % len(listLog))
     dicoPath = "summary/DumpRes.json"
     TestsDico = TESTSDICO
-    if isLoad and (os.path.exists(dicoPath)):
+    if not(args.logs) and isLoad and (os.path.exists(dicoPath)):
         dicoFile = open(dicoPath, 'rb')
         VersionsDico = marshal.load(dicoFile)
         dicoFile.close()
@@ -273,9 +277,10 @@ def main():
     print2("Captions: [> X <] if the returned result is false, [.] if is there is no benchmark, [-> t <-] for new tests, [TimeOut] if we killed the process because either it took more than 2 hours, [MemOut] when it consumed more than 15GO of RAM (warning: the reason of the kill may be missinterpreted), and [[t]] if test performed in the last 2 hours.")
     logging.error("#" * 80 + "\n")
 
-    dicoFile = open(dicoPath, 'wb')
-    marshal.dump(VersionsDico, dicoFile)
-    dicoFile.close()
+    if not(args.logs):
+        dicoFile = open(dicoPath, 'wb')
+        marshal.dump(VersionsDico, dicoFile)
+        dicoFile.close()
 
     
     if args.latex:
