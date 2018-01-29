@@ -56,7 +56,9 @@ let ProcessAB =
   (Pair(ska,skb) |
    Pair(ska,skb) |
    Pair(ska,skb) |    
-   Pair(ska,skb)
+   Pair(ska,skb) |
+   Pair(ska,skb) |
+   Tag(ska,skb)
    ).
 
 let ProcessCB =
@@ -64,7 +66,9 @@ let ProcessCB =
   (Pair(skc,skb) |
    Pair(skc,skb) |
    Pair(skc,skb) |
-   Pair(skc,skb)
+   Pair(skc,skb) |
+   Pair(skc,skb) |
+   Tag(skc,skb)
   ).
 
 // ANONYMITY

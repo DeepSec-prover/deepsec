@@ -56,7 +56,8 @@ let ProcessAB =
   (Pair(ska,skb) |
    Pair(ska,skb) |
    Pair(ska,skb) |    
-   Pair(ska,skb)
+   Pair(ska,skb) |
+   Pair(ska,skb) 
    ).
 
 let ProcessCB =
@@ -64,6 +65,7 @@ let ProcessCB =
   (Pair(skc,skb) |
    Pair(skc,skb) |
    Pair(skc,skb) |
+   Pair(skc,skb) |      
    Pair(skc,skb)
   ).
 

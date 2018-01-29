@@ -36,36 +36,38 @@ Description of role B played:
 let processB(c,skb,pka) =
   in(c,y);
   new ne;
-  if proj2(adec(y,skb)) = pka
+  if proj2(y) = pka
   then
     new nb;
     out(c,aenc((proj1(adec(y,skb)),nb,pk(skb)),pka))
   else out(c,aenc(ne,pk(skb))).
 
 
-(**** PARAMETRIZED SYSTEMS *****)
-let ProcA(ska,skb) =
+let I(ska,skb) =
  processA(cA,ska,pk(skb)).
-let ProcB(skb,ska) =
+
+let R(ska,skb) =
  processB(cB,skb,pk(ska)).
-let Pair(ska,skb)= ProcA(ska,skb) | ProcB(skb,ska).
-let Tag(ska,skb) = ProcA(ska,skb).
 
-let ProcessAB =
-  new ska ; new skb ; new skc ; out(c,pk(ska)) ; out(c,pk(skb)) ; out(c,pk(skc));
-  (Pair(ska,skb) |
-   Pair(ska,skb) |
-   Pair(ska,skb) |    
-   Pair(ska,skb)
-   ).
 
-let ProcessCB =
-  new ska ; new skb ; new skc ; out(c,pk(ska)) ; out(c,pk(skb)) ; out(c,pk(skc));
-  (Pair(skc,skb) |
-   Pair(skc,skb) |
-   Pair(skc,skb) |
-   Pair(skc,skb)
-  ).
+(**** PARAMETRIZED SYSTEMS *****)
+let Pair(ska,skb) = I(ska,skb) | R(ska,skb). 
+let fPair = new ska; new skb; out(c,pk(ska)); out(c,pk(skb));
+	    Pair(ska,skb).
+let fTag = new ska; new skb; out(c,pk(ska)); out(c,pk(skb));
+	    I(ska,skb).
+(* M2: something to link *)
+let M2 = new ska; new skb; out(c,pk(ska)); out(c,pk(skb));
+         ( Pair(ska,skb) | Pair(ska,skb) ).
+(* M2: nothing to link *)
+let S2 = new ska; new skb; out(c,pk(ska)); out(c,pk(skb));
+	 ( Pair(ska,skb) | Pair(ska,skb) ).
 
-// ANONYMITY
-query trace_equiv(ProcessAB,ProcessCB).
+(* Additional fresh pairs of tag-reader *)
+let More = 0.
+let M = M2 | fPair | fPair.
+let S = S2 | fPair | fPair.
+
+// UNLINKABILITY
+(* We check that M is trace equivalent to S. *)
+query trace_equiv(S,M).
