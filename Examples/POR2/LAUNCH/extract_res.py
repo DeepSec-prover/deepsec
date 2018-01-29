@@ -27,10 +27,14 @@ parser.add_argument('--explo',
                     help='to display number of explorations instead of time')
 parser.add_argument('--logs', nargs='*',
                     help='location of log files. Default=.')
+parser.add_argument('--distributed', nargs='*',
+                    help='only focus on benchmarks carried out with a certain number of cores (0=not distrivuted).')
 
 args = parser.parse_args()
 isLoad = True
 dicoAppend = {}
+
+DEFAULT_CORES = 10
 
 # -- LOGGING --
 rootLogger = logging.getLogger()
@@ -40,9 +44,16 @@ DATEFMT_S = "%d %H:%M:%S"
 # logging.basicConfig(stream=sys.stdout,
 #                     level=logging.WARNING,
 #                     format="%(message)s")
-err=logging.FileHandler("summary/LOG_err.log")
-warn=logging.FileHandler("summary/LOG_warn.log")
-debug=logging.FileHandler("summary/LOG_debug.log")
+path_log = 'log/'
+listLog = glob.glob('log/*.log')
+path_sum = "summary/"
+if args.logs:
+    path_log = args.logs[0]
+    path_sum = path_log + path_sum
+    listLog = glob.glob(path_log + '*.log')
+err=logging.FileHandler(path_sum + "LOG_err.log")
+warn=logging.FileHandler(path_sum + "LOG_warn.log")
+debug=logging.FileHandler(path_sum + "LOG_debug.log")
 
 logFormatter = logging.Formatter("%(asctime)s [%(levelname)-5.5s] | %(message)s",
                                  datefmt=DATEFMT_L)
@@ -89,7 +100,7 @@ def print2(s):
 # --------------------------- MAIN ------------------------------------------ #
 def main():
     nameFile = "summary"
-    log_all = open("summary/" + nameFile + ".log", "a")
+    log_all = open(path_sum + nameFile + ".log", "a")
     def print_all(s):
         log_all.write(s)
         log_all.flush()
@@ -104,27 +115,25 @@ def main():
     nbNewTests = 0
     nbRewrite = 0
     list_binaries_tout = glob.glob('../../deepsec*')
-    listLog = glob.glob('log/*.log')
-    path_log = 'log/'
-    if args.logs:
-        path_log = args.logs[0] + '/log/'
-        listLog = glob.glob(path_log + '*.log')
-    print("There are %d log files." % len(listLog))
-    dicoPath = "summary/DumpRes.json"
+    print("There are %d log files in %s." % (len(listLog), path_log))
+    dicoPath = path_sum + "DumpRes.json"
     TestsDico = TESTSDICO
-    if not(args.logs) and isLoad and (os.path.exists(dicoPath)):
+    if isLoad and (os.path.exists(dicoPath)):
         dicoFile = open(dicoPath, 'rb')
         VersionsDico = marshal.load(dicoFile)
         dicoFile.close()
     else:
         VersionsDico = VERSDICO
     VersionsDico = setNoNew(VersionsDico)
+    numberCores = DEFAULT_CORES
+    if args.distributed:
+        numberCores = args.distributed
     for log in listLog:
         logging.debug("=" * 20 + "   NEW logFile   " + "=" * 20)
         logging.debug("logFile: " + log + "\n")
         logFile = open(log, 'r')
         logText = logFile.read()
-        bench = extractBench(logText) # extract last benchmarks, with associated text
+        bench = extractBench(logText,numberCores) # extract last benchmarks, with associated text
         listVers = extractVers(bench) # extract list of versions, associated text
         # listVers: list of pairs (version, raw bench)
         for el in listVers:
@@ -142,7 +151,7 @@ def main():
             # listTests: list of pairs (test, raw bench)
             for el in listTests:
                 (test, benchTests) = el
-                isKilled = "KILLED" in benchTests or "Out of memory" in benchTests or "Stack overflow" in benchTests
+                isKilled = "KILLED" in benchTests or "ut of memory" in benchTests or "Stack overflow" in benchTests
                 if not("Running time: " in benchTests) and not(isKilled):
                     logging.debug("new test: " + test)
                     logging.debug("Test is not yet finished...")
@@ -179,11 +188,15 @@ def main():
                     else:
                         nbExplo = -1
                         nbStop = -1
-                    if "KILLED" in benchTests or "Out of memory" in benchTests:
+                    if isKilled:
                         killed = True
                     else:
-                        timeString = benchTests.split("Time ")[1].split("/")[0].strip()
                         killed = False
+                        timeString = benchTests.split("Memory ")
+                        if len(timeString) >=3:
+                            timeString = timeString[1].split("Time")[1].split("/")[0].strip()
+                        else:
+                            timeString = timeString[0].split("Time")[1].split("/")[0].strip()
                     logging.debug("New test: " + testName + "|: True? " + str(isTrue) + ", nbExplo: " + str(nbExplo) +
                                   ", nbStop: " + str(nbStop) + ", killed?: " + str(killed) + 
                                  ", date: " + date + ", time: " + str(timeString) + "  |  ")
@@ -198,7 +211,7 @@ def main():
                                 float(parse.split(":")[1].split(".")[1])/100)
                     logAll = open(path_log + "byFiles/" + testFile.split(".")[0] + "_" +version + ".log"  , 'r').read()
                     if killed:
-                        if "[MEMORY]" in benchTests or "Out of memory" in logAll or "Stack overflow" in logAll:
+                        if "[MEMORY]" in benchTests or "ut of memory" in logAll or "Stack overflow" in logAll:
                             killed = "MemOut"
                         else:
                             killed = "TimeOut"
@@ -282,10 +295,9 @@ def main():
     print2("Captions: [> X <] if the returned result is false, [.] if is there is no benchmark, [-> t <-] for new tests, [TimeOut] if we killed the process because either it took more than 2 hours, [MemOut] when it consumed more than 15GO of RAM (warning: the reason of the kill may be missinterpreted), and [[t]] if test performed in the last 2 hours.")
     logging.error("#" * 80 + "\n")
 
-    if not(args.logs):
-        dicoFile = open(dicoPath, 'wb')
-        marshal.dump(VersionsDico, dicoFile)
-        dicoFile.close()
+    dicoFile = open(dicoPath, 'wb')
+    marshal.dump(VersionsDico, dicoFile)
+    dicoFile.close()
 
     
     if args.latex:

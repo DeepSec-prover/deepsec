@@ -83,9 +83,11 @@ def main():
     list_tests = filter(lambda s : new(s), list_tests)
     timing = "/usr/bin/time -f 'Time %E / Memory %Mk' "
     bina_default = timing + '../../../deepsec  -deepsec_dir ../../../ '
+    singleCore = False
     if not(args.distributed):
        bina_default += "-distributed " + str(DEFAULT_CORES) + " "
     elif int(args.distributed[0]) <= 0:
+       singleCore = True
        pass
     else:
        bina_default += "-distributed " + str(args.distributed[0]) + " " 
@@ -155,7 +157,10 @@ def main():
             log_t_b.write(IND + str(datetime.now()))
             args = shlex.split(binary + " " +  file)
             memoryKilled = False
-            print(args)
+            print_all(" ".join(args) + "\n")
+            print(" ".join(args))
+            if singleCore:
+               print_all("[NOT DISTRIBUTED]\n")               
             try:
                proc = subprocess.Popen(args,
                                        stdout=subprocess.PIPE,
