@@ -105,8 +105,10 @@ def main():
     nbRewrite = 0
     list_binaries_tout = glob.glob('../../deepsec*')
     listLog = glob.glob('log/*.log')
+    path_log = 'log/'
     if args.logs:
-        listLog = glob.glob(args.logs[0] + '/log/*.log')
+        path_log = args.logs[0] + '/log/'
+        listLog = glob.glob(path_log + '*.log')
     print("There are %d log files." % len(listLog))
     dicoPath = "summary/DumpRes.json"
     TestsDico = TESTSDICO
@@ -194,8 +196,9 @@ def main():
                         time = (float(parse.split(":")[0])*60 +
                                 float(parse.split(":")[1].split(".")[0]) +
                                 float(parse.split(":")[1].split(".")[1])/100)
+                    logAll = open(path_log + "byFiles/" + testFile.split(".")[0] + "_" +version + ".log"  , 'r').read()
                     if killed:
-                        if "[MEMORY]" in benchTests or "Out of memory" in benchTests or "Stack overflow" in benchTests:
+                        if "[MEMORY]" in benchTests or "Out of memory" in logAll or "Stack overflow" in logAll:
                             killed = "MemOut"
                         else:
                             killed = "TimeOut"
