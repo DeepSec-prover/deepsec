@@ -1,0 +1,53 @@
+(**********)
+(* THEORY *)
+(**********)
+
+(* public communication channel *)
+free c.
+free ci.
+free cr.
+(* constant values *)
+free ok.
+free error.
+
+(* Diffie-Hellman exponentiation *)
+(* Symmetric Encryption *)
+fun enc/2.
+reduc dec(enc(x,y),y) -> x.
+fun id/1.
+
+(*************)
+(* PROTOCOLS *)
+(*************)
+
+(* Feldhofer Protocol *)
+let I (k) =
+    new nI;
+(* I ----[n]---> R *)
+    out(ci, nI);
+(* I <---[{nI,nR}_k]--- R *)
+    in(ci, x);
+    let (=nI, xnr) = dec(x, k)
+(* I ----[{nI,nI}_k]---> R *)
+    in out(ci, enc((xnr,nI),k))
+    else out(ci,error).
+
+let R (k) =
+    new nR;
+(* R <---[nI]--- I *)
+    in(cr, ynI);
+(* R ----[{nI,nR}_k]---> I *)
+    out(cr, enc((ynI, nR), k));
+(* R <---[{nR,nI}_k]--- I *)
+    in(cr, y);
+    let (=nR,=ynI) = dec(y,k)
+    in out(cr, ok)
+    else out(cr,error).
+
+(**** PARAMETRIZED SYSTEMS *****)
+let P(k) = I(k) | R(k) | I(k) | R(k) | I(k). 
+let S1 = new k; new k_0; out(c,id(k_0));( P(k)   ).
+let S2 = new k_0; out(c,id(k_0));       ( P(k_0) ).
+
+// ANONYMITY
+query trace_equiv(S1,S2).
