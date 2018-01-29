@@ -28,11 +28,11 @@ def defLimit():
    print "Setting resource limit in child (pid %d)" % os.getpid()
    maxRealTime = 2*3600              # 2 hours
    cpu_limit = DEFAULT_CORES*maxRealTime
-   cpu_limit = maxRealTime
+   # cpu_limit = maxRealTime
    # Limit of Memory usage (in bytes)
-   mem_limit = 10*1000*1000          # 10 GO
+   mem_limit = 10*1000*1000*1000          # 10 GO
    resource.setrlimit(resource.RLIMIT_CPU, (cpu_limit,cpu_limit))
-   # resource.setrlimit(resource.RLIMIT_AS, (mem_limit,mem_limit))
+   resource.setrlimit(resource.RLIMIT_AS, (mem_limit,mem_limit))
    
 def main():
     # PARSING ARGSSS
@@ -144,26 +144,35 @@ def main():
             log_t_b = open("log/byFiles/" + t_name + "_" + b_name + ".log", "w+")
             log_t_b.write(IND + str(datetime.now()))
             args = shlex.split(binary + " " +  file)
+            memoryKilled = False
             print(args)
-            proc = subprocess.Popen(args,
-                                    stdout=subprocess.PIPE,
-                                    stderr=subprocess.STDOUT,
-                                    preexec_fn=defLimit())
-            for line in iter(proc.stdout.readline,''):
-                line_t = line.rstrip()
-                if ("Time " in line_t or "Query" in line_t) or ("Running" in line_t) or ("s." in line_t) or ("[G-POR]" in line_t and ("traces" in line_t or "Stats" in line_t)):
-                    if "Query" in line_t:
-                       killed = False
-                    print_all(line_t + "\n")
-                    print(line_t)
-                else:
-                    # print(line_t)
-                    pass
-                log_t_b.write(line_t + "\n")
-                log_t_b.flush()
-            if killed:
-               print_all("[[KILLED]] because of timeout or memory consumption >10GO." + "\n")
-               print("[[KILLED]] because of timeout or memory consumption >10GO.")               
+            try:
+               proc = subprocess.Popen(args,
+                                       stdout=subprocess.PIPE,
+                                       stderr=subprocess.STDOUT,
+                                       preexec_fn=defLimit())
+               for line in iter(proc.stdout.readline,''):
+                  line_t = line.rstrip()
+                  if ("Time " in line_t or "Query" in line_t) or ("Running" in line_t) or ("s." in line_t) or ("[G-POR]" in line_t and ("traces" in line_t or "Stats" in line_t)):
+                     if "Query" in line_t:
+                        killed = False
+                     print_all(line_t + "\n")
+                     print(line_t)
+                  else:
+                     # print(line_t)
+                     pass
+                  log_t_b.write(line_t + "\n")
+                  log_t_b.flush()
+            except MemoryError:
+               # Stuff to reduce size of vocabulary
+               memoryKilled = True
+            if killed or memoryKilled:
+               if memoryKilled:
+                  print_all("[[KILLED]] [MEMORY] because of memory consumption >10GO." + "\n")
+                  print("[[KILLED]] [MEMORY] because of memory consumption >10GO.")
+               else:
+                  print_all("[[KILLED]] because of timeout or memory consumption >10GO." + "\n")
+                  print("[[KILLED]] because of timeout or memory consumption >10GO.")
             log_t_b.write("\n")
             pprint_all("\n")
         log_t_b.write("\n")
