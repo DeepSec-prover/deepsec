@@ -6,63 +6,63 @@ Diff rel: 0.688740--- Clash for version old on test PA_UK_nd_5.   --- Difference
 Nb. of Tests: 100. Number of versions: 31. Number of new tests: 0. Number of rewrites: 0.
 
 ~~~~~~~~~ Results ~~~~~~~~~
-+------------------------------------------------------------------------+
-|            /                 none             new             old      |
-+========================================================================+
-| BAC_FR_plus_2                  .           6.10E-01        3.50E-01    |
-| BAC_FR_plus_3                  .           7.02E+00        5.40E-01    |
-| BAC_FR_plus_4                  .             MemOut        5.40E-01    |
-| BAC_FR_plus_5                  .             MemOut        1.30E+00    |
-| BAC_FR_plus_6                  .             MemOut        8.70E-01    |
-| BAC_FR_plus_7                  .             MemOut        4.44E+01    |
-| BAC_equ_4                      .             MemOut         TimeOut    |
-| BAC_plus_2                     .           1.07E+00        2.12E+00    |
-| BAC_plus_3                     .           1.06E+02        2.43E+03    |
-| BAC_plus_4                     .             MemOut         TimeOut    |
-| BAC_plus_5                     .             MemOut            .       |
-| BAC_plus_6                     .             MemOut            .       |
-| BAC_plus_7                     .               .               .       |
-| PA_ANO_d_10                    .             MemOut        1.02E+00    |
-| PA_ANO_d_2                 1.20E-01        1.30E-01        1.30E-01    |
-| PA_ANO_d_3                 2.30E-01        3.36E-01        1.30E-01    |
-| PA_ANO_d_4                 6.90E-01        2.92E-01        1.10E-01    |
-| PA_ANO_d_5                 1.69E+01        3.50E-01        1.10E-01    |
-| PA_ANO_d_6                 9.03E+03        8.10E-01        2.00E-01    |
-| PA_ANO_d_7                  TimeOut        4.22E+00        2.30E-01    |
-| PA_ANO_d_8                     .             MemOut        2.70E-01    |
-| PA_ANO_d_9                     .             MemOut        3.30E-01    |
-| PA_ANO_nd_10                   .             MemOut            .       |
-| PA_ANO_nd_11                   .             MemOut            .       |
-| PA_ANO_nd_2                    .           1.30E-01        1.20E-01    |
-| PA_ANO_nd_3                    .           1.50E-01        1.40E-01    |
-| PA_ANO_nd_4                    .           2.48E-01        3.90E-01    |
-| PA_ANO_nd_5                    .           3.18E-01        1.92E+00    |
-| PA_ANO_nd_6                    .           1.20E+00        9.42E+02    |
-| PA_ANO_nd_7                    .           1.02E+01         TimeOut    |
-| PA_ANO_nd_8                    .             MemOut            .       |
-| PA_ANO_nd_9                    .             MemOut            .       |
-| PA_UK_nd_2                     .           3.10E-01        3.80E-01    |
-| PA_UK_nd_3                     .           1.72E+00        1.46E+01    |
-| PA_UK_nd_4                     .           9.04E+00        1.80E+03    |
-| PA_UK_nd_5                     .            TimeOut         TimeOut    |
-| PA_UK_nd_6                     .             MemOut            .       |
-| PA_UK_nd_7                     .             MemOut            .       |
-| PA_UK_nd_8                     .             MemOut            .       |
-| feldhofer_ANO_2                .           1.60E-01        1.40E-01    |
-| feldhofer_ANO_3                .           3.54E-01        4.50E-01    |
-| feldhofer_ANO_4                .           3.88E+00        1.14E+02    |
-| feldhofer_ANO_5                .             MemOut            .       |
-| feldhofer_ANO_6                .               .               .       |
-| feldhofer_ANO_d_2          1.60E-01        1.80E-01        1.40E-01    |
-| feldhofer_ANO_d_3          3.70E-01        2.60E-01        1.40E-01    |
-| feldhofer_ANO_d_4          1.86E+02        7.96E-01        1.80E-01    |
-| feldhofer_ANO_d_5           TimeOut        1.51E+01        2.60E-01    |
-| feldhofer_ANO_d_6              .             MemOut        3.50E-01    |
-| feldhofer_plus_2               .           1.43E+01        5.60E+02    |
-| feldhofer_plus_3               .             MemOut         TimeOut    |
-| feldhofer_plus_4               .               .               .       |
-| feldhofer_plus_5               .               .               .       |
-| feldhofer_plus_6               .               .               .       |
-+------------------------------------------------------------------------+
++----------------------------------------------------------------------------------------+
+|            /                 none             new        new+Porridge         old      |
++========================================================================================+
+| BAC_FR_plus_2                  .           6.10E-01        8.70E-01        3.50E-01    |
+| BAC_FR_plus_3                  .           7.02E+00        4.09E+01        5.40E-01    |
+| BAC_FR_plus_4                  .             MemOut          MemOut        5.40E-01    |
+| BAC_FR_plus_5                  .             MemOut          MemOut        1.30E+00    |
+| BAC_FR_plus_6                  .             MemOut          MemOut        8.70E-01    |
+| BAC_FR_plus_7                  .             MemOut          MemOut        4.44E+01    |
+| BAC_equ_4                      .             MemOut          MemOut         TimeOut    |
+| BAC_plus_2                     .           1.07E+00        1.55E+00        2.12E+00    |
+| BAC_plus_3                     .           1.06E+02        1.62E+02        2.43E+03    |
+| BAC_plus_4                     .             MemOut          MemOut         TimeOut    |
+| BAC_plus_5                     .             MemOut          MemOut            .       |
+| BAC_plus_6                     .             MemOut          MemOut            .       |
+| BAC_plus_7                     .               .               .               .       |
+| PA_ANO_d_10                    .             MemOut          MemOut        1.02E+00    |
+| PA_ANO_d_2                 1.20E-01        1.30E-01        1.30E-01        1.30E-01    |
+| PA_ANO_d_3                 2.30E-01        3.36E-01        3.40E-01        1.30E-01    |
+| PA_ANO_d_4                 6.90E-01        2.92E-01        3.00E-01        1.10E-01    |
+| PA_ANO_d_5                 1.69E+01        3.50E-01        5.10E-01        1.10E-01    |
+| PA_ANO_d_6                 9.03E+03        8.10E-01        3.45E+00        2.00E-01    |
+| PA_ANO_d_7                  TimeOut        4.22E+00        2.77E+01        2.30E-01    |
+| PA_ANO_d_8                     .             MemOut          MemOut        2.70E-01    |
+| PA_ANO_d_9                     .             MemOut          MemOut        3.30E-01    |
+| PA_ANO_nd_10                   .             MemOut          MemOut            .       |
+| PA_ANO_nd_11                   .             MemOut          MemOut            .       |
+| PA_ANO_nd_2                    .           1.30E-01        1.30E-01        1.20E-01    |
+| PA_ANO_nd_3                    .           1.50E-01        1.50E-01        1.40E-01    |
+| PA_ANO_nd_4                    .           2.48E-01        2.60E-01        3.90E-01    |
+| PA_ANO_nd_5                    .           3.18E-01        5.10E-01        1.92E+00    |
+| PA_ANO_nd_6                    .           1.20E+00        4.44E+00        9.42E+02    |
+| PA_ANO_nd_7                    .           1.02E+01        8.57E+01         TimeOut    |
+| PA_ANO_nd_8                    .             MemOut          MemOut            .       |
+| PA_ANO_nd_9                    .             MemOut          MemOut            .       |
+| PA_UK_nd_2                     .           3.10E-01        3.30E-01        3.80E-01    |
+| PA_UK_nd_3                     .           1.72E+00        4.53E+00        1.46E+01    |
+| PA_UK_nd_4                     .           9.04E+00        7.22E+01        1.80E+03    |
+| PA_UK_nd_5                     .            TimeOut         TimeOut         TimeOut    |
+| PA_UK_nd_6                     .             MemOut          MemOut            .       |
+| PA_UK_nd_7                     .             MemOut          MemOut            .       |
+| PA_UK_nd_8                     .             MemOut          MemOut            .       |
+| feldhofer_ANO_2                .           1.60E-01        1.60E-01        1.40E-01    |
+| feldhofer_ANO_3                .           3.54E-01        3.90E-01        4.50E-01    |
+| feldhofer_ANO_4                .           3.88E+00        1.13E+01        1.14E+02    |
+| feldhofer_ANO_5                .             MemOut          MemOut            .       |
+| feldhofer_ANO_6                .               .               .               .       |
+| feldhofer_ANO_d_2          1.60E-01        1.80E-01        1.80E-01        1.40E-01    |
+| feldhofer_ANO_d_3          3.70E-01        2.60E-01        2.80E-01        1.40E-01    |
+| feldhofer_ANO_d_4          1.86E+02        7.96E-01        1.88E+00        1.80E-01    |
+| feldhofer_ANO_d_5           TimeOut        1.51E+01        6.80E+01        2.60E-01    |
+| feldhofer_ANO_d_6              .             MemOut          MemOut        3.50E-01    |
+| feldhofer_plus_2               .           1.43E+01        2.81E+01        5.60E+02    |
+| feldhofer_plus_3               .             MemOut          MemOut         TimeOut    |
+| feldhofer_plus_4               .               .               .               .       |
+| feldhofer_plus_5               .               .               .               .       |
+| feldhofer_plus_6               .               .               .               .       |
++----------------------------------------------------------------------------------------+
 Captions: [> X <] if the returned result is false, [.] if is there is no benchmark, [-> t <-] for new tests, [TimeOut] if we killed the process because either it took more than 2 hours, [MemOut] when it consumed more than 15GO of RAM (warning: the reason of the kill may be missinterpreted), and [[t]] if test performed in the last 2 hours.
 {}

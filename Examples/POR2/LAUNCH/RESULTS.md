@@ -34,5 +34,5 @@ optional arguments:
 
 
 
-./extract_res.py --noPorridge 0 --logs PD/ --plainText 0 > RESULTS_NOT-DISTRIBUTED_TIME-withoutPorridge.txt; ./extract_res.py --explos 0 --logs PD/ --plainText 0 > RESULTS_NOT-DISTRIBUTED_EXPLOS.txt; ./extract_res.py --logs PD/ --plainText 0 > RESULTS_NOT_DISTRIBUTED_TIME.txt
-./extract_res.py --noPorridge 0 --plainText 0 > RESULTS_DISTRIBUTED_TIME-withoutPorridge.txt; ./extract_res.py --explos 0 --plainText 0 > RESULTS_DISTRIBUTED_EXPLOS.txt; ./extract_res.py --plainText 0 > RESULTS_DISTRIBUTED_TIME.txt
+./extract_res.py --noWithPorridge 0 --logs PD/ --plainText 0 > RESULTS_NOT-DISTRIBUTED_TIME-withoutPorridge.txt; ./extract_res.py --explos 0 --logs PD/ --plainText 0 > RESULTS_NOT-DISTRIBUTED_EXPLOS.txt; ./extract_res.py --logs PD/ --plainText 0 > RESULTS_NOT_DISTRIBUTED_TIME.txt
+./extract_res.py --noWithPorridge 0 --plainText 0 > RESULTS_DISTRIBUTED_TIME-withoutPorridge.txt; ./extract_res.py --explos 0 --plainText 0 > RESULTS_DISTRIBUTED_EXPLOS.txt; ./extract_res.py --plainText 0 > RESULTS_DISTRIBUTED_TIME.txt

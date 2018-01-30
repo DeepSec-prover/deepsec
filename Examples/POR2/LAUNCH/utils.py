@@ -120,17 +120,25 @@ def pprintMatrix(matrix):
 def prettyFloat(f):
     return("%.2E" % f)
 
-def extractResults(dicoV, sortedV, dicoT, keyT, disp=None, wtPorridge=False):
+def extractResults(dicoV, sortedV, dicoT, keyT, disp=None, wtPorridge=False, bothPorridge=False):
     # First column of the line:
     res = [keyT]
     for keyV in sortedV:
-        versionDico = dicoV[keyV]
-        versionBenchs = versionDico["benchs"]
+        if bothPorridge and keyV == 'new+Porridge':
+            versionDico = dicoV["new"]
+            versionBenchs = versionDico["benchs"]
+        else:    
+            versionDico = dicoV[keyV]
+            versionBenchs = versionDico["benchs"]
         found = False
         for bench in versionBenchs:
             if (not(found) and
                 versionBenchs[bench]["file"].strip() == dicoT[keyT]["file"].strip()):
                 #res.append((versionBenchs[bench]["time"], versionBenchs[bench]["nbExplo"]))
+                time = prettyFloat(versionBenchs[bench]["time"])
+                timePorridge = prettyFloat(versionBenchs[bench]["timePorridge"])
+                if bothPorridge and keyV == 'new' and timePorridge > -1:
+                    time = prettyFloat(versionBenchs[bench]["time"] - versionBenchs[bench]["timePorridge"])
                 if versionBenchs[bench]["killed"] != "":
 #                    res.append(">(" + prettyFloat(versionBenchs[bench]["time"]) + ")")
                     res.append(">(%s)" % versionBenchs[bench]["killed"])
@@ -140,24 +148,24 @@ def extractResults(dicoV, sortedV, dicoT, keyT, disp=None, wtPorridge=False):
                     if disp:
                         res.append("->" + prettyFloat(versionBenchs[bench]["nbExplo"]) + "<-")
                     else:
-                        res.append("->" + prettyFloat(versionBenchs[bench]["time"]) + "<-")
+                        res.append("->" + time + "<-")
                 elif False and not(wtPorridge) and dateutil.parser.parse(versionBenchs[bench]["date"]) > datetime.now() + timedelta(hours=-2):
                     if disp:
                         res.append("[" + prettyFloat(versionBenchs[bench]["nbExplo"]) + "]")
                     else:
-                        res.append("[" + prettyFloat(versionBenchs[bench]["time"]) + "]")
+                        res.append("[" + time + "]")
                 else:
                     if disp:
                         res.append(prettyFloat(versionBenchs[bench]["nbExplo"]))
                     else:
-                        if not(wtPorridge):
-                            res.append(prettyFloat(versionBenchs[bench]["time"]))
+                        if bothPorridge or not(wtPorridge):
+                            res.append(time)
                         else:
                             timePorridge = versionBenchs[bench]["timePorridge"]
                             if timePorridge > -1:
-                                res.append(prettyFloat(versionBenchs[bench]["time"]-timePorridge))
+                                res.append(time - timePorridge)
                             else:
-                                res.append(prettyFloat(versionBenchs[bench]["time"]))
+                                res.append(time)
                 found = True
         if not(found):
             res.append(".")
@@ -171,8 +179,11 @@ def cmpGraph(ex1, ex2):
     else:
         return(cmp(ex1,ex2))
 
-def fromVersToTests(dicoVersions, dicoTests, toLatex=False, vers="all", tests="all", disp=None, wtPorridge=False):
-    sortedVersions = ['none', 'new', 'old']
+def fromVersToTests(dicoVersions, dicoTests, toLatex=False, vers="all", tests="all", disp=None, wtPorridge=False, bothPorridge=False):
+    if bothPorridge:
+        sortedVersions = ['none', 'new', 'new+Porridge', 'old']
+    else:
+        sortedVersions = ['none', 'new', 'old']
     listTestsKey = sorted(dicoTests.keys(), cmp = cmpGraph)
     listTestsFile = map(lambda x: dicoTests[x]['file'], listTestsKey)
     # first line of the matrix:
@@ -182,7 +193,7 @@ def fromVersToTests(dicoVersions, dicoTests, toLatex=False, vers="all", tests="a
         if tests=="all" or (not("old" in listTestsKey[i])):
             keyTest = listTestsKey[i]
             fileName = listTestsFile[i]
-            listResults = extractResults(dicoVersions, sortedVersions, dicoTests, keyTest, disp=disp, wtPorridge=wtPorridge)
+            listResults = extractResults(dicoVersions, sortedVersions, dicoTests, keyTest, disp=disp, wtPorridge=wtPorridge, bothPorridge=bothPorridge)
             matrix.append(listResults)
     if toLatex:
         return(printLatexMatrix(matrix))

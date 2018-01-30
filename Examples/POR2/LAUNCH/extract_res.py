@@ -33,6 +33,8 @@ parser.add_argument('--explos',
                     help='only show numebr of explorations')
 parser.add_argument('--noPorridge',
                     help='time without porridge')
+parser.add_argument('--noWithPorridge',
+                    help='time with and without porridge')
 parser.add_argument('--plainText',
                     help='output a table in plaintext')
 
@@ -292,7 +294,7 @@ def main():
     print2("\n~~~~~~~~~ Results ~~~~~~~~~")
     testsFlag = "all"
 
-    toPrint = fromVersToTests(VersionsDico, TestsDico, vers="all", tests=testsFlag, disp=args.explos, wtPorridge=args.noPorridge)
+    toPrint = fromVersToTests(VersionsDico, TestsDico, vers="all", tests=testsFlag, disp=args.explos, wtPorridge=args.noPorridge, bothPorridge=args.noWithPorridge)
 
     logging.debug(toPrint)
     toPrintColor = toPrint
