@@ -1,0 +1,68 @@
+There are 38 log files in log/.
+Diff rel: 0.688740--- Clash for version old on test PA_UK_nd_5.   --- Difference: 1239.050000.
+                              OLD/NEW for time: 559.960000/1799.010000, Date: 2018-01-29 18:45:20.768888 / 2018-01-29 14:06:42.250628, logFile: log/BENCH_results_old_PA_UK_nd_5_3f8de.log/log/BENCH_results_old_PA_UK_ea790.log.
+
+~~~~~~~~~ Some Stats ~~~~~~~~~
+Nb. of Tests: 100. Number of versions: 31. Number of new tests: 0. Number of rewrites: 0.
+
+~~~~~~~~~ Results ~~~~~~~~~
++------------------------------------------------------------------------+
+|            /                 none             new             old      |
++========================================================================+
+| BAC_FR_plus_2                 [94m . [0m          8.70E-01        3.50E-01    |
+| BAC_FR_plus_3                 [94m . [0m          4.09E+01        5.40E-01    |
+| BAC_FR_plus_4                 [94m . [0m          [95m  MemOut[0m        5.40E-01    |
+| BAC_FR_plus_5                 [94m . [0m          [95m  MemOut[0m        1.30E+00    |
+| BAC_FR_plus_6                 [94m . [0m          [95m  MemOut[0m        8.70E-01    |
+| BAC_FR_plus_7                 [94m . [0m          [95m  MemOut[0m        4.44E+01    |
+| BAC_equ_4                     [94m . [0m          [95m  MemOut[0m       [95m  TimeOut[0m    |
+| BAC_plus_2                    [94m . [0m          1.55E+00        2.12E+00    |
+| BAC_plus_3                    [94m . [0m          1.62E+02        2.43E+03    |
+| BAC_plus_4                    [94m . [0m          [95m  MemOut[0m       [95m  TimeOut[0m    |
+| BAC_plus_5                    [94m . [0m          [95m  MemOut[0m           [94m . [0m      |
+| BAC_plus_6                    [94m . [0m          [95m  MemOut[0m           [94m . [0m      |
+| BAC_plus_7                    [94m . [0m             [94m . [0m             [94m . [0m      |
+| PA_ANO_d_10                   [94m . [0m          [95m  MemOut[0m        1.02E+00    |
+| PA_ANO_d_2                 1.20E-01        1.30E-01        1.30E-01    |
+| PA_ANO_d_3                 2.30E-01        3.40E-01        1.30E-01    |
+| PA_ANO_d_4                 6.90E-01        3.00E-01        1.10E-01    |
+| PA_ANO_d_5                 1.69E+01        5.10E-01        1.10E-01    |
+| PA_ANO_d_6                 9.03E+03        3.45E+00        2.00E-01    |
+| PA_ANO_d_7                [95m  TimeOut[0m        2.77E+01        2.30E-01    |
+| PA_ANO_d_8                    [94m . [0m          [95m  MemOut[0m        2.70E-01    |
+| PA_ANO_d_9                    [94m . [0m          [95m  MemOut[0m        3.30E-01    |
+| PA_ANO_nd_10                  [94m . [0m          [95m  MemOut[0m           [94m . [0m      |
+| PA_ANO_nd_11                  [94m . [0m          [95m  MemOut[0m           [94m . [0m      |
+| PA_ANO_nd_2                   [94m . [0m          1.30E-01        1.20E-01    |
+| PA_ANO_nd_3                   [94m . [0m          1.50E-01        1.40E-01    |
+| PA_ANO_nd_4                   [94m . [0m          2.60E-01        3.90E-01    |
+| PA_ANO_nd_5                   [94m . [0m          5.10E-01        1.92E+00    |
+| PA_ANO_nd_6                   [94m . [0m          4.44E+00        9.42E+02    |
+| PA_ANO_nd_7                   [94m . [0m          8.57E+01       [95m  TimeOut[0m    |
+| PA_ANO_nd_8                   [94m . [0m          [95m  MemOut[0m           [94m . [0m      |
+| PA_ANO_nd_9                   [94m . [0m          [95m  MemOut[0m           [94m . [0m      |
+| PA_UK_nd_2                    [94m . [0m          3.30E-01        3.80E-01    |
+| PA_UK_nd_3                    [94m . [0m          4.53E+00        1.46E+01    |
+| PA_UK_nd_4                    [94m . [0m          7.22E+01        1.80E+03    |
+| PA_UK_nd_5                    [94m . [0m         [95m  TimeOut[0m       [95m  TimeOut[0m    |
+| PA_UK_nd_6                    [94m . [0m          [95m  MemOut[0m           [94m . [0m      |
+| PA_UK_nd_7                    [94m . [0m          [95m  MemOut[0m           [94m . [0m      |
+| PA_UK_nd_8                    [94m . [0m          [95m  MemOut[0m           [94m . [0m      |
+| feldhofer_ANO_2               [94m . [0m          1.60E-01        1.40E-01    |
+| feldhofer_ANO_3               [94m . [0m          3.90E-01        4.50E-01    |
+| feldhofer_ANO_4               [94m . [0m          1.13E+01        1.14E+02    |
+| feldhofer_ANO_5               [94m . [0m          [95m  MemOut[0m           [94m . [0m      |
+| feldhofer_ANO_6               [94m . [0m             [94m . [0m             [94m . [0m      |
+| feldhofer_ANO_d_2          1.60E-01        1.80E-01        1.40E-01    |
+| feldhofer_ANO_d_3          3.70E-01        2.80E-01        1.40E-01    |
+| feldhofer_ANO_d_4          1.86E+02        1.88E+00        1.80E-01    |
+| feldhofer_ANO_d_5         [95m  TimeOut[0m        6.80E+01        2.60E-01    |
+| feldhofer_ANO_d_6             [94m . [0m          [95m  MemOut[0m        3.50E-01    |
+| feldhofer_plus_2              [94m . [0m          2.81E+01        5.60E+02    |
+| feldhofer_plus_3              [94m . [0m          [95m  MemOut[0m       [95m  TimeOut[0m    |
+| feldhofer_plus_4              [94m . [0m             [94m . [0m             [94m . [0m      |
+| feldhofer_plus_5              [94m . [0m             [94m . [0m             [94m . [0m      |
+| feldhofer_plus_6              [94m . [0m             [94m . [0m             [94m . [0m      |
++------------------------------------------------------------------------+
+Captions: [> X <] if the returned result is false, [.] if is there is no benchmark, [-> t <-] for new tests, [TimeOut] if we killed the process because either it took more than 2 hours, [MemOut] when it consumed more than 15GO of RAM (warning: the reason of the kill may be missinterpreted), and [[t]] if test performed in the last 2 hours.
+{}
