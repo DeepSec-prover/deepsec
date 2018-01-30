@@ -27,9 +27,17 @@ firstWidth = 22
 width = 13
 
 
-def extractBench(text):
-    lastBench = text.split("=============== STARTING A NEW BENCHMARK ===============")[-1]
-    return(lastBench)
+def extractBench(text,numberCores):
+    benchs = text.split("=============== STARTING A NEW BENCHMARK ===============")
+    for bench in reversed(benchs):
+        if numberCores == 0:
+            if "[NOT DISTRIBUTED]" in bench:
+                return bench
+            else:
+                continue
+        else:
+            return(bench)
+    return("")
 
 def extractVers(text):
     SEP = "##########"
