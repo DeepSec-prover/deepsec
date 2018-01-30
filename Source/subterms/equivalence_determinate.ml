@@ -591,7 +591,7 @@ let publish_trace_equivalence_result id conf1 conf2 result runtime =
   let template_line = "<!-- Content of the file -->" in
 
   if not(!Config.distributed)
-  then Printf.fprintf !Config.output "        (Stats) ---- Number of explorations [%d].\n%!" !count_explo) ;
+  then Printf.fprintf !Config.output "        (Stats) ---- Number of explorations [%d].\n%!" !count_explo ;
 
   let line = ref (input_line in_template) in
   while !line <> template_stylesheet do
