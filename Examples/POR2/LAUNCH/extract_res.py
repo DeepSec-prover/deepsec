@@ -30,15 +30,21 @@ parser.add_argument('--logs', nargs='*',
 parser.add_argument('--distributed', nargs='*',
                     help='only focus on benchmarks carried out with a certain number of cores (0=not distrivuted).')
 parser.add_argument('--explos',
-                    help='only show numebr of explorations')
+                    help='only show numebr of explorations',
+                    action='store_true')
 parser.add_argument('--noPorridge',
-                    help='time without porridge')
+                    help='time without porridge',
+                    action='store_true')                    
 parser.add_argument('--noWithPorridge',
-                    help='time with and without porridge')
+                    help='time with and without porridge',
+                    action='store_true')                    
 parser.add_argument('--plainText',
-                    help='output a table in plaintext')
+                    help='output a table in plaintext',
+                    action='store_true')
 parser.add_argument('--CSV',
                     help='path where a CSV file will be put')
+parser.add_argument('--benchs',
+                    help='DIsplay final benchs on the given path as a CSV file.')
 
 args = parser.parse_args()
 isLoad = True
@@ -328,4 +334,9 @@ def main():
         fileLatex.write(str(fromVersToTests(VersionsDico, TestsDico, toLatex=True, vers="paper", tests="notall", disp=args.explo, wtPorridge=False)))
         fileLatex.close()
     print(dicoAppend)
+
+    if args.benchs:
+        print2("\n~~~~~~~~~ NOW STORING FINAL BENCH IN %s ~~~~~~~~~" % args.benchs)
+        printBench(VersionsDico, TestsDico, args.benchs)
+
 main()

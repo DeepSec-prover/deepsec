@@ -234,3 +234,57 @@ def cleanColor(toPrintColor):
     toPrintColor = toPrintColor.replace("] ", "] ")
     toPrintColor = toPrintColor.replace(" . ", " . ")
     return(toPrintColor)
+
+def extractResultsBench(vers, tests, keyT):
+    print("Start: " + keyT)
+    # First column of the line:
+    # NEW VERS
+    versionBenchs = vers["new"]["benchs"]
+    found = False
+    for bench in versionBenchs:
+        if (not(found) and
+            versionBenchs[bench]["file"].strip() == tests[keyT]["file"].strip()):
+            #res.append((versionBenchs[bench]["time"], versionBenchs[bench]["nbExplo"]))
+            timeNew = versionBenchs[bench]["time"]
+            timePorridgeNew = versionBenchs[bench]["timePorridge"]
+            exploNew = versionBenchs[bench]["nbExplo"]
+            found = True
+    if not(found):
+        print("Bench for NEW was not found for: " + keyT)
+        return(None)
+    # NEW OLD
+    versionBenchs = vers["old"]["benchs"]
+    found = False
+    for bench in versionBenchs:
+        if (not(found) and
+            versionBenchs[bench]["file"].strip() == tests[keyT]["file"].strip()):
+            #res.append((versionBenchs[bench]["time"], versionBenchs[bench]["nbExplo"]))
+            timeOld = versionBenchs[bench]["time"]
+            exploOld = versionBenchs[bench]["nbExplo"]
+            found = True
+    if not(found):
+        print("Bench for OLD was not found for: " + keyT)
+        return(None)
+    timeRatio = timeOld / timeNew
+    exploRatio = exploOld / exploNew
+    timeRatioStr = prettyFloat(timeRatio)
+    exploRatioStr = prettyFloat(exploRatio)
+    res = [keyT, timeRatioStr, exploRatioStr]
+    return(res)
+
+
+def printBench(vers, tests, path):
+    listTestsKey = sorted(tests.keys(), cmp = cmpGraph)
+    listTestsFile = map(lambda x: tests[x]['file'], listTestsKey)
+    # first line of the matrix:
+    fstLine = ["  ", "Time (ratio)", "Explorations (ratio)"]
+    matrix = [fstLine]
+    for i in range(len(listTestsFile)):
+        keyTest = listTestsKey[i]
+        fileName = listTestsFile[i]
+        listResults = extractResultsBench(vers, tests, keyTest)
+        if not(listResults == None):
+            matrix.append(listResults)
+    print("Now writing in the file.")
+    print(matrix)
+    printCSVMatrix(matrix, path)
