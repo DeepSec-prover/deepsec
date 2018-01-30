@@ -8,6 +8,8 @@ EXPLO: number of DeepSec explorations (symbolic states explored)
 TimeOut: 2 hours real-time
 MemOut: >= 10 GO of RAM or Stack overflow (Porridge)
 
+For protocols non-determniate (=is not suffixed by '_d'): computations with 'non' == computation with 'old'
+
 # COMMANDS
 usage: extract_res.py [-h] [--latex LATEX] [--explo EXPLO]
                       [--logs [LOGS [LOGS ...]]]
@@ -32,5 +34,5 @@ optional arguments:
 
 
 
-./extract_res.py --noPorridge 0 --logs PD/ > RESULTS_NOT-DISTRIBUTED_TIME-withoutPorridge.txt; ./extract_res.py --explos 0 --logs PD/ > RESULTS_NOT-DISTRIBUTED_EXPLOS.txt; ./extract_res.py --logs PD/ > RESULTS_NOT_DISTRIBUTED_TIME.txt
-./extract_res.py --noPorridge 0 > RESULTS_DISTRIBUTED_TIME-withoutPorridge.txt; ./extract_res.py --explos 0 > RESULTS_DISTRIBUTED_EXPLOS.txt; ./extract_res.py > RESULTS_DISTRIBUTED_TIME.txt
+./extract_res.py --noPorridge 0 --logs PD/ --plainText 0 > RESULTS_NOT-DISTRIBUTED_TIME-withoutPorridge.txt; ./extract_res.py --explos 0 --logs PD/ --plainText 0 > RESULTS_NOT-DISTRIBUTED_EXPLOS.txt; ./extract_res.py --logs PD/ --plainText 0 > RESULTS_NOT_DISTRIBUTED_TIME.txt
+./extract_res.py --noPorridge 0 --plainText 0 > RESULTS_DISTRIBUTED_TIME-withoutPorridge.txt; ./extract_res.py --explos 0 --plainText 0 > RESULTS_DISTRIBUTED_EXPLOS.txt; ./extract_res.py --plainText 0 > RESULTS_DISTRIBUTED_TIME.txt

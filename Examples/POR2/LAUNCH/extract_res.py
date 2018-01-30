@@ -33,6 +33,8 @@ parser.add_argument('--explos',
                     help='only show numebr of explorations')
 parser.add_argument('--noPorridge',
                     help='time without porridge')
+parser.add_argument('--plainText',
+                    help='output a table in plaintext')
 
 args = parser.parse_args()
 isLoad = True
@@ -294,16 +296,27 @@ def main():
 
     logging.debug(toPrint)
     toPrintColor = toPrint
-    toPrintColor = toPrintColor.replace(">(", bcolors.HEADER + "  ")
-    toPrintColor = toPrintColor.replace(")", bcolors.ENDC + " ")
-    toPrintColor = toPrintColor.replace(" > ", " > " + bcolors.FAIL)
-    toPrintColor = toPrintColor.replace("< ", bcolors.ENDC + "< ")
-    toPrintColor = toPrintColor.replace("->", "->" + bcolors.WARNING)
-    toPrintColor = toPrintColor.replace("<-", bcolors.ENDC + "<-")
-    toPrintColor = toPrintColor.replace(" [", " [" )
-    toPrintColor = toPrintColor.replace("] ", bcolors.ENDC + "] ")
-    toPrintColor = toPrintColor.replace(" . ", bcolors.OKBLUE + " . " + bcolors.ENDC)
-
+    if not(args.plainText):
+        toPrintColor = toPrintColor.replace(">(", bcolors.HEADER + "  ")
+        toPrintColor = toPrintColor.replace(")", bcolors.ENDC + " ")
+        toPrintColor = toPrintColor.replace(" > ", " > " + bcolors.FAIL)
+        toPrintColor = toPrintColor.replace("< ", bcolors.ENDC + "< ")
+        toPrintColor = toPrintColor.replace("->", "->" + bcolors.WARNING)
+        toPrintColor = toPrintColor.replace("<-", bcolors.ENDC + "<-")
+        toPrintColor = toPrintColor.replace(" [", " [" )
+        toPrintColor = toPrintColor.replace("] ", bcolors.ENDC + "] ")
+        toPrintColor = toPrintColor.replace(" . ", bcolors.OKBLUE + " . " + bcolors.ENDC)
+    else:
+        toPrintColor = toPrintColor.replace(">(", "  ")
+        toPrintColor = toPrintColor.replace(")", " ")
+        toPrintColor = toPrintColor.replace(" > ", " > ")
+        toPrintColor = toPrintColor.replace("< ", "< ")
+        toPrintColor = toPrintColor.replace("->", "->" )
+        toPrintColor = toPrintColor.replace("<-", "<-")
+        toPrintColor = toPrintColor.replace(" [", " [" )
+        toPrintColor = toPrintColor.replace("] ", "] ")
+        toPrintColor = toPrintColor.replace(" . ", " . ")
+        
 
     print(toPrintColor)
     print2("Captions: [> X <] if the returned result is false, [.] if is there is no benchmark, [-> t <-] for new tests, [TimeOut] if we killed the process because either it took more than 2 hours, [MemOut] when it consumed more than 15GO of RAM (warning: the reason of the kill may be missinterpreted), and [[t]] if test performed in the last 2 hours.")
