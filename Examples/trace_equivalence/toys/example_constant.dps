@@ -1,0 +1,31 @@
+free c.
+          
+fun sign/2.
+fun vk/1.
+const true.
+reduc check(sign(x,y),vk(y)) -> true.
+
+fun h/2.
+reduc test(x,h(y,y)) -> x.
+
+let P_1 = new a; new b; new k; out(c,a); out(c,b); out(c,vk(k)); out(c,sign(a,k)).
+
+let P_2 = new a; new b; new k; out(c,a); out(c,b); out(c,vk(k)); out(c,sign(b,(k,k))).
+
+query trace_equiv(P_1,P_2).
+
+let P_3 = new a; new b; new k; out(c,a); out(c,h(b,b)).
+
+let P_4 = new a; new b; new k; out(c,a); out(c,k).
+
+let P_5 = new a; new b; new k; out(c,a); out(c,h(a,b)).
+
+let P_6 = new a; new b; new k; out(c,a); out(c,h(a,k)).
+
+query trace_equiv(P_3,P_4).
+
+query trace_equiv(P_3,P_5).
+
+query trace_equiv(P_4,P_5).
+
+query trace_equiv(P_6,P_5).
