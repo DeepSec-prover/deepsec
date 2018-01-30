@@ -13,6 +13,7 @@ import logging
 import math
 import marshal
 import re
+import csv
 
 import dateutil.parser
 from texttable import *
@@ -102,6 +103,12 @@ def findTest(fileName, dicoTests):
 def printLatexMatrix(matrix):
     return(tabulate(matrix[1:], matrix[0], tablefmt="latex"))
 
+def printCSVMatrix(matrix,csvfile):
+    #Assuming res is a list of lists
+    with open(csvfile, "w") as output:
+        writer = csv.writer(output, lineterminator='\n')
+        writer.writerows(matrix)
+
 def pprintMatrix(matrix):
     lm = len(matrix[0])-1
     table = Texttable()
@@ -179,7 +186,7 @@ def cmpGraph(ex1, ex2):
     else:
         return(cmp(ex1,ex2))
 
-def fromVersToTests(dicoVersions, dicoTests, toLatex=False, vers="all", tests="all", disp=None, wtPorridge=False, bothPorridge=False):
+def fromVersToTests(dicoVersions, dicoTests, toLatex=False, vers="all", tests="all", disp=None, wtPorridge=False, bothPorridge=False,printCSV=""):
     if bothPorridge:
         sortedVersions = ['none', 'new', 'new+Porridge', 'old']
     else:
@@ -197,6 +204,8 @@ def fromVersToTests(dicoVersions, dicoTests, toLatex=False, vers="all", tests="a
             matrix.append(listResults)
     if toLatex:
         return(printLatexMatrix(matrix))
+    elif printCSV != "":
+        printCSVMatrix(matrix, printCSV)
     else:
         return(pprintMatrix(matrix))
 
@@ -213,3 +222,15 @@ def filterData(path, dico):
         return(False)
     else:
         return(True)
+
+def cleanColor(toPrintColor):
+    toPrintColor = toPrintColor.replace(">(", "  ")
+    toPrintColor = toPrintColor.replace(")", " ")
+    toPrintColor = toPrintColor.replace(" > ", " > ")
+    toPrintColor = toPrintColor.replace("< ", "< ")
+    toPrintColor = toPrintColor.replace("->", "->" )
+    toPrintColor = toPrintColor.replace("<-", "<-")
+    toPrintColor = toPrintColor.replace(" [", " [" )
+    toPrintColor = toPrintColor.replace("] ", "] ")
+    toPrintColor = toPrintColor.replace(" . ", " . ")
+    return(toPrintColor)

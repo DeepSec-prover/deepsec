@@ -37,6 +37,8 @@ parser.add_argument('--noWithPorridge',
                     help='time with and without porridge')
 parser.add_argument('--plainText',
                     help='output a table in plaintext')
+parser.add_argument('--CSV',
+                    help='path where a CSV file will be put')
 
 args = parser.parse_args()
 isLoad = True
@@ -298,7 +300,7 @@ def main():
 
     logging.debug(toPrint)
     toPrintColor = toPrint
-    if not(args.plainText):
+    if not(args.plainText) and not(args.CSV):
         toPrintColor = toPrintColor.replace(">(", bcolors.HEADER + "  ")
         toPrintColor = toPrintColor.replace(")", bcolors.ENDC + " ")
         toPrintColor = toPrintColor.replace(" > ", " > " + bcolors.FAIL)
@@ -309,16 +311,7 @@ def main():
         toPrintColor = toPrintColor.replace("] ", bcolors.ENDC + "] ")
         toPrintColor = toPrintColor.replace(" . ", bcolors.OKBLUE + " . " + bcolors.ENDC)
     else:
-        toPrintColor = toPrintColor.replace(">(", "  ")
-        toPrintColor = toPrintColor.replace(")", " ")
-        toPrintColor = toPrintColor.replace(" > ", " > ")
-        toPrintColor = toPrintColor.replace("< ", "< ")
-        toPrintColor = toPrintColor.replace("->", "->" )
-        toPrintColor = toPrintColor.replace("<-", "<-")
-        toPrintColor = toPrintColor.replace(" [", " [" )
-        toPrintColor = toPrintColor.replace("] ", "] ")
-        toPrintColor = toPrintColor.replace(" . ", " . ")
-        
+        toPrintColor = cleanColor(toPrint)
 
     print(toPrintColor)
     print2("Captions: [> X <] if the returned result is false, [.] if is there is no benchmark, [-> t <-] for new tests, [TimeOut] if we killed the process because either it took more than 2 hours, [MemOut] when it consumed more than 15GO of RAM (warning: the reason of the kill may be missinterpreted), and [[t]] if test performed in the last 2 hours.")
@@ -328,7 +321,8 @@ def main():
     marshal.dump(VersionsDico, dicoFile)
     dicoFile.close()
 
-    
+    if args.CSV:
+        fromVersToTests(VersionsDico, TestsDico, printCSV=args.CSV, vers="paper", tests="notall", disp=args.explo, wtPorridge=False)
     if args.latex:
         fileLatex = open(args.latex, 'w')
         fileLatex.write(str(fromVersToTests(VersionsDico, TestsDico, toLatex=True, vers="paper", tests="notall", disp=args.explo, wtPorridge=False)))
