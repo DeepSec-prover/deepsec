@@ -715,6 +715,19 @@ let apply_renamings_pair xrho nrho (t1,t2) =
   let (t1',t2') = Variable.Renaming.apply_on_terms xrho (t1,t2) f_apply in
   Name.Renaming.apply_on_terms nrho (t1',t2') f_apply
 
+let rec contain_mult = function
+  | Nil -> false
+  | Start p
+  | New(_,p,_)
+  | Output (_,_,p,_)
+  | Input (_,_,p,_) -> contain_mult p
+  | IfThenElse(_,_,p1,p2,_)
+  | Let(_,_,_,p1,p2,_) -> contain_mult p1 || contain_mult p2
+  | Par p_list -> List.exists contain_mult p_list
+  | ParMult _ -> true
+  | OutputSure _ -> Config.internal_error "[process_determinate.ml >> contain_mult] This function should only be applied on an intial compressed process."
+
+
 (* Applied on a compressed processed. *)
 let rec is_equal_modulo_renaming channels1 channels2 proc1 proc2 =
 
@@ -894,7 +907,7 @@ and compress_process ch_set = function
             then None
             else Some (ParMult((SymbolSet.elements channels,p)::acc_mod),acc_no_mod)
         | (channels',p')::q ->
-            if is_equal_modulo_renaming channels channels' p p'
+            if is_equal_modulo_renaming channels channels' p p' && not (contain_mult p) && not (contain_mult p')
             then  search channels p acc_no_mod ((SymbolSet.elements channels',p')::acc_mod) q
             else search channels p ((channels',p')::acc_no_mod) acc_mod q
       in
