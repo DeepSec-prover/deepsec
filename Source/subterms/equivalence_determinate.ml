@@ -578,9 +578,7 @@ let publish_trace_equivalence_result id conf1 conf2 result runtime =
   let path_style = Filename.concat !Config.path_deepsec "Style" in
   let path_template = Filename.concat !Config.path_html_template "result.html" in
   let path_result = Filename.concat ( Filename.concat !Config.path_index "result") (Printf.sprintf "result_query_%d_%s.html" id !Config.tmp_file)  in
-  let path_javascript = Filename.concat  ( Filename.concat !Config.path_index "result") (Printf.sprintf "result_%d_%s.js" id !Config.tmp_file) in
 
-  let out_js = open_out path_javascript in
   let out_result = open_out path_result in
   let in_template = open_in path_template in
 
@@ -719,8 +717,6 @@ let publish_trace_equivalence_result id conf1 conf2 result runtime =
 
       let html_attack =
         Process_determinate.display_trace_HTML ~rho:rho ~title:"Display of the attack trace" "3e0" ~fst_subst:attack.fst_subst ~snd_subst:attack.snd_subst attack.attack_origin_configuration attack.attack_configuration in
-
-      close_out out_js;
 
       Printf.fprintf out_result "%s" html_attack;
       Printf.fprintf out_result "        <script>\n";

@@ -1,0 +1,81 @@
+(*
+  Otway Rees symmetric key
+   A -> B : M,A,B,{Na,M,A,B}Kas
+   B -> S : M,A,B,{Na,M,A,B}Kas,{Nb,M,A,B}Kbs
+   S -> B : M, {Na,Kab}Kas, {Nb,Kab}Kbs
+   B -> A : M,{Na,Kab}Kas
+*)
+
+//Channels :
+free ca,cb,cs.
+
+//Constants:
+free a,b.
+free s1,s2.
+
+// Encryption
+fun senc/2.
+reduc sdec(senc(x,y),y) = x.
+
+// Alice
+let A(ca,a,b,kas) =
+  new m ;
+  new na ;
+  out(ca,(m,a,b,senc((na,m,a,b),kas)));
+  in(ca,x0);
+  let (xmm,xsenc) = x0 in
+  let (xna,xkab) = sdec(xsenc,kas) in
+  if (xmm,xna) = (m,na) then
+  0.
+
+
+// Bob
+let B(cb,b,a,kbs) =
+  in(cb,yinit);
+  let (ym,=a,=b,yza1) = yinit in
+  new nb;
+  out(cb,(ym,a,b,yza1,senc((nb,ym,a,b),kbs)));
+  in(cb,y1);
+  let (=ym,yza2,y2) = y1 in
+  let (=nb,ykab) = sdec(y2,kbs) in
+  out(cb,(ym,yza2)).
+
+
+// Server (+property)
+let S1a(cs,a,b,kas,kbs) =
+  in(cs,z0);
+  let (zm,=a,=b,zsenc1,zsenc2) = z0 in
+  let (zna,=zm,=a,=b) = sdec(zsenc1,kas) in
+  let (znb,=zm,=a,=b) = sdec(zsenc2,kbs) in
+  out(cs,(zm,senc((zna,s1),kas),senc((znb,s1),kbs))).
+
+let S1b(cs,a,b,kas,kbs) =
+  in(cs,z0);
+  let (zm,=a,=b,zsenc1,zsenc2) = z0 in
+  let (zna,=zm,=a,=b) = sdec(zsenc1,kas) in
+  let (znb,=zm,=a,=b) = sdec(zsenc2,kbs) in
+  out(cs,(zm,senc((zna,s2),kas),senc((znb,s2),kbs))).
+
+
+// Server
+let S(cs,a,b,kas,kbs) =
+  in(cs,z0);
+  let (zm,=a,=b,zsenc1,zsenc2) = z0 in
+  let (zna,=zm,=a,=b) = sdec(zsenc1,kas) in
+  let (znb,=zm,=a,=b) = sdec(zsenc2,kbs) in
+  new kab;
+  out(cs,(zm,senc((zna,kab),kas),senc((znb,kab),kbs))).
+
+let P =
+  new kas; new kbs ;
+  (
+    A(ca,a,b,kas) | S1a(cs,a,b,kas,kbs) | B(cb,b,a,kbs)
+  ).
+
+let Q =
+  new kas; new kbs ;
+  (
+    A(ca,a,b,kas) | S1b(cs,a,b,kas,kbs) | B(cb,b,a,kbs)
+  ).
+
+query trace_equiv(P,Q).

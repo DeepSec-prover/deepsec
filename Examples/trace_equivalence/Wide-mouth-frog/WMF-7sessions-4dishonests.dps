@@ -1,0 +1,60 @@
+(* Wide Mouthed Frog protocol (without timestamps)
+# A -> S: A, {B,Kab}Kas
+# S -> B: {A,Kab}Kbs
+*)
+
+free a,b,c,d.
+
+free s1,s2, kcs.
+free kas, kbs, kds [private].
+
+free ca1,cs1,cb1.
+free ca2,cs2,cb2.
+free ca3,cs3,cb3.
+free ca4,cs4,cb4.
+free ca5,cs5,cb5.
+free ca6,cs6,cb6.
+free ca7,cs7,cb7.
+
+fun senc/2.
+reduc sdec(senc(x,y),y) -> x.
+
+let A1(ca,a,b,kas) =
+  out(ca, (a, senc((b,s1),kas))).
+
+let A2(ca,a,b,kas) =
+  out(ca, (a, senc((b,s2),kas))).
+
+let A(ca,a,b,kas) =
+  new kab;
+  out(ca, (a, senc((b,kab),kas))).
+
+let S(cs,a,b,kas,kbs) =
+  in(cs, x);
+  let (=a,xenc) = x in
+  let (=b,xk) = sdec(xenc,kas) in
+  out(cs, senc((a,xk),kbs)).
+
+let B(cb,b,a,kbs) =
+  in(cb,y);
+  let (ya,yk) = sdec(y,kbs) in 0.
+
+let P =
+  A1(ca1,a,b,kas) | S(cs1,a,b,kas,kbs) | B(cb1,b,a,kbs) |
+  A(ca2,a,c,kas) | S(cs2,a,c,kas,kcs) |
+  S(cs3,c,b,kcs,kbs) | B(cb3,c,b,kbs) |
+  A(ca4,b,a,kbs) | S(cs4,b,a,kbs,kas) | B(cb4,a,b,kas) |
+  A(ca5,b,c,kbs) | S(cs5,b,c,kbs,kcs) |
+  S(cs6,c,a,kcs,kas) | B(cb6,c,a,kas) |
+  A(ca7,a,d,kas) | S(cs7,a,d,kas,kds) | B(cb7,d,a,kds).
+
+let Q =
+  A2(ca1,a,b,kas) | S(cs1,a,b,kas,kbs) | B(cb1,b,a,kbs) |
+  A(ca2,a,c,kas) | S(cs2,a,c,kas,kcs) |
+  S(cs3,c,b,kcs,kbs) | B(cb3,c,b,kbs) |
+  A(ca4,b,a,kbs) | S(cs4,b,a,kbs,kas) | B(cb4,a,b,kas) |
+  A(ca5,b,c,kbs) | S(cs5,b,c,kbs,kcs) |
+  S(cs6,c,a,kcs,kas) | B(cb6,c,a,kas) |
+  A(ca7,a,d,kas) | S(cs7,a,d,kas,kds) | B(cb7,d,a,kds).
+
+query trace_equiv(P,Q).
