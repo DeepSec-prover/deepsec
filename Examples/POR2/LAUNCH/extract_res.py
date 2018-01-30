@@ -233,6 +233,11 @@ def main():
                         time = (float(parse.split(":")[0])*60 +
                                 float(parse.split(":")[1].split(".")[0]) +
                                 float(parse.split(":")[1].split(".")[1])/100)
+                    if killed:
+                        time = -1
+                        timePorridge = -1
+                        nbExplo = -1
+                        nbStop = -1
                     logAll = open(path_log + "byFiles/" + testFile.split(".")[0] + "_" +version + ".log"  , 'r').read()
                     if killed:
                         if "[MEMORY]" in benchTests or "ut of memory" in logAll or "Stack overflow" in logAll:
