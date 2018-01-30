@@ -27,7 +27,7 @@ def defLimit():
    # Set maximum CPU time to 1 second in child process, after fork() but before exec()
    print "Setting resource limit in child (pid %d)" % os.getpid()
    maxRealTime = 2*3600              # 2 hours
-   cpu_limit = DEFAULT_CORES*maxRealTime
+   cpu_limit = maxRealTime
    # cpu_limit = maxRealTime
    # Limit of Memory usage (in bytes)
    mem_limit = 10*1024*1024*1024          # 10 GO ??
@@ -168,7 +168,7 @@ def main():
                                        preexec_fn=defLimit())
                for line in iter(proc.stdout.readline,''):
                   line_t = line.rstrip()
-                  if ("Time " in line_t or "Query" in line_t) or ("Running" in line_t) or ("s." in line_t) or ("[G-POR]" in line_t and ("traces" in line_t or "Stats" in line_t)) or "Out of memory" in line_t or "exception" in line_t or "Stack overflow" in line_t:
+                  if ("Time " in line_t or "Query" in line_t) or ("Running" in line_t) or ("s." in line_t) or ("[G-POR]" in line_t and "traces" in line_t) or "Stats" in line_t or "Out of memory" in line_t or "exception" in line_t or "Stack overflow" in line_t:
                      if "Query" in line_t:
                         killed = False
                      print_all(line_t + "\n")

@@ -29,6 +29,10 @@ parser.add_argument('--logs', nargs='*',
                     help='location of log files. Default=.')
 parser.add_argument('--distributed', nargs='*',
                     help='only focus on benchmarks carried out with a certain number of cores (0=not distrivuted).')
+parser.add_argument('--explos',
+                    help='only show numebr of explorations')
+parser.add_argument('--noPorridge',
+                    help='time without porridge')
 
 args = parser.parse_args()
 isLoad = True
@@ -184,7 +188,10 @@ def main():
                     if "Number of explorations" in benchTests:
                         explo = benchTests.split("Number of explorations")[1]
                         nbExplo = int(explo.split("[")[1].split("]")[0])
-                        nbStop = int(explo.split("[")[2].split("]")[0])                        
+                        if "number of blocked" in benchTests:
+                            nbStop = int(explo.split("[")[2].split("]")[0])
+                        else:
+                            nbStop = -1
                     else:
                         nbExplo = -1
                         nbStop = -1
@@ -192,14 +199,19 @@ def main():
                         killed = True
                     else:
                         killed = False
-                        timeString = benchTests.split("Memory ")
+                        timeString = benchTests.split(" / Memory ")
                         if len(timeString) >=3:
                             timeString = timeString[1].split("Time")[1].split("/")[0].strip()
                         else:
                             timeString = timeString[0].split("Time")[1].split("/")[0].strip()
+                        if "explored has been computed" in benchTests:
+                            timePorridgeString = benchTests.split("explored has been computed in ")[1].split("s.")[0]
+                            timePorridge = float(timePorridgeString.strip())
+                        else:
+                            timePorridge = -1
                     logging.debug("New test: " + testName + "|: True? " + str(isTrue) + ", nbExplo: " + str(nbExplo) +
                                   ", nbStop: " + str(nbStop) + ", killed?: " + str(killed) + 
-                                 ", date: " + date + ", time: " + str(timeString) + "  |  ")
+                                  ", date: " + date + ", time: " + str(timeString) + ", timePorridge: " + str(timePorridge) + " |  ")
                     parse = timeString
                     if not "." in parse:
                         time = (float(parse.split(":")[0])*60*60 +
@@ -224,8 +236,10 @@ def main():
                         "date" : date,       # string
                         "time_string" : timeString,       # str
                         "time" : time,        # int
+                        "timePorridge" : timePorridge,        # int
                         "killed" : killed,   # string
                         "nbExplo" : nbExplo, # int
+                        "nbStop" : nbStop, # int
                         "fileFrom": log,     # string
                     }
                     if testName in versionDico["benchs"]:
@@ -276,7 +290,7 @@ def main():
     print2("\n~~~~~~~~~ Results ~~~~~~~~~")
     testsFlag = "all"
 
-    toPrint = fromVersToTests(VersionsDico, TestsDico, vers="all", tests=testsFlag, disp=args.explo)
+    toPrint = fromVersToTests(VersionsDico, TestsDico, vers="all", tests=testsFlag, disp=args.explos, wtPorridge=args.noPorridge)
 
     logging.debug(toPrint)
     toPrintColor = toPrint
@@ -302,7 +316,7 @@ def main():
     
     if args.latex:
         fileLatex = open(args.latex, 'w')
-        fileLatex.write(str(fromVersToTests(VersionsDico, TestsDico, toLatex=True, vers="paper", tests="notall", disp=args.explo)))
+        fileLatex.write(str(fromVersToTests(VersionsDico, TestsDico, toLatex=True, vers="paper", tests="notall", disp=args.explo, wtPorridge=False)))
         fileLatex.close()
     print(dicoAppend)
 main()
