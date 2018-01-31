@@ -20,6 +20,12 @@ module List = struct
   let (@) l1 l2 = fold_right (fun a ac -> a :: ac) l1 l2
   (* fold_left with arguments in the same order as fold_right *)
   let foldl f l a = fold_left (fun a x -> f x a) a l
+
+  (* finder in list *)
+  let rec assoc_opt (e:'a) (l:('a*'b) list) : 'b option =
+    match l with
+    | [] -> None
+    | (f,g) :: p -> if e = f then Some g else assoc_opt e p
 end
 
 let flip (f:'a->'b->'c) : 'b->'a->'c = fun x y -> f y x
