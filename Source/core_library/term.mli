@@ -1022,6 +1022,11 @@ module Rewrite_rules : sig
   (** [get_vars_with_list l] adds the variables of the rewriting system in the list [l]. The addition of a variable as the union of sets, i.e. there is no dupplicate in the resulting list. *)
   val get_vars_with_list : fst_ord_variable list -> fst_ord_variable list
 
+
+  (** [is_subterm_convergent_symbol line symb] checks whether the rewrite rules associated to a destructor symbol [symb] satisfy the subterm convergence property ([line] is the line in the code for user-friendly error messages). In case it does not, the programs exits with an error message.
+  Note that, since the rewrite system is constructor-destructor, critical pairs can only occur at the root of rules and subterm-convergence can therefore be performed separately on subsets of rules with identical root. **)
+  val is_subterm_convergent_symbol : int -> symbol -> unit
+
   (** {3 Display functions} *)
 
   val display_skeleton : Display.output -> ?rho:display_renamings option -> skeleton -> string
