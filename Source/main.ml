@@ -155,16 +155,16 @@ let rec excecute_queries id = function
               let proc1,proc2 =
                 if not(!Config.inclusion_detect) then exproc1, exproc2
                 else match exproc1,exproc2 with
-                     | Choice [p1_1;p1_2],p2_ when Process.same_structure p1_2 p2_
+                     | Process.Choice [p1_1;p1_2],p2_ when Process.same_structure p1_2 p2_
                        -> let () = Porridge.Trace_equiv.inclusion := true in
                           p1_1, p2_
-                     | Choice [p1_2;p1_1],p2_ when Process.same_structure p1_2 p2_
+                     | Process.Choice [p1_2;p1_1],p2_ when Process.same_structure p1_2 p2_
                        -> let () = Porridge.Trace_equiv.inclusion := true in
                           p1_1, p2_
-                     | p1_,Choice [p2_1;p2_2] when Process.same_structure p2_1 p1_
+                     | p1_,Process.Choice [p2_1;p2_2] when Process.same_structure p2_1 p1_
                        -> let () = Porridge.Trace_equiv.inclusion := true in
                           p1_, p2_2
-                     | p1_,Choice [p2_2;p2_1] when Process.same_structure p2_1 p1_
+                     | p1_,Process.Choice [p2_2;p2_1] when Process.same_structure p2_1 p1_
                        -> let () = Porridge.Trace_equiv.inclusion := true in
                           p1_, p2_2
                      | _ -> exproc1, exproc2 in

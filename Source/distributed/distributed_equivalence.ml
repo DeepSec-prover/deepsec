@@ -25,9 +25,9 @@ struct
     {
       init_conf1 : Process_determinate.configuration;
       init_conf2 : Process_determinate.configuration;
-      no_por : bool;
-      por_gen : bool;
-      distributed : bool;
+      no_por_d : bool;
+      por_gen_d : bool;
+      distributed_d : bool;
 
       equiv_problem : Equivalence_determinate.equivalence_problem
     }
@@ -104,7 +104,7 @@ struct
             | Equivalence.Not_Trace_Equivalent csys -> Not_Equivalent (OStandard (csys, data.init_proc1, data.init_proc2))
           end
       | DDeterminate data ->
-         Config.distributed := data.distributed ;
+         Config.distributed := data.distributed_d ;
          let rec apply_rules equiv_pbl f_next =
             Equivalence_determinate.apply_one_transition_and_rules equiv_pbl (fun eq_pbl_1 f_next_1 ->
               apply_rules eq_pbl_1 f_next_1
@@ -313,9 +313,9 @@ let trace_equivalence_determinate conf1 conf2 =
     {
       EquivJob.init_conf1 = conf1;
       EquivJob.init_conf2 = conf2;
-      EquivJob.no_por = !Config.no_por;
-      EquivJob.por_gen = !Config.por_gen;
-      EquivJob.distributed = !Config.distributed;
+      EquivJob.no_por_d = !Config.no_por;
+      EquivJob.por_gen_d = !Config.por_gen;
+      EquivJob.distributed_d = !Config.distributed;
       EquivJob.equiv_problem = equiv_pbl
     }
   in

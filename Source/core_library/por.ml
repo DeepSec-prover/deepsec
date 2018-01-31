@@ -10,7 +10,7 @@ let freshVars = ref 0
 let freshNames = ref 0
 	   
 let err s = Printf.printf "[G-POR] CRITICAL ERROR: %s\n" s ; exit 0
-let pp s = Printf.printf s
+(* let pp s = Printf.printf s *)
 
 let out_mode = Display.Testing
 let v_type = false
@@ -45,11 +45,11 @@ let freshName s =
     else search (n+1) in
   search !freshNames
 
-let str_of_name n =
-  if Term.is_name n
-  then let name = Term.name_of n in
-       Term.Name.display out_mode ~rho:rho name
-  else err (Printf.sprintf "The following term is not a name: %s." (Term.display out_mode ~rho:rho at n))
+(* let str_of_name n =
+ *   if Term.is_name n
+ *   then let name = Term.name_of n in
+ *        Term.Name.display out_mode ~rho:rho name
+ *   else err (Printf.sprintf "The following term is not a name: %s." (Term.display out_mode ~rho:rho at n)) *)
 
 let is_constant c = Term.is_function c && Term.Symbol.get_arity (Term.root c) = 0
 
@@ -100,7 +100,7 @@ let importPat term pat =
     | t when Term.is_name t -> () (* TODO: check that *)
     | t when Term.is_function t ->
        let symb = Term.root t in
-       let args = Term.get_args t in
+       (* let args = Term.get_args t in *)
        (if Term.Symbol.is_tuple symb
         then List.iter (fun tp -> incr(proj); aux tp) (Term.get_args t)
         else err "[1] In generalized POR mode, in let p = t in ..., p must be made of tuples and variables only.")
@@ -111,11 +111,11 @@ let importPat term pat =
 let importProcess proc =
   let rec flatten_choice = function
     | Process.Choice ps -> List.flatten (List.map flatten_choice ps)
-    | Process.New(n,p) -> flatten_choice p (* TODO: check *)
+    | Process.New(_,p) -> flatten_choice p (* check *)
     | p -> [build p]
   and flatten_par = function
     | Process.Par ps -> List.flatten (List.map flatten_par (List.map fst ps))
-    | Process.New(n,p) -> flatten_par p (* TODO: check *)
+    | Process.New(_,p) -> flatten_par p (* check *)
     | p -> [build p]
   and build = function
     | Process.Nil -> zero
@@ -125,12 +125,12 @@ let importProcess proc =
        let freshN = freshName n in
        let importProc = build p in
        Porridge.Process.subst importProc (importName n) freshN 
-    | Process.Input(t,x,proc) -> let c = (importChannel t) in input c (importVar x) (build proc)
+    | Process.Input(t,x,proc) -> let c = (importChannel t) in Porridge.Process.input c (importVar x) (build proc)
     (* let freshV = freshVar () in *)
        (* let x = importVar pat in  *)
        (* let importProc = input (importChannel t) x (build proc) in *)
        (* Porridge.Process.subst importProc (importVar pat) freshV *) 
-    | Process.Output(t1,t2,proc) -> let c = (importChannel t1) in output c (importTerm t2) (build proc)
+    | Process.Output(t1,t2,proc) -> let c = (importChannel t1) in Porridge.Process.output c (importTerm t2) (build proc)
     | Process.Let(pat,t,proc_then,proc_else) ->
        (* "let (x1,..,xn)=t in P" are compiled into "if freshVar = t then P{pi_i(t)/x_i}" 
            The test should always be considered as true or false because Porridge has no
@@ -197,10 +197,10 @@ let isSameChannel chPOR ch =
 	      with Not_found -> err "[Internal error] Channel is not present in HashTbl." in
   chPOR == Porridge.Channel.of_int intCh (* == since channel are private int, OK? *)
 
-let isSameAction = function
-  | (Process.InS chApte, Porridge.Trace_equiv.Action.In (chPOR,_,_)) -> isSameChannel chPOR chApte
-  | (Process.OutS chApte, Porridge.Trace_equiv.Action.Out (chPOR,_)) -> isSameChannel chPOR chApte
-  | _ -> false
+(* let isSameAction = function
+ *   | (Process.InS chApte, Porridge.Trace_equiv.Action.In (chPOR,_,_)) -> isSameChannel chPOR chApte
+ *   | (Process.OutS chApte, Porridge.Trace_equiv.Action.Out (chPOR,_)) -> isSameChannel chPOR chApte
+ *   | _ -> false *)
 
 let isSameZAction = function
   | (Process.InS chApte, Porridge.Trace_equiv.ZAction.Input (chPOR,_,_)) -> isSameChannel chPOR chApte
@@ -211,7 +211,7 @@ let isEnableAction actApte = function
   | RedLTS.Traces tl ->
      List.find_opt (fun (actPOR,_) -> isSameZAction (actApte, actPOR)) tl
 
-let rec isEnable trace trs =
+let isEnable trace trs =
   let rec look_action = function
     | Process.Trace.TrOutput(_,ch,_,_,_,_) :: _ ->
        (* Printf.printf "[G-POR] ---- Found last action: Out(%s)\n%!" (str_of_constant ch) ; *)
@@ -231,8 +231,8 @@ let rec isEnable trace trs =
 let forwardTraces actApte trs =
   let rec extractFromList = function
     | [] -> err "[Internal error] isEnable has not been called before forwardTraces."
-    | (actPOR, trsNext) :: tl when isSameZAction (actApte, actPOR) -> trsNext
-    | (actPOR, trsNext) :: tl -> extractFromList tl in
+    | (actPOR, trsNext) :: _ when isSameZAction (actApte, actPOR) -> trsNext
+    | (_, _) :: tl -> extractFromList tl in
   match trs with
   | RedLTS.Traces list -> extractFromList list
 					
