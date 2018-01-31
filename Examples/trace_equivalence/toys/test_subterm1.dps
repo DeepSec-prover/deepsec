@@ -1,0 +1,9 @@
+/* the rewrite system is not subterm, Deepsec should return an error. */
+
+free a,b,c.
+fun f/1.
+fun h/1.
+
+reduc
+  dec(h(x),y) -> f(x);
+  dec(x,y) -> y.
