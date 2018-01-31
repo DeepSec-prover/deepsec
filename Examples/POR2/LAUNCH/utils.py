@@ -236,7 +236,6 @@ def cleanColor(toPrintColor):
     return(toPrintColor)
 
 def extractResultsBench(vers, tests, keyT):
-    print("Start: " + keyT)
     # First column of the line:
     # NEW VERS
     versionBenchs = vers["new"]["benchs"]
@@ -250,7 +249,7 @@ def extractResultsBench(vers, tests, keyT):
             exploNew = versionBenchs[bench]["nbExplo"]
             found = True
     if not(found):
-        print("Bench for NEW was not found for: " + keyT)
+        # print("Bench for NEW was not found for: " + keyT)
         return(None)
     # NEW OLD
     versionBenchs = vers["old"]["benchs"]
@@ -263,21 +262,33 @@ def extractResultsBench(vers, tests, keyT):
             exploOld = versionBenchs[bench]["nbExplo"]
             found = True
     if not(found):
-        print("Bench for OLD was not found for: " + keyT)
+        # print("Bench for OLD was not found for: " + keyT)
         return(None)
-    timeRatio = timeOld / timeNew
-    exploRatio = exploOld / exploNew
-    timeRatioStr = prettyFloat(timeRatio)
-    exploRatioStr = prettyFloat(exploRatio)
-    res = [keyT, timeRatioStr, exploRatioStr]
-    return(res)
+    if timeOld < 0:
+        if timeNew < 0:
+            print("Bench did not terminate for both on : " + keyT)
+            return(None)
+        else:
+            timeRatio = -1
+            exploRatio = -1
+    else:
+        if timeNew < 0:
+            print("[Warning] Bench did not terminate for NEW  but did for OLD both on : " + keyT)
+            return(None)
+        size = keyT.split("_")[-1]
+        timeRatio = timeOld / timeNew
+        exploRatio = exploOld / exploNew
+        timeRatioStr = prettyFloat(timeRatio)
+        exploRatioStr = prettyFloat(exploRatio)
+        res = [keyT, str(size), timeRatioStr, exploRatioStr]
+        return(res)
 
 
 def printBench(vers, tests, path):
     listTestsKey = sorted(tests.keys(), cmp = cmpGraph)
     listTestsFile = map(lambda x: tests[x]['file'], listTestsKey)
     # first line of the matrix:
-    fstLine = ["  ", "Time (ratio)", "Explorations (ratio)"]
+    fstLine = [" Test ", "Size", "Time (ratio)", "Explorations (ratio)"]
     matrix = [fstLine]
     for i in range(len(listTestsFile)):
         keyTest = listTestsKey[i]
@@ -285,6 +296,12 @@ def printBench(vers, tests, path):
         listResults = extractResultsBench(vers, tests, keyTest)
         if not(listResults == None):
             matrix.append(listResults)
-    print("Now writing in the file.")
-    print(matrix)
+    # print(matrix)
     printCSVMatrix(matrix, path)
+    pathPlain = path.strip(".csv")[0] + ".txt"
+    fileP = open(pathPlain, 'w')
+    prettyMat = str(pprintMatrix(matrix))
+    fileP.write("Ratio=OLD/NEW.\n"+ prettyMat)
+    fileP.close()
+    print(prettyMat)
+    print("Wrote in %s and %s. Done :)" % (path,pathPlain))

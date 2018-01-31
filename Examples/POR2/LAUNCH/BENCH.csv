@@ -1,0 +1,26 @@
+ Test ,Size,Time (ratio),Explorations (ratio)
+BAC_FR_plus_2,2,0.24,1.9
+BAC_FR_plus_3,3,0.01,1.0
+BAC_plus_2,2,7.6,7.23
+PA_ANO_d_2,2,1.0,0.82
+PA_ANO_d_3,3,1.0,0.49
+PA_ANO_d_4,4,0.75,0.24
+PA_ANO_d_5,5,0.13,0.15
+PA_ANO_d_6,6,0.03,0.05
+PA_ANO_d_7,7,0.0,0.03
+PA_ANO_nd_2,2,1.0,0.82
+PA_ANO_nd_3,3,1.33,4.01
+PA_ANO_nd_4,4,8.36,10.51
+PA_ANO_nd_5,5,14.89,16.61
+PA_ANO_nd_6,6,60.2,36.75
+PA_UK_nd_2,2,2.29,9.6
+PA_UK_nd_3,3,14.06,29.77
+PA_UK_nd_4,4,46.2,46.69
+feldhofer_ANO_2,2,1.0,0.69
+feldhofer_ANO_3,3,4.63,7.08
+feldhofer_ANO_4,4,22.47,16.3
+feldhofer_ANO_d_2,2,1.0,0.69
+feldhofer_ANO_d_3,3,0.6,0.27
+feldhofer_ANO_d_4,4,0.05,0.06
+feldhofer_ANO_d_5,5,0.0,0.01
+feldhofer_plus_2,2,36.27,22.58
