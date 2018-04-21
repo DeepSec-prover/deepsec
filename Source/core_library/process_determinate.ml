@@ -673,9 +673,9 @@ let display_configuration conf =
     Printf.sprintf "Label = %s\nProcess =\n%s" (display_label det_proc.label_p) (display_simple_det_process_HTML det_proc.proc)
   in
 
-  Printf.printf "=======Configuration======\n";
-  Printf.printf "Sure_input_proc:<br>\n%s" (display_list display_det_process "//////\n" conf.sure_input_proc);
-  Printf.printf "Sure_output_proc:<br>\n%s" (display_list display_det_process "//////\n" conf.sure_output_proc);
+  Printf.printf "\n=======Configuration======\n";
+  Printf.printf "Sure_input_proc:<br>\n%s" (display_list display_det_process "\n//////\n" conf.sure_input_proc);
+  Printf.printf "Sure_output_proc:<br>\n%s" (display_list display_det_process "\n//////\n" conf.sure_output_proc);
 
   let display_det_process_list l =
     display_list display_det_process "1-------\n" l
@@ -695,7 +695,7 @@ let display_configuration conf =
   display_option_det_process conf.unsure_proc;
   Printf.printf "focused_proc\n";
   display_option_det_process conf.focused_proc;
-  Printf.printf "trace:<br>\n%s" (display_list display_trace "; " conf.trace)
+  Printf.printf "trace:<br>\n%s\n" (display_list display_trace "; " conf.trace)
 
 (**** Testing ****)
 
@@ -1307,15 +1307,15 @@ let is_equal_skeleton_conf size_frame conf1 conf2 =
               | OutputSure _, OutputSure _ ->
                   let conf1' = { conf1 with sure_uncheked_skeletons = None; sure_output_proc = p1::conf1.sure_output_proc } in
                   let conf2' = { conf2 with sure_uncheked_skeletons = None; sure_output_proc = p2::conf2.sure_output_proc } in
-                  conf1', conf2'
+                  conf1', conf2', false
               | Input _, Input _ ->
                   let conf1' = { conf1 with sure_uncheked_skeletons = None; sure_input_proc = p1::conf1.sure_input_proc } in
                   let conf2' = { conf2 with sure_uncheked_skeletons = None; sure_input_proc = p2::conf2.sure_input_proc } in
-                  conf1', conf2'
+                  conf1', conf2', false
               | Par pl1, Par pl2 ->
                   let conf1' = add_par_arguments_in_conf conf1 p1.label_p pl1 in
                   let conf2' = add_par_arguments_in_conf conf2 p2.label_p pl2 in
-                  { conf1' with sure_uncheked_skeletons = None }, { conf2' with sure_uncheked_skeletons = None }
+                  { conf1' with sure_uncheked_skeletons = None }, { conf2' with sure_uncheked_skeletons = None }, false
               | ParMult pl1, ParMult pl2 ->
                   Config.debug (fun () ->
                     match List.exists (fun (_,p) -> exists_output p) pl1, List.exists (fun (_,p) -> exists_output p) pl2 with
@@ -1328,12 +1328,12 @@ let is_equal_skeleton_conf size_frame conf1 conf2 =
                   then
                     let conf1' = { conf1 with sure_uncheked_skeletons = None; sure_output_proc = p1::conf1.sure_output_proc } in
                     let conf2' = { conf2 with sure_uncheked_skeletons = None; sure_output_proc = p2::conf2.sure_output_proc } in
-                    conf1',conf2'
+                    conf1',conf2', false
                   else
                     let conf1' = add_par_mult_arguments_in_conf conf1 p1.label_p pl1 in
                     let conf2' = add_par_mult_arguments_in_conf conf2 p2.label_p pl2 in
-                    { conf1' with sure_uncheked_skeletons = None }, { conf2' with sure_uncheked_skeletons = None }
-              | Nil, Nil -> { conf1 with sure_uncheked_skeletons = None }, { conf2 with sure_uncheked_skeletons = None }
+                    { conf1' with sure_uncheked_skeletons = None }, { conf2' with sure_uncheked_skeletons = None }, false
+              | Nil, Nil -> { conf1 with sure_uncheked_skeletons = None }, { conf2 with sure_uncheked_skeletons = None }, false
               | _, _ -> Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] This case should not happen since they have the same skeletons."
           else
             let _ = print_string "sure_unchecked\n" in
@@ -1349,12 +1349,12 @@ let is_equal_skeleton_conf size_frame conf1 conf2 =
               | OutputSure _, OutputSure _ ->
                   let conf1' = { conf1 with focused_proc = None; sure_output_proc = p1::conf1.sure_output_proc } in
                   let conf2' = { conf2 with focused_proc = None; sure_output_proc = p2::conf2.sure_output_proc } in
-                  conf1', conf2'
-              | Input _, Input _ -> conf1, conf2
+                  conf1', conf2', false
+              | Input _, Input _ -> conf1, conf2, false
               | Par pl1, Par pl2 ->
                   let conf1' = add_par_arguments_in_conf conf1 p1.label_p pl1 in
                   let conf2' = add_par_arguments_in_conf conf2 p2.label_p pl2 in
-                  { conf1' with focused_proc = None }, { conf2' with focused_proc = None }
+                  { conf1' with focused_proc = None }, { conf2' with focused_proc = None }, false
               | ParMult pl1, ParMult pl2 ->
                   Config.debug (fun () ->
                     match List.exists (fun (_,p) -> exists_output p) pl1, List.exists (fun (_,p) -> exists_output p) pl2 with
@@ -1367,12 +1367,12 @@ let is_equal_skeleton_conf size_frame conf1 conf2 =
                   then
                     let conf1' = { conf1 with focused_proc = None; sure_output_proc = p1::conf1.sure_output_proc } in
                     let conf2' = { conf2 with focused_proc = None; sure_output_proc = p2::conf2.sure_output_proc } in
-                    conf1',conf2'
+                    conf1',conf2' , false
                   else
                     let conf1' = add_par_mult_arguments_in_conf conf1 p1.label_p pl1 in
                     let conf2' = add_par_mult_arguments_in_conf conf2 p2.label_p pl2 in
-                    { conf1' with focused_proc = None }, { conf2' with focused_proc = None }
-              | Nil, Nil -> { conf1 with focused_proc = None }, { conf2 with focused_proc = None }
+                    { conf1' with focused_proc = None }, { conf2' with focused_proc = None }, false
+              | Nil, Nil -> { conf1 with focused_proc = None }, { conf2 with focused_proc = None }, true
               | _, _ -> Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] This case should not happen since they have the same skeletons."
           else
             let _ = print_string "sure_unchecked\n" in
@@ -1418,7 +1418,6 @@ let rec is_faulty_block block = function
 
 let is_block_list_authorized b_list cur_block snd_subst = match b_list with
   | [] -> true
-  | b::_ when b.minimal_axiom = 0 -> false
   | _ ->
       (*let str = ref "Begining of block test:\n" in
 

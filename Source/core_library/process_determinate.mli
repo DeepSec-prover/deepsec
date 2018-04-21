@@ -48,7 +48,7 @@ type action =
 
 exception Faulty_skeleton of bool * configuration * action
 
-val is_equal_skeleton_conf : int -> configuration -> configuration -> configuration * configuration
+val is_equal_skeleton_conf : int -> configuration -> configuration -> configuration * configuration * bool
 
 (** {3 Transformation} *)
 
