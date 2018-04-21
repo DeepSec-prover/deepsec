@@ -13,9 +13,10 @@ free yes,no.
 
 let V(id, v, pkT, bb) =
   new r;
-  let ballot = (id, aenc(v,r,pkT)) in
-  out(bb, ballot);  // sending on authenticated channel
-  out(ch, ballot).   // modelled by both sending on private and public channel
+  let ballot = aenc(v,r,pkT) in
+  out(bb, (id,ballot));  // sending on authenticated channel
+  out(ch, (id,ballot)).  // modelled by both sending on private and public channel
+  // NB: If the channels are anonymous, i.e. if we remove the identifier `id', then the attack does not work anymore.
 
 
 let BB(bb, mn) =
