@@ -1410,8 +1410,11 @@ let rec is_faulty_block block = function
   | b_i::q ->
       begin match compare_label block.label_b b_i.label_b with
         | -1 ->
-            block.maximal_var < b_i.minimal_axiom &&
-              IntSet.for_all (fun ax -> ax < b_i.minimal_axiom) block.used_axioms
+            if b_i.minimal_axiom = 0
+            then true
+            else
+              block.maximal_var < b_i.minimal_axiom &&
+                IntSet.for_all (fun ax -> ax < b_i.minimal_axiom || ax > b_i.maximal_axiom) block.used_axioms
         | 1 -> is_faulty_block block q
         | _ -> false
       end
