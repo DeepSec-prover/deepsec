@@ -16,6 +16,7 @@ test_deepsec
 *.toc
 *.pdf
 *.gz
+*.DS_Store
 
 Source/parser/grammar.ml
 Source/parser/grammar.mli
