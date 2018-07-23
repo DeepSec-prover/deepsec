@@ -21,7 +21,7 @@ CMOX= $(if $(DEBUG),cmo,cmx)
 CMXA= $(if $(DEBUG),cma,cmxa)
 
 ### Compiler options
-INCLUDES_MOD = str.$(CMXA) ## HAD TO REMOVE THE FOLOWWING (?ALREADY IN PORRIDGE?): unix.$(CMXA)
+INCLUDES_MOD = str.$(CMXA) ## I had to remove the following: unix.$(CMXA)  (because already in Porridge?)
 INCLUDES = -I $(SOURCE)core_library -I $(SOURCE)subterms -I $(SOURCE)parser -I $(SOURCE)distributed
 # Compiler options specific to OCaml version >= 4
 V4OPTIONS=$(if $(shell $(OCAMLOPT) -version | grep '^4'),-bin-annot)
