@@ -4,18 +4,28 @@ Automated verification has become an essential part in the security evaluation o
 
 ## How to install DeepSec?
 
-**DeepSec** has been successfully tested on Linux and MacOSX (Windows is currently not supported). **DeepSec** requires **OCaml > 4.03**.  It is highly recommended to install **OCaml** through `opam` instead of a native package manager, such as `apt-get` (the latest version on `apt-get may` not be the latest release of OCaml). `opam` itself may however be safely installed using your favorite package manager (see instructions for installing `opam`).
+**DeepSec** has been successfully tested on Linux and MacOSX (Windows is currently not supported). **DeepSec** requires **OCaml >=4.05**, **ocamlfind**, and the library **Alcotest >=0.8.1**.  It is highly recommended to install **OCaml** through `opam` instead of a native package manager, such as `apt-get` (the latest version on `apt-get may` not be the latest release of OCaml). `opam` itself may however be safely installed using your favorite package manager (see instructions for installing `opam`).
 
 ### Upgrading Ocaml using OPAM
 
-1. Run `opam switch list` (The version 4.05.0 should be displayed in the list. Otherwise run first `opam update`)
-2. Run `opam switch 4.05.0` (latest official release)
-3. Follow the instructions (at the end do not forget to set the environment by running ``eval `opam config env` ``)
+1. Run `opam switch list` (The version 4.05.0 should be displayed in the list. Otherwise run first `opam update`).
+2. Run `opam switch 4.05.0` (latest official release).
+3. Follow the instructions (at the end do not forget to set the environment by running ``eval `opam config env` ``).
+
+### Get DeepSec sources
+
+If necessary, download the DeepSec sources as follows:
+1. Run `git clone https://github.com/DeepSec-prover/deepsec.git` (with a HTTPS connexion) or `git clone git@github.com:DeepSec-prover/deepsec.git` (with a SSH connexion).
+2. Enter the directory `deepsec`.
+
+### Installation of dependencies
+
+1. Run `opam install ocamlfind alcotest`.
+2. Run `make -C porridge` to build the Porridge library.
 
 ### Installation of DeepSec
 
-1. Run `git clone https://github.com/DeepSec-prover/deepsec.git` (with a HTTPS connexion) or `git clone git@github.com:DeepSec-prover/deepsec.git` (with a SSH connexion)
-2. Inside the directory `deepsec`, run `make`
+1. Run `make`.
 3. The executable program `deepsec` has been built.
 4. Add the `deepsec` executable to your path, e.g. if your shell is bash, add the line `export DEEPSEC_DIR=<path to the deepsec folder>/deepsec` to the .bash_profile file
 
