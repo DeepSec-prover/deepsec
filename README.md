@@ -21,7 +21,7 @@ If necessary, download the DeepSec sources as follows:
 ### Installation of dependencies
 
 1. Run `opam install ocamlfind alcotest`.
-2. Run `make -C porridge lib` to build the Porridge library.
+2. Run `make -C porridge install` to build the Porridge library.
 
 ### Installation of DeepSec
 

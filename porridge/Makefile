@@ -6,9 +6,6 @@ default: all
 %:
 	make -C src $@
 
-lib:
-	make -C src install
-
 tarball:
 	rm -rf porridge
 	mkdir -p porridge/src
