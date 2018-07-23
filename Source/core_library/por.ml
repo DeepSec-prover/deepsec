@@ -6,9 +6,9 @@ let hash_channel =
 let importVars = ref []
 let importNames = ref []
 let intChannel = ref 0
-let freshVars = ref 0	
+let freshVars = ref 0
 let freshNames = ref 0
-	   
+
 let err s = Printf.printf "[G-POR] CRITICAL ERROR: %s\n" s ; exit 0
 (* let pp s = Printf.printf s *)
 
@@ -18,10 +18,10 @@ let at = Term.Protocol
 let rho=None
 
 let initRefs () = begin importVars := []; importNames := []; freshVars := 0; freshNames := 0; end
-		    
+
 let addVar str = if not(List.mem str !importVars) then importVars := str :: !importVars
 let addName str = if not(List.mem str !importNames) then importNames := str :: !importNames
-										
+
 let freshVar () =
   let rec search n =
     let name = "var_"^(string_of_int n) in
@@ -32,7 +32,7 @@ let freshVar () =
 	 end
     else search (n+1) in
   search !freshVars
-	 
+
 let freshName s =
   let rec search n =
     let name_ = s in
@@ -66,16 +66,16 @@ let importChannel ch =          (* channels are names in Deepsec *)
                                       !intChannel - 1;
                                 end in
   Porridge.Channel.of_int intCh
-           
+
 let importVar x =
   let str = Term.Variable.display out_mode ~v_type:v_type at x in
   addVar str;
   Porridge.Frame.Term.var str
-			  
+
 let importName n =
   let str = Term.Name.display out_mode ~rho:rho n in
   Porridge.Frame.Term.var str
-	                  
+
 let rec importTerm = function
   | t when Term.is_variable t -> importVar (Term.variable_of t)
   | t when Term.is_name t -> importName (Term.name_of t)
@@ -107,7 +107,7 @@ let importPat term pat =
     | _ -> err "[2] In generalized POR mode, in let p = t in ..., p must be made of tuples and variables only." in
   aux pat ;
   !acc
-    
+
 let importProcess proc =
   let rec flatten_choice = function
     | Process.Choice ps -> List.flatten (List.map flatten_choice ps)
@@ -141,7 +141,7 @@ let importProcess proc =
        let importProc_then = build proc_then in
        let importProc_else = build proc_else in
        let importProcSubst_then = List.fold_left (fun p -> (fun (xi,ti) -> Porridge.Process.subst p xi ti )) importProc_then listSubTerms in
-       let importProcSubst_else = List.fold_left (fun p -> (fun (xi,ti) -> Porridge.Process.subst p xi ti )) importProc_else listSubTerms in       
+       let importProcSubst_else = List.fold_left (fun p -> (fun (xi,ti) -> Porridge.Process.subst p xi ti )) importProc_else listSubTerms in
        Porridge.Process.if_eq freshV importT importProcSubst_then importProcSubst_else
     | Process.IfThenElse(t1,t2,proc_then,proc_else) ->
        Porridge.Process.if_eq (importTerm t1) (importTerm t2) (build proc_then) (build proc_else)
@@ -167,7 +167,7 @@ let importProcess proc =
 (*     | Bottom _ as b -> b in *)
 (*   aux p.contents *)
 
-(********* POR COMPUTATIONS *************)	
+(********* POR COMPUTATIONS *************)
 module POR = Porridge.POR.Make(Porridge.Trace_equiv)
 module Sleep = POR.Sleep
 module RedLTS = Porridge.LTS.Make(Sleep)
@@ -176,21 +176,21 @@ type actionA = Process.visAct
 type trs = RedLTS.traces
 
 let emptySetTraces = RedLTS.Traces []
-				  
+
 let make_state p1 p2 =
   ( (* S.State.t *)
     Porridge.Trace_equiv.State.of_processes p1 p2,
     (* S.Z.t *)
     Porridge.Trace_equiv.Z.empty
   )
-    
+
 let tracesPersistentSleepEquiv p1 p2 =
   let sinit = make_state p1 p2 in
   Format.printf "[G-POR] Initial state:@.%a@."
     Porridge.Trace_equiv.State.pp (fst sinit);
   Printf.printf "\n%!" ;
   RedLTS.traces sinit
-	       
+
 let isSameChannel chPOR ch =
   let strCh = str_of_constant ch in
   let intCh = try Hashtbl.find !hash_channel strCh
@@ -198,18 +198,18 @@ let isSameChannel chPOR ch =
   chPOR == Porridge.Channel.of_int intCh (* == since channel are private int, OK? *)
 
 (* let isSameAction = function
- *   | (Process.InS chApte, Porridge.Trace_equiv.Action.In (chPOR,_,_)) -> isSameChannel chPOR chApte
- *   | (Process.OutS chApte, Porridge.Trace_equiv.Action.Out (chPOR,_)) -> isSameChannel chPOR chApte
+ *   | (Process.InS chDeepSec, Porridge.Trace_equiv.Action.In (chPOR,_,_)) -> isSameChannel chPOR chDeepSec
+ *   | (Process.OutS chDeepSec, Porridge.Trace_equiv.Action.Out (chPOR,_)) -> isSameChannel chPOR chDeepSec
  *   | _ -> false *)
 
 let isSameZAction = function
-  | (Process.InS chApte, Porridge.Trace_equiv.ZAction.Input (chPOR,_,_)) -> isSameChannel chPOR chApte
-  | (Process.OutS chApte, Porridge.Trace_equiv.ZAction.Output (chPOR)) -> isSameChannel chPOR chApte
+  | (Process.InS chDeepSec, Porridge.Trace_equiv.ZAction.Input (chPOR,_,_)) -> isSameChannel chPOR chDeepSec
+  | (Process.OutS chDeepSec, Porridge.Trace_equiv.ZAction.Output (chPOR)) -> isSameChannel chPOR chDeepSec
   | _ -> false
-	   
-let isEnableAction actApte = function
+
+let isEnableAction actDeepSec = function
   | RedLTS.Traces tl ->
-     List.find_opt (fun (actPOR,_) -> isSameZAction (actApte, actPOR)) tl
+     List.find_opt (fun (actPOR,_) -> isSameZAction (actDeepSec, actPOR)) tl
 
 let isEnable trace trs =
   let rec look_action = function
@@ -228,14 +228,14 @@ let isEnable trace trs =
       | Some (_,trs_next) -> Some (Some act,trs_next)
       | None -> None)
 
-let forwardTraces actApte trs =
+let forwardTraces actDeepSec trs =
   let rec extractFromList = function
     | [] -> err "[Internal error] isEnable has not been called before forwardTraces."
-    | (actPOR, trsNext) :: _ when isSameZAction (actApte, actPOR) -> trsNext
+    | (actPOR, trsNext) :: _ when isSameZAction (actDeepSec, actPOR) -> trsNext
     | (_, _) :: tl -> extractFromList tl in
   match trs with
   | RedLTS.Traces list -> extractFromList list
-					
+
 let computeTraces p1 p2 =
   let trs = tracesPersistentSleepEquiv p1 p2 in
   if true
@@ -252,5 +252,5 @@ let displayActPor act =
 		with Not_found -> err "[Internal error] Channel is not present in HashTbl." in
     Porridge.Channel.to_char (Porridge.Channel.of_int intCh) in
   match act with
-  | Process.InS chApte -> Printf.sprintf "In(%c)" (aux chApte)
-  | Process.OutS chApte -> Printf.sprintf "Out(%c)" (aux chApte)
+  | Process.InS chDeepSec -> Printf.sprintf "In(%c)" (aux chDeepSec)
+  | Process.OutS chDeepSec -> Printf.sprintf "Out(%c)" (aux chDeepSec)

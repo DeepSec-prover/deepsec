@@ -300,7 +300,7 @@ val update_test_next_input : (semantics -> equivalence -> process -> (fst_ord, n
 type visAct =
   | InS of protocol_term
   | OutS of protocol_term
-	      
+
 val displayVisAction : visAct -> string
 
 (** Returns true when the two processes are equal when omitting all terms (except channels that mush be constants). *)

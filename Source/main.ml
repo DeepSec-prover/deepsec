@@ -160,7 +160,7 @@ let rec excecute_queries id = function
         let trs =
           if !Config.por_gen
           then begin
-	      Printf.printf "[G-POR] Applying generalized POR optimisations and computing set of reduced, symbolic traces to be explored...\n%!";
+	      Printf.printf "[G-POR] Applying Generalized POR optimisations and computing set of reduced, symbolic traces to be explored...\n%!";
 	      let t = Sys.time() in
               let proc1,proc2 =
                 if not(!Config.inclusion_detect) then exproc1, exproc2
@@ -345,7 +345,7 @@ let _ =
     (
       "-with_por_gen",
       Arg.Set Config.por_gen,
-      " [!Experimental!] Uses generalized Partial Order Reductions (POR) techniques to significantly reduce the number of traces that need to be explored. Contrary to the built-in POR optimisations, the generalized POR techniques do not require protocols given as inputs to be action-determinate. However, the pre-computation that is required can be impractically long. Please look at the Deepsec output for more information on the different running times."
+      " [!Experimental!] Uses generalized Partial Order Reductions (POR) techniques based on Porridge to significantly reduce the number of traces that need to be explored. Contrary to the built-in POR optimisations, the generalized POR techniques do not require protocols given as inputs to be action-determinate. However, the pre-computation that is required can be impractically long. Please look at the Deepsec output for more information on the different running times."
     );
     (
       "-detection_inclusion",
