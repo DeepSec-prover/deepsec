@@ -118,7 +118,7 @@ let rec excecute_queries id = function
 
     let display_por_option () =
       if !por_disable
-      then Printf.printf "Warning: Input processes have been detected to be determinate but POR optimisation has been disactivated with option -without_por.\n";
+      then Printf.printf "Warning: Input processes have been detected to be determinate but POR optimisations have been disactivated with option -without_por.\n";
       not !por_disable
     in
 
@@ -160,7 +160,7 @@ let rec excecute_queries id = function
         let trs =
           if !Config.por_gen
           then begin
-	      Printf.printf "[G-POR] Applying generalized POR engine and computing set of reduced, symbolic traces to be explored...\n%!";
+	      Printf.printf "[G-POR] Applying generalized POR optimisations and computing set of reduced, symbolic traces to be explored...\n%!";
 	      let t = Sys.time() in
               let proc1,proc2 =
                 if not(!Config.inclusion_detect) then exproc1, exproc2
@@ -303,7 +303,7 @@ let _ =
     (
       "-without_por",
       Arg.Unit( fun () -> por_disable := true),
-      " Disable POR optimisation"
+      "Disable all POR optimisations"
     );
     (
       "-distributed",
@@ -345,17 +345,17 @@ let _ =
     (
       "-with_por_gen",
       Arg.Set Config.por_gen,
-      " [!Experimental!] Uses generic Partial Order Reductions (POR) techniques to significantly improve performance. Contrary to the built-in POR optimizations, those do not assume protocols given as inputs are action-determinate. Currently not implemented for distributed computing."
+      " [!Experimental!] Uses generalized Partial Order Reductions (POR) techniques to significantly reduce the number of traces that need to be explored. Contrary to the built-in POR optimisations, the generalized POR techniques do not require protocols given as inputs to be action-determinate. However, the pre-computation that is required can be impractically long. Please look at the Deepsec output for more information on the different running times."
     );
     (
       "-detection_inclusion",
       Arg.Set Config.inclusion_detect,
-      " [!Experimental!] Detect when given inputs correspond to an inclusion between processes and simpligy the system given to Porroidge."
+      " [!Experimental!] When used with '-with_por_gen', detects when given inputs correspond to an inclusion between processes and simplifies the pre-computation accordingly."
     );
     (
       "-no_por",
       Arg.Set Config.no_por,
-      " Desactivates Partial Order Reduction (POR) techniques for action-determinate processes (useful for benchmarks)."
+      " Deactivates all Partial Order Reduction (POR) techniques, including the built-in techniques for action-determinate processes."
     );
   ]
   in
