@@ -1,0 +1,61 @@
+// Unlinkability
+
+fun mac/2.
+
+free c.
+
+free Error_6300.
+free get_challenge.
+
+fun senc/2.
+
+reduc sdec(senc(x,y),y) -> x.
+
+// Description of the reader role
+
+let reader(k_e,k_m) =
+  out(c,get_challenge);
+  in(c,xn_t);
+  new n_r;
+  new k_r;
+  let xm = senc((n_r,xn_t,k_r),k_e) in
+  out(c,(xm,mac(xm,k_m)));
+  in(c,y).
+
+// Description of the passport role
+
+let passport(k_e,k_m) =
+  in(c,x);
+  if x = get_challenge
+  then
+    new n_t;
+    out(c,n_t);
+    in(c,y);
+    let (xm_e,xm_m) = y in
+    if xm_m = mac(xm_e,k_m)
+    then
+      let (xn_r,xn_t,xk_r) = sdec(xm_e,k_e) in
+        if xn_t = n_t
+        then (
+        	new k_t;
+        	let z = senc((n_t,xn_r,k_t),k_e) in
+        	out(c,(z,mac(z,k_m)))
+        ) else out(c,Error_6300)
+      else out(c,Error_6300)
+    else out(c,Error_6300).
+
+// Unlinkability
+
+let system1 =
+  (new k_e; new k_m; (passport(k_e,k_m) | reader(k_e,k_m))) |
+  (new k_e; new k_m; (passport(k_e,k_m) | reader(k_e,k_m))).
+
+let system2 =
+  new k_e; new k_m;
+  (
+    passport(k_e,k_m) | reader(k_e,k_m) |
+    passport(k_e,k_m) | reader(k_e,k_m)
+  ).
+
+
+query trace_equiv(system1,system2).

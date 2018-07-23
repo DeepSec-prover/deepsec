@@ -1,0 +1,81 @@
+(* Denning Sacco Symmetric Key
+
+  1.  A	->	S:  	A, B
+  2.  S	->	A:  	{B, Kab, {Kab, A}Kbs}Kas
+  3.  A	->	B:  	{Kab,A}Kbs
+  Strong secrecy of Kab
+  6.  B      ->     : {m}Kab versus {m}K with K fresh
+*)
+
+free a, b, c, d.
+
+free s1, s2.
+free kcs.
+
+free ca1, ca2, ca4, ca7, ca8, ca9, ca10, ca11.
+free cb1, cb3, cb4, cb5, cb6, cb7, cb8, cb9, cb10, cb11.
+free cs1, cs2, cs3, cs4, cs5, cs6, cs7, cs8, cs9, cs10, cs11.
+
+free ok, req, rep.
+
+fun senc/2.
+reduc sdec(senc(x,y),y) -> x.
+
+let processA(ca,a,kas,b) =
+  out(ca,(a,b));
+  in(ca,xa);
+  let (=b,xab,xmb) = sdec(xa,kas) in
+  out(ca,xmb).
+
+let processB(cb,b,kbs,a) =
+  in(cb,yb);
+  let (yab,=a)= sdec(yb,kbs) in
+  0.
+
+let processS(cs,a,kas,b,kbs) =
+	in(cs,zs);
+	if zs = (a,b) then
+	new kab;
+	out(cs,senc((b,kab,senc((kab,a),kbs)),kas)).
+
+let processSProp(cs,a,kas,b,kbs,s) =
+	in(cs,zs);
+	if zs = (a,b) then
+	out(cs,senc((b,s,senc((s,a),kbs)),kas)).
+
+// Main
+
+let Preal =
+  new kas; new kbs; new kds;
+  (
+    processA(ca1,a,kas,b) | processB(cb1,b,kbs,a) | processSProp(cs1,a,kas,b,kbs,s1) |
+    processA(ca2,a,kas,c) | processS(cs2,a,kas,c,kcs) |
+    processB(cb3,b,kbs,c) | processS(cs3,c,kcs,b,kbs) |
+    processA(cb4,b,kbs,a) | processB(ca4,a,kas,b) | processS(cs4,b,kbs,a,kas) |
+    processA(cb5,b,kbs,c) | processS(cs5,b,kbs,c,kcs) |
+    processB(cb6,a,kbs,c) | processS(cs6,c,kcs,a,kas) |
+    processA(ca7,a,kas,d) | processB(cb7,d,kds,a) | processS(cs7,a,kas,d,kds) |
+    processA(ca8,a,kas,b) | processB(cb8,b,kbs,a) | processS(cs8,a,kas,b,kbs) |
+    processA(ca9,a,kas,b) | processB(cb9,b,kbs,a) | processS(cs9,a,kas,b,kbs) |
+    processA(ca10,a,kas,b) | processB(cb10,b,kbs,a) | processS(cs10,a,kas,b,kbs) |
+    processA(ca11,a,kas,b) | processB(cb11,b,kbs,a) | processS(cs11,a,kas,b,kbs)
+  ).
+
+
+let Pideal =
+  new kas; new kbs; new kds;
+  (
+    processA(ca1,a,kas,b) |  processB(cb1,b,kbs,a) | processSProp(cs1,a,kas,b,kbs,s2) |
+    processA(ca2,a,kas,c) | processS(cs2,a,kas,c,kcs) |
+    processB(cb3,b,kbs,c) | processS(cs3,c,kcs,b,kbs) |
+    processA(cb4,b,kbs,a) | processB(ca4,a,kas,b) | processS(cs4,b,kbs,a,kas) |
+    processA(cb5,b,kbs,c) | processS(cs5,b,kbs,c,kcs) |
+    processB(cb6,a,kbs,c) | processS(cs6,c,kcs,a,kas) |
+    processA(ca7,a,kas,d) | processB(cb7,d,kds,a) | processS(cs7,a,kas,d,kds) |
+    processA(ca8,a,kas,b) | processB(cb8,b,kbs,a) | processS(cs8,a,kas,b,kbs) |
+    processA(ca9,a,kas,b) | processB(cb9,b,kbs,a) | processS(cs9,a,kas,b,kbs) |
+    processA(ca10,a,kas,b) | processB(cb10,b,kbs,a) | processS(cs10,a,kas,b,kbs) |
+    processA(ca11,a,kas,b) | processB(cb11,b,kbs,a) | processS(cs11,a,kas,b,kbs)
+  ).
+
+query trace_equiv(Preal,Pideal).

@@ -13,8 +13,22 @@ module List = struct
     | [] -> accu
     | x :: l -> if p x then find (x :: accu) l else find accu l in
     find []
+
+  (* overwriting some functions with tail-recursive versions *)
+  let fold_right f l a = fold_left (fun x a -> f a x) a (List.rev l)
+  let map f l = fold_right (fun x ac -> f x :: ac) l []
+  let (@) l1 l2 = fold_right (fun a ac -> a :: ac) l1 l2
+  (* fold_left with arguments in the same order as fold_right *)
+  let foldl f l a = fold_left (fun a x -> f x a) a l
+
+  (* finder in list *)
+  let rec assoc_opt (e:'a) (l:('a*'b) list) : 'b option =
+    match l with
+    | [] -> None
+    | (f,g) :: p -> if e = f then Some g else assoc_opt e p
 end
 
+let flip (f:'a->'b->'c) : 'b->'a->'c = fun x y -> f y x
 
 module Map = struct
   (**************************************************************************)

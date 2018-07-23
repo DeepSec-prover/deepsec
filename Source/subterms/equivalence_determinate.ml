@@ -36,6 +36,7 @@ exception Not_Trace_Equivalent of symbolic_process Constraint_system.t
 type result_skeleton =
   | OK of configuration * configuration
   | Faulty of bool * configuration * action
+  | FocusNil
 
 let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
   Config.debug (fun () ->
@@ -61,6 +62,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
   match search_next_rule symb_proc.configuration with
     | RStart ->
+        Config.debug (fun () -> Printf.printf "Next rule = RStart\n");
         let csys_set_for_start = ref Constraint_system.Set.empty in
 
         let else_branch =
@@ -126,13 +128,16 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
               let result_skel_test =
                 try
-                  let cl,cr = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
-                  OK (cl,cr)
+                  let cl,cr,is_focus_nil = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
+                  if is_focus_nil
+                  then FocusNil
+                  else OK (cl,cr)
                 with
                 | Faulty_skeleton (is_left,f_conf,f_action) -> Faulty (is_left,f_conf,f_action)
               in
 
               match result_skel_test with
+                | FocusNil -> f_next ()
                 | OK (conf_left, conf_right) ->
                     let csys_left = Constraint_system.replace_additional_data csys_left { symb_left with configuration = conf_left } in
                     let csys_right = Constraint_system.replace_additional_data csys_right { symb_right with configuration = conf_right } in
@@ -158,6 +163,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
         Constraint_system.Rule.apply_rules_after_input false in_apply_final_test !csys_set_for_start f_next
     | RStartIn ->
+        Config.debug (fun () -> Printf.printf "Next rule = RStartIn\n");
         let var_X = Variable.fresh Recipe Free (Variable.snd_ord_type equiv_pbl.size_frame) in
 
         let apply_conf csys conf =
@@ -242,26 +248,47 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
                 let result_skel_test =
                   try
-                    let cl,cr = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
-                    OK (cl,cr)
+                    let cl,cr,is_focus_nil = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
+                    if is_focus_nil
+                    then FocusNil
+                    else OK (cl,cr)
                   with
                   | Faulty_skeleton (is_left,f_conf,f_action) -> Faulty (is_left,f_conf,f_action)
                 in
 
                 match result_skel_test with
+                  | FocusNil -> f_next ()
                   | OK (conf_left, conf_right) ->
+                      Config.debug (fun () ->
+                        Printf.printf "<br>After Skel Test<br>\n";
+                        Printf.printf "<p>Configuration 1\n";
+                        Process_determinate.display_configuration conf_left;
+                        Printf.printf "</p><p>Configuration 2\n";
+                        Process_determinate.display_configuration conf_right;
+                        Printf.printf "</p></p>\n";
+                      );
                       let block = create_block label in
                       let block_1 = add_variable_in_block var_X block in
                       let snd_subst = Constraint_system.get_substitution_solution Recipe csys in
+                      Config.debug (fun () ->
+                        Printf.printf "<br>Arguments to is_block_list_authorized:<br>";
+                        Printf.printf "<br>complete_blocks_1<br>";
+                        Printf.printf "%s" (Process_determinate.display_block complete_blocks_1 snd_subst);
+                        Printf.printf "<br><br><br>block_1<br>";
+                        Printf.printf "%s" (Process_determinate.display_block [block_1] snd_subst)
+                      );
                       if is_block_list_authorized complete_blocks_1 block_1 snd_subst
                       then
+                        let _ = Config.debug (fun () -> Printf.printf "<br>Is_block_list_authorized result = true<br>") in
                         let csys_left = Constraint_system.replace_additional_data csys_left { symb_left with configuration = conf_left } in
                         let csys_right = Constraint_system.replace_additional_data csys_right { symb_right with configuration = conf_right } in
                         let csys_set_2 = Constraint_system.Set.add csys_left (Constraint_system.Set.add csys_right Constraint_system.Set.empty) in
 
                         let equiv_pbl_1 = { equiv_pbl with complete_blocks = complete_blocks_1; ongoing_block = Some block_1; csys_set = csys_set_2 } in
                         f_continuation equiv_pbl_1 f_next
-                      else f_next ()
+                      else
+                        let _ = Config.debug (fun () -> Printf.printf "<br>Is_block_list_authorized result = false<br>") in
+                        f_next ()
                   | Faulty (is_left,f_conf,f_action) ->
                       let wit_csys, symb_proc = if is_left then csys_left, symb_left else csys_right, symb_right in
                       begin match f_action with
@@ -280,6 +307,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           Constraint_system.Rule.apply_rules_after_input false in_apply_final_test !csys_set_for_input f_next_1
         ) f_next
     | RPosIn ->
+        Config.debug (fun () -> Printf.printf "Next rule = RPosIn\n");
         let var_X = Variable.fresh Recipe Free (Variable.snd_ord_type equiv_pbl.size_frame) in
 
         let csys_set_for_input = ref Constraint_system.Set.empty in
@@ -349,13 +377,16 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
               let result_skel_test =
                 try
-                  let cl,cr = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
-                  OK (cl,cr)
+                  let cl,cr,is_focus_nil = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
+                  if is_focus_nil
+                  then FocusNil
+                  else OK (cl,cr)
                 with
                 | Faulty_skeleton (is_left,f_conf,f_action) -> Faulty (is_left,f_conf,f_action)
               in
 
               match result_skel_test with
+                | FocusNil -> f_next ()
                 | OK (conf_left, conf_right) ->
                     let block = match equiv_pbl.ongoing_block with
                       | None -> Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] Ongoing blocks should exists (2)."
@@ -387,6 +418,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
         Constraint_system.Rule.apply_rules_after_input false in_apply_final_test !csys_set_for_input f_next
     | RNegOut ->
+        Config.debug (fun () -> Printf.printf "Next rule = RNegOut\n");
         let axiom = Axiom.create (equiv_pbl.size_frame + 1) in
 
         let csys_set_for_output = ref Constraint_system.Set.empty in
@@ -456,7 +488,12 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
               let result_skel_test =
                 try
-                  let cl,cr = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
+                  Config.debug (fun () ->
+                    let _,_,is_focus_nil = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
+                    if is_focus_nil
+                    then Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] The focus should not be nil when output is applied (should be empty)"
+                  );
+                  let cl,cr,_ = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
                   OK (cl,cr)
                 with
                 | Faulty_skeleton (is_left,f_conf,f_action) -> Faulty (is_left,f_conf,f_action)
@@ -480,7 +517,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                     else f_next ()
                 | Faulty (is_left,f_conf,f_action) ->
                     let wit_csys, symb_proc  = if is_left then csys_left, symb_left else csys_right, symb_right in
-                    match f_action with
+                    begin match f_action with
                       | FOutput(ax,t) ->
                           let wit_csys_1 = Constraint_system.add_axiom wit_csys ax t in
                           let wit_csys_2 = Constraint_system.replace_additional_data wit_csys_1 { symb_proc with configuration = f_conf } in
@@ -490,10 +527,13 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                           let wit_csys_1 = Constraint_system.add_basic_fact wit_csys ded_fact_term in
                           let wit_csys_2 = Constraint_system.replace_additional_data wit_csys_1 { symb_proc with configuration = f_conf } in
                           raise (Not_Trace_Equivalent wit_csys_2)
+                    end
+                | FocusNil -> Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] The focus should not be nil when output is applied (should be empty) (2)"
         in
 
         Constraint_system.Rule.apply_rules_after_output false out_apply_final_test !csys_set_for_output f_next
     | RNothing ->
+        Config.debug (fun () -> Printf.printf "Next rule = RNothing\n");
         if Constraint_system.Set.is_empty equiv_pbl.csys_set
         then f_next ()
         else
@@ -580,9 +620,7 @@ let publish_trace_equivalence_result id conf1 conf2 result runtime =
   let path_style = Filename.concat !Config.path_deepsec "Style" in
   let path_template = Filename.concat !Config.path_html_template "result.html" in
   let path_result = Filename.concat ( Filename.concat !Config.path_index "result") (Printf.sprintf "result_query_%d_%s.html" id !Config.tmp_file)  in
-  let path_javascript = Filename.concat  ( Filename.concat !Config.path_index "result") (Printf.sprintf "result_%d_%s.js" id !Config.tmp_file) in
 
-  let out_js = open_out path_javascript in
   let out_result = open_out path_result in
   let in_template = open_in path_template in
 
@@ -724,8 +762,6 @@ let publish_trace_equivalence_result id conf1 conf2 result runtime =
 
       let html_attack =
         Process_determinate.display_trace_HTML ~rho:rho ~title:"Display of the attack trace" "3e0" ~fst_subst:attack.fst_subst ~snd_subst:attack.snd_subst attack.attack_origin_configuration attack.attack_configuration in
-
-      close_out out_js;
 
       Printf.fprintf out_result "%s" html_attack;
       Printf.fprintf out_result "        <script>\n";

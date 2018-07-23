@@ -1,0 +1,60 @@
+// helios protocol with identities and mixnet - no privacy because of ballot replay attack
+
+fun aenc/3.
+fun pk/1.
+
+
+reduc adec(aenc(x,r,pk(y)),y) -> x.
+
+free ch.
+
+free a,b,c.
+free yes,no.
+
+let V(id, v, pkT, bb) =
+  new r;
+  let ballot = aenc(v,r,pkT) in
+  out(bb, (id,ballot));  // sending on authenticated channel
+  out(ch, (id,ballot)).  // modelled by both sending on private and public channel
+  // NB: If the channels are anonymous, i.e. if we remove the identifier `id', then the attack does not work anymore.
+
+
+let BB(bb, mn) =
+  (in(bb, b1); let (=a,v1) = b1 in out(mn,v1)) |
+  (in(bb, b2); let (=b,v2) = b2 in out(mn,v2)) |
+  (in(ch, b3); let (=c,v3) = b3 in out(mn,v3)).
+
+
+let T(skT,mn) =
+  in(mn,x1);
+  in(mn,x2);
+  in(mn,x3);
+  (
+    out(ch, adec(x1,skT)) | out(ch, adec(x2,skT)) | out(ch, adec(x3,skT))
+  ).
+
+
+let AyBn =
+  new skT;
+  let pkT = pk(skT) in
+  new bb;
+  new mn;
+  out(ch,pkT);
+  (
+    V(a,yes,pkT,bb) | V(b,no,pkT,bb) | BB(bb,mn) | T(skT,mn)
+  ).
+
+let AnBy =
+  new skT;
+  let pkT = pk(skT) in
+  new bb;
+  new mn;
+  out(ch, pkT);
+  (
+    V(a,no,pkT,bb) | V(b,yes,pkT,bb) | BB(bb,mn) | T(skT,mn)
+  ).
+
+
+query trace_equiv(AyBn,AnBy).
+
+// privacy cannot be proven because of vote replay attack
