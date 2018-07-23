@@ -628,7 +628,7 @@ let publish_trace_equivalence_result id conf1 conf2 result runtime =
   let template_script = "<!-- Script deepsec -->" in
   let template_line = "<!-- Content of the file -->" in
 
-  if not(!Config.distributed)
+  if not(!Config.distributed) && !Config.por_gen
   then Printf.fprintf !Config.output "        (Stats) ---- Number of explorations [%d].\n%!" !count_explo ;
 
   let line = ref (input_line in_template) in

@@ -441,8 +441,8 @@ let publish_trace_equivalence_result id sem proc1 proc2 result runtime =
   if not(!Config.distributed)
   then (if !Config.por_gen
         then Printf.fprintf !Config.output "[G-POR] (Stats) ---- Number of explorations [%d], number of blocked explorations [%d].\n%!" !count_explo !count_stop
-        else Printf.fprintf !Config.output "        (Stats) ---- Number of explorations [%d].\n%!" !count_explo) ;
-  
+        (* else Printf.fprintf !Config.output "        (Stats) ---- Number of explorations [%d].\n%!" !count_explo) ; *)
+       );
   let line = ref (input_line in_template) in
   while !line <> template_stylesheet do
     Printf.fprintf out_result "%s\n" !line;
