@@ -1,3 +1,20 @@
+# just a faster compilation command for coding
+exp:
+	cp Source/core_library/config.ml.in Source/core_library/config.ml # because I don't udnerstand how to generate config.ml
+	ocamlbuild -use-ocamlfind -package str -package unix -I Source/subterms -I Source/distributed -I Source/core_library -I Source/parser Source/main.native
+
+
+
+
+
+##############################################################################
+##############################################################################
+##############################################################################
+
+
+
+
+
 EXECUTABLE = deepsec
 NAME_PROGRAMME = DeepSec
 VERSION = 1.0alpha

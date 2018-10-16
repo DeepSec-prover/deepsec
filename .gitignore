@@ -17,6 +17,7 @@ test_deepsec
 *.pdf
 *.gz
 *.DS_Store
+*.native
 
 Source/parser/grammar.ml
 Source/parser/grammar.mli
@@ -48,3 +49,7 @@ Examples/Benchmark/bench_*
 
 worker_deepsec
 manager_deepsec
+
+
+# other files
+*_build
