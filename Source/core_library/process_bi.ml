@@ -11,11 +11,13 @@ type position = int
 (* NB:
   1. Why do we need OutputSure if channels are symbols?
   2. How do you handle nested bangs? Keep them folded?
-  3. Why are there no ParMult in the non-determinate version? Can we unify Par and ParMult for equivalence by session? *)
+  3. Can we unify Par and ParMult for equivalence by session?
+  4. Nil is useless? Because same as Par with empty list
+  5. Breadth or Depth-first for testing permutations? *)
 type simple_bi_process =
-  | Nil
+  (* | Nil *)
   | Output of symbol * protocol_term * simple_bi_process * position
-  | OutputSure of symbol * protocol_term * simple_bi_process * position
+  (* | OutputSure of symbol * protocol_term * simple_bi_process * position *)
   | Input of symbol * fst_ord_variable * simple_bi_process * position
   | IfThenElse of protocol_term * protocol_term * simple_bi_process * simple_bi_process * position
   | Let of protocol_term * protocol_term * protocol_term * simple_bi_process * simple_bi_process * position
