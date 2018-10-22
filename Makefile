@@ -10,7 +10,7 @@ compil:
 	mv main.native $(EXECUTABLE)
 
 clean:
-	rm -r _build $(SOURCE)core_library/config.ml $(EXECUTABLE)
+	rm -rf _build $(SOURCE)core_library/config.ml $(EXECUTABLE)
 
 
 
