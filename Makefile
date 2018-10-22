@@ -1,18 +1,18 @@
-# just a faster compilation command for coding
 PACKAGES = -package str -package unix
 INCLUDES = -I Source/subterms -I Source/distributed -I Source/core_library -I Source/parser
-VERSION = 1.0alpha
-GITCOMMIT:= $(shell Source/get-git-commit)
+EXECUTABLE = deepsec
+SOURCE = Source/
 
 
-exp:
-	#cp Source/core_library/config.ml.in Source/core_library/config.ml # because I don't udnerstand how to generate config.ml
-	sed -e 's/GITCOMMIT/$(GITCOMMIT)/g' -e's/VERSION/$(VERSION)/g' < Source/core_library/config.ml.in > Source/core_library/config.ml
-	ocamlbuild -use-ocamlfind $(PACKAGES) $(INCLUDES) Source/main.native
-	# ocamlbuild -use-ocamlfind $(PACKAGES) $(INCLUDES) Source/core_library/process_bi.native
+compil:
+	$(SOURCE)configure
+	ocamlbuild -use-ocamlfind $(PACKAGES) $(INCLUDES) $(SOURCE)main.native
+	mv main.native $(EXECUTABLE)
 
-# clean:
-# 	rm -rf _build *.native
+clean:
+	rm -r _build $(SOURCE)core_library/config.ml $(EXECUTABLE)
+
+
 
 
 
@@ -25,10 +25,7 @@ exp:
 
 
 
-# EXECUTABLE = deepsec
-# NAME_PROGRAMME = DeepSec
-# VERSION = 1.0alpha
-# SOURCE = Source/
+
 # ### Compiler
 #
 # # For bytecode compilation, unset NATIVECODE below or run:
@@ -106,15 +103,16 @@ exp:
 # 	@rm -f .display .display_obj
 #
 #
-clean:
-	@echo ----- Clean $(NAME_PROGRAMME) -----
-	rm -f $(EXECUTABLE) worker_deepsec manager_deepsec
-	rm -f $(SOURCE)core_library/config.ml
-	rm -f *~ *.cm[ioxt] *.cmti *.o
-	rm -f */*~ */*.cm[ioxt] */*.cmti */*.o
-	rm -f */*/*~ */*/*.cm[ioxt] */*/*.cmti */*/*.o */*/*.output
-	rm -f $(GENERATED_SOURCES)
-	rm -f .depend .display .display_obj
+# clean:
+# 	@echo ----- Clean $(NAME_PROGRAMME) -----
+# 	rm -f $(EXECUTABLE) worker_deepsec manager_deepsec
+# 	rm -f $(SOURCE)core_library/config.ml
+# 	rm -f *~ *.cm[ioxt] *.cmti *.o
+# 	rm -f */*~ */*.cm[ioxt] */*.cmti */*.o
+# 	rm -f */*/*~ */*/*.cm[ioxt] */*/*.cmti */*/*.o */*/*.output
+# 	rm -f $(GENERATED_SOURCES)
+# 	rm -f .depend .display .display_obj
+
 #
 # debug:
 # 	@echo Prepare the compilation of deepsec for debugging

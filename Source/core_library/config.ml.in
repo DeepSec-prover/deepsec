@@ -24,6 +24,7 @@ let test =
 
 let version = ref "VERSION"
 let git_commit = ref "GITCOMMIT"
+let git_branch = ref "GITBRANCH"
 
 (**** Paths ****)
 

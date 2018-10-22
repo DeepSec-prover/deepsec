@@ -20,6 +20,9 @@ val version : string ref
 (** The git commit of the current version *)
 val git_commit : string ref
 
+(** The git branch of the current version *)
+val git_branch : string ref
+
 (** The path of the folder containing the html templates *)
 val path_html_template : string ref
 

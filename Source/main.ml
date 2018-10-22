@@ -310,7 +310,8 @@ let _ =
 
   Printf.printf "DeepSec - DEciding Equivalence Properties for SECurity protocols\n";
   Printf.printf "Version: %s\n" !Config.version;
-  Printf.printf "Git hash: %s\n\n" !Config.git_commit;
+  Printf.printf "Git hash: %s\n" !Config.git_commit;
+  Printf.printf "Git branch: %s\n\n" !Config.git_branch;
 
   let usage_msg = "Usage: deepsec <options> <filenames>\n" in
 
