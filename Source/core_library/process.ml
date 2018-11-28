@@ -1022,7 +1022,7 @@ module Testing = struct
 
 end
 
-let rec add_content_in_proc content mult  v_rho n_rho = function
+let rec add_content_in_proc content mult v_rho n_rho = function
   | [] -> [ { content_mult = { content = content; mult = mult}; var_renaming = v_rho; name_renaming = n_rho } ]
   | symb::q ->
       if symb.content_mult.content == content && Variable.Renaming.is_equal Protocol v_rho symb.var_renaming && Name.Renaming.is_equal n_rho symb.name_renaming
@@ -2736,6 +2736,7 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
 
       (* Typically, if P = out(c,u). R | R'] then [add_next_out_proc Q] returns the process Q | R *)
       let data_next_out = (cont,v_rho',n_rho') in
+      let data_out = (content,v_rho,n_rho) in
 
       let equations_modulo_list_result =
         try
@@ -2752,8 +2753,8 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
               if !Config.display_trace
               then
                 let action = Some ({content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho}) in
-                (f_continuation [@tailcall]) data_next_out proc { out_equations = equations; out_disequations = disequations; out_channel = norm_ch; out_term = norm_t ; out_private_channels = private_ch; out_tau_actions = tau_actions; out_action = action; out_original_term = t'; out_original_channel = ch' } f_next
-              else (f_continuation [@tailcall]) data_next_out proc { out_equations = equations; out_disequations = disequations; out_channel = norm_ch; out_term = norm_t ; out_private_channels = private_ch; out_tau_actions = []; out_action = None; out_original_term = t'; out_original_channel = ch'} f_next
+                (f_continuation [@tailcall]) data_next_out data_out proc { out_equations = equations; out_disequations = disequations; out_channel = norm_ch; out_term = norm_t ; out_private_channels = private_ch; out_tau_actions = tau_actions; out_action = action; out_original_term = t'; out_original_channel = ch' } f_next
+              else (f_continuation [@tailcall]) data_next_out data_out proc { out_equations = equations; out_disequations = disequations; out_channel = norm_ch; out_term = norm_t ; out_private_channels = private_ch; out_tau_actions = []; out_action = None; out_original_term = t'; out_original_channel = ch'} f_next
           | EqList equations_modulo_list ->
               let f_next_equations =
                 List.fold_left (fun acc_f_next equations_modulo ->
@@ -2790,9 +2791,9 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
                         if !Config.display_trace
                         then
                           let action = Some ({content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho}) in
-                          (fun () -> (f_continuation [@tailcall]) data_next_out proc { out_equations = new_equations; out_disequations = new_disequations; out_channel = new_ch_2; out_term = new_t_2 ; out_private_channels = private_ch_2; out_tau_actions = tau_actions; out_action = action; out_original_term = t'; out_original_channel = ch' } acc_f_next)
+                          (fun () -> (f_continuation [@tailcall]) data_next_out data_out proc { out_equations = new_equations; out_disequations = new_disequations; out_channel = new_ch_2; out_term = new_t_2 ; out_private_channels = private_ch_2; out_tau_actions = tau_actions; out_action = action; out_original_term = t'; out_original_channel = ch' } acc_f_next)
                         else
-                          (fun () -> (f_continuation [@tailcall]) data_next_out proc { out_equations = new_equations; out_disequations = new_disequations; out_channel = new_ch_2; out_term = new_t_2 ; out_private_channels = private_ch_2; out_tau_actions = []; out_action = None; out_original_term = t'; out_original_channel = ch' } acc_f_next)
+                          (fun () -> (f_continuation [@tailcall]) data_next_out data_out proc { out_equations = new_equations; out_disequations = new_disequations; out_channel = new_ch_2; out_term = new_t_2 ; out_private_channels = private_ch_2; out_tau_actions = []; out_action = None; out_original_term = t'; out_original_channel = ch' } acc_f_next)
                 ) f_next equations_modulo_list
               in
 
@@ -2892,7 +2893,7 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
         let v_rho' = Variable.Renaming.compose v_rho x new_x  in
         let new_v_rho = Variable.Renaming.restrict v_rho' cont.bound_var in
 
-        next_output_private_trace proc equations disequations private_ch (fun data_next_out proc' out_gather f_next_1 ->
+        next_output_private_trace proc equations disequations private_ch (fun data_next_out _ proc' out_gather f_next_1 ->
           if is_function out_gather.out_channel && Symbol.get_arity (root out_gather.out_channel) = 0 && Symbol.is_public (root out_gather.out_channel)
           then f_next_1 ()
           else
@@ -3309,7 +3310,7 @@ and next_input_private_trace_content tau_actions content v_rho n_rho proc equati
       then next_input f_next
       else
         let internal_communication f_next =
-            next_output_private_trace proc equations disequations private_ch (fun data_next_out proc' out_gather f_next_1 ->
+            next_output_private_trace proc equations disequations private_ch (fun data_next_out _ proc' out_gather f_next_1 ->
               if is_function out_gather.out_channel && Symbol.get_arity (root out_gather.out_channel) = 0 && Symbol.is_public (root out_gather.out_channel)
               then f_next_1 ()
               else
@@ -3740,7 +3741,7 @@ and next_input_private_trace proc equations disequations private_ch f_continuati
 (**** Next eavesdrop ****)
 
 and next_eavesdrop_trace proc equations disequations private_ch f_continuation f_next =
-  next_output_private_trace proc equations disequations private_ch (fun data_next_out remain_proc out_gather f_next_1 ->
+  next_output_private_trace proc equations disequations private_ch (fun data_next_out data_out remain_proc out_gather f_next_1 ->
     next_input_private_trace remain_proc out_gather.out_equations out_gather.out_disequations out_gather.out_private_channels (fun data_next_in remain_proc' in_gather f_next_2 ->
       (* We need to check wether both channels are equals *)
       let new_ch, new_t = Subst.apply in_gather.in_equations (out_gather.out_channel,out_gather.out_term) (fun (x,y) f -> f x, f y) in
@@ -3760,7 +3761,7 @@ and next_eavesdrop_trace proc equations disequations private_ch f_continuation f
             let proc'' = add_proc data_next_out (add_proc data_next_in remain_proc') in
             if !Config.display_trace
             then
-              let tau_actions_0 = add_trace data_next_out in_gather.in_tau_actions in
+              let tau_actions_0 = add_trace data_out in_gather.in_tau_actions in
               let tau_actions_1 = Trace.combine out_gather.out_tau_actions tau_actions_0 in
               let eav_action = match in_gather.in_action,out_gather.out_action with
                 | Some(in_act), Some(out_act) -> Some(in_act,out_act)
@@ -3799,7 +3800,7 @@ and next_eavesdrop_trace proc equations disequations private_ch f_continuation f
                       let (eav_tau_actions, eav_action) =
                         if !Config.display_trace
                         then
-                          let tau_actions_0 = add_trace data_next_out in_gather.in_tau_actions in
+                          let tau_actions_0 = add_trace data_out in_gather.in_tau_actions in
                           let tau_actions_1 = Trace.combine out_gather.out_tau_actions tau_actions_0 in
                           let eav_action = match in_gather.in_action,out_gather.out_action with
                             | Some(in_act), Some(out_act) -> Some(in_act,out_act)
@@ -3831,7 +3832,7 @@ let update_test_next_input f = test_next_input := f
 
 let internal_next_output sem equiv proc fst_subst f_continuation = match sem, equiv with
   | Classic, Trace_Equivalence -> next_output_classic_trace proc fst_subst [] (fun proc' gather' f_next -> f_continuation proc' gather'; f_next ()) (fun () -> ())
-  | (Private|Eavesdrop), Trace_Equivalence -> next_output_private_trace proc fst_subst [] [] (fun data_next_out proc' gather' f_next -> f_continuation (add_proc data_next_out proc') gather'; f_next ()) (fun () -> ())
+  | (Private|Eavesdrop), Trace_Equivalence -> next_output_private_trace proc fst_subst [] [] (fun data_next_out _ proc' gather' f_next -> f_continuation (add_proc data_next_out proc') gather'; f_next ()) (fun () -> ())
   | _, _ -> Config.internal_error "[process.ml >> next_output] Not implemented yet"
 
 let test_next_output sem equiv proc fst_subst f_continuation =
