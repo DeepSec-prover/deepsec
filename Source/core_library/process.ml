@@ -1731,7 +1731,10 @@ type eavesdrop_gathering =
     eav_private_channels : protocol_term list;
 
     eav_tau_actions : Trace.t;
-    eav_action : (action_process * action_process) option
+    eav_action : (action_process * action_process) option;
+
+    eav_original_channel : protocol_term; (** Corresponds to the channel of the output in the process before application of the substitution. *)
+    eav_original_term : protocol_term (** Corresponds to the term output in the process before application of the substitution. *)
   }
 
 exception Bot_disequations
@@ -2717,6 +2720,9 @@ and next_input_classic_trace proc equations disequations f_continuation f_next =
 
 (***** Next input and output in the private semantics ******)
 
+let add_proc (cont,v_rho,n_rho) p = add_content_in_proc cont 1 v_rho n_rho p
+let add_trace (cont,v_rho,n_rho) t = apply_content_to_tau_action cont v_rho n_rho t
+
 let rec next_output_private_trace_content tau_actions content v_rho n_rho proc equations disequations private_ch f_continuation f_next = match content.action with
   | ANil -> f_next ()
   | AOut(ch,t,cont) ->
@@ -2728,8 +2734,8 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
       let v_rho' = Variable.Renaming.restrict v_rho cont.bound_var
       and n_rho' = Name.Renaming.restrict n_rho cont.bound_name in
 
-
-      let proc' = add_content_in_proc cont 1 v_rho' n_rho' proc in
+      (* Typically, if P = out(c,u). R | R'] then [add_next_out_proc Q] returns the process Q | R *)
+      let data_next_out = (cont,v_rho',n_rho') in
 
       let equations_modulo_list_result =
         try
@@ -2746,8 +2752,8 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
               if !Config.display_trace
               then
                 let action = Some ({content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho}) in
-                (f_continuation [@tailcall]) proc' { out_equations = equations; out_disequations = disequations; out_channel = norm_ch; out_term = norm_t ; out_private_channels = private_ch; out_tau_actions = tau_actions; out_action = action; out_original_term = t'; out_original_channel = ch' } f_next
-              else (f_continuation [@tailcall]) proc' { out_equations = equations; out_disequations = disequations; out_channel = norm_ch; out_term = norm_t ; out_private_channels = private_ch; out_tau_actions = []; out_action = None; out_original_term = t'; out_original_channel = ch'} f_next
+                (f_continuation [@tailcall]) data_next_out proc { out_equations = equations; out_disequations = disequations; out_channel = norm_ch; out_term = norm_t ; out_private_channels = private_ch; out_tau_actions = tau_actions; out_action = action; out_original_term = t'; out_original_channel = ch' } f_next
+              else (f_continuation [@tailcall]) data_next_out proc { out_equations = equations; out_disequations = disequations; out_channel = norm_ch; out_term = norm_t ; out_private_channels = private_ch; out_tau_actions = []; out_action = None; out_original_term = t'; out_original_channel = ch'} f_next
           | EqList equations_modulo_list ->
               let f_next_equations =
                 List.fold_left (fun acc_f_next equations_modulo ->
@@ -2784,9 +2790,9 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
                         if !Config.display_trace
                         then
                           let action = Some ({content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho}) in
-                          (fun () -> (f_continuation [@tailcall]) proc' { out_equations = new_equations; out_disequations = new_disequations; out_channel = new_ch_2; out_term = new_t_2 ; out_private_channels = private_ch_2; out_tau_actions = tau_actions; out_action = action; out_original_term = t'; out_original_channel = ch' } acc_f_next)
+                          (fun () -> (f_continuation [@tailcall]) data_next_out proc { out_equations = new_equations; out_disequations = new_disequations; out_channel = new_ch_2; out_term = new_t_2 ; out_private_channels = private_ch_2; out_tau_actions = tau_actions; out_action = action; out_original_term = t'; out_original_channel = ch' } acc_f_next)
                         else
-                          (fun () -> (f_continuation [@tailcall]) proc' { out_equations = new_equations; out_disequations = new_disequations; out_channel = new_ch_2; out_term = new_t_2 ; out_private_channels = private_ch_2; out_tau_actions = []; out_action = None; out_original_term = t'; out_original_channel = ch' } acc_f_next)
+                          (fun () -> (f_continuation [@tailcall]) data_next_out proc { out_equations = new_equations; out_disequations = new_disequations; out_channel = new_ch_2; out_term = new_t_2 ; out_private_channels = private_ch_2; out_tau_actions = []; out_action = None; out_original_term = t'; out_original_channel = ch' } acc_f_next)
                 ) f_next equations_modulo_list
               in
 
@@ -2798,7 +2804,7 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
       else
         let internal_communication f_next =
           (* This output may be used for an internal reduction *)
-          next_input_private_trace proc equations disequations private_ch (fun proc' in_gather f_next_1 ->
+          next_input_private_trace proc equations disequations private_ch (fun data_next_in proc' in_gather f_next_1 ->
             if is_function in_gather.in_channel && Symbol.get_arity (root in_gather.in_channel) = 0 && Symbol.is_public (root in_gather.in_channel)
             then f_next_1 ()
             else
@@ -2815,6 +2821,7 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
               match equations_modulo_list_result with
                 | EqBot -> f_next_1 ()
                 | EqTop ->
+                    let proc'' = add_proc data_next_in proc' in
                     if !Config.display_trace
                     then
                       let tau_actions_0 = apply_content_to_tau_action content v_rho n_rho in_gather.in_tau_actions in
@@ -2822,11 +2829,12 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
                         | None -> Config.internal_error "[process.ml >> next_output] There should be a symbolic action since the gathering mode for tau action is activated (2)"
                         | Some symb_in ->
                             let symb_out = {content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho} in
-                            (Trace.TrComm(symb_in,symb_out, add_content_in_proc cont 1 v_rho' n_rho' proc'))::tau_actions_0
+                            (Trace.TrComm(symb_in,symb_out, add_proc data_next_out proc''))::tau_actions_0
                       in
-                      next_output_private_trace_content (tau_actions_1@tau_actions) cont v_rho' n_rho' proc' in_gather.in_equations in_gather.in_disequations (new_ch::in_gather.in_private_channels) f_continuation f_next_1
-                    else next_output_private_trace_content [] cont v_rho' n_rho' proc' in_gather.in_equations in_gather.in_disequations (new_ch::in_gather.in_private_channels) f_continuation f_next_1
+                      next_output_private_trace_content (tau_actions_1@tau_actions) cont v_rho' n_rho' proc'' in_gather.in_equations in_gather.in_disequations (new_ch::in_gather.in_private_channels) f_continuation f_next_1
+                    else next_output_private_trace_content [] cont v_rho' n_rho' proc'' in_gather.in_equations in_gather.in_disequations (new_ch::in_gather.in_private_channels) f_continuation f_next_1
                 | EqList equations_modulo_list ->
+                    let proc'' = add_proc data_next_in proc' in
                     let f_next_equation =
                       List.fold_left (fun acc_f_next equations_modulo ->
                         let new_disequations_op =
@@ -2861,10 +2869,10 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
                                   | None -> Config.internal_error "[process.ml >> next_output] There should be a symbolic action since the gathering mode for tau action is activated (1)"
                                   | Some symb_in ->
                                       let symb_out = {content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho} in
-                                      (Trace.TrComm(symb_in,symb_out, add_content_in_proc cont 1 v_rho' n_rho' proc'))::tau_actions_0
+                                      (Trace.TrComm(symb_in,symb_out, add_proc data_next_out proc''))::tau_actions_0
                                 in
-                                (fun () -> (next_output_private_trace_content [@tailcall]) (tau_actions_1@tau_actions) cont v_rho' n_rho' proc' new_equations new_disequations new_private_ch_3 f_continuation acc_f_next)
-                              else (fun () -> (next_output_private_trace_content [@tailcall]) [] cont v_rho' n_rho' proc' new_equations new_disequations new_private_ch_3 f_continuation acc_f_next)
+                                (fun () -> (next_output_private_trace_content [@tailcall]) (tau_actions_1@tau_actions) cont v_rho' n_rho' proc'' new_equations new_disequations new_private_ch_3 f_continuation acc_f_next)
+                              else (fun () -> (next_output_private_trace_content [@tailcall]) [] cont v_rho' n_rho' proc'' new_equations new_disequations new_private_ch_3 f_continuation acc_f_next)
                       ) f_next_1 equations_modulo_list
                     in
 
@@ -2884,10 +2892,11 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
         let v_rho' = Variable.Renaming.compose v_rho x new_x  in
         let new_v_rho = Variable.Renaming.restrict v_rho' cont.bound_var in
 
-        next_output_private_trace proc equations disequations private_ch (fun proc' out_gather f_next_1 ->
+        next_output_private_trace proc equations disequations private_ch (fun data_next_out proc' out_gather f_next_1 ->
           if is_function out_gather.out_channel && Symbol.get_arity (root out_gather.out_channel) = 0 && Symbol.is_public (root out_gather.out_channel)
           then f_next_1 ()
           else
+            let proc'' = add_proc data_next_out proc' in
             let new_ch = Subst.apply out_gather.out_equations ch' (fun x f -> f x) in
             let equations_modulo_list_result =
               try
@@ -2907,10 +2916,10 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
                         | None -> Config.internal_error "[process.ml >> next_output] There should be a symbolic action since the gathering mode for tau action is activated (2)"
                         | Some symb_out ->
                             let symb_in = {content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho} in
-                            (Trace.TrComm(symb_in,symb_out,add_content_in_proc cont 1 new_v_rho new_n_rho proc'))::tau_actions_0
+                            (Trace.TrComm(symb_in,symb_out,add_content_in_proc cont 1 new_v_rho new_n_rho proc''))::tau_actions_0
                       in
-                      (next_output_private_trace_content [@tailcall]) (tau_actions_1@tau_actions) cont new_v_rho new_n_rho proc' out_gather.out_equations out_gather.out_disequations (new_ch::out_gather.out_private_channels) f_continuation f_next_1
-                    else (next_output_private_trace_content [@tailcall]) [] cont new_v_rho new_n_rho proc' out_gather.out_equations out_gather.out_disequations (new_ch::out_gather.out_private_channels) f_continuation f_next_1
+                      (next_output_private_trace_content [@tailcall]) (tau_actions_1@tau_actions) cont new_v_rho new_n_rho proc'' out_gather.out_equations out_gather.out_disequations (new_ch::out_gather.out_private_channels) f_continuation f_next_1
+                    else (next_output_private_trace_content [@tailcall]) [] cont new_v_rho new_n_rho proc'' out_gather.out_equations out_gather.out_disequations (new_ch::out_gather.out_private_channels) f_continuation f_next_1
               | EqList equations_modulo_list ->
                   let f_next_equation =
                     List.fold_left (fun acc_f_next equations_modulo ->
@@ -2946,10 +2955,10 @@ let rec next_output_private_trace_content tau_actions content v_rho n_rho proc e
                                 | None -> Config.internal_error "[process.ml >> next_output] There should be a symbolic action since the gathering mode for tau action is activated (2)"
                                 | Some symb_out ->
                                     let symb_in = {content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho} in
-                                    (Trace.TrComm(symb_in,symb_out,add_content_in_proc cont 1 new_v_rho new_n_rho proc'))::tau_actions_0
+                                    (Trace.TrComm(symb_in,symb_out,add_content_in_proc cont 1 new_v_rho new_n_rho proc''))::tau_actions_0
                               in
-                              (fun () -> (next_output_private_trace_content [@tailcall]) (tau_actions_1@tau_actions) cont new_v_rho new_n_rho proc' new_equations new_disequations new_private_ch_3 f_continuation acc_f_next)
-                            else (fun () -> (next_output_private_trace_content [@tailcall]) [] cont new_v_rho new_n_rho proc' new_equations new_disequations new_private_ch_3 f_continuation acc_f_next)
+                              (fun () -> (next_output_private_trace_content [@tailcall]) (tau_actions_1@tau_actions) cont new_v_rho new_n_rho proc'' new_equations new_disequations new_private_ch_3 f_continuation acc_f_next)
+                            else (fun () -> (next_output_private_trace_content [@tailcall]) [] cont new_v_rho new_n_rho proc'' new_equations new_disequations new_private_ch_3 f_continuation acc_f_next)
 
                     ) f_next_1 equations_modulo_list
                   in
@@ -3237,7 +3246,8 @@ and next_input_private_trace_content tau_actions content v_rho n_rho proc equati
       let v_rho' = Variable.Renaming.compose v_rho x new_x  in
       let new_v_rho = Variable.Renaming.restrict v_rho' cont.bound_var in
 
-      let new_proc = add_content_in_proc cont 1 new_v_rho new_n_rho proc in
+      (* Typically, if P = in(c,x). R | R'] then [add_next_in_proc Q] returns the process Q | R *)
+      let data_next_in = (cont,new_v_rho,new_n_rho) in
 
       let next_input f_next =
         let equations_modulo_list_result =
@@ -3254,8 +3264,8 @@ and next_input_private_trace_content tau_actions content v_rho n_rho proc equati
               if !Config.display_trace
               then
                 let action = Some ({content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho}) in
-                (f_continuation [@tailcall]) new_proc { in_equations = equations; in_disequations = disequations; in_channel = norm_ch; in_variable = new_x ; in_private_channels = private_ch; in_tau_actions = tau_actions; in_action = action; in_original_channel = ch' } f_next
-              else (f_continuation [@tailcall]) new_proc { in_equations = equations; in_disequations = disequations; in_channel = norm_ch; in_variable = new_x ; in_private_channels = private_ch; in_tau_actions = []; in_action = None; in_original_channel = ch'} f_next
+                (f_continuation [@tailcall]) data_next_in proc { in_equations = equations; in_disequations = disequations; in_channel = norm_ch; in_variable = new_x ; in_private_channels = private_ch; in_tau_actions = tau_actions; in_action = action; in_original_channel = ch' } f_next
+              else (f_continuation [@tailcall]) data_next_in proc { in_equations = equations; in_disequations = disequations; in_channel = norm_ch; in_variable = new_x ; in_private_channels = private_ch; in_tau_actions = []; in_action = None; in_original_channel = ch'} f_next
           | EqList equations_modulo_list ->
               let f_next_equations =
                 List.fold_left (fun acc_f_next equations_modulo ->
@@ -3287,8 +3297,8 @@ and next_input_private_trace_content tau_actions content v_rho n_rho proc equati
                         if !Config.display_trace
                         then
                           let action = Some ({content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho}) in
-                          (fun () -> (f_continuation [@tailcall]) new_proc { in_equations = new_equations; in_disequations = new_disequations; in_channel = new_ch_3; in_variable = new_x ; in_private_channels = private_ch_2; in_tau_actions = tau_actions; in_action = action; in_original_channel = ch' } acc_f_next)
-                        else (fun () -> (f_continuation new_proc [@tailcall]) { in_equations = new_equations; in_disequations = new_disequations; in_channel = new_ch_3; in_variable = new_x ; in_private_channels = private_ch_2; in_tau_actions = []; in_action = None; in_original_channel = ch' } acc_f_next)
+                          (fun () -> (f_continuation [@tailcall]) data_next_in proc { in_equations = new_equations; in_disequations = new_disequations; in_channel = new_ch_3; in_variable = new_x ; in_private_channels = private_ch_2; in_tau_actions = tau_actions; in_action = action; in_original_channel = ch' } acc_f_next)
+                        else (fun () -> (f_continuation data_next_in proc [@tailcall]) { in_equations = new_equations; in_disequations = new_disequations; in_channel = new_ch_3; in_variable = new_x ; in_private_channels = private_ch_2; in_tau_actions = []; in_action = None; in_original_channel = ch' } acc_f_next)
                 ) f_next equations_modulo_list
               in
 
@@ -3299,10 +3309,11 @@ and next_input_private_trace_content tau_actions content v_rho n_rho proc equati
       then next_input f_next
       else
         let internal_communication f_next =
-            next_output_private_trace proc equations disequations private_ch (fun proc' out_gather f_next_1 ->
+            next_output_private_trace proc equations disequations private_ch (fun data_next_out proc' out_gather f_next_1 ->
               if is_function out_gather.out_channel && Symbol.get_arity (root out_gather.out_channel) = 0 && Symbol.is_public (root out_gather.out_channel)
               then f_next_1 ()
               else
+                let proc'' = add_proc data_next_out proc' in
                 let new_ch = Subst.apply out_gather.out_equations norm_ch (fun x f -> f x) in
 
                 let equations_modulo_list_result =
@@ -3323,10 +3334,10 @@ and next_input_private_trace_content tau_actions content v_rho n_rho proc equati
                           | None -> Config.internal_error "[process.ml >> next_output] There should be a symbolic action since the gathering mode for tau action is activated (2)"
                           | Some symb_out ->
                               let symb_in = {content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho} in
-                              (Trace.TrComm(symb_in,symb_out,add_content_in_proc cont 1 new_v_rho new_n_rho proc'))::tau_actions_0
+                              (Trace.TrComm(symb_in,symb_out,add_content_in_proc cont 1 new_v_rho new_n_rho proc''))::tau_actions_0
                         in
-                        (next_input_private_trace_content [@tailcall]) (tau_actions_1@tau_actions) cont new_v_rho new_n_rho proc' out_gather.out_equations out_gather.out_disequations (new_ch::out_gather.out_private_channels) f_continuation f_next_1
-                      else (next_input_private_trace_content [@tailcall]) [] cont new_v_rho new_n_rho proc' out_gather.out_equations out_gather.out_disequations (new_ch::out_gather.out_private_channels) f_continuation f_next_1
+                        (next_input_private_trace_content [@tailcall]) (tau_actions_1@tau_actions) cont new_v_rho new_n_rho proc'' out_gather.out_equations out_gather.out_disequations (new_ch::out_gather.out_private_channels) f_continuation f_next_1
+                      else (next_input_private_trace_content [@tailcall]) [] cont new_v_rho new_n_rho proc'' out_gather.out_equations out_gather.out_disequations (new_ch::out_gather.out_private_channels) f_continuation f_next_1
                   | EqList equations_modulo_list ->
                       let f_next_equations =
                         List.fold_left (fun acc_f_next equations_modulo->
@@ -3362,10 +3373,10 @@ and next_input_private_trace_content tau_actions content v_rho n_rho proc equati
                                     | None -> Config.internal_error "[process.ml >> next_output] There should be a symbolic action since the gathering mode for tau action is activated (2)"
                                     | Some symb_out ->
                                         let symb_in = {content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho} in
-                                        (Trace.TrComm(symb_in,symb_out,add_content_in_proc cont 1 new_v_rho new_n_rho proc'))::tau_actions_0
+                                        (Trace.TrComm(symb_in,symb_out,add_content_in_proc cont 1 new_v_rho new_n_rho proc''))::tau_actions_0
                                   in
-                                  (fun () -> (next_input_private_trace_content [@tailcall]) (tau_actions_1@tau_actions) cont new_v_rho new_n_rho proc' new_equations new_disequations new_private_ch_3 f_continuation acc_f_next)
-                                else (fun () -> (next_input_private_trace_content [@tailcall]) [] cont new_v_rho new_n_rho proc' new_equations new_disequations new_private_ch_3 f_continuation acc_f_next)
+                                  (fun () -> (next_input_private_trace_content [@tailcall]) (tau_actions_1@tau_actions) cont new_v_rho new_n_rho proc'' new_equations new_disequations new_private_ch_3 f_continuation acc_f_next)
+                                else (fun () -> (next_input_private_trace_content [@tailcall]) [] cont new_v_rho new_n_rho proc'' new_equations new_disequations new_private_ch_3 f_continuation acc_f_next)
                         ) f_next_1 equations_modulo_list
                       in
 
@@ -3383,10 +3394,11 @@ and next_input_private_trace_content tau_actions content v_rho n_rho proc equati
         and new_n_rho = Name.Renaming.restrict n_rho cont.bound_name in
 
         (* This output may be used for an internal reduction *)
-        next_input_private_trace proc equations disequations private_ch (fun proc' in_gather f_next_1 ->
+        next_input_private_trace proc equations disequations private_ch (fun data_next_in proc' in_gather f_next_1 ->
           if is_function in_gather.in_channel && Symbol.get_arity (root in_gather.in_channel) = 0 && Symbol.is_public (root in_gather.in_channel)
           then f_next_1 ()
           else
+            let proc'' = add_proc data_next_in proc' in
             let new_ch, new_t = Subst.apply in_gather.in_equations (ch',t') (fun (x,y) f -> f x, f y) in
             let equations_modulo_list_result =
               try
@@ -3406,10 +3418,10 @@ and next_input_private_trace_content tau_actions content v_rho n_rho proc equati
                       | None -> Config.internal_error "[process.ml >> next_output] There should be a symbolic action since the gathering mode for tau action is activated (1)"
                       | Some symb_in ->
                           let symb_out = {content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho} in
-                          (Trace.TrComm(symb_in,symb_out, add_content_in_proc cont 1 new_v_rho new_n_rho proc'))::tau_actions_0
+                          (Trace.TrComm(symb_in,symb_out, add_content_in_proc cont 1 new_v_rho new_n_rho proc''))::tau_actions_0
                     in
-                    next_input_private_trace_content (tau_actions_1@tau_actions) cont new_v_rho new_n_rho proc' in_gather.in_equations in_gather.in_disequations (new_ch::in_gather.in_private_channels) f_continuation f_next_1
-                  else next_input_private_trace_content [] cont new_v_rho new_n_rho proc' in_gather.in_equations in_gather.in_disequations (new_ch::in_gather.in_private_channels) f_continuation f_next_1
+                    next_input_private_trace_content (tau_actions_1@tau_actions) cont new_v_rho new_n_rho proc'' in_gather.in_equations in_gather.in_disequations (new_ch::in_gather.in_private_channels) f_continuation f_next_1
+                  else next_input_private_trace_content [] cont new_v_rho new_n_rho proc'' in_gather.in_equations in_gather.in_disequations (new_ch::in_gather.in_private_channels) f_continuation f_next_1
               | EqList equations_modulo_list ->
                   let f_next_equations =
                     List.fold_left (fun acc_f_next equations_modulo ->
@@ -3445,10 +3457,10 @@ and next_input_private_trace_content tau_actions content v_rho n_rho proc equati
                                 | None -> Config.internal_error "[process.ml >> next_output] There should be a symbolic action since the gathering mode for tau action is activated (1)"
                                 | Some symb_in ->
                                     let symb_out = {content_mult = { content = content ;  mult = 1} ; var_renaming = v_rho; name_renaming = n_rho} in
-                                    (Trace.TrComm(symb_in,symb_out, add_content_in_proc cont 1 new_v_rho new_n_rho proc'))::tau_actions_0
+                                    (Trace.TrComm(symb_in,symb_out, add_content_in_proc cont 1 new_v_rho new_n_rho proc''))::tau_actions_0
                               in
-                              (fun () -> (next_input_private_trace_content [@tailcall]) (tau_actions_1@tau_actions) cont new_v_rho new_n_rho proc' new_equations new_disequations new_private_ch_3 f_continuation acc_f_next)
-                            else (fun () -> (next_input_private_trace_content [@tailcall])  [] cont new_v_rho new_n_rho proc' new_equations new_disequations new_private_ch_3 f_continuation acc_f_next)
+                              (fun () -> (next_input_private_trace_content [@tailcall]) (tau_actions_1@tau_actions) cont new_v_rho new_n_rho proc'' new_equations new_disequations new_private_ch_3 f_continuation acc_f_next)
+                            else (fun () -> (next_input_private_trace_content [@tailcall])  [] cont new_v_rho new_n_rho proc'' new_equations new_disequations new_private_ch_3 f_continuation acc_f_next)
 
                     ) f_next_1 equations_modulo_list
                   in
@@ -3725,6 +3737,86 @@ and next_input_private_trace proc equations disequations private_ch f_continuati
   in
   go_through_mult_list [] f_next proc
 
+(**** Next eavesdrop ****)
+
+and next_eavesdrop_trace proc equations disequations private_ch f_continuation f_next =
+  next_output_private_trace proc equations disequations private_ch (fun data_next_out remain_proc out_gather f_next_1 ->
+    next_input_private_trace remain_proc out_gather.out_equations out_gather.out_disequations out_gather.out_private_channels (fun data_next_in remain_proc' in_gather f_next_2 ->
+      (* We need to check wether both channels are equals *)
+      let new_ch, new_t = Subst.apply in_gather.in_equations (out_gather.out_channel,out_gather.out_term) (fun (x,y) f -> f x, f y) in
+
+      let equations_modulo_list_result =
+        try
+          EqList (Modulo.syntactic_equations_of_equations [Modulo.create_equation new_ch in_gather.in_channel; Modulo.create_equation new_t (of_variable in_gather.in_variable)])
+        with
+          | Modulo.Bot -> EqBot
+          | Modulo.Top -> EqTop
+      in
+
+
+      match equations_modulo_list_result with
+        | EqBot -> f_next_2 ()
+        | EqTop ->
+            let proc'' = add_proc data_next_out (add_proc data_next_in remain_proc') in
+            if !Config.display_trace
+            then
+              let tau_actions_0 = add_trace data_next_out in_gather.in_tau_actions in
+              let tau_actions_1 = Trace.combine out_gather.out_tau_actions tau_actions_0 in
+              let eav_action = match in_gather.in_action,out_gather.out_action with
+                | Some(in_act), Some(out_act) -> Some(in_act,out_act)
+                | _ -> Config.internal_error "[process.ml >> next_eavesdrop_trace] There should be a symbolic action since the display of trace is activated."
+              in
+              (f_continuation [@tailcall]) proc'' { eav_equations = in_gather.in_equations; eav_disequations = in_gather.in_disequations; eav_channel = in_gather.in_channel; eav_term = new_t; eav_private_channels = in_gather.in_private_channels; eav_tau_actions = tau_actions_1; eav_action = eav_action; eav_original_channel = out_gather.out_original_channel; eav_original_term = out_gather.out_original_term } f_next_2
+            else (f_continuation [@tailcall]) proc'' { eav_equations = in_gather.in_equations; eav_disequations = in_gather.in_disequations; eav_channel = in_gather.in_channel; eav_term = new_t; eav_private_channels = in_gather.in_private_channels; eav_tau_actions = []; eav_action = None; eav_original_channel = out_gather.out_original_channel; eav_original_term = out_gather.out_original_term } f_next_2
+        | EqList equations_modulo_list ->
+            let proc'' = add_proc data_next_out (add_proc data_next_in remain_proc') in
+            let f_next_equation =
+              List.fold_left (fun acc_f_next equations_modulo ->
+                let new_disequations_op =
+                  try
+                    let new_disequations =
+                      List.fold_left (fun acc diseq ->
+                        let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
+                        if Diseq.is_top new_diseq
+                        then acc
+                        else if Diseq.is_bot new_diseq
+                        then raise Bot_disequations
+                        else new_diseq::acc
+                      ) [] in_gather.in_disequations
+                    in
+                    Some new_disequations
+                  with
+                  | Bot_disequations -> None
+                in
+
+                match new_disequations_op with
+                  | None -> acc_f_next
+                  | Some new_disequations ->
+                      let new_equations = Subst.compose in_gather.in_equations equations_modulo in
+                      let (new_private_ch_1,new_t',new_ch') = Subst.apply equations_modulo (in_gather.in_private_channels,new_t,new_ch) (fun (pch_l,t,c) f -> (List.rev_map f pch_l, f t, f c)) in
+                      let new_private_ch_2 = List.rev_map Rewrite_rules.normalise new_private_ch_1 in
+
+                      let (eav_tau_actions, eav_action) =
+                        if !Config.display_trace
+                        then
+                          let tau_actions_0 = add_trace data_next_out in_gather.in_tau_actions in
+                          let tau_actions_1 = Trace.combine out_gather.out_tau_actions tau_actions_0 in
+                          let eav_action = match in_gather.in_action,out_gather.out_action with
+                            | Some(in_act), Some(out_act) -> Some(in_act,out_act)
+                            | _ -> Config.internal_error "[process.ml >> next_eavesdrop_trace] There should be a symbolic action since the display of trace is activated."
+                          in
+                          (tau_actions_1,eav_action)
+                        else ([],None)
+                      in
+                      (fun () -> (f_continuation [@tailcall]) proc'' { eav_equations = new_equations;  eav_disequations = new_disequations; eav_channel = new_ch'; eav_term = new_t'; eav_private_channels = new_private_ch_2; eav_tau_actions = eav_tau_actions; eav_action = eav_action; eav_original_channel = out_gather.out_original_channel; eav_original_term = out_gather.out_original_term } acc_f_next)
+              ) f_next_2 equations_modulo_list
+            in
+
+            f_next_equation ()
+
+    ) f_next_1
+  ) f_next
+
 (*********************************
 ***        Transitions       * ***
 **********************************)
@@ -3739,7 +3831,7 @@ let update_test_next_input f = test_next_input := f
 
 let internal_next_output sem equiv proc fst_subst f_continuation = match sem, equiv with
   | Classic, Trace_Equivalence -> next_output_classic_trace proc fst_subst [] (fun proc' gather' f_next -> f_continuation proc' gather'; f_next ()) (fun () -> ())
-  | Private, Trace_Equivalence -> next_output_private_trace proc fst_subst [] [] (fun proc' gather' f_next -> f_continuation proc' gather'; f_next ()) (fun () -> ())
+  | (Private|Eavesdrop), Trace_Equivalence -> next_output_private_trace proc fst_subst [] [] (fun data_next_out proc' gather' f_next -> f_continuation (add_proc data_next_out proc') gather'; f_next ()) (fun () -> ())
   | _, _ -> Config.internal_error "[process.ml >> next_output] Not implemented yet"
 
 let test_next_output sem equiv proc fst_subst f_continuation =
@@ -3779,7 +3871,7 @@ let next_output =
 
 let internal_next_input sem equiv proc fst_subst f_continuation = match sem, equiv with
   | Classic, Trace_Equivalence -> next_input_classic_trace proc fst_subst [] (fun proc' gather' f_next -> f_continuation proc' gather'; f_next ()) (fun () -> ())
-  | Private, Trace_Equivalence -> next_input_private_trace proc fst_subst [] [] (fun proc' gather' f_next -> f_continuation proc' gather'; f_next ()) (fun () -> ())
+  | (Private|Eavesdrop), Trace_Equivalence -> next_input_private_trace proc fst_subst [] [] (fun data_next_in proc' gather' f_next -> f_continuation (add_proc data_next_in proc') gather'; f_next ()) (fun () -> ())
   | _, _ -> Config.internal_error "[process.ml >> next_output] Not implemented yet"
 
 let test_next_input sem equiv proc fst_subst f_continuation =
@@ -3816,3 +3908,9 @@ let next_input =
   if Config.test_activated
   then test_next_input
   else internal_next_input
+
+(* Next for eavesdrop *)
+
+let next_eavesdrop sem equiv proc fst_subst f_continuation = match sem,equiv with
+  | Eavesdrop, Trace_Equivalence -> next_eavesdrop_trace proc fst_subst [] [] (fun proc' gather' f_next -> f_continuation proc' gather'; f_next ()) (fun () -> ())
+  | _, _ -> Config.internal_error "[process.ml >> next_output] Not implemented yet"

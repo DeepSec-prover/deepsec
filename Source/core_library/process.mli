@@ -253,9 +253,12 @@ type eavesdrop_gathering =
     eav_private_channels : protocol_term list; (** The channels that must stay private *)
 
     eav_tau_actions : Trace.t; (** The trace representing the unobservable actions that occured before reaching the eavesdrop. *)
-    eav_action : (action_process * action_process) option (** The pair of actions on which the eavesdrop occurs. The first action represents
+    eav_action : (action_process * action_process) option; (** The pair of actions on which the eavesdrop occurs. The first action represents
       the input action and the second one represents the output action. Since the gathering of trace information is optional, so is the type
       of [eav_action]. *)
+
+    eav_original_channel : protocol_term; (** Corresponds to the channel of the output in the process before application of the substitution. *)
+    eav_original_term : protocol_term (** Corresponds to the term output in the process before application of the substitution. *)
   }
 
 (** [next_output sem eq proc subst f] will apply all the function [f] to all out transitions available for the process [proc] instantiated by [subst], in the semantics
@@ -276,6 +279,16 @@ val next_input :
   process ->
   (fst_ord, name) Subst.t ->
   (process -> input_gathering -> unit) ->
+  unit
+
+(** [next_eavesdrop sem eq proc subst f] will apply all the function [f] to all eavesdrop transitions available for the process [proc] instantiated by [subst], in the semantics
+[sem] and for the equivalence [eq].*)
+val next_eavesdrop :
+  semantics ->
+  equivalence ->
+  process ->
+  (fst_ord, name) Subst.t ->
+  (process -> eavesdrop_gathering -> unit) ->
   unit
 
 (** {3 Tested functions} *)

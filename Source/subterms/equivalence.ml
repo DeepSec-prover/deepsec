@@ -270,16 +270,205 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
     Constraint_system.Rule.apply_rules_after_input !private_channels_input in_apply_final_test !csys_set_for_input f_next
   )
 
+let apply_one_transition_and_rules_for_trace_in_eavesdrop csys_set size_frame f_continuation f_next =
+
+  (*** Generate the set for the next input ***)
+
+  let csys_set_for_input = ref Constraint_system.Set.empty in
+  let private_channels_input = ref false in
+
+  let var_X_ch = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
+  let var_X_var = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
+
+  Constraint_system.Set.iter (fun csys ->
+    let symb_proc = Constraint_system.get_additional_data csys in
+    let fst_subst = Constraint_system.get_substitution_solution Protocol csys in
+
+    next_input Eavesdrop Trace_Equivalence symb_proc.current_process fst_subst (fun proc in_gathering ->
+      let ded_fact_ch = BasicFact.create var_X_ch in_gathering.in_channel
+      and ded_fact_term = BasicFact.create var_X_var (of_variable in_gathering.in_variable) in
+
+      try
+        let new_csys_1 = Constraint_system.apply_substitution csys in_gathering.in_equations in
+        let new_csys_2 = Constraint_system.add_basic_fact new_csys_1 ded_fact_ch in
+        let new_csys_3 = Constraint_system.add_basic_fact new_csys_2 ded_fact_term in
+        let new_csys_4 = Constraint_system.add_disequations new_csys_3 in_gathering.in_disequations in
+        let new_csys_5 =
+          if in_gathering.in_private_channels = []
+          then new_csys_4
+          else (private_channels_input := true; Constraint_system.add_private_channels new_csys_4 in_gathering.in_private_channels)
+        in
+        let trace =
+          match in_gathering.in_action with
+            | None ->
+                Config.debug (fun () ->
+                  if not !Config.display_trace
+                  then Config.internal_error "[equivalence.ml >> apply_one_transition_and_rules_for_trace_in_eavesdrop] There should be an action when display_trace is activated."
+                );
+                symb_proc.trace
+            | Some action -> Trace.add_input var_X_ch in_gathering.in_original_channel var_X_var (of_variable in_gathering.in_variable) action proc (Trace.combine symb_proc.trace in_gathering.in_tau_actions)
+        in
+
+        let new_csys_6 = Constraint_system.replace_additional_data new_csys_5
+          { symb_proc with
+            current_process = proc;
+            trace = trace
+          }
+        in
+
+        csys_set_for_input := Constraint_system.Set.add new_csys_6 !csys_set_for_input
+      with
+        | Constraint_system.Bot -> ()
+    )
+  ) csys_set;
+
+  (*** Application of the tranformation rules ***)
+
+  let in_apply_final_test csys_set f_next =
+    if Constraint_system.Set.is_empty csys_set
+    then f_next ()
+    else
+      let csys = Constraint_system.Set.choose csys_set in
+      let origin_process = (Constraint_system.get_additional_data csys).origin_process in
+      if Constraint_system.Set.for_all (fun csys -> (Constraint_system.get_additional_data csys).origin_process = origin_process) csys_set
+      then raise (Not_Trace_Equivalent csys)
+      else
+        let opti_csys_set = Constraint_system.Set.optimise_snd_ord_recipes csys_set in
+        f_continuation opti_csys_set size_frame f_next
+  in
+
+  (*** Generate the set for the next output ***)
+
+  let csys_set_for_output = ref Constraint_system.Set.empty in
+  let private_channels_output = ref false in
+
+  let var_X_ch = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
+  let axiom = Axiom.create (size_frame + 1) in
+
+  Constraint_system.Set.iter (fun csys ->
+    let symb_proc = Constraint_system.get_additional_data csys in
+    let fst_subst = Constraint_system.get_substitution_solution Protocol csys in
+
+    next_output Eavesdrop Trace_Equivalence symb_proc.current_process fst_subst (fun proc out_gathering ->
+      let ded_fact_ch = BasicFact.create var_X_ch out_gathering.out_channel in
+
+      try
+        let new_csys_1 = Constraint_system.apply_substitution csys out_gathering.out_equations in
+        let new_csys_2 = Constraint_system.add_basic_fact new_csys_1 ded_fact_ch in
+        let new_csys_3 = Constraint_system.add_axiom new_csys_2 axiom (out_gathering.out_term) in
+        let new_csys_4 = Constraint_system.add_disequations new_csys_3 out_gathering.out_disequations in
+        let new_csys_5 =
+          if out_gathering.out_private_channels = []
+          then new_csys_4
+          else (private_channels_output := true; Constraint_system.add_private_channels new_csys_4 out_gathering.out_private_channels)
+        in
+        let trace = match out_gathering.out_action with
+          | None ->
+              Config.debug (fun () ->
+                if not !Config.display_trace
+                then Config.internal_error "[equivalence.ml >> apply_transition] There should be an action when display_trace is activated. (2)"
+              );
+              symb_proc.trace
+          | Some action -> Trace.add_output var_X_ch out_gathering.out_original_channel axiom out_gathering.out_original_term action proc (Trace.combine symb_proc.trace out_gathering.out_tau_actions)
+        in
+
+        let new_csys_6 = Constraint_system.replace_additional_data new_csys_5
+          { symb_proc with
+            current_process = proc;
+            trace = trace
+          }
+        in
+
+        csys_set_for_output := Constraint_system.Set.add new_csys_6 !csys_set_for_output
+      with
+        | Constraint_system.Bot -> ()
+    )
+  ) csys_set;
+
+  (*** Application of the tranformation rules ***)
+
+  let out_apply_final_test csys_set f_next =
+    if Constraint_system.Set.is_empty csys_set
+    then f_next ()
+    else
+      let csys = Constraint_system.Set.choose csys_set in
+      let origin_process = (Constraint_system.get_additional_data csys).origin_process in
+      if Constraint_system.Set.for_all (fun csys -> (Constraint_system.get_additional_data csys).origin_process = origin_process) csys_set
+      then raise (Not_Trace_Equivalent csys)
+      else
+        let opti_csys_set = Constraint_system.Set.optimise_snd_ord_recipes csys_set in
+        f_continuation opti_csys_set (size_frame + 1) f_next
+  in
+
+  (*** Generate the set for the next eavesdrop ***)
+
+  let csys_set_for_eavesdrop = ref Constraint_system.Set.empty in
+  let private_channels_eavesdrop = ref false in
+
+  let var_X_ch = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
+  let axiom = Axiom.create (size_frame + 1) in
+
+  Constraint_system.Set.iter (fun csys ->
+    let symb_proc = Constraint_system.get_additional_data csys in
+    let fst_subst = Constraint_system.get_substitution_solution Protocol csys in
+
+    next_eavesdrop Eavesdrop Trace_Equivalence symb_proc.current_process fst_subst (fun proc eav_gathering ->
+      let ded_fact_ch = BasicFact.create var_X_ch eav_gathering.eav_channel in
+
+      try
+        let new_csys_1 = Constraint_system.apply_substitution csys eav_gathering.eav_equations in
+        let new_csys_2 = Constraint_system.add_basic_fact new_csys_1 ded_fact_ch in
+        let new_csys_3 = Constraint_system.add_axiom new_csys_2 axiom (eav_gathering.eav_term) in
+        let new_csys_4 = Constraint_system.add_disequations new_csys_3 eav_gathering.eav_disequations in
+        let new_csys_5 =
+          if eav_gathering.eav_private_channels = []
+          then new_csys_4
+          else (private_channels_eavesdrop := true; Constraint_system.add_private_channels new_csys_4 eav_gathering.eav_private_channels)
+        in
+        let trace = match eav_gathering.eav_action with
+          | None ->
+              Config.debug (fun () ->
+                if not !Config.display_trace
+                then Config.internal_error "[equivalence.ml >> apply_one_transition_and_rules_for_trace_in_eavesdrop] There should be an action when display_trace is activated. (2)"
+              );
+              symb_proc.trace
+          | Some(action_in,action_out) -> Trace.add_eavesdrop var_X_ch eav_gathering.eav_original_channel axiom eav_gathering.eav_original_term action_in action_out proc (Trace.combine symb_proc.trace eav_gathering.eav_tau_actions)
+        in
+
+        let new_csys_6 = Constraint_system.replace_additional_data new_csys_5
+          { symb_proc with
+            current_process = proc;
+            trace = trace
+          }
+        in
+
+        csys_set_for_eavesdrop := Constraint_system.Set.add new_csys_6 !csys_set_for_eavesdrop
+      with
+        | Constraint_system.Bot -> ()
+    )
+  ) csys_set;
+
+  (*** Application of the tranformation rules ***)
+
+  let eav_apply_final_test = out_apply_final_test in
+
+  Constraint_system.Rule.apply_rules_after_output !private_channels_output out_apply_final_test !csys_set_for_output (fun () ->
+    Constraint_system.Rule.apply_rules_after_output !private_channels_eavesdrop eav_apply_final_test !csys_set_for_eavesdrop (fun () ->
+      Constraint_system.Rule.apply_rules_after_input !private_channels_input in_apply_final_test !csys_set_for_input f_next
+    )
+  )
+
+
 let apply_one_transition_and_rules_for_trace_equivalence = function
   | Classic -> apply_one_transition_and_rules_for_trace_in_classic
   | Private -> apply_one_transition_and_rules_for_trace_in_private
-  | _ -> Config.internal_error "[equivalence.ml >> apply_one_transition_and_rules_for_trace_equivalence] Trace equivalence for this semantics is not yet implemented."
+  | Eavesdrop -> apply_one_transition_and_rules_for_trace_in_eavesdrop
 
 type result_trace_equivalence =
   | Equivalent
   | Not_Equivalent of symbolic_process Constraint_system.t
 
-let trace_equivalence_classic proc1 proc2 =
+let trace_equivalence sem proc1 proc2 =
 
   (*** Initialise skeletons ***)
 
@@ -311,7 +500,7 @@ let trace_equivalence_classic proc1 proc2 =
   let csys_set_2 = Constraint_system.Set.add csys_2 csys_set_1 in
 
   let rec apply_rules csys_set frame_size f_next =
-    apply_one_transition_and_rules_for_trace_in_classic csys_set frame_size apply_rules f_next
+    apply_one_transition_and_rules_for_trace_equivalence sem csys_set frame_size apply_rules f_next
   in
 
   try
@@ -319,52 +508,6 @@ let trace_equivalence_classic proc1 proc2 =
     Equivalent
   with
     | Not_Trace_Equivalent csys -> Not_Equivalent csys
-
-let trace_equivalence_private proc1 proc2 =
-
-  (*** Initialise skeletons ***)
-
-  Rewrite_rules.initialise_skeletons ();
-  Data_structure.Tools.initialise_constructor ();
-
-  (*** Generate the initial constraint systems ***)
-
-  let symb_proc_1 =
-    {
-      origin_process = Left;
-      current_process = proc1;
-      trace = Trace.empty
-    }
-  and symb_proc_2 =
-    {
-      origin_process = Right;
-      current_process = proc2;
-      trace = Trace.empty
-    }
-  in
-
-  let csys_1 = Constraint_system.empty symb_proc_1 in
-  let csys_2 = Constraint_system.empty symb_proc_2 in
-
-  (**** Generate the initial set ****)
-
-  let csys_set_1 = Constraint_system.Set.add csys_1 Constraint_system.Set.empty in
-  let csys_set_2 = Constraint_system.Set.add csys_2 csys_set_1 in
-
-  let rec apply_rules csys_set frame_size f_next =
-    apply_one_transition_and_rules_for_trace_in_private csys_set frame_size apply_rules f_next
-  in
-
-  try
-    apply_rules csys_set_2 0 (fun () -> ());
-    Equivalent
-  with
-    | Not_Trace_Equivalent csys -> Not_Equivalent csys
-
-let trace_equivalence sem proc1 proc2 = match sem with
-  | Classic -> trace_equivalence_classic proc1 proc2
-  | Private -> trace_equivalence_private proc1 proc2
-  | _ -> Config.internal_error "[equivalence.ml >> trace_equivalence] Trace equivalence for this semantics is not yet implemented."
 
 (***** Display ******)
 

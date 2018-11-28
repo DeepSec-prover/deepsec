@@ -245,7 +245,7 @@ let _ =
     match sem with
     | "Classic" -> Process.chosen_semantics := Process.Classic
     | "Private" -> Process.chosen_semantics := Process.Private
-    | "Eavesddrop" -> Process.chosen_semantics := Process.Eavesdrop
+    | "Eavesdrop" -> Process.chosen_semantics := Process.Eavesdrop
     | _ -> raise (Arg.Bad("Undefined semantics"))
   in
 
@@ -297,7 +297,7 @@ let _ =
     );
     (
       "-semantics",
-      Arg.Symbol(["Classic";"Private"],set_semantics),
+      Arg.Symbol(["Classic";"Private";"Eavesdrop"],set_semantics),
       " Specify semantics of the process calculus."
     );
     (
