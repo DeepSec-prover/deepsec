@@ -8,7 +8,7 @@ SOURCE = Source/
 #  make NATIVECODE="" <target>
 DEBUG=
 PROFIL=
-OCAMLOPT=$(if $(PROFIL),ocamloptp -p -P a,$(if $(DEBUG), ocamlc -g,ocamlopt -w +a-44))
+OCAMLOPT=$(if $(PROFIL),ocamloptp -p -P a,$(if $(DEBUG), ocamlc -g,ocamlopt -w +a-44-e))
 OCAMLDEP=ocamldep $(if $(DEBUG), ,-native)
 OCAMLDOC=ocamldoc
 
@@ -22,7 +22,7 @@ INCLUDES_MOD = str.$(CMXA) unix.$(CMXA)
 INCLUDES = -I $(SOURCE)core_library -I $(SOURCE)subterms -I $(SOURCE)parser -I $(SOURCE)distributed
 # Compiler options specific to OCaml version >= 4
 V4OPTIONS=$(if $(shell $(OCAMLOPT) -version | grep '^4'),-bin-annot)
-OCAMLFLAGS = $(INCLUDES) $(V4OPTIONS) -w Ae $(INCLUDES_MOD)
+OCAMLFLAGS = $(INCLUDES) $(V4OPTIONS) $(INCLUDES_MOD)
 
 ### Sources
 
