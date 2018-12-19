@@ -1,6 +1,6 @@
 EXECUTABLE = deepsec
 NAME_PROGRAMME = DeepSec
-VERSION = 1.0alpha
+VERSION = 1.0
 SOURCE = Source/
 ### Compiler
 
@@ -22,7 +22,7 @@ INCLUDES_MOD = str.$(CMXA) unix.$(CMXA)
 INCLUDES = -I $(SOURCE)core_library -I $(SOURCE)subterms -I $(SOURCE)parser -I $(SOURCE)distributed
 # Compiler options specific to OCaml version >= 4
 V4OPTIONS=$(if $(shell $(OCAMLOPT) -version | grep '^4'),-bin-annot)
-OCAMLFLAGS = $(INCLUDES) $(V4OPTIONS) -w Ae $(INCLUDES_MOD)
+OCAMLFLAGS = $(INCLUDES) $(V4OPTIONS) -w +a-44-e $(INCLUDES_MOD)
 
 ### Sources
 
