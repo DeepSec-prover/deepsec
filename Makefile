@@ -4,13 +4,25 @@ EXECUTABLE = deepsec
 SOURCE = Source/
 
 
+# configures and compiles
 compil:
 	$(SOURCE)configure
 	ocamlbuild -use-ocamlfind $(PACKAGES) $(INCLUDES) $(SOURCE)main.native
 	mv main.native $(EXECUTABLE)
 
+# removes automatically generated files
 clean:
-	rm -rf _build $(SOURCE)core_library/config.ml $(EXECUTABLE)
+	rm -rf _build $(SOURCE)core_library/config.ml $(EXECUTABLE) index.html result
+
+# documentation
+doc:
+	ocamlbuild -use-ocamlfind $(PACKAGES) $(INCLUDES) doc.docdir/index.html doc.docdir/doc.tex
+	mv doc.docdir documentation
+
+
+
+
+
 
 
 
