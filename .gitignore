@@ -29,11 +29,11 @@ Source/testing/testing_grammar.output
 Source/testing/testing_lexer.ml
 Source/core_library/config.ml
 
-Documentation/Core_library.tex
-Documentation/Subterms.tex
-Documentation/Testing.tex
-Documentation/Distributed.tex
-Documentation/main.aux
+# documentation/Core_library.tex
+# documentation/Subterms.tex
+# documentation/Testing.tex
+# documentation/Distributed.tex
+# documentation/main.aux
 
 index.html
 testing_data/tests_to_check/*
@@ -53,3 +53,5 @@ manager_deepsec
 
 # other files
 *_build
+/documentation/files/*
+!/documentation/files/.content

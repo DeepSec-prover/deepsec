@@ -1,2 +1,16 @@
+Config
+Term
 Process
 Process_determinate
+Process_bi
+
+Data_structure
+Constraint_system
+Equivalence
+Equivalence_determinate
+
+Distrib
+Distributed_equivalence
+
+Display
+Parser_functions

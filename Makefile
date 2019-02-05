@@ -1,7 +1,9 @@
 PACKAGES = -package str -package unix
 INCLUDES = -I Source/subterms -I Source/distributed -I Source/core_library -I Source/parser
+TEMP = index.html result
 EXECUTABLE = deepsec
 SOURCE = Source/
+CLEANDOC = rm -rf documentation/files && mkdir documentation/files && touch documentation/files/.content
 
 
 # configures and compiles
@@ -12,12 +14,14 @@ compil:
 
 # removes automatically generated files
 clean:
-	rm -rf _build $(SOURCE)core_library/config.ml $(EXECUTABLE) index.html result
+	rm -rf _build $(SOURCE)core_library/config.ml $(EXECUTABLE) $(TEMP)
+	$(CLEANDOC)
 
 # documentation
 doc:
+	$(CLEANDOC)
 	ocamlbuild -use-ocamlfind $(PACKAGES) $(INCLUDES) doc.docdir/index.html doc.docdir/doc.tex
-	mv doc.docdir documentation
+	./documentation/finishdoc
 
 
 

@@ -9,7 +9,7 @@ dispatch begin function
           A"-colorize-code";
           A"-short-functors";
           A"-t";
-          A"Documentation lol swag"
+          A"Documentation lol swag";
         ]
   | _ -> ()
 end

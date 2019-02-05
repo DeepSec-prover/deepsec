@@ -1,0 +1,28 @@
+#! /bin/bash
+
+
+ENDDOC='\\end{document}'
+BIBTEX="\\\nocite{*} \\\bibliographystyle{alpha} \\\bibliography{../biblio} ${ENDDOC}"
+ENDSTY='\\endinput'
+
+# moving doc to a clean place
+cp -r doc.docdir/* documentation/files
+rm -rf doc.docdir
+
+# adding bibtex reference
+sed "s=${ENDDOC}=${BIBTEX}=g" documentation/files/doc.tex > temp
+mv temp documentation/files/doc.tex
+
+# adding macros in ocamldoc.sty
+sed "s=${ENDSTY}==g" documentation/files/ocamldoc.sty > temp
+echo '\endinput' | cat temp documentation/macro-command.tex - > documentation/files/ocamldoc.sty
+rm temp
+
+
+
+# ending message
+BLU='\e[;34m' # blue
+NC='\033[0m' # no color
+BOLD=$(tput bold) # bold printing
+NF=$(tput sgr0) # no format
+printf "${BLU}Documentation --> ${BOLD}documentation/files/index.html${BLU} or ${BOLD}documentation/files/doc.tex${BLU} ${NC}\n"
