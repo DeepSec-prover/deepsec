@@ -1,8 +1,7 @@
-Config
 Term
 Process
 Process_determinate
-Process_bi
+Process_session
 
 Data_structure
 Constraint_system
@@ -12,5 +11,6 @@ Equivalence_determinate
 Distrib
 Distributed_equivalence
 
+Config
 Display
 Parser_functions
