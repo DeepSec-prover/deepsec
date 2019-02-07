@@ -19,12 +19,15 @@ type plain_process =
 
 (** A type representing labels for subprocess reference.
 Serves as a basis for analysing equivalence by session and managing partial-order reductions (POR) and symmetries. *)
-type label
+type label = int list
 
 (** Test of independence for labels: returns 0 if the labels are dependent
 (i.e. one is the prefix of the other), and returns -1 or 1 otherwise depending
 on how they are ordered lexicographically. *)
 val indep_labels : label -> label -> int
+
+(** Prints a label, separating positions by dots *)
+val print_label : label -> unit
 
 (** The type of implementations of basic operations on pools of processes
 indexed by labels, including management of partial-order reductions and

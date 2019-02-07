@@ -33,6 +33,10 @@ let rec indep_labels (l:label) (ll:label) : int =
   | p::l,pp::ll when p <> pp -> compare p pp
   | _::l,_::ll -> indep_labels l ll
 
+(* print a label *)
+let print_label : label -> unit = List.iter (Printf.printf "%d.")
+
+
 (* the functor of implementations of basic operations on pools of processes *)
 module type OperationsOnProc = sig
   type configuration

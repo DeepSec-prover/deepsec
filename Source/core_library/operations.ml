@@ -1,4 +1,5 @@
 open Term
+open Extensions
 open Process_session
 
 
@@ -31,21 +32,74 @@ module Symmetry = struct
   idea is to group in a same list the labels representing a identical process *)
   type factored_pool =
     | Proc of label (* a label of a process of the pool *)
-    | Indep of factored_pool list (* Indep [P1;...;Pn] models P1|...|Pn *)
-    | Factored of factored_pool list (* Factored [P1;...;Pn] models !^n P1 *)
+    | Para of factored_pool list (* Para [P1;...;Pn] models P1|...|Pn *)
+    | Bang of factored_pool list (* Bang [P1;...;Pn] models !^n P1 *)
 
   (* initilisation of a pool from a list of labels *)
   let factored_pool_of_labels (l:label list) : factored_pool =
-    Indep (List.fold_left (fun li lab -> Proc lab :: li) [] l)
+    Para (List.fold_left (fun li lab -> Proc lab :: li) [] l)
+
+  (* cleaning function that flattens nested Indep constructors.
+  NB. Does not preserve the initial ordering. *)
+  let rec flatten_pool (fp:factored_pool) : factored_pool =
+    match fp with
+    | Proc _ -> fp
+    | Bang l ->
+      let res = List.fold_left (fun ac p -> flatten_pool p :: ac) [] l in
+      Bang res
+    | Para l ->
+      let res = List.fold_left (fun ac p -> match flatten_pool p with
+        | Para l -> List.rev_append l ac
+        | pp -> pp :: ac) [] l in
+      Para res
+
 
   (* TODO: factorisation function *)
   let factor_pool (fp:factored_pool) : factored_pool = fp
 
-  (* TODO Returns all possible ways to unfold a process from a factored pool while
-  avoiding redundancy (i.e. the extracted label and what would remain of the
-  pool).
+  (* Returns all possible ways to unfold a process from a factored pool while
+  avoiding redundancy (i.e. the label and what would remain of the pool).
   Ex: unfold_pool(Factored l) = [ (List.hd l, Factored (List.tl l)) ] *)
-  let unfold (fp:factored_pool) : (label * factored_pool) list = []
+  let unfold (fp:factored_pool) : (label * factored_pool) list =
+    let rec browse accu leftovers fp = match fp with
+      | Proc lab ->
+      (
+        match leftovers with
+        | [p] -> (lab,p) :: accu
+        | _ -> (lab, Para leftovers) :: accu
+      )
+      | Bang [] -> Config.internal_error "[operations.ml >> Symmetry.unfold] Unexpected case (ill-formed pool)"
+      | Bang [p] -> browse accu leftovers p
+      | Bang [p;q] -> browse accu (q :: leftovers) p
+      | Bang (p::t) -> browse accu (Bang t :: leftovers) p
+      | Para l ->
+        let rec browse_para ac memo l = match l with
+          | [] -> ac
+          | p :: t ->
+            let lefts = List.rev_append t (List.rev_append memo leftovers) in
+            let ac' = browse ac lefts p in
+            browse_para ac' (p::memo) t in
+        browse_para accu [] l in
+    browse [] [] fp
+
+  (* testing *)
+  let rec print_pool (fp:factored_pool) : unit =
+    match fp with
+    | Proc lab -> print_label lab
+    | Para l ->
+    (
+      Printf.printf "[ ";
+      List.iter (fun p -> print_pool p; Printf.printf " ") l;
+      Printf.printf "]";
+    )
+    | Bang l ->
+    (
+      Printf.printf "{ ";
+      List.iter (fun p -> print_pool p; Printf.printf " ") l;
+      Printf.printf "}";
+    )
+
+
 end
 
 
