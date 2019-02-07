@@ -8,8 +8,9 @@ SOURCE = Source/
 # configures and compiles
 compil:
 	$(SOURCE)configure
-	ocamlbuild -use-ocamlfind $(PACKAGES) $(INCLUDES) $(SOURCE)main.native
-	mv main.native $(EXECUTABLE)
+	# ocamlbuild -use-ocamlfind $(PACKAGES) $(INCLUDES) $(SOURCE)main.native
+	# mv main.native $(EXECUTABLE)
+	ocamlbuild -use-ocamlfind $(PACKAGES) $(INCLUDES) $(SOURCE)core_library/operations.native
 
 # removes automatically generated files
 clean:
