@@ -160,7 +160,7 @@ module Symmetry = struct
     (
       Printf.printf "{ ";
       List.iter (fun lp -> Printf.printf "( "; List.iter (fun p -> print_pool p; Printf.printf " ") lp; Printf.printf ")") l;
-      Printf.printf "}";
+      Printf.printf " }";
     )
 
 
