@@ -1,6 +1,6 @@
 PACKAGES = -package str -package unix
 INCLUDES = -I Source/subterms -I Source/distributed -I Source/core_library -I Source/parser
-TEMP = index.html result
+TEMP = *.native index.html result
 EXECUTABLE = deepsec
 SOURCE = Source/
 
@@ -10,7 +10,7 @@ compil:
 	$(SOURCE)configure
 	# ocamlbuild -use-ocamlfind $(PACKAGES) $(INCLUDES) $(SOURCE)main.native
 	# mv main.native $(EXECUTABLE)
-	ocamlbuild -use-ocamlfind $(PACKAGES) $(INCLUDES) $(SOURCE)core_library/operations.native
+	ocamlbuild -use-ocamlfind $(PACKAGES) $(INCLUDES) $(SOURCE)core_library/operation.native
 
 # removes automatically generated files
 clean:
