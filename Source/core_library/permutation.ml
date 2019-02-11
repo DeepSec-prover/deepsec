@@ -31,8 +31,4 @@ let simplify (c:constr) : unit = ()
 pi(i) \in E *)
 let update (p:permutations) (i:int) (iset:int list) : unit =
   ();
-<<<<<<< HEAD
   simplify (fst p)
-=======
-  simplify()
->>>>>>> 1ebe0286ac0d44bec8382a303866ab56e899f6da
