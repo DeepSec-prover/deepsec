@@ -21,6 +21,16 @@ module List = struct
   (* fold_left with arguments in the same order as fold_right *)
   let foldl f l a = fold_left (fun a x -> f x a) a l
 
+  (* rev_map + filter *)
+  let mapif pred f l =
+    let rec map_filter ac pred f l = match l with
+      | [] -> ac
+      | p :: t ->
+        let elt = f p in
+        if pred elt then map_filter (elt::ac) pred f t
+        else map_filter ac pred f t in
+    map_filter [] pred f l
+
   (* finder in list *)
   let rec assoc_opt (e:'a) (l:('a*'b) list) : 'b option =
     match l with

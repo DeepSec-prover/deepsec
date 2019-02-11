@@ -14,6 +14,7 @@ type plain_process =
   | Let of protocol_term * protocol_term * plain_process * plain_process
   | New of name * plain_process
   | Par of plain_process list
+  | Repl of plain_process * int
 
 
 

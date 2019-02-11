@@ -13,6 +13,7 @@ type plain_process =
   Then either [p1] or [p2] is executed depending on whether the unification succeeded or not. *)
   | New of name * plain_process (** [New(n,p)] declares a private name [n] and proceeds to the execution of [p]. *)
   | Par of plain_process list (** [Par(l)] models a list [l] of processes executed concurrently. *)
+  | Repl of plain_process * int (** [Repl(p,n)] models [n] copies of the process [p] executed concurrently. *)
 
 
 (** {2 Labels} *)
