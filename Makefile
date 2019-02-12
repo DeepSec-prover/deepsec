@@ -17,6 +17,9 @@ doc:
 	ocamlbuild -use-ocamlfind $(PACKAGES) $(INCLUDES) doc.docdir/index.html doc.docdir/doc.tex
 	./Documentation/finishdoc
 
+
+
+
 GENERATED_SOURCES_NAME = parser/grammar.ml parser/lexer.ml parser/grammar.mli
 GENERATED_SOURCES = $(GENERATED_SOURCES_NAME:%=$(SOURCE)%)
 
@@ -24,7 +27,7 @@ GENERATED_SOURCES = $(GENERATED_SOURCES_NAME:%=$(SOURCE)%)
 clean:
 	rm -rf _build $(SOURCE)core_library/config.ml $(TEMP)
 	rm -f $(EXECUTABLE) worker_deepsec manager_deepsec
-	rm -f $(SOURCE)core_library/config.ml
+	# cleaning remainder of other branches
 	rm -f *~ *.cm[ioxt] *.cmti *.o
 	rm -f */*~ */*.cm[ioxt] */*.cmti */*.o
 	rm -f */*/*~ */*/*.cm[ioxt] */*/*.cmti */*/*.o */*/*.output
