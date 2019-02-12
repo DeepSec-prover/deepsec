@@ -11,11 +11,22 @@ compil:
 	ocamlbuild -use-ocamlfind $(PACKAGES) $(INCLUDES) $(SOURCE)main.native operation.native
 	mv main.native $(EXECUTABLE)
 
-# removes automatically generated files
-clean:
-	rm -rf _build $(SOURCE)core_library/config.ml $(EXECUTABLE) $(TEMP)
 
 # documentation
 doc:
 	ocamlbuild -use-ocamlfind $(PACKAGES) $(INCLUDES) doc.docdir/index.html doc.docdir/doc.tex
 	./Documentation/finishdoc
+
+GENERATED_SOURCES_NAME = parser/grammar.ml parser/lexer.ml parser/grammar.mli
+GENERATED_SOURCES = $(GENERATED_SOURCES_NAME:%=$(SOURCE)%)
+
+# removes automatically generated files
+clean:
+	rm -rf _build $(SOURCE)core_library/config.ml $(TEMP)
+	rm -f $(EXECUTABLE) worker_deepsec manager_deepsec
+	rm -f $(SOURCE)core_library/config.ml
+	rm -f *~ *.cm[ioxt] *.cmti *.o
+	rm -f */*~ */*.cm[ioxt] */*.cmti */*.o
+	rm -f */*/*~ */*/*.cm[ioxt] */*/*.cmti */*/*.o */*/*.output
+	rm -f $(GENERATED_SOURCES)
+	rm -f .depend .display .display_obj
