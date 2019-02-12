@@ -12,7 +12,7 @@ end
 
 (* constraints on permutations are roughly abstracted as the sets of possible
 values for each permuted element. *)
-type constr = IntSet.t array
+type constr = IntSet.t array * IntSet.t array
 
 (* the constraint Top for permutations on {1,...,n} *)
 let constr_top (n:int) : constr =
