@@ -1245,3 +1245,62 @@ module Set = struct
 
   end
 end
+
+
+
+
+module Array =  struct
+  include Array
+
+  (* finds the small index of an array satisfying a predicate *)
+  let find_opt (f:int->'a->bool) (t:'a array) : int option =
+    let rec search i =
+      if i = Array.length t then None
+      else if f i t.(i) then Some i
+      else search (i+1) in
+    search 0
+
+  (* swaps two indexes of an array *)
+  let swap v i j =
+    let x = v.(i) in
+    v.(i) <- v.(j);
+    v.(j) <- x
+
+  (* applies the permutation (j i i+1 ... j-1) to an array *)
+  let rec move_down_to v i j =
+    if i > j then (swap v i (i-1); move_down_to v (i-1) j)
+
+  (* applies the permutation (i j j-1 ... i+1) to an array *)
+  let rec move_up_to v i j =
+    if i < j then (swap v i (i+1); move_up_to v (i+1) j)
+
+  (* returns true if the arrays v1 is lexicographically smaller than v2, when
+  they are restricted to their indexes between a and b included. *)
+  let rec compare_lex v1 v2 a b =
+    a > b || v2.(a) > v1.(a) || (v1.(a) = v2.(a) && compare_lex v1 v2 (a+1) b)
+
+end
+
+
+module Func = struct
+  let rec loop f x i n = if i > n then x else loop f (f i x) (i+1) n
+  let rec downloop f x i n = if i < n then x else downloop f (f i x) (i-1) n
+  let iter f i n = loop (fun i () -> f i) () i n
+  let downiter f i n = downloop (fun i () -> f i) () i n
+  let rec find f i n =
+    if i > n then raise Not_found
+    else if f i then i
+    else find f (i+1) n
+  let rec downfind f i n =
+    if i < n then raise Not_found
+    else if f i then i
+    else downfind f (i-1) n
+  let rec find_opt f i n =
+    if i > n then None
+    else if f i then Some i
+    else find_opt f (i+1) n
+  let rec downfind_opt f i n =
+    if i < n then None
+    else if f i then Some i
+    else downfind_opt f (i-1) n
+end

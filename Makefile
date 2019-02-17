@@ -8,7 +8,7 @@ SOURCE = Source/
 # configures and compiles
 compil:
 	$(SOURCE)configure
-	ocamlbuild -use-ocamlfind $(PACKAGES) $(INCLUDES) $(SOURCE)main.native operation.native
+	ocamlbuild -use-ocamlfind $(PACKAGES) $(INCLUDES) $(SOURCE)main.native operation.native permutation.native
 	mv main.native $(EXECUTABLE)
 
 
