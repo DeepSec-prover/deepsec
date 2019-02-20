@@ -28,7 +28,7 @@ type constr =
   first_non_singleton_inv : int option ;
 
   solution : solution ; (* a perm. satisfying the constraint, if any *)
-  normalised_sol : bool ; (* indicates whether solution satisfies the constraint. In which case, it is the lexicographically-minimal solution. *)
+  sat : bool ; (* indicates whether solution satisfies the constraint. In which case, it is the lexicographically-minimal solution. *)
 }
 
 
@@ -95,3 +95,8 @@ let update_solution (c:constr) : bool =
   let n = Array.length c.solution in
   Func.find_opt (fun i->IntSet.mem c.solution.(i) c.restr.(i)) 0 (n-1) = None ||
   find_min_solution c
+
+
+
+
+(* TODO the big constraint solving procedure comes here *)
