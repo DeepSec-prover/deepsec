@@ -31,6 +31,13 @@ module List = struct
         else map_filter ac pred f t in
     map_filter [] pred f l
 
+  (* removes all elements of a list verifying a given predicate, and returns
+  one such element (if any). The ordering is not preserved. *)
+  let find_and_remove (f:'a->bool) (l:'a list) : 'a option * 'a list =
+    List.fold_left (fun (elt,accu) x ->
+      if f x then (Some x,accu) else (elt,x::accu)
+    ) (None,[]) l
+
   (* finder in list *)
   let rec assoc_opt (e:'a) (l:('a*'b) list) : 'b option =
     match l with

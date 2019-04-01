@@ -5,31 +5,106 @@ open Display
 open Extensions
 
 
-type todo = unit (* pending datatype *)
+type todo = unit (* pending datatypes *)
+exception Todo (* pending definitions *)
 
 
 
-(* Basic types for representing processes and traces *)
+(* position of parallel subprocesses *)
+type position = int
+type label = position list
+
+(* Basic types for representing processes and traces, without parallels *)
 type plain_process =
+  | Nil
   | Input of symbol * fst_ord_variable * plain_process
   | Output of symbol * protocol_term * plain_process
   | OutputSure of symbol * protocol_term * plain_process
   | If of protocol_term * protocol_term * plain_process * plain_process
   | Let of protocol_term * protocol_term * plain_process * plain_process
   | New of name * plain_process
-  | Par of plain_process list
-  | Repl of plain_process * int
+  (* | Par of plain_process list
+  | Repl of plain_process list list *)
+
+type labelled_process = {
+  proc : plain_process ;
+  label : label
+}
+
+type factored_process =
+  | Proc of labelled_process
+  | Para of factored_process list
+  | Bang of factored_process list list
+
+(* extracts the list of all labelled_process from a factored_process *)
+let process_list_of_factored_process (fp:factored_process) : labelled_process list =
+  let rec gather accu fp =
+    match fp with
+    | Proc lp -> lp :: accu
+    | Para fpl -> List.fold_left gather accu fpl
+    | Bang fpll -> List.fold_left (List.fold_left gather) accu fpll in
+  gather [] fp
+
+(* flattens meaningless nested constructs in processes *)
+let rec flatten_factored_process (p:factored_process): factored_process =
+  match p with
+  | Proc _
+  | Para []
+  | Bang [] -> p
+  | Para [p]
+  | Bang [[p]] -> flatten_factored_process p
+  | Para l ->
+    let res = List.fold_left (fun ac fp ->
+      match flatten_factored_process fp with
+      | Para l -> List.rev_append l ac
+      | Bang [] -> ac
+      | pp -> pp :: ac) [] l in
+    Para res
+  | Bang l -> (
+    let not_nil fp =
+      match fp with
+      | Proc lp -> lp.proc <> Nil
+      | Bang []
+      | Para [] -> false
+      | _ -> true in
+    match
+      List.mapif ((<>) []) (fun fpl ->
+        List.mapif not_nil flatten_factored_process fpl
+      ) l with
+    | [[p]] -> p
+    | l -> Bang l
+  )
+
+(* Returns all ways to unfold a subprocess from a process (returns the
+list of pairs (unfolded process, remaining processes). *)
+let unfold_factored_process ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_channel_renaming:(opt:bool=true) (fp:factored_process) : (labelled_process * factored_process) list =
+
+  let rec browse accu leftovers fp = match fp with
+    | Proc p ->
+      if f p then (p, flatten_factored_process (Para leftovers)) :: accu
+      else accu
+    | Para l ->
+      let rec browse_para ac memo l = match l with
+        | [] -> ac
+        | p :: t ->
+          let lefts = List.rev_append t (List.rev_append memo leftovers) in
+          browse_para (browse ac lefts p) (p::memo) t in
+      browse_para accu [] l
+    | Bang l when not opt ->
+      let rec browse_bang ac memo l = match l with
+        | [] -> ac
+        | [] :: t -> browse_bang ac memo t
+        | (p::tp as ll) :: t ->
+          let lefts = Bang(tp::List.rev_append memo t) :: leftovers in
+          browse_bang (browse ac lefts p) (ll::memo) t in
+      browse_bang accu [] l
+    | Bang [] -> accu
+    | Bang ([]::t) -> browse accu leftovers (Bang t)
+    | Bang ((p::tp) :: t) -> browse accu (Bang (tp::t) :: leftovers) p in
+
+  browse [] [] fp
 
 
-
-
-(********************************* Labels ***********************************)
-
-
-(* labels to make reference to subprocess positions, in order to process
-bi-process matchings, partial-order reductions and symmetries *)
-type label = int list
-type labelled_process = label * plain_process
 
 (* comparing labels for POR: returns 0 if one label is prefix of the other,
 and compares the labels lexicographically otherwise. *)
@@ -45,162 +120,62 @@ let print_label : label -> unit = List.iter (Printf.printf "%d.")
 
 
 
+(* sets of bijections with the skeleton-compatibility requirement *)
+type bijection_set = (labelled_process list * labelled_process list) list
+type 'a partition = 'a list list
 
 
-(*********************************** POR ***********************************)
-
-(* Modelling the restriction on traces induced by partial-order reductions
-NB. Specific to the Private Semantics, without private channels. *)
-module POR = struct
-
-  (* partial-order reduction status in the trace *)
-  type status = [ `Focus of label | `Neg ]
-
-  (* TODO *)
-end
-
+(* partitions a list in equivalence classes wrt to some equivalence relation *)
+let partition_equivalence (equiv:'a->'a->bool) (l:'a list) : 'a partition =
+  let rec insert memo partition x =
+    match partition with
+    | [] -> [x] :: memo
+    | [] :: t -> Config.internal_error "process_session.ml > partition_equivalence: unexpected case"
+    | (y::_ as equiv_class) :: t ->
+      if equiv x y then List.rev_append memo ((x::equiv_class) :: t)
+      else insert (equiv_class :: memo) t x in
+  List.fold_left (insert []) [] l
 
 
-(******************************* Symmetries ********************************)
-
-module Symmetry = struct
-
-  (************************** Process comparison ***************************)
-
-
-
-
-
-
-
-
-
-  (************* Reflecting symmetries as a structure on labels ************)
-
-  type factored_process =
-    | Proc of labelled_process (* a label and a process *)
-    | Para of factored_process list (* Para [P1;...;Pn] models P1|...|Pn *)
-    | Bang of factored_process list list (* Bang [l1;...;ln] models !^k1 P1|...|!^kn Pn where ki = List.length li, Pi=List.hd li, and P1,...,Pn are identical up to channel renaming. *)
+(* links two equivalence relations to form a bijection set. Returns None if the
+resulting set is empty. *)
+let link_partitions (equiv:'a->'a->bool) (p1:'a partition) (p2:'a partition) : ('a list * 'a list) list option =
+  let rec browse accu p1 p2 =
+    match p1 with
+    | [] -> Some accu
+    | [] :: _ -> Config.internal_error "process_session > link_partitions: unexpected case"
+    | (x::_ as ec1) :: p1' ->
+      match List.find_and_remove (fun ec2 -> equiv x (List.hd ec2)) p2 with
+      | None,_ -> None
+      | Some ec2,p2' ->
+        if List.length ec1 <> List.length ec2 then None
+        else browse ((ec1,ec2)::accu) p1' p2' in
+  browse [] p1 p2
 
 
-  (* cleaning function removing useless constructors. *)
-  let rec flatten_pool (fp:factored_process) : factored_process =
-    match fp with
-    | Proc _
-    | Bang []
-    | Para [] -> fp
-    | Para [p] -> flatten_pool p
-    | Bang l ->
-    (
-      let pred p = p <> Bang [] && p <> Para [] in
-      match Bang (List.mapif ((<>) []) (List.mapif pred flatten_pool) l) with
-      | Bang [[p]] -> p
-      | p -> p
-    )
-    | Para l ->
-      let res = List.fold_left (fun ac p ->
-        match flatten_pool p with
-        | Para l -> List.rev_append l ac
-        | Bang [] -> ac
-        | pp -> pp :: ac) [] l in
-      Para res
-
-
-  (* TODO: factorisation function *)
-  let factor_pool (fp:factored_process) : factored_process = fp
-
-
-  (* Returns all possible ways to unfold a process from a pool (returns the
-  list of pairs (unfolded process, remaining processes). *)
-  let unfold_pool ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_channel_renaming:(opt:bool=true) (fp:factored_process) : (labelled_process * factored_process) list =
-
-    let rec browse accu leftovers fp = match fp with
-      | Proc p ->
-        if f p then (p, flatten_pool (Para leftovers)) :: accu
-        else accu
-      | Para l ->
-        let rec browse_para ac memo l = match l with
-          | [] -> ac
-          | p :: t ->
-            let lefts = List.rev_append t (List.rev_append memo leftovers) in
-            browse_para (browse ac lefts p) (p::memo) t in
-        browse_para accu [] l
-      | Bang l when not opt ->
-        let rec browse_bang ac memo l = match l with
-          | [] -> ac
-          | [] :: t -> browse_bang ac memo t
-          | (p::tp as ll) :: t ->
-            let lefts = Bang(tp::List.rev_append memo t) :: leftovers in
-            browse_bang (browse ac lefts p) (ll::memo) t in
-        browse_bang accu [] l
-      | Bang [] -> accu
-      | Bang ([]::t) -> browse accu leftovers (Bang t)
-      | Bang ((p::tp) :: t) -> browse accu (Bang (tp::t) :: leftovers) p in
-
-    browse [] [] fp
+(* creates the bijection_set containing the possible matchings of two lists of
+parallel processes, wrt to a predicate for skeleton compatibility. *)
+let init_bijection_set (compatible:plain_process->plain_process->bool) (fp1:factored_process) (fp2:factored_process) : bijection_set option =
+  let compatible_l lp1 lp2 = compatible lp1.proc lp2.proc in
+  let partition_labels fp =
+    partition_equivalence compatible_l (process_list_of_factored_process fp) in
+  link_partitions compatible_l (partition_labels fp1) (partition_labels fp2)
 
 
 
-
-
-  (******************************* Testing *********************************)
-
-  let rec print_pool (fp:factored_process) : unit =
-    match fp with
-    | Proc lab -> print_label (fst lab)
-    | Para l ->
-    (
-      Printf.printf "[ ";
-      List.iter (fun p -> print_pool p; Printf.printf " ") l;
-      Printf.printf "]";
-    )
-    | Bang l ->
-    (
-      Printf.printf "{ ";
-      List.iter (fun lp -> Printf.printf "( "; List.iter (fun p -> print_pool p; Printf.printf " ") lp; Printf.printf ")") l;
-      Printf.printf " }";
-    )
-
-
-end
-
-
-
-
-
-(******************************** Skeletons ********************************)
-
-(* the type of sets of symbols *)
-type ioskeleton = InSkel of symbol | OutSkel of symbol
-module IOMap = struct
-  include Map.Make(struct type t = ioskeleton let compare = compare end)
-  let incr (x:key) (m:int t) : int t =
-    update x (function None -> Some 1 | Some n -> Some (n+1)) m
-  let decr (x:key) (m:int t) : int t =
-    update x (function None -> Some 1 | Some 1 -> None | Some n -> Some (n-1)) m
-end
-
-type skeleton = int IOMap.t
-let nil_skeleton : skeleton = IOMap.empty
-let input_skeleton (s:symbol) : skeleton = IOMap.singleton (InSkel s) 1
-let output_skeleton (s:symbol) : skeleton = IOMap.singleton (OutSkel s) 1
-
-
-
-(******************************* Permutations ******************************)
-
-type bijection_set = todo
-
-
-
-(**************************** Symbolic processes ***************************)
-
-type transition = { label : label ; valid : bool }
-type status = Forall | Exists | Both
-type additional_data = todo
-type symbolic_process = {
-  process : Symmetry.factored_process ;
-  status : status ;
-  mutable next_transition : (transition * additional_data Constraint_system.t * Symmetry.factored_process) list option
-}
-type matching = (symbolic_process * (symbolic_process * bijection_set) list) list
+(* restricts a bijection_set with the set of bijections pi such that
+pi(l1) = l2. Returns None if the resulting set is empty. Assumes that the
+argument was not already empty. *)
+let restrict_to_bijection_set (l1:label) (l2:label) (s:bijection_set) : bijection_set option =
+  let rec search memo s =
+    match s with
+    | [] -> None
+    | (ll1,ll2) :: t ->
+      let has_label l lp = lp.label = l in
+      match List.find_and_remove (has_label l1) ll1,
+            List.find_and_remove (has_label l2) ll2 with
+      | (None,_),(None,_) -> search ((ll1,ll2) :: memo) t
+      | (Some l1,ll1'),(Some l2,ll2') ->
+        Some (List.rev_append (([l1],[l2])::(ll1',ll2')::t) memo)
+      | _ -> None in
+  search [] s
