@@ -15,26 +15,24 @@ type position = int
 type label = position list
 
 (* Basic types for representing processes and traces, without parallels *)
-type plain_process =
-  | Nil
-  | Input of symbol * fst_ord_variable * plain_process
-  | Output of symbol * protocol_term * plain_process
-  | OutputSure of symbol * protocol_term * plain_process
-  | If of protocol_term * protocol_term * plain_process * plain_process
-  | Let of protocol_term * protocol_term * plain_process * plain_process
-  | New of name * plain_process
-  (* | Par of plain_process list
-  | Repl of plain_process list list *)
-
 type labelled_process = {
-  proc : plain_process ;
+  proc : process ;
   label : label
 }
 
-type factored_process =
-  | Proc of labelled_process
-  | Para of factored_process list
-  | Bang of factored_process list list
+and process =
+  | Nil
+  | Input of symbol * fst_ord_variable * labelled_process
+  | Output of symbol * protocol_term * labelled_process
+  | OutputSure of symbol * protocol_term * labelled_process
+  | If of protocol_term * protocol_term * labelled_process * labelled_process
+  (* | Let of protocol_term * protocol_term * labelled_process * labelled_process *)
+  | New of name * labelled_process
+  | Par of labelled_process list list list
+
+
+
+
 
 (* extracts the list of all labelled_process from a factored_process *)
 let process_list_of_factored_process (fp:factored_process) : labelled_process list =
@@ -46,11 +44,11 @@ let process_list_of_factored_process (fp:factored_process) : labelled_process li
   gather [] fp
 
 (* flattens meaningless nested constructs in processes *)
-let rec flatten_factored_process (p:factored_process): factored_process =
-  match p with
+let rec flatten_factored_process (fp:factored_process): factored_process =
+  match fp with
   | Proc _
   | Para []
-  | Bang [] -> p
+  | Bang [] -> fp
   | Para [p]
   | Bang [[p]] -> flatten_factored_process p
   | Para l ->
@@ -105,6 +103,58 @@ let unfold_factored_process ?filter:(f:labelled_process->bool=fun _ -> true) ?al
   browse [] [] fp
 
 
+(* factorisation of processes *)
+let factor (fp:factored_process) : factored_process = raise Todo
+
+
+(* conversion from a usual process *)
+let rec plain_process_of_expansed_process (p:Process.expansed_process) : plain_process =
+  match p with
+  | Process.Nil -> Nil
+  | Process.Output(ch,_,_)
+  | Process.Input(ch,_,_) when not (is_function ch) ->
+    Config.internal_error "[process_session.ml >> factored_process_of_expansed_process] Inputs/Outputs should only be done on atomic channels."
+  | Process.Output(ch,t,p) ->
+    Output(root ch,t,plain_process_of_expansed_process p)
+  | Process.Input(ch,x,p) ->
+    Input(root ch,x,plain_process_of_expansed_process p)
+  | Process.IfThenElse(t1,t2,pthen,pelse) ->
+    let p_then = plain_process_of_expansed_process pthen in
+    let p_else = plain_process_of_expansed_process pelse in
+    If(t1,t2,p_then,p_else)
+  | Process.New(n,p) ->
+    New(n,plain_process_of_expansed_process p)
+  | Process.Par _ -> Config.internal_error "[process_session.ml >> plain_process_of_expansed_process] Unexpected case"
+  | Process.Choice _
+  | Process.Let _ -> Config.internal_error "[process_session.ml >> plain_process_of_expansed_process] *Choice* and *Let* not implemented yet for equivalence by session."
+
+
+let rec factored_process_of_expansed_process (p:Process.expansed_process) : factored_process =
+    match p with
+    | Process.Nil -> Nil
+    | Process.Output(ch,_,_)
+    | Process.Input(ch,_,_) when not (is_function ch) ->
+      Config.internal_error "[process_session.ml >> factored_process_of_expansed_process] Inputs/Outputs should only be done on atomic channels."
+    | Process.Output(ch,t,p) ->
+      Output(root ch,t,factored_process_of_expansed_process p)
+    | Process.Input(ch,x,p) ->
+      Input(root ch,x,factored_process_of_expansed_process p)
+    | Process.IfThenElse(t1,t2,pthen,pelse) ->
+      let p_then = factored_process_of_expansed_process pthen in
+      let p_else = factored_process_of_expansed_process pelse in
+      If(t1,t2,p_then,p_else)
+    | Process.New(n,p) ->
+      New(n,factored_process_of_expansed_process p)
+    | Process.Par(mult_p) ->
+      let lp =
+        List.rev_map (fun (p,n) ->
+
+        ) mult_p in
+      Para (flatten_factored_process lp)
+    | Process.Choice _ -> Config.internal_error "[process_session.ml >> factored_process_of_expansed_process] *Choice* not implemented yet for equivalence by session."
+    | Process.Let _ -> Config.internal_error "[process_session.ml >> factored_process_of_expansed_process] *Let* not implemented yet for equivalence by session."
+
+
 
 (* comparing labels for POR: returns 0 if one label is prefix of the other,
 and compares the labels lexicographically otherwise. *)
@@ -122,15 +172,31 @@ let print_label : label -> unit = List.iter (Printf.printf "%d.")
 
 (* sets of bijections with the skeleton-compatibility requirement *)
 type bijection_set = (labelled_process list * labelled_process list) list
-type 'a partition = 'a list list
+
+(* gathering all matching constraints, indexed by labels *)
+module LabelMap =
+  Map.Make(struct
+    type t = label
+    let compare = compare
+  end)
+type matching_constraints = bijection_set LabelMap.t
+
+(* apply a constraint c on a bijection_set indexed by a label l *)
+let apply_constraint_on_matching (mc:matching_constraints) (l:label) (c:bijection_set->bijection_set) : matching_constraints =
+  LabelMap.update l (fun bs_opt -> match bs_opt with
+    | None -> Config.internal_error "[process_session.ml >> apply_constraint_on_matching] Unexpected case"
+    | Some bs -> Some (c bs)
+  ) mc
 
 
 (* partitions a list in equivalence classes wrt to some equivalence relation *)
+type 'a partition = 'a list list
+
 let partition_equivalence (equiv:'a->'a->bool) (l:'a list) : 'a partition =
   let rec insert memo partition x =
     match partition with
     | [] -> [x] :: memo
-    | [] :: t -> Config.internal_error "process_session.ml > partition_equivalence: unexpected case"
+    | [] :: t -> Config.internal_error "[process_session.ml >> partition_equivalence] Unexpected case"
     | (y::_ as equiv_class) :: t ->
       if equiv x y then List.rev_append memo ((x::equiv_class) :: t)
       else insert (equiv_class :: memo) t x in
@@ -143,7 +209,7 @@ let link_partitions (equiv:'a->'a->bool) (p1:'a partition) (p2:'a partition) : (
   let rec browse accu p1 p2 =
     match p1 with
     | [] -> Some accu
-    | [] :: _ -> Config.internal_error "process_session > link_partitions: unexpected case"
+    | [] :: _ -> Config.internal_error "[process_session >> link_partitions] Unexpected case"
     | (x::_ as ec1) :: p1' ->
       match List.find_and_remove (fun ec2 -> equiv x (List.hd ec2)) p2 with
       | None,_ -> None
@@ -155,18 +221,18 @@ let link_partitions (equiv:'a->'a->bool) (p1:'a partition) (p2:'a partition) : (
 
 (* creates the bijection_set containing the possible matchings of two lists of
 parallel processes, wrt to a predicate for skeleton compatibility. *)
-let init_bijection_set (compatible:plain_process->plain_process->bool) (fp1:factored_process) (fp2:factored_process) : bijection_set option =
-  let compatible_l lp1 lp2 = compatible lp1.proc lp2.proc in
+let init_bijection_set (skel_check:plain_process->plain_process->bool) (fp1:factored_process) (fp2:factored_process) : bijection_set option =
+  let skel_check_l lp1 lp2 = skel_check lp1.proc lp2.proc in
   let partition_labels fp =
-    partition_equivalence compatible_l (process_list_of_factored_process fp) in
-  link_partitions compatible_l (partition_labels fp1) (partition_labels fp2)
+    partition_equivalence skel_check_l (process_list_of_factored_process fp) in
+  link_partitions skel_check_l (partition_labels fp1) (partition_labels fp2)
 
 
 
 (* restricts a bijection_set with the set of bijections pi such that
 pi(l1) = l2. Returns None if the resulting set is empty. Assumes that the
 argument was not already empty. *)
-let restrict_to_bijection_set (l1:label) (l2:label) (s:bijection_set) : bijection_set option =
+let restrict_bijection_set (l1:label) (l2:label) (s:bijection_set) : bijection_set option =
   let rec search memo s =
     match s with
     | [] -> None
@@ -179,3 +245,10 @@ let restrict_to_bijection_set (l1:label) (l2:label) (s:bijection_set) : bijectio
         Some (List.rev_append (([l1],[l2])::(ll1',ll2')::t) memo)
       | _ -> None in
   search [] s
+
+
+(* a process with additional information for POR *)
+type configuration = {
+  input_proc : factored_process list;
+  focused_proc : factored_process ;
+}
