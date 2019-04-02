@@ -20,6 +20,9 @@ type labelled_process = {
   label : label
 }
 
+and replicated_process = labelled_process list list (* [l1;...;lp] models parallel processes that are identical up to channel renaming; each list li modelling structurally equivalent processes. E.g. !^n P is modelled as
+[[P;...;P]] *)
+
 and process =
   | Input of symbol * fst_ord_variable * labelled_process
   | Output of symbol * protocol_term * labelled_process
@@ -27,7 +30,8 @@ and process =
   | If of protocol_term * protocol_term * labelled_process * labelled_process
   (* | Let of protocol_term * protocol_term * labelled_process * labelled_process *)
   | New of name * labelled_process
-  | Par of labelled_process list list list (* Par [ll1;...;lln] models parallel processes ll1,...,lln in parallel; each list lli = [l1;...;lp] models parallel processes that are identical up to channel renaming; and each list li models structurally equivalent processes. I.e. !^n P is modelled as Par [[[P;...;P]]] and P1|...|Pn as Par [[[P1]];...;[[Pn]]]*)
+  | Par of replicated_process list
+
 
 
 (* flattens unecessary constructs in processes *)
@@ -49,7 +53,35 @@ and flatten_labelled_process (lp:labelled_process) : labelled_process =
   {lp with proc = flatten_process lp.proc}
 
 
-let rec print = function
+(* conversion from expansed processes *)
+let of_expansed_process (p:Process.expansed_process) : labelled_process =
+  let rec browse lab p = match p with
+    | Process.Nil -> {proc = Par []; label = lab}
+    | Process.Output(ch,_,_)
+    | Process.Input(ch,_,_) when not (is_function ch) ->
+      Config.internal_error "[process_session.ml >> factored_process_of_expansed_process] Inputs/Outputs should only be done on atomic channels."
+    | Process.Output(ch,t,pp) ->
+      {proc = Output(root ch,t,browse lab pp); label = lab}
+    | Process.Input(ch,x,pp) ->
+      {proc = Input(root ch,x,browse lab pp); label = lab}
+    | Process.IfThenElse(t1,t2,pthen,pelse) ->
+      let p_then = browse lab pthen in
+      let p_else = browse lab pelse in
+      {proc = If(t1,t2,p_then,p_else); label = lab}
+    | Process.New(n,pp) ->
+      {proc = New(n,browse lab pp); label = lab}
+    | Process.Par lp ->
+      let lll =
+        List.rev_map (fun (pp,i) ->
+          [Func.loop (fun pos ac -> browse (pos::lab) pp :: ac) [] 0 (i-1)]
+        ) lp in
+      {proc = Par lll; label = lab}
+    | Process.Choice _
+    | Process.Let _ -> Config.internal_error "[process_session.ml >> plain_process_of_expansed_process] *Choice* and *Let* not implemented yet for equivalence by session." in
+  browse [0] p
+
+
+(* let rec print = function
   | {proc = Par lll; label = lab} ->
     Printf.sprintf "Par<%s> %s" (List.fold_left (Printf.sprintf "%s%d") "" lab) (List.fold_left (fun s ll ->
       Printf.sprintf "%s[%s] " s (List.fold_left (fun s l ->
@@ -63,134 +95,62 @@ let rec print = function
     )
   | {label = lab; _} -> List.fold_left (Printf.sprintf "%s%d") "" lab
 
-(* let _ =
-  let atomic p l = {proc = p; label = l} in
-  let p = Par [[[atomic Nil [1]; atomic Nil [2]];[atomic Nil [3]; atomic Nil [4]]];[[atomic (Par []) [5]]];[[atomic (Par [[[atomic (Par [[[atomic Nil [9]]]]) [8]]]]) [7]]]] in
-  let lp = {proc = p; label = [0]} in
-  print_endline (print lp);
-  print_endline (print (flatten_labelled_process lp)) *)
+let _ =
+  let p1 = Process.Par [Process.Nil,8; Process.Nil,3] in
+  let p2 = Process.Par [Process.Nil,2; Process.Nil,3; Process.Nil,1] in
+  let p = Process.Par [p1,3; p2,7; Process.Nil,2] in
+  print_endline (print (of_expansed_process p)) *)
 
 
 
-(* extracts the list of all labelled_process from a factored_process *)
-(* let process_list_of_factored_process (fp:factored_process) : labelled_process list =
-  let rec gather accu fp =
-    match fp with
-    | Proc lp -> lp :: accu
-    | Para fpl -> List.fold_left gather accu fpl
-    | Bang fpll -> List.fold_left (List.fold_left gather) accu fpll in
-  gather [] fp
+(* extracts the list of all parallel labelled_process from a labelled_process *)
+let list_of_labelled_process (lp:labelled_process) : labelled_process list =
+  let rec gather accu lp = match lp with
+    | {proc = Par lll; _} ->
+      List.fold_left (List.fold_left (List.fold_left gather)) accu lll
+    | _ -> lp :: accu in
+  gather [] lp
 
-(* flattens meaningless nested constructs in processes *)
-let rec flatten_factored_process (fp:factored_process): factored_process =
-  match fp with
-  | Proc _
-  | Para []
-  | Bang [] -> fp
-  | Para [p]
-  | Bang [[p]] -> flatten_factored_process p
-  | Para l ->
-    let res = List.fold_left (fun ac fp ->
-      match flatten_factored_process fp with
-      | Para l -> List.rev_append l ac
-      | Bang [] -> ac
-      | pp -> pp :: ac) [] l in
-    Para res
-  | Bang l -> (
-    let not_nil fp =
-      match fp with
-      | Proc lp -> lp.proc <> Nil
-      | Bang []
-      | Para [] -> false
-      | _ -> true in
-    match
-      List.mapif ((<>) []) (fun fpl ->
-        List.mapif not_nil flatten_factored_process fpl
-      ) l with
-    | [[p]] -> p
-    | l -> Bang l
-  )
 
-(* Returns all ways to unfold a subprocess from a process (returns the
-list of pairs (unfolded process, remaining processes). *)
-let unfold_factored_process ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_channel_renaming:(opt:bool=true) (fp:factored_process) : (labelled_process * factored_process) list =
 
-  let rec browse accu leftovers fp = match fp with
-    | Proc p ->
-      if f p then (p, flatten_factored_process (Para leftovers)) :: accu
-      else accu
-    | Para l ->
-      let rec browse_para ac memo l = match l with
-        | [] -> ac
-        | p :: t ->
-          let lefts = List.rev_append t (List.rev_append memo leftovers) in
-          browse_para (browse ac lefts p) (p::memo) t in
-      browse_para accu [] l
-    | Bang l when not opt ->
-      let rec browse_bang ac memo l = match l with
-        | [] -> ac
-        | [] :: t -> browse_bang ac memo t
-        | (p::tp as ll) :: t ->
-          let lefts = Bang(tp::List.rev_append memo t) :: leftovers in
-          browse_bang (browse ac lefts p) (ll::memo) t in
-      browse_bang accu [] l
-    | Bang [] -> accu
-    | Bang ([]::t) -> browse accu leftovers (Bang t)
-    | Bang ((p::tp) :: t) -> browse accu (Bang (tp::t) :: leftovers) p in
+let unfold_process ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_channel_renaming:(opt:bool=true) (rpl:replicated_process list) : (labelled_process * replicated_process list) list =
 
-  browse [] [] fp
+  let rec unfold_par accu leftovers memo lll continuation = match lll with
+    | [] -> continuation accu
+    | ll :: t ->
+      let leftovers' = List.rev_append leftovers (List.rev_append memo t) in
+      unfold_weak_bang accu leftovers' [] ll (fun accu' ->
+        unfold_par accu' leftovers (ll::memo) t continuation
+      )
+
+  and unfold_weak_bang accu leftovers memo ll continuation = match ll with
+    | [] -> continuation accu
+    | l :: t ->
+      let leftovers' = match List.rev_append memo t with
+        | [] -> leftovers
+        | res -> res :: leftovers in
+      unfold_bang accu leftovers' l (fun accu' ->
+        if opt then continuation accu'
+        else unfold_weak_bang accu' leftovers (l::memo) t continuation
+      )
+
+  and unfold_bang accu leftovers l continuation = match l with
+    | [] -> continuation accu
+    | [p] -> unfold accu leftovers p continuation
+    | p :: t -> unfold accu ([t]::leftovers) p continuation
+
+  and unfold accu leftovers p continuation = match p with
+    | {proc = Par lll; _} -> unfold_par accu leftovers [] lll continuation
+    | _ -> continuation (if f p then (p,leftovers)::accu else accu) in
+
+  unfold_par [] [] [] rpl (fun accu -> accu)
+
 
 
 (* factorisation of processes *)
-let factor (fp:factored_process) : factored_process = raise Todo
+let factor (fp:replicated_process list) : replicated_process list =
+  raise Todo
 
-
-(* conversion from a usual process *)
-let rec plain_process_of_expansed_process (p:Process.expansed_process) : plain_process =
-  match p with
-  | Process.Nil -> Nil
-  | Process.Output(ch,_,_)
-  | Process.Input(ch,_,_) when not (is_function ch) ->
-    Config.internal_error "[process_session.ml >> factored_process_of_expansed_process] Inputs/Outputs should only be done on atomic channels."
-  | Process.Output(ch,t,p) ->
-    Output(root ch,t,plain_process_of_expansed_process p)
-  | Process.Input(ch,x,p) ->
-    Input(root ch,x,plain_process_of_expansed_process p)
-  | Process.IfThenElse(t1,t2,pthen,pelse) ->
-    let p_then = plain_process_of_expansed_process pthen in
-    let p_else = plain_process_of_expansed_process pelse in
-    If(t1,t2,p_then,p_else)
-  | Process.New(n,p) ->
-    New(n,plain_process_of_expansed_process p)
-  | Process.Par _ -> Config.internal_error "[process_session.ml >> plain_process_of_expansed_process] Unexpected case"
-  | Process.Choice _
-  | Process.Let _ -> Config.internal_error "[process_session.ml >> plain_process_of_expansed_process] *Choice* and *Let* not implemented yet for equivalence by session."
-
-
-let rec factored_process_of_expansed_process (p:Process.expansed_process) : factored_process =
-    match p with
-    | Process.Nil -> Nil
-    | Process.Output(ch,_,_)
-    | Process.Input(ch,_,_) when not (is_function ch) ->
-      Config.internal_error "[process_session.ml >> factored_process_of_expansed_process] Inputs/Outputs should only be done on atomic channels."
-    | Process.Output(ch,t,p) ->
-      Output(root ch,t,factored_process_of_expansed_process p)
-    | Process.Input(ch,x,p) ->
-      Input(root ch,x,factored_process_of_expansed_process p)
-    | Process.IfThenElse(t1,t2,pthen,pelse) ->
-      let p_then = factored_process_of_expansed_process pthen in
-      let p_else = factored_process_of_expansed_process pelse in
-      If(t1,t2,p_then,p_else)
-    | Process.New(n,p) ->
-      New(n,factored_process_of_expansed_process p)
-    | Process.Par(mult_p) ->
-      let lp =
-        List.rev_map (fun (p,n) ->
-
-        ) mult_p in
-      Para (flatten_factored_process lp)
-    | Process.Choice _ -> Config.internal_error "[process_session.ml >> factored_process_of_expansed_process] *Choice* not implemented yet for equivalence by session."
-    | Process.Let _ -> Config.internal_error "[process_session.ml >> factored_process_of_expansed_process] *Let* not implemented yet for equivalence by session."
 
 
 
@@ -259,10 +219,10 @@ let link_partitions (equiv:'a->'a->bool) (p1:'a partition) (p2:'a partition) : (
 
 (* creates the bijection_set containing the possible matchings of two lists of
 parallel processes, wrt to a predicate for skeleton compatibility. *)
-let init_bijection_set (skel_check:plain_process->plain_process->bool) (fp1:factored_process) (fp2:factored_process) : bijection_set option =
+let init_bijection_set (skel_check:process->process->bool) (fp1:labelled_process) (fp2:labelled_process) : bijection_set option =
   let skel_check_l lp1 lp2 = skel_check lp1.proc lp2.proc in
-  let partition_labels fp =
-    partition_equivalence skel_check_l (process_list_of_factored_process fp) in
+  let partition_labels lp =
+    partition_equivalence skel_check_l (list_of_labelled_process lp) in
   link_partitions skel_check_l (partition_labels fp1) (partition_labels fp2)
 
 
@@ -287,6 +247,9 @@ let restrict_bijection_set (l1:label) (l2:label) (s:bijection_set) : bijection_s
 
 (* a process with additional information for POR *)
 type configuration = {
-  input_proc : factored_process list;
-  focused_proc : factored_process ;
-} *)
+  input_proc : replicated_process list;
+  focused_proc : labelled_process ;
+  sure_output_proc : replicated_process list;
+  unsure_proc : todo;
+  trace : todo
+}
