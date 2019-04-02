@@ -21,7 +21,7 @@ module List = struct
   (* fold_left with arguments in the same order as fold_right *)
   let foldl f l a = fold_left (fun a x -> f x a) a l
 
-  (* rev_map + filter *)
+  (* rev_map + filter (on the transformed elements) *)
   let mapif pred f l =
     let rec map_filter ac pred f l = match l with
       | [] -> ac

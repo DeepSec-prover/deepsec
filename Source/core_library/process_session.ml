@@ -21,21 +21,59 @@ type labelled_process = {
 }
 
 and process =
-  | Nil
   | Input of symbol * fst_ord_variable * labelled_process
   | Output of symbol * protocol_term * labelled_process
   | OutputSure of symbol * protocol_term * labelled_process
   | If of protocol_term * protocol_term * labelled_process * labelled_process
   (* | Let of protocol_term * protocol_term * labelled_process * labelled_process *)
   | New of name * labelled_process
-  | Par of labelled_process list list list
+  | Par of labelled_process list list list (* Par [ll1;...;lln] models parallel processes ll1,...,lln in parallel; each list lli = [l1;...;lp] models parallel processes that are identical up to channel renaming; and each list li models structurally equivalent processes. I.e. !^n P is modelled as Par [[[P;...;P]]] and P1|...|Pn as Par [[[P1]];...;[[Pn]]]*)
 
 
+(* flattens unecessary constructs in processes *)
+let rec flatten_process (p:process) : process =
+  match p with
+  | Par lll ->
+    let lll' =
+      List.fold_left (fun ac ll ->
+        let ll_flat = List.rev_map (List.rev_map flatten_labelled_process) ll in
+        match ll_flat with
+        | [] -> ac
+        | [[{proc = Par l; _}]] -> List.rev_append l ac
+        | _ -> ll :: ac
+      ) [] lll in
+    Par lll'
+  | _ -> p
+
+and flatten_labelled_process (lp:labelled_process) : labelled_process =
+  {lp with proc = flatten_process lp.proc}
+
+
+let rec print = function
+  | {proc = Par lll; label = lab} ->
+    Printf.sprintf "Par<%s> %s" (List.fold_left (Printf.sprintf "%s%d") "" lab) (List.fold_left (fun s ll ->
+      Printf.sprintf "%s[%s] " s (List.fold_left (fun s l ->
+        Printf.sprintf "%s{%s} " s (List.fold_left (fun s p ->
+          s ^ print p
+          ) "" l
+        )
+        ) "" ll
+      )
+      ) "" lll
+    )
+  | {label = lab; _} -> List.fold_left (Printf.sprintf "%s%d") "" lab
+
+(* let _ =
+  let atomic p l = {proc = p; label = l} in
+  let p = Par [[[atomic Nil [1]; atomic Nil [2]];[atomic Nil [3]; atomic Nil [4]]];[[atomic (Par []) [5]]];[[atomic (Par [[[atomic (Par [[[atomic Nil [9]]]]) [8]]]]) [7]]]] in
+  let lp = {proc = p; label = [0]} in
+  print_endline (print lp);
+  print_endline (print (flatten_labelled_process lp)) *)
 
 
 
 (* extracts the list of all labelled_process from a factored_process *)
-let process_list_of_factored_process (fp:factored_process) : labelled_process list =
+(* let process_list_of_factored_process (fp:factored_process) : labelled_process list =
   let rec gather accu fp =
     match fp with
     | Proc lp -> lp :: accu
@@ -251,4 +289,4 @@ let restrict_bijection_set (l1:label) (l2:label) (s:bijection_set) : bijection_s
 type configuration = {
   input_proc : factored_process list;
   focused_proc : factored_process ;
-}
+} *)
