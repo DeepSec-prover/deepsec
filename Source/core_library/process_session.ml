@@ -147,12 +147,6 @@ let unfold_process ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_chann
 
 
 
-(* factorisation of processes *)
-let factor (fp:replicated_process list) : replicated_process list =
-  raise Todo
-
-
-
 
 (* comparing labels for POR: returns 0 if one label is prefix of the other,
 and compares the labels lexicographically otherwise. *)
@@ -177,10 +171,16 @@ module LabelMap =
     type t = label
     let compare = compare
   end)
-type matching_constraints = bijection_set LabelMap.t
+type matchings = bijection_set LabelMap.t
+
+
+(* factorisation of processes *)
+let factor (mc:matchings) (rp:replicated_process list) : replicated_process list =
+  raise Todo
+
 
 (* apply a constraint c on a bijection_set indexed by a label l *)
-let apply_constraint_on_matching (mc:matching_constraints) (l:label) (c:bijection_set->bijection_set) : matching_constraints =
+let apply_constraint_on_matching (mc:matchings) (l:label) (c:bijection_set->bijection_set) : matchings =
   LabelMap.update l (fun bs_opt -> match bs_opt with
     | None -> Config.internal_error "[process_session.ml >> apply_constraint_on_matching] Unexpected case"
     | Some bs -> Some (c bs)
@@ -253,3 +253,25 @@ type configuration = {
   unsure_proc : todo;
   trace : todo
 }
+
+
+(* about generating and applying transitions to configurations *)
+type next_rule =
+  | RFocus
+  | RPos
+  | RNeg
+  | RPar
+  | RStop
+
+
+let apply_focus : todo -> todo =
+  raise Todo
+
+let apply_pos (x:Term.snd_ord_variable) (c:configuration) : configuration * Term.fst_ord_variable =
+  raise Todo
+
+let apply_neg (ax:Term.axiom) (c:configuration) : configuration * Term.protocol_term =
+  raise Todo
+
+let apply_par (c:configuration) : configuration * label partition =
+  raise Todo
