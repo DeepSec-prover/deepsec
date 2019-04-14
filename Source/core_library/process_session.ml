@@ -35,8 +35,8 @@ and process =
 
 
 (* flattens unecessary constructs in processes *)
-let rec flatten_process (p:process) : process =
-  match p with
+let rec flatten_labelled_process (lp:labelled_process) : labelled_process =
+  match lp.proc with
   | Par lll ->
     let lll' =
       List.fold_left (fun ac ll ->
@@ -44,13 +44,10 @@ let rec flatten_process (p:process) : process =
         match ll_flat with
         | [] -> ac
         | [[{proc = Par l; _}]] -> List.rev_append l ac
-        | _ -> ll :: ac
+        | _ -> ll_flat :: ac
       ) [] lll in
-    Par lll'
-  | _ -> p
-
-and flatten_labelled_process (lp:labelled_process) : labelled_process =
-  {lp with proc = flatten_process lp.proc}
+    {lp with proc = Par lll'}
+  | _ -> lp
 
 
 (* conversion from expansed processes *)
