@@ -161,9 +161,13 @@ let print_label : label -> unit = List.iter (Printf.printf "%d.")
 
 
 
-
 (* sets of bijections with the skeleton-compatibility requirement *)
-type bijection_set = (labelled_process list * labelled_process list) list
+module LabelSet = Set.Make(struct
+  type t = label
+  let compare = compare
+end)
+
+type bijection_set = (LabelSet.t * LabelSet.t) list
 
 (* gathering all matching constraints, indexed by labels *)
 module LabelMap =
@@ -180,7 +184,7 @@ let factor (mc:matchings) (rp:replicated_process list) : replicated_process list
 
 
 (* apply a constraint c on a bijection_set indexed by a label l *)
-let apply_constraint_on_matching (mc:matchings) (l:label) (c:bijection_set->bijection_set) : matchings =
+let apply_on_matching (mc:matchings) (l:label) (c:bijection_set->bijection_set) : matchings =
   LabelMap.update l (fun bs_opt -> match bs_opt with
     | None -> Config.internal_error "[process_session.ml >> apply_constraint_on_matching] Unexpected case"
     | Some bs -> Some (c bs)
@@ -207,7 +211,8 @@ let link_partitions (equiv:'a->'a->bool) (p1:'a partition) (p2:'a partition) : (
   let rec browse accu p1 p2 =
     match p1 with
     | [] -> Some accu
-    | [] :: _ -> Config.internal_error "[process_session >> link_partitions] Unexpected case"
+    | [] :: _ ->
+      Config.internal_error "[process_session >> link_partitions] Unexpected case"
     | (x::_ as ec1) :: p1' ->
       match List.find_and_remove (fun ec2 -> equiv x (List.hd ec2)) p2 with
       | None,_ -> None
@@ -217,13 +222,37 @@ let link_partitions (equiv:'a->'a->bool) (p1:'a partition) (p2:'a partition) : (
   browse [] p1 p2
 
 
+(* comparison of skeletons (parallel operators excluded) *)
+let compare_io_process (p1:process) (p2:process) : int =
+  match p1, p2 with
+  | OutputSure _ , Input _  -> -1
+  | Input _, OutputSure _ -> 1
+  | Input(c1,_,_), Input(c2,_,_)
+  | OutputSure(c1,_,_), OutputSure(c2,_,_) -> Symbol.order c1 c2
+  | _ -> Config.internal_error "[process_session.ml >> compare_io_process] Unexpected case."
+
+(* Comparison of skeletons.
+TODO: current implementation quite naive (does not take symmetries into account), may be improved. *)
+let rec is_equal_skeleton (p1:labelled_process) (p2:labelled_process) : bool =
+  let sort = List.fast_sort (fun p q -> compare_io_process p.proc q.proc) in
+  let l1 = sort (list_of_labelled_process p1) in
+  let l2 = sort (list_of_labelled_process p2) in
+  try List.for_all2 (fun p q -> compare_io_process p.proc q.proc = 0) l1 l2
+  with Invalid_argument _ -> false
+
+
 (* creates the bijection_set containing the possible matchings of two lists of
 parallel processes, wrt to a predicate for skeleton compatibility. *)
-let init_bijection_set (skel_check:process->process->bool) (fp1:labelled_process) (fp2:labelled_process) : bijection_set option =
-  let skel_check_l lp1 lp2 = skel_check lp1.proc lp2.proc in
-  let partition_labels lp =
-    partition_equivalence skel_check_l (list_of_labelled_process lp) in
-  link_partitions skel_check_l (partition_labels fp1) (partition_labels fp2)
+let init_bijection_set (fp1:labelled_process) (fp2:labelled_process) : bijection_set option =
+  let check_skel lp1 lp2 = compare_io_process lp1.proc lp2.proc = 0 in
+  let partition lp =
+    partition_equivalence check_skel (list_of_labelled_process lp) in
+  match link_partitions check_skel (partition fp1) (partition fp2) with
+  | None -> None
+  | Some l ->
+    let convert procs =
+      LabelSet.of_list (List.rev_map (fun p -> p.label) procs) in
+    Some (List.rev_map (fun (ec1,ec2) -> convert ec1, convert ec2) l)
 
 
 
@@ -235,14 +264,19 @@ let restrict_bijection_set (l1:label) (l2:label) (s:bijection_set) : bijection_s
     match s with
     | [] -> None
     | (ll1,ll2) :: t ->
-      let has_label l lp = lp.label = l in
-      match List.find_and_remove (has_label l1) ll1,
-            List.find_and_remove (has_label l2) ll2 with
-      | (None,_),(None,_) -> search ((ll1,ll2) :: memo) t
-      | (Some l1,ll1'),(Some l2,ll2') ->
-        Some (List.rev_append (([l1],[l2])::(ll1',ll2')::t) memo)
+      match LabelSet.find_opt l1 ll1, LabelSet.find_opt l2 ll2 with
+      | None,None -> search ((ll1,ll2) :: memo) t
+      | Some _,Some _ ->
+        let ll1' = LabelSet.remove l1 ll1 in
+        let ll2' = LabelSet.remove l2 ll2 in
+        let single1 = LabelSet.singleton l1 in
+        let single2 = LabelSet.singleton l2 in
+        Some (List.rev_append ((single1,single2)::(ll1',ll2')::t) memo)
       | _ -> None in
   search [] s
+
+
+
 
 
 (* a process with additional information for POR *)
