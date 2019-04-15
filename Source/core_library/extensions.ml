@@ -15,7 +15,11 @@ module List = struct
     find []
 
   (* overwriting some functions with tail-recursive versions *)
-  let fold_right f l a = fold_left (fun x a -> f a x) a (List.rev l)
+  let rec fold_right ?f_cont:(k=fun x->x) f l a =
+    match l with
+    | [] -> k a
+    | h :: t -> fold_right f t a ~f_cont:(fun res -> k (f h res))
+
   let map f l = fold_right (fun x ac -> f x :: ac) l []
   let (@) l1 l2 = fold_right (fun a ac -> a :: ac) l1 l2
   (* fold_left with arguments in the same order as fold_right *)

@@ -17,7 +17,7 @@ type label = position list
 (* Basic types for representing processes and traces, without parallels *)
 type labelled_process = {
   proc : process ;
-  label : label
+  label : label option (* None if the label has not been attributed yet *)
 }
 
 and replicated_process = labelled_process list list (* [l1;...;lp] models parallel processes that are identical up to channel renaming; each list li modelling structurally equivalent processes. E.g. !^n P is modelled as
@@ -30,52 +30,70 @@ and process =
   | If of protocol_term * protocol_term * labelled_process * labelled_process
   (* | Let of protocol_term * protocol_term * labelled_process * labelled_process *)
   | New of name * labelled_process
-  | Par of replicated_process list
+  | Par of labelled_process list
+  | Bang of bool * labelled_process list (* replication up to channel renaming *)
 
 
-
-(* flattens unecessary constructs in processes *)
-let rec flatten_labelled_process (lp:labelled_process) : labelled_process =
+let rec flatten_process (lp:labelled_process) : labelled_process =
+  Config.debug (fun () ->
+    if lp.label <> None then Config.internal_error "[process_session.ml >> flatten_process] Processes with already-attributed labels should not be flattened."
+  );
   match lp.proc with
-  | Par lll ->
-    let lll' =
-      List.fold_left (fun ac ll ->
-        let ll_flat = List.rev_map (List.rev_map flatten_labelled_process) ll in
-        match ll_flat with
-        | [] -> ac
-        | [[{proc = Par l; _}]] -> List.rev_append l ac
-        | _ -> ll_flat :: ac
-      ) [] lll in
-    {lp with proc = Par lll'}
-  | _ -> lp
+  | Bang (b,[]) -> {lp with proc = Par []}
+  | Bang (_,[p])
+  | Par [p] -> flatten_process p
+  | Bang (b,l) ->
+    let l_flattened =
+      List.fold_left (fun ac p ->
+        let p_flattened = flatten_process p in
+        match p_flattened.proc with
+        | Par [] -> ac
+        | _ -> p_flattened :: ac
+      ) [] l in
+    {lp with proc = Bang (b,l_flattened)}
+  | Par l ->
+    let l_flattened =
+      List.fold_left (fun ac p ->
+        let p_flattened = flatten_process p in
+        match p_flattened.proc with
+        | Par ll -> List.rev_append ll ac
+        | _ -> p_flattened :: ac
+      ) [] l in
+    {lp with proc = Par l_flattened}
+  |_ -> lp
 
 
 (* conversion from expansed processes *)
 let of_expansed_process (p:Process.expansed_process) : labelled_process =
-  let rec browse lab p = match p with
-    | Process.Nil -> {proc = Par []; label = lab}
+  let rec browse p = match p with
+    | Process.Nil -> {proc = Par []; label = None}
     | Process.Output(ch,_,_)
     | Process.Input(ch,_,_) when not (is_function ch) ->
-      Config.internal_error "[process_session.ml >> factored_process_of_expansed_process] Inputs/Outputs should only be done on atomic channels."
+      Config.internal_error "[process_session.ml >> of_expansed_process] Inputs/Outputs should only be done on atomic channels."
     | Process.Output(ch,t,pp) ->
-      {proc = Output(root ch,t,browse lab pp); label = lab}
+      {proc = Output(root ch,t,browse pp); label = None}
     | Process.Input(ch,x,pp) ->
-      {proc = Input(root ch,x,browse lab pp); label = lab}
+      {proc = Input(root ch,x,browse pp); label = None}
     | Process.IfThenElse(t1,t2,pthen,pelse) ->
-      let p_then = browse lab pthen in
-      let p_else = browse lab pelse in
-      {proc = If(t1,t2,p_then,p_else); label = lab}
+      let p_then = browse pthen in
+      let p_else = browse pelse in
+      {proc = If(t1,t2,p_then,p_else); label = None}
     | Process.New(n,pp) ->
-      {proc = New(n,browse lab pp); label = lab}
+      {proc = New(n,browse pp); label = None}
     | Process.Par lp ->
       let lll =
         List.rev_map (fun (pp,i) ->
-          [Func.loop (fun pos ac -> browse (pos::lab) pp :: ac) [] 0 (i-1)]
+          let proc = browse pp in
+          if i = 1 then proc
+          else
+            let l = Func.loop (fun _ ac -> proc :: ac) [] 0 (i-1) in
+            {proc = Bang (false,l); label = None}
         ) lp in
-      {proc = Par lll; label = lab}
+      {proc = Par lll; label = None}
     | Process.Choice _
     | Process.Let _ -> Config.internal_error "[process_session.ml >> plain_process_of_expansed_process] *Choice* and *Let* not implemented yet for equivalence by session." in
-  browse [0] p
+  browse p
+
 
 
 (* let rec print = function
@@ -103,11 +121,26 @@ let _ =
 (* extracts the list of all parallel labelled_process from a labelled_process *)
 let list_of_labelled_process (lp:labelled_process) : labelled_process list =
   let rec gather accu lp = match lp with
-    | {proc = Par lll; _} ->
-      List.fold_left (List.fold_left (List.fold_left gather)) accu lll
+    | {proc = Par l; _}
+    | {proc = Bang (_,l); _} -> List.fold_left gather accu l
     | _ -> lp :: accu in
   gather [] lp
 
+
+
+(* unfolding with symmetries *)
+let unfold ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_channel_renaming:(opt:bool=true) (l:labelled_process list) : (labelled_process * labelled_process list) list =
+
+  let rec browse accu leftovers memo l f_cont =
+    match l with
+    | [] -> f_cont accu
+    | ({proc = Par l; label = lab} as h) :: t -> raise Todo
+    | ({proc = Bang(b,l); label = lab} as h) :: t -> raise Todo
+    | ({proc = Input _; label = lab} as h) :: t
+    | ({proc = OutputSure _; label = lab} as h) :: t -> raise Todo
+    | _ -> Config.internal_error "[process_session.ml >> unfold_process] Unfolding should only be applied on normalised processes" in
+
+  browse [] [] [] l (fun accu -> accu)
 
 
 let unfold_process ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_channel_renaming:(opt:bool=true) (rpl:replicated_process list) : (labelled_process * replicated_process list) list =
