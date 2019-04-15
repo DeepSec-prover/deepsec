@@ -17,4 +17,4 @@ type symbolic_process = {
 }
 
 type matching_exists_forall =
-  (symbolic_process * (symbolic_process * matchings)) list
+  (symbolic_process * (symbolic_process * bijection_set)) list

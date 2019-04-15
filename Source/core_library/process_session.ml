@@ -6,7 +6,7 @@ open Extensions
 
 
 type todo = unit (* pending datatypes *)
-exception Todo (* pending definitions *)
+let todo = Obj.magic () (* pending definitions *)
 
 
 
@@ -19,9 +19,6 @@ type labelled_process = {
   proc : process ;
   label : label option (* None if the label has not been attributed yet *)
 }
-
-and replicated_process = labelled_process list list (* [l1;...;lp] models parallel processes that are identical up to channel renaming; each list li modelling structurally equivalent processes. E.g. !^n P is modelled as
-[[P;...;P]] *)
 
 and process =
   | Input of symbol * fst_ord_variable * labelled_process
@@ -96,7 +93,6 @@ let of_expansed_process (p:Process.expansed_process) : labelled_process =
   browse p
 
 
-
 (* adding labels to normalised processes *)
 let labelling (prefix:label) (lp:labelled_process) : labelled_process =
   let rec assign i lp f_cont =
@@ -127,7 +123,6 @@ let labelling (prefix:label) (lp:labelled_process) : labelled_process =
       ) in
 
   assign 0 lp (fun proc pos -> proc)
-
 
 
 (* extracts the list of all parallel labelled_process from a labelled_process *)
@@ -179,8 +174,6 @@ let unfold_process ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_chann
 
 
 
-
-
 (* comparing labels for POR: returns 0 if one label is prefix of the other,
 and compares the labels lexicographically otherwise. *)
 let rec indep_labels (l:label) (ll:label) : int =
@@ -195,32 +188,14 @@ let print_label : label -> unit = List.iter (Printf.printf "%d.")
 
 
 (* sets of bijections with the skeleton-compatibility requirement *)
-module LabelSet = Set.Make(struct
-  type t = label
-  let compare = compare
-end)
+module LabelSet = Set.Make(struct type t = label let compare = compare end)
 
 type bijection_set = (LabelSet.t * LabelSet.t) list
 
-(* gathering all matching constraints, indexed by labels *)
-module LabelMap =
-  Map.Make(struct
-    type t = label
-    let compare = compare
-  end)
-type matchings = bijection_set LabelMap.t
-
 
 (* factorisation of processes *)
-let factor (mc:matchings) (rp:replicated_process list) : todo = ()
+let factor (bs:bijection_set) (rp:labelled_process list) : labelled_process list = todo
 
-
-(* apply a constraint c on a bijection_set indexed by a label l *)
-let apply_on_matching (mc:matchings) (l:label) (c:bijection_set->bijection_set) : matchings =
-  LabelMap.update l (fun bs_opt -> match bs_opt with
-    | None -> Config.internal_error "[process_session.ml >> apply_constraint_on_matching] Unexpected case"
-    | Some bs -> Some (c bs)
-  ) mc
 
 
 (* partitions a list in equivalence classes wrt to some equivalence relation *)
@@ -312,21 +287,15 @@ let restrict_bijection_set (l1:label) (l2:label) (s:bijection_set) : bijection_s
   search [] s
 
 
-
-
-
 (* a process with additional information for POR *)
 type configuration = {
-  input_proc : replicated_process list;
+  input_proc : labelled_process list;
   focused_proc : labelled_process option;
-  sure_output_proc : replicated_process list;
+  sure_output_proc : labelled_process list;
   sure_unchecked_skeletons : labelled_process option;
   unsure_proc : labelled_process option;
   trace : todo
 }
-
-
-
 
 (* normalisation of configurations *)
 type equation = (fst_ord, name) Subst.t
@@ -344,179 +313,159 @@ type modulo_result =
   | EqList of (fst_ord, name) Subst.t list
 
 
-let rec normalise (p:labelled_process) (eqn:equation) (diseqn:disequation list) (f_cont:gathering_normalise->labelled_process->(unit->unit)->'b) (f_next:unit->unit) = ()
-  (* match p.proc with
+let rec normalise (p:labelled_process) (eqn:equation) (diseqn:disequation list) (f_cont:gathering_normalise->labelled_process->(unit->unit)->'b) (f_next:unit->unit) : 'b =
+  match p.proc with
   | OutputSure _
   | Input _ ->
     f_cont {equations = eqn; disequations = diseqn} p f_next
   | Output(ch,t,p) ->
-      let tt = Rewrite_rules.normalise (Subst.apply eqn t (fun x f -> f x)) in
+    let tt = Rewrite_rules.normalise (Subst.apply eqn t (fun x f -> f x)) in
 
-      let eqn_modulo_list_result =
-        try
-          EqList (Modulo.syntactic_equations_of_equations [Modulo.create_equation tt tt])
-        with
-        | Modulo.Bot -> EqBot
-        | Modulo.Top -> EqTop in
+    let eqn_modulo_list_result =
+      try
+        EqList (Modulo.syntactic_equations_of_equations [Modulo.create_equation tt tt])
+      with
+      | Modulo.Bot -> EqBot
+      | Modulo.Top -> EqTop in
 
-      begin match eqn_modulo_list_result with
-      | EqBot ->
-        f_cont {equations = eqn; disequations = diseqn} {p with proc = Par []} f_next
-      | EqTop ->
-        f_cont {equations = eqn; disequations = diseqn} {p with proc = OutputSure(ch,t,p)} f_next
+    begin match eqn_modulo_list_result with
+    | EqBot ->
+      f_cont {equations = eqn; disequations = diseqn} {p with proc = Par []} f_next
+    | EqTop ->
+      f_cont {equations = eqn; disequations = diseqn} {p with proc = OutputSure(ch,t,p)} f_next
+    | EqList eqn_modulo_list ->
+      let f_next_equations =
+        List.fold_left (fun acc_f_next equations_modulo ->
+          let new_disequations_op =
+            try
+              let new_disequations =
+                List.fold_left (fun acc diseq ->
+                  let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
+                  if Diseq.is_top new_diseq then acc
+                  else if Diseq.is_bot new_diseq then raise Bot_disequations
+                  else new_diseq::acc
+                ) [] diseqn in
+              Some new_disequations
+            with
+              | Bot_disequations -> None in
+
+          match new_disequations_op with
+           | None -> acc_f_next
+           | Some new_diseqn ->
+              let new_eqn = Subst.compose eqn equations_modulo in
+              fun () -> f_cont {equations = new_eqn; disequations = new_diseqn} {p with proc = OutputSure(ch,t,p)} acc_f_next
+        ) f_next eqn_modulo_list in
+
+      let f_next_disequation f_next =
+        let diseqn_modulo =
+          try
+            Modulo.syntactic_disequations_of_disequations (Modulo.create_disequation tt tt)
+          with
+          | Modulo.Bot
+          | Modulo.Top -> Config.internal_error "[process_session.ml >> normalise_process] The disequations cannot be top or bot." in
+        let new_diseqn = List.rev_append diseqn diseqn_modulo in
+        f_cont {equations = eqn; disequations = new_diseqn} {p with proc = Par []} f_next in
+
+      f_next_disequation f_next_equations
+    end
+  | If(u,v,pthen,pelse) ->
+    let (u_1,v_1) = Subst.apply eqn (u,v) (fun (x,y) f -> f x, f y) in
+
+    let eqn_modulo_list_result =
+      try
+        EqList (Modulo.syntactic_equations_of_equations [Modulo.create_equation u_1 v_1])
+      with
+      | Modulo.Bot -> EqBot
+      | Modulo.Top -> EqTop in
+
+    begin match eqn_modulo_list_result with
+      | EqBot -> normalise pelse eqn diseqn f_cont f_next
+      | EqTop -> normalise pthen eqn diseqn f_cont f_next
       | EqList eqn_modulo_list ->
         let f_next_equations =
           List.fold_left (fun acc_f_next equations_modulo ->
             let new_disequations_op =
               try
                 let new_disequations =
-                  List.fold_left (fun acc diseq ->
-                    let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
-                    if Diseq.is_top new_diseq then acc
-                    else if Diseq.is_bot new_diseq then raise Bot_disequations
-                    else new_diseq::acc
-                  ) [] diseqn in
+                  List.fold_left (fun acc deq ->
+                    let new_deq = Diseq.apply_and_normalise Protocol equations_modulo deq in
+                    if Diseq.is_top new_deq then acc
+                    else if Diseq.is_bot new_deq then raise Bot_disequations
+                    else new_deq::acc
+                  ) [] diseqn
+                in
                 Some new_disequations
               with
                 | Bot_disequations -> None in
 
             match new_disequations_op with
-             | None -> acc_f_next
-             | Some new_diseqn ->
-                let new_eqn = Subst.compose eqn equations_modulo in
-                fun () -> f_cont {equations = new_eqn; disequations = new_diseqn} {p with proc = OutputSure(ch,t,p)} acc_f_next
+              | None -> acc_f_next
+              | Some new_disequations ->
+                  let new_equations = Subst.compose eqn equations_modulo in
+                  (fun () -> normalise pthen new_equations new_disequations f_cont acc_f_next)
           ) f_next eqn_modulo_list in
 
-        let f_next_disequation f_next =
-          let diseqn_modulo =
+        let else_next f_next =
+          let disequations_modulo =
             try
-              Modulo.syntactic_disequations_of_disequations (Modulo.create_disequation tt tt)
+              Modulo.syntactic_disequations_of_disequations (Modulo.create_disequation u_1 v_1)
             with
-            | Modulo.Bot
-            | Modulo.Top -> Config.internal_error "[process_session.ml >> normalise_process] The disequations cannot be top or bot." in
-          let new_diseqn = List.rev_append diseqn diseqn_modulo in
-          f_cont {equations = eqn; disequations = new_diseqn} {p with proc = Par []} f_next in
+              | Modulo.Bot
+              | Modulo.Top -> Config.internal_error "[process_session.ml >> normalise] The disequations cannot be top or bot (2)." in
 
-        f_next_disequation f_next_equations
-      end
-  | If(u,v,pthen,pelse) ->
-      let (u_1,v_1) = Subst.apply eqn (u,v) (fun (x,y) f -> f x, f y) in
+          let new_diseqn = List.rev_append disequations_modulo diseqn in
+          normalise pelse eqn new_diseqn f_cont f_next in
 
-      let eqn_modulo_list_result =
-        try
-          EqList (Modulo.syntactic_equations_of_equations [Modulo.create_equation u_1 v_1])
-        with
-        | Modulo.Bot -> EqBot
-        | Modulo.Top -> EqTop in
-
-      begin match eqn_modulo_list_result with
-        | EqBot -> normalise pelse eqn diseqn f_cont f_next
-        | EqTop -> normalise pthen eqn diseqn f_cont f_next
-        | EqList eqn_modulo_list ->
-          let f_next_equations =
-            List.fold_left (fun acc_f_next equations_modulo ->
-              let new_disequations_op =
-                try
-                  let new_disequations =
-                    List.fold_left (fun acc deq ->
-                      let new_deq = Diseq.apply_and_normalise Protocol equations_modulo deq in
-                      if Diseq.is_top new_deq then acc
-                      else if Diseq.is_bot new_deq then raise Bot_disequations
-                      else new_deq::acc
-                    ) [] diseqn
-                  in
-                  Some new_disequations
-                with
-                  | Bot_disequations -> None in
-
-              match new_disequations_op with
-                | None -> acc_f_next
-                | Some new_disequations ->
-                    let new_equations = Subst.compose eqn equations_modulo in
-                    (fun () -> normalise pthen new_equations new_disequations f_cont acc_f_next)
-            ) f_next eqn_modulo_list in
-
-          let else_next f_next =
-            let disequations_modulo =
-              try
-                Modulo.syntactic_disequations_of_disequations (Modulo.create_disequation u_1 v_1)
-              with
-                | Modulo.Bot
-                | Modulo.Top -> Config.internal_error "[process_determinate.ml >> normalise_process] The disequations cannot be top or bot (2)." in
-
-            let new_diseqn = List.rev_append disequations_modulo diseqn in
-            normalise pelse eqn new_diseqn f_cont f_next in
-
-          else_next f_next_equations
-      end
+        else_next f_next_equations
+    end
   | New(_,p) -> normalise p eqn diseqn f_cont f_next
-  | Par rpl ->
-      normalise_par rpl eqn diseqn (fun gather rpl_norm f_next1 ->
-        match rpl_norm with
-          | [[[p]]] -> f_cont gather p f_next1
-          | _ -> f_cont gather {p with proc = Par rpl_norm} f_next1
-      ) f_next
+  | Par l ->
+    normalise_list l eqn diseqn (fun gather l_norm f_next1 ->
+      match l_norm with
+        | [p] -> f_cont gather p f_next1
+        | _ -> f_cont gather {p with proc = Par l_norm} f_next1
+    ) f_next
 
-  | _ -> raise Todo *)
+  | Bang(b,l) ->
+    normalise_list l eqn diseqn (fun gather l_norm f_next1 ->
+      match l_norm with
+        | [p] -> f_cont gather p f_next1
+        | _ -> f_cont gather {p with proc = Bang(b,l_norm)} f_next1
+    ) f_next
 
-
-and normalise_par (rpl:replicated_process list) (eqn:equation) (diseqn:disequation list) (f_cont:gathering_normalise->replicated_process list->(unit->unit)->'a) (f_next:unit->unit) = ()
-  (* match rpl with
+and normalise_list (l:labelled_process list) (eqn:equation) (diseqn:disequation list) (f_cont:gathering_normalise->labelled_process list->(unit->unit)->'b) (f_next:unit->unit) : 'b =
+  match l with
   | [] -> f_cont {equations = eqn; disequations = diseqn} [] f_next
-  | rp :: t ->
-    normalise_par t eqn diseqn (fun gather1 t_norm f_next1 ->
-      normalise_weak_bang rp gather1.equations gather1.disequations (fun gather2 rp_norm f_next2 ->
-        match rp_norm with
-        | [] -> f_cont gather2 t_norm f_next2
-        | _ -> f_cont gather2 (rp_norm::t_norm) f_next2
+  | p :: t ->
+    normalise p eqn diseqn (fun gather1 p_norm f_next1 ->
+      normalise_list t gather1.equations gather1.disequations (fun gather2 l_norm f_next2 ->
+        let l_tot_norm =
+          match p_norm.proc with
+          | Par ll -> List.rev_append ll l_norm
+          | _ -> p_norm :: l_norm in
+        f_cont gather2 l_tot_norm f_next2
       ) f_next1
-    ) f_next *)
-
-
-and normalise_weak_bang (rp:replicated_process) (eqn:equation) (diseqn:disequation list) (f_cont:gathering_normalise->replicated_process->(unit->unit)->'a) (f_next:unit->unit) = ()
-  (* match rp with
-  | [] -> f_cont {equations = eqn; disequations = diseqn} [] f_next
-  | bang :: t ->
-    normalise_weak_bang t eqn diseqn (fun gather1 t_norm f_next1 ->
-      normalise_bang bang gather1.equations gather1.disequations (fun gather2 bang_norm f_next2 ->
-        match bang_norm with
-        | [] -> f_cont gather2 t_norm f_next2
-        | _ -> f_cont gather2 (bang_norm::t_norm) f_next2
-      ) f_next1
-    ) f_next *)
-
-
-and normalise_bang (bang:labelled_process list) (eqn:equation) (diseqn:disequation list) (f_cont:gathering_normalise->labelled_process list->(unit->unit)->'a) (f_next:unit->unit) = ()
-  (* match bang with
-  | [] -> f_cont {equations = eqn; disequations = diseqn} [] f_next
-  | lp :: t ->
-    normalise_bang t eqn diseqn (fun gather1 t_norm f_next1 ->
-      normalise lp gather1.equations gather1.disequations (fun gather2 lp_norm f_next2 ->
-        match lp_norm.proc with
-        | Par [] -> f_cont gather2 t_norm f_next2
-        | _ -> f_cont gather2 (lp_norm::t_norm) f_next2
-      ) f_next1
-    ) f_next *)
+    ) f_next
 
 
 let normalise_configuration (conf:configuration) (eqn:equation) (f_cont:gathering_normalise->configuration->'a) : 'a =
   Config.debug (fun () ->
-    if conf.sure_unchecked_skeletons <> None
-    then Config.internal_error "[process_determinate.ml >> normalise_configuration] Sure unchecked should be empty."
+    if conf.sure_unchecked_skeletons <> None then
+      Config.internal_error "[process_session.ml >> normalise_configuration] Sure unchecked should be empty."
   );
 
   match conf.unsure_proc, conf.focused_proc with
-    | None, None -> f_cont { equations = eqn; disequations = [] } conf
+    | None, None -> f_cont {equations = eqn; disequations = []} conf
     | None, Some p ->
-        normalise p eqn [] (fun gather p_norm f_next ->
-          f_cont gather { conf with focused_proc = Some p_norm };
-          f_next ()
-        ) (fun () -> ())
+      normalise p eqn [] (fun gather p_norm f_next ->
+        f_cont gather {conf with focused_proc = Some p_norm};
+        f_next ()
+      ) (fun () -> ())
     | Some p, None ->
-        normalise p eqn [] (fun gather p_norm f_next ->
-          f_cont gather { conf with sure_unchecked_skeletons = Some p_norm; unsure_proc = None };
-          f_next ()
-        ) (fun () -> ())
+      normalise p eqn [] (fun gather p_norm f_next ->
+        f_cont gather {conf with sure_unchecked_skeletons = Some p_norm; unsure_proc = None};
+        f_next ()
+      ) (fun () -> ())
     | _, _ -> Config.internal_error "[process_session.ml >> normalise_configuration] A configuration cannot be released and focused at the same time."
 
 
@@ -533,16 +482,13 @@ type next_rule =
 
 
 let apply_foc : todo =
-  ()
+  todo
 
-let apply_pos (x:Term.snd_ord_variable) (c:configuration) =
-(* : configuration * Term.fst_ord_variable = *)
-  ()
+let apply_pos (x:Term.snd_ord_variable) (c:configuration) : configuration * Term.fst_ord_variable =
+  todo
 
-let apply_neg (ax:Term.axiom) (c:configuration) =
-(* : configuration * Term.protocol_term = *)
-  ()
+let apply_neg (ax:Term.axiom) (c:configuration) : configuration * Term.protocol_term =
+  todo
 
-let apply_par (c:configuration) =
-(* : configuration * label partition = *)
-  ()
+let apply_par (c:configuration) : configuration * label partition =
+  todo
