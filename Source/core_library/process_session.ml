@@ -31,7 +31,7 @@ and process =
   (* | Let of protocol_term * protocol_term * labelled_process * labelled_process *)
   | New of name * labelled_process
   | Par of labelled_process list
-  | Bang of bool * labelled_process list (* replication up to channel renaming *)
+  | Bang of bool * labelled_process list (* the boolean is set to true is this represents a true symmetry (i.e. w.r.t. structural equivalence, not up to bijective channel renaming) *)
 
 
 let rec flatten_process (lp:labelled_process) : labelled_process =
@@ -63,7 +63,8 @@ let rec flatten_process (lp:labelled_process) : labelled_process =
   |_ -> lp
 
 
-(* conversion from expansed processes *)
+(* conversion from expansed processes
+TODO: verify during testing that nested bangs (without news/ifs in between are collapsed)*)
 let of_expansed_process (p:Process.expansed_process) : labelled_process =
   let rec browse p = match p with
     | Process.Nil -> {proc = Par []; label = None}
@@ -87,7 +88,7 @@ let of_expansed_process (p:Process.expansed_process) : labelled_process =
           if i = 1 then proc
           else
             let l = Func.loop (fun _ ac -> proc :: ac) [] 0 (i-1) in
-            {proc = Bang (false,l); label = None}
+            {proc = Bang (true,l); label = None}
         ) lp in
       {proc = Par lll; label = None}
     | Process.Choice _
@@ -96,25 +97,36 @@ let of_expansed_process (p:Process.expansed_process) : labelled_process =
 
 
 
-(* let rec print = function
-  | {proc = Par lll; label = lab} ->
-    Printf.sprintf "Par<%s> %s" (List.fold_left (Printf.sprintf "%s%d") "" lab) (List.fold_left (fun s ll ->
-      Printf.sprintf "%s[%s] " s (List.fold_left (fun s l ->
-        Printf.sprintf "%s{%s} " s (List.fold_left (fun s p ->
-          s ^ print p
-          ) "" l
-        )
-        ) "" ll
+(* adding labels to normalised processes *)
+let labelling (prefix:label) (lp:labelled_process) : labelled_process =
+  let rec assign i lp f_cont =
+    match lp.proc with
+    | Par l ->
+      assign_list i l (fun l_labelled i_max ->
+        f_cont {proc = Par l_labelled; label = None} i_max
       )
-      ) "" lll
-    )
-  | {label = lab; _} -> List.fold_left (Printf.sprintf "%s%d") "" lab
+    | Bang(b,l) ->
+      assign_list i l (fun l_labelled i_max ->
+        f_cont {proc = Bang(b,l_labelled); label = None} i_max
+      )
+    | Input _
+    | OutputSure _ -> f_cont {lp with label = Some (i::prefix)} (i+1)
+    | New _
+    | If _
+    | Output _ -> Config.internal_error "[process_session.ml >> labelling] Only normalised processes should be assigned with labels."
 
-let _ =
-  let p1 = Process.Par [Process.Nil,8; Process.Nil,3] in
-  let p2 = Process.Par [Process.Nil,2; Process.Nil,3; Process.Nil,1] in
-  let p = Process.Par [p1,3; p2,7; Process.Nil,2] in
-  print_endline (print (of_expansed_process p)) *)
+
+  and assign_list i l f_cont =
+    match l with
+    | [] -> f_cont [] i
+    | p :: t ->
+      assign i p (fun p_labelled i_max ->
+        assign_list i_max t (fun l_labelled j_max ->
+          f_cont (p_labelled :: l_labelled) j_max
+        )
+      ) in
+
+  assign 0 lp (fun proc pos -> proc)
 
 
 
@@ -129,51 +141,42 @@ let list_of_labelled_process (lp:labelled_process) : labelled_process list =
 
 
 (* unfolding with symmetries *)
-let unfold ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_channel_renaming:(opt:bool=true) (l:labelled_process list) : (labelled_process * labelled_process list) list =
+let unfold_process ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_channel_renaming:(opt:bool=false) (l:labelled_process list) : (labelled_process * labelled_process list) list =
 
-  let rec browse accu leftovers memo l f_cont =
+  let rec unfold accu leftovers p f_cont =
+    match p.proc with
+    | Par l -> unfold_list accu leftovers l f_cont
+    | Bang(_,[]) -> f_cont accu
+    | Bang(b,(pp::t as l)) ->
+      if b || opt then
+        unfold accu ({proc = Bang(b,t); label = None}::leftovers) pp f_cont
+      else unfold_list ~bang:(Some []) accu leftovers l f_cont
+    | Input _
+    | OutputSure _ ->
+      f_cont (if f p then (p,leftovers)::accu else accu)
+    | New _
+    | If _
+    | Output _ ->
+      Config.internal_error "[process_session.ml >> unfold_process] Unfolding should only be applied on normalised processes."
+
+  and unfold_list ?bang:(memo=None) accu leftovers l f_cont =
     match l with
     | [] -> f_cont accu
-    | ({proc = Par l; label = lab} as h) :: t -> raise Todo
-    | ({proc = Bang(b,l); label = lab} as h) :: t -> raise Todo
-    | ({proc = Input _; label = lab} as h) :: t
-    | ({proc = OutputSure _; label = lab} as h) :: t -> raise Todo
-    | _ -> Config.internal_error "[process_session.ml >> unfold_process] Unfolding should only be applied on normalised processes" in
+    | p :: t ->
+      match memo with
+      | None -> (* case of a list of parallel processes *)
+        unfold accu (List.rev_append t leftovers) p (fun accu1 ->
+          unfold_list accu1 (p::leftovers) t f_cont
+        )
+      | Some memo -> (* case of a list of replicated processes *)
+        let lefts =
+          {proc = Bang(false,List.rev_append memo t); label = None} :: leftovers in
+        unfold accu lefts p (fun accu1 ->
+          unfold_list ~bang:(Some (p::memo)) accu1 leftovers t f_cont
+        ) in
 
-  browse [] [] [] l (fun accu -> accu)
+  unfold_list [] [] l (fun accu -> accu)
 
-
-let unfold_process ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_channel_renaming:(opt:bool=true) (rpl:replicated_process list) : (labelled_process * replicated_process list) list =
-
-  let rec unfold_par accu leftovers memo lll continuation = match lll with
-    | [] -> continuation accu
-    | ll :: t ->
-      let leftovers' = List.rev_append leftovers (List.rev_append memo t) in
-      unfold_weak_bang accu leftovers' [] ll (fun accu' ->
-        unfold_par accu' leftovers (ll::memo) t continuation
-      )
-
-  and unfold_weak_bang accu leftovers memo ll continuation = match ll with
-    | [] -> continuation accu
-    | l :: t ->
-      let leftovers' = match List.rev_append memo t with
-        | [] -> leftovers
-        | res -> res :: leftovers in
-      unfold_bang accu leftovers' l (fun accu' ->
-        if opt then continuation accu'
-        else unfold_weak_bang accu' leftovers (l::memo) t continuation
-      )
-
-  and unfold_bang accu leftovers l continuation = match l with
-    | [] -> continuation accu
-    | [p] -> unfold accu leftovers p continuation
-    | p :: t -> unfold accu ([t]::leftovers) p continuation
-
-  and unfold accu leftovers p continuation = match p with
-    | {proc = Par lll; _} -> unfold_par accu leftovers [] lll continuation
-    | _ -> continuation (if f p then (p,leftovers)::accu else accu) in
-
-  unfold_par [] [] [] rpl (fun accu -> accu)
 
 
 
@@ -209,8 +212,7 @@ type matchings = bijection_set LabelMap.t
 
 
 (* factorisation of processes *)
-let factor (mc:matchings) (rp:replicated_process list) : replicated_process list =
-  raise Todo
+let factor (mc:matchings) (rp:replicated_process list) : todo = ()
 
 
 (* apply a constraint c on a bijection_set indexed by a label l *)
@@ -280,8 +282,12 @@ let init_bijection_set (fp1:labelled_process) (fp2:labelled_process) : bijection
   match link_partitions check_skel (partition fp1) (partition fp2) with
   | None -> None
   | Some l ->
+    let access_opt x =
+      match x with
+      | None -> Config.internal_error "[process_session.ml >> init_bijection_set] Unexpected case"
+      | Some y -> y in
     let convert procs =
-      LabelSet.of_list (List.rev_map (fun p -> p.label) procs) in
+      LabelSet.of_list (List.rev_map (fun p -> access_opt p.label) procs) in
     Some (List.rev_map (fun (ec1,ec2) -> convert ec1, convert ec2) l)
 
 
@@ -338,8 +344,8 @@ type modulo_result =
   | EqList of (fst_ord, name) Subst.t list
 
 
-let rec normalise (p:labelled_process) (eqn:equation) (diseqn:disequation list) (f_cont:gathering_normalise->labelled_process->(unit->unit)->'b) (f_next:unit->unit) : 'b =
-  match p.proc with
+let rec normalise (p:labelled_process) (eqn:equation) (diseqn:disequation list) (f_cont:gathering_normalise->labelled_process->(unit->unit)->'b) (f_next:unit->unit) = ()
+  (* match p.proc with
   | OutputSure _
   | Input _ ->
     f_cont {equations = eqn; disequations = diseqn} p f_next
@@ -451,9 +457,11 @@ let rec normalise (p:labelled_process) (eqn:equation) (diseqn:disequation list) 
           | _ -> f_cont gather {p with proc = Par rpl_norm} f_next1
       ) f_next
 
+  | _ -> raise Todo *)
 
-and normalise_par (rpl:replicated_process list) (eqn:equation) (diseqn:disequation list) (f_cont:gathering_normalise->replicated_process list->(unit->unit)->'a) (f_next:unit->unit) : 'a =
-  match rpl with
+
+and normalise_par (rpl:replicated_process list) (eqn:equation) (diseqn:disequation list) (f_cont:gathering_normalise->replicated_process list->(unit->unit)->'a) (f_next:unit->unit) = ()
+  (* match rpl with
   | [] -> f_cont {equations = eqn; disequations = diseqn} [] f_next
   | rp :: t ->
     normalise_par t eqn diseqn (fun gather1 t_norm f_next1 ->
@@ -462,11 +470,11 @@ and normalise_par (rpl:replicated_process list) (eqn:equation) (diseqn:disequati
         | [] -> f_cont gather2 t_norm f_next2
         | _ -> f_cont gather2 (rp_norm::t_norm) f_next2
       ) f_next1
-    ) f_next
+    ) f_next *)
 
 
-and normalise_weak_bang (rp:replicated_process) (eqn:equation) (diseqn:disequation list) (f_cont:gathering_normalise->replicated_process->(unit->unit)->'a) (f_next:unit->unit) : 'a =
-  match rp with
+and normalise_weak_bang (rp:replicated_process) (eqn:equation) (diseqn:disequation list) (f_cont:gathering_normalise->replicated_process->(unit->unit)->'a) (f_next:unit->unit) = ()
+  (* match rp with
   | [] -> f_cont {equations = eqn; disequations = diseqn} [] f_next
   | bang :: t ->
     normalise_weak_bang t eqn diseqn (fun gather1 t_norm f_next1 ->
@@ -475,11 +483,11 @@ and normalise_weak_bang (rp:replicated_process) (eqn:equation) (diseqn:disequati
         | [] -> f_cont gather2 t_norm f_next2
         | _ -> f_cont gather2 (bang_norm::t_norm) f_next2
       ) f_next1
-    ) f_next
+    ) f_next *)
 
 
-and normalise_bang (bang:labelled_process list) (eqn:equation) (diseqn:disequation list) (f_cont:gathering_normalise->labelled_process list->(unit->unit)->'a) (f_next:unit->unit) : 'a =
-  match bang with
+and normalise_bang (bang:labelled_process list) (eqn:equation) (diseqn:disequation list) (f_cont:gathering_normalise->labelled_process list->(unit->unit)->'a) (f_next:unit->unit) = ()
+  (* match bang with
   | [] -> f_cont {equations = eqn; disequations = diseqn} [] f_next
   | lp :: t ->
     normalise_bang t eqn diseqn (fun gather1 t_norm f_next1 ->
@@ -488,7 +496,7 @@ and normalise_bang (bang:labelled_process list) (eqn:equation) (diseqn:disequati
         | Par [] -> f_cont gather2 t_norm f_next2
         | _ -> f_cont gather2 (lp_norm::t_norm) f_next2
       ) f_next1
-    ) f_next
+    ) f_next *)
 
 
 let normalise_configuration (conf:configuration) (eqn:equation) (f_cont:gathering_normalise->configuration->'a) : 'a =
@@ -524,14 +532,17 @@ type next_rule =
   | RStop
 
 
-let apply_foc : todo -> todo =
-  raise Todo
+let apply_foc : todo =
+  ()
 
-let apply_pos (x:Term.snd_ord_variable) (c:configuration) : configuration * Term.fst_ord_variable =
-  raise Todo
+let apply_pos (x:Term.snd_ord_variable) (c:configuration) =
+(* : configuration * Term.fst_ord_variable = *)
+  ()
 
-let apply_neg (ax:Term.axiom) (c:configuration) : configuration * Term.protocol_term =
-  raise Todo
+let apply_neg (ax:Term.axiom) (c:configuration) =
+(* : configuration * Term.protocol_term = *)
+  ()
 
-let apply_par (c:configuration) : configuration * label partition =
-  raise Todo
+let apply_par (c:configuration) =
+(* : configuration * label partition = *)
+  ()

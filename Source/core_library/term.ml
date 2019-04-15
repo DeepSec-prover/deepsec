@@ -3552,7 +3552,7 @@ module Rewrite_rules = struct
 
 
 
-        
+
   (****** Access function ******)
 
   let get_skeleton i = !storage_skeletons.(i).skeleton
