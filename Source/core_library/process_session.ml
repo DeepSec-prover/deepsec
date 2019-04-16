@@ -14,6 +14,8 @@ let todo = Obj.magic () (* pending definitions *)
 type position = int
 type label = position list
 
+
+
 (* Basic types for representing processes and traces, without parallels *)
 type labelled_process = {
   proc : process ;
@@ -60,37 +62,69 @@ let rec flatten_process (lp:labelled_process) : labelled_process =
   |_ -> lp
 
 
+let apply_renaming_on_term (rho:Name.Renaming.t) (t:Term.protocol_term) : Term.protocol_term =
+  Name.Renaming.apply_on_terms rho t (fun x f -> f x)
+
+let apply_renaming_on_name (rho:Name.Renaming.t) (n:Term.name) : Term.name =
+  Name.Renaming.apply_on_terms rho n (fun n f ->
+    Term.name_of (f (Term.of_name n))
+  )
+
+let rec fresh_copy_of (lp:labelled_process) : labelled_process =
+  let rec browse rho p =
+    match p.proc with
+    | Input(c,x,p) ->
+      {proc = Input(c,x,browse rho p); label = None}
+    | Output(c,t,p) ->
+      {proc = Output(c,apply_renaming_on_term rho t,browse rho p); label = None}
+    | OutputSure(c,t,p) ->
+      {proc = OutputSure(c,apply_renaming_on_term rho t,browse rho p); label = None}
+    | If(u,v,p1,p2) ->
+      let uu = apply_renaming_on_term rho u in
+      let vv = apply_renaming_on_term rho v in
+      {proc = If(uu,vv,browse rho p1,browse rho p2); label = None}
+    | New(n,p) ->
+      let nn = Name.fresh() in
+      {proc = New(nn,browse (Name.Renaming.compose rho n nn) p); label = None}
+    | Par l ->
+      {proc = Par(List.map (browse rho) l); label = None}
+    | Bang(b,l) ->
+      {proc = Bang(b,List.map (browse rho) l); label = None} in
+  browse (Name.Renaming.identity) lp
+
+
+
+(* TODO : alpha renaming for bangs *)
 (* conversion from expansed processes
 TODO: verify during testing that nested bangs (without news/ifs in between are collapsed)*)
-let of_expansed_process (p:Process.expansed_process) : labelled_process =
-  let rec browse p = match p with
-    | Process.Nil -> {proc = Par []; label = None}
-    | Process.Output(ch,_,_)
-    | Process.Input(ch,_,_) when not (is_function ch) ->
-      Config.internal_error "[process_session.ml >> of_expansed_process] Inputs/Outputs should only be done on atomic channels."
-    | Process.Output(ch,t,pp) ->
-      {proc = Output(root ch,t,browse pp); label = None}
-    | Process.Input(ch,x,pp) ->
-      {proc = Input(root ch,x,browse pp); label = None}
-    | Process.IfThenElse(t1,t2,pthen,pelse) ->
-      let p_then = browse pthen in
-      let p_else = browse pelse in
-      {proc = If(t1,t2,p_then,p_else); label = None}
-    | Process.New(n,pp) ->
-      {proc = New(n,browse pp); label = None}
-    | Process.Par lp ->
-      let lll =
-        List.rev_map (fun (pp,i) ->
-          let proc = browse pp in
-          if i = 1 then proc
-          else
-            let l = Func.loop (fun _ ac -> proc :: ac) [] 0 (i-1) in
-            {proc = Bang (true,l); label = None}
-        ) lp in
-      {proc = Par lll; label = None}
-    | Process.Choice _
-    | Process.Let _ -> Config.internal_error "[process_session.ml >> plain_process_of_expansed_process] *Choice* and *Let* not implemented yet for equivalence by session." in
-  browse p
+let rec of_expansed_process (p:Process.expansed_process) : labelled_process =
+  match p with
+  | Process.Nil -> {proc = Par []; label = None}
+  | Process.Output(ch,_,_)
+  | Process.Input(ch,_,_) when not (is_function ch) ->
+    Config.internal_error "[process_session.ml >> of_expansed_process] Inputs/Outputs should only be done on atomic channels."
+  | Process.Output(ch,t,pp) ->
+    {proc = Output(root ch,t,of_expansed_process pp); label = None}
+  | Process.Input(ch,x,pp) ->
+    {proc = Input(root ch,x,of_expansed_process pp); label = None}
+  | Process.IfThenElse(t1,t2,pthen,pelse) ->
+    let p_then = of_expansed_process pthen in
+    let p_else = of_expansed_process pelse in
+    {proc = If(t1,t2,p_then,p_else); label = None}
+  | Process.New(n,pp) ->
+    {proc = New(n,of_expansed_process pp); label = None}
+  | Process.Par lp ->
+    let lll =
+      List.rev_map (fun (pp,i) ->
+        let proc = of_expansed_process pp in
+        if i = 1 then proc
+        else
+          let l = Func.loop (fun _ ac -> fresh_copy_of proc :: ac) [] 0 (i-1) in
+          {proc = Bang (true,l); label = None}
+      ) lp in
+    {proc = Par lll; label = None}
+  | Process.Choice _
+  | Process.Let _ -> Config.internal_error "[process_session.ml >> plain_process_of_expansed_process] *Choice* and *Let* not implemented yet for equivalence by session."
 
 
 (* adding labels to normalised processes *)
@@ -113,14 +147,20 @@ let labelling (prefix:label) (lp:labelled_process) : labelled_process =
 
 
   and assign_list i l f_cont =
-    match l with
+
+    List.fold_left (fun f_acc p ->
+      fun l_labelled i_max ->
+        assign i_max p (fun p_labelled j_max -> f_acc (p_labelled :: l_labelled) j_max)
+    ) f_cont l [] i in
+
+    (* match l with
     | [] -> f_cont [] i
     | p :: t ->
       assign i p (fun p_labelled i_max ->
         assign_list i_max t (fun l_labelled j_max ->
           f_cont (p_labelled :: l_labelled) j_max
         )
-      ) in
+      ) in *)
 
   assign 0 lp (fun proc pos -> proc)
 
@@ -190,6 +230,9 @@ let print_label : label -> unit = List.iter (Printf.printf "%d.")
 (* sets of bijections with the skeleton-compatibility requirement *)
 module LabelSet = Set.Make(struct type t = label let compare = compare end)
 
+(* TODO. make the datastructure more efficient. Could be more practical when
+there are a lot of singletons to handle the operation "get all potential labels
+matching with a given label l". *)
 type bijection_set = (LabelSet.t * LabelSet.t) list
 
 
