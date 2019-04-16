@@ -94,9 +94,8 @@ let rec fresh_copy_of (lp:labelled_process) : labelled_process =
 
 
 
-(* TODO : alpha renaming for bangs *)
 (* conversion from expansed processes
-TODO: verify during testing that nested bangs (without news/ifs in between are collapsed)*)
+TODO: verify during testing that nested bangs (without news/ifs in between) are collapsed *)
 let rec of_expansed_process (p:Process.expansed_process) : labelled_process =
   match p with
   | Process.Nil -> {proc = Par []; label = None}
@@ -145,22 +144,15 @@ let labelling (prefix:label) (lp:labelled_process) : labelled_process =
     | If _
     | Output _ -> Config.internal_error "[process_session.ml >> labelling] Only normalised processes should be assigned with labels."
 
-
   and assign_list i l f_cont =
-
-    List.fold_left (fun f_acc p ->
-      fun l_labelled i_max ->
-        assign i_max p (fun p_labelled j_max -> f_acc (p_labelled :: l_labelled) j_max)
-    ) f_cont l [] i in
-
-    (* match l with
+    match l with
     | [] -> f_cont [] i
     | p :: t ->
       assign i p (fun p_labelled i_max ->
         assign_list i_max t (fun l_labelled j_max ->
           f_cont (p_labelled :: l_labelled) j_max
         )
-      ) in *)
+      ) in
 
   assign 0 lp (fun proc pos -> proc)
 
@@ -328,6 +320,19 @@ let restrict_bijection_set (l1:label) (l2:label) (s:bijection_set) : bijection_s
         Some (List.rev_append ((single1,single2)::(ll1',ll2')::t) memo)
       | _ -> None in
   search [] s
+
+(* given a bijection set and a label l, computes the set of labels that are
+compatible with l wrt one bijection. *)
+type side = Left | Right
+let get_compatible_labels ?origin:(side:side=Left) (l:label) (s:bijection_set) : label list =
+  let (extract,pred_search) =
+    match side with
+    | Left -> snd,fun (labset,_) -> LabelSet.mem l labset
+    | Right -> fst,fun (_,labset) -> LabelSet.mem l labset in
+
+  match List.find_opt pred_search s with
+  | None -> Config.internal_error "[process_session.ml >> get_compatible_labels] Unexpected case"
+  | Some pair -> LabelSet.elements (extract pair)
 
 
 (* a process with additional information for POR *)
