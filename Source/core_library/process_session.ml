@@ -62,6 +62,13 @@ let rec flatten_process (lp:labelled_process) : labelled_process =
   |_ -> lp
 
 
+(* checks whether a process models the nil process *)
+let nil (p:process) : bool =
+  match p with
+  | Par []
+  | Bang (_,[]) -> true
+  | _ -> false
+
 let apply_renaming_on_term (rho:Name.Renaming.t) (t:Term.protocol_term) : Term.protocol_term =
   Name.Renaming.apply_on_terms rho t (fun x f -> f x)
 
@@ -124,6 +131,17 @@ let rec of_expansed_process (p:Process.expansed_process) : labelled_process =
     {proc = Par lll; label = None}
   | Process.Choice _
   | Process.Let _ -> Config.internal_error "[process_session.ml >> plain_process_of_expansed_process] *Choice* and *Let* not implemented yet for equivalence by session."
+
+
+(* checks whether the process contains an output at toplevel.
+Should not take the symmetries into account while doing so. *)
+let rec contain_output (lp:labelled_process) : bool =
+  match lp.proc with
+  | Input _ -> false
+  | OutputSure _ -> true
+  | Par l
+  | Bang (_,l) -> List.exists contain_output l
+  | _ -> Config.internal_error "[process_session.ml >> contain_output] Should only be applied on normalised processes."
 
 
 (* adding labels to normalised processes *)
@@ -252,7 +270,7 @@ resulting set is empty. *)
 let link_partitions (equiv:'a->'a->bool) (p1:'a partition) (p2:'a partition) : ('a list * 'a list) list option =
   let rec browse accu p1 p2 =
     match p1 with
-    | [] -> Some accu
+    | [] -> if p2 <> [] then None else Some accu
     | [] :: _ ->
       Config.internal_error "[process_session >> link_partitions] Unexpected case"
     | (x::_ as ec1) :: p1' ->
@@ -285,7 +303,7 @@ let rec is_equal_skeleton (p1:labelled_process) (p2:labelled_process) : bool =
 
 (* creates the bijection_set containing the possible matchings of two lists of
 parallel processes, wrt to a predicate for skeleton compatibility. *)
-let init_bijection_set (fp1:labelled_process) (fp2:labelled_process) : bijection_set option =
+let init_bijection_set ?init:(accu:bijection_set=[]) (fp1:labelled_process) (fp2:labelled_process) : bijection_set option =
   let check_skel lp1 lp2 = compare_io_process lp1.proc lp2.proc = 0 in
   let partition lp =
     partition_equivalence check_skel (list_of_labelled_process lp) in
@@ -298,7 +316,7 @@ let init_bijection_set (fp1:labelled_process) (fp2:labelled_process) : bijection
       | Some y -> y in
     let convert procs =
       LabelSet.of_list (List.rev_map (fun p -> access_opt p.label) procs) in
-    Some (List.rev_map (fun (ec1,ec2) -> convert ec1, convert ec2) l)
+    Some (List.rev_map ~init:accu (fun (ec1,ec2) -> convert ec1, convert ec2) l)
 
 
 
@@ -336,14 +354,25 @@ let get_compatible_labels ?origin:(side:side=Left) (l:label) (s:bijection_set) :
 
 
 (* a process with additional information for POR *)
+type action =
+  | InAction of symbol * snd_ord_variable * protocol_term
+  | OutAction of symbol * axiom * protocol_term
+
 type configuration = {
   input_proc : labelled_process list;
   focused_proc : labelled_process option;
   sure_output_proc : labelled_process list;
   sure_unchecked_skeletons : labelled_process option;
   unsure_proc : labelled_process option;
-  trace : todo
+  trace : action list
 }
+
+
+(* TODO. makes initial configuration simpler, helps for optimisations. Includes
+factorisation. *)
+let clean_inital_configuration (c:configuration) : configuration =
+  c
+
 
 (* normalisation of configurations *)
 type equation = (fst_ord, name) Subst.t
@@ -519,13 +548,138 @@ let normalise_configuration (conf:configuration) (eqn:equation) (f_cont:gatherin
 
 
 
+(* exception raised by the skeleton checks when a mismatch occurs. Indicates
+a side where a faulty skeleton has been found, and the corresponding
+configuration and actions *)
+exception Faulty_skeleton of side * configuration * action
+exception Improper_block
+
+(* assuming a skeleton mismatch occurs, return the triple to be passed to the
+exception Faulty_skeleton *)
+let find_faulty_skeleton (size_frame:int) (conf1:configuration) (conf2:configuration) (lp1:labelled_process) (lp2:labelled_process) : side * configuration * action =
+  let list1 = list_of_labelled_process lp1 in
+  let list2 = list_of_labelled_process lp2 in
+
+  let sort = List.fast_sort (fun p q -> compare_io_process p.proc q.proc) in
+  let ordered_list1 = sort list1 in
+  let ordered_list2 = sort list2 in
+
+  let action_of_head conf p =
+    match p.proc with
+    | OutputSure(c,t,_) ->
+      let axiom = Axiom.create (size_frame+1) in
+      let f_action = OutAction(c,axiom,t) in
+      let f_conf = { conf with trace = OutAction(c,axiom,t) :: conf.trace } in
+      (f_conf,f_action)
+    | Input(c,x,_) ->
+      let var_X = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
+      let f_action = InAction(c,var_X, of_variable x) in
+      let f_conf = { conf with trace = InAction(c,var_X,of_variable x) :: conf.trace } in
+      (f_conf,f_action)
+    | _ -> Config.internal_error "[process_session.ml >> find_faulty_skeleton] Should only contain inputs and outputs." in
+
+  let rec find_different l1 l2 =
+    match l1, l2 with
+    | [], [] ->
+      Config.internal_error "[process_session.ml >> find_faulty_skeleton] The ordered lists should not have the same skeletons."
+    | [], p2::_ ->
+      let (conf,action) = action_of_head conf2 p2 in
+      (Right,conf,action)
+    | p1::_ , [] ->
+      let (conf,action) = action_of_head conf1 p1 in
+      (Left,conf,action)
+    | p1::q1, p2::q2 ->
+      let res = compare_io_process p1.proc p2.proc in
+      if res = 0 then find_different q1 q2
+      else if res < 0 then
+        let (conf,action) = action_of_head conf1 p1 in
+        (Left,conf,action)
+      else
+        let (conf,action) = action_of_head conf2 p2 in
+        (Left,conf,action) in
+
+  find_different ordered_list1 ordered_list2
+
+(* takes two configuration as an argument, assuming the first one is labelled,
+and performs a skeleton check (on their focused process if any, or
+sure_uncheked_skeletons otherwise). The second configuration is updated, along
+with the corresponding bijection set.
+Raises Faulty_skeleton if a skeleton mismatch occurs, and Improper_block if an
+improper focused block has just been released. *)
+let check_skeleton_in_configuration (size_frame:int) (baseline:configuration) (to_check:configuration) (bset_to_update:bijection_set) : configuration * bijection_set option =
+
+  match baseline.focused_proc, to_check.focused_proc with
+  | None, None ->
+    begin match baseline.sure_unchecked_skeletons, to_check.sure_unchecked_skeletons with
+    | Some p1, Some p2 when nil p1.proc && nil p2.proc ->
+      {to_check with sure_unchecked_skeletons = None},
+      Some bset_to_update
+    | Some p1, Some p2 when is_equal_skeleton p1 p2 ->
+      begin match p1.proc, p2.proc with
+      | OutputSure _, OutputSure _ ->
+        {to_check with sure_unchecked_skeletons = None; sure_output_proc = p2::to_check.sure_output_proc},
+        Some bset_to_update
+      | Input _, Input _ ->
+        {to_check with sure_unchecked_skeletons = None; input_proc = p2::to_check.input_proc},
+        Some bset_to_update
+      | _, _ ->
+        let label_p2 =
+          match p2.label with
+          | None -> Config.internal_error "[process_session.ml >> check_skeleton_in_configuration] Labels have not been propagated when the process has been sent to skeleton check"
+          | Some l -> l in
+        let p2_labelled = labelling label_p2 p2 in
+        let conf_updated =
+          if contain_output p2 then
+            {to_check with sure_unchecked_skeletons = None; sure_output_proc = p2_labelled::to_check.sure_output_proc}
+          else
+            {to_check with sure_unchecked_skeletons = None; input_proc = p2_labelled::to_check.input_proc} in
+          conf_updated,
+          init_bijection_set ~init:bset_to_update p1 p2_labelled end
+
+    | Some p1, Some p2 ->
+      let (is_left,f_conf,f_action) =
+        find_faulty_skeleton size_frame baseline to_check p1 p2 in
+      raise (Faulty_skeleton (is_left,f_conf,f_action))
+    | _, _ ->
+      Config.internal_error "[process_session.ml >> check_skeleton_in_configuration] A process is either focused or released." end
+
+  | Some p1, Some p2 when nil p1.proc && nil p2.proc ->
+    raise Improper_block
+  | Some p1, Some p2 when is_equal_skeleton p1 p2 ->
+    begin match p1.proc, p2.proc with
+    | OutputSure _, OutputSure _ ->
+      {to_check with focused_proc = None; sure_output_proc = p2::to_check.sure_output_proc},
+      Some bset_to_update
+    | Input _, Input _ ->
+      to_check,
+      Some bset_to_update
+    | _, _ ->
+      let label_p2 =
+        match p2.label with
+        | None -> Config.internal_error "[process_session.ml >> check_skeleton_in_configuration] Labels have not been propagated when the process has been sent to skeleton check"
+        | Some l -> l in
+      let p2_labelled = labelling label_p2 p2 in
+      let conf_updated =
+        if contain_output p2 then
+          {to_check with focused_proc = None; sure_output_proc = p2_labelled::to_check.sure_output_proc}
+        else
+          {to_check with focused_proc = None; input_proc = p2_labelled::to_check.input_proc} in
+        conf_updated,
+        init_bijection_set ~init:bset_to_update p1 p2_labelled end
+
+  | Some p1, Some p2 ->
+      let (is_left,f_conf,f_action) =
+        find_faulty_skeleton size_frame baseline to_check p1 p2 in
+      raise (Faulty_skeleton (is_left, f_conf, f_action))
+  | _, _ ->
+    Config.internal_error "[process_session.ml >> check_skeleton_in_configuration] Comparing skeletons in inconsistent states."
+
 
 (* about generating and applying transitions to configurations *)
 type next_rule =
   | RFocus
   | RPos
   | RNeg
-  | RPar
   | RStop
 
 

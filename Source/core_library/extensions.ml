@@ -44,6 +44,10 @@ module List = struct
       | Some y -> y :: ac
     ) [] l
 
+  (* rev_map, with an optional accumulator *)
+  let rev_map ?init:(accu=[]) f l =
+    List.fold_left (fun ac x -> f x :: ac) accu l
+
 
   (* removes all elements of a list verifying a given predicate, and returns
   one such element (if any). The ordering is not preserved. *)
