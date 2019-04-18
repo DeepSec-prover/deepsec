@@ -709,7 +709,7 @@ let check_skeleton_in_configuration (size_frame:int) (baseline:configuration) (t
       | _, _ ->
         let label_p2 =
           match p2.label with
-          | None -> Config.internal_error "[process_session.ml >> check_skeleton_in_configuration] Labels have not been propagated when the process has been sent to skeleton check"
+          | None -> Config.internal_error "[process_session.ml >> check_skeleton_in_configuration] Labels have not been propagated when the process has been sent to skeleton check."
           | Some l -> l in
         let p2_labelled = labelling label_p2 p2 in
         let conf_updated =
@@ -740,7 +740,7 @@ let check_skeleton_in_configuration (size_frame:int) (baseline:configuration) (t
     | _, _ ->
       let label_p2 =
         match p2.label with
-        | None -> Config.internal_error "[process_session.ml >> check_skeleton_in_configuration] Labels have not been propagated when the process has been sent to skeleton check"
+        | None -> Config.internal_error "[process_session.ml >> check_skeleton_in_configuration] Labels have not been propagated when the process has been sent to skeleton check."
         | Some l -> l in
       let p2_labelled = labelling label_p2 p2 in
       let conf_updated =
@@ -764,8 +764,7 @@ module IntSet = Set.Make(struct type t = int let compare = compare end)
 type block = {
   label : label;
   recipes : snd_ord_variable list; (* There should always be variables *)
-  minimal_axiom : int;
-  maximal_axiom : int;
+  bounds_axiom : (int * int) option; (* lower and upper bound on the axiom index used *)
 
   maximal_var : int;
   used_axioms : IntSet.t
@@ -776,11 +775,25 @@ type block = {
 let create_block (label:label) : block = {
     label = label;
     recipes = [];
-    minimal_axiom = 0;
-    maximal_axiom = 0;
+    bounds_axiom = None;
     maximal_var = 0;
     used_axioms = IntSet.empty
 }
+
+(* adds a second-order variable in the recipes of a block *)
+let add_variable_in_block (snd_var:snd_ord_variable) (block:block) : block =
+  { block with recipes = (snd_var :: block.recipes) }
+
+(* adds an axiom in a block and updates the bounds *)
+let add_axiom_in_block (ax:axiom) (block:block) : block =
+  match block.bounds_axiom with
+  | None ->
+    let b = Axiom.index_of ax in
+    {block with bounds_axiom = Some (b,b)}
+  | Some (i,_) ->
+    {block with bounds_axiom = Some (i,Axiom.index_of ax)}
+
+
 
 (* checking whether a block is allowed after a block list *)
 let rec is_faulty_block (block:block) (block_list:block list) : bool =
@@ -789,12 +802,11 @@ let rec is_faulty_block (block:block) (block_list:block list) : bool =
   | b_i::q ->
     let comp_lab = indep_labels block.label b_i.label in
     if comp_lab < 0 then
-      b_i.minimal_axiom = 0 || (
-        block.maximal_var < b_i.minimal_axiom &&
-        IntSet.for_all (fun ax ->
-          ax < b_i.minimal_axiom || ax > b_i.maximal_axiom
-        ) block.used_axioms
-      )
+      match b_i.bounds_axiom with
+      | None -> true
+      | Some (min_ax,max_ax) ->
+        block.maximal_var < min_ax &&
+        IntSet.for_all (fun ax -> ax < min_ax || ax > max_ax) block.used_axioms
     else if comp_lab > 0 then is_faulty_block block q
     else false
 
