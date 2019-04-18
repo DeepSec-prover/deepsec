@@ -157,7 +157,7 @@ let labelling (prefix:label) (lp:labelled_process) : labelled_process =
         f_cont {proc = Bang(b,l_labelled); label = None} i_max
       )
     | Input _
-    | OutputSure _ -> f_cont {lp with label = Some (i::prefix)} (i+1)
+    | OutputSure _ -> f_cont {lp with label = Some (prefix @ [i])} (i+1)
     | New _
     | If _
     | Output _ -> Config.internal_error "[process_session.ml >> labelling] Only normalised processes should be assigned with labels."
@@ -230,7 +230,8 @@ let unfold_process ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_chann
 and compares the labels lexicographically otherwise. *)
 let rec indep_labels (l:label) (ll:label) : int =
   match l,ll with
-  | [],_  | _,[] -> 0
+  | [],_
+  | _,[] -> 0
   | p::l,pp::ll when p <> pp -> compare p pp
   | _::l,_::ll -> indep_labels l ll
 
@@ -631,7 +632,6 @@ let normalise_configuration (conf:configuration) (eqn:equation) (f_cont:gatherin
 
 
 
-
 (* exception raised by the skeleton checks when a mismatch occurs. Indicates
 a side where a faulty skeleton has been found, and the corresponding
 configuration and actions *)
@@ -759,13 +759,101 @@ let check_skeleton_in_configuration (size_frame:int) (baseline:configuration) (t
     Config.internal_error "[process_session.ml >> check_skeleton_in_configuration] Comparing skeletons in inconsistent states."
 
 
+(* type for representing blocks *)
+module IntSet = Set.Make(struct type t = int let compare = compare end)
+type block = {
+  label : label;
+  recipes : snd_ord_variable list; (* There should always be variables *)
+  minimal_axiom : int;
+  maximal_axiom : int;
+
+  maximal_var : int;
+  used_axioms : IntSet.t
+}
+
+
+(* creates an empty block *)
+let create_block (label:label) : block = {
+    label = label;
+    recipes = [];
+    minimal_axiom = 0;
+    maximal_axiom = 0;
+    maximal_var = 0;
+    used_axioms = IntSet.empty
+}
+
+(* checking whether a block is allowed after a block list *)
+let rec is_faulty_block (block:block) (block_list:block list) : bool =
+  match block_list with
+  | [] -> false
+  | b_i::q ->
+    let comp_lab = indep_labels block.label b_i.label in
+    if comp_lab < 0 then
+      b_i.minimal_axiom = 0 || (
+        block.maximal_var < b_i.minimal_axiom &&
+        IntSet.for_all (fun ax ->
+          ax < b_i.minimal_axiom || ax > b_i.maximal_axiom
+        ) block.used_axioms
+      )
+    else if comp_lab > 0 then is_faulty_block block q
+    else false
+
+
+(* applies a snd order substitution on a block list and computes the bound
+fields of the block type *)
+let apply_snd_subst_on_block (snd_subst:(snd_ord,axiom) Subst.t) (block_list:block list) : block list =
+  Subst.apply snd_subst block_list (fun l f ->
+    List.map (fun block ->
+      let max_var = ref 0 in
+      let used_axioms = ref IntSet.empty in
+      List.iter (fun var ->
+        let r' = f (of_variable var) in
+        Term.iter_variables_and_axioms (fun ax_op var_op ->
+          match ax_op,var_op with
+          | Some ax, None ->
+            used_axioms := IntSet.add (Axiom.index_of ax) !used_axioms
+          | None, Some v ->
+            max_var := max !max_var (Variable.type_of v)
+          | _, _ ->
+            Config.internal_error "[process_session.ml >> apply_snd_subst_on_block] The function Term.iter_variables_and_axioms should return one filled option."
+        ) r';
+      ) block.recipes;
+
+      {block with used_axioms = !used_axioms; maximal_var = !max_var}
+    ) l
+  )
+
+(* checking whether a block is authorised after a block list *)
+let is_block_list_authorised (block_list:block list) (cur_block:block) (snd_subst:(snd_ord,axiom) Subst.t) : bool =
+  match block_list with
+  | [] -> true
+  | _ ->
+    let block_list_upd =
+      apply_snd_subst_on_block snd_subst (cur_block::block_list) in
+    let rec explore_block block_list =
+      match block_list with
+      | []
+      | [_] -> true
+      | block::q -> not (is_faulty_block block q) && explore_block q in
+    explore_block block_list_upd
+
+
 (* about generating and applying transitions to configurations *)
-type next_rule =
+type type_of_transition =
   | RFocus
   | RPos
   | RNeg
-  | RStop
 
+(* given the shape of a configuration, find the next type of to apply *)
+let next_transition_to_apply (c:configuration) : type_of_transition option =
+  match c.focused_proc with
+  | Some {proc = Input _; _} -> Some RPos
+  | Some _ -> Config.internal_error "[process_session.ml >> next_rule] Ill-formed focused state, should have been released or normalised."
+  | None ->
+    if c.sure_output_proc <> [] then Some RNeg
+    else match c.input_proc with
+      | [] -> None
+      | _ -> Some RFocus
 
 let apply_foc : todo =
   todo
