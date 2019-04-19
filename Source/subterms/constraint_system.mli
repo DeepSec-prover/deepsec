@@ -135,7 +135,11 @@ module Set : sig
 
   val optimise_snd_ord_recipes : 'a t -> 'a t
 
+  (** converts a set of constraint systems into a list *)
   val elements : 'a t -> 'a csys list
+
+  (** converts a list of constraint systems into a set *)
+  val of_list : 'a csys list -> 'a t
 
   (** [choose] {% $S$ returns one constraint system in $S$. %}
       @raise Internal_error if the set is empty. *)

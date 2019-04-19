@@ -1255,6 +1255,8 @@ module Set = struct
 
   let elements csys_set = csys_set
 
+  let of_list l_csys = l_csys
+
   let find_representative csys_set predicate =
     let true_csys = ref None
     and false_csys = ref None in

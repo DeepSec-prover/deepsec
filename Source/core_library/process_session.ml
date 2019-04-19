@@ -13,6 +13,7 @@ let todo = Obj.magic () (* pending definitions *)
 (* position of parallel subprocesses *)
 type position = int
 type label = position list
+let initial_label = [0]
 
 
 
@@ -185,7 +186,9 @@ let list_of_labelled_process (lp:labelled_process) : labelled_process list =
 
 
 
-(* unfolding with symmetries *)
+(* unfolding with symmetries. Return a list of (p,l,b) where
+- p is the unfolded labelled process
+- l is a list of leftovers after the unfolding of p *)
 let unfold_process ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_channel_renaming:(opt:bool=false) ?only_one:(stop:bool=false) (l:labelled_process list) : (labelled_process * labelled_process list) list =
 
   let rec unfold accu leftovers p f_cont =
@@ -304,6 +307,10 @@ let rec is_equal_skeleton (p1:labelled_process) (p2:labelled_process) : bool =
   with Invalid_argument _ -> false
 
 
+(* the initial bijection set *)
+let void_bijection_set : bijection_set =
+  [LabelSet.singleton initial_label, LabelSet.singleton initial_label]
+
 (* creates the bijection_set containing the possible matchings of two lists of
 parallel processes, wrt to a predicate for skeleton compatibility. *)
 let init_bijection_set ?init:(accu:bijection_set=[]) (fp1:labelled_process) (fp2:labelled_process) : bijection_set option =
@@ -369,6 +376,19 @@ type configuration = {
   sure_unchecked_skeletons : labelled_process option;
   unsure_proc : labelled_process option;
   trace : action list
+}
+
+(* creates a configuration from a labelled process. The process is arbitrarily
+put in the focused_proc field (will be put at the right place at the beginning
+of the decision of equivalence, i.e. by function normalise_before_starting in
+Equivalence_session). *)
+let init_configuration (lp:labelled_process) : configuration = {
+  input_proc = [];
+  focused_proc = Some lp;
+  sure_output_proc = [];
+  sure_unchecked_skeletons = None;
+  unsure_proc = None;
+  trace = [];
 }
 
 
@@ -475,7 +495,7 @@ type modulo_result =
   | EqList of (fst_ord, name) Subst.t list
 
 
-let rec normalise (p:labelled_process) (eqn:equation) (diseqn:disequation list) (f_cont:gathering_normalise->labelled_process->(unit->unit)->'b) (f_next:unit->unit) : 'b =
+let rec normalise (p:labelled_process) (eqn:equation) (diseqn:disequation list) (f_cont:gathering_normalise->labelled_process->(unit->unit)->unit) (f_next:unit->unit) : unit =
   match p.proc with
   | OutputSure _
   | Input _ ->
@@ -524,7 +544,7 @@ let rec normalise (p:labelled_process) (eqn:equation) (diseqn:disequation list) 
             Modulo.syntactic_disequations_of_disequations (Modulo.create_disequation tt tt)
           with
           | Modulo.Bot
-          | Modulo.Top -> Config.internal_error "[process_session.ml >> normalise_process] The disequations cannot be top or bot." in
+          | Modulo.Top -> Config.internal_error "[process_session.ml >> normalise] The disequations cannot be top or bot." in
         let new_diseqn = List.rev_append diseqn diseqn_modulo in
         f_cont {equations = eqn; disequations = new_diseqn} {p with proc = Par []} f_next in
 
@@ -595,7 +615,7 @@ let rec normalise (p:labelled_process) (eqn:equation) (diseqn:disequation list) 
         | _ -> f_cont gather {p with proc = Bang(b,l_norm)} f_next1
     ) f_next
 
-and normalise_list (l:labelled_process list) (eqn:equation) (diseqn:disequation list) (f_cont:gathering_normalise->labelled_process list->(unit->unit)->'b) (f_next:unit->unit) : 'b =
+and normalise_list (l:labelled_process list) (eqn:equation) (diseqn:disequation list) (f_cont:gathering_normalise->labelled_process list->(unit->unit)->unit) (f_next:unit->unit) : unit =
   match l with
   | [] -> f_cont {equations = eqn; disequations = diseqn} [] f_next
   | p :: t ->
@@ -610,7 +630,7 @@ and normalise_list (l:labelled_process list) (eqn:equation) (diseqn:disequation 
     ) f_next
 
 
-let normalise_configuration (conf:configuration) (eqn:equation) (f_cont:gathering_normalise->configuration->'a) : 'a =
+let normalise_configuration (conf:configuration) (eqn:equation) (f_cont:gathering_normalise->configuration->unit) : unit =
   Config.debug (fun () ->
     if conf.sure_unchecked_skeletons <> None then
       Config.internal_error "[process_session.ml >> normalise_configuration] Sure unchecked should be empty."
@@ -622,7 +642,7 @@ let normalise_configuration (conf:configuration) (eqn:equation) (f_cont:gatherin
       normalise p eqn [] (fun gather p_norm f_next ->
         f_cont gather {conf with focused_proc = Some p_norm};
         f_next ()
-      ) (fun () -> ())
+      ) (fun () -> ()) (* TODO. checks whether this f_next could be put instead of this fun () -> () *)
     | Some p, None ->
       normalise p eqn [] (fun gather p_norm f_next ->
         f_cont gather {conf with sure_unchecked_skeletons = Some p_norm; unsure_proc = None};
@@ -653,12 +673,14 @@ let find_faulty_skeleton (size_frame:int) (conf1:configuration) (conf2:configura
     | OutputSure(c,t,_) ->
       let axiom = Axiom.create (size_frame+1) in
       let f_action = OutAction(c,axiom,t) in
-      let f_conf = { conf with trace = OutAction(c,axiom,t) :: conf.trace } in
+      let f_conf = {conf with trace = OutAction(c,axiom,t) :: conf.trace} in
       (f_conf,f_action)
     | Input(c,x,_) ->
-      let var_X = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
+      let var_X =
+        Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
       let f_action = InAction(c,var_X, of_variable x) in
-      let f_conf = { conf with trace = InAction(c,var_X,of_variable x) :: conf.trace } in
+      let f_conf =
+        {conf with trace = InAction(c,var_X,of_variable x) :: conf.trace} in
       (f_conf,f_action)
     | _ -> Config.internal_error "[process_session.ml >> find_faulty_skeleton] Should only contain inputs and outputs." in
 
@@ -688,75 +710,102 @@ let find_faulty_skeleton (size_frame:int) (conf1:configuration) (conf2:configura
 and performs a skeleton check (on their focused process if any, or
 sure_uncheked_skeletons otherwise). The second configuration is updated, along
 with the corresponding bijection set.
-Raises Faulty_skeleton if a skeleton mismatch occurs, and Improper_block if an
-improper focused block has just been released. *)
-let check_skeleton_in_configuration (size_frame:int) (baseline:configuration) (to_check:configuration) (bset_to_update:bijection_set) : configuration * bijection_set option =
+Raises Faulty_skeleton if a skeleton mismatch occurs.
+NB. Assumes that focused parallels have already been labelled. *)
+let check_skeleton_in_configuration (size_frame:int) (baseline:configuration) (to_check:configuration) (bset_to_update:bijection_set) : configuration * bijection_set =
+
+  let fault p1 p2 =
+    let (side,f_conf,f_action) =
+      find_faulty_skeleton size_frame baseline to_check p1 p2 in
+    raise (Faulty_skeleton (side,f_conf,f_action)) in
 
   match baseline.focused_proc, to_check.focused_proc with
   | None, None ->
     begin match baseline.sure_unchecked_skeletons, to_check.sure_unchecked_skeletons with
     | Some p1, Some p2 when nil p1.proc && nil p2.proc ->
-      {to_check with sure_unchecked_skeletons = None; },
-      Some bset_to_update
+      {to_check with sure_unchecked_skeletons = None},
+      bset_to_update
     | Some p1, Some p2 when is_equal_skeleton p1 p2 ->
       begin match p1.proc, p2.proc with
       | OutputSure _, OutputSure _ ->
         {to_check with sure_unchecked_skeletons = None; sure_output_proc = p2::to_check.sure_output_proc},
-        Some bset_to_update
+        bset_to_update
       | Input _, Input _ ->
         {to_check with sure_unchecked_skeletons = None; input_proc = p2::to_check.input_proc},
-        Some bset_to_update
+        bset_to_update
       | _, _ ->
-        let label_p2 =
-          match p2.label with
-          | None -> Config.internal_error "[process_session.ml >> check_skeleton_in_configuration] Labels have not been propagated when the process has been sent to skeleton check."
-          | Some l -> l in
-        let p2_labelled = labelling label_p2 p2 in
         let conf_updated =
           if contains_output p2 then
-            {to_check with sure_unchecked_skeletons = None; sure_output_proc = p2_labelled::to_check.sure_output_proc}
+            {to_check with sure_unchecked_skeletons = None; sure_output_proc = p2::to_check.sure_output_proc}
           else
-            {to_check with sure_unchecked_skeletons = None; input_proc = p2_labelled::to_check.input_proc} in
-          conf_updated,
-          init_bijection_set ~init:bset_to_update p1 p2_labelled end
+            {to_check with sure_unchecked_skeletons = None; input_proc = p2::to_check.input_proc} in
+        conf_updated,
+        match init_bijection_set ~init:bset_to_update p1 p2 with
+        | None -> Config.internal_error "[process_session.ml >> check_skeleton_in_configuration] init_bijection_set should not fail."
+        | Some bs -> bs
+      end
 
-    | Some p1, Some p2 ->
-      let (is_left,f_conf,f_action) =
-        find_faulty_skeleton size_frame baseline to_check p1 p2 in
-      raise (Faulty_skeleton (is_left,f_conf,f_action))
+    | Some p1, Some p2 -> fault p1 p2
     | _, _ ->
       Config.internal_error "[process_session.ml >> check_skeleton_in_configuration] A process is either focused or released." end
 
   | Some p1, Some p2 when nil p1.proc && nil p2.proc ->
-    raise Improper_block
+    {to_check with focused_proc = None},
+    bset_to_update
   | Some p1, Some p2 when is_equal_skeleton p1 p2 ->
     begin match p1.proc, p2.proc with
     | OutputSure _, OutputSure _ ->
       {to_check with focused_proc = None; sure_output_proc = p2::to_check.sure_output_proc},
-      Some bset_to_update
+      bset_to_update
     | Input _, Input _ ->
       to_check,
-      Some bset_to_update
+      bset_to_update
     | _, _ ->
-      let label_p2 =
-        match p2.label with
-        | None -> Config.internal_error "[process_session.ml >> check_skeleton_in_configuration] Labels have not been propagated when the process has been sent to skeleton check."
-        | Some l -> l in
-      let p2_labelled = labelling label_p2 p2 in
       let conf_updated =
         if contains_output p2 then
-          {to_check with focused_proc = None; sure_output_proc = p2_labelled::to_check.sure_output_proc}
+          {to_check with focused_proc = None; sure_output_proc = p2::to_check.sure_output_proc}
         else
-          {to_check with focused_proc = None; input_proc = p2_labelled::to_check.input_proc} in
-        conf_updated,
-        init_bijection_set ~init:bset_to_update p1 p2_labelled end
+          {to_check with focused_proc = None; input_proc = p2::to_check.input_proc} in
+      conf_updated,
+      match init_bijection_set ~init:bset_to_update p1 p2 with
+      | None -> Config.internal_error "[process_session.ml >> check_skeleton_in_configuration] init_bijection_set should not fail. (2)"
+      | Some bs -> bs
+    end
 
-  | Some p1, Some p2 ->
-      let (is_left,f_conf,f_action) =
-        find_faulty_skeleton size_frame baseline to_check p1 p2 in
-      raise (Faulty_skeleton (is_left, f_conf, f_action))
+  | Some p1, Some p2 -> fault p1 p2
   | _, _ ->
     Config.internal_error "[process_session.ml >> check_skeleton_in_configuration] Comparing skeletons in inconsistent states."
+
+
+(* when a baseline skeleton has been compared to all necessary skeletons, it
+can be released without further checks.
+Raises Improper_block if a focused nil process has been released. *)
+let release_skeleton_without_check (c:configuration) : configuration =
+  match c.focused_proc with
+  | Some {proc = Input _; _} -> c
+  | Some ({proc = OutputSure _; _} as p) ->
+    {c with focused_proc = None; sure_output_proc = p::c.sure_output_proc}
+  | Some p ->
+    if nil p.proc then raise Improper_block
+    else if contains_output p then
+      {c with focused_proc = None; sure_output_proc = p::c.sure_output_proc}
+    else
+      {c with focused_proc = None; input_proc = p::c.input_proc}
+  | None ->
+    match c.sure_unchecked_skeletons with
+    | Some ({proc = Input _; _} as p) ->
+      {c with sure_unchecked_skeletons = None; sure_output_proc = p::c.input_proc}
+    | Some ({proc = OutputSure _; _} as p) ->
+      {c with sure_unchecked_skeletons = None; sure_output_proc = p::c.sure_output_proc}
+    | Some p ->
+      if nil p.proc then {c with sure_unchecked_skeletons = None}
+      else if contains_output p then
+        {c with sure_unchecked_skeletons = None; sure_output_proc = p::c.sure_output_proc}
+      else
+        {c with sure_unchecked_skeletons = None; input_proc = p::c.input_proc}
+    | None ->
+      Config.internal_error "[process_session.ml >> release_skeleton_without_check] A process is either focused or released."
+
 
 
 (* type for representing blocks *)
