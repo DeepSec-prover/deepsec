@@ -31,10 +31,10 @@ and process =
   (* | Let of protocol_term * protocol_term * labelled_process * labelled_process *)
   | New of name * labelled_process
   | Par of labelled_process list
-  | Bang of bool * labelled_process list (* the boolean is set to true is this represents a true symmetry (i.e. w.r.t. structural equivalence, not up to bijective channel renaming) *)
+  | Bang of bool * labelled_process list * labelled_process list (* the boolean is set to true is this represents a true symmetry (i.e. w.r.t. structural equivalence, not up to bijective channel renaming). The two lists model the replicated processes, the first one being reserved for processes where symmetries are temporarily broken due to the execution of outputs. *)
 
 
-let rec flatten_process (lp:labelled_process) : labelled_process =
+(* let rec flatten_process (lp:labelled_process) : labelled_process =
   Config.debug (fun () ->
     if lp.label <> None then Config.internal_error "[process_session.ml >> flatten_process] Processes with already-attributed labels should not be flattened."
   );
@@ -60,14 +60,14 @@ let rec flatten_process (lp:labelled_process) : labelled_process =
         | _ -> p_flattened :: ac
       ) [] l in
     {lp with proc = Par l_flattened}
-  |_ -> lp
+  |_ -> lp *)
 
 
 (* checks whether a process models the nil process *)
 let nil (p:process) : bool =
   match p with
   | Par []
-  | Bang (_,[]) -> true
+  | Bang (_,[],[]) -> true
   | _ -> false
 
 let apply_renaming_on_term (rho:Name.Renaming.t) (t:Term.protocol_term) : Term.protocol_term =
@@ -96,8 +96,9 @@ let rec fresh_copy_of (lp:labelled_process) : labelled_process =
       {proc = New(nn,browse (Name.Renaming.compose rho n nn) p); label = None}
     | Par l ->
       {proc = Par(List.map (browse rho) l); label = None}
-    | Bang(b,l) ->
-      {proc = Bang(b,List.map (browse rho) l); label = None} in
+    | Bang(b,[],l) ->
+      {proc = Bang(b,[],List.map (browse rho) l); label = None}
+    | Bang _ -> Config.internal_error "[process_session.ml >> fresh_copy_of] Unexpected case." in
   browse (Name.Renaming.identity) lp
 
 
@@ -127,7 +128,7 @@ let rec of_expansed_process (p:Process.expansed_process) : labelled_process =
         if i = 1 then proc
         else
           let l = Func.loop (fun _ ac -> fresh_copy_of proc :: ac) [] 0 (i-1) in
-          {proc = Bang (true,l); label = None}
+          {proc = Bang (true,[],l); label = None}
       ) lp in
     {proc = Par lll; label = None}
   | Process.Choice _
@@ -140,8 +141,8 @@ let rec contains_output (lp:labelled_process) : bool =
   match lp.proc with
   | Input _ -> false
   | OutputSure _ -> true
-  | Par l
-  | Bang (_,l) -> List.exists contains_output l
+  | Par l -> List.exists contains_output l
+  | Bang (_,l1,l2) -> List.exists contains_output (l1@l2)
   | _ -> Config.internal_error "[process_session.ml >> contains_output] Should only be applied on normalised processes."
 
 
@@ -153,9 +154,11 @@ let labelling (prefix:label) (lp:labelled_process) : labelled_process =
       assign_list i l (fun l_labelled i_max ->
         f_cont {proc = Par l_labelled; label = None} i_max
       )
-    | Bang(b,l) ->
-      assign_list i l (fun l_labelled i_max ->
-        f_cont {proc = Bang(b,l_labelled); label = None} i_max
+    | Bang(b,l1,l2) ->
+      assign_list i l1 (fun l1_labelled i1_max ->
+        assign_list i1_max l2 (fun l2_labelled i2_max ->
+          f_cont {proc = Bang(b,l1_labelled,l2_labelled); label = None} i2_max
+        )
       )
     | Input _
     | OutputSure _ -> f_cont {lp with label = Some (prefix @ [i])} (i+1)
@@ -179,35 +182,38 @@ let labelling (prefix:label) (lp:labelled_process) : labelled_process =
 (* extracts the list of all parallel labelled_process from a labelled_process *)
 let list_of_labelled_process (lp:labelled_process) : labelled_process list =
   let rec gather accu lp = match lp with
-    | {proc = Par l; _}
-    | {proc = Bang (_,l); _} -> List.fold_left gather accu l
+    | {proc = Par l; _} -> List.fold_left gather accu l
+    | {proc = Bang (_,l1,l2); _} -> List.fold_left gather accu (l1@l2)
     | _ -> lp :: accu in
   gather [] lp
 
 
 
-(* unfolding with symmetries. Return a list of (p,l,b) where
-- p is the unfolded labelled process
-- l is a list of leftovers after the unfolding of p *)
-let unfold_process ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_channel_renaming:(opt:bool=false) ?only_one:(stop:bool=false) (l:labelled_process list) : (labelled_process * labelled_process list) list =
+(* unfolding inputs with symmetries. Return a list of (p,l) where
+- p is the unfolded labelled process (starts with an input)
+- l is a list of leftovers after the unfolding of p
+TODO. add a countdown, in case we know exactly how many unfoldings we have to
+perform. *)
+let unfold_input ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_channel_renaming:(opt:bool=false) (l:labelled_process list) : (labelled_process * labelled_process list) list =
 
   let rec unfold accu leftovers p f_cont =
     match p.proc with
-    | Par l -> unfold_list accu leftovers l f_cont
-    | Bang(_,[]) -> f_cont accu
-    | Bang(b,(pp::t as l)) ->
-      if b || opt then
-        unfold accu ({proc = Bang(b,t); label = None}::leftovers) pp f_cont
-      else unfold_list ~bang:(Some []) accu leftovers l f_cont
-    | Input _
     | OutputSure _ ->
-      if not (f p) then f_cont accu
-      else if stop then [p,leftovers]
-      else f_cont ((p,leftovers)::accu)
+      Config.internal_error "[process_session.ml >> unfold_input] Ill-formed process, focus should not be applied in this case. (1)"
+    | Bang(_,_::_,_) ->
+      Config.internal_error "[process_session.ml >> unfold_input] Ill-formed process, focus should not be applied in this case. (2)"
+    | Par l -> unfold_list accu leftovers l f_cont
+    | Bang(_,[],[]) -> f_cont accu
+    | Bang(b,[],(pp::t as l)) ->
+      if b || opt then
+        unfold accu ({proc = Bang(b,[],t); label = None}::leftovers) pp f_cont
+      else unfold_list ~bang:(Some []) accu leftovers l f_cont
+    | Input _ when f p -> f_cont ((p,leftovers)::accu)
+    | Input _ -> f_cont accu
     | New _
     | If _
     | Output _ ->
-      Config.internal_error "[process_session.ml >> unfold_process] Unfolding should only be applied on normalised processes."
+      Config.internal_error "[process_session.ml >> unfold_input] Unfolding should only be applied on normalised processes."
 
   and unfold_list ?bang:(memo=None) accu leftovers l f_cont =
     match l with
@@ -220,13 +226,70 @@ let unfold_process ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_chann
         )
       | Some memo -> (* case of a list of replicated processes *)
         let lefts =
-          {proc = Bang(false,List.rev_append memo t); label = None} :: leftovers in
+          {proc = Bang(false,[],List.rev_append memo t); label = None} :: leftovers in
         unfold accu lefts p (fun accu1 ->
           unfold_list ~bang:(Some (p::memo)) accu1 leftovers t f_cont
         ) in
 
   unfold_list [] [] l (fun accu -> accu)
 
+
+
+(* executing outputs with symmetries. Return a list of (c,t,p,lab,l) where l
+is the leftovers left after executing an output OutputSure(c,t,p) of label lab.
+In particular, note that this output is consumed. *)
+let unfold_output ?filter:(f:labelled_process->bool=fun _ -> true) ?only_one:(stop:bool=false) (l:labelled_process list) : (symbol * protocol_term * labelled_process * label * labelled_process list) list =
+
+  let rec unfold accu p rebuild f_cont =
+    match p.proc with
+    | Input _ -> f_cont accu
+    | OutputSure(c,t,pp) ->
+      if not (f p) then f_cont accu
+      else
+        let pp_labelled = {pp with label = p.label} in
+        let res =
+          match p.label with
+          | None -> Config.internal_error "[process_session.ml >> unfold_output] Labels should have been assigned."
+          | Some lab -> c,t,pp_labelled,lab,rebuild pp_labelled in
+        if stop then [res]
+        else f_cont (res::accu)
+    | If _
+    | New _
+    | Output _ ->
+      Config.internal_error "[process_session.ml >> unfold_output] Should only be called on normalised processes."
+    | Par l ->
+      let add_par l =
+        match l with
+        | [p] -> rebuild p
+        | l -> rebuild {proc = Par l; label = None} in
+      unfold_list accu [] l add_par f_cont
+    | Bang(b,lbroken,ll) ->
+      let add_bang left =
+        rebuild {proc = Bang(b,left,ll); label = None} in
+      let browse_lbroken = unfold_list accu [] lbroken add_bang in
+      match b,ll with
+      | _,[] -> browse_lbroken f_cont
+      | true, pp::t ->
+        let add_bang_sym head =
+          rebuild {proc = Bang(true,lbroken,head::t); label = None} in
+        browse_lbroken (fun ac -> unfold ac pp add_bang_sym f_cont)
+      | false, _ ->
+        let add_bang_nosym right =
+          rebuild {proc = Bang(false,lbroken,right); label = None} in
+        browse_lbroken (fun ac -> unfold_list ac [] ll add_bang_nosym f_cont)
+
+  and unfold_list accu memo l rebuild f_cont =
+    match l with
+    | [] -> f_cont accu
+    | pp :: t ->
+      let add_list_to_rebuild p =
+        if nil p.proc then rebuild (List.rev_append memo t)
+        else rebuild (p::List.rev_append memo t) in
+      unfold accu pp add_list_to_rebuild (fun acp ->
+        unfold_list acp (pp::memo) t rebuild f_cont
+      ) in
+
+  unfold_list [] [] l (fun l -> l) (fun ac -> ac)
 
 
 (* comparing labels for POR: returns 0 if one label is prefix of the other,
@@ -417,10 +480,10 @@ let next_transitions_universal (c:configuration) : next_transitions =
         match p with
         | {label = Some l; proc = Input(ch,_,_)} -> l,ch
         | _ -> Config.internal_error "[process_session.ml >> next_transitions_universal] Unexpected case." in
-      Focus (List.rev_map (fun (p,_) -> label_and_channel p) (unfold_process ~allow_channel_renaming:true c.input_proc))
+      Focus (List.rev_map (fun (p,_) -> label_and_channel p) (unfold_input ~allow_channel_renaming:true c.input_proc))
     | l ->
-      match unfold_process ~filter:contains_output ~allow_channel_renaming:false ~only_one:true l with
-      | ({label = Some l; proc = Input(ch,_,_)},_) :: [] -> Neg (l,ch)
+      match unfold_output ~only_one:true l with
+      | (ch,t,p,lab,new_config) :: [] -> Neg (lab,ch)
       | _ -> Config.internal_error "[process_session.ml >> next_transitions_universal] unfold_process returned an unexpected result."
 
 (* generating the next transitions matching the transitions generated by the
@@ -456,7 +519,7 @@ let next_transitions_existential (next_trans_univ:next_transitions) (c:configura
         | {label = Some l; proc = Input(ch,_,_)} -> l,ch
         | _ -> Config.internal_error "[process_session.ml >> next_transitions_existential] Unexpected case." in
       let focus_ch =
-        unfold_process ~filter:same_skel ~allow_channel_renaming:false c.input_proc in
+        unfold_input ~filter:same_skel ~allow_channel_renaming:false c.input_proc in
       Focus (List.map (fun (p,_) -> label_and_channel p) focus_ch)
     ) l
   | Neg (lab,ch) ->
@@ -468,14 +531,9 @@ let next_transitions_existential (next_trans_univ:next_transitions) (c:configura
       | {proc = OutputSure(cc,_,_); label = Some lab'} ->
         Symbol.is_equal ch cc && LabelSet.mem lab' compatibility
       | _ -> false in
-    match unfold_process ~filter:same_skel ~allow_channel_renaming:false c.input_proc with
-    | [] -> []
-    | l ->
-      let label_and_channel p =
-        match p with
-        | {label = Some l; proc = Input(ch,_,_)} -> l,ch
-        | _ -> Config.internal_error "[process_session.ml >> next_transitions_existential] Unexpected case." in
-      List.map (fun (p,_) -> let (lab,ch) = label_and_channel p in Neg(lab,ch) ) l
+
+    let l = unfold_output ~filter:same_skel c.input_proc in
+    List.map (fun (ch,t,p,lab,new_conf) -> Neg(lab,ch)) l
 
 
 
@@ -608,11 +666,14 @@ let rec normalise (p:labelled_process) (eqn:equation) (diseqn:disequation list) 
         | _ -> f_cont gather {p with proc = Par l_norm} f_next1
     ) f_next
 
-  | Bang(b,l) ->
-    normalise_list l eqn diseqn (fun gather l_norm f_next1 ->
-      match l_norm with
-        | [p] -> f_cont gather p f_next1
-        | _ -> f_cont gather {p with proc = Bang(b,l_norm)} f_next1
+  | Bang(b,lbrok,l) ->
+    normalise_list l eqn diseqn (fun gather1 l_norm f_next1 ->
+      normalise_list lbrok gather1.equations gather1.disequations (fun gather2 lbrok_norm f_next2 ->
+        match lbrok_norm,l_norm with
+        | [],[p]
+        | [p],[] -> f_cont gather2 p f_next2
+        | _ -> f_cont gather2 {p with proc = Bang(b,lbrok_norm,l_norm)} f_next2
+      ) f_next1
     ) f_next
 
 and normalise_list (l:labelled_process list) (eqn:equation) (diseqn:disequation list) (f_cont:gathering_normalise->labelled_process list->(unit->unit)->unit) (f_next:unit->unit) : unit =
@@ -624,6 +685,8 @@ and normalise_list (l:labelled_process list) (eqn:equation) (diseqn:disequation 
         let l_tot_norm =
           match p_norm.proc with
           | Par ll -> List.rev_append ll l_norm
+          | Bang(_,[],[p])
+          | Bang(_,[p],[]) -> p :: l_norm
           | _ -> p_norm :: l_norm in
         f_cont gather2 l_tot_norm f_next2
       ) f_next1
@@ -708,11 +771,10 @@ let find_faulty_skeleton (size_frame:int) (conf1:configuration) (conf2:configura
 
 (* takes two configuration as an argument, assuming the first one is labelled,
 and performs a skeleton check (on their focused process if any, or
-sure_uncheked_skeletons otherwise). The second configuration is updated, along
-with the corresponding bijection set.
+sure_uncheked_skeletons otherwise). Returns the updated matchings.
 Raises Faulty_skeleton if a skeleton mismatch occurs.
 NB. Assumes that focused parallels have already been labelled. *)
-let check_skeleton_in_configuration (size_frame:int) (baseline:configuration) (to_check:configuration) (bset_to_update:bijection_set) : configuration * bijection_set =
+let check_skeleton_in_configuration (size_frame:int) (baseline:configuration) (to_check:configuration) (bset_to_update:bijection_set) : bijection_set =
 
   let fault p1 p2 =
     let (side,f_conf,f_action) =
@@ -722,24 +784,12 @@ let check_skeleton_in_configuration (size_frame:int) (baseline:configuration) (t
   match baseline.focused_proc, to_check.focused_proc with
   | None, None ->
     begin match baseline.sure_unchecked_skeletons, to_check.sure_unchecked_skeletons with
-    | Some p1, Some p2 when nil p1.proc && nil p2.proc ->
-      {to_check with sure_unchecked_skeletons = None},
-      bset_to_update
+    | Some p1, Some p2 when nil p1.proc && nil p2.proc -> bset_to_update
     | Some p1, Some p2 when is_equal_skeleton p1 p2 ->
       begin match p1.proc, p2.proc with
-      | OutputSure _, OutputSure _ ->
-        {to_check with sure_unchecked_skeletons = None; sure_output_proc = p2::to_check.sure_output_proc},
-        bset_to_update
-      | Input _, Input _ ->
-        {to_check with sure_unchecked_skeletons = None; input_proc = p2::to_check.input_proc},
-        bset_to_update
+      | OutputSure _, OutputSure _
+      | Input _, Input _ -> bset_to_update
       | _, _ ->
-        let conf_updated =
-          if contains_output p2 then
-            {to_check with sure_unchecked_skeletons = None; sure_output_proc = p2::to_check.sure_output_proc}
-          else
-            {to_check with sure_unchecked_skeletons = None; input_proc = p2::to_check.input_proc} in
-        conf_updated,
         match init_bijection_set ~init:bset_to_update p1 p2 with
         | None -> Config.internal_error "[process_session.ml >> check_skeleton_in_configuration] init_bijection_set should not fail."
         | Some bs -> bs
@@ -749,38 +799,25 @@ let check_skeleton_in_configuration (size_frame:int) (baseline:configuration) (t
     | _, _ ->
       Config.internal_error "[process_session.ml >> check_skeleton_in_configuration] A process is either focused or released." end
 
-  | Some p1, Some p2 when nil p1.proc && nil p2.proc ->
-    {to_check with focused_proc = None},
-    bset_to_update
+  | Some p1, Some p2 when nil p1.proc && nil p2.proc -> bset_to_update
   | Some p1, Some p2 when is_equal_skeleton p1 p2 ->
     begin match p1.proc, p2.proc with
-    | OutputSure _, OutputSure _ ->
-      {to_check with focused_proc = None; sure_output_proc = p2::to_check.sure_output_proc},
-      bset_to_update
-    | Input _, Input _ ->
-      to_check,
-      bset_to_update
+    | OutputSure _, OutputSure _
+    | Input _, Input _ -> bset_to_update
     | _, _ ->
-      let conf_updated =
-        if contains_output p2 then
-          {to_check with focused_proc = None; sure_output_proc = p2::to_check.sure_output_proc}
-        else
-          {to_check with focused_proc = None; input_proc = p2::to_check.input_proc} in
-      conf_updated,
       match init_bijection_set ~init:bset_to_update p1 p2 with
       | None -> Config.internal_error "[process_session.ml >> check_skeleton_in_configuration] init_bijection_set should not fail. (2)"
       | Some bs -> bs
     end
 
   | Some p1, Some p2 -> fault p1 p2
-  | _, _ ->
-    Config.internal_error "[process_session.ml >> check_skeleton_in_configuration] Comparing skeletons in inconsistent states."
+  | _, _ -> Config.internal_error "[process_session.ml >> check_skeleton_in_configuration] Comparing skeletons in inconsistent states."
 
 
-(* when a baseline skeleton has been compared to all necessary skeletons, it
-can be released without further checks.
-Raises Improper_block if a focused nil process has been released. *)
-let release_skeleton_without_check (c:configuration) : configuration =
+(* Assuming all skeleton checks have been performed with this skeleton, removes
+the unchecked states and updates the focus if needed.
+Raises Improper_block if this operation releases a nil focused process. *)
+let release_skeleton (c:configuration) : configuration =
   match c.focused_proc with
   | Some {proc = Input _; _} -> c
   | Some ({proc = OutputSure _; _} as p) ->

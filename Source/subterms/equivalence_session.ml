@@ -54,7 +54,77 @@ type skeleton_check =
   | Faulty of side * configuration * action
   | Improper
 
-let normalise_before_starting (node:partition_tree_node) (f_cont:partition_tree_node->(unit->unit)->'a) (f_next:unit->unit) : unit =
+
+(* TODO DOUBLE CHECK THESE TWO FUNCTIONS *)
+
+let final_test_on_nodes_start (f_cont:partition_tree_node->(unit->unit)->unit) (initial_node:partition_tree_node) (csys_set:constraint_system_set) (f_next:unit->unit) : unit =
+  if Constraint_system.Set.is_empty csys_set then f_next ()
+  else
+    let csys_set_1 =
+      Constraint_system.Set.optimise_snd_ord_recipes csys_set in
+    Config.debug (fun () ->
+      let csys = Constraint_system.Set.choose csys_set_1 in
+      let same_origin csys' =
+        (Constraint_system.get_additional_data csys).origin_process = (Constraint_system.get_additional_data csys').origin_process in
+      if Constraint_system.Set.for_all same_origin csys_set_1 then
+        Config.internal_error "[equivalence_session.ml >> final_test_on_nodes_start] Unexpected case, equivalence should not be violated after only normalising the two processes."
+    );
+    let (csys_left, csys_right) =
+      Constraint_system.Set.find_representative csys_set (fun csys' ->
+        (Constraint_system.get_additional_data csys').origin_process = Left
+      ) in
+    let sleft = Constraint_system.get_additional_data csys_left in
+    let sright = Constraint_system.get_additional_data csys_right in
+    let bs_init =
+      match initial_node.matching with
+      | [_,[_,bs]] -> bs
+      | _ -> Config.internal_error "[equivalence_session.ml >> final_test_on_nodes_start] Unexpected case: matching of a bad form." in
+
+    (** skeleton test **)
+    let skel_test =
+      try
+        let bs_upd =
+          check_skeleton_in_configuration 0 sleft.conf sright.conf bs_init in
+        try
+          OK(release_skeleton sleft.conf,release_skeleton sright.conf,bs_upd)
+        with Improper_block -> Improper
+      with Faulty_skeleton(side,conf,action) -> Faulty(side,conf,action) in
+
+    (** final operations depending on the result of the test **)
+    match skel_test with
+    | Improper -> f_next ()
+    | OK (conf_left, conf_right,bset) ->
+      let csys_left =
+        Constraint_system.replace_additional_data csys_left {sleft with conf = conf_left } in
+      let csys_right =
+        Constraint_system.replace_additional_data csys_right {sright with conf = conf_right} in
+      let csys_set_upd =
+        Constraint_system.Set.of_list [csys_left; csys_right] in
+      f_cont {initial_node with csys_set = csys_set_upd} f_next
+    | Faulty (side,f_conf,f_action) ->
+      let (wit_csys, symb_proc) =
+        if side = Left then csys_left, sleft
+        else csys_right, sright in
+      let eqn =
+        Constraint_system.get_substitution_solution Protocol wit_csys in
+      begin match f_action with
+      | OutAction(_,ax,t) ->
+        let wit_csys_1 =
+          Constraint_system.add_axiom wit_csys ax (Subst.apply eqn t (fun x f -> f x)) in
+        let wit_csys_2 =
+          Constraint_system.replace_additional_data wit_csys_1 { symb_proc with conf = f_conf } in
+        raise (Not_Session_Equivalent wit_csys_2)
+      | InAction(_,var_X,t) ->
+        let ded_fact_term = BasicFact.create var_X t in
+        let wit_csys_1 =
+          Constraint_system.add_basic_fact wit_csys ded_fact_term in
+        let wit_csys_2 =
+          Constraint_system.replace_additional_data wit_csys_1 { symb_proc with conf = f_conf } in
+        raise (Not_Session_Equivalent wit_csys_2)
+      end
+
+
+let normalise_and_split_start (node:partition_tree_node) (f_cont:partition_tree_node->(unit->unit)->'a) (f_next:unit->unit) : unit =
 
   (** normalisation of the configurations **)
   let initial_csys_set = ref Constraint_system.Set.empty in
@@ -81,74 +151,7 @@ let normalise_before_starting (node:partition_tree_node) (f_cont:partition_tree_
 
   (** Resolution of the constraints using the constraint solver **)
 
-  let in_apply_final_test csys_set f_next =
-    if Constraint_system.Set.is_empty csys_set then f_next ()
-    else
-      let csys_set_1 =
-        Constraint_system.Set.optimise_snd_ord_recipes csys_set in
-      let csys = Constraint_system.Set.choose csys_set_1 in
-      Config.debug (fun () ->
-        let same_origin csys1 csys2 =
-          (Constraint_system.get_additional_data csys1).origin_process = (Constraint_system.get_additional_data csys2).origin_process in
-        if Constraint_system.Set.for_all (same_origin csys) csys_set_1 then
-          Config.internal_error "[equivalence_session.ml >> in_apply_final_test] Unexpected case, equivalence should not be violated after only normalising the two processes."
-      );
-      let (csys_left, csys_right) =
-        Constraint_system.Set.find_representative csys_set (fun csys' ->
-          (Constraint_system.get_additional_data csys').origin_process = Left
-        ) in
-      let sleft = Constraint_system.get_additional_data csys_left in
-      let sright = Constraint_system.get_additional_data csys_right in
-      let bs_init = void_bijection_set in
-
-      (** skeleton test **)
-      let skel_test =
-        try
-          let (cf_right,bs_upd) =
-            check_skeleton_in_configuration 0 sleft.conf sright.conf bs_init in
-          try
-            let cf_left = release_skeleton_without_check sleft.conf in
-            OK(cf_left,cf_right,bs_upd)
-          with Improper_block -> Improper
-        with Faulty_skeleton(side,conf,action) -> Faulty(side,conf,action) in
-
-      (** final operations depending on the result of the test **)
-      match skel_test with
-      | Improper -> f_next ()
-      | OK (conf_left, conf_right,bset) ->
-        let csys_left =
-          Constraint_system.replace_additional_data csys_left {sleft with conf = conf_left } in
-        let csys_right =
-          Constraint_system.replace_additional_data csys_right {sright with conf = conf_right} in
-        let csys_set_upd =
-          Constraint_system.Set.of_list [csys_left; csys_right] in
-        let node_upd =
-          { node with csys_set = csys_set_upd } in
-        f_cont node_upd f_next
-      | Faulty (side,f_conf,f_action) ->
-        let (wit_csys, symb_proc) =
-          if side = Left then csys_left, sleft
-          else csys_right, sright in
-        let eqn =
-          Constraint_system.get_substitution_solution Protocol wit_csys in
-        begin match f_action with
-        | OutAction(_,ax,t) ->
-          let wit_csys_1 =
-            Constraint_system.add_axiom wit_csys ax (Subst.apply eqn t (fun x f -> f x)) in
-          let wit_csys_2 =
-            Constraint_system.replace_additional_data wit_csys_1 { symb_proc with conf = f_conf } in
-          raise (Not_Session_Equivalent wit_csys_2)
-        | InAction(_,var_X,t) ->
-          let ded_fact_term = BasicFact.create var_X t in
-          let wit_csys_1 =
-            Constraint_system.add_basic_fact wit_csys ded_fact_term in
-          let wit_csys_2 =
-            Constraint_system.replace_additional_data wit_csys_1 { symb_proc with conf = f_conf } in
-          raise (Not_Session_Equivalent wit_csys_2)
-        end
-  in
-
-  Constraint_system.Rule.apply_rules_after_input false in_apply_final_test initial_csys_set f_next
+  Constraint_system.Rule.apply_rules_after_input false (final_test_on_nodes_start f_cont node) initial_csys_set f_next
 
 
 
@@ -179,7 +182,11 @@ let equivalence_by_session (conf1:configuration) (conf2:configuration) : result_
       Constraint_system.empty sp1;
       Constraint_system.empty sp2;
     ] in
+  let matching0 = [
+    sp1,[sp2,void_bijection_set];
+    sp2,[sp1,void_bijection_set];
+  ] in
   let node0 =
-    init_partition_tree csys_set_0 [todo] in
+    init_partition_tree csys_set_0 matching0 in
 
   todo
