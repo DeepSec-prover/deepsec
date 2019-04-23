@@ -24,15 +24,17 @@ type labelled_process = {
 }
 
 and process =
-  | Input of symbol * fst_ord_variable * labelled_process
-  | Output of symbol * protocol_term * labelled_process
-  | OutputSure of symbol * protocol_term * labelled_process
+  | Input of input_data
+  | Output of output_data
+  | OutputSure of output_data
   | If of protocol_term * protocol_term * labelled_process * labelled_process
   (* | Let of protocol_term * protocol_term * labelled_process * labelled_process *)
   | New of name * labelled_process
   | Par of labelled_process list
   | Bang of bang_status * labelled_process list (* the boolean is set to true is this represents a true symmetry (i.e. w.r.t. structural equivalence, not up to bijective channel renaming). The two lists model the replicated processes, the first one being reserved for processes where symmetries are temporarily broken due to the execution of outputs. *)
 
+and input_data = symbol * fst_ord_variable * labelled_process
+and output_data = symbol * protocol_term * labelled_process
 and bang_status =
   | Repl (* symmetry up to structural equivalence *)
   | BrokenRepl (* a Repl that has been broken (therefore treated as a Par), but that may be retransformed into a Repl later on) *)
@@ -206,9 +208,8 @@ let list_of_labelled_process (lp:labelled_process) : labelled_process list =
 
 (* unfolding inputs with symmetries. Return a list of (p,l) where
 - p is the unfolded labelled process (starts with an input)
-- l is a list of leftovers after the unfolding of p
-NB. Tail recursion seems not useful, therefore deprecated *)
-let unfold_input_cps ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_channel_renaming:(opt:bool=false) ?at_most:(nb:int= -1) (l:labelled_process list) : (labelled_process * labelled_process list) list =
+- l is a list of leftovers after the unfolding of p *)
+let unfold_input ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_channel_renaming:(opt:bool=false) ?at_most:(nb:int= -1) (l:labelled_process list) : (labelled_process * labelled_process list) list =
 
   let rec unfold countdown accu leftovers p f_cont =
     if countdown = 0 then accu
@@ -256,59 +257,12 @@ let unfold_input_cps ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_cha
 
   unfold_list nb [] [] l (fun n accu -> accu)
 
-let unfold_input ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_channel_renaming:(opt:bool=false) ?at_most:(nb:int= -1) (l:labelled_process list) : (labelled_process * labelled_process list) list =
-
-  let rec unfold countdown accu leftovers p =
-    if countdown = 0 then countdown,accu
-    else
-      match p.proc with
-      | OutputSure _ ->
-        Config.internal_error "[process_session.ml >> unfold_input] Ill-formed process, focus should not be applied in this case."
-      | Par l -> unfold_list countdown accu leftovers l
-      | Bang(BrokenRepl,_) ->
-        Config.internal_error "[process_session.ml >> unfold_input] BrokenRepl statuses should have been handled in negative phases."
-      | Bang(_,[]) -> countdown, accu
-      | Bang(_,[pp]) -> unfold countdown accu leftovers pp
-      | Bang(b,(pp::(qq::ll as tl) as l)) ->
-        if b = Repl || (opt && b = Channel) then
-          let left =
-            if ll = [] then qq
-            else {proc = Bang(b,tl); label = None} in
-          unfold countdown accu (left::leftovers) pp
-        else unfold_list ~bang:(Some ([],b)) countdown accu leftovers l
-      | Input _ ->
-        if f p then (countdown-1), ((p,leftovers)::accu)
-        else countdown, accu
-      | New _
-      | If _
-      | Output _ ->
-        Config.internal_error "[process_session.ml >> unfold_input] Unfolding should only be applied on normalised processes."
-
-  and unfold_list ?bang:(memo=None) countdown accu leftovers l =
-    if countdown = 0 then countdown,accu
-    else
-      match l with
-      | [] -> countdown, accu
-      | p :: t ->
-        match memo with
-        | None -> (* case of a list of parallel processes *)
-          let (n,accu1) = unfold countdown accu (List.rev_append t leftovers) p in
-          unfold_list n accu1 (p::leftovers) t
-        | Some (memo,b) -> (* case of a list of replicated processes *)
-          let lefts =
-            {proc = Bang(b,List.rev_append memo t); label = None} :: leftovers in
-          let (n,accu1) = unfold countdown accu lefts p in
-          unfold_list ~bang:(Some (p::memo,b)) n accu1 leftovers t in
-
-  snd (unfold_list nb [] [] l)
 
 
 (* executing outputs with symmetries. Return a list of (c,t,p,lab,l) where l
 is the leftovers left after executing an output OutputSure(c,t,p) of label lab.
-In particular, note that this output is consumed.
-NB. Tail recursion seems not useful, therefore deprecated
-TODO. test performances cps VS non-tail*)
-let unfold_output_cps ?filter:(f:labelled_process->bool=fun _ -> true) ?at_most:(nb:int= -1) (l:labelled_process list) : (symbol * protocol_term * labelled_process * label * labelled_process list) list =
+In particular, note that this output is consumed. *)
+let unfold_output ?filter:(f:labelled_process->bool=fun _ -> true) ?at_most:(nb:int= -1) (l:labelled_process list) : (output_data * label * labelled_process list) list =
 
   let rec unfold countdown accu p rebuild f_cont =
     if countdown = 0 then accu
@@ -323,7 +277,7 @@ let unfold_output_cps ?filter:(f:labelled_process->bool=fun _ -> true) ?at_most:
           let res =
             match p.label with
             | None -> Config.internal_error "[process_session.ml >> unfold_output] Labels should have been assigned."
-            | Some lab -> c,t,pp_labelled,lab,rebuild pp_labelled in
+            | Some lab -> (c,t,pp_labelled),lab,rebuild pp_labelled in
           f_cont (countdown-1) (res::accu)
       | If _
       | New _
@@ -355,52 +309,6 @@ let unfold_output_cps ?filter:(f:labelled_process->bool=fun _ -> true) ?at_most:
 
   unfold_list nb [] [] l (fun l -> l) (fun n accu -> accu)
 
-
-let unfold_output ?filter:(f:labelled_process->bool=fun _ -> true) ?at_most:(nb:int= -1) (l:labelled_process list) : (symbol * protocol_term * labelled_process * label * labelled_process list) list =
-
-  let rec unfold countdown accu p rebuild =
-    if countdown = 0 then countdown, accu
-    else
-      match p.proc with
-      | Bang (_,[])
-      | Input _ -> countdown, accu
-      | OutputSure(c,t,pp) ->
-        if not (f p) then countdown, accu
-        else
-          let pp_labelled = {pp with label = p.label} in
-          let res =
-            match p.label with
-            | None -> Config.internal_error "[process_session.ml >> unfold_output] Labels should have been assigned."
-            | Some lab -> c,t,pp_labelled,lab,rebuild pp_labelled in
-          (countdown-1), (res::accu)
-      | If _
-      | New _
-      | Output _ ->
-        Config.internal_error "[process_session.ml >> unfold_output] Should only be called on normalised processes."
-      | Par l ->
-        let add_par l = rebuild {proc = Par l; label = None} in
-        unfold_list countdown accu [] l add_par
-      | Bang(_,[p]) -> unfold countdown accu p rebuild
-      | Bang(Repl,pp::l) ->
-        let add_bang h = rebuild {proc = Bang(Repl,h::l); label = None} in
-        unfold countdown accu pp add_bang
-      | Bang(b,l) ->
-        let add_bang l = rebuild {proc = Bang(b,l); label = None} in
-        unfold_list countdown accu [] l add_bang
-
-  and unfold_list countdown accu memo l rebuild =
-    if countdown = 0 then countdown, accu
-    else
-      match l with
-      | [] -> countdown, accu
-      | pp :: t ->
-        let add_list_to_rebuild p =
-          if nil p.proc then rebuild (List.rev_append memo t)
-          else rebuild (p::List.rev_append memo t) in
-        let (n,acp) = unfold countdown accu pp add_list_to_rebuild in
-        unfold_list n acp (pp::memo) t rebuild in
-
-  snd (unfold_list nb [] [] l (fun l -> l))
 
 (* comparing labels for POR: returns 0 if one label is prefix of the other,
 and compares the labels lexicographically otherwise. *)
@@ -547,7 +455,7 @@ type configuration = {
   focused_proc : labelled_process option;
   sure_output_proc : labelled_process list;
   sure_unchecked_skeletons : labelled_process option;
-  unsure_proc : labelled_process option;
+  to_normalise : labelled_process option;
   trace : action list
 }
 
@@ -560,7 +468,7 @@ let init_configuration (lp:labelled_process) : configuration = {
   focused_proc = Some lp;
   sure_output_proc = [];
   sure_unchecked_skeletons = None;
-  unsure_proc = None;
+  to_normalise = None;
   trace = [];
 }
 
@@ -731,16 +639,16 @@ let normalise_configuration (conf:configuration) (eqn:equation) (f_cont:gatherin
       Config.internal_error "[process_session.ml >> normalise_configuration] Sure unchecked should be empty."
   );
 
-  match conf.unsure_proc, conf.focused_proc with
+  match conf.to_normalise, conf.focused_proc with
     | None, None -> f_cont {equations = eqn; disequations = []} conf
     | None, Some p ->
       normalise p eqn [] (fun gather p_norm f_next ->
         f_cont gather {conf with focused_proc = Some p_norm};
         f_next ()
-      ) (fun () -> ()) (* TODO. checks whether this f_next could be put instead of this fun () -> () *)
+      ) (fun () -> ())
     | Some p, None ->
       normalise p eqn [] (fun gather p_norm f_next ->
-        f_cont gather {conf with sure_unchecked_skeletons = Some p_norm; unsure_proc = None};
+        f_cont gather {conf with sure_unchecked_skeletons = Some p_norm; to_normalise = None};
         f_next ()
       ) (fun () -> ())
     | _, _ -> Config.internal_error "[process_session.ml >> normalise_configuration] A configuration cannot be released and focused at the same time."
@@ -817,6 +725,12 @@ let check_skeleton_in_configuration (size_frame:int) (baseline:configuration) (t
   | None, None ->
     begin match baseline.sure_unchecked_skeletons, to_check.sure_unchecked_skeletons with
     | Some p1, Some p2 when nil p1.proc && nil p2.proc -> bset_to_update
+    | Some p1, Some p2 when contains_output p1 || contains_output p2 ->
+      let pp1 = {proc = Par (p1::baseline.sure_output_proc); label = None} in
+      let pp2 = {proc = Par (p2::to_check.sure_output_proc); label = None} in
+      if is_equal_skeleton pp1 pp2 then
+        bset_to_update
+      else bset_to_update
     | Some p1, Some p2 when is_equal_skeleton p1 p2 ->
       begin match p1.proc, p2.proc with
       | OutputSure _, OutputSure _
@@ -863,7 +777,7 @@ let release_skeleton (c:configuration) : configuration =
   | None ->
     match c.sure_unchecked_skeletons with
     | Some ({proc = Input _; _} as p) ->
-      {c with sure_unchecked_skeletons = None; sure_output_proc = p::c.input_proc}
+      {c with sure_unchecked_skeletons = None; input_proc = p::c.input_proc}
     | Some ({proc = OutputSure _; _} as p) ->
       {c with sure_unchecked_skeletons = None; sure_output_proc = p::c.sure_output_proc}
     | Some p ->
