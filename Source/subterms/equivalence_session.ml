@@ -63,7 +63,7 @@ let generate_next_transitions_forall (size_frame:int) (cs:constraint_system) : u
     match next_transition_to_apply symp.conf with
     | None -> ()
     | Some RNeg ->
-      let axiom = Axiom.create (size_frame+1) in
+      let ax = Axiom.create (size_frame+1) in
       begin match symp.conf.sure_output_proc with
       | [] -> Config.internal_error "[process_session.ml >> generate_next_transitions_forall] Unexpected case."
       | h :: t ->
@@ -74,9 +74,26 @@ let generate_next_transitions_forall (size_frame:int) (cs:constraint_system) : u
         let conf = {symp.conf with
           sure_output_proc = t;
           to_normalise = Some new_output_proc;
-          trace = OutAction(ch,axiom,term)::symp.conf.trace;
+          trace = OutAction(ch,ax,term)::symp.conf.trace;
         } in
-        () end
+        let eqn = Constraint_system.get_substitution_solution Protocol cs in
+        normalise_configuration conf eqn (fun gather conf_norm ->
+          let t0 = Subst.apply gather.equations term (fun x f -> f x) in
+
+          try
+            let cs1 =
+              Constraint_system.apply_substitution cs gather.equations in
+            let cs2 =
+              Constraint_system.add_axiom cs1 ax (Rewrite_rules.normalise t0) in
+            let cs3 =
+              Constraint_system.add_disequations cs2 gather.disequations in
+            let cs4 =
+              Constraint_system.replace_additional_data cs3 {symp with conf = conf_norm} in
+
+            symp.next_transitions <- (lab,true,cs4) :: symp.next_transitions
+          with
+            | Constraint_system.Bot -> ()
+        ) end
     | Some RFocus -> ()
     | Some RPos -> () in
 
