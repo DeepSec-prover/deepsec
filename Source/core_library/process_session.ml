@@ -237,27 +237,29 @@ let unfold_input_cps ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_cha
         Config.internal_error "[process_session.ml >> unfold_input] Unfolding should only be applied on normalised processes."
 
   and unfold_list ?bang:(memo=None) countdown accu leftovers l f_cont =
-    match l with
-    | [] -> f_cont countdown accu
-    | p :: t ->
-      match memo with
-      | None -> (* case of a list of parallel processes *)
-        unfold countdown accu (List.rev_append t leftovers) p (fun n accu1 ->
-          unfold_list n accu1 (p::leftovers) t f_cont
-        )
-      | Some memo -> (* case of a list of replicated processes *)
-        let lefts =
-          {proc = Bang(Channel,List.rev_append memo t); label = None} :: leftovers in
-        unfold countdown accu lefts p (fun n accu1 ->
-          unfold_list ~bang:(Some (p::memo)) n accu1 leftovers t f_cont
-        ) in
+    if countdown = 0 then accu
+    else
+      match l with
+      | [] -> f_cont countdown accu
+      | p :: t ->
+        match memo with
+        | None -> (* case of a list of parallel processes *)
+          unfold countdown accu (List.rev_append t leftovers) p (fun n accu1 ->
+            unfold_list n accu1 (p::leftovers) t f_cont
+          )
+        | Some memo -> (* case of a list of replicated processes *)
+          let lefts =
+            {proc = Bang(Channel,List.rev_append memo t); label = None} :: leftovers in
+          unfold countdown accu lefts p (fun n accu1 ->
+            unfold_list ~bang:(Some (p::memo)) n accu1 leftovers t f_cont
+          ) in
 
   unfold_list nb [] [] l (fun n accu -> accu)
 
 let unfold_input ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_channel_renaming:(opt:bool=false) ?at_most:(nb:int= -1) (l:labelled_process list) : (labelled_process * labelled_process list) list =
 
   let rec unfold countdown accu leftovers p =
-    if countdown = 0 then 0,accu
+    if countdown = 0 then countdown,accu
     else
       match p.proc with
       | OutputSure _ ->
@@ -283,18 +285,20 @@ let unfold_input ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_channel
         Config.internal_error "[process_session.ml >> unfold_input] Unfolding should only be applied on normalised processes."
 
   and unfold_list ?bang:(memo=None) countdown accu leftovers l =
-    match l with
-    | [] -> countdown, accu
-    | p :: t ->
-      match memo with
-      | None -> (* case of a list of parallel processes *)
-        let (n,accu1) = unfold countdown accu (List.rev_append t leftovers) p in
-        unfold_list n accu1 (p::leftovers) t
-      | Some (memo,b) -> (* case of a list of replicated processes *)
-        let lefts =
-          {proc = Bang(b,List.rev_append memo t); label = None} :: leftovers in
-        let (n,accu1) = unfold countdown accu lefts p in
-        unfold_list ~bang:(Some (p::memo,b)) n accu1 leftovers t in
+    if countdown = 0 then countdown,accu
+    else
+      match l with
+      | [] -> countdown, accu
+      | p :: t ->
+        match memo with
+        | None -> (* case of a list of parallel processes *)
+          let (n,accu1) = unfold countdown accu (List.rev_append t leftovers) p in
+          unfold_list n accu1 (p::leftovers) t
+        | Some (memo,b) -> (* case of a list of replicated processes *)
+          let lefts =
+            {proc = Bang(b,List.rev_append memo t); label = None} :: leftovers in
+          let (n,accu1) = unfold countdown accu lefts p in
+          unfold_list ~bang:(Some (p::memo,b)) n accu1 leftovers t in
 
   snd (unfold_list nb [] [] l)
 
@@ -337,15 +341,17 @@ let unfold_output_cps ?filter:(f:labelled_process->bool=fun _ -> true) ?at_most:
         unfold_list countdown accu [] l add_bang f_cont
 
   and unfold_list countdown accu memo l rebuild f_cont =
-    match l with
-    | [] -> f_cont countdown accu
-    | pp :: t ->
-      let add_list_to_rebuild p =
-        if nil p.proc then rebuild (List.rev_append memo t)
-        else rebuild (p::List.rev_append memo t) in
-      unfold countdown accu pp add_list_to_rebuild (fun n acp ->
-        unfold_list n acp (pp::memo) t rebuild f_cont
-      ) in
+    if countdown = 0 then accu
+    else
+      match l with
+      | [] -> f_cont countdown accu
+      | pp :: t ->
+        let add_list_to_rebuild p =
+          if nil p.proc then rebuild (List.rev_append memo t)
+          else rebuild (p::List.rev_append memo t) in
+        unfold countdown accu pp add_list_to_rebuild (fun n acp ->
+          unfold_list n acp (pp::memo) t rebuild f_cont
+        ) in
 
   unfold_list nb [] [] l (fun l -> l) (fun n accu -> accu)
 
@@ -383,14 +389,16 @@ let unfold_output ?filter:(f:labelled_process->bool=fun _ -> true) ?at_most:(nb:
         unfold_list countdown accu [] l add_bang
 
   and unfold_list countdown accu memo l rebuild =
-    match l with
-    | [] -> countdown, accu
-    | pp :: t ->
-      let add_list_to_rebuild p =
-        if nil p.proc then rebuild (List.rev_append memo t)
-        else rebuild (p::List.rev_append memo t) in
-      let (n,acp) = unfold countdown accu pp add_list_to_rebuild in
-      unfold_list n acp (pp::memo) t rebuild in
+    if countdown = 0 then countdown, accu
+    else
+      match l with
+      | [] -> countdown, accu
+      | pp :: t ->
+        let add_list_to_rebuild p =
+          if nil p.proc then rebuild (List.rev_append memo t)
+          else rebuild (p::List.rev_append memo t) in
+        let (n,acp) = unfold countdown accu pp add_list_to_rebuild in
+        unfold_list n acp (pp::memo) t rebuild in
 
   snd (unfold_list nb [] [] l (fun l -> l))
 
@@ -694,14 +702,11 @@ let rec normalise (p:labelled_process) (eqn:equation) (diseqn:disequation list) 
         | _ -> f_cont gather {p with proc = Par l_norm} f_next1
     ) f_next
 
-  | Bang(b,lbrok,l) ->
-    normalise_list l eqn diseqn (fun gather1 l_norm f_next1 ->
-      normalise_list lbrok gather1.equations gather1.disequations (fun gather2 lbrok_norm f_next2 ->
-        match lbrok_norm,l_norm with
-        | [],[p]
-        | [p],[] -> f_cont gather2 p f_next2
-        | _ -> f_cont gather2 {p with proc = Bang(b,lbrok_norm,l_norm)} f_next2
-      ) f_next1
+  | Bang(b,l) ->
+    normalise_list l eqn diseqn (fun gather l_norm f_next1 ->
+        match l_norm with
+        | [p] -> f_cont gather p f_next1
+        | _ -> f_cont gather {p with proc = Bang(b,l_norm)} f_next1
     ) f_next
 
 and normalise_list (l:labelled_process list) (eqn:equation) (diseqn:disequation list) (f_cont:gathering_normalise->labelled_process list->(unit->unit)->unit) (f_next:unit->unit) : unit =
@@ -713,8 +718,7 @@ and normalise_list (l:labelled_process list) (eqn:equation) (diseqn:disequation 
         let l_tot_norm =
           match p_norm.proc with
           | Par ll -> List.rev_append ll l_norm
-          | Bang(_,[],[p])
-          | Bang(_,[p],[]) -> p :: l_norm
+          | Bang(_,[p]) -> p :: l_norm
           | _ -> p_norm :: l_norm in
         f_cont gather2 l_tot_norm f_next2
       ) f_next1
