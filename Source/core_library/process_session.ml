@@ -31,13 +31,12 @@ and process =
   (* | Let of protocol_term * protocol_term * labelled_process * labelled_process *)
   | New of name * labelled_process
   | Par of labelled_process list
-  | Bang of bang_status * labelled_process list (* the boolean is set to true is this represents a true symmetry (i.e. w.r.t. structural equivalence, not up to bijective channel renaming). The two lists model the replicated processes, the first one being reserved for processes where symmetries are temporarily broken due to the execution of outputs. *)
+  | Bang of bang_status * labelled_process list * labelled_process list (* The two lists model the replicated processes, the first one being reserved for processes where symmetries are temporarily broken due to the execution of outputs. *)
 
 and input_data = symbol * fst_ord_variable * labelled_process
 and output_data = symbol * protocol_term * labelled_process
 and bang_status =
   | Repl (* symmetry up to structural equivalence *)
-  | BrokenRepl (* a Repl that has been broken (therefore treated as a Par), but that may be retransformed into a Repl later on) *)
   | Channel (* symmetry up to structural equivalence and channel renaming *)
 
 
@@ -74,7 +73,7 @@ and bang_status =
 let nil (p:process) : bool =
   match p with
   | Par []
-  | Bang (_,[]) -> true
+  | Bang (_,[],[]) -> true
   | _ -> false
 
 
@@ -84,9 +83,9 @@ let rec restaure_sym (lp:labelled_process) : labelled_process =
   | Input _
   | OutputSure _ -> lp
   | Par l -> {lp with proc = Par (List.map restaure_sym l)}
-  | Bang(BrokenRepl,l)
-  | Bang(Repl,l) -> {lp with proc = Bang (Repl,List.map restaure_sym l)}
-  | Bang(Channel,l) -> {lp with proc = Bang (Channel,List.map restaure_sym l)}
+  | Bang(Repl,l1,l2) ->
+    {lp with proc = Bang (Repl,[],List.map restaure_sym l1 @ l2)}
+  | Bang(Channel,l1,l2) -> {lp with proc = Bang (Channel,[],List.map restaure_sym l1 @ l2)}
   | If _
   | New _
   | Output _ -> Config.internal_error "[process_session.ml >> restaure_sym] Should only be applied on normalised processes."
@@ -117,8 +116,9 @@ let rec fresh_copy_of (lp:labelled_process) : labelled_process =
       {proc = New(nn,browse (Name.Renaming.compose rho n nn) p); label = None}
     | Par l ->
       {proc = Par(List.map (browse rho) l); label = None}
-    | Bang(b,l) ->
-      {proc = Bang(b,List.map (browse rho) l); label = None} in
+    | Bang(b,[],l) ->
+      {proc = Bang(b,[],List.map (browse rho) l); label = None}
+    | Bang _ -> Config.internal_error "[process_session.ml >> fresh_copy] Unexpected case." in
   browse (Name.Renaming.identity) lp
 
 
@@ -148,7 +148,7 @@ let rec of_expansed_process (p:Process.expansed_process) : labelled_process =
         if i = 1 then proc
         else
           let l = Func.loop (fun _ ac -> fresh_copy_of proc :: ac) [] 0 (i-1) in
-          {proc = Bang (Repl,l); label = None}
+          {proc = Bang (Repl,[],l); label = None}
       ) lp in
     {proc = Par lll; label = None}
   | Process.Choice _
@@ -161,8 +161,8 @@ let rec contains_output (lp:labelled_process) : bool =
   match lp.proc with
   | Input _ -> false
   | OutputSure _ -> true
-  | Par l
-  | Bang (_,l) -> List.exists contains_output l
+  | Par l -> List.exists contains_output l
+  | Bang (_,l1,l2) -> List.exists contains_output (l1@l2)
   | _ -> Config.internal_error "[process_session.ml >> contains_output] Should only be applied on normalised processes."
 
 
@@ -174,10 +174,11 @@ let labelling (prefix:label) (lp:labelled_process) : labelled_process =
       assign_list i l (fun l_labelled i_max ->
         f_cont {proc = Par l_labelled; label = None} i_max
       )
-    | Bang(b,l) ->
+    | Bang(b,[],l) ->
       assign_list i l (fun l_labelled i_max ->
-          f_cont {proc = Bang(b,l_labelled); label = None} i_max
+          f_cont {proc = Bang(b,[],l_labelled); label = None} i_max
       )
+    | Bang _ -> Config.internal_error "[process_session.ml >> labelling] Symmetries should not be broken when labelling."
     | Input _
     | OutputSure _ -> f_cont {lp with label = Some (prefix @ [i])} (i+1)
     | New _
@@ -200,8 +201,8 @@ let labelling (prefix:label) (lp:labelled_process) : labelled_process =
 (* extracts the list of all parallel labelled_process from a labelled_process *)
 let list_of_labelled_process (lp:labelled_process) : labelled_process list =
   let rec gather accu lp = match lp with
-    | {proc = Par l; _}
-    | {proc = Bang (_,l); _} -> List.fold_left gather accu l
+    | {proc = Par l; _} -> List.fold_left gather accu l
+    | {proc = Bang (_,l1,l2); _} -> List.fold_left gather accu (l1@l2)
     | _ -> lp :: accu in
   gather [] lp
 
@@ -218,15 +219,14 @@ let unfold_input ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_channel
       | OutputSure _ ->
         Config.internal_error "[process_session.ml >> unfold_input] Ill-formed process, focus should not be applied in this case."
       | Par l -> unfold_list countdown accu leftovers l f_cont
-      | Bang(BrokenRepl,_) ->
-        Config.internal_error "[process_session.ml >> unfold_input] BrokenRepl statuses should have been handled in negative phases."
-      | Bang(_,[]) -> f_cont countdown accu
-      | Bang(_,[pp]) -> unfold countdown accu leftovers pp f_cont
-      | Bang(b,(pp::(qq::ll as tl) as l)) ->
+      | Bang(_,[],[]) -> f_cont countdown accu
+      | Bang(_,_::_,_) -> Config.internal_error "[process_session.ml >> unfold_input] Symmetries should not be broken when executing inputs."
+      | Bang(_,[],[pp]) -> unfold countdown accu leftovers pp f_cont
+      | Bang(b,[],(pp::(qq::ll as tl) as l)) ->
         if b = Repl || (opt && b = Channel) then
           let left =
             if ll = [] then qq
-            else {proc = Bang(b,tl); label = None} in
+            else {proc = Bang(b,[],tl); label = None} in
           unfold countdown accu (left::leftovers) pp f_cont
         else unfold_list ~bang:(Some []) countdown accu leftovers l f_cont
       | Input _ ->
@@ -250,7 +250,7 @@ let unfold_input ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_channel
           )
         | Some memo -> (* case of a list of replicated processes *)
           let lefts =
-            {proc = Bang(Channel,List.rev_append memo t); label = None} :: leftovers in
+            {proc = Bang(Channel,[],List.rev_append memo t); label = None} :: leftovers in
           unfold countdown accu lefts p (fun n accu1 ->
             unfold_list ~bang:(Some (p::memo)) n accu1 leftovers t f_cont
           ) in
@@ -268,7 +268,6 @@ let unfold_output ?filter:(f:labelled_process->bool=fun _ -> true) ?at_most:(nb:
     if countdown = 0 then accu
     else
       match p.proc with
-      | Bang (_,[])
       | Input _ -> f_cont countdown accu
       | OutputSure(c,t,pp) ->
         if not (f p) then f_cont countdown accu
@@ -286,13 +285,19 @@ let unfold_output ?filter:(f:labelled_process->bool=fun _ -> true) ?at_most:(nb:
       | Par l ->
         let add_par l = rebuild {proc = Par l; label = None} in
         unfold_list countdown accu [] l add_par f_cont
-      | Bang(_,[p]) -> unfold countdown accu p rebuild f_cont
-      | Bang(Repl,pp::l) ->
-        let add_bang h = rebuild {proc = Bang(Repl,h::l); label = None} in
+      | Bang(b,brok,[]) ->
+        let add_bang l = rebuild {proc = Bang(b,l,[]); label = None} in
+        unfold_list countdown accu [] brok add_bang f_cont
+      | Bang(Channel,brok,l) ->
+        let add_bang1 x = rebuild {proc = Bang(Channel,brok,x); label = None} in
+        let add_bang2 x = rebuild {proc = Bang(Channel,x,l); label = None} in
+        unfold_list countdown accu [] l add_bang1 (fun n ac ->
+          unfold_list n ac [] brok add_bang2 f_cont
+        )
+      | Bang(Repl,brok,pp::t) ->
+        let add_bang h = rebuild {proc = Bang(Repl,h::brok,t); label = None} in
         unfold countdown accu pp add_bang f_cont
-      | Bang(b,l) ->
-        let add_bang l = rebuild {proc = Bang(b,l); label = None} in
-        unfold_list countdown accu [] l add_bang f_cont
+
 
   and unfold_list countdown accu memo l rebuild f_cont =
     if countdown = 0 then accu
@@ -610,11 +615,14 @@ let rec normalise (p:labelled_process) (eqn:equation) (diseqn:disequation list) 
         | _ -> f_cont gather {p with proc = Par l_norm} f_next1
     ) f_next
 
-  | Bang(b,l) ->
-    normalise_list l eqn diseqn (fun gather l_norm f_next1 ->
-        match l_norm with
-        | [p] -> f_cont gather p f_next1
-        | _ -> f_cont gather {p with proc = Bang(b,l_norm)} f_next1
+  | Bang(b,l1,l2) ->
+    normalise_list l1 eqn diseqn (fun gather1 l1_norm f_next1 ->
+      normalise_list l2 gather1.equations gather1.disequations (fun gather2 l2_norm f_next2 ->
+          match l1_norm,l2_norm with
+          | [],[p]
+          | [p],[] -> f_cont gather2 p f_next1
+          | _ -> f_cont gather2 {p with proc = Bang(b,l1_norm,l2_norm)} f_next2
+        ) f_next1
     ) f_next
 
 and normalise_list (l:labelled_process list) (eqn:equation) (diseqn:disequation list) (f_cont:gathering_normalise->labelled_process list->(unit->unit)->unit) (f_next:unit->unit) : unit =
@@ -626,7 +634,8 @@ and normalise_list (l:labelled_process list) (eqn:equation) (diseqn:disequation 
         let l_tot_norm =
           match p_norm.proc with
           | Par ll -> List.rev_append ll l_norm
-          | Bang(_,[p]) -> p :: l_norm
+          | Bang(_,[],[p])
+          | Bang(_,[p],[]) -> p :: l_norm
           | _ -> p_norm :: l_norm in
         f_cont gather2 l_tot_norm f_next2
       ) f_next1
