@@ -41,12 +41,26 @@ let new_symbolic_process (origin_process:side) (conf:configuration) : symbolic_p
   status = QStatus.na;
 }
 
-type matching_exists_forall =
-  (symbolic_process * (symbolic_process * bijection_set) list) list
+type matching_exists_forall = symbolic_process * (symbolic_process * bijection_set) list
+type matchings = matching_exists_forall list
+
+
+let generate_next_transitions_forall (symp:symbolic_process) : unit =
+  let generate () =
+    match next_transition_to_apply symp.conf with
+    | None -> ()
+    | Some RNeg -> ()
+    | Some RFocus -> ()
+    | Some RPos -> () in
+  if not (QStatus.subsumes symp.status QStatus.forall) then (
+    generate();
+    symp.status <- QStatus.upgrade symp.status QStatus.forall
+  )
+
 
 
 (* TODO. THE BIG FUNCTION *)
-let generate_next_transitions (m:matching_exists_forall) : matching_exists_forall list =
+let generate_next_transitions (m:matchings) : matchings =
   todo
 
 
@@ -132,13 +146,13 @@ let next_transitions_existential (next_trans_univ:next_transitions) (c:configura
 
 type partition_tree_node = {
   csys_set : constraint_system_set;
-  matching : matching_exists_forall;
+  matching : matchings;
   previous_blocks : block list;
   ongoing_block : block;
   size_frame : int
 }
 
-let init_partition_tree (csys_set:symbolic_process Constraint_system.Set.t) (m:matching_exists_forall) : partition_tree_node = {
+let init_partition_tree (csys_set:symbolic_process Constraint_system.Set.t) (m:matchings) : partition_tree_node = {
   csys_set = csys_set;
   matching = m;
   previous_blocks = [];
