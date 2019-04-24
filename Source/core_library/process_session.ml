@@ -56,7 +56,14 @@ type configuration = {
   trace : action list
 }
 
-
+let improper_block (tr:action list) : configuration = {
+  input_proc = [];
+  focused_proc = None;
+  sure_output_proc = [];
+  sure_unchecked_skeletons = None;
+  to_normalise = None;
+  trace = tr;
+}
 
 (* let rec flatten_process (lp:labelled_process) : labelled_process =
   Config.debug (fun () ->
@@ -698,7 +705,6 @@ let normalise_configuration (conf:configuration) (eqn:equation) (f_cont:gatherin
 a side where a faulty skeleton has been found, and the corresponding
 configuration and actions *)
 exception Faulty_skeleton of side * configuration * action
-exception Improper_block
 
 (* assuming a skeleton mismatch occurs, return the triple to be passed to the
 exception Faulty_skeleton *)
@@ -800,14 +806,14 @@ let check_skeleton_in_configuration (size_frame:int) (conf1:configuration) (conf
 
 (* Assuming all skeleton checks have been performed with this skeleton, removes
 the unchecked states and updates the focus if needed.
-Raises Improper_block if this operation releases a nil focused process. *)
+Erases the whole configuration at the end of improper blocks. *)
 let release_skeleton (c:configuration) : configuration =
   match c.focused_proc with
   | Some {proc = Input _; _} -> c
   | Some ({proc = OutputSure _; _} as p) ->
     {c with focused_proc = None; sure_output_proc = p::c.sure_output_proc}
   | Some p ->
-    if nil p.proc then raise Improper_block
+    if nil p.proc then improper_block c.trace
     else if contains_output p then
       {c with focused_proc = None; sure_output_proc = p::c.sure_output_proc}
     else
@@ -823,7 +829,7 @@ let release_skeleton (c:configuration) : configuration =
       else if contains_output p then
         {c with sure_unchecked_skeletons = None; sure_output_proc = p::c.sure_output_proc}
       else
-        {c with sure_unchecked_skeletons = None; input_proc = p::c.input_proc}
+        {c with sure_unchecked_skeletons = None; input_proc = restaure_sym p::c.input_proc}
     | None ->
       Config.internal_error "[process_session.ml >> release_skeleton_without_check] A process is either focused or released."
 

@@ -239,7 +239,7 @@ NB. The constraint solving and the skeleton checks remain to be done after this
 function call. *)
 let generate_next_matchings (n:partition_tree_node) : partition_tree_node =
   let new_csys_set = ref Constraint_system.Set.empty in
-  
+
   let new_matchings =
     List.fold_left (fun (accu1:matchings) (cs_ex,cs_fa_list) ->
 
@@ -341,7 +341,7 @@ end
 
 (* final function of the optimisation: splits a matching m into a list of
 independent matchings *)
-let split_partition_tree_node_on_matchings (n:partition_tree_node) : partition_tree_node list =
+let split_partition_tree_node (n:partition_tree_node) : partition_tree_node list =
   let comps = Graph.connected_components (Graph.of_matchings n.matching) in
   let rec add_matching_in_data_list data m =
     let cs = fst m in
