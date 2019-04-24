@@ -402,6 +402,16 @@ let rec is_equal_skeleton (p1:labelled_process) (p2:labelled_process) : bool =
   let sort = List.fast_sort (fun p q -> compare_io_process p.proc q.proc) in
   let l1 = sort (list_of_labelled_process p1) in
   let l2 = sort (list_of_labelled_process p2) in
+  Config.debug(fun () ->
+    if List.exists2 (fun p q ->
+      match p.label,q.label with
+      | None, _
+      | _, None
+      | Some [], _
+      | _, Some [] -> true
+      | Some lab1, Some lab2 -> List.length lab1 <> List.length lab2) l1 l2 then
+      Config.internal_error "[process_session.ml >> is_equal_skeleton] Inconsistent labels."
+  );
   try List.for_all2 (fun p q -> compare_io_process p.proc q.proc = 0) l1 l2
   with Invalid_argument _ -> false
 
