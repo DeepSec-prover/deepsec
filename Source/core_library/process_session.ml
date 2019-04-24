@@ -195,7 +195,19 @@ let labelling (prefix:label) (lp:labelled_process) : labelled_process =
         )
       ) in
 
-  assign 0 lp (fun proc pos -> proc)
+  Config.debug (fun () ->
+    if lp.label <> None then
+      Config.internal_error "[process_session.ml >> labelling] Already labelled process."
+  );
+  match lp.proc with
+  | Input _
+  | OutputSure _ -> {lp with label = Some prefix}
+  | Output _
+  | If _
+  | New _ ->
+    Config.internal_error "[process_session.ml >> labelling] Only normalised processes should be assigned with labels."
+  | Par _
+  | Bang _ -> assign 0 lp (fun proc pos -> proc)
 
 
 (* extracts the list of all parallel labelled_process from a labelled_process *)
@@ -272,11 +284,12 @@ let unfold_output ?filter:(f:labelled_process->bool=fun _ -> true) ?at_most:(nb:
       | OutputSure(c,t,pp) ->
         if not (f p) then f_cont countdown accu
         else
-          let pp_labelled = {pp with label = p.label} in
           let res =
             match p.label with
             | None -> Config.internal_error "[process_session.ml >> unfold_output] Labels should have been assigned."
-            | Some lab -> (c,t,pp_labelled),lab,rebuild pp_labelled in
+            | Some lab ->
+              let pp_labelled = labelling lab pp in
+              (c,t,pp_labelled),lab,rebuild pp_labelled in
           f_cont (countdown-1) (res::accu)
       | If _
       | New _
@@ -908,6 +921,8 @@ let next_transition_to_apply (c:configuration) : type_of_transition option =
       | [] -> None
       | _ -> Some RFocus
 
+
+(* TODO. at the moment, the following functions are inlined into equivalence_session.ml. To write when cleaning the interfaces. *)
 let apply_foc : todo =
   todo
 

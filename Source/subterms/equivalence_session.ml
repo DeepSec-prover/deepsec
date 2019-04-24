@@ -13,6 +13,7 @@ module QStatus : sig
   val both : t (* the forall and exists statuses *)
   val subsumes : t -> t -> bool (* checks whether status s1 subsumes s2 *)
   val upgrade : t -> t -> t (* gathers two statuses *)
+  val equal : t -> t -> bool
 end
 = struct
   include Set.Make(struct type t = bool let compare = compare end)
@@ -22,6 +23,7 @@ end
   let both = of_list [true;false]
   let subsumes s1 s2 = subset s2 s1
   let upgrade = union
+  let equal = equal
 end
 
 type constraint_system = symbolic_process Constraint_system.t
@@ -31,19 +33,14 @@ and symbolic_process = {
   conf : configuration;
   mutable next_transitions : (label * bool * constraint_system) list; (* the list of transitions from the process, including the label and the constraint system obtained after normalisation.
   NB. the boolean is set to false when the transition is only used for existential purposes *)
-  mutable status : QStatus.t (* indicates what kind of transitions have already been generated *)
-}
-
-let new_symbolic_process (origin_process:side) (conf:configuration) : symbolic_process = {
-  origin_process = origin_process;
-  conf = conf;
-  next_transitions = [];
-  status = QStatus.na;
+  mutable status : QStatus.t; (* indicates what kind of transitions have already been generated *)
+  final_status : QStatus.t;
 }
 
 
 
-type matching_exists_forall = symbolic_process * (symbolic_process * bijection_set) list
+(* TODO. optimisation function using partitioning *)
+type matching_exists_forall = constraint_system * (constraint_system * bijection_set) list
 type matchings = matching_exists_forall list
 
 type partition_tree_node = {
@@ -88,14 +85,73 @@ let generate_next_transitions_forall (size_frame:int) (cs:constraint_system) : u
             let cs3 =
               Constraint_system.add_disequations cs2 gather.disequations in
             let cs4 =
-              Constraint_system.replace_additional_data cs3 {symp with conf = conf_norm} in
+              Constraint_system.replace_additional_data cs3 {symp with
+                conf = conf_norm;
+                next_transitions = [];
+                status = QStatus.na;
+              } in
 
             symp.next_transitions <- (lab,true,cs4) :: symp.next_transitions
           with
             | Constraint_system.Bot -> ()
         ) end
-    | Some RFocus -> ()
-    | Some RPos -> () in
+    | Some RFocus ->
+      let potential_focuses : (labelled_process * labelled_process list) list =
+        unfold_input ~allow_channel_renaming:true symp.conf.input_proc in
+      let root_label lp =
+        match lp with
+        | {proc = Input _; label = Some lab} -> lab
+        | _ -> Config.internal_error "[equivalence_session.ml generate_next_transitions_forall] unfold_input returned an unexpected result." in
+      let new_transitions = List.fold_left (fun ac (lp,leftovers) ->
+          let lab = root_label lp in
+          let conf = {symp.conf with
+            input_proc = leftovers;
+            focused_proc = Some lp;
+          } in
+          let cs' =
+            Constraint_system.replace_additional_data cs {symp with
+              conf = conf;
+              next_transitions = [];
+              status = QStatus.na;
+            } in
+          (lab,true,cs') :: ac
+        ) symp.next_transitions potential_focuses in
+      symp.next_transitions <- new_transitions
+    | Some RPos ->
+      match symp.conf.focused_proc with
+      | Some {proc = Input(ch,x,p); label = Some lab} ->
+        let var_X =
+          Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
+        let conf = {symp.conf with
+          focused_proc = Some (labelling lab p);
+          trace = InAction(ch,var_X,Term.of_variable x) :: symp.conf.trace;
+        } in
+        let eqn = Constraint_system.get_substitution_solution Protocol cs in
+        normalise_configuration conf eqn (fun gather conf_norm ->
+          let ded_fact =
+            let input =
+              Subst.apply gather.equations (of_variable x) (fun x f -> f x) in
+            BasicFact.create var_X input in
+
+          try
+            let cs1 =
+              Constraint_system.apply_substitution cs gather.equations in
+            let cs2 =
+              Constraint_system.add_basic_fact cs1 ded_fact in
+            let cs3 =
+              Constraint_system.add_disequations cs2 gather.disequations in
+            let cs4 =
+              Constraint_system.replace_additional_data cs3 {symp with
+                conf = conf_norm;
+                next_transitions = [];
+                status = QStatus.na;
+              } in
+
+            symp.next_transitions <- (lab,true,cs4) :: symp.next_transitions
+          with
+            | Constraint_system.Bot -> ()
+        )
+      | _ -> Config.internal_error "[equivalence_session.ml >> generate_next_transitions_forall] Unexpected focus state." in
 
   if not (QStatus.subsumes symp.status QStatus.forall) then (
     generate();
@@ -115,24 +171,6 @@ type next_transitions =
   | Focus of (label * symbol) list (* focusing an input *)
   | Neg of label * symbol (* executing an output *)
 
-(* generating universally-quantified next transitions *)
-let next_transitions_universal (c:configuration) : next_transitions =
-  match c.focused_proc with
-  | Some {label = None; _} ->
-    Config.internal_error "[process_session.ml >> next_transitions_universal] Unexpected case: labels should have been assigned."
-  | Some {label = Some l; _} -> Pos l
-  | None ->
-    match c.sure_output_proc with
-    | [] ->
-      let label_and_channel p =
-        match p with
-        | {label = Some l; proc = Input(ch,_,_)} -> l,ch
-        | _ -> Config.internal_error "[process_session.ml >> next_transitions_universal] Unexpected case." in
-      Focus (List.rev_map (fun (p,_) -> label_and_channel p) (unfold_input ~allow_channel_renaming:true c.input_proc))
-    | l ->
-      match unfold_output ~at_most:1 l with
-      | ((ch,t,p),lab,new_config) :: [] -> Neg (lab,ch)
-      | _ -> Config.internal_error "[process_session.ml >> next_transitions_universal] unfold_process returned an unexpected result."
 
 (* generating the next transitions matching the transitions generated by the
 previous function. If next_trans_univ is of the form
@@ -321,26 +359,25 @@ let equivalence_by_session (conf1:configuration) (conf2:configuration) : result_
   (* Generate the initial constraint systems
   TODO. Introduce factorisation. *)
 
-  let sp1 = {
+  let cs1 = Constraint_system.empty {
     origin_process = Left;
     conf = clean_inital_configuration conf1;
     next_transitions = [];
-    status = QStatus.both;
+    final_status = QStatus.both;
+    status = QStatus.na;
   } in
-  let sp2 = {
+  let cs2 = Constraint_system.empty {
     origin_process = Right;
     conf = clean_inital_configuration conf2;
     next_transitions = [];
-    status = QStatus.both;
+    final_status = QStatus.both;
+    status = QStatus.na;
   } in
   let csys_set_0 =
-    Constraint_system.Set.of_list [
-      Constraint_system.empty sp1;
-      Constraint_system.empty sp2;
-    ] in
+    Constraint_system.Set.of_list [cs1; cs2] in
   let matching0 = [
-    sp1,[sp2,void_bijection_set];
-    sp2,[sp1,void_bijection_set];
+    cs1,[cs2,void_bijection_set];
+    cs2,[cs1,void_bijection_set];
   ] in
   let node0 =
     init_partition_tree csys_set_0 matching0 in
