@@ -275,10 +275,79 @@ let generate_next_matchings (size_frame:int) (m:matchings) : matchings =
     ) accu1 symp_ex.next_transitions
   ) [] m
 
-(* cleans a matching (removes useless existential constraint_systems and
-partitions the matching into submatchings if possible) *)
-let clean_matching (m:matchings) : matchings list =
-  [m]
+
+(** Optimisation: partitions a matching into several independent submatchings.
+This reduces to computing connected components of a graph. **)
+
+(** Graph structure and conversion from matchings **)
+module Graph = struct
+  (* types and functor instantiations *)
+  type node = constraint_system
+  type edge = bijection_set
+  module Graph = Map.Make(struct type t = node let compare = compare end)
+  module Targets = Set.Make(struct type t = node * edge let compare = compare end)
+  type graph = Targets.t Graph.t
+  module ConnectedComponent = Set.Make(struct type t = node let compare = compare end)
+
+  (* addition of (sets of) edges to a graph *)
+  let add_arrow (g:graph) (n:node) (n':node) (e:edge) : graph =
+    Graph.update n (function
+      | None -> Some (Targets.singleton (n',e))
+      | Some set -> Some (Targets.add (n',e) set)
+    ) g
+
+  let add_arrows (g:graph) (n:node) (t:Targets.t) : graph =
+    Graph.update n (function
+      | None -> Some t
+      | Some set -> Some (Targets.union set t)
+    ) g
+
+  (* conversion from a matching to a graph *)
+  let of_matchings (m:matchings) : graph =
+    List.fold_left (fun g0 (n,tg) ->
+      let g1 = add_arrows g0 n (Targets.of_list tg) in
+      List.fold_left (fun g2 (n',e) -> add_arrow g2 n' n e) g1 tg
+    ) Graph.empty m
+
+  (* computes the connected components of a graph *)
+  let connected_components (g:graph) : ConnectedComponent.t list =
+    let visited = Hashtbl.create (List.length (Graph.bindings g)) in
+    Graph.fold (fun node _ () -> Hashtbl.add visited node false) g ();
+    let marked node = Hashtbl.find visited node in
+
+    let rec get_equiv_class eqc node succ =
+      if marked node then eqc
+      else
+        Targets.fold (fun (n,_) eq ->
+          get_equiv_class eq n (Graph.find n g)
+        ) succ (node::eqc) in
+
+    Graph.fold (fun node succ comps ->
+      match get_equiv_class [] node succ with
+      | [] -> comps
+      | eqc -> ConnectedComponent.of_list eqc :: comps
+    ) g []
+
+  (* checks whether two nodes are in the same connected component *)
+  let same_component (eq:ConnectedComponent.t list) (n1:node) (n2:node) : bool =
+    let rec explore l =
+      match l with
+      | [] -> Config.internal_error "[equivalence_session.ml >> equivalent_nodes] Unexpected case: the argument eq should be a partition of all nodes."
+      | set :: t ->
+        match ConnectedComponent.mem n1 set, ConnectedComponent.mem n2 set with
+        | true,true -> true
+        | false,false -> explore t
+        | _ -> false in
+    explore eq
+end
+
+
+(* final function of the optimisation: splits a matching m into a list of
+independent matchings *)
+let split_matching (m:matchings) : matchings list =
+  let comps = Graph.connected_components (Graph.of_matchings m) in
+  let connected m1 m2 = Graph.same_component comps (fst m1) (fst m2) in
+  equivalence_classes connected m
 
 
 

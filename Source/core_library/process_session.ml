@@ -359,11 +359,11 @@ let factor (bs:bijection_set) (rp:labelled_process list) : labelled_process list
 (* partitions a list in equivalence classes wrt to some equivalence relation *)
 type 'a partition = 'a list list
 
-let partition_equivalence (equiv:'a->'a->bool) (l:'a list) : 'a partition =
+let equivalence_classes (equiv:'a->'a->bool) (l:'a list) : 'a partition =
   let rec insert memo partition x =
     match partition with
     | [] -> [x] :: memo
-    | [] :: t -> Config.internal_error "[process_session.ml >> partition_equivalence] Unexpected case"
+    | [] :: t -> Config.internal_error "[process_session.ml >> equivalence_classes] Unexpected case"
     | (y::_ as equiv_class) :: t ->
       if equiv x y then List.rev_append memo ((x::equiv_class) :: t)
       else insert (equiv_class :: memo) t x in
@@ -425,7 +425,7 @@ parallel processes, wrt to a predicate for skeleton compatibility. *)
 let init_bijection_set ?init:(accu:bijection_set=[]) (fp1:labelled_process) (fp2:labelled_process) : bijection_set option =
   let check_skel lp1 lp2 = compare_io_process lp1.proc lp2.proc = 0 in
   let partition lp =
-    partition_equivalence check_skel (list_of_labelled_process lp) in
+    equivalence_classes check_skel (list_of_labelled_process lp) in
   match link_partitions check_skel (partition fp1) (partition fp2) with
   | None -> None
   | Some l ->
