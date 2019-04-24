@@ -47,7 +47,7 @@ let new_symbolic_process (conf:configuration) (final_status:QStatus.t) : symboli
   final_status = final_status;
 }
 
-(* TODO. optimisation function using partitioning *)
+
 type matching_exists_forall = constraint_system * (constraint_system * bijection_set) list
 type matchings = matching_exists_forall list
 
@@ -350,11 +350,28 @@ let split_partition_tree_node_on_matchings (n:partition_tree_node) : partition_t
 
 
 
+(* mapping everything to a decision procedure *)
+type result_analysis =
+  | Equivalent
+  | Not_Equivalent of constraint_system
+
+exception Not_Session_Equivalent of constraint_system
 
 (* condition under which a partition tree node induces an attack on equivalence
-by session. *)
-let equivalence_failure (n:partition_tree_node) : constraint_system option =
-  todo
+by session. Raises Not_Session_Equivalent when violated. *)
+let verify_violation_equivalence (n:partition_tree_node) : unit =
+  Constraint_system.Set.iter (fun cs ->
+    let conf = Constraint_system.get_additional_data cs in
+    if QStatus.subsumes conf.final_status QStatus.forall &&
+      not (
+        List.exists (fun (_,cs_fa_list) ->
+          List.exists (fun (cs_fa,_) ->
+            conf = Constraint_system.get_additional_data cs_fa
+          ) cs_fa_list
+        ) n.matching
+      ) then
+      raise (Not_Session_Equivalent cs)
+  ) n.csys_set
 
 
 
@@ -366,12 +383,6 @@ let init_partition_tree (csys_set:symbolic_process Constraint_system.Set.t) (m:m
   size_frame = 0
 }
 
-
-type result_analysis =
-  | Equivalent
-  | Not_Equivalent of constraint_system
-
-exception Not_Session_Equivalent of constraint_system
 
 
 (* a type to model the result of skeleton checks *)

@@ -40,6 +40,24 @@ and bang_status =
   | Channel (* symmetry up to structural equivalence and channel renaming *)
 
 
+type side = Left | Right
+
+(* a process with additional information for POR *)
+type action =
+  | InAction of symbol * snd_ord_variable * protocol_term
+  | OutAction of symbol * axiom * protocol_term
+
+type configuration = {
+  input_proc : labelled_process list;
+  focused_proc : labelled_process option;
+  sure_output_proc : labelled_process list;
+  sure_unchecked_skeletons : labelled_process option;
+  to_normalise : labelled_process option;
+  trace : action list
+}
+
+
+
 (* let rec flatten_process (lp:labelled_process) : labelled_process =
   Config.debug (fun () ->
     if lp.label <> None then Config.internal_error "[process_session.ml >> flatten_process] Processes with already-attributed labels should not be flattened."
@@ -217,6 +235,7 @@ let list_of_labelled_process (lp:labelled_process) : labelled_process list =
     | {proc = Bang (_,l1,l2); _} -> List.fold_left gather accu (l1@l2)
     | _ -> lp :: accu in
   gather [] lp
+
 
 
 (* unfolding inputs with symmetries. Return a list of (p,l) where
@@ -461,7 +480,7 @@ let restrict_bijection_set (l1:label) (l2:label) (s:bijection_set) : bijection_s
 
 (* given a bijection set and a label l, computes the set of labels that are
 compatible with l wrt one bijection. *)
-type side = Left | Right
+
 let get_compatible_labels ?origin:(side:side=Left) (l:label) (s:bijection_set) : LabelSet.t =
   let (extract,pred_search) =
     match side with
@@ -473,19 +492,7 @@ let get_compatible_labels ?origin:(side:side=Left) (l:label) (s:bijection_set) :
   | Some pair -> extract pair
 
 
-(* a process with additional information for POR *)
-type action =
-  | InAction of symbol * snd_ord_variable * protocol_term
-  | OutAction of symbol * axiom * protocol_term
 
-type configuration = {
-  input_proc : labelled_process list;
-  focused_proc : labelled_process option;
-  sure_output_proc : labelled_process list;
-  sure_unchecked_skeletons : labelled_process option;
-  to_normalise : labelled_process option;
-  trace : action list
-}
 
 (* creates a configuration from a labelled process. The process is arbitrarily
 put in the focused_proc field (will be put at the right place at the beginning
