@@ -274,7 +274,7 @@ let unfold_input ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_channel
 (* executing outputs with symmetries. Return a list of (c,t,p,lab,l) where l
 is the leftovers left after executing an output OutputSure(c,t,p) of label lab.
 In particular, note that this output is consumed. *)
-let unfold_output ?filter:(f:labelled_process->bool=fun _ -> true) ?at_most:(nb:int= -1) (l:labelled_process list) : (output_data * label * labelled_process list) list =
+let unfold_output ?filter:(f:labelled_process->bool=fun _ -> true) ?at_most:(nb:int= -1) (lp:labelled_process) : (output_data * label * labelled_process) list =
 
   let rec unfold countdown accu p rebuild f_cont =
     if countdown = 0 then accu
@@ -325,7 +325,7 @@ let unfold_output ?filter:(f:labelled_process->bool=fun _ -> true) ?at_most:(nb:
           unfold_list n acp (pp::memo) t rebuild f_cont
         ) in
 
-  unfold_list nb [] [] l (fun l -> l) (fun n accu -> accu)
+  unfold nb [] lp (fun p -> p) (fun n accu -> accu)
 
 
 (* comparing labels for POR: returns 0 if one label is prefix of the other,
