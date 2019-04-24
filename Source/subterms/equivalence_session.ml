@@ -240,11 +240,45 @@ let generate_next_transitions_exists (size_frame:int) (cs:constraint_system) : u
   symp.status <- new_status
 
 
-(* TODO. THE BIG FUNCTION *)
-let generate_next_transitions (m:matchings) : matchings =
-  todo
+(* generates the next transitions and updates the matching.
+NB. The constraint solving and the skeleton checks remain to be done after this
+function call. *)
+let generate_next_matchings (size_frame:int) (m:matchings) : matchings =
+  List.fold_left (fun (accu1:matchings) (cs_ex,cs_fa_list) ->
 
+    (** generation of the transitions **)
+    let symp_ex = Constraint_system.get_additional_data cs_ex in
+    List.iter (fun (cs_fa,_) ->
+      generate_next_transitions_forall size_frame cs_fa
+    ) cs_fa_list;
+    if QStatus.subsumes symp_ex.final_status QStatus.forall then
+      generate_next_transitions_forall size_frame cs_ex;
+    generate_next_transitions_exists size_frame cs_ex;
 
+    (** update of the matching **)
+    List.fold_left (fun (accu2:matchings) transition_ex ->
+      let (lab_ex,_,cs_ex_next) = transition_ex in
+      let matchers =
+        List.fold_left (fun (accu3:(constraint_system*bijection_set) list) (cs_fa,bset) ->
+          let symp_fa = Constraint_system.get_additional_data cs_fa in
+          List.fold_left (fun (accu4:(constraint_system*bijection_set) list) transition_fa ->
+            let (lab_fa,forall,cs_fa_next) = transition_fa in
+            if not forall then accu4
+            else
+              match restrict_bijection_set lab_ex lab_fa bset with
+              | None -> accu4
+              | Some bset_upd -> (cs_fa_next,bset_upd) :: accu4
+          ) accu3 symp_fa.next_transitions
+        ) [] cs_fa_list in
+      if matchers = [] then accu2
+      else (cs_ex_next,matchers) :: accu2
+    ) accu1 symp_ex.next_transitions
+  ) [] m
+
+(* cleans a matching (removes useless existential constraint_systems and
+partitions the matching into submatchings if possible) *)
+let clean_matching (m:matchings) : matchings list =
+  [m]
 
 
 

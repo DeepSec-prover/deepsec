@@ -741,25 +741,24 @@ let find_faulty_skeleton (size_frame:int) (conf1:configuration) (conf2:configura
 
   find_different ordered_list1 ordered_list2
 
-(* takes two configuration as an argument, assuming the first one is labelled,
-and performs a skeleton check (on their focused process if any, or
-sure_uncheked_skeletons otherwise). Returns the updated matchings.
-Raises Faulty_skeleton if a skeleton mismatch occurs.
+(* takes two configuration as an argument, and performs a skeleton check (on
+their focused process if any, or sure_uncheked_skeletons otherwise). Returns
+the updated matchings. Raises Faulty_skeleton if a skeleton mismatch occurs.
 NB. Assumes that focused parallels have already been labelled. *)
-let check_skeleton_in_configuration (size_frame:int) (baseline:configuration) (to_check:configuration) (bset_to_update:bijection_set) : bijection_set =
+let check_skeleton_in_configuration (size_frame:int) (conf1:configuration) (conf2:configuration) (bset_to_update:bijection_set) : bijection_set =
 
   let fault p1 p2 =
     let (side,f_conf,f_action) =
-      find_faulty_skeleton size_frame baseline to_check p1 p2 in
+      find_faulty_skeleton size_frame conf1 conf2 p1 p2 in
     raise (Faulty_skeleton (side,f_conf,f_action)) in
 
-  match baseline.focused_proc, to_check.focused_proc with
+  match conf1.focused_proc, conf2.focused_proc with
   | None, None ->
-    begin match baseline.sure_unchecked_skeletons, to_check.sure_unchecked_skeletons with
+    begin match conf1.sure_unchecked_skeletons, conf2.sure_unchecked_skeletons with
     | Some p1, Some p2 when nil p1.proc && nil p2.proc -> bset_to_update
     | Some p1, Some p2 when contains_output p1 || contains_output p2 ->
-      let pp1 = {proc = Par (p1::baseline.sure_output_proc); label = None} in
-      let pp2 = {proc = Par (p2::to_check.sure_output_proc); label = None} in
+      let pp1 = {proc = Par (p1::conf1.sure_output_proc); label = None} in
+      let pp2 = {proc = Par (p2::conf2.sure_output_proc); label = None} in
       if is_equal_skeleton pp1 pp2 then
         bset_to_update
       else bset_to_update
