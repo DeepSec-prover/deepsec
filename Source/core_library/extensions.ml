@@ -53,7 +53,7 @@ module List = struct
   one such element (if any). The ordering is not preserved. *)
   let find_and_remove (f:'a->bool) (l:'a list) : 'a option * 'a list =
     List.fold_left (fun (elt,accu) x ->
-      if f x then (Some x,accu) else (elt,x::accu)
+      if elt = None && f x then (Some x,accu) else (elt,x::accu)
     ) (None,[]) l
 
   (* finder in list *)

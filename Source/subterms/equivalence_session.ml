@@ -328,26 +328,33 @@ module Graph = struct
       | eqc -> ConnectedComponent.of_list eqc :: comps
     ) g []
 
-  (* checks whether two nodes are in the same connected component *)
-  let same_component (eq:ConnectedComponent.t list) (n1:node) (n2:node) : bool =
-    let rec explore l =
-      match l with
-      | [] -> Config.internal_error "[equivalence_session.ml >> equivalent_nodes] Unexpected case: the argument eq should be a partition of all nodes."
-      | set :: t ->
-        match ConnectedComponent.mem n1 set, ConnectedComponent.mem n2 set with
-        | true,true -> true
-        | false,false -> explore t
-        | _ -> false in
-    explore eq
 end
 
 
 (* final function of the optimisation: splits a matching m into a list of
 independent matchings *)
-let split_matching (m:matchings) : matchings list =
-  let comps = Graph.connected_components (Graph.of_matchings m) in
-  let connected m1 m2 = Graph.same_component comps (fst m1) (fst m2) in
-  equivalence_classes connected m
+let split_partition_tree_node_on_matchings (n:partition_tree_node) : partition_tree_node list =
+  let comps = Graph.connected_components (Graph.of_matchings n.matching) in
+  let rec add_matching_in_data_list data m =
+    let cs = fst m in
+    match List.find_and_remove (fun (_,c) -> Graph.ConnectedComponent.mem cs c) data with
+    | None, _ -> Config.internal_error "[equivalence_session.ml >> split_partition_tree_node] Unexpected case."
+    | Some (ml,c),remainder -> (m::ml,c) :: remainder in
+  let new_node_data =
+    List.fold_left add_matching_in_data_list (List.rev_map (fun c -> [],c) comps) n.matching in
+  let replace_data m c = {n with
+    matching = m;
+    csys_set = Constraint_system.Set.of_list (Graph.ConnectedComponent.elements c);
+  } in
+  List.fold_left (fun accu (m,c) -> replace_data m c :: accu) [] new_node_data
+
+
+
+
+(* condition under which a partition tree node induces an attack on equivalence
+by session. *)
+let equivalence_failure (n:partition_tree_node) : constraint_system option =
+  todo
 
 
 
