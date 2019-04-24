@@ -60,24 +60,12 @@ type partition_tree_node = {
 }
 
 
-(* restricts a matching after constraint_systems are removed from a tree node *)
-let restrict_matching (m:matchings) (cset:constraint_system_set) : matchings =
-  let exists cs =
-    Constraint_system.Set.exists (fun cs' -> compare cs cs' = 0) cset in
-  List.fold_left (fun ac (cs_ex,l) ->
-    if not(exists cs_ex) then ac
-    else
-      match List.filter (fun (cs_fa,_) -> exists cs_fa) l with
-      | [] -> ac
-      | ll -> (cs_ex,ll) :: ac
-  ) [] m
-
-
 (* normalising configurations and constructing next_transitions:
 case of an output of 'term' bound to axiom 'ax', to be normalised in
 configuration 'conf' to update constraint system 'cs' of additional data 'symp'
-and first-order solution 'eqn', all that for a transition of type 'status'. *)
-let add_transition_output (forall:bool) (conf:configuration) (eqn:equation) (cs:constraint_system) (symp:symbolic_process) (ax:axiom) (term:protocol_term) (lab:label) (new_status:QStatus.t) : unit =
+and first-order solution 'eqn', all that for a transition of type 'status'.
+The resulting constraint_system is added to 'accu'. *)
+let add_transition_output (accu:constraint_system_set ref) (forall:bool) (conf:configuration) (eqn:equation) (cs:constraint_system) (symp:symbolic_process) (ax:axiom) (term:protocol_term) (lab:label) (new_status:QStatus.t) : unit =
   normalise_configuration conf eqn (fun gather conf_norm ->
     let t0 = Subst.apply gather.equations term (fun x f -> f x) in
 
@@ -91,14 +79,16 @@ let add_transition_output (forall:bool) (conf:configuration) (eqn:equation) (cs:
       let cs4 =
         Constraint_system.replace_additional_data cs3 (new_symbolic_process conf_norm new_status) in
 
-      symp.next_transitions <- (lab,forall,cs4) :: symp.next_transitions
+      symp.next_transitions <- (lab,forall,cs4) :: symp.next_transitions;
+      accu := Constraint_system.Set.add cs4 !accu
     with
       | Constraint_system.Bot -> ()
   )
 
 (* normalising configurations and constructing next_transitions:
-case of a focus. *)
-let add_transition_focus (forall:bool) (cs:constraint_system) (symp:symbolic_process) (new_status:QStatus.t) (focus:labelled_process * labelled_process list) : unit =
+case of a focus.
+The resulting constraint_system is added to 'accu'.*)
+let add_transition_focus (accu:constraint_system_set ref) (forall:bool) (cs:constraint_system) (symp:symbolic_process) (new_status:QStatus.t) (focus:labelled_process * labelled_process list) : unit =
   let root_label lp =
     match lp with
     | {proc = Input _; label = Some lab} -> lab
@@ -110,12 +100,14 @@ let add_transition_focus (forall:bool) (cs:constraint_system) (symp:symbolic_pro
   } in
   let cs' =
     Constraint_system.replace_additional_data cs (new_symbolic_process conf new_status) in
-  symp.next_transitions <- (root_label lp,forall,cs') :: symp.next_transitions
+  symp.next_transitions <- (root_label lp,forall,cs') :: symp.next_transitions;
+  accu := Constraint_system.Set.add cs' !accu
 
 (* normalising configurations and constructing next_transitions:
 case of a focused input on variable 'x' and second-order var_X, to be
-normalised in configuration 'conf' to update constraint system 'cs' of additional data 'symp' and first-order solution 'eqn', all that for a transition of type 'status'. *)
-let add_transition_pos (forall:bool) (conf:configuration) (eqn:equation) (cs:constraint_system) (symp:symbolic_process) (var_X:snd_ord_variable) (x:fst_ord_variable) (lab:label) (new_status:QStatus.t) : unit =
+normalised in configuration 'conf' to update constraint system 'cs' of additional data 'symp' and first-order solution 'eqn', all that for a transition of type 'status'.
+The resulting constraint_system is added to 'accu'.*)
+let add_transition_pos (accu:constraint_system_set ref) (forall:bool) (conf:configuration) (eqn:equation) (cs:constraint_system) (symp:symbolic_process) (var_X:snd_ord_variable) (x:fst_ord_variable) (lab:label) (new_status:QStatus.t) : unit =
   normalise_configuration conf eqn (fun gather conf_norm ->
     let ded_fact =
       let input =
@@ -132,7 +124,8 @@ let add_transition_pos (forall:bool) (conf:configuration) (eqn:equation) (cs:con
       let cs4 =
         Constraint_system.replace_additional_data cs3 (new_symbolic_process conf_norm new_status) in
 
-      symp.next_transitions <- (lab,forall,cs4) :: symp.next_transitions
+      symp.next_transitions <- (lab,forall,cs4) :: symp.next_transitions;
+      accu := Constraint_system.Set.add cs4 !accu
     with
       | Constraint_system.Bot -> ()
   )
@@ -141,7 +134,7 @@ let add_transition_pos (forall:bool) (conf:configuration) (eqn:equation) (cs:con
 (* generates the forall-quantified transitions from a given constraint system.
 This function may be called on a systems where such transitions have already
 been generated. *)
-let generate_next_transitions_forall (size_frame:int) (cs:constraint_system) : unit =
+let generate_next_transitions_forall (accu:constraint_system_set ref) (size_frame:int) (cs:constraint_system) : unit =
   let symp = Constraint_system.get_additional_data cs in
   Config.debug(fun () ->
     if QStatus.subsumes symp.status QStatus.exists then
@@ -165,11 +158,11 @@ let generate_next_transitions_forall (size_frame:int) (cs:constraint_system) : u
           trace = OutAction(ch,ax,term)::symp.conf.trace;
         } in
         let eqn = Constraint_system.get_substitution_solution Protocol cs in
-        add_transition_output true conf eqn cs symp ax term lab QStatus.forall end
+        add_transition_output accu true conf eqn cs symp ax term lab QStatus.forall end
     | Some RFocus ->
       let potential_focuses =
         unfold_input ~allow_channel_renaming:true symp.conf.input_proc in
-      List.iter (add_transition_focus true cs symp QStatus.forall) potential_focuses
+      List.iter (add_transition_focus accu true cs symp QStatus.forall) potential_focuses
     | Some RPos ->
       match symp.conf.focused_proc with
       | Some {proc = Input(ch,x,p); label = Some lab} ->
@@ -180,7 +173,7 @@ let generate_next_transitions_forall (size_frame:int) (cs:constraint_system) : u
           trace = InAction(ch,var_X,Term.of_variable x) :: symp.conf.trace;
         } in
         let eqn = Constraint_system.get_substitution_solution Protocol cs in
-        add_transition_pos true conf eqn cs symp var_X x lab QStatus.forall
+        add_transition_pos accu true conf eqn cs symp var_X x lab QStatus.forall
       | _ -> Config.internal_error "[equivalence_session.ml >> generate_next_transitions_forall] Unexpected focus state." in
 
   if not (QStatus.subsumes symp.status QStatus.forall) then (
@@ -192,7 +185,7 @@ let generate_next_transitions_forall (size_frame:int) (cs:constraint_system) : u
 (* generates the exists-quantified transitions from a given constraint system.
 This function should never be called twice on the same constraint system, but
 forall-transitions may already be here by generate_next_transitions_forall. *)
-let generate_next_transitions_exists (size_frame:int) (cs:constraint_system) : unit =
+let generate_next_transitions_exists (accu:constraint_system_set ref) (size_frame:int) (cs:constraint_system) : unit =
   let symp = Constraint_system.get_additional_data cs in
   let new_status = QStatus.upgrade symp.status QStatus.exists in
   let not_already_generated lp =
@@ -216,13 +209,13 @@ let generate_next_transitions_exists (size_frame:int) (cs:constraint_system) : u
           } in
           let eqn =
             Constraint_system.get_substitution_solution Protocol cs in
-          add_transition_output false conf eqn cs symp ax term lab new_status
+          add_transition_output accu false conf eqn cs symp ax term lab new_status
         ) (unfold_output ~filter:not_already_generated proc)
       ) symp.conf.sure_output_proc
     | Some RFocus ->
       let potential_focuses =
         unfold_input ~filter:not_already_generated ~allow_channel_renaming:false symp.conf.input_proc in
-      List.iter (add_transition_focus false cs symp new_status) potential_focuses
+      List.iter (add_transition_focus accu false cs symp new_status) potential_focuses
     | Some RPos ->
       match symp.conf.focused_proc with
       | Some {proc = Input(ch,x,p); label = Some lab} ->
@@ -233,47 +226,62 @@ let generate_next_transitions_exists (size_frame:int) (cs:constraint_system) : u
           trace = InAction(ch,var_X,Term.of_variable x) :: symp.conf.trace;
         } in
         let eqn = Constraint_system.get_substitution_solution Protocol cs in
-        add_transition_pos false conf eqn cs symp var_X x lab new_status
+        add_transition_pos accu false conf eqn cs symp var_X x lab new_status
       | _ -> Config.internal_error "[equivalence_session.ml >> generate_next_transitions_exists] Unexpected focus state." in
 
   generate();
   symp.status <- new_status
 
 
-(* generates the next transitions and updates the matching.
+(* From a partition tree node, generates the transitions and creates a new
+node with allthe resulting processes inside.
 NB. The constraint solving and the skeleton checks remain to be done after this
 function call. *)
-let generate_next_matchings (size_frame:int) (m:matchings) : matchings =
-  List.fold_left (fun (accu1:matchings) (cs_ex,cs_fa_list) ->
+let generate_next_matchings (n:partition_tree_node) : partition_tree_node =
+  let new_csys_set = ref Constraint_system.Set.empty in
+  
+  let new_matchings =
+    List.fold_left (fun (accu1:matchings) (cs_ex,cs_fa_list) ->
 
-    (** generation of the transitions **)
-    let symp_ex = Constraint_system.get_additional_data cs_ex in
-    List.iter (fun (cs_fa,_) ->
-      generate_next_transitions_forall size_frame cs_fa
-    ) cs_fa_list;
-    if QStatus.subsumes symp_ex.final_status QStatus.forall then
-      generate_next_transitions_forall size_frame cs_ex;
-    generate_next_transitions_exists size_frame cs_ex;
+      (** generation of the transitions **)
+      let symp_ex = Constraint_system.get_additional_data cs_ex in
+      List.iter (fun (cs_fa,_) ->
+        generate_next_transitions_forall new_csys_set n.size_frame cs_fa
+      ) cs_fa_list;
+      if QStatus.subsumes symp_ex.final_status QStatus.forall then
+        generate_next_transitions_forall new_csys_set n.size_frame cs_ex;
+      generate_next_transitions_exists new_csys_set n.size_frame cs_ex;
 
-    (** update of the matching **)
-    List.fold_left (fun (accu2:matchings) transition_ex ->
-      let (lab_ex,_,cs_ex_next) = transition_ex in
-      let matchers =
-        List.fold_left (fun (accu3:(constraint_system*bijection_set) list) (cs_fa,bset) ->
-          let symp_fa = Constraint_system.get_additional_data cs_fa in
-          List.fold_left (fun (accu4:(constraint_system*bijection_set) list) transition_fa ->
-            let (lab_fa,forall,cs_fa_next) = transition_fa in
-            if not forall then accu4
-            else
-              match restrict_bijection_set lab_ex lab_fa bset with
-              | None -> accu4
-              | Some bset_upd -> (cs_fa_next,bset_upd) :: accu4
-          ) accu3 symp_fa.next_transitions
-        ) [] cs_fa_list in
-      if matchers = [] then accu2
-      else (cs_ex_next,matchers) :: accu2
-    ) accu1 symp_ex.next_transitions
-  ) [] m
+      (** update of the matching **)
+      List.fold_left (fun (accu2:matchings) transition_ex ->
+        let (lab_ex,_,cs_ex_next) = transition_ex in
+        let matchers =
+          List.fold_left (fun (accu3:(constraint_system*bijection_set) list) (cs_fa,bset) ->
+            let symp_fa = Constraint_system.get_additional_data cs_fa in
+            List.fold_left (fun (accu4:(constraint_system*bijection_set) list) transition_fa ->
+              let (lab_fa,forall,cs_fa_next) = transition_fa in
+              if not forall then accu4
+              else
+                match restrict_bijection_set lab_ex lab_fa bset with
+                | None -> accu4
+                | Some bset_upd -> (cs_fa_next,bset_upd) :: accu4
+            ) accu3 symp_fa.next_transitions
+          ) [] cs_fa_list in
+        if matchers = [] then accu2
+        else (cs_ex_next,matchers) :: accu2
+      ) accu1 symp_ex.next_transitions
+    ) [] n.matching in
+
+  let new_size_frame =
+    match next_transition_to_apply (Constraint_system.get_additional_data (Constraint_system.Set.choose n.csys_set)).conf with
+    | Some RNeg -> n.size_frame+1
+    | _ -> n.size_frame in
+
+  {n with
+    size_frame = new_size_frame;
+    csys_set = !new_csys_set;
+    matching = new_matchings;
+  }
 
 
 (** Optimisation: partitions a matching into several independent submatchings.
