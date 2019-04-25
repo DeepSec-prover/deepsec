@@ -138,14 +138,16 @@ let not_generated (symp:symbolic_process) (s:QStatus.t) : bool =
 (* generates the forall-quantified transitions from a given constraint system.
 This function may be called on a systems where such transitions have already
 been generated. *)
-let generate_next_transitions_forall (accu:constraint_system_set ref) (size_frame:int) (cs:constraint_system) : unit =
+let generate_next_transitions_forall (type_of_transition:type_of_transition option) (accu:constraint_system_set ref) (size_frame:int) (cs:constraint_system) : unit =
   let symp = Constraint_system.get_additional_data cs in
-  Config.debug(fun () ->
+  Config.debug (fun () ->
     if QStatus.subsumes symp.status QStatus.exists then
-      Config.internal_error "[equivalence_session.ml >> generate_next_transitions_forall] exists-transitions should not have been generated yet."
+      Config.internal_error "[equivalence_session.ml >> generate_next_transitions_forall] exists-transitions should not have been generated yet.";
+    if type_of_transition <> next_transition_to_apply symp.conf then
+      Config.internal_error "[equivalence_session.ml >> generate_next_transitions_forall] Inconsistent transitions.";
   );
   let generate () =
-    match next_transition_to_apply symp.conf with
+    match type_of_transition with
     | None -> ()
     | Some RNeg ->
       let ax = Axiom.create (size_frame+1) in
@@ -189,7 +191,7 @@ let generate_next_transitions_forall (accu:constraint_system_set ref) (size_fram
 (* generates the exists-quantified transitions from a given constraint system.
 NB. This function should only be called after generate_next_transitions_forall
 has generated the forall-transitions. *)
-let generate_next_transitions_exists (accu:constraint_system_set ref) (size_frame:int) (cs:constraint_system) : unit =
+let generate_next_transitions_exists (type_of_transition:type_of_transition option) (accu:constraint_system_set ref) (size_frame:int) (cs:constraint_system) : unit =
   let symp = Constraint_system.get_additional_data cs in
   let new_status = QStatus.upgrade symp.status QStatus.exists in
   let not_already_generated lp =
@@ -199,7 +201,7 @@ let generate_next_transitions_exists (accu:constraint_system_set ref) (size_fram
     | {proc = _; label = Some lab; _} ->
       List.for_all (fun (lab',_,_) -> lab <> lab') symp.next_transitions in
   let generate () =
-    match next_transition_to_apply symp.conf with
+    match type_of_transition with
     | None -> ()
     | Some RNeg ->
       let ax = Axiom.create (size_frame+1) in
@@ -240,10 +242,20 @@ let generate_next_transitions_exists (accu:constraint_system_set ref) (size_fram
 
 
 (* calls the two previous functions in the right order *)
-let generate_next_transitions (accu:constraint_system_set ref) (size_frame:int) (cs:constraint_system) : unit =
-  generate_next_transitions_forall accu size_frame cs;
-  generate_next_transitions_exists accu size_frame cs
+let generate_next_transitions (type_of_transition:type_of_transition option) (accu:constraint_system_set ref) (size_frame:int) (cs:constraint_system) : unit =
+  generate_next_transitions_forall type_of_transition accu size_frame cs;
+  generate_next_transitions_exists type_of_transition accu size_frame cs
 
+
+(* determines the type of the next transitions of a constraint system set.
+Assuming the invariant that skeleton checks are performed along the equivalence
+verification, the result is the same for all element of a partition tree node *)
+let determine_next_transition (n:partition_tree_node) : type_of_transition option =
+  if Constraint_system.Set.is_empty n.csys_set then None
+  else
+    let csys = Constraint_system.Set.choose n.csys_set in
+    let symp = Constraint_system.get_additional_data csys in
+    next_transition_to_apply symp.conf
 
 
 (* From a partition tree node, generates the transitions and creates a new
@@ -254,7 +266,8 @@ let generate_next_matchings (n:partition_tree_node) : partition_tree_node =
 
   (** Generation of the transitions **)
   let new_csys_set = ref Constraint_system.Set.empty in
-  Constraint_system.Set.iter (generate_next_transitions new_csys_set n.size_frame) n.csys_set;
+
+  Constraint_system.Set.iter (generate_next_transitions (determine_next_transition n) new_csys_set n.size_frame) n.csys_set;
   let new_csys_set = !new_csys_set in
 
   (** update of the matching **)
@@ -285,8 +298,11 @@ let generate_next_matchings (n:partition_tree_node) : partition_tree_node =
   }
 
 
-(** Optimisation: partitions a matching into several independent submatchings.
-This reduces to computing connected components of a graph. **)
+(** Partitions a matching into several independent submatchings. This allows for
+separating successor nodes that are obtained by transitions with different
+actions.
+NB. Technically speaking, this reduces to computing connected components of a
+graph. **)
 
 (** Graph structure and conversion from matchings **)
 module Graph = struct
@@ -384,109 +400,6 @@ let init_partition_tree (csys_set:symbolic_process Constraint_system.Set.t) (m:m
   size_frame = 0
 }
 
-(* a type to model the result of skeleton checks *)
-type skeleton_check =
-  | OK of configuration * configuration * bijection_set
-  | Faulty of side * configuration * action
-
-
-(* TODO DOUBLE CHECK THESE TWO FUNCTIONS *)
-
-let final_test_on_nodes_start (f_cont:partition_tree_node->(unit->unit)->unit) (initial_node:partition_tree_node) (csys_set:constraint_system_set) (f_next:unit->unit) : unit =
-  if Constraint_system.Set.is_empty csys_set then f_next ()
-  else
-    let csys_set_1 =
-      Constraint_system.Set.optimise_snd_ord_recipes csys_set in
-    (* Config.debug (fun () ->
-      let csys = Constraint_system.Set.choose csys_set_1 in
-      let same_origin csys' =
-        (Constraint_system.get_additional_data csys).origin_process = (Constraint_system.get_additional_data csys').origin_process in
-      if Constraint_system.Set.for_all same_origin csys_set_1 then
-        Config.internal_error "[equivalence_session.ml >> final_test_on_nodes_start] Unexpected case, equivalence should not be violated after only normalising the two processes."
-    ); *)
-    let (csys_left, csys_right) = todo in
-      (* Constraint_system.Set.find_representative csys_set (fun csys' ->
-        (Constraint_system.get_additional_data csys').origin_process = Left
-      ) in *)
-    let sleft = Constraint_system.get_additional_data csys_left in
-    let sright = Constraint_system.get_additional_data csys_right in
-    let bs_init =
-      match initial_node.matching with
-      | [_,[_,bs]] -> bs
-      | _ -> Config.internal_error "[equivalence_session.ml >> final_test_on_nodes_start] Unexpected case: matching of a bad form." in
-
-    (** skeleton test **)
-    let skel_test =
-      try
-        let bs_upd =
-          check_skeleton_in_configuration 0 sleft.conf sright.conf bs_init in
-        try
-          OK(release_skeleton sleft.conf,release_skeleton sright.conf,bs_upd)
-        with Improper_block -> Improper
-      with Faulty_skeleton(side,conf,action) -> Faulty(side,conf,action) in
-
-    (** final operations depending on the result of the test **)
-    match skel_test with
-    | Improper -> f_next ()
-    | OK (conf_left, conf_right,bset) ->
-      let csys_left =
-        Constraint_system.replace_additional_data csys_left {sleft with conf = conf_left } in
-      let csys_right =
-        Constraint_system.replace_additional_data csys_right {sright with conf = conf_right} in
-      let csys_set_upd =
-        Constraint_system.Set.of_list [csys_left; csys_right] in
-      f_cont {initial_node with csys_set = csys_set_upd} f_next
-    | Faulty (side,f_conf,f_action) ->
-      let (wit_csys, symb_proc) =
-        if side = Left then csys_left, sleft
-        else csys_right, sright in
-      let eqn =
-        Constraint_system.get_substitution_solution Protocol wit_csys in
-      begin match f_action with
-      | OutAction(_,ax,t) ->
-        let wit_csys_1 =
-          Constraint_system.add_axiom wit_csys ax (Subst.apply eqn t (fun x f -> f x)) in
-        let wit_csys_2 =
-          Constraint_system.replace_additional_data wit_csys_1 { symb_proc with conf = f_conf } in
-        raise (Not_Session_Equivalent wit_csys_2)
-      | InAction(_,var_X,t) ->
-        let ded_fact_term = BasicFact.create var_X t in
-        let wit_csys_1 =
-          Constraint_system.add_basic_fact wit_csys ded_fact_term in
-        let wit_csys_2 =
-          Constraint_system.replace_additional_data wit_csys_1 { symb_proc with conf = f_conf } in
-        raise (Not_Session_Equivalent wit_csys_2)
-      end
-
-
-let normalise_and_split_start (node:partition_tree_node) (f_cont:partition_tree_node->(unit->unit)->'a) (f_next:unit->unit) : unit =
-
-  (** normalisation of the configurations **)
-  let initial_csys_set = ref Constraint_system.Set.empty in
-  Constraint_system.Set.iter (fun csys ->
-    let symb_proc = Constraint_system.get_additional_data csys in
-    let eqn = Constraint_system.get_substitution_solution Protocol csys in
-
-    normalise_configuration symb_proc.conf eqn (fun gathering conf ->
-      try
-        let csys_1 =
-          Constraint_system.apply_substitution csys gathering.equations in
-        let csys_2 =
-          Constraint_system.add_disequations csys_1 gathering.disequations in
-        let csys_3 =
-          Constraint_system.replace_additional_data csys_2 {symb_proc with conf = conf} in
-
-        initial_csys_set := Constraint_system.Set.add csys_3 !initial_csys_set
-      with
-        | Constraint_system.Bot -> ()
-    )
-  ) node.csys_set;
-  let initial_csys_set = !initial_csys_set in (* to get rid of the reference *)
-
-
-  (** Resolution of the constraints using the constraint solver **)
-
-  Constraint_system.Rule.apply_rules_after_input false (final_test_on_nodes_start f_cont node) initial_csys_set f_next
 
 
 

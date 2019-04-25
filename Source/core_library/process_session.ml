@@ -756,14 +756,8 @@ let find_faulty_skeleton (size_frame:int) (conf1:configuration) (conf2:configura
 
 (* takes two configuration as an argument, and performs a skeleton check (on
 their focused process if any, or sure_uncheked_skeletons otherwise). Returns
-the updated matchings. Raises Faulty_skeleton if a skeleton mismatch occurs.
-NB. Assumes that focused parallels have already been labelled. *)
-let check_skeleton_in_configuration (size_frame:int) (conf1:configuration) (conf2:configuration) (bset_to_update:bijection_set) : bijection_set =
-
-  let fault p1 p2 =
-    let (side,f_conf,f_action) =
-      find_faulty_skeleton size_frame conf1 conf2 p1 p2 in
-    raise (Faulty_skeleton (side,f_conf,f_action)) in
+the updated matchings (None in case of a skeleton mismatch). *)
+let check_skeleton_in_configuration (size_frame:int) (conf1:configuration) (conf2:configuration) (bset_to_update:bijection_set) : bijection_set option =
 
   match conf1.focused_proc, conf2.focused_proc with
   | None, None ->
