@@ -48,9 +48,8 @@ let new_symbolic_process (conf:configuration) (final_status:QStatus.t) : symboli
 }
 
 
-(* TODO Change data structure (lol), invert exists and forall *)
-type matching_exists_forall = constraint_system * (constraint_system * bijection_set) list
-type matchings = matching_exists_forall list
+type matching_forall_exists = constraint_system * (constraint_system * bijection_set) list
+type matchings = matching_forall_exists list
 
 type partition_tree_node = {
   csys_set : constraint_system_set;
@@ -132,6 +131,10 @@ let add_transition_pos (accu:constraint_system_set ref) (forall:bool) (conf:conf
   )
 
 
+let not_generated (symp:symbolic_process) (s:QStatus.t) : bool =
+  QStatus.subsumes symp.final_status s && not (QStatus.subsumes symp.status s)
+
+
 (* generates the forall-quantified transitions from a given constraint system.
 This function may be called on a systems where such transitions have already
 been generated. *)
@@ -177,15 +180,15 @@ let generate_next_transitions_forall (accu:constraint_system_set ref) (size_fram
         add_transition_pos accu true conf eqn cs symp var_X x lab QStatus.forall
       | _ -> Config.internal_error "[equivalence_session.ml >> generate_next_transitions_forall] Unexpected focus state." in
 
-  if not (QStatus.subsumes symp.status QStatus.forall) then (
+  if not_generated symp QStatus.forall then (
     generate();
     symp.status <- QStatus.forall
   )
 
 
 (* generates the exists-quantified transitions from a given constraint system.
-This function should never be called twice on the same constraint system, but
-forall-transitions may already be here by generate_next_transitions_forall. *)
+NB. This function should only be called after generate_next_transitions_forall
+has generated the forall-transitions. *)
 let generate_next_transitions_exists (accu:constraint_system_set ref) (size_frame:int) (cs:constraint_system) : unit =
   let symp = Constraint_system.get_additional_data cs in
   let new_status = QStatus.upgrade symp.status QStatus.exists in
@@ -230,8 +233,17 @@ let generate_next_transitions_exists (accu:constraint_system_set ref) (size_fram
         add_transition_pos accu false conf eqn cs symp var_X x lab new_status
       | _ -> Config.internal_error "[equivalence_session.ml >> generate_next_transitions_exists] Unexpected focus state." in
 
-  generate();
-  symp.status <- new_status
+  if not_generated symp QStatus.exists then (
+    generate();
+    symp.status <- new_status
+  )
+
+
+(* calls the two previous functions in the right order *)
+let generate_next_transitions (accu:constraint_system_set ref) (size_frame:int) (cs:constraint_system) : unit =
+  generate_next_transitions_forall accu size_frame cs;
+  generate_next_transitions_exists accu size_frame cs
+
 
 
 (* From a partition tree node, generates the transitions and creates a new
@@ -239,42 +251,36 @@ node with allthe resulting processes inside.
 NB. The constraint solving and the skeleton checks remain to be done after this
 function call. *)
 let generate_next_matchings (n:partition_tree_node) : partition_tree_node =
+
+  (** Generation of the transitions **)
   let new_csys_set = ref Constraint_system.Set.empty in
+  Constraint_system.Set.iter (generate_next_transitions new_csys_set n.size_frame) n.csys_set;
+  let new_csys_set = !new_csys_set in
 
+  (** update of the matching **)
   let new_matchings =
-    List.fold_left (fun (accu1:matchings) (cs_ex,cs_fa_list) ->
-
-      (** generation of the transitions **)
-      let symp_ex = Constraint_system.get_additional_data cs_ex in
-      List.iter (fun (cs_fa,_) ->
-        generate_next_transitions_forall new_csys_set n.size_frame cs_fa
-      ) cs_fa_list;
-      if QStatus.subsumes symp_ex.final_status QStatus.forall then
-        generate_next_transitions_forall new_csys_set n.size_frame cs_ex;
-      generate_next_transitions_exists new_csys_set n.size_frame cs_ex;
-
-      (** update of the matching **)
-      List.fold_left (fun (accu2:matchings) transition_ex ->
-        let (lab_ex,_,cs_ex_next) = transition_ex in
-        let matchers =
-          List.fold_left (fun (accu3:(constraint_system*bijection_set) list) (cs_fa,bset) ->
-            let symp_fa = Constraint_system.get_additional_data cs_fa in
-            List.fold_left (fun (accu4:(constraint_system*bijection_set) list) transition_fa ->
-              let (lab_fa,forall,cs_fa_next) = transition_fa in
-              if not forall then accu4
-              else
-                match restrict_bijection_set lab_ex lab_fa bset with
+    List.fold_left (fun (accu1:matchings) (cs_fa,cs_ex_list) ->
+      let symp_fa = Constraint_system.get_additional_data cs_fa in
+      List.fold_left (fun (accu2:matchings) (transition_fa:transition) ->
+        let (lab_fa,forall,cs_fa_new) = transition_fa in
+        if not forall then accu2
+        else
+          let cs_ex_list_new =
+            List.fold_left (fun (accu3:(constraint_system*bijection_set) list) (cs_ex,bset) ->
+              let symp_ex = Constraint_system.get_additional_data cs_ex in
+              List.fold_left (fun (accu4:(constraint_system*bijection_set) list) transition_ex ->
+                let (lab_ex,forall,cs_ex_new) = transition_ex in
+                match restrict_bijection_set lab_fa lab_ex bset with
                 | None -> accu4
-                | Some bset_upd -> (cs_fa_next,bset_upd) :: accu4
-            ) accu3 symp_fa.next_transitions
-          ) [] cs_fa_list in
-        if matchers = [] then accu2
-        else (cs_ex_next,matchers) :: accu2
-      ) accu1 symp_ex.next_transitions
+                | Some bset_upd -> (cs_ex_new,bset_upd) :: accu4
+              ) accu3 symp_ex.next_transitions
+            ) [] cs_ex_list in
+          (cs_fa_new,cs_ex_list_new) :: accu2
+      ) accu1 symp_fa.next_transitions
     ) [] n.matching in
 
   {n with
-    csys_set = !new_csys_set;
+    csys_set = new_csys_set;
     matching = new_matchings;
   }
 
@@ -335,7 +341,8 @@ end
 
 
 (* final function of the optimisation: splits a matching m into a list of
-independent matchings *)
+independent matchings
+TODO. unitary test for this function. Not sure that the Graph.ConnectedComponent.mem behave properly (comparison of constraint_system using the generic compare). *)
 let split_partition_tree_node (n:partition_tree_node) : partition_tree_node list =
   let comps = Graph.connected_components (Graph.of_matchings n.matching) in
   let rec add_matching_in_data_list data m =
@@ -362,20 +369,10 @@ exception Not_Session_Equivalent of constraint_system
 
 (* condition under which a partition tree node induces an attack on equivalence
 by session. Raises Not_Session_Equivalent when violated. *)
-let verify_violation_equivalence ?f_next:(f_next:unit->unit=fun ()->()) (n:partition_tree_node) : unit =
-  Constraint_system.Set.iter (fun cs ->
-    let conf = Constraint_system.get_additional_data cs in
-    if QStatus.subsumes conf.final_status QStatus.forall &&
-      not (
-        List.exists (fun (_,cs_fa_list) ->
-          List.exists (fun (cs_fa,_) ->
-            conf = Constraint_system.get_additional_data cs_fa
-          ) cs_fa_list
-        ) n.matching
-      ) then
-      raise (Not_Session_Equivalent cs)
-    else f_next ()
-  ) n.csys_set
+let verify_violation_equivalence ?f_next:(f_next:unit->unit=fun ()->()) (n:partition_tree_node) : constraint_system option =
+  match List.find_opt (fun (cs_fa,cs_ex_l) -> cs_ex_l = []) n.matching with
+  | None -> None
+  | Some (cs_fa,_) -> Some cs_fa
 
 
 
