@@ -59,7 +59,7 @@ val add_disequations : 'a t -> (Term.fst_ord, Term.name) Term.Diseq.t list -> 'a
 val add_private_channels : 'a t -> protocol_term list -> 'a t
 
 (** Replace the additional data in the constraint system by the one given as argument. *)
-val replace_additional_data : 'a t -> 'a -> 'a t
+val replace_additional_data : 'a t -> 'b -> 'b t
 
 (** [apply_substitution] {% $\C$~$\sigma$ returns $\C\sigma\Vnorm$.%}
     @raise Bot if {% $\C\sigma\Vnorm = \bot$. %}
