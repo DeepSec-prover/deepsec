@@ -391,6 +391,35 @@ let verify_violation_equivalence ?f_next:(f_next:unit->unit=fun ()->()) (n:parti
   | Some (cs_fa,_) -> Some cs_fa
 
 
+(* verification of skeletons in a matching structure *)
+let check_skeleton_in_matching (mfe:matching_forall_exists) : matching_forall_exists =
+  let (cs_fa,cs_ex_list) = mfe in
+  let symp_fa = Constraint_system.get_additional_data cs_fa in
+  let cs_ex_list_upd =
+    List.fold_left (fun accu (cs_ex,bset) ->
+      let symp_ex = Constraint_system.get_additional_data cs_ex in
+      match check_skeleton_in_configuration symp_fa.conf symp_ex.conf bset with
+      | None -> accu
+      | Some bset_upd -> (cs_ex,bset_upd)::accu
+    ) [] cs_ex_list in
+  cs_fa,cs_ex_list_upd
+
+(* verification of skeletons in a partition tree node. Returns the node obtained
+after releasing the unchecked skeletons, after the verification has been
+performed.
+Raises Not_Session_Equivalent if *)
+let check_skeleton_in_node (n:partition_tree_node) : partition_tree_node =
+  let new_matchings =
+    List.rev_map (fun mfe ->
+      match check_skeleton_in_matching mfe with
+      | cs_fa,[] -> raise (Not_Session_Equivalent cs_fa)
+      | mfe_upd -> mfe_upd
+    ) n.matching in
+
+  todo (* release skeletons *)
+
+
+
 
 let init_partition_tree (csys_set:symbolic_process Constraint_system.Set.t) (m:matchings) : partition_tree_node = {
   csys_set = csys_set;

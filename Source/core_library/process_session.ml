@@ -6,7 +6,7 @@ open Extensions
 
 
 type todo = unit (* pending datatypes *)
-let todo = Obj.magic () (* pending definitions *)
+let todo = failwith "todo" (* pending definitions *)
 
 
 
@@ -64,35 +64,6 @@ let improper_block (tr:action list) : configuration = {
   to_normalise = None;
   trace = tr;
 }
-
-(* let rec flatten_process (lp:labelled_process) : labelled_process =
-  Config.debug (fun () ->
-    if lp.label <> None then Config.internal_error "[process_session.ml >> flatten_process] Processes with already-attributed labels should not be flattened."
-  );
-  match lp.proc with
-  | Bang (b,[]) -> {lp with proc = Par []}
-  | Bang (_,[p])
-  | Par [p] -> flatten_process p
-  | Bang (b,l) ->
-    let l_flattened =
-      List.fold_left (fun ac p ->
-        let p_flattened = flatten_process p in
-        match p_flattened.proc with
-        | Par [] -> ac
-        | _ -> p_flattened :: ac
-      ) [] l in
-    {lp with proc = Bang (b,l_flattened)}
-  | Par l ->
-    let l_flattened =
-      List.fold_left (fun ac p ->
-        let p_flattened = flatten_process p in
-        match p_flattened.proc with
-        | Par ll -> List.rev_append ll ac
-        | _ -> p_flattened :: ac
-      ) [] l in
-    {lp with proc = Par l_flattened}
-  |_ -> lp *)
-
 
 (* checks whether a process models the nil process *)
 let nil (p:process) : bool =
@@ -447,7 +418,7 @@ let void_bijection_set : bijection_set =
   [LabelSet.singleton initial_label, LabelSet.singleton initial_label]
 
 (* creates the bijection_set containing the possible matchings of two lists of
-parallel processes, wrt to a predicate for skeleton compatibility. *)
+parallel processes. *)
 let init_bijection_set ?init:(accu:bijection_set=[]) (fp1:labelled_process) (fp2:labelled_process) : bijection_set option =
   let check_skel lp1 lp2 = compare_io_process lp1.proc lp2.proc = 0 in
   let partition lp =
@@ -700,101 +671,46 @@ let normalise_configuration (conf:configuration) (eqn:equation) (f_cont:gatherin
     | _, _ -> Config.internal_error "[process_session.ml >> normalise_configuration] A configuration cannot be released and focused at the same time."
 
 
-
-(* exception raised by the skeleton checks when a mismatch occurs. Indicates
-a side where a faulty skeleton has been found, and the corresponding
-configuration and actions *)
-exception Faulty_skeleton of side * configuration * action
-
-(* assuming a skeleton mismatch occurs, return the triple to be passed to the
-exception Faulty_skeleton *)
-let find_faulty_skeleton (size_frame:int) (conf1:configuration) (conf2:configuration) (lp1:labelled_process) (lp2:labelled_process) : side * configuration * action =
-  let list1 = list_of_labelled_process lp1 in
-  let list2 = list_of_labelled_process lp2 in
-
-  let sort = List.fast_sort (fun p q -> compare_io_process p.proc q.proc) in
-  let ordered_list1 = sort list1 in
-  let ordered_list2 = sort list2 in
-
-  let action_of_head conf p =
-    match p.proc with
-    | OutputSure(c,t,_) ->
-      let axiom = Axiom.create (size_frame+1) in
-      let f_action = OutAction(c,axiom,t) in
-      let f_conf = {conf with trace = OutAction(c,axiom,t) :: conf.trace} in
-      (f_conf,f_action)
-    | Input(c,x,_) ->
-      let var_X =
-        Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
-      let f_action = InAction(c,var_X, of_variable x) in
-      let f_conf =
-        {conf with trace = InAction(c,var_X,of_variable x) :: conf.trace} in
-      (f_conf,f_action)
-    | _ -> Config.internal_error "[process_session.ml >> find_faulty_skeleton] Should only contain inputs and outputs." in
-
-  let rec find_different l1 l2 =
-    match l1, l2 with
-    | [], [] ->
-      Config.internal_error "[process_session.ml >> find_faulty_skeleton] The ordered lists should not have the same skeletons."
-    | [], p2::_ ->
-      let (conf,action) = action_of_head conf2 p2 in
-      (Right,conf,action)
-    | p1::_ , [] ->
-      let (conf,action) = action_of_head conf1 p1 in
-      (Left,conf,action)
-    | p1::q1, p2::q2 ->
-      let res = compare_io_process p1.proc p2.proc in
-      if res = 0 then find_different q1 q2
-      else if res < 0 then
-        let (conf,action) = action_of_head conf1 p1 in
-        (Left,conf,action)
-      else
-        let (conf,action) = action_of_head conf2 p2 in
-        (Left,conf,action) in
-
-  find_different ordered_list1 ordered_list2
-
 (* takes two configuration as an argument, and performs a skeleton check (on
 their focused process if any, or sure_uncheked_skeletons otherwise). Returns
 the updated matchings (None in case of a skeleton mismatch). *)
-let check_skeleton_in_configuration (size_frame:int) (conf1:configuration) (conf2:configuration) (bset_to_update:bijection_set) : bijection_set option =
+let check_skeleton_in_configuration (conf1:configuration) (conf2:configuration) (bset_to_update:bijection_set) : bijection_set option =
 
   match conf1.focused_proc, conf2.focused_proc with
   | None, None ->
     begin match conf1.sure_unchecked_skeletons, conf2.sure_unchecked_skeletons with
-    | Some p1, Some p2 when nil p1.proc && nil p2.proc -> bset_to_update
+    | Some p1, Some p2 when nil p1.proc && nil p2.proc -> Some bset_to_update
     | Some p1, Some p2 when contains_output p1 || contains_output p2 ->
       let pp1 = {proc = Par (p1::conf1.sure_output_proc); label = None} in
       let pp2 = {proc = Par (p2::conf2.sure_output_proc); label = None} in
-      if is_equal_skeleton pp1 pp2 then
-        bset_to_update
-      else bset_to_update
+      if is_equal_skeleton pp1 pp2 then Some bset_to_update
+      else None
     | Some p1, Some p2 when is_equal_skeleton p1 p2 ->
       begin match p1.proc, p2.proc with
       | OutputSure _, OutputSure _
-      | Input _, Input _ -> bset_to_update
+      | Input _, Input _ -> Some bset_to_update
       | _, _ ->
         match init_bijection_set ~init:bset_to_update p1 p2 with
         | None -> Config.internal_error "[process_session.ml >> check_skeleton_in_configuration] init_bijection_set should not fail."
-        | Some bs -> bs
+        | b -> b
       end
 
-    | Some p1, Some p2 -> fault p1 p2
+    | Some p1, Some p2 -> None
     | _, _ ->
       Config.internal_error "[process_session.ml >> check_skeleton_in_configuration] A process is either focused or released." end
 
-  | Some p1, Some p2 when nil p1.proc && nil p2.proc -> bset_to_update
+  | Some p1, Some p2 when nil p1.proc && nil p2.proc -> Some bset_to_update
   | Some p1, Some p2 when is_equal_skeleton p1 p2 ->
     begin match p1.proc, p2.proc with
     | OutputSure _, OutputSure _
-    | Input _, Input _ -> bset_to_update
+    | Input _, Input _ -> Some bset_to_update
     | _, _ ->
       match init_bijection_set ~init:bset_to_update p1 p2 with
       | None -> Config.internal_error "[process_session.ml >> check_skeleton_in_configuration] init_bijection_set should not fail. (2)"
-      | Some bs -> bs
+      | b -> b
     end
 
-  | Some p1, Some p2 -> fault p1 p2
+  | Some p1, Some p2 -> None
   | _, _ -> Config.internal_error "[process_session.ml >> check_skeleton_in_configuration] Comparing skeletons in inconsistent states."
 
 
