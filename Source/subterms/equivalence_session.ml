@@ -48,6 +48,7 @@ let new_symbolic_process (conf:configuration) (final_status:QStatus.t) : symboli
 }
 
 
+(* TODO Change data structure (lol), invert exists and forall *)
 type matching_exists_forall = constraint_system * (constraint_system * bijection_set) list
 type matchings = matching_exists_forall list
 
@@ -272,13 +273,7 @@ let generate_next_matchings (n:partition_tree_node) : partition_tree_node =
       ) accu1 symp_ex.next_transitions
     ) [] n.matching in
 
-  let new_size_frame =
-    match next_transition_to_apply (Constraint_system.get_additional_data (Constraint_system.Set.choose n.csys_set)).conf with
-    | Some RNeg -> n.size_frame+1
-    | _ -> n.size_frame in
-
   {n with
-    size_frame = new_size_frame;
     csys_set = !new_csys_set;
     matching = new_matchings;
   }
@@ -367,7 +362,7 @@ exception Not_Session_Equivalent of constraint_system
 
 (* condition under which a partition tree node induces an attack on equivalence
 by session. Raises Not_Session_Equivalent when violated. *)
-let verify_violation_equivalence (n:partition_tree_node) : unit =
+let verify_violation_equivalence ?f_next:(f_next:unit->unit=fun ()->()) (n:partition_tree_node) : unit =
   Constraint_system.Set.iter (fun cs ->
     let conf = Constraint_system.get_additional_data cs in
     if QStatus.subsumes conf.final_status QStatus.forall &&
@@ -379,6 +374,7 @@ let verify_violation_equivalence (n:partition_tree_node) : unit =
         ) n.matching
       ) then
       raise (Not_Session_Equivalent cs)
+    else f_next ()
   ) n.csys_set
 
 
@@ -391,13 +387,10 @@ let init_partition_tree (csys_set:symbolic_process Constraint_system.Set.t) (m:m
   size_frame = 0
 }
 
-
-
 (* a type to model the result of skeleton checks *)
 type skeleton_check =
   | OK of configuration * configuration * bijection_set
   | Faulty of side * configuration * action
-  | Improper
 
 
 (* TODO DOUBLE CHECK THESE TWO FUNCTIONS *)
