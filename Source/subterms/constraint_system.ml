@@ -1294,6 +1294,8 @@ module Set = struct
 
   let exists f csys_set = List.exists f csys_set
 
+  let find f csys_set = List.find_opt f csys_set
+
   let is_empty csys_set = csys_set = []
 
   let iter f csys_set = List.iter f csys_set

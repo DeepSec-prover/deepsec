@@ -148,7 +148,11 @@ module Set : sig
   (** [for_all f] {% $S$ %} returns [true] iff for all constraint system {% $\C \in S$, %} [f] {% $\C$ %} [= true].*)
   val for_all : ('a csys -> bool) -> 'a t -> bool
 
+  (** [exists f] {% $S$ %} returns [true] iff there exists a constraint system {% $\C \in S$, %} [f] {% $\C$ %} [= true]. *)
   val exists : ('a csys -> bool) -> 'a t -> bool
+
+  (** [find f] {% $S$ %} returns a constraint system {% $\C \in S$, %} [f] {% $\C$ %} [= true], if any. *)
+  val find : ('a csys -> bool) -> 'a t -> 'a csys option
 
   val size : 'a t -> int
 

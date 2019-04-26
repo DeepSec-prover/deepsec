@@ -24,6 +24,7 @@ type labelled_process = {
 }
 
 and process =
+  | Start of labelled_process (* a symbol that will only be found at the very toplevel of the initial processes, for convinience. Treated as an input action. *)
   | Input of input_data
   | Output of output_data
   | OutputSure of output_data
@@ -85,6 +86,7 @@ let rec restaure_sym (lp:labelled_process) : labelled_process =
   | If _
   | New _
   | Output _ -> Config.internal_error "[process_session.ml >> restaure_sym] Should only be applied on normalised processes."
+  | Start _ -> Config.internal_error "[process_session.ml >> restaure_sym] Unexpected Start constructor."
 
 let apply_renaming_on_term (rho:Name.Renaming.t) (t:Term.protocol_term) : Term.protocol_term =
   Name.Renaming.apply_on_terms rho t (fun x f -> f x)
@@ -114,7 +116,8 @@ let rec fresh_copy_of (lp:labelled_process) : labelled_process =
       {proc = Par(List.map (browse rho) l); label = None}
     | Bang(b,[],l) ->
       {proc = Bang(b,[],List.map (browse rho) l); label = None}
-    | Bang _ -> Config.internal_error "[process_session.ml >> fresh_copy] Unexpected case." in
+    | Bang _ -> Config.internal_error "[process_session.ml >> fresh_copy] Unexpected case."
+    | Start _ -> Config.internal_error "[process_session.ml >> fresh_copy] Unexpected Start constructor." in
   browse (Name.Renaming.identity) lp
 
 
@@ -159,6 +162,7 @@ let rec contains_output (lp:labelled_process) : bool =
   | OutputSure _ -> true
   | Par l -> List.exists contains_output l
   | Bang (_,l1,l2) -> List.exists contains_output (l1@l2)
+  | Start _ -> Config.internal_error "[process_session.ml >> contains_output] Unexpected Start constructor."
   | _ -> Config.internal_error "[process_session.ml >> contains_output] Should only be applied on normalised processes."
 
 
@@ -180,6 +184,7 @@ let labelling (prefix:label) (lp:labelled_process) : labelled_process =
     | New _
     | If _
     | Output _ -> Config.internal_error "[process_session.ml >> labelling] Only normalised processes should be assigned with labels."
+    | Start _ -> Config.internal_error "[process_session.ml >> labelling] Unexpected Start constructor."
 
   and assign_list i l f_cont =
     match l with
@@ -202,6 +207,7 @@ let labelling (prefix:label) (lp:labelled_process) : labelled_process =
   | If _
   | New _ ->
     Config.internal_error "[process_session.ml >> labelling] Only normalised processes should be assigned with labels."
+  | Start _ -> Config.internal_error "[process_session.ml >> labelling] Unexpected Start constructor."
   | Par _
   | Bang _ -> assign 0 lp (fun proc pos -> proc)
 
@@ -245,6 +251,7 @@ let unfold_input ?filter:(f:labelled_process->bool=fun _ -> true) ?allow_channel
       | If _
       | Output _ ->
         Config.internal_error "[process_session.ml >> unfold_input] Unfolding should only be applied on normalised processes."
+      | Start _ -> Config.internal_error "[process_session.ml >> unfold_input] Unexpected Start constructor."
 
   and unfold_list ?bang:(memo=None) countdown accu leftovers l f_cont =
     if countdown = 0 then accu
@@ -292,6 +299,7 @@ let unfold_output ?filter:(f:labelled_process->bool=fun _ -> true) ?at_most:(nb:
       | New _
       | Output _ ->
         Config.internal_error "[process_session.ml >> unfold_output] Should only be called on normalised processes."
+      | Start _ -> Config.internal_error "[process_session.ml >> unfold_output] Unexpected Start constructor."
       | Par l ->
         let add_par l = rebuild {proc = Par l; label = None} in
         unfold_list countdown accu [] l add_par f_cont
@@ -632,6 +640,7 @@ let rec normalise (p:labelled_process) (eqn:equation) (diseqn:disequation list) 
           | _ -> f_cont gather2 {p with proc = Bang(b,l1_norm,l2_norm)} f_next2
         ) f_next1
     ) f_next
+  | Start _ -> Config.internal_error "[process_session.ml >> normalise] Unexpected Start constructor."
 
 and normalise_list (l:labelled_process list) (eqn:equation) (diseqn:disequation list) (f_cont:gathering_normalise->labelled_process list->(unit->unit)->unit) (f_next:unit->unit) : unit =
   match l with
@@ -650,7 +659,7 @@ and normalise_list (l:labelled_process list) (eqn:equation) (diseqn:disequation 
     ) f_next
 
 
-let normalise_configuration (conf:configuration) (eqn:equation) (f_cont:gathering_normalise->configuration->unit) : unit =
+let normalise_configuration (prefix:label) (conf:configuration) (eqn:equation) (f_cont:gathering_normalise->configuration->unit) : unit =
   Config.debug (fun () ->
     if conf.sure_unchecked_skeletons <> None then
       Config.internal_error "[process_session.ml >> normalise_configuration] Sure unchecked should be empty."
@@ -660,12 +669,12 @@ let normalise_configuration (conf:configuration) (eqn:equation) (f_cont:gatherin
     | None, None -> f_cont {equations = eqn; disequations = []} conf
     | None, Some p ->
       normalise p eqn [] (fun gather p_norm f_next ->
-        f_cont gather {conf with focused_proc = Some p_norm};
+        f_cont gather {conf with focused_proc = Some (labelling prefix p_norm)};
         f_next ()
       ) (fun () -> ())
     | Some p, None ->
       normalise p eqn [] (fun gather p_norm f_next ->
-        f_cont gather {conf with sure_unchecked_skeletons = Some p_norm; to_normalise = None};
+        f_cont gather {conf with sure_unchecked_skeletons = Some (labelling prefix p_norm); to_normalise = None};
         f_next ()
       ) (fun () -> ())
     | _, _ -> Config.internal_error "[process_session.ml >> normalise_configuration] A configuration cannot be released and focused at the same time."
@@ -841,11 +850,13 @@ type type_of_transition =
   | RFocus
   | RPos
   | RNeg
+  | RStart
 
 (* given the shape of a configuration, find the next type of to apply *)
 let next_transition_to_apply (c:configuration) : type_of_transition option =
   match c.focused_proc with
   | Some {proc = Input _; _} -> Some RPos
+  | Some {proc = Start _; _} -> Some RStart
   | Some _ -> Config.internal_error "[process_session.ml >> next_rule] Ill-formed focused state, should have been released or normalised."
   | None ->
     if c.sure_output_proc <> [] then Some RNeg
