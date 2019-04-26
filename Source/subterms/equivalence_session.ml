@@ -110,22 +110,28 @@ module Constraint_system_set = struct
 
   (* inverse operation: restrains a partition node based on the result of the
   constraint solver. *)
-  let decast (baseline:t) (csys_set:int Constraint_system.Set.t) : t =
+  let decast (baseline:t) (matching:matchings) (csys_set:int Constraint_system.Set.t) : t * matchings =
     let res = copy baseline in
+    let accu = ref matching in
     map_filter (fun i cs ->
       match Constraint_system.Set.find (fun cs -> i = Constraint_system.get_additional_data cs) csys_set with
-      | None -> None
+      | None ->
+        accu :=
+          List.filter (fun (cs_fa,cs_ex_l) ->
+            cs_fa <> i && List.for_all (fun (cs_ex,_) -> cs_ex <> i) cs_ex_l
+          ) !accu;
+        None
       | Some cs_upd ->
         let add_data = Constraint_system.get_additional_data cs in
         Some (Constraint_system.replace_additional_data cs_upd add_data)
     ) res;
-    res
+    res,!accu
 
   (* removing useless constraint systems (exists-only matching no forall) *)
   let clean (csys_set:t) (m:matchings) : unit =
     filter (fun i cs ->
       let symp = Constraint_system.get_additional_data cs in
-      not(QStatus.subsumes symp.status QStatus.exists) &&
+      not(QStatus.equal symp.status QStatus.exists) ||
       List.exists (fun (_,cs_ex_list) ->
         List.exists (fun (cs_ex,_) -> cs_ex = i) cs_ex_list
       ) m
@@ -377,10 +383,10 @@ let determine_next_transition (n:partition_tree_node) : type_of_transition optio
 
 
 (* From a partition tree node, generates the transitions and creates a new
-node with allthe resulting processes inside.
+node with all the resulting processes inside. A
 NB. The constraint solving and the skeleton checks remain to be done after this
 function call. *)
-let generate_next_matchings (n:partition_tree_node) : partition_tree_node =
+let generate_next_node (n:partition_tree_node) : type_of_transition option * partition_tree_node =
 
   (** Generation of the transitions **)
   let new_csys_set : Constraint_system_set.t = Constraint_system_set.empty() in
@@ -421,13 +427,10 @@ let generate_next_matchings (n:partition_tree_node) : partition_tree_node =
 
   (** final node **)
   Constraint_system_set.clean new_csys_set new_matchings;
-  {n with csys_set = new_csys_set; matching = new_matchings}
+  trans,{n with csys_set = new_csys_set; matching = new_matchings}
 
 
 
-(* the normalisation that occurs at the root of the partition tree *)
-let initial_generation (n:partition_tree_node) : partition_tree_node =
-  todo
 
 
 (** Partitions a matching into several independent submatchings. This allows for
@@ -490,9 +493,9 @@ module Graph = struct
 end
 
 
-(* final function of the optimisation: splits a matching m into a list of
-independent matchings *)
-let split_partition_tree_node (n:partition_tree_node) : partition_tree_node list =
+(* splits a partition tree node into independent component (i.e. into components
+whose matchings are disjoint) and applies a continuation on each of them. *)
+let split_partition_tree_node (n:partition_tree_node) (f_cont:partition_tree_node->(unit->unit)->unit) (f_next:unit->unit) : unit =
   let comps = Graph.connected_components (Graph.of_matchings n.matching) in
 
   let rec add_matching_in_data_list data m =
@@ -509,7 +512,15 @@ let split_partition_tree_node (n:partition_tree_node) : partition_tree_node list
     ) csys_set;
     {n with csys_set = csys_set; matching = m} in
 
-  List.fold_left (fun accu (m,c) -> replace_data m c :: accu) [] new_node_data
+
+  let rec branch_on_nodes l f_next1 =
+    match l with
+    | [] -> f_next()
+    | (m,c) :: t ->
+      let node = replace_data m c in
+      f_cont node (fun () -> branch_on_nodes t f_next1) in
+
+  branch_on_nodes new_node_data f_next
 
 
 
@@ -522,10 +533,11 @@ exception Not_Session_Equivalent of constraint_system
 
 (* condition under which a partition tree node induces an attack on equivalence
 by session. Raises Not_Session_Equivalent when violated. *)
-let verify_violation_equivalence (n:partition_tree_node) : constraint_system option =
-  match List.find_opt (fun (cs_fa,cs_ex_l) -> cs_ex_l = []) n.matching with
-  | None -> None
-  | Some (cs_fa,_) -> Some (Constraint_system_set.find n.csys_set cs_fa)
+let verify_violation_equivalence (matching:matchings) (csys_set:Constraint_system_set.t) : unit =
+  match List.find_opt (fun (cs_fa,cs_ex_l) -> cs_ex_l = []) matching with
+  | None -> ()
+  | Some (cs_fa,_) ->
+    raise (Not_Session_Equivalent (Constraint_system_set.find csys_set cs_fa))
 
 
 (* verification of skeletons in a matching structure *)
@@ -569,8 +581,81 @@ and call to the constraint solver. The continuations f_cont and f_next
 respectively link to recursive calls to apply_one_transition_and_rules, and
 to the final operations of the procedure. *)
 let apply_one_transition_and_rules (n:partition_tree_node) (f_cont:partition_tree_node->(unit->unit)->unit) (f_next:unit->unit) : unit =
-  todo
-
+  let (transition_type,node_to_split) = generate_next_node n in
+  split_partition_tree_node node_to_split (fun node f_next1 ->
+    let csys_set = Constraint_system_set.cast node.csys_set in
+    match transition_type with
+    | None ->
+      verify_violation_equivalence node.matching node.csys_set;
+      f_next1 ()
+    | Some RStart ->
+      Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
+        let (csys_set_decast,matching_decast) =
+          Constraint_system_set.decast node.csys_set node.matching csys_set in
+        verify_violation_equivalence matching_decast csys_set_decast;
+        Constraint_system_set.clean csys_set_decast matching_decast;
+        let node_checked =
+          check_skeleton_in_node {node with
+            csys_set = csys_set_decast;
+            matching = matching_decast;
+            ongoing_block = create_block initial_label;
+          } in
+        f_cont node_checked f_next2
+      ) csys_set f_next1
+    | Some RFocus ->
+      (* TODO. multiple transitions, get labels. *)
+      f_cont {node with ongoing_block = create_block todo; } f_next1
+    | Some RPos ->
+      let var_X =
+        Variable.fresh Recipe Free (Variable.snd_ord_type node.size_frame) in
+      Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
+        if Constraint_system.Set.is_empty csys_set then f_next2 ()
+        else
+          let csys_set_opt =
+            Constraint_system.Set.optimise_snd_ord_recipes csys_set in
+          let csys = Constraint_system.Set.choose csys_set_opt in
+          let (csys_set_decast,matching_decast) =
+            Constraint_system_set.decast node.csys_set node.matching csys_set in
+          verify_violation_equivalence matching_decast csys_set_decast;
+          Constraint_system_set.clean csys_set_decast matching_decast;
+          let block = add_variable_in_block var_X node.ongoing_block in
+          let node_checked =
+            check_skeleton_in_node {node with
+              csys_set = csys_set_decast;
+              matching = matching_decast;
+              ongoing_block = block;
+            } in
+          let subst = Constraint_system.get_substitution_solution Recipe csys in
+          if is_block_list_authorised node.previous_blocks block subst then
+            f_cont node_checked f_next2
+          else f_next2()
+        ) csys_set f_next1
+    | Some RNeg ->
+      let axiom = Axiom.create (node.size_frame+1) in
+      Constraint_system.Rule.apply_rules_after_output false (fun csys_set f_next2 ->
+        if Constraint_system.Set.is_empty csys_set then f_next2 ()
+        else
+          let csys_set_opt =
+            Constraint_system.Set.optimise_snd_ord_recipes csys_set in
+          let csys = Constraint_system.Set.choose csys_set_opt in
+          let (csys_set_decast,matching_decast) =
+            Constraint_system_set.decast node.csys_set node.matching csys_set in
+          verify_violation_equivalence matching_decast csys_set_decast;
+          Constraint_system_set.clean csys_set_decast matching_decast;
+          let block = add_axiom_in_block axiom node.ongoing_block in
+          let node_checked =
+            check_skeleton_in_node {node with
+              csys_set = csys_set_decast;
+              matching = matching_decast;
+              ongoing_block = block;
+              size_frame = node.size_frame+1;
+            } in
+          let subst = Constraint_system.get_substitution_solution Recipe csys in
+          if is_block_list_authorised node.previous_blocks block subst then
+            f_cont node_checked f_next2
+          else f_next2 ()
+      ) csys_set f_next1
+    ) f_next
 
 
 let init_partition_tree (csys_set:Constraint_system_set.t) (m:matchings) : partition_tree_node = {
