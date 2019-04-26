@@ -53,7 +53,7 @@ type action =
 
 module Block : sig
   type t
-  val create_block : label -> t (* creation of a new empty block *)
+  val create : label -> t (* creation of a new empty block *)
   val add_variable : snd_ord_variable -> t -> t (* adds a second order variable in a block *)
   val add_axiom : axiom -> t -> t (* adds an axiom in a block *)
   val is_authorised : t list -> t -> (snd_ord,axiom) Subst.t -> bool (* checks whether a block is authorised after a list of blocks *)
@@ -69,7 +69,7 @@ end = struct
   }
 
   (* creates an empty block *)
-  let create_block (label:label) : t = {
+  let create (label:label) : t = {
       label = label;
       recipes = [];
       bounds_axiom = None;
@@ -153,6 +153,7 @@ end = struct
         | [_] -> true
         | block::q -> not (is_faulty_block block q) && explore_block q in
       explore_block block_list_upd
+
 end
 
 type configuration = {
@@ -166,7 +167,33 @@ type configuration = {
   previous_blocks : Block.t list;
 }
 
-let improper_block (c:configuration) : configuration = {
+(* lifting operations on block to configurations *)
+let check_block (snd_subst:(snd_ord,axiom) Subst.t) (c:configuration) : bool =
+  Block.is_authorised c.previous_blocks c.ongoing_block snd_subst
+
+let add_axiom (ax:axiom) (c:configuration) : configuration =
+  {c with ongoing_block = Block.add_axiom ax c.ongoing_block}
+
+let add_variable (x:snd_ord_variable) (c:configuration) : configuration =
+  {c with ongoing_block = Block.add_variable x c.ongoing_block}
+
+let add_focus (focus:labelled_process * labelled_process list) (c:configuration) : configuration =
+  Config.debug (fun () ->
+    if c.focused_proc <> None then
+      Config.internal_error "[process_session.ml >> add_focus] Unexpected case."
+  );
+  let (lp,leftovers) = focus in
+  match lp.label with
+  | Some lab ->
+    {c with
+      input_proc = leftovers;
+      focused_proc = Some lp;
+      ongoing_block = Block.create lab;
+      previous_blocks = c.ongoing_block :: c.previous_blocks;
+    }
+  | None -> Config.internal_error "[process_session.ml >> add_focus] Labels should have been assigned."
+
+let clear (c:configuration) : configuration = {
   input_proc = [];
   focused_proc = None;
   sure_output_proc = [];
@@ -817,7 +844,7 @@ let release_skeleton (c:configuration) : configuration =
   | Some ({proc = OutputSure _; _} as p) ->
     {c with focused_proc = None; sure_output_proc = p::c.sure_output_proc}
   | Some p ->
-    if nil p.proc then improper_block c
+    if nil p.proc then clear c
     else if contains_output p then
       {c with focused_proc = None; sure_output_proc = p::c.sure_output_proc}
     else
