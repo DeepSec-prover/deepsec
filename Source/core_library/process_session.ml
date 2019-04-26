@@ -48,22 +48,133 @@ type action =
   | InAction of symbol * snd_ord_variable * protocol_term
   | OutAction of symbol * axiom * protocol_term
 
+
+(* type for representing blocks *)
+
+module Block : sig
+  type t
+  val create_block : label -> t (* creation of a new empty block *)
+  val add_variable : snd_ord_variable -> t -> t (* adds a second order variable in a block *)
+  val add_axiom : axiom -> t -> t (* adds an axiom in a block *)
+  val is_authorised : t list -> t -> (snd_ord,axiom) Subst.t -> bool (* checks whether a block is authorised after a list of blocks *)
+end = struct
+  module IntSet = Set.Make(struct type t = int let compare = compare end)
+
+  type t = {
+    label : label;
+    recipes : snd_ord_variable list; (* There should always be variables *)
+    bounds_axiom : (int * int) option; (* lower and upper bound on the axiom index used *)
+    maximal_var : int;
+    used_axioms : IntSet.t
+  }
+
+  (* creates an empty block *)
+  let create_block (label:label) : t = {
+      label = label;
+      recipes = [];
+      bounds_axiom = None;
+      maximal_var = 0;
+      used_axioms = IntSet.empty
+  }
+
+  (* adds a second-order variable in the recipes of a block *)
+  let add_variable (snd_var:snd_ord_variable) (block:t) : t =
+    { block with recipes = (snd_var :: block.recipes) }
+
+  (* adds an axiom in a block and updates the bounds *)
+  let add_axiom (ax:axiom) (block:t) : t =
+    match block.bounds_axiom with
+    | None ->
+      let b = Axiom.index_of ax in
+      {block with bounds_axiom = Some (b,b)}
+    | Some (i,_) ->
+      {block with bounds_axiom = Some (i,Axiom.index_of ax)}
+
+
+  (* comparing labels for POR: returns 0 if one label is prefix of the other,
+  and compares the labels lexicographically otherwise. *)
+  let rec indep_labels (l:label) (ll:label) : int =
+    match l,ll with
+    | [],_
+    | _,[] -> 0
+    | p::l,pp::ll when p <> pp -> compare p pp
+    | _::l,_::ll -> indep_labels l ll
+
+  (* checking whether a block is allowed after a block list *)
+  let rec is_faulty_block (block:t) (block_list:t list) : bool =
+    match block_list with
+    | [] -> false
+    | b_i::q ->
+      let comp_lab = indep_labels block.label b_i.label in
+      if comp_lab < 0 then
+        match b_i.bounds_axiom with
+        | None -> true
+        | Some (min_ax,max_ax) ->
+          block.maximal_var < min_ax &&
+          IntSet.for_all (fun ax -> ax < min_ax || ax > max_ax) block.used_axioms
+      else if comp_lab > 0 then is_faulty_block block q
+      else false
+
+
+  (* applies a snd order substitution on a block list and computes the bound
+  fields of the block type *)
+  let apply_snd_subst_on_block (snd_subst:(snd_ord,axiom) Subst.t) (block_list:t list) : t list =
+    Subst.apply snd_subst block_list (fun l f ->
+      List.map (fun block ->
+        let max_var = ref 0 in
+        let used_axioms = ref IntSet.empty in
+        List.iter (fun var ->
+          let r' = f (of_variable var) in
+          Term.iter_variables_and_axioms (fun ax_op var_op ->
+            match ax_op,var_op with
+            | Some ax, None ->
+              used_axioms := IntSet.add (Axiom.index_of ax) !used_axioms
+            | None, Some v ->
+              max_var := max !max_var (Variable.type_of v)
+            | _, _ ->
+              Config.internal_error "[process_session.ml >> apply_snd_subst_on_block] The function Term.iter_variables_and_axioms should return one filled option."
+          ) r';
+        ) block.recipes;
+
+        {block with used_axioms = !used_axioms; maximal_var = !max_var}
+      ) l
+    )
+
+  (* checking whether a block is authorised after a block list *)
+  let is_authorised (block_list:t list) (cur_block:t) (snd_subst:(snd_ord,axiom) Subst.t) : bool =
+    match block_list with
+    | [] -> true
+    | _ ->
+      let block_list_upd =
+        apply_snd_subst_on_block snd_subst (cur_block::block_list) in
+      let rec explore_block block_list =
+        match block_list with
+        | []
+        | [_] -> true
+        | block::q -> not (is_faulty_block block q) && explore_block q in
+      explore_block block_list_upd
+end
+
 type configuration = {
   input_proc : labelled_process list;
   focused_proc : labelled_process option;
   sure_output_proc : labelled_process list;
   sure_unchecked_skeletons : labelled_process option;
   to_normalise : labelled_process option;
-  trace : action list
+  trace : action list;
+  ongoing_block : Block.t;
+  previous_blocks : Block.t list;
 }
 
-let improper_block (tr:action list) : configuration = {
+let improper_block (c:configuration) : configuration = {
   input_proc = [];
   focused_proc = None;
   sure_output_proc = [];
   sure_unchecked_skeletons = None;
   to_normalise = None;
-  trace = tr;
+  trace = c.trace;
+  ongoing_block = c.ongoing_block;
+  previous_blocks = c.previous_blocks;
 }
 
 (* checks whether a process models the nil process *)
@@ -333,19 +444,6 @@ let unfold_output ?filter:(f:labelled_process->bool=fun _ -> true) ?at_most:(nb:
   unfold nb [] lp (fun p -> p) (fun n accu -> accu)
 
 
-(* comparing labels for POR: returns 0 if one label is prefix of the other,
-and compares the labels lexicographically otherwise. *)
-let rec indep_labels (l:label) (ll:label) : int =
-  match l,ll with
-  | [],_
-  | _,[] -> 0
-  | p::l,pp::ll when p <> pp -> compare p pp
-  | _::l,_::ll -> indep_labels l ll
-
-(* print a label *)
-let print_label : label -> unit = List.iter (Printf.printf "%d.")
-
-
 
 (* sets of bijections with the skeleton-compatibility requirement *)
 module LabelSet = Set.Make(struct type t = label let compare = compare end)
@@ -479,19 +577,6 @@ let get_compatible_labels ?origin:(side:side=Left) (l:label) (s:bijection_set) :
 
 
 
-
-(* creates a configuration from a labelled process. The process is arbitrarily
-put in the focused_proc field (will be put at the right place at the beginning
-of the decision of equivalence, i.e. by function normalise_before_starting in
-Equivalence_session). *)
-let init_configuration (lp:labelled_process) : configuration = {
-  input_proc = [];
-  focused_proc = Some lp;
-  sure_output_proc = [];
-  sure_unchecked_skeletons = None;
-  to_normalise = None;
-  trace = [];
-}
 
 
 (* TODO. makes initial configuration simpler, helps for optimisations. Includes
@@ -732,7 +817,7 @@ let release_skeleton (c:configuration) : configuration =
   | Some ({proc = OutputSure _; _} as p) ->
     {c with focused_proc = None; sure_output_proc = p::c.sure_output_proc}
   | Some p ->
-    if nil p.proc then improper_block c.trace
+    if nil p.proc then improper_block c
     else if contains_output p then
       {c with focused_proc = None; sure_output_proc = p::c.sure_output_proc}
     else
@@ -753,96 +838,6 @@ let release_skeleton (c:configuration) : configuration =
       Config.internal_error "[process_session.ml >> release_skeleton_without_check] A process is either focused or released."
 
 
-
-(* type for representing blocks *)
-module IntSet = Set.Make(struct type t = int let compare = compare end)
-type block = {
-  label : label;
-  recipes : snd_ord_variable list; (* There should always be variables *)
-  bounds_axiom : (int * int) option; (* lower and upper bound on the axiom index used *)
-
-  maximal_var : int;
-  used_axioms : IntSet.t
-}
-
-
-(* creates an empty block *)
-let create_block (label:label) : block = {
-    label = label;
-    recipes = [];
-    bounds_axiom = None;
-    maximal_var = 0;
-    used_axioms = IntSet.empty
-}
-
-(* adds a second-order variable in the recipes of a block *)
-let add_variable_in_block (snd_var:snd_ord_variable) (block:block) : block =
-  { block with recipes = (snd_var :: block.recipes) }
-
-(* adds an axiom in a block and updates the bounds *)
-let add_axiom_in_block (ax:axiom) (block:block) : block =
-  match block.bounds_axiom with
-  | None ->
-    let b = Axiom.index_of ax in
-    {block with bounds_axiom = Some (b,b)}
-  | Some (i,_) ->
-    {block with bounds_axiom = Some (i,Axiom.index_of ax)}
-
-
-
-(* checking whether a block is allowed after a block list *)
-let rec is_faulty_block (block:block) (block_list:block list) : bool =
-  match block_list with
-  | [] -> false
-  | b_i::q ->
-    let comp_lab = indep_labels block.label b_i.label in
-    if comp_lab < 0 then
-      match b_i.bounds_axiom with
-      | None -> true
-      | Some (min_ax,max_ax) ->
-        block.maximal_var < min_ax &&
-        IntSet.for_all (fun ax -> ax < min_ax || ax > max_ax) block.used_axioms
-    else if comp_lab > 0 then is_faulty_block block q
-    else false
-
-
-(* applies a snd order substitution on a block list and computes the bound
-fields of the block type *)
-let apply_snd_subst_on_block (snd_subst:(snd_ord,axiom) Subst.t) (block_list:block list) : block list =
-  Subst.apply snd_subst block_list (fun l f ->
-    List.map (fun block ->
-      let max_var = ref 0 in
-      let used_axioms = ref IntSet.empty in
-      List.iter (fun var ->
-        let r' = f (of_variable var) in
-        Term.iter_variables_and_axioms (fun ax_op var_op ->
-          match ax_op,var_op with
-          | Some ax, None ->
-            used_axioms := IntSet.add (Axiom.index_of ax) !used_axioms
-          | None, Some v ->
-            max_var := max !max_var (Variable.type_of v)
-          | _, _ ->
-            Config.internal_error "[process_session.ml >> apply_snd_subst_on_block] The function Term.iter_variables_and_axioms should return one filled option."
-        ) r';
-      ) block.recipes;
-
-      {block with used_axioms = !used_axioms; maximal_var = !max_var}
-    ) l
-  )
-
-(* checking whether a block is authorised after a block list *)
-let is_block_list_authorised (block_list:block list) (cur_block:block) (snd_subst:(snd_ord,axiom) Subst.t) : bool =
-  match block_list with
-  | [] -> true
-  | _ ->
-    let block_list_upd =
-      apply_snd_subst_on_block snd_subst (cur_block::block_list) in
-    let rec explore_block block_list =
-      match block_list with
-      | []
-      | [_] -> true
-      | block::q -> not (is_faulty_block block q) && explore_block q in
-    explore_block block_list_upd
 
 
 (* about generating and applying transitions to configurations *)

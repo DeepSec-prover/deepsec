@@ -35,8 +35,6 @@ module IndexedSet (O:sig type t end) : sig
   val is_empty : t -> bool (* checks the emptiness of the table *)
   val choose : t -> O.t (* returns an element of the table, and raises Internal_error if it is empty *)
   val add_new_elt : t -> O.t -> int (* adds a new element and returns the corresponding fresh index. *)
-  val replace : t -> int -> O.t -> unit (* replaces an element at an index *)
-  val find_opt : t -> int -> O.t option (* looks for an element *)
   val find : t -> int -> O.t (* same as find_opt but raises Internal_error if not found *)
   val remove : t -> int -> unit (* removes an element at a given index *)
   val map : (O.t -> O.t) -> t -> unit (* applies a function on each element *)
@@ -141,9 +139,7 @@ end
 
 type partition_tree_node = {
   csys_set : Constraint_system_set.t;
-  matching : matchings; (* maps indexes referring to the elements of csys_set *)
-  previous_blocks : block list;
-  ongoing_block : block;
+  matching : matchings;
   size_frame : int
 }
 
@@ -164,7 +160,7 @@ configuration 'conf' to update constraint system 'cs' of first-order solution
 'eqn', all that for a transition of type 'status'. The resulting transitions
 are stored in 'csys_set' and 'accu'. *)
 let add_transition_output (csys_set:Constraint_system_set.t) (accu:transition list ref) (forall:bool) (conf:configuration) (eqn:equation) (cs:constraint_system) (ax:axiom) (term:protocol_term) (lab:label) (new_status:QStatus.t) : unit =
-  normalise_configuration conf eqn (fun gather conf_norm ->
+  normalise_configuration lab conf eqn (fun gather conf_norm ->
     let t0 = Subst.apply gather.equations term (fun x f -> f x) in
 
     try
@@ -185,7 +181,7 @@ let add_transition_output (csys_set:Constraint_system_set.t) (accu:transition li
 
 (* same, for the initial transition at the root of the partition tree *)
 let add_transition_start (csys_set:Constraint_system_set.t) (accu:transition list ref) (conf:configuration) (eqn:equation) (cs:constraint_system) (symp:symbolic_process) (lab:label) : unit =
-  normalise_configuration conf eqn (fun gather conf_norm ->
+  normalise_configuration lab conf eqn (fun gather conf_norm ->
     try
       let cs1 = Constraint_system.apply_substitution cs gather.equations in
       let cs2 = Constraint_system.add_disequations cs1 gather.disequations in
@@ -222,7 +218,7 @@ case of a focused input on variable 'x' and second-order var_X, to be
 normalised in configuration 'conf' to update constraint system 'cs' of additional data 'symp' and first-order solution 'eqn', all that for a transition of type 'status'.
 The resulting constraint_system is added to 'accu'.*)
 let add_transition_pos (csys_set:Constraint_system_set.t) (accu:transition list ref) (forall:bool) (conf:configuration) (eqn:equation) (cs:constraint_system) (var_X:snd_ord_variable) (x:fst_ord_variable) (lab:label) (new_status:QStatus.t) : unit =
-  normalise_configuration conf eqn (fun gather conf_norm ->
+  normalise_configuration lab conf eqn (fun gather conf_norm ->
     let ded_fact =
       let input =
         Subst.apply gather.equations (of_variable x) (fun x f -> f x) in
