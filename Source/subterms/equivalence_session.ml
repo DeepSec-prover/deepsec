@@ -598,7 +598,6 @@ let apply_one_transition_and_rules (n:partition_tree_node) (f_cont:partition_tre
           check_skeleton_in_node {node with
             csys_set = csys_set_decast;
             matching = matching_decast;
-            ongoing_block = create_block initial_label;
           } in
         f_cont node_checked f_next2
       ) csys_set f_next1
@@ -658,25 +657,48 @@ let apply_one_transition_and_rules (n:partition_tree_node) (f_cont:partition_tre
     ) f_next
 
 
-let init_partition_tree (csys_set:Constraint_system_set.t) (m:matchings) : partition_tree_node = {
-  csys_set = csys_set;
-  matching = m;
-  previous_blocks = [];
-  ongoing_block = create_block initial_label;
-  size_frame = 0
-}
-
-
-
 
 let equivalence_by_session (conf1:configuration) (conf2:configuration) : result_analysis =
 
-  (* Initialisation of the rewrite system *)
-
+  (* initialisation of the rewrite system *)
   Rewrite_rules.initialise_skeletons ();
   Data_structure.Tools.initialise_constructor ();
 
-  (* Generate the initial constraint systems
-  TODO. Introduce factorisation. *)
+  (* initial constraint system
+  TODO. Add factorisation *)
+  let build_conf conf =
+    let c = clean_inital_configuration conf in
+    match c.focused_proc with
+    | None -> Config.internal_error "[equivalence_session.ml >> equivalence_by_session] Unexpected case (Start)."
+    | Some p ->
+      {c with focused_proc = Some {proc = Start p; label = Some initial_label}} in
+  let symp1 = new_symbolic_process (build_conf conf1) QStatus.both in
+  let symp2 = new_symbolic_process (build_conf conf2) QStatus.both in
 
-  todo
+  let csys1 = Constraint_system.empty symp1 in
+  let csys2 = Constraint_system.empty symp2 in
+
+  (* initial node *)
+  let csys_set = Constraint_system_set.empty() in
+  let index1 = Constraint_system_set.add_new_elt csys_set csys1 in
+  let index2 = Constraint_system_set.add_new_elt csys_set csys2 in
+  let root = {
+    csys_set = csys_set;
+    matching = [
+      index1, [index2,void_bijection_set];
+      index2, [index1,void_bijection_set]
+    ];
+    previous_blocks = [];
+    ongoing_block = create_block initial_label;
+    size_frame = 0;
+  } in
+
+  (* rule application *)
+  let rec apply_rules node f_next =
+    apply_one_transition_and_rules node apply_rules f_next in
+
+  try
+    apply_rules root (fun () -> ());
+    Equivalent
+  with
+    | Not_Session_Equivalent csys -> Not_Equivalent csys
