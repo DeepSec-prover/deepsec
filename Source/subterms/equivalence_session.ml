@@ -469,14 +469,17 @@ module Graph = struct
   let connected_components (g:graph) : ConnectedComponent.t list =
     let visited = Hashtbl.create (List.length (Graph.bindings g)) in
     Graph.fold (fun node _ () -> Hashtbl.add visited node false) g ();
+    let mark node = Hashtbl.replace visited node true in
     let marked node = Hashtbl.find visited node in
 
     let rec get_equiv_class eqc node succ =
       if marked node then eqc
-      else
+      else (
+        mark node;
         Targets.fold (fun (n,_) eq ->
           get_equiv_class eq n (Graph.find n g)
-        ) succ (node::eqc) in
+        ) succ (node::eqc)
+      ) in
 
     Graph.fold (fun node succ comps ->
       match get_equiv_class [] node succ with
