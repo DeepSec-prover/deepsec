@@ -8,7 +8,7 @@ SOURCE = Source/
 # configures and compiles
 compil:
 	$(SOURCE)configure
-	ocamlbuild -use-ocamlfind $(PACKAGES) $(INCLUDES) $(SOURCE)main.native equivalence_session.native
+	ocamlbuild -use-ocamlfind $(PACKAGES) $(INCLUDES) $(SOURCE)main.native
 	mv main.native $(EXECUTABLE)
 
 
