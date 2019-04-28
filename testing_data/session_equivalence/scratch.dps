@@ -1,8 +1,8 @@
 free c.
 /* fun h/2. */
-reduc h(x,x) -> x.
+/* reduc h(x,x) -> x. */
 
-let P = in(c,x); in(c,y); out(c,h(x,y)).
-let Q = P.
+/* let P = in(c,x); in(c,y); out(c,h(x,y)). */
+let P = 0.
 
-query sess_equiv(Q,Q).
+query sess_equiv(P,P).

@@ -112,7 +112,7 @@ query_declaration:
   | QUERY OBSEQ LPAR extended_process COMMA extended_process RPAR DOT
       { Obs_Eq($4,$6) }
   | QUERY SESSEQ LPAR extended_process COMMA extended_process RPAR DOT
-      { Obs_Eq($4,$6) }
+      { Sess_Eq($4,$6) }
 
 /****** Extended process declaration *******/
 
