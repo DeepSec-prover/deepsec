@@ -752,6 +752,7 @@ end
 (* type for representing internal states *)
 module Configuration : sig
   type t
+  val print_trace : t -> string (* returns a string displaying the trace needed to reach this configuration *)
   val check_block : (snd_ord, axiom) Subst.t -> t -> bool (* verifies the blocks stored in the configuration are authorised *)
   val inputs : t -> Labelled_process.t list (* returns the available inputs *)
   val outputs : t -> Labelled_process.t list (* returns the available outputs (in particular they are executable, i.e. they output a message). *)
@@ -789,6 +790,17 @@ end = struct
     ongoing_block : Block.t;
     previous_blocks : Block.t list;
   }
+
+  (* for interface purposes *)
+  let print_action (act:action) : string =
+    match act with
+    | InAction(ch,_,x) ->
+      Printf.sprintf "In(%s,%s)" (Symbol.display Latex ch) (Term.display Latex Protocol x)
+    | OutAction(ch,_,t) ->
+      Printf.sprintf "Out(%s,%s)" (Symbol.display Latex ch) (Term.display Latex Protocol t)
+
+  let print_trace (conf:t) : string =
+    List.fold_left (fun accu act -> accu ^ print_action act) "" conf.trace
 
   (* lifting operations on block to configurations *)
   let check_block (snd_subst:(snd_ord,axiom) Subst.t) (c:t) : bool =

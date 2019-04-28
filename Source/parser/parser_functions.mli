@@ -41,6 +41,7 @@ type extended_process =
 type query =
   | Trace_Eq of extended_process * extended_process
   | Obs_Eq of extended_process * extended_process
+  | Sess_Eq of extended_process * extended_process
 
 type declaration =
   | Setting of setting * int

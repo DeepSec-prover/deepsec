@@ -34,6 +34,7 @@
         "query", QUERY;
         "trace_equiv", TRACEEQ;
         "obs_equiv", OBSEQ;
+        "sess_equiv", SESSEQ;
       ]
 
   let newline lexbuf =

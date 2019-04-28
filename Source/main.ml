@@ -185,6 +185,17 @@ let rec excecute_queries id = function
 
     flush_all ();
     result::(excecute_queries (id+1) q)
+  | (Process.Session_Equivalence,exproc1,exproc2)::q ->
+    start_time := Unix.time ();
+    Printf.printf "\nExecuting query %d...\n" id;
+    flush_all ();
+    let conf1 = Process_session.Configuration.of_expansed_process exproc1 in
+    let conf2 = Process_session.Configuration.of_expansed_process exproc2 in
+    let result = Equivalence_session.equivalence conf1 conf2 in
+    let running_time = Unix.time () -. !start_time in
+    print_endline (Equivalence_session.string_of_result result);
+    print_endline (Printf.sprintf "[Execution time: %d]" (int_of_float running_time));
+    excecute_queries (id+1) q (* queries not stored, since no html yet *)
   | _ -> Config.internal_error "Observational_equivalence not implemented"
 
 let process_file path =

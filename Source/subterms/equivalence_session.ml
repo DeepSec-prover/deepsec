@@ -523,6 +523,15 @@ type result_analysis =
   | Equivalent
   | Not_Equivalent of constraint_system
 
+let string_of_result (res:result_analysis) : string =
+  match res with
+  | Equivalent -> "Equivalent processes."
+  | Not_Equivalent csys ->
+    "Not Equivalent processes. Attack trace:\n"^(
+      let symp = Constraint_system.get_additional_data csys in
+      Configuration.print_trace symp.conf
+    )
+
 exception Not_Session_Equivalent of constraint_system
 
 (* condition under which a partition tree node induces an attack on equivalence by session. Returns the index of the incriminated constraint system, if any. *)
@@ -634,7 +643,7 @@ let apply_one_transition_and_rules (n:partition_tree_node) (f_cont:partition_tre
 
 
 
-let equivalence_by_session (conf1:Configuration.t) (conf2:Configuration.t) : result_analysis =
+let equivalence (conf1:Configuration.t) (conf2:Configuration.t) : result_analysis =
 
   (* initialisation of the rewrite system *)
   Rewrite_rules.initialise_skeletons ();
