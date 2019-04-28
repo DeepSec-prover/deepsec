@@ -5,8 +5,8 @@ open Display
 open Extensions
 
 
-type todo = unit (* pending datatypes *)
-let todo = failwith "todo" (* pending definitions *)
+(* type todo = unit (* pending datatypes *) *)
+(* let todo = failwith "todo" (* pending definitions *) *)
 
 
 
@@ -267,8 +267,7 @@ end = struct
 
     {proc = Start (browse p); label = Some Label.initial}
 
-  let factor (p:t) : t =
-    todo
+  let factor (p:t) : t = p
 
 
   (* executing inputs with symmetries. Returns a list of (c,x,lab,p,li) where [li] is the leftovers after executing an input binding of [x] on channel [c], with label [lab].
