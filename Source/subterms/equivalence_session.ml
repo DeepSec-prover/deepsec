@@ -529,7 +529,7 @@ let string_of_result (res:result_analysis) : string =
   match res with
   | Equivalent -> "Equivalent processes."
   | Not_Equivalent csys ->
-    "Not Equivalent processes. Attack trace:\n"^(
+    "Not Equivalent processes.\nAttack trace: "^(
       let symp = Constraint_system.get_additional_data csys in
       Configuration.print_trace symp.conf
     )
