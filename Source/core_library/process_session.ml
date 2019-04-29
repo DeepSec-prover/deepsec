@@ -700,6 +700,7 @@ module BijectionSet : sig
   val initial : t (* a singleton containing the unique matching between two processes of label Label.initial *)
   val init : ?init:t -> Labelled_process.t -> Labelled_process.t -> t (* given two processes with new labels that are not part of the bijection_set [init], adds the potential matchings to [init] *)
   val restrict : Label.t -> Label.t -> t -> t option (* restricts a bijection_set to those matching two given labels together *)
+  val print : t -> unit
 end = struct
   (* sets of bijections with the skeleton-compatibility requirement *)
   (* TODO. make the datastructure more efficient. Could be more practical when there are a lot of singletons to handle the operation "get all potential labels matching with a given label l". *)
@@ -752,30 +753,39 @@ end = struct
         LabelSet.of_list (List.rev_map (Labelled_process.get_label) procs) in
       List.rev_map ~init:accu (fun (ec1,ec2) -> convert ec1, convert ec2) l
 
+  (* prints a bijection set *)
+  let print (bset:t) : unit =
+    List.iter (fun (s1,s2) ->
+      LabelSet.iter (fun lab -> Printf.printf "%s;" (Label.to_string lab)) s1;
+      Printf.printf "   [MATCHABLE WITH]   ";
+      LabelSet.iter (fun lab -> Printf.printf "%s;" (Label.to_string lab)) s2;
+      print_endline "";
+    ) bset
+
   (* restricts a bijection_set with the set of bijections pi such that
   pi(l1) = l2. Returns None if the resulting set is empty. Assumes that the
   argument was not already empty. *)
   let restrict (l1:Label.t) (l2:Label.t) (bset:t) : t option =
     let rec search memo s =
+      (* print_endline "Call search [in BijectionSet.restrict]:";
+      print s; *)
       match s with
       | [] ->
         Printf.printf "l1 = %s, l2 = %s\ninitial set:\n" (Label.to_string l1) (Label.to_string l2);
-        List.iter (fun (s1,s2) ->
-          LabelSet.iter (fun lab -> Printf.printf "%s;" (Label.to_string lab)) s1;
-          Printf.printf "   [MATCHABLE WITH]   ";
-          LabelSet.iter (fun lab -> Printf.printf "%s;" (Label.to_string lab)) s2;
-          print_endline "";
-        ) bset;
+        print bset;
         Config.internal_error "[process_session >> restrict_bijection_set] Unexpected case."
       | (ll1,ll2) :: t ->
         match LabelSet.find_opt l1 ll1, LabelSet.find_opt l2 ll2 with
         | None,None -> search ((ll1,ll2) :: memo) t
         | Some _,Some _ ->
-          let ll1' = LabelSet.remove l1 ll1 in
-          let ll2' = LabelSet.remove l2 ll2 in
-          let single1 = LabelSet.singleton l1 in
-          let single2 = LabelSet.singleton l2 in
-          Some (List.rev_append ((single1,single2)::(ll1',ll2')::t) memo)
+          if LabelSet.is_singleton ll1 then
+            Some (List.rev_append ((ll1,ll2)::t) memo)
+          else
+            let ll1' = LabelSet.remove l1 ll1 in
+            let ll2' = LabelSet.remove l2 ll2 in
+            let single1 = LabelSet.singleton l1 in
+            let single2 = LabelSet.singleton l2 in
+            Some (List.rev_append ((single1,single2)::(ll1',ll2')::t) memo)
         | _ -> None in
     search [] bset
 

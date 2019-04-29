@@ -99,6 +99,16 @@ type matching_forall_exists =
   ref_to_constraint * (ref_to_constraint * BijectionSet.t) list
 type matchings = matching_forall_exists list
 
+let print_matching (m:matchings) : unit =
+  List.iter (fun (i,l) ->
+    Printf.printf "Matchers for %d:\n" i;
+    List.iter (fun (j,bset) ->
+      Printf.printf "%d with label matching:\n" j;
+      BijectionSet.print bset
+    ) l
+  ) m
+
+
 (* removes the matchings involving an index i *)
 let remove_matches (accu:matchings) (i:ref_to_constraint) : matchings =
   List.filter (fun (cs_fa,cs_ex_l) ->
@@ -394,6 +404,8 @@ let generate_next_node (n:partition_tree_node) : Configuration.Transition.kind o
   ) n.csys_set;
 
   (** update of the matching **)
+  print_endline "[BEFORE]:";
+  print_matching n.matching;
   let new_matchings =
     List.fold_left (fun (accu1:matchings) (cs_fa,cs_ex_list) ->
       let symp_fa =
@@ -416,6 +428,9 @@ let generate_next_node (n:partition_tree_node) : Configuration.Transition.kind o
           (cs_fa_new,cs_ex_list_new) :: accu2
       ) accu1 symp_fa.next_transitions
     ) [] n.matching in
+  print_endline "[AFTER]";
+  print_matching new_matchings;
+
 
   (** final node **)
   Constraint_system_set.clean new_csys_set new_matchings;
@@ -546,8 +561,7 @@ let verify_violation_equivalence (matching:matchings) (csys_set:Constraint_syste
 let check_skeleton_in_matching (csys_set:Constraint_system_set.t) (mfe:matching_forall_exists) : matching_forall_exists =
   let get i = Constraint_system_set.find csys_set i in
   let (cs_fa,cs_ex_list) = mfe in
-  let symp_fa =
-    Constraint_system.get_additional_data (get cs_fa) in
+  let symp_fa = Constraint_system.get_additional_data (get cs_fa) in
   let cs_ex_list_upd =
     List.fold_left (fun accu (cs_ex,bset) ->
       let symp_ex = Constraint_system.get_additional_data (get cs_ex) in
@@ -572,7 +586,6 @@ let check_skeleton_in_node (n:partition_tree_node) : partition_tree_node =
     Constraint_system.replace_additional_data csys {symp with conf = Configuration.release_skeleton symp.conf}
   ) n.csys_set;
   {n with matching = new_matchings}
-
 
 
 
