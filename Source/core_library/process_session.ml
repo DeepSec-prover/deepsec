@@ -49,8 +49,20 @@ module Labelled_process : sig
   val nil : t -> bool (* checks if this represents the null process *)
   val contains_output : t -> bool (* checks whether a normalised process contains an executable output *)
   val contains_par : t -> bool (* checks whether a normalised process does not start right away by an input or an output *)
-  val unfold_input : ?filter:(t->bool) -> ?allow_channel_renaming:bool -> ?at_most:int -> t list -> (symbol * fst_ord_variable * Label.t * t * t list) list (* function computing all potential ways of unfolding one input from a list of processes. Returns the channel on which the input is performed, the bound fist-order variable, the label, the remaining process (with labels propagated), and what remains of the initial list after the input has been extracted. *)
-  val unfold_output : ?filter:(t->bool) -> ?at_most:int -> t -> (symbol * protocol_term * Label.t * t) list (* function computing all potential ways of unfolding one output from a process. Returns the channel on which the output is performed, the output term, the label, and what remains of the initial process after the output has been extracted (with labels propagated).
+  type input_data = {
+    channel : symbol;
+    var : fst_ord_variable;
+    lab : Label.t;
+    leftovers : t list;
+  }
+  val unfold_input : ?filter:(t->bool) -> ?allow_channel_renaming:bool -> ?at_most:int -> t list -> (t * input_data) list (* function computing all potential ways of unfolding one input from a list of processes. Returns the channel on which the input is performed, the bound fist-order variable, the label, the remaining process (with labels propagated), and what remains of the initial list after the input has been extracted. *)
+  type output_data = {
+    channel : symbol;
+    term : protocol_term;
+    lab : Label.t;
+    context : t -> t;
+  }
+  val unfold_output : ?filter:(t->bool) -> ?at_most:int -> t -> (t * output_data) list (* function computing all potential ways of unfolding one output from a process. Returns the channel on which the output is performed, the output term, the label, the process obtained after executing the output, and a function reconstructing the context of its execution.
   NB. Unfolding outputs break symmetries (just as symmetries), but they can be restaured at the end of negative phases (see function [restaure_sym]). *)
   val restaure_sym : t -> t (* restaures symmetries that have been temporarily broken by unfolding outputs *)
   val labelling : Label.t -> t -> t (* assigns labels to the parallel processes at toplevel, with a given label prefix *)
@@ -90,8 +102,6 @@ end = struct
     | Par of t list
     | Bang of bang_status * t list * t list (* The two lists model the replicated processes, the first one being reserved for processes where symmetries are temporarily broken due to the execution of outputs. *)
 
-  and input_data = symbol * fst_ord_variable * t
-  and output_data = symbol * protocol_term * t
   and bang_status =
     | Repl (* symmetry up to structural equivalence *)
     | Channel (* symmetry up to structural equivalence and channel renaming *)
@@ -272,7 +282,13 @@ end = struct
 
   (* executing inputs with symmetries. Returns a list of (c,x,lab,p,li) where [li] is the leftovers after executing an input binding of [x] on channel [c], with label [lab].
   NB. The extracted inputs are consumed. *)
-  let unfold_input ?filter:(f:t->bool=fun _ -> true) ?allow_channel_renaming:(opt:bool=false) ?at_most:(nb:int= -1) (l:t list) : (symbol * fst_ord_variable * Label.t * t * t list) list =
+  type input_data = {
+    channel : symbol;
+    var : fst_ord_variable;
+    lab : Label.t;
+    leftovers : t list;
+  }
+  let unfold_input ?filter:(f:t->bool=fun _ -> true) ?allow_channel_renaming:(opt:bool=false) ?at_most:(nb:int= -1) (l:t list) : (t * input_data) list =
 
     let rec unfold countdown accu leftovers p f_cont =
       if countdown = 0 then accu
@@ -296,7 +312,13 @@ end = struct
             match p.label with
             | None -> Config.internal_error "[process_session.ml >> unfold_input] Labels should have been assigned."
             | Some lab ->
-              f_cont (countdown-1) ((ch,x,lab,pp,leftovers)::accu)
+              let res = {
+                channel = ch;
+                var = x;
+                lab = lab;
+                leftovers = leftovers;
+              } in
+              f_cont (countdown-1) ((pp,res)::accu)
           else f_cont countdown accu
         | New _
         | If _
@@ -327,7 +349,13 @@ end = struct
 
   (* executing outputs with symmetries. Returns a list of ([c],[t],[lab],[l]) where [l] is the leftovers left after executing an output of [t] on channel [c], with label [lab].
   NB. the extracted outputs are consumed. *)
-  let unfold_output ?filter:(f:t->bool=fun _ -> true) ?at_most:(nb:int= -1) (lp:t) : (symbol * protocol_term * Label.t * t) list =
+  type output_data = {
+    channel : symbol;
+    term : protocol_term;
+    lab : Label.t;
+    context : t -> t;
+  }
+  let unfold_output ?filter:(f:t->bool=fun _ -> true) ?at_most:(nb:int= -1) (lp:t) : (t * output_data) list =
 
     let rec unfold countdown accu p rebuild f_cont =
       if countdown = 0 then accu
@@ -340,8 +368,9 @@ end = struct
             let res =
               match p.label with
               | None -> Config.internal_error "[process_session.ml >> unfold_output] Labels should have been assigned."
-              | Some lab -> c,t,lab,rebuild pp in
-            f_cont (countdown-1) (res::accu)
+              | Some lab ->
+                {channel = c; term = t; lab = lab; context = rebuild} in
+            f_cont (countdown-1) ((pp,res)::accu)
         | If _
         | New _
         | Output _ ->
@@ -757,7 +786,7 @@ module Configuration : sig
   val outputs : t -> Labelled_process.t list (* returns the available outputs (in particular they are executable, i.e. they output a message). *)
   val clear : t -> t (* empties all fields of the configuration except those history-related (trace, ongoing_block, and previous_blocks). *)
   val of_expansed_process : Process.expansed_process -> t (* converts a process as obtained from the parser into a configuration. This includes some cleaning procedure as well as factorisation. *)
-  val normalise : Label.t -> t -> (fst_ord, name) Subst.t -> (Labelled_process.Normalise.constraints->t->unit) -> unit (* normalises a configuration, labels the new process, and puts it in standby for skeleton checks. *)
+  val normalise : ?context:(Labelled_process.t->Labelled_process.t) -> Label.t -> t -> (fst_ord, name) Subst.t -> (Labelled_process.Normalise.constraints->t->unit) -> unit (* normalises a configuration, labels the new process, and puts it in standby for skeleton checks. In case an output has just been executed, the optional ?context argument gives the process context of the execution in order to reconstruct the symmetries afterwards. *)
   val check_skeleton : t -> t -> BijectionSet.t -> BijectionSet.t option (* compares to skeletons in standbym and updates a bijection set accordingly. Returns None if the tests fails. *)
   val release_skeleton : t -> t (* after all skeletons tests have been performed, one calls this functions to mark the skeleton checks as done. *)
 
@@ -769,9 +798,9 @@ module Configuration : sig
       | RNeg
       | RStart
     val next : t -> kind option (* computes the next kind of transition to apply (None if the process has no transition possible). *)
-    val apply_neg : axiom -> (symbol * protocol_term * Label.t * Labelled_process.t) -> Labelled_process.t list -> t -> t (* executes an output in a configuration *)
-    val apply_pos : snd_ord_variable -> t -> fst_ord_variable * Label.t * t (* executes a focused input in a configuration *)
-    val apply_focus : snd_ord_variable -> (symbol * fst_ord_variable * Label.t * Labelled_process.t * Labelled_process.t list) -> t -> fst_ord_variable * Label.t * t (* focuses an input in a configuration *)
+    val apply_neg : axiom -> Labelled_process.t -> Labelled_process.output_data -> Labelled_process.t list -> t -> t (* executes an output in a configuration *)
+    val apply_pos : snd_ord_variable -> t -> Labelled_process.input_data * t (* executes a focused input in a configuration *)
+    val apply_focus : snd_ord_variable -> (Labelled_process.t * Labelled_process.input_data) -> t -> t (* focuses an input in a configuration *)
     val apply_start : t -> t (* removes the start at the beginning of the process *)
   end
 end = struct
@@ -842,7 +871,7 @@ end = struct
       previous_blocks = [];
     }
 
-  let normalise (prefix:Label.t) (conf:t) (eqn:(fst_ord, name) Subst.t) (f_cont:Labelled_process.Normalise.constraints->t->unit) : unit =
+  let normalise ?context:(rebuild:Labelled_process.t->Labelled_process.t=fun t->t) (prefix:Label.t) (conf:t) (eqn:(fst_ord, name) Subst.t) (f_cont:Labelled_process.Normalise.constraints->t->unit) : unit =
     Config.debug (fun () ->
       if conf.sure_unchecked_skeletons <> None then
         Config.internal_error "[process_session.ml >> normalise_configuration] Sure unchecked should be empty."
@@ -851,7 +880,7 @@ end = struct
     let eqn_cast = Labelled_process.Normalise.constraints_of_equations eqn in
     match conf.to_normalise, conf.focused_proc with
       | None, None -> f_cont eqn_cast conf
-      | None, Some p ->
+      | None, Some p -> (* TODO envoyer seulement le process executé à normaliser et labelliser, et appliquer le contexte seulement derrière *)
         Labelled_process.Normalise.normalise p eqn_cast (fun gather p_norm f_next ->
           let labelled_p = Labelled_process.labelling prefix p_norm in
           f_cont gather {conf with focused_proc = Some labelled_p};
@@ -861,7 +890,7 @@ end = struct
         Labelled_process.Normalise.normalise p eqn_cast (fun gather p_norm f_next ->
           let labelled_p = Labelled_process.labelling prefix p_norm in
           let conf_rel = {conf with
-            sure_unchecked_skeletons = Some labelled_p;
+            sure_unchecked_skeletons = Some (rebuild labelled_p);
             to_normalise = None;
           } in
           f_cont gather conf_rel;
@@ -954,42 +983,47 @@ end = struct
         Config.internal_error "[process_session.ml >> Configuration.Transition.apply_start] Error during the initialisation of processes. (2)"
 
 
-    let apply_neg (ax:axiom) (output_data:symbol * protocol_term * Label.t * Labelled_process.t) (leftovers:Labelled_process.t list) (conf:t) : t =
-      let (ch,term,lab,new_output_proc) = output_data in
+    let apply_neg (ax:axiom) (p:Labelled_process.t) (od:Labelled_process.output_data) (leftovers:Labelled_process.t list) (conf:t) : t =
       {conf with
+        to_normalise = Some p;
         sure_output_proc = leftovers;
-        to_normalise = Some new_output_proc;
-        trace = OutAction(ch,ax,term)::conf.trace;
+        trace = OutAction(od.channel,ax,od.term)::conf.trace;
         ongoing_block = Block.add_axiom ax conf.ongoing_block;
       }
 
-    let apply_pos (var_X:snd_ord_variable) (conf:t) : fst_ord_variable * Label.t * t =
+    let apply_pos (var_X:snd_ord_variable) (conf:t) : Labelled_process.input_data * t =
       match conf.focused_proc with
       | Some p ->
         begin match Labelled_process.get_proc p with
         | Input(ch,x,pp) ->
-        x,Labelled_process.get_label p,
-        {conf with
-          focused_proc = Some pp;
-          trace = InAction(ch,var_X,Term.of_variable x) :: conf.trace;
-          ongoing_block = Block.add_variable var_X conf.ongoing_block;
-        }
+          let idata = {
+            Labelled_process.channel = ch;
+            Labelled_process.var = x;
+            Labelled_process.lab = Labelled_process.get_label p;
+            Labelled_process.leftovers = []; (* field not relevant here *)
+          } in
+          let conf_app = {conf with
+            focused_proc = Some pp;
+            trace = InAction(ch,var_X,Term.of_variable x) :: conf.trace;
+            ongoing_block = Block.add_variable var_X conf.ongoing_block;
+          } in
+          idata,conf_app
         | _ -> Config.internal_error "[process_session.ml >> Configuration.Transition.apply_pos] Ill-formed focus state." end
       | _ ->
         Config.internal_error "[process_session.ml >> Configuration.Transition.apply_pos] Process should be focused."
 
-    let apply_focus (var_X:snd_ord_variable) (focus:symbol * fst_ord_variable * Label.t * Labelled_process.t * Labelled_process.t list) (c:t) : fst_ord_variable * Label.t * t =
+    let apply_focus (var_X:snd_ord_variable) (focus:Labelled_process.t * Labelled_process.input_data) (c:t) : t =
       Config.debug (fun () ->
         if c.focused_proc <> None then
           Config.internal_error "[process_session.ml >> add_focus] Unexpected case."
       );
-      let (ch,x,lab,lp,leftovers) = focus in
-      x,lab,{c with
-        input_proc = leftovers;
-        focused_proc = Some lp;
-        ongoing_block = Block.create lab;
+      let (pp,idata) = focus in
+      {c with
+        input_proc = idata.leftovers;
+        focused_proc = Some pp;
+        ongoing_block = Block.create idata.lab;
         previous_blocks = c.ongoing_block :: c.previous_blocks;
-        trace = InAction(ch,var_X,Term.of_variable x) :: c.trace;
+        trace = InAction(idata.channel,var_X,Term.of_variable idata.var) :: c.trace;
       }
   end
 end
