@@ -486,7 +486,6 @@ module Graph = struct
       | [] -> comps
       | eqc -> ConnectedComponent.of_list eqc :: comps
     ) g []
-
 end
 
 
