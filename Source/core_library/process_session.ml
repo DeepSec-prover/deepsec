@@ -15,10 +15,16 @@ module Label : sig
   val initial : t (* an initial, empty label *)
   val add_position : t -> int -> t (* adds a position at the end of a label *)
   val independent : t -> t -> int (* returns 0 if one label is prefix of the other, and compares them lexicographically otherwise *)
+  val to_string : t -> string
 end = struct
   type t = int list
   let initial = [0]
   let add_position (prefix:t) (position:int) : t = prefix @ [position]
+  let to_string (lab:t) : string =
+    match lab with
+    | [] -> Config.internal_error "[process_session.ml >> Label.to_string] Unexpected case."
+    | h :: t ->
+      List.fold_left (Printf.sprintf "%s.%d") (string_of_int h) t
 
   let rec independent (l:t) (ll:t) : int =
     match l,ll with
@@ -633,7 +639,6 @@ end = struct
     | Some (i,_) ->
       {block with bounds_axiom = Some (i,Axiom.index_of ax)}
 
-
   (* checking whether a block is allowed after a block list *)
   let rec is_faulty_block (block:t) (block_list:t list) : bool =
     match block_list with
@@ -648,7 +653,6 @@ end = struct
           IntSet.for_all (fun ax -> ax < min_ax || ax > max_ax) block.used_axioms
       else if comp_lab > 0 then is_faulty_block block q
       else false
-
 
   (* applies a snd order substitution on a block list and computes the bound
   fields of the block type *)
@@ -751,10 +755,17 @@ end = struct
   (* restricts a bijection_set with the set of bijections pi such that
   pi(l1) = l2. Returns None if the resulting set is empty. Assumes that the
   argument was not already empty. *)
-  let restrict (l1:Label.t) (l2:Label.t) (s:t) : t option =
+  let restrict (l1:Label.t) (l2:Label.t) (bset:t) : t option =
     let rec search memo s =
       match s with
       | [] ->
+        Printf.printf "l1 = %s, l2 = %s\ninitial set:\n" (Label.to_string l1) (Label.to_string l2);
+        List.iter (fun (s1,s2) ->
+          LabelSet.iter (fun lab -> Printf.printf "%s;" (Label.to_string lab)) s1;
+          Printf.printf "   [MATCHABLE WITH]   ";
+          LabelSet.iter (fun lab -> Printf.printf "%s;" (Label.to_string lab)) s2;
+          print_endline "";
+        ) bset;
         Config.internal_error "[process_session >> restrict_bijection_set] Unexpected case."
       | (ll1,ll2) :: t ->
         match LabelSet.find_opt l1 ll1, LabelSet.find_opt l2 ll2 with
@@ -766,7 +777,7 @@ end = struct
           let single2 = LabelSet.singleton l2 in
           Some (List.rev_append ((single1,single2)::(ll1',ll2')::t) memo)
         | _ -> None in
-    search [] s
+    search [] bset
 
   (* given a bijection set and a label l, computes the set of labels that are
   compatible with l wrt one bijection. *)
@@ -973,6 +984,7 @@ end = struct
           | [] -> None
           | _ -> Some RFocus
 
+    (* syntactic transformation of a configuration at the start of the analysis *)
     let apply_start (conf:t) : t =
       match conf.focused_proc with
       | Some p ->
@@ -982,7 +994,7 @@ end = struct
       | _ ->
         Config.internal_error "[process_session.ml >> Configuration.Transition.apply_start] Error during the initialisation of processes. (2)"
 
-
+    (* syntactic transformation of a configuration after executing an output *)
     let apply_neg (ax:axiom) (p:Labelled_process.t) (od:Labelled_process.output_data) (leftovers:Labelled_process.t list) (conf:t) : t =
       {conf with
         to_normalise = Some p;
@@ -991,6 +1003,7 @@ end = struct
         ongoing_block = Block.add_axiom ax conf.ongoing_block;
       }
 
+    (* syntactic transformation of a configuration after executing a focused input. Also retrieves and returns the input_data of the focus state. *)
     let apply_pos (var_X:snd_ord_variable) (conf:t) : Labelled_process.input_data * t =
       match conf.focused_proc with
       | Some p ->
@@ -1012,6 +1025,7 @@ end = struct
       | _ ->
         Config.internal_error "[process_session.ml >> Configuration.Transition.apply_pos] Process should be focused."
 
+    (* syntactic transformation of a configuration after focusing an input *)
     let apply_focus (var_X:snd_ord_variable) (focus:Labelled_process.t * Labelled_process.input_data) (c:t) : t =
       Config.debug (fun () ->
         if c.focused_proc <> None then
