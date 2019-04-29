@@ -3,7 +3,7 @@ free c.
 /* reduc h(x,x) -> x. */
 
 /* let P = in(c,x); in(c,y); out(c,h(x,y)). */
-let P = !^4 out(c,c); in(c,x); out(c,c).
-let Q = !^4 out(c,c); in(c,x); in(c,y).
+let P = out(c,c) | out(c,c); out(c,c).
+let Q = out(c,c) | out(c,c); in(c,x).
 
 query sess_equiv(P,Q).

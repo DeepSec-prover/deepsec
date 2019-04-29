@@ -420,6 +420,7 @@ let generate_next_node (n:partition_tree_node) : Configuration.Transition.kind o
                 Constraint_system.get_additional_data (Constraint_system_set.find n.csys_set cs_ex) in
               List.fold_left (fun (accu4:(ref_to_constraint*BijectionSet.t) list) (transition_ex:transition) ->
                 let (lab_ex,forall,cs_ex_new) = transition_ex in
+                Printf.printf "> About to restrict %s to %s\n" (Label.to_string lab_fa) (Label.to_string lab_ex);
                 match BijectionSet.restrict lab_fa lab_ex bset with
                 | None -> accu4
                 | Some bset_upd -> (cs_ex_new,bset_upd) :: accu4
@@ -624,12 +625,14 @@ let apply_one_transition_and_rules (n:partition_tree_node) (f_cont:partition_tre
       verify_violation_equivalence node.matching node.csys_set;
       f_next1 ()
     | Some RStart ->
+      print_endline "***************************************\n>> Rule RStart\n***************************************";
       (* very beginning of the analysis: only a skeleton check is needed before moving on to the constructing the successor nodes (no unauthorised blocks possible). *)
       Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
         let final_node = final_skeleton_check node csys_set in
         f_cont final_node f_next2
       ) csys_set f_next1
     | Some RFocus ->
+      print_endline "***************************************\n>> Rule RFocus\n***************************************";
       (* focus and execution of an input. *)
       Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
         if Constraint_system.Set.is_empty csys_set then f_next2()
@@ -639,6 +642,7 @@ let apply_one_transition_and_rules (n:partition_tree_node) (f_cont:partition_tre
           f_cont final_node f_next2
       ) csys_set f_next1
     | Some RPos ->
+      print_endline "***************************************\n>> Rule RPos\n***************************************";
       (* execution of a focused input. The skeleton check releases the focus if necessary, and unauthorised blocks may arise due to the constraint solving. *)
       Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
         if Constraint_system.Set.is_empty csys_set then f_next2()
@@ -648,6 +652,7 @@ let apply_one_transition_and_rules (n:partition_tree_node) (f_cont:partition_tre
           f_cont final_node f_next2
       ) csys_set f_next1
     | Some RNeg ->
+      print_endline "***************************************\n>> Rule RNeg\n***************************************";
       (* execution of outputs. Similar to the input case, except that the size of the frame is increased by one. *)
       Constraint_system.Rule.apply_rules_after_output false (fun csys_set f_next2 ->
         if Constraint_system.Set.is_empty csys_set then f_next2()
