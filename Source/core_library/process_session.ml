@@ -53,6 +53,7 @@ module Labelled_process : sig
   val of_expansed_process : Process.expansed_process -> t (* converts an expansed process into a process, starting with a Start constructor and label [initial]. *)
   val elements : ?init:(t list) -> t -> t list (* extracts the list of parallel subprocesses *)
   val nil : t -> bool (* checks if this represents the null process *)
+  val empty : Label.t -> t (* a labelled process with empty data. For typing purposes (only way to construct a Labelled_process.t outside of this module) *)
   val contains_output : t -> bool (* checks whether a normalised process contains an executable output *)
   val contains_par : t -> bool (* checks whether a normalised process does not start right away by an input or an output *)
   type input_data = {
@@ -118,6 +119,9 @@ end = struct
     | Par []
     | Bang (_,[],[]) -> true
     | _ -> false
+
+  (* en empty process *)
+  let empty (lab:Label.t) : t = {proc = Par []; label = Some lab}
 
   (* extracts the data of a process *)
   let get_label ?error_msg:(s="[process_session.ml >> Label.Process.get_label] Unassigned label.") (p:t) : Label.t =
@@ -698,8 +702,7 @@ end
 module BijectionSet : sig
   type t
   val initial : t (* a singleton containing the unique matching between two processes of label Label.initial *)
-  val init : ?init:t -> Labelled_process.t -> Labelled_process.t -> t (* given two processes with new labels that are not part of the bijection_set [init], adds the potential matchings to [init] *)
-  val restrict : Label.t -> Label.t -> t -> t option (* restricts a bijection_set to those matching two given labels together *)
+  val update : Label.t -> Label.t -> Labelled_process.t -> Labelled_process.t -> t -> t option (* [update l1 l2 p1 p2 bset] restricts the set [bset] to the bijections mapping [l1] to [l2]. In case [l1] is not in the domain of these bijections, the domain of [bset] is also extended to allow matchings of labels of p1 and p2 *)
   val print : t -> unit
 end = struct
   (* sets of bijections with the skeleton-compatibility requirement *)
@@ -740,18 +743,17 @@ end = struct
 
   (* creates the bijection_set containing the possible matchings of two lists of
   parallel processes. *)
-  let init ?init:(accu:t=[]) (fp1:Labelled_process.t) (fp2:Labelled_process.t) : t =
+  let init (accu:t) (fp1:Labelled_process.t) (fp2:Labelled_process.t) : t option =
     let check_skel lp1 lp2 =
       Labelled_process.Skeleton.compare_atomic lp1 lp2 = 0 in
     let partition lp =
       equivalence_classes check_skel (Labelled_process.elements lp) in
     match link_partitions check_skel (partition fp1) (partition fp2) with
-    | None ->
-      Config.internal_error "[process_session.ml >> BijectionSet.init] Inconsistent skeletons."
+    | None -> None
     | Some l ->
       let convert procs =
-        LabelSet.of_list (List.rev_map (Labelled_process.get_label) procs) in
-      List.rev_map ~init:accu (fun (ec1,ec2) -> convert ec1, convert ec2) l
+        LabelSet.of_list (List.rev_map Labelled_process.get_label procs) in
+      Some (List.rev_map ~init:accu (fun (ec1,ec2)->convert ec1, convert ec2) l)
 
   (* prints a bijection set *)
   let print (bset:t) : unit =
@@ -765,15 +767,10 @@ end = struct
   (* restricts a bijection_set with the set of bijections pi such that
   pi(l1) = l2. Returns None if the resulting set is empty. Assumes that the
   argument was not already empty. *)
-  let restrict (l1:Label.t) (l2:Label.t) (bset:t) : t option =
+  let update_cont ?abort_if_fails:(stop:bool=false) (l1:Label.t) (l2:Label.t) (p1:Labelled_process.t) (p2:Labelled_process.t) (bset:t) (f_fail:t->t option->t option): t option =
     let rec search memo s =
-      (* print_endline "Call search [in BijectionSet.restrict]:";
-      print s; *)
       match s with
-      | [] ->
-        Printf.printf "l1 = %s, l2 = %s\ninitial set:\n" (Label.to_string l1) (Label.to_string l2);
-        print bset;
-        Config.internal_error "[process_session >> restrict_bijection_set] Unexpected case."
+      | [] -> if stop then None else f_fail memo (init bset p1 p2)
       | (ll1,ll2) :: t ->
         match LabelSet.find_opt l1 ll1, LabelSet.find_opt l2 ll2 with
         | None,None -> search ((ll1,ll2) :: memo) t
@@ -788,6 +785,18 @@ end = struct
             Some (List.rev_append ((single1,single2)::(ll1',ll2')::t) memo)
         | _ -> None in
     search [] bset
+
+
+  let update (l1:Label.t) (l2:Label.t) (p1:Labelled_process.t) (p2:Labelled_process.t) (bset:t) : t option =
+    update_cont l1 l2 p1 p2 bset (fun memo extended_bset ->
+      match extended_bset with
+      | None -> None
+      | Some s ->
+        match update_cont ~abort_if_fails:true l1 l2 p1 p2 s (fun _ _ -> None) with
+        | None -> None
+        | Some res -> Some (List.rev_append res memo)
+    )
+
 
   (* given a bijection set and a label l, computes the set of labels that are
   compatible with l wrt one bijection. *)
@@ -807,8 +816,8 @@ module Configuration : sig
   val outputs : t -> Labelled_process.t list (* returns the available outputs (in particular they are executable, i.e. they output a message). *)
   val clear : t -> t (* empties all fields of the configuration except those history-related (trace, ongoing_block, and previous_blocks). *)
   val of_expansed_process : Process.expansed_process -> t (* converts a process as obtained from the parser into a configuration. This includes some cleaning procedure as well as factorisation. *)
-  val normalise : ?context:(Labelled_process.t->Labelled_process.t) -> Label.t -> t -> (fst_ord, name) Subst.t -> (Labelled_process.Normalise.constraints->t->unit) -> unit (* normalises a configuration, labels the new process, and puts it in standby for skeleton checks. In case an output has just been executed, the optional ?context argument gives the process context of the execution in order to reconstruct the symmetries afterwards. *)
-  val check_skeleton : t -> t -> BijectionSet.t -> BijectionSet.t option (* compares to skeletons in standbym and updates a bijection set accordingly. Returns None if the tests fails. *)
+  val normalise : ?context:(Labelled_process.t->Labelled_process.t) -> Label.t -> t -> (fst_ord, name) Subst.t -> (Labelled_process.Normalise.constraints->t->Labelled_process.t->unit) -> unit (* normalises a configuration, labels the new process, and puts it in standby for skeleton checks. In case an output has just been executed, the optional ?context argument gives the process context of the execution in order to reconstruct the symmetries afterwards. *)
+  val check_skeleton : t -> t -> BijectionSet.t -> bool (* compares to skeletons in standby *)
   val release_skeleton : t -> t (* after all skeletons tests have been performed, one calls this functions to mark the skeleton checks as done. *)
 
   (* a module for operating on transitions *)
@@ -892,7 +901,7 @@ end = struct
       previous_blocks = [];
     }
 
-  let normalise ?context:(rebuild:Labelled_process.t->Labelled_process.t=fun t->t) (prefix:Label.t) (conf:t) (eqn:(fst_ord, name) Subst.t) (f_cont:Labelled_process.Normalise.constraints->t->unit) : unit =
+  let normalise ?context:(rebuild:Labelled_process.t->Labelled_process.t=fun t->t) (prefix:Label.t) (conf:t) (eqn:(fst_ord, name) Subst.t) (f_cont:Labelled_process.Normalise.constraints->t->Labelled_process.t->unit) : unit =
     Config.debug (fun () ->
       if conf.sure_unchecked_skeletons <> None then
         Config.internal_error "[process_session.ml >> normalise_configuration] Sure unchecked should be empty."
@@ -900,11 +909,11 @@ end = struct
 
     let eqn_cast = Labelled_process.Normalise.constraints_of_equations eqn in
     match conf.to_normalise, conf.focused_proc with
-      | None, None -> f_cont eqn_cast conf
-      | None, Some p -> (* TODO envoyer seulement le process executé à normaliser et labelliser, et appliquer le contexte seulement derrière *)
+      | None, None -> f_cont eqn_cast conf (Labelled_process.empty prefix)
+      | None, Some p ->
         Labelled_process.Normalise.normalise p eqn_cast (fun gather p_norm f_next ->
           let labelled_p = Labelled_process.labelling prefix p_norm in
-          f_cont gather {conf with focused_proc = Some labelled_p};
+          f_cont gather {conf with focused_proc = Some labelled_p} labelled_p;
           f_next ()
         ) (fun () -> ())
       | Some p, None ->
@@ -914,7 +923,7 @@ end = struct
             sure_unchecked_skeletons = Some (rebuild labelled_p);
             to_normalise = None;
           } in
-          f_cont gather conf_rel;
+          f_cont gather conf_rel labelled_p;
           f_next ()
         ) (fun () -> ())
       | _, _ -> Config.internal_error "[process_session.ml >> normalise_configuration] A configuration cannot be released and focused at the same time."
@@ -922,20 +931,14 @@ end = struct
   (* takes two configuration as an argument, and performs a skeleton check (on
   their focused process if any, or sure_uncheked_skeletons otherwise). Returns
   the updated matchings (None in case of a skeleton mismatch). *)
-  let check_skeleton (conf1:t) (conf2:t) (bset_to_update:BijectionSet.t) : BijectionSet.t option =
+  let check_skeleton (conf1:t) (conf2:t) (bset_to_update:BijectionSet.t) : bool =
 
     match conf1.focused_proc, conf2.focused_proc, conf1.sure_unchecked_skeletons, conf2.sure_unchecked_skeletons with
     | Some p1, Some p2, None, None
     | None, None, Some p1, Some p2 ->
       if Labelled_process.contains_output p1 || Labelled_process.contains_output p2 then
-        if Labelled_process.Skeleton.equal (p1::conf1.sure_output_proc) (p2::conf2.sure_output_proc) then
-          Some bset_to_update
-        else None
-      else if Labelled_process.Skeleton.equal [p1] [p2] then
-        if Labelled_process.contains_par p1 || Labelled_process.contains_par p1 then
-          Some (BijectionSet.init ~init:bset_to_update p1 p2)
-        else Some bset_to_update
-      else None
+        Labelled_process.Skeleton.equal (p1::conf1.sure_output_proc) (p2::conf2.sure_output_proc)
+      else Labelled_process.Skeleton.equal [p1] [p2]
     | _ ->
       Config.internal_error "[process_session.ml >> update_matching] Processes in inconsistent states."
 

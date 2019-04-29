@@ -48,6 +48,9 @@ module List = struct
   let rev_map ?init:(accu=[]) f l =
     List.fold_left (fun ac x -> f x :: ac) accu l
 
+  (* tail recursive filter, without caring about preserving the ordering *)
+  let rev_filter f l =
+    List.fold_left (fun accu x -> if f x then x::accu else accu) [] l
 
   (* removes all elements of a list verifying a given predicate, and returns
   one such element (if any). The ordering is not preserved. *)

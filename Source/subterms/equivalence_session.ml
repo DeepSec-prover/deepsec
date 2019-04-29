@@ -83,9 +83,15 @@ end
 end
 
 
+type ref_to_constraint = int (* index of a table containing the constraint systems of the node *)
+type transition = {
+  target : ref_to_constraint; (* constraint system obtained after executing the transition *)
+  label : Label.t; (* label on which the transition is performed *)
+  forall : bool; (* indicates whether the transition is universal *)
+  new_proc : Labelled_process.t; (* process (normalised and labels assigned) following the executed instruction. Used for managing matchings. *)
+}
+
 type constraint_system = symbolic_process Constraint_system.t
-and transition = Label.t * bool * ref_to_constraint
-and ref_to_constraint = int (* an array index in a constraint_system_set *)
 and symbolic_process = {
   conf : Configuration.t;
   next_transitions : transition list; (* the list of transitions from the process, including the label and the constraint system obtained after normalisation.
@@ -111,7 +117,7 @@ let print_matching (m:matchings) : unit =
 
 (* removes the matchings involving an index i *)
 let remove_matches (accu:matchings) (i:ref_to_constraint) : matchings =
-  List.filter (fun (cs_fa,cs_ex_l) ->
+  List.rev_filter (fun (cs_fa,cs_ex_l) ->
     cs_fa <> i && List.for_all (fun (cs_ex,_) -> cs_ex <> i) cs_ex_l
   ) accu
 
@@ -196,7 +202,7 @@ configuration 'conf' to update constraint system 'cs' of first-order solution
 'eqn', all that for a transition of type 'status'. The resulting transitions
 are stored in 'csys_set' and 'accu'. *)
 let add_transition_output (csys_set:Constraint_system_set.t) (accu:transition list ref) (forall:bool) (conf:Configuration.t) (eqn:(fst_ord, Term.name) Subst.t) (cs:constraint_system) (ax:axiom) (od:Labelled_process.output_data) (new_status:QStatus.t) : unit =
-  Configuration.normalise ~context:od.context od.lab conf eqn (fun gather conf_norm ->
+  Configuration.normalise ~context:od.context od.lab conf eqn (fun gather conf_norm new_proc ->
     let equations = Labelled_process.Normalise.equations gather in
     let disequations = Labelled_process.Normalise.disequations gather in
     let t0 = Subst.apply equations od.term (fun x f -> f x) in
@@ -211,15 +217,20 @@ let add_transition_output (csys_set:Constraint_system_set.t) (accu:transition li
       let cs4 =
         Constraint_system.replace_additional_data cs3 (new_symbolic_process conf_norm new_status) in
 
-      let index = Constraint_system_set.add_new_elt csys_set cs4 in
-      accu := (od.lab,forall,index) :: !accu
+      let transition = {
+        target = Constraint_system_set.add_new_elt csys_set cs4;
+        label = od.lab;
+        forall = forall;
+        new_proc = new_proc;
+      } in
+      accu := transition :: !accu
     with
       | Constraint_system.Bot -> ()
   )
 
 (* same, for the initial transition at the root of the partition tree *)
 let add_transition_start (csys_set:Constraint_system_set.t) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord, Term.name) Subst.t) (cs:constraint_system) (symp:symbolic_process) (lab:Label.t) : unit =
-  Configuration.normalise lab conf eqn (fun gather conf_norm ->
+  Configuration.normalise lab conf eqn (fun gather conf_norm new_proc ->
     let equations = Labelled_process.Normalise.equations gather in
     let disequations = Labelled_process.Normalise.disequations gather in
     try
@@ -227,17 +238,21 @@ let add_transition_start (csys_set:Constraint_system_set.t) (accu:transition lis
       let cs2 = Constraint_system.add_disequations cs1 disequations in
       let cs3 = Constraint_system.replace_additional_data cs2 (new_symbolic_process conf_norm QStatus.both) in
 
-      let index = Constraint_system_set.add_new_elt csys_set cs3 in
-      accu := (lab,true,index) :: !accu
+      let transition = {
+        target = Constraint_system_set.add_new_elt csys_set cs3;
+        label = lab;
+        forall = true;
+        new_proc = new_proc;
+      } in
+      accu := transition :: !accu
     with
       | Constraint_system.Bot -> ()
   )
 
-
 (* normalising configurations and constructing next_transitions: case of a focused input on variable 'x' and second-order var_X, to be normalised in configuration 'conf' to update constraint system 'cs' of additional data 'symp' and first-order solution 'eqn', all that for a transition of type 'status'.
 The resulting constraint_system is added to 'accu'.*)
 let add_transition_input (csys_set:Constraint_system_set.t) (accu:transition list ref) (forall:bool) (conf:Configuration.t) (eqn:(fst_ord,Term.name) Subst.t) (cs:constraint_system) (var_X:snd_ord_variable) (idata:Labelled_process.input_data) (new_status:QStatus.t) : unit =
-  Configuration.normalise idata.lab conf eqn (fun gather conf_norm ->
+  Configuration.normalise idata.lab conf eqn (fun gather conf_norm new_proc ->
     let equations = Labelled_process.Normalise.equations gather in
     let disequations = Labelled_process.Normalise.disequations gather in
     let inp = Subst.apply equations (of_variable idata.var) (fun x f -> f x) in
@@ -253,8 +268,13 @@ let add_transition_input (csys_set:Constraint_system_set.t) (accu:transition lis
       let cs4 =
         Constraint_system.replace_additional_data cs3 (new_symbolic_process conf_norm new_status) in
 
-      let index = Constraint_system_set.add_new_elt csys_set cs4 in
-      accu := (idata.lab,forall,index) :: !accu
+      let transition = {
+        target = Constraint_system_set.add_new_elt csys_set cs4;
+        label = idata.lab;
+        forall = forall;
+        new_proc = new_proc;
+      } in
+      accu := transition :: !accu
     with
       | Constraint_system.Bot -> ()
   )
@@ -324,7 +344,7 @@ let generate_next_transitions_exists (type_of_transition:Configuration.Transitio
   let new_status = QStatus.upgrade symp.status QStatus.exists in
   let not_already_generated lp =
     let lab = Labelled_process.get_label lp in
-    List.for_all (fun (lab',_,_) -> lab <> lab') symp.next_transitions in
+    List.for_all (fun tr -> lab <> tr.label) symp.next_transitions in
   let generate () =
     match type_of_transition with
     | None
@@ -389,6 +409,7 @@ node with all the resulting processes inside. A
 NB. The constraint solving and the skeleton checks remain to be done after this
 function call. *)
 let generate_next_node (n:partition_tree_node) : Configuration.Transition.kind option * partition_tree_node =
+  print_endline "HELLLLOOOO";
 
   (** Generation of the transitions **)
   let new_csys_set : Constraint_system_set.t = Constraint_system_set.empty() in
@@ -404,29 +425,29 @@ let generate_next_node (n:partition_tree_node) : Configuration.Transition.kind o
   ) n.csys_set;
 
   (** update of the matching **)
-  print_endline "[BEFORE]:";
+  print_endline "[BEFORE]:\nCurrent indexes: ";
+  List.iter (fun (i,_) -> Printf.printf "%d " i) n.matching;
+  print_endline "\nand the matching is:";
   print_matching n.matching;
   let new_matchings =
     List.fold_left (fun (accu1:matchings) (cs_fa,cs_ex_list) ->
       let symp_fa =
         Constraint_system.get_additional_data (Constraint_system_set.find n.csys_set cs_fa) in
-      List.fold_left (fun (accu2:matchings) (transition_fa:transition) ->
-        let (lab_fa,forall,cs_fa_new) = transition_fa in
-        if not forall then accu2
+      List.fold_left (fun (accu2:matchings) (tr_fa:transition) ->
+        if not tr_fa.forall then accu2
         else
           let cs_ex_list_new =
             List.fold_left (fun (accu3:(ref_to_constraint*BijectionSet.t) list) (cs_ex,bset) ->
               let symp_ex =
                 Constraint_system.get_additional_data (Constraint_system_set.find n.csys_set cs_ex) in
-              List.fold_left (fun (accu4:(ref_to_constraint*BijectionSet.t) list) (transition_ex:transition) ->
-                let (lab_ex,forall,cs_ex_new) = transition_ex in
-                Printf.printf "> About to restrict %s to %s\n" (Label.to_string lab_fa) (Label.to_string lab_ex);
-                match BijectionSet.restrict lab_fa lab_ex bset with
+              List.fold_left (fun (accu4:(ref_to_constraint*BijectionSet.t) list) (tr_ex:transition) ->
+                Printf.printf "> About to restrict %s to %s\n" (Label.to_string tr_fa.label) (Label.to_string tr_ex.label);
+                match BijectionSet.update tr_fa.label tr_ex.label tr_fa.new_proc tr_ex.new_proc bset with
                 | None -> accu4
-                | Some bset_upd -> (cs_ex_new,bset_upd) :: accu4
+                | Some bset_upd -> (tr_ex.target,bset_upd) :: accu4
               ) accu3 symp_ex.next_transitions
             ) [] cs_ex_list in
-          (cs_fa_new,cs_ex_list_new) :: accu2
+          (tr_fa.target,cs_ex_list_new) :: accu2
       ) accu1 symp_fa.next_transitions
     ) [] n.matching in
   print_endline "[AFTER]";
@@ -564,12 +585,10 @@ let check_skeleton_in_matching (csys_set:Constraint_system_set.t) (mfe:matching_
   let (cs_fa,cs_ex_list) = mfe in
   let symp_fa = Constraint_system.get_additional_data (get cs_fa) in
   let cs_ex_list_upd =
-    List.fold_left (fun accu (cs_ex,bset) ->
+    List.rev_filter (fun (cs_ex,bset) ->
       let symp_ex = Constraint_system.get_additional_data (get cs_ex) in
-      match Configuration.check_skeleton symp_fa.conf symp_ex.conf bset with
-      | None -> accu
-      | Some bset_upd -> (cs_ex,bset_upd)::accu
-    ) [] cs_ex_list in
+      Configuration.check_skeleton symp_fa.conf symp_ex.conf bset
+    ) cs_ex_list in
   cs_fa,cs_ex_list_upd
 
 (* verification of skeletons in a partition tree node. Returns the node obtained after releasing the unchecked skeletons, after the verification has been performed.
