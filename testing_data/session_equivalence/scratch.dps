@@ -1,8 +1,9 @@
 free a,b,c.
 const alpha.
+fun f/1.
 
 let P = in(a,x); (in(b,y);out(c,c) | in(c,z);out(c,c)).
-let Q = in(c,x);out(c,x).
+let Q = in(c,x);in(c,y); out(c,y).
 
 query sess_equiv(Q,Q).
 
