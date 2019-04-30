@@ -1,9 +1,13 @@
-free c.
-/* fun h/2. */
-/* reduc h(x,x) -> x. */
+free a,b,c.
+const alpha.
 
-/* let P = in(c,x); in(c,y); out(c,h(x,y)). */
-let P = out(c,c) | out(c,c); out(c,c).
-let Q = out(c,c) | out(c,c); in(c,x).
+let P = in(a,x); (in(b,y);out(c,c) | in(c,z);out(c,c)).
+let Q = in(c,x);out(c,x).
 
-query sess_equiv(P,Q).
+query sess_equiv(Q,Q).
+
+
+/* Known issues to be addressed:
+1. skeleton checks for improper blocks (reflexivity fails with in;(in|in))
+2. an exception Not_found is raised by apply_rules_after_output when executing in(c,x);out(c,x). Not the case anymore if the output term does not contain variables.
+3. During the reflexivity check of in(a,x); (in(b,y);out(c,c) | in(c,z);out(c,c)), a Constraint_system_set.find fails. */

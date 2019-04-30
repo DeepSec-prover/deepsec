@@ -858,7 +858,7 @@ end = struct
       Printf.sprintf "Out(%s,%s)" (Symbol.display Latex ch) (Term.display Latex Protocol t)
 
   let print_trace (conf:t) : string =
-    List.fold_left (fun accu act -> accu ^ print_action act) "" conf.trace
+    List.fold_left (fun accu act -> print_action act^accu) "" conf.trace
 
   (* lifting operations on block to configurations *)
   let check_block (snd_subst:(snd_ord,axiom) Subst.t) (c:t) : bool =

@@ -68,7 +68,9 @@ end
   let find set i =
     match find_opt set i with
     | None ->
-      Config.internal_error "[equivalence_session.ml >> IndexedSet.find] Constraint system not found in table."
+      print_endline "<WARNING> Content table: ";
+      Hashtbl.iter (fun j _ -> Printf.printf "%d " j) (fst set);
+      Config.internal_error (Printf.sprintf "[equivalence_session.ml >> IndexedSet.find] Constraint system %d not found in table." i)
     | Some x -> x
   let remove (set,_) i = Hashtbl.remove set i
   let map f (set,_) =
@@ -145,7 +147,7 @@ module Constraint_system_set = struct
 
   (* removing useless constraint systems (exists-only matching no forall)
   NB. Should only be called after the transitions/status have been generated. *)
-  let clean (csys_set:t) (m:matchings) : unit =
+  let clean (csys_set:t) (m:matchings) : unit = 
     map_filter (fun i cs ->
       let symp = Constraint_system.get_additional_data cs in
       if QStatus.subsumes symp.final_status QStatus.exists &&
