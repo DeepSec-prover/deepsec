@@ -3,12 +3,10 @@ const alpha.
 fun f/1.
 
 let P = in(a,x); (in(b,y);out(c,c) | in(c,z);out(c,c)).
-let Q = in(c,x);in(c,y); out(c,y).
+let R = in(c,x); (in(c,y); out(c,x) | in(c,z); in(c,zz)).
 
-query sess_equiv(Q,Q).
+query sess_equiv(R,R).
 
 
 /* Known issues to be addressed:
-1. skeleton checks for improper blocks (reflexivity fails with in;(in|in))
-2. an exception Not_found is raised by apply_rules_after_output when executing in(c,x);out(c,x). Not the case anymore if the output term does not contain variables.
-3. During the reflexivity check of in(a,x); (in(b,y);out(c,c) | in(c,z);out(c,c)), a Constraint_system_set.find fails. */
+1. During the reflexivity check of in(a,x); (in(b,y);out(c,c) | in(c,z);out(c,c)), a Constraint_system_set.find fails. */

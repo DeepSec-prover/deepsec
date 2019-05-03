@@ -4,30 +4,17 @@ open Display
 open Process_session
 
 
-(* a status of symbolic processes. Four possible values: empty, forall, exists,
-or both. *)
-module QStatus : sig
-  type t
-  val na : t (* no status attributed *)
-  val forall : t (* the forall status *)
-  val exists : t (* the exists status *)
-  val both : t (* the forall and exists statuses *)
-  val subsumes : t -> t -> bool (* checks whether status s1 subsumes s2 *)
-  val upgrade : t -> t -> t (* gathers two statuses *)
-  val downgrade : t -> t -> t (* downgrade s1 s2 removes status s2 from s1 *)
-  val equal : t -> t -> bool (* equality of two statuses *)
-end
-= struct
-  include Set.Make(struct type t = bool let compare = compare end)
-  let na = empty
-  let forall = of_list [true]
-  let exists = of_list [false]
-  let both = of_list [true;false]
-  let subsumes s1 s2 = subset s2 s1
-  let upgrade = union
-  let downgrade = diff
-  let equal = equal
-end
+(* a status of symbolic processes in equivalence proofs *)
+type status =
+  | ForAll
+  | Exists
+  | Both
+
+let subsumes (s1:status) (s2:status) : bool =
+  s1 = Both || s1 = s2
+
+let downgrade_forall (s:status) (forall:bool) : status =
+  if forall then s else Exists
 
 
 (* type of mutable sets with implicit index. *)
@@ -39,7 +26,7 @@ module IndexedSet (O:sig type t end) : sig
   val add_new_elt : t -> O.t -> int (* adds a new element and returns the corresponding fresh index. *)
   val find : t -> int -> O.t (* same as find_opt but raises Internal_error if not found *)
   val remove : t -> int -> unit (* removes an element at a given index *)
-  val map : (O.t -> O.t) -> t -> unit (* applies a function on each element *)
+  val map : (int -> O.t -> O.t) -> t -> unit (* applies a function on each element *)
   val filter : (int -> O.t -> bool) -> t -> unit (* removes all elements whose index do not satisfy a given predicate *)
   val map_filter : (int -> O.t -> O.t option) -> t -> unit (* applies map but removes elements if the transformation returns None. *)
   val iter : (int -> O.t -> unit) -> t -> unit (* iterates an operation. NB. This operation should *not* modify the table itself. *)
@@ -74,7 +61,7 @@ end
     | Some x -> x
   let remove (set,_) i = Hashtbl.remove set i
   let map f (set,_) =
-    Hashtbl.filter_map_inplace (fun i x -> Some (f x)) set
+    Hashtbl.filter_map_inplace (fun i x -> Some (f i x)) set
   let filter f (set,_) =
     Hashtbl.filter_map_inplace (fun i x -> if f i x then Some x else None) set
   let map_filter f (set,_) = Hashtbl.filter_map_inplace f set
@@ -93,15 +80,26 @@ type transition = {
   new_proc : Labelled_process.t; (* process (normalised and labels assigned) following the executed instruction. Used for managing matchings. *)
 }
 
+let print_transition (source:ref_to_constraint) (tr:transition) : unit =
+  Printf.printf "%d -> %d (lab=%s, forall=%b) " source tr.target (Label.to_string tr.label) tr.forall
+
 type constraint_system = symbolic_process Constraint_system.t
 and symbolic_process = {
   conf : Configuration.t;
   next_transitions : transition list; (* the list of transitions from the process, including the label and the constraint system obtained after normalisation.
   NB. the boolean is set to false when the transition is only used for existential purposes *)
-  mutable status : QStatus.t; (* indicates what kind of transitions have already been generated *)
-  final_status : QStatus.t; (* indicates what kind of transitions are expected to be generated *)
+  status : status; (* indicates what kind of transitions are expected to be generated *)
 }
 
+let print_status (c:constraint_system) : unit =
+  let symp = Constraint_system.get_additional_data c in
+  let print s =
+    print_string (match s with
+      | ForAll -> "A"
+      | Exists -> "E"
+      | Both -> "AE"
+    ) in
+  print symp.status
 
 type matching_forall_exists =
   ref_to_constraint * (ref_to_constraint * BijectionSet.t) list
@@ -117,11 +115,8 @@ let print_matching (m:matchings) : unit =
   ) m
 
 
-(* removes the matchings involving an index i *)
-let remove_matches (accu:matchings) (i:ref_to_constraint) : matchings =
-  List.rev_filter (fun (cs_fa,cs_ex_l) ->
-    cs_fa <> i && List.for_all (fun (cs_ex,_) -> cs_ex <> i) cs_ex_l
-  ) accu
+
+exception Not_Session_Equivalent of constraint_system
 
 module Constraint_system_set = struct
   include IndexedSet(struct type t = constraint_system end)
@@ -131,42 +126,51 @@ module Constraint_system_set = struct
   let cast (csys_set:t) : int Constraint_system.Set.t =
     Constraint_system.Set.of_list (elements (fun x cs -> Constraint_system.replace_additional_data cs x) csys_set)
 
-  (* inverse operation: restrains a partition node based on the result of the
-  constraint solver. *)
-  let decast (baseline:t) (matching:matchings) (csys_set:int Constraint_system.Set.t) : t * matchings =
+  (* removes the matchings involving an index i. Returns a faulty index in case an attack is found *)
+  let remove_matches (m:matchings) (to_remove:ref_to_constraint list) : matchings * ref_to_constraint option =
+    let rec update accu m =
+      match m with
+      | [] -> accu,None
+      | (cs_fa,cs_ex_list) :: t ->
+        if List.mem cs_fa to_remove then update accu t
+        else
+          match List.filter (fun (cs_ex,_) -> not (List.mem cs_ex to_remove)) cs_ex_list with
+          | [] -> [],Some cs_fa
+          | cs_ex_list_new -> update ((cs_fa,cs_ex_list_new)::accu) t in
+    update [] m
+
+  (* inverse operation: restrains a partition node based on the result of the constraint solver. Raises Not_Session_Equivalent if an attack is found. *)
+  let decast (baseline:t) (matching:matchings) (csys_set:ref_to_constraint Constraint_system.Set.t) : t * matchings =
     let res = copy baseline in
-    let accu = ref matching in
+    let indexes_to_remove = ref [] in
     map_filter (fun i cs ->
       match Constraint_system.Set.find (fun cs -> i = Constraint_system.get_additional_data cs) csys_set with
-      | None -> accu := remove_matches !accu i; None
+      | None ->
+        indexes_to_remove := i :: !indexes_to_remove;
+        None
       | Some cs_upd ->
         let add_data = Constraint_system.get_additional_data cs in
         Some (Constraint_system.replace_additional_data cs_upd add_data)
     ) res;
-    res,!accu
+    match remove_matches matching !indexes_to_remove with
+    | _, Some index -> raise (Not_Session_Equivalent (find res index))
+    | cleared_matching, None -> res,cleared_matching
 
-  (* removing useless constraint systems (exists-only matching no forall)
-  NB. Should only be called after the transitions/status have been generated. *)
-  let clean (csys_set:t) (m:matchings) : unit = 
-    map_filter (fun i cs ->
+  (* removing useless constraint systems (exists-only matching no forall) *)
+  let clean (csys_set:t) (m:matchings) : unit =
+    let useless_existential_index index =
+      List.for_all (fun (_,cs_ex_list) ->
+        List.for_all (fun (cs_ex,_) -> cs_ex <> index) cs_ex_list
+      ) m in
+    map_filter (fun index cs ->
       let symp = Constraint_system.get_additional_data cs in
-      if QStatus.subsumes symp.final_status QStatus.exists &&
-         List.for_all (fun (_,cs_ex_list) ->
-           List.for_all (fun (cs_ex,_) -> cs_ex <> i) cs_ex_list
-         ) m then
-        let new_status =
-          QStatus.downgrade symp.final_status QStatus.exists in
-        if QStatus.equal new_status QStatus.na then None
-        else (
-          Config.debug (fun () ->
-            if not (QStatus.equal new_status QStatus.forall) then
-              Config.internal_error "[equivalence_session >> Constraint_system_set.clean] Unexpected case."
-          );
-          symp.status <- new_status;
-          let css = Constraint_system.replace_additional_data cs {symp with final_status = new_status} in
-          Some css
-        )
-      else Some cs
+      match symp.status with
+      | Exists
+      | Both when useless_existential_index index ->
+        if symp.status = Exists then None
+        else
+          Some (Constraint_system.replace_additional_data cs {symp with status = ForAll})
+      | _ -> Some cs
     ) csys_set
 
   (* remove configurations with unauthorised blocks, and returns the updated
@@ -184,17 +188,49 @@ end
 type partition_tree_node = {
   csys_set : Constraint_system_set.t;
   matching : matchings;
-  size_frame : int
+  size_frame : int;
+  id : string; (* only for debugging purposes *)
 }
+
+let fresh_id =
+  let x = ref (-1) in
+  fun () -> incr x; Printf.sprintf "n%d" !x
+
+let print_node (n:partition_tree_node) : unit =
+  Printf.printf ">> Data node (id=%s):\n" n.id;
+  Printf.printf "indexes: ";
+  Constraint_system_set.iter (fun id csys ->
+    Printf.printf "%d [Status " id;
+    print_status csys;
+    print_string "] "
+  ) n.csys_set;
+  Printf.printf "\nsize frame: %d\nmatchings: " n.size_frame;
+  List.iter (fun (i,l) ->
+    Printf.printf "%d->[%s ]; " i (List.fold_left (fun s (j,_) ->
+      Printf.sprintf "%s %d" s j
+    ) "" l)
+  ) n.matching;
+  print_endline ""
 
 
 (* a symbolic process with non-generated transitions *)
-let new_symbolic_process (conf:Configuration.t) (final_status:QStatus.t) : symbolic_process = {
+let new_symbolic_process (conf:Configuration.t) (status:status) : symbolic_process = {
   conf = conf;
   next_transitions = [];
-  status = QStatus.na;
-  final_status = final_status;
+  status = status;
 }
+
+(*
+(* adds a transition in a list (and upgrades it if it already exists) *)
+let rec upgrade_transition_in_set (transition:transition) (accu:transition list) : transition list =
+  let rec upgrade memo l =
+    match l with
+    | [] -> accu
+    | tr :: t ->
+      if transition.label = tr.label then
+        {transition with forall = transition.forall || tr.forall} :: List.rev_append memo t
+      else upgrade (tr::memo) t in
+  upgrade [] accu *)
 
 
 
@@ -203,7 +239,7 @@ case of an output of 'term' bound to axiom 'ax', to be normalised in
 configuration 'conf' to update constraint system 'cs' of first-order solution
 'eqn', all that for a transition of type 'status'. The resulting transitions
 are stored in 'csys_set' and 'accu'. *)
-let add_transition_output (csys_set:Constraint_system_set.t) (accu:transition list ref) (forall:bool) (conf:Configuration.t) (eqn:(fst_ord, Term.name) Subst.t) (cs:constraint_system) (ax:axiom) (od:Labelled_process.output_data) (new_status:QStatus.t) : unit =
+let add_transition_output (csys_set:Constraint_system_set.t) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord, Term.name) Subst.t) (cs:constraint_system) (ax:axiom) (od:Labelled_process.output_data) (new_status:status) : unit =
   Configuration.normalise ~context:od.context od.lab conf eqn (fun gather conf_norm new_proc ->
     let equations = Labelled_process.Normalise.equations gather in
     let disequations = Labelled_process.Normalise.disequations gather in
@@ -222,7 +258,7 @@ let add_transition_output (csys_set:Constraint_system_set.t) (accu:transition li
       let transition = {
         target = Constraint_system_set.add_new_elt csys_set cs4;
         label = od.lab;
-        forall = forall;
+        forall = od.optim;
         new_proc = new_proc;
       } in
       accu := transition :: !accu
@@ -238,7 +274,7 @@ let add_transition_start (csys_set:Constraint_system_set.t) (accu:transition lis
     try
       let cs1 = Constraint_system.apply_substitution cs equations in
       let cs2 = Constraint_system.add_disequations cs1 disequations in
-      let cs3 = Constraint_system.replace_additional_data cs2 (new_symbolic_process conf_norm QStatus.both) in
+      let cs3 = Constraint_system.replace_additional_data cs2 (new_symbolic_process conf_norm Both) in
 
       let transition = {
         target = Constraint_system_set.add_new_elt csys_set cs3;
@@ -253,7 +289,7 @@ let add_transition_start (csys_set:Constraint_system_set.t) (accu:transition lis
 
 (* normalising configurations and constructing next_transitions: case of a focused input on variable 'x' and second-order var_X, to be normalised in configuration 'conf' to update constraint system 'cs' of additional data 'symp' and first-order solution 'eqn', all that for a transition of type 'status'.
 The resulting constraint_system is added to 'accu'.*)
-let add_transition_input (csys_set:Constraint_system_set.t) (accu:transition list ref) (forall:bool) (conf:Configuration.t) (eqn:(fst_ord,Term.name) Subst.t) (cs:constraint_system) (var_X:snd_ord_variable) (idata:Labelled_process.input_data) (new_status:QStatus.t) : unit =
+let add_transition_input (csys_set:Constraint_system_set.t) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord,Term.name) Subst.t) (cs:constraint_system) (var_X:snd_ord_variable) (idata:Labelled_process.input_data) (new_status:status) : unit =
   Configuration.normalise idata.lab conf eqn (fun gather conf_norm new_proc ->
     let equations = Labelled_process.Normalise.equations gather in
     let disequations = Labelled_process.Normalise.disequations gather in
@@ -273,7 +309,7 @@ let add_transition_input (csys_set:Constraint_system_set.t) (accu:transition lis
       let transition = {
         target = Constraint_system_set.add_new_elt csys_set cs4;
         label = idata.lab;
-        forall = forall;
+        forall = idata.optim;
         new_proc = new_proc;
       } in
       accu := transition :: !accu
@@ -282,14 +318,75 @@ let add_transition_input (csys_set:Constraint_system_set.t) (accu:transition lis
   )
 
 
-let not_generated (symp:symbolic_process) (s:QStatus.t) : bool =
-  QStatus.subsumes symp.final_status s && not (QStatus.subsumes symp.status s)
+(* dummy variables for default cases (to handle variable sharing between generate_next_transitions_exists and generate_next_transitions_forall). Should never be actually used as arguments of functions. *)
+type vars = {
+  snd_ord : snd_ord_variable option;
+  axiom : axiom option;
+}
+let get_snd_ord ?calling:(s="get_snd_ord") (v:vars) : snd_ord_variable =
+  match v.snd_ord with
+    | None ->
+      Config.internal_error (Printf.sprintf "[process_session.ml >> %s] Missing second-order variable in argument." s)
+    | Some x -> x
+
+let get_axiom ?calling:(s="get_axiom") (v:vars) : axiom =
+  match v.axiom with
+    | None ->
+      Config.internal_error (Printf.sprintf "[process_session.ml >> %s] Missing axiom in argument." s)
+    | Some x -> x
 
 
+let generate_next_transitions (status:status) (v:vars) (type_of_transition:Configuration.Transition.kind option) (csys_set:Constraint_system_set.t) (cs:constraint_system) : transition list =
+  let symp = Constraint_system.get_additional_data cs in
+  let accu : transition list ref = ref [] in
+  begin match type_of_transition with
+  | None -> ()
+  | Some RStart ->
+    let conf = Configuration.Transition.apply_start symp.conf in
+    let eqn = Constraint_system.get_substitution_solution Protocol cs in
+    add_transition_start csys_set accu conf eqn cs symp Label.initial
+  | Some RNeg ->
+    let ax = get_axiom v in
+    List.iter_with_memo (fun proc memo ->
+      List.iter (fun (pp,output_data) ->
+        let conf =
+          Configuration.Transition.apply_neg ax pp output_data memo symp.conf in
+        let eqn =
+          Constraint_system.get_substitution_solution Protocol cs in
+        let next_status =
+          downgrade_forall status output_data.optim in
+        add_transition_output csys_set accu conf eqn cs ax output_data next_status
+      ) (Labelled_process.unfold_output ~optim:(status=ForAll) proc)
+    ) (Configuration.outputs symp.conf)
+  | Some RFocus ->
+    let var_X = get_snd_ord v in
+    let potential_focuses =
+      Labelled_process.unfold_input ~optim:(status=ForAll) (Configuration.inputs symp.conf) in
+    List.iter (fun focus ->
+      let conf_exec =
+        Configuration.Transition.apply_focus var_X focus symp.conf in
+      let eqn =
+        Constraint_system.get_substitution_solution Protocol cs in
+      let next_status =
+        downgrade_forall status (snd focus).optim in
+      add_transition_input csys_set accu conf_exec eqn cs var_X (snd focus) next_status
+    ) potential_focuses
+  | Some RPos ->
+    let var_X = get_snd_ord v in
+    let (idata,conf_exec) =
+      Configuration.Transition.apply_pos var_X symp.conf in
+    let eqn =
+      Constraint_system.get_substitution_solution Protocol cs in
+    let next_status =
+      downgrade_forall status idata.optim in
+    add_transition_input csys_set accu conf_exec eqn cs var_X idata next_status end;
+  !accu
+
+(*
 (* generates the forall-quantified transitions from a given constraint system.
 This function may be called on a systems where such transitions have already
 been generated. *)
-let generate_next_transitions_forall (type_of_transition:Configuration.Transition.kind option) (csys_set:Constraint_system_set.t) (accu:transition list ref) (size_frame:int) (cs:constraint_system) : unit =
+let generate_next_transitions_forall (v:vars) (type_of_transition:Configuration.Transition.kind option) (csys_set:Constraint_system_set.t) (accu:transition list ref) (cs:constraint_system) : unit =
   let symp = Constraint_system.get_additional_data cs in
   Config.debug (fun () ->
     if QStatus.subsumes symp.status QStatus.exists then
@@ -305,7 +402,7 @@ let generate_next_transitions_forall (type_of_transition:Configuration.Transitio
       let eqn = Constraint_system.get_substitution_solution Protocol cs in
       add_transition_start csys_set accu conf eqn cs symp Label.initial
     | Some RNeg ->
-      let ax = Axiom.create (size_frame+1) in
+      let ax = get_axiom v in
       let outputs = Configuration.outputs symp.conf in
       let (pp,output_data) =
         List.hd (Labelled_process.unfold_output ~at_most:1 (List.hd outputs)) in
@@ -314,8 +411,7 @@ let generate_next_transitions_forall (type_of_transition:Configuration.Transitio
       let eqn = Constraint_system.get_substitution_solution Protocol cs in
       add_transition_output csys_set accu true conf eqn cs ax output_data QStatus.forall
     | Some RFocus ->
-      let var_X =
-        Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
+      let var_X = get_snd_ord v in
       let potential_focuses =
         Labelled_process.unfold_input ~allow_channel_renaming:true (Configuration.inputs symp.conf) in
       List.iter (fun focus ->
@@ -325,8 +421,7 @@ let generate_next_transitions_forall (type_of_transition:Configuration.Transitio
         add_transition_input csys_set accu true conf_exec eqn cs var_X (snd focus) QStatus.forall
       ) potential_focuses
     | Some RPos ->
-      let var_X =
-        Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
+      let var_X = get_snd_ord v in
       let (idata,conf_exec) =
         Configuration.Transition.apply_pos var_X symp.conf in
       let eqn = Constraint_system.get_substitution_solution Protocol cs in
@@ -341,18 +436,20 @@ let generate_next_transitions_forall (type_of_transition:Configuration.Transitio
 (* generates the exists-quantified transitions from a given constraint system.
 NB. This function should only be called after generate_next_transitions_forall
 has generated the forall-transitions. *)
-let generate_next_transitions_exists (type_of_transition:Configuration.Transition.kind option) (csys_set:Constraint_system_set.t) (accu:transition list ref) (size_frame:int) (cs:constraint_system) : unit =
+let generate_next_transitions_exists (v:vars) (type_of_transition:Configuration.Transition.kind option) (csys_set:Constraint_system_set.t) (accu:transition list ref) (cs:constraint_system) : unit =
   let symp = Constraint_system.get_additional_data cs in
   let new_status = QStatus.upgrade symp.status QStatus.exists in
-  let not_already_generated lp =
-    let lab = Labelled_process.get_label lp in
-    List.for_all (fun tr -> lab <> tr.label) symp.next_transitions in
+  let not_already_generated lab =
+    let res = List.for_all (fun tr -> lab <> tr.label) !accu in
+    if res then Printf.printf "%s not already generated\n" (Label.to_string lab)
+    else Printf.printf "%s already generated\n" (Label.to_string lab);
+    res in
   let generate () =
     match type_of_transition with
     | None
     | Some RStart -> () (* already generated by the forall *)
     | Some RNeg ->
-      let ax = Axiom.create (size_frame+1) in
+      let ax = get_axiom v in
       List.iter_with_memo (fun proc memo ->
         List.iter (fun (pp,output_data) ->
           let conf =
@@ -365,8 +462,7 @@ let generate_next_transitions_exists (type_of_transition:Configuration.Transitio
     | Some RFocus ->
       let potential_focuses =
         Labelled_process.unfold_input ~filter:not_already_generated ~allow_channel_renaming:false (Configuration.inputs symp.conf) in
-      let var_X =
-        Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
+      let var_X = get_snd_ord v in
       List.iter (fun focus ->
         let conf_exec =
           Configuration.Transition.apply_focus var_X focus symp.conf in
@@ -374,36 +470,63 @@ let generate_next_transitions_exists (type_of_transition:Configuration.Transitio
         add_transition_input csys_set accu false conf_exec eqn cs var_X (snd focus) new_status
       ) potential_focuses
     | Some RPos ->
-      let var_X =
-        Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
+      let var_X = get_snd_ord v in
       let (idata,conf_exec) =
         Configuration.Transition.apply_pos var_X symp.conf in
       let eqn = Constraint_system.get_substitution_solution Protocol cs in
-      add_transition_input csys_set accu false conf_exec eqn cs var_X idata new_status in
+      (* if not_already_generated idata.lab then *)
+        add_transition_input csys_set accu false conf_exec eqn cs var_X idata new_status in
 
   if not_generated symp QStatus.exists then (
     generate();
     symp.status <- new_status
-  )
+  ) *)
 
 
-(* calls the two previous functions in the right order *)
-let generate_next_transitions (transition_type:Configuration.Transition.kind option) (csys_set:Constraint_system_set.t) (size_frame:int) (cs:constraint_system) : transition list =
-  let accu : transition list ref = ref [] in
-  generate_next_transitions_forall transition_type csys_set accu size_frame cs;
-  generate_next_transitions_exists transition_type csys_set accu size_frame cs;
-  !accu
 
-
-(* determines the type of the next transitions of a constraint system set.
-Assuming the invariant that skeleton checks are performed along the equivalence
-verification, the result is the same for all element of a partition tree node *)
-let determine_next_transition (n:partition_tree_node) : Configuration.Transition.kind option =
-  if Constraint_system_set.is_empty n.csys_set then None
+(* determines the type of the next transitions of a constraint system set, and generates the corresponding second-order variable or axiom. *)
+let determine_next_transition (n:partition_tree_node) : Configuration.Transition.kind option * vars =
+  if Constraint_system_set.is_empty n.csys_set then
+    None, {snd_ord = None; axiom = None}
   else
     let csys = Constraint_system_set.choose n.csys_set in
     let symp = Constraint_system.get_additional_data csys in
-    Configuration.Transition.next symp.conf
+    let trans = Configuration.Transition.next symp.conf in
+    match trans with
+    | None
+    | Some RStart -> trans, {snd_ord = None; axiom = None}
+    | Some RFocus
+    | Some RPos ->
+      let new_var =
+        Variable.fresh Recipe Free (Variable.snd_ord_type n.size_frame) in
+      Printf.printf "Generates new variable: %s\n" (Variable.display Latex Recipe new_var);
+      trans, {snd_ord = Some new_var; axiom = None}
+    | Some RNeg ->
+      trans, {snd_ord = None; axiom = Some (Axiom.create (n.size_frame+1))}
+
+
+
+(* releases skeletons and removes improper blocks *)
+let release_skeleton (n:partition_tree_node) : partition_tree_node =
+  let improper_indexes = ref [] in
+  Constraint_system_set.map_filter (fun index csys ->
+    let symp = Constraint_system.get_additional_data csys in
+    match Configuration.release_skeleton symp.conf with
+    | None ->
+      Printf.printf "improper index spotted %d\n" index;
+      improper_indexes := index :: !improper_indexes;
+      None
+    | Some conf_rel ->
+      Some (Constraint_system.replace_additional_data csys {symp with conf = conf_rel})
+  ) n.csys_set;
+  let improper_indexes = !improper_indexes in
+  let cleared_matching =
+    List.rev_filter (fun (cs_fa,_) -> not (List.mem cs_fa improper_indexes)) n.matching in
+  {n with matching = cleared_matching}
+
+(* applies Constraint_system_set.clean to a node *)
+let clean_node (n:partition_tree_node) : unit =
+  Constraint_system_set.clean n.csys_set n.matching
 
 
 (* From a partition tree node, generates the transitions and creates a new
@@ -411,26 +534,36 @@ node with all the resulting processes inside. A
 NB. The constraint solving and the skeleton checks remain to be done after this
 function call. *)
 let generate_next_node (n:partition_tree_node) : Configuration.Transition.kind option * partition_tree_node =
-  print_endline "HELLLLOOOO";
+  let new_id = fresh_id () in
+  Printf.printf "GENERATE NEXT NODE (id father: %s, id new node before split: %s)\n" n.id new_id;
 
   (** Generation of the transitions **)
   let new_csys_set : Constraint_system_set.t = Constraint_system_set.empty() in
-  let trans = determine_next_transition n in
-  Constraint_system_set.map (fun csys ->
+  let (trans,vars) = determine_next_transition n in
+  Constraint_system_set.map (fun i csys ->
     let symp =
       Constraint_system.get_additional_data csys in
     let next_transitions =
-      generate_next_transitions trans new_csys_set n.size_frame csys in
+      generate_next_transitions symp.status vars trans new_csys_set csys in
+    Printf.printf "generated transitions: ";
+    List.iter (print_transition i) next_transitions;
+    print_endline "";
     Constraint_system.replace_additional_data csys {symp with
       next_transitions = next_transitions
     }
   ) n.csys_set;
 
   (** update of the matching **)
-  print_endline "[BEFORE]:\nCurrent indexes: ";
-  List.iter (fun (i,_) -> Printf.printf "%d " i) n.matching;
-  print_endline "\nand the matching is:";
-  print_matching n.matching;
+  (* print_endline "[BEFORE]:\nCurrent indexes: "; *)
+  (* List.iter (fun (i,_) -> Printf.printf "%d " i) n.matching; *)
+  (* print_endline "\nand the matching is:"; *)
+  (* print_matching n.matching; *)
+  let get_conf i =
+    let cs = Constraint_system_set.find new_csys_set i in
+    (Constraint_system.get_additional_data cs).conf in
+  let skel_check i j =
+    Configuration.check_skeleton (get_conf i) (get_conf j) in
+
   let new_matchings =
     List.fold_left (fun (accu1:matchings) (cs_fa,cs_ex_list) ->
       let symp_fa =
@@ -443,24 +576,24 @@ let generate_next_node (n:partition_tree_node) : Configuration.Transition.kind o
               let symp_ex =
                 Constraint_system.get_additional_data (Constraint_system_set.find n.csys_set cs_ex) in
               List.fold_left (fun (accu4:(ref_to_constraint*BijectionSet.t) list) (tr_ex:transition) ->
-                Printf.printf "> About to restrict %s to %s\n" (Label.to_string tr_fa.label) (Label.to_string tr_ex.label);
+                (* Printf.printf "> About to restrict %s to %s\n" (Label.to_string tr_fa.label) (Label.to_string tr_ex.label); *)
                 match BijectionSet.update tr_fa.label tr_ex.label tr_fa.new_proc tr_ex.new_proc bset with
-                | None -> accu4
-                | Some bset_upd -> (tr_ex.target,bset_upd) :: accu4
+                | Some bset_upd when skel_check tr_fa.target tr_ex.target ->
+                  (tr_ex.target,bset_upd) :: accu4
+                | _ -> accu4
               ) accu3 symp_ex.next_transitions
             ) [] cs_ex_list in
           (tr_fa.target,cs_ex_list_new) :: accu2
       ) accu1 symp_fa.next_transitions
     ) [] n.matching in
-  print_endline "[AFTER]";
-  print_matching new_matchings;
+  (* print_endline "[AFTER]"; *)
+  (* print_matching new_matchings; *)
 
 
   (** final node **)
-  Constraint_system_set.clean new_csys_set new_matchings;
-  trans,{n with csys_set = new_csys_set; matching = new_matchings}
-
-
+  let new_node = {n with csys_set = new_csys_set; matching = new_matchings; id = new_id} in
+  clean_node new_node;
+  trans,release_skeleton new_node
 
 
 
@@ -543,15 +676,16 @@ let split_partition_tree_node (n:partition_tree_node) (f_cont:partition_tree_nod
     Constraint_system_set.filter (fun i _ ->
       Graph.ConnectedComponent.mem i c
     ) csys_set;
-    {n with csys_set = csys_set; matching = m} in
+    {n with csys_set = csys_set; matching = m; id = fresh_id()} in
 
 
-  let rec branch_on_nodes l f_next1 =
+  let rec branch_on_nodes l f_next =
     match l with
     | [] -> f_next()
     | (m,c) :: t ->
       let node = replace_data m c in
-      f_cont node (fun () -> branch_on_nodes t f_next1) in
+      Printf.printf "TREATING NODE %s (split from %s, %d remaining after that)\n" node.id n.id (List.length t);
+      f_cont node (fun () -> branch_on_nodes t f_next) in
 
   branch_on_nodes new_node_data f_next
 
@@ -571,61 +705,27 @@ let string_of_result (res:result_analysis) : string =
       Configuration.print_trace symp.conf
     )
 
-exception Not_Session_Equivalent of constraint_system
+
 
 (* condition under which a partition tree node induces an attack on equivalence by session. Returns the index of the incriminated constraint system, if any. *)
-let verify_violation_equivalence (matching:matchings) (csys_set:Constraint_system_set.t) : unit =
-  match List.find_opt (fun (cs_fa,cs_ex_l) -> cs_ex_l = []) matching with
+(* let verify_violation_equivalence (n:partition_tree_node) : unit =
+  match List.find_opt (fun (cs_fa,cs_ex_l) -> cs_ex_l = []) n.matching with
   | None -> ()
   | Some (cs_fa,_) ->
-    raise (Not_Session_Equivalent (Constraint_system_set.find csys_set cs_fa))
-
-
-(* verification of skeletons in a matching structure *)
-let check_skeleton_in_matching (csys_set:Constraint_system_set.t) (mfe:matching_forall_exists) : matching_forall_exists =
-  let get i = Constraint_system_set.find csys_set i in
-  let (cs_fa,cs_ex_list) = mfe in
-  let symp_fa = Constraint_system.get_additional_data (get cs_fa) in
-  let cs_ex_list_upd =
-    List.rev_filter (fun (cs_ex,bset) ->
-      let symp_ex = Constraint_system.get_additional_data (get cs_ex) in
-      Configuration.check_skeleton symp_fa.conf symp_ex.conf bset
-    ) cs_ex_list in
-  cs_fa,cs_ex_list_upd
-
-(* verification of skeletons in a partition tree node. Returns the node obtained after releasing the unchecked skeletons, after the verification has been performed.
-Raises Not_Session_Equivalent if an equivalence failure is spotted during the skeleton check. *)
-let check_skeleton_in_node (n:partition_tree_node) : partition_tree_node =
-  let get i = Constraint_system_set.find n.csys_set i in
-  let new_matchings =
-    List.rev_map (fun mfe ->
-      match check_skeleton_in_matching n.csys_set mfe with
-      | cs_fa,[] -> raise (Not_Session_Equivalent (get cs_fa))
-      | mfe_upd -> mfe_upd
-    ) n.matching in
-  Constraint_system_set.map (fun csys ->
-    let symp = Constraint_system.get_additional_data csys in
-    Constraint_system.replace_additional_data csys {symp with conf = Configuration.release_skeleton symp.conf}
-  ) n.csys_set;
-  {n with matching = new_matchings}
+    raise (Not_Session_Equivalent (Constraint_system_set.find n.csys_set cs_fa)) *)
 
 
 
 (** operations to perform on a node after the constraint solving **)
 
-(* removes useless elements from the node after the constraint solving, and performing skeleton checks *)
-let final_skeleton_check node csys_set =
+(* removes useless elements from the node after the constraint solving, and verify is the node is an attack node *)
+let decast (node:partition_tree_node) (csys_set:int Constraint_system.Set.t) : partition_tree_node =
   let (csys_set_decast,matching_decast) =
     Constraint_system_set.decast node.csys_set node.matching csys_set in
-  verify_violation_equivalence matching_decast csys_set_decast;
-  let node_decast =
-    {node with csys_set = csys_set_decast; matching = matching_decast} in
-  let node_checked = check_skeleton_in_node node_decast in
-  Constraint_system_set.clean node_checked.csys_set node_checked.matching;
-  node_checked
+  {node with csys_set = csys_set_decast; matching = matching_decast}
 
 (* removes (forall-quantified) constraint systems with unauthorised blocks *)
-let final_cleaning node csys_set =
+let remove_unauthorised_blocks (node:partition_tree_node) (csys_set:int Constraint_system.Set.t) : partition_tree_node =
   let csys_set_opt =
     Constraint_system.Set.optimise_snd_ord_recipes csys_set in
   let csys = Constraint_system.Set.choose csys_set_opt in
@@ -637,20 +737,30 @@ let final_cleaning node csys_set =
 (* construction of the successor nodes of a partition tree. This includes generating the next transitions, normalising the symbolic processes, applying the internal constraint solver (to split in different nodes non statically equivalent constraint systems), and performing skeleton checks/block-authorisation checks on the resulting nodes.
 NB. The continuations f_cont and f_next respectively link to recursive calls to apply_one_transition_and_rules, and to the final operations of the procedure. *)
 let apply_one_transition_and_rules (n:partition_tree_node) (f_cont:partition_tree_node->(unit->unit)->unit) (f_next:unit->unit) : unit =
+  print_node n;
   let (transition_type,node_to_split) = generate_next_node n in
+  print_endline "ready to split";
   split_partition_tree_node node_to_split (fun node f_next1 ->
+    Printf.printf "Node after split:";
+    print_node node;
     let csys_set = Constraint_system_set.cast node.csys_set in
     match transition_type with
     | None ->
+      print_endline "***************************************\n>> Rule None\n***************************************";
       (* the end of the trace: one verifies that equivalence is not violated, which concludes the analysis of this branch. *)
-      verify_violation_equivalence node.matching node.csys_set;
+      let _ = decast node in
       f_next1 ()
     | Some RStart ->
       print_endline "***************************************\n>> Rule RStart\n***************************************";
       (* very beginning of the analysis: only a skeleton check is needed before moving on to the constructing the successor nodes (no unauthorised blocks possible). *)
       Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
-        let final_node = final_skeleton_check node csys_set in
-        f_cont final_node f_next2
+        print_string ">> indexes after constraint solving: ";
+        Constraint_system.Set.iter (fun cs ->
+          Printf.printf "%d " (Constraint_system.get_additional_data cs)
+        ) csys_set;
+        print_endline "";
+        let node_decast = decast node csys_set in
+        f_cont node_decast f_next2
       ) csys_set f_next1
     | Some RFocus ->
       print_endline "***************************************\n>> Rule RFocus\n***************************************";
@@ -658,8 +768,8 @@ let apply_one_transition_and_rules (n:partition_tree_node) (f_cont:partition_tre
       Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
         if Constraint_system.Set.is_empty csys_set then f_next2()
         else
-          let node_checked = final_skeleton_check node csys_set in
-          let final_node = final_cleaning node_checked csys_set in
+          let node_decast = decast node csys_set in
+          let final_node = remove_unauthorised_blocks node_decast csys_set in
           f_cont final_node f_next2
       ) csys_set f_next1
     | Some RPos ->
@@ -668,8 +778,8 @@ let apply_one_transition_and_rules (n:partition_tree_node) (f_cont:partition_tre
       Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
         if Constraint_system.Set.is_empty csys_set then f_next2()
         else
-          let node_checked = final_skeleton_check node csys_set in
-          let final_node = final_cleaning node_checked csys_set in
+          let node_decast = decast node csys_set in
+          let final_node = remove_unauthorised_blocks node_decast csys_set in
           f_cont final_node f_next2
       ) csys_set f_next1
     | Some RNeg ->
@@ -678,8 +788,8 @@ let apply_one_transition_and_rules (n:partition_tree_node) (f_cont:partition_tre
       Constraint_system.Rule.apply_rules_after_output false (fun csys_set f_next2 ->
         if Constraint_system.Set.is_empty csys_set then f_next2()
         else
-          let node_checked = final_skeleton_check node csys_set in
-          let final_node = final_cleaning node_checked csys_set in
+          let node_decast = decast node csys_set in
+          let final_node = remove_unauthorised_blocks node_decast csys_set in
           f_cont {final_node with size_frame = node.size_frame+1} f_next2
       ) csys_set f_next1
   ) f_next
@@ -692,8 +802,8 @@ let equivalence (conf1:Configuration.t) (conf2:Configuration.t) : result_analysi
   Rewrite_rules.initialise_skeletons ();
   Data_structure.Tools.initialise_constructor ();
 
-  let symp1 = new_symbolic_process conf1 QStatus.both in
-  let symp2 = new_symbolic_process conf2 QStatus.both in
+  let symp1 = new_symbolic_process conf1 Both in
+  let symp2 = new_symbolic_process conf2 Both in
 
   let csys1 = Constraint_system.empty symp1 in
   let csys2 = Constraint_system.empty symp2 in
@@ -709,6 +819,7 @@ let equivalence (conf1:Configuration.t) (conf2:Configuration.t) : result_analysi
       index2, [index1,BijectionSet.initial]
     ];
     size_frame = 0;
+    id = fresh_id();
   } in
 
   (* rule application *)
