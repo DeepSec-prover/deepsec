@@ -127,7 +127,7 @@ module Constraint_system_set = struct
   let cast (csys_set:t) : int Constraint_system.Set.t =
     Constraint_system.Set.of_list (elements (fun x cs -> Constraint_system.replace_additional_data cs x) csys_set)
 
-  (* removes the matchings involving an index i. Returns a faulty index in case an attack is found *)
+  (* removes the matchings involving an index i. Also checks for attacks, returning a faulty index in case there is one. *)
   let remove_matches (m:matchings) (to_remove:ref_to_constraint list) : matchings * ref_to_constraint option =
     let rec update accu m =
       match m with
@@ -500,7 +500,7 @@ let generate_next_node (n:partition_tree_node) : Configuration.Transition.kind o
   (** final node **)
   let new_node = {n with csys_set = new_csys_set; matching = new_matchings; id = new_id} in
   clean_node new_node;
-  trans,release_skeleton new_node
+  trans,new_node
 
 
 
@@ -629,8 +629,7 @@ let string_of_result (res:result_analysis) : string =
 let decast (node:partition_tree_node) (csys_set:int Constraint_system.Set.t) : partition_tree_node =
   let (csys_set_decast,matching_decast) =
     Constraint_system_set.decast node.csys_set node.matching csys_set in
-  let n = {node with csys_set = csys_set_decast; matching = matching_decast} in
-  n
+  {node with csys_set = csys_set_decast; matching = matching_decast}
 
 (* removes (forall-quantified) constraint systems with unauthorised blocks *)
 let remove_unauthorised_blocks (node:partition_tree_node) (csys_set:int Constraint_system.Set.t) : partition_tree_node =
@@ -666,7 +665,8 @@ let apply_one_transition_and_rules (n:partition_tree_node) (f_cont:partition_tre
         ) csys_set;
         print_endline "";
         let node_decast = decast node csys_set in
-        f_cont node_decast f_next2
+        let final_node = release_skeleton node_decast in
+        f_cont final_node f_next2
       ) csys_set f_next1
     | Some RFocus ->
       (* focus and execution of an input. *)
@@ -674,7 +674,8 @@ let apply_one_transition_and_rules (n:partition_tree_node) (f_cont:partition_tre
         if Constraint_system.Set.is_empty csys_set then f_next2()
         else
           let node_decast = decast node csys_set in
-          let final_node = remove_unauthorised_blocks node_decast csys_set in
+          let node_autho = remove_unauthorised_blocks node_decast csys_set in
+          let final_node = release_skeleton node_autho in
           f_cont final_node f_next2
       ) csys_set f_next1
     | Some RPos ->
@@ -683,7 +684,8 @@ let apply_one_transition_and_rules (n:partition_tree_node) (f_cont:partition_tre
         if Constraint_system.Set.is_empty csys_set then f_next2()
         else
           let node_decast = decast node csys_set in
-          let final_node = remove_unauthorised_blocks node_decast csys_set in
+          let node_autho = remove_unauthorised_blocks node_decast csys_set in
+          let final_node = release_skeleton node_autho in
           f_cont final_node f_next2
       ) csys_set f_next1
     | Some RNeg ->
@@ -692,7 +694,8 @@ let apply_one_transition_and_rules (n:partition_tree_node) (f_cont:partition_tre
         if Constraint_system.Set.is_empty csys_set then f_next2()
         else
           let node_decast = decast node csys_set in
-          let final_node = remove_unauthorised_blocks node_decast csys_set in
+          let node_autho = remove_unauthorised_blocks node_decast csys_set in
+          let final_node = release_skeleton node_autho in
           f_cont {final_node with size_frame = node.size_frame+1} f_next2
       ) csys_set f_next1
   ) f_next
