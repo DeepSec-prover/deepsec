@@ -1096,7 +1096,6 @@ end = struct
   let release_skeleton (c:t) : t option =
     match c.focused_proc, c.sure_unchecked_skeletons with
     | Some p, _ ->
-      Printf.printf "Releasing focused proc :\n%s\n" (Labelled_process.print p);
       begin match Labelled_process.get_proc p with
       | Labelled_process.Input _ -> Some c
       | Labelled_process.OutputSure _ ->
@@ -1108,7 +1107,6 @@ end = struct
         else
           Some {c with focused_proc = None; input_proc = p::c.input_proc} end
     | _, Some p ->
-      Printf.printf "Releasing proc :\n%s\n" (Labelled_process.print p);
       begin match Labelled_process.get_proc p with
       | Input _ ->
         Some {c with sure_unchecked_skeletons = None; input_proc = p::c.input_proc}

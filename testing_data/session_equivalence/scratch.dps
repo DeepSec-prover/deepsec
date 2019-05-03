@@ -6,8 +6,9 @@ fun h/2.
 let P = in(a,x); (in(b,y);out(c,c) | in(c,z);out(c,c)). // reflexivity raises Not_found
 let R = in(c,x); (in(c,y); out(c,x) | in(c,z); in(c,zz)). // reflexivity ok
 let loli = in(c,x); in(c,y); out(c,h(x,y)). // instant, even with !^6 (11 min deepsec)
+let S(t) = in(c,x); out(c,t).
 
-query sess_equiv(P,P).
+query sess_equiv(in(c,x); out(c,x),in(c,x); out(c,a)).
 
 
 /* Known issues to be addressed:

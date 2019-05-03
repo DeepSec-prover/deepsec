@@ -56,8 +56,6 @@ end
   let find set i =
     match find_opt set i with
     | None ->
-      print_endline "<WARNING> Content table: ";
-      Hashtbl.iter (fun j _ -> Printf.printf "%d " j) (fst set);
       Config.internal_error (Printf.sprintf "[equivalence_session.ml >> IndexedSet.find] Constraint system %d not found in table." i)
     | Some x -> x
   let remove (set,_) i = Hashtbl.remove set i
@@ -399,7 +397,7 @@ let determine_next_transition (n:partition_tree_node) : Configuration.Transition
     let csys = Constraint_system_set.choose n.csys_set in
     let symp = Constraint_system.get_additional_data csys in
     let trans = Configuration.Transition.next symp.conf in
-    Configuration.Transition.print_kind trans;
+    (* Configuration.Transition.print_kind trans; *)
     match trans with
     | None
     | Some RStart -> trans, {snd_ord = None; axiom = None}
@@ -420,9 +418,7 @@ let release_skeleton (n:partition_tree_node) : partition_tree_node =
     let symp = Constraint_system.get_additional_data csys in
     match Configuration.release_skeleton symp.conf with
     | None ->
-      Printf.printf "improper index spotted %d\n" index;
-      improper_indexes := index :: !improper_indexes;
-      None
+      improper_indexes := index :: !improper_indexes; None
     | Some conf_rel ->
       Some (Constraint_system.replace_additional_data csys {symp with conf = conf_rel})
   ) n.csys_set;
@@ -442,7 +438,6 @@ NB. The constraint solving and the skeleton checks remain to be done after this
 function call. *)
 let generate_next_node (n:partition_tree_node) : Configuration.Transition.kind option * partition_tree_node =
   let new_id = fresh_id () in
-  Printf.printf "\n==> GENERATE NEXT NODE (id current node: %s, id new node before split: %s)\n" n.id new_id;
 
   (** Generation of the transitions **)
   let new_csys_set : Constraint_system_set.t = Constraint_system_set.empty() in
@@ -452,19 +447,11 @@ let generate_next_node (n:partition_tree_node) : Configuration.Transition.kind o
       Constraint_system.get_additional_data csys in
     let next_transitions =
       generate_next_transitions symp.status vars trans new_csys_set csys in
-    Printf.printf "generated transitions: ";
-    List.iter (print_transition i) next_transitions;
-    print_endline "";
     Constraint_system.replace_additional_data csys {symp with
       next_transitions = next_transitions
     }
   ) n.csys_set;
 
-  (** update of the matching **)
-  (* print_endline "[BEFORE]:\nCurrent indexes: "; *)
-  (* List.iter (fun (i,_) -> Printf.printf "%d " i) n.matching; *)
-  (* print_endline "\nand the matching is:"; *)
-  (* print_matching n.matching; *)
   let get_conf i =
     let cs = Constraint_system_set.find new_csys_set i in
     (Constraint_system.get_additional_data cs).conf in
@@ -483,7 +470,6 @@ let generate_next_node (n:partition_tree_node) : Configuration.Transition.kind o
               let symp_ex =
                 Constraint_system.get_additional_data (Constraint_system_set.find n.csys_set cs_ex) in
               List.fold_left (fun (accu4:(ref_to_constraint*BijectionSet.t) list) (tr_ex:transition) ->
-                (* Printf.printf "> About to restrict %s to %s\n" (Label.to_string tr_fa.label) (Label.to_string tr_ex.label); *)
                 match BijectionSet.update tr_fa.label tr_ex.label tr_fa.new_proc tr_ex.new_proc bset with
                 | Some bset_upd when skel_check tr_fa.target tr_ex.target ->
                   (tr_ex.target,bset_upd) :: accu4
@@ -493,9 +479,6 @@ let generate_next_node (n:partition_tree_node) : Configuration.Transition.kind o
           (tr_fa.target,cs_ex_list_new) :: accu2
       ) accu1 symp_fa.next_transitions
     ) [] n.matching in
-  (* print_endline "[AFTER]"; *)
-  (* print_matching new_matchings; *)
-
 
   (** final node **)
   let new_node = {n with csys_set = new_csys_set; matching = new_matchings; id = new_id} in
@@ -591,7 +574,6 @@ let split_partition_tree_node (n:partition_tree_node) (f_cont:partition_tree_nod
     | [] -> f_next()
     | (m,c) :: t ->
       let node = replace_data m c in
-      Printf.printf "TREATING NODE %s (split from %s, %d remaining after that)\n" node.id n.id (List.length t);
       f_cont node (fun () -> branch_on_nodes t f_next) in
 
   branch_on_nodes new_node_data f_next
@@ -644,12 +626,8 @@ let remove_unauthorised_blocks (node:partition_tree_node) (csys_set:int Constrai
 (* construction of the successor nodes of a partition tree. This includes generating the next transitions, normalising the symbolic processes, applying the internal constraint solver (to split in different nodes non statically equivalent constraint systems), and performing skeleton checks/block-authorisation checks on the resulting nodes.
 NB. The continuations f_cont and f_next respectively link to recursive calls to apply_one_transition_and_rules, and to the final operations of the procedure. *)
 let apply_one_transition_and_rules (n:partition_tree_node) (f_cont:partition_tree_node->(unit->unit)->unit) (f_next:unit->unit) : unit =
-  print_node n;
   let (transition_type,node_to_split) = generate_next_node n in
-  print_endline "ready to split";
   split_partition_tree_node node_to_split (fun node f_next1 ->
-    Printf.printf "Node after split:";
-    print_node node;
     let csys_set = Constraint_system_set.cast node.csys_set in
     match transition_type with
     | None ->
@@ -659,11 +637,6 @@ let apply_one_transition_and_rules (n:partition_tree_node) (f_cont:partition_tre
     | Some RStart ->
       (* very beginning of the analysis: only a skeleton check is needed before moving on to the constructing the successor nodes (no unauthorised blocks possible). *)
       Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
-        print_string ">> indexes after constraint solving: ";
-        Constraint_system.Set.iter (fun cs ->
-          Printf.printf "%d " (Constraint_system.get_additional_data cs)
-        ) csys_set;
-        print_endline "";
         let node_decast = decast node csys_set in
         let final_node = release_skeleton node_decast in
         f_cont final_node f_next2
