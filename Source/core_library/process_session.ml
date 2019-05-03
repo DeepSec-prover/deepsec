@@ -5,11 +5,8 @@ open Display
 open Extensions
 
 
-(* type todo = unit (* pending datatypes *) *)
-(* let todo = failwith "todo" (* pending definitions *) *)
 
-
-
+(* a module for representing process labels *)
 module Label : sig
   type t
   val initial : t (* an initial, empty label *)
@@ -34,7 +31,104 @@ end = struct
     | _::l,_::ll -> independent l ll
 end
 
-(* a module for labelled objects *)
+
+(* a module for representing blocks *)
+module Block : sig
+  type t
+  val create : Label.t -> t (* creation of a new empty block *)
+  val add_variable : snd_ord_variable -> t -> t (* adds a second order variable in a block *)
+  val add_axiom : axiom -> t -> t (* adds an axiom in a block *)
+  val is_authorised : t list -> t -> (snd_ord, axiom) Subst.t -> bool (* checks whether a block is authorised after a list of blocks *)
+end = struct
+  module IntSet = Set.Make(struct type t = int let compare = compare end)
+
+  type t = {
+    label : Label.t;
+    recipes : snd_ord_variable list; (* There should always be variables *)
+    bounds_axiom : (int * int) option; (* lower and upper bound on the axiom index used *)
+    maximal_var : int;
+    used_axioms : IntSet.t
+  }
+
+  (* creates an empty block *)
+  let create (label:Label.t) : t = {
+      label = label;
+      recipes = [];
+      bounds_axiom = None;
+      maximal_var = 0;
+      used_axioms = IntSet.empty
+  }
+
+  (* adds a second-order variable in the recipes of a block *)
+  let add_variable (snd_var:snd_ord_variable) (block:t) : t =
+    { block with recipes = (snd_var :: block.recipes) }
+
+  (* adds an axiom in a block and updates the bounds *)
+  let add_axiom (ax:axiom) (block:t) : t =
+    match block.bounds_axiom with
+    | None ->
+      let b = Axiom.index_of ax in
+      {block with bounds_axiom = Some (b,b)}
+    | Some (i,_) ->
+      {block with bounds_axiom = Some (i,Axiom.index_of ax)}
+
+  (* checking whether a block is not allowed after a block list
+  NB. the lexicographic ordering is reversed compared to the paper [BDH15]. The point is to avoid conflict with symmetries; with the definition below, the smaller the smaller (w.r.t. lexicographic ordering), the less chances to be faulty: we thus avoid problems with symmetries blocking executions of instruction of non-minimal labels. *)
+  let rec is_faulty_block (block:t) (block_list:t list) : bool =
+    match block_list with
+    | [] -> false
+    | b_i::q ->
+      let comp_lab = Label.independent block.label b_i.label in
+      if comp_lab > 0 then
+        match b_i.bounds_axiom with
+        | None -> true
+        | Some (min_ax,max_ax) ->
+          block.maximal_var < min_ax &&
+          IntSet.for_all (fun ax -> ax < min_ax || ax > max_ax) block.used_axioms
+      else if comp_lab < 0 then is_faulty_block block q
+      else false
+
+  (* applies a snd order substitution on a block list and computes the bound
+  fields of the block type *)
+  let apply_snd_subst_on_block (snd_subst:(snd_ord,axiom) Subst.t) (block_list:t list) : t list =
+    Subst.apply snd_subst block_list (fun l f ->
+      List.map (fun block ->
+        let max_var = ref 0 in
+        let used_axioms = ref IntSet.empty in
+        List.iter (fun var ->
+          let r' = f (of_variable var) in
+          Term.iter_variables_and_axioms (fun ax_op var_op ->
+            match ax_op,var_op with
+            | Some ax, None ->
+              used_axioms := IntSet.add (Axiom.index_of ax) !used_axioms
+            | None, Some v ->
+              max_var := max !max_var (Variable.type_of v)
+            | _, _ ->
+              Config.internal_error "[process_session.ml >> apply_snd_subst_on_block] The function Term.iter_variables_and_axioms should return one filled option."
+          ) r';
+        ) block.recipes;
+
+        {block with used_axioms = !used_axioms; maximal_var = !max_var}
+      ) l
+    )
+
+  (* checking whether a block is authorised after a block list *)
+  let is_authorised (block_list:t list) (cur_block:t) (snd_subst:(snd_ord,axiom) Subst.t) : bool =
+    match block_list with
+    | [] -> true
+    | _ ->
+      let block_list_upd =
+        apply_snd_subst_on_block snd_subst (cur_block::block_list) in
+      let rec explore_block block_list =
+        match block_list with
+        | []
+        | [_] -> true
+        | block::q -> not (is_faulty_block block q) && explore_block q in
+      explore_block block_list_upd
+end
+
+
+(* a module for labelled processes *)
 module Labelled_process : sig
   type t
 
@@ -183,15 +277,15 @@ end = struct
         ) in
     browse p (fun s -> s)
 
-  (* restaures all broken symmetries at toplevel *)
+  (* restaures all broken symmetries at toplevel
+  NB. the sorting is here to unsure a sound combination of symmetries and the reduced semantics *)
   let rec restaure_sym (lp:t) : t =
     match lp.proc with
     | Input _
     | OutputSure _ -> lp
     | Par l -> {lp with proc = Par (List.map restaure_sym l)}
-    | Bang(Repl,l1,l2) ->
+    | Bang(b,l1,l2) ->
       {lp with proc = Bang (Repl,[],List.map restaure_sym l1 @ l2)}
-    | Bang(Channel,l1,l2) -> {lp with proc = Bang (Channel,[],List.map restaure_sym l1 @ l2)}
     | If _
     | New _
     | Output _ -> Config.internal_error "[process_session.ml >> restaure_sym] Should only be applied on normalised processes."
@@ -367,7 +461,7 @@ end = struct
           unfold forall accu leftovers_pp pp f_cont
         else
           unfold forall accu leftovers_pp pp (fun accu_pp ->
-            unfold_list ~bang:(Some [pp]) false accu_pp leftovers tl f_cont
+            unfold_list ~bang:(Some ([pp],Channel)) false accu_pp leftovers tl f_cont
           )
       | Input (ch,x,pp) ->
         let res = {
@@ -393,13 +487,13 @@ end = struct
           unfold forall accu (List.rev_append t leftovers) p (fun accu1 ->
             unfold_list forall accu1 (p::leftovers) t f_cont
           )
-        | Some memo -> (* case of a list of replicated processes *)
+        | Some (memo,b) -> (* case of a list of replicated processes *)
           let lefts = List.rev_append memo t in
           let leftovers1 =
             if lefts = [] then leftovers
-            else {proc = Bang(Channel,[],lefts); label = None} :: leftovers in
+            else {proc = Bang(b,[],lefts); label = None} :: leftovers in
           unfold forall accu leftovers1 p (fun accu1 ->
-            unfold_list ~bang:(Some (p::memo)) forall accu1 leftovers t f_cont
+            unfold_list ~bang:(Some (p::memo,b)) forall accu1 leftovers t f_cont
           ) in
 
     unfold_list true [] [] l (fun accu -> accu)
@@ -505,14 +599,13 @@ end = struct
         let add_bang h = rebuild {proc = Bang(Repl,h::brok,t); label = None} in
         unfold accu pp add_bang f_cont
 
-
     and unfold_list accu memo l rebuild f_cont =
       match l with
       | [] -> f_cont accu
       | pp :: t ->
         let add_list_to_rebuild p =
           if nil p then rebuild (List.rev_append memo t)
-          else rebuild (p::List.rev_append memo t) in
+          else rebuild (List.rev_append memo (p::t)) in
         unfold accu pp add_list_to_rebuild (fun acp ->
           unfold_list acp (pp::memo) t rebuild f_cont
         ) in
@@ -755,101 +848,6 @@ end = struct
 end
 
 
-(* type for representing blocks *)
-module Block : sig
-  type t
-  val create : Label.t -> t (* creation of a new empty block *)
-  val add_variable : snd_ord_variable -> t -> t (* adds a second order variable in a block *)
-  val add_axiom : axiom -> t -> t (* adds an axiom in a block *)
-  val is_authorised : t list -> t -> (snd_ord, axiom) Subst.t -> bool (* checks whether a block is authorised after a list of blocks *)
-end = struct
-  module IntSet = Set.Make(struct type t = int let compare = compare end)
-
-  type t = {
-    label : Label.t;
-    recipes : snd_ord_variable list; (* There should always be variables *)
-    bounds_axiom : (int * int) option; (* lower and upper bound on the axiom index used *)
-    maximal_var : int;
-    used_axioms : IntSet.t
-  }
-
-  (* creates an empty block *)
-  let create (label:Label.t) : t = {
-      label = label;
-      recipes = [];
-      bounds_axiom = None;
-      maximal_var = 0;
-      used_axioms = IntSet.empty
-  }
-
-  (* adds a second-order variable in the recipes of a block *)
-  let add_variable (snd_var:snd_ord_variable) (block:t) : t =
-    { block with recipes = (snd_var :: block.recipes) }
-
-  (* adds an axiom in a block and updates the bounds *)
-  let add_axiom (ax:axiom) (block:t) : t =
-    match block.bounds_axiom with
-    | None ->
-      let b = Axiom.index_of ax in
-      {block with bounds_axiom = Some (b,b)}
-    | Some (i,_) ->
-      {block with bounds_axiom = Some (i,Axiom.index_of ax)}
-
-  (* checking whether a block is allowed after a block list *)
-  let rec is_faulty_block (block:t) (block_list:t list) : bool =
-    match block_list with
-    | [] -> false
-    | b_i::q ->
-      let comp_lab = Label.independent block.label b_i.label in
-      if comp_lab < 0 then
-        match b_i.bounds_axiom with
-        | None -> true
-        | Some (min_ax,max_ax) ->
-          block.maximal_var < min_ax &&
-          IntSet.for_all (fun ax -> ax < min_ax || ax > max_ax) block.used_axioms
-      else if comp_lab > 0 then is_faulty_block block q
-      else false
-
-  (* applies a snd order substitution on a block list and computes the bound
-  fields of the block type *)
-  let apply_snd_subst_on_block (snd_subst:(snd_ord,axiom) Subst.t) (block_list:t list) : t list =
-    Subst.apply snd_subst block_list (fun l f ->
-      List.map (fun block ->
-        let max_var = ref 0 in
-        let used_axioms = ref IntSet.empty in
-        List.iter (fun var ->
-          let r' = f (of_variable var) in
-          Term.iter_variables_and_axioms (fun ax_op var_op ->
-            match ax_op,var_op with
-            | Some ax, None ->
-              used_axioms := IntSet.add (Axiom.index_of ax) !used_axioms
-            | None, Some v ->
-              max_var := max !max_var (Variable.type_of v)
-            | _, _ ->
-              Config.internal_error "[process_session.ml >> apply_snd_subst_on_block] The function Term.iter_variables_and_axioms should return one filled option."
-          ) r';
-        ) block.recipes;
-
-        {block with used_axioms = !used_axioms; maximal_var = !max_var}
-      ) l
-    )
-
-  (* checking whether a block is authorised after a block list *)
-  let is_authorised (block_list:t list) (cur_block:t) (snd_subst:(snd_ord,axiom) Subst.t) : bool =
-    match block_list with
-    | [] -> true
-    | _ ->
-      let block_list_upd =
-        apply_snd_subst_on_block snd_subst (cur_block::block_list) in
-      let rec explore_block block_list =
-        match block_list with
-        | []
-        | [_] -> true
-        | block::q -> not (is_faulty_block block q) && explore_block q in
-      explore_block block_list_upd
-end
-
-
 (* a module for representing and manipulating sets of process matchings *)
 module BijectionSet : sig
   type t
@@ -978,6 +976,7 @@ module Configuration : sig
       | RPos
       | RNeg
       | RStart
+    val print_kind : kind option -> unit
     val next : t -> kind option (* computes the next kind of transition to apply (None if the process has no transition possible). *)
     val apply_neg : axiom -> Labelled_process.t -> Labelled_process.output_data -> Labelled_process.t list -> t -> t (* executes an output in a configuration *)
     val apply_pos : snd_ord_variable -> t -> Labelled_process.input_data * t (* executes a focused input in a configuration *)
@@ -1092,7 +1091,6 @@ end = struct
     | _ ->
       Config.internal_error "[process_session.ml >> update_matching] Comparing processes in inconsistent states."
 
-
   (* Assuming all skeleton checks have been performed with this skeleton, removes the unchecked states and updates the focus if needed.
   Returns None at the end of improper blocks. *)
   let release_skeleton (c:t) : t option =
@@ -1117,7 +1115,8 @@ end = struct
       | OutputSure _ ->
         Some {c with sure_unchecked_skeletons = None; sure_output_proc = p::c.sure_output_proc}
       | _ ->
-        if Labelled_process.nil p then Some {c with sure_unchecked_skeletons = None}
+        if Labelled_process.nil p then
+          Some {c with sure_unchecked_skeletons = None}
         else if Labelled_process.contains_output p then
           Some {c with sure_unchecked_skeletons = None; sure_output_proc = p::c.sure_output_proc}
         else
@@ -1125,13 +1124,22 @@ end = struct
     | _, _ ->
         Config.internal_error "[process_session.ml >> release_skeleton_without_check] A process is either focused or released."
 
-
   module Transition = struct
     type kind =
       | RFocus
       | RPos
       | RNeg
       | RStart
+
+    let print_kind (t:kind option) : unit =
+      let s =
+        match t with
+        | None -> "None"
+        | Some RFocus -> "Focus"
+        | Some RPos -> "Pos"
+        | Some RNeg -> "Neg"
+        | Some RStart -> "Start" in
+      print_endline ("***************************************\n>> Transition: "^s^"\n***************************************")
 
     (* given the shape of a configuration, find the next type of to apply *)
     let next (c:t) : kind option =

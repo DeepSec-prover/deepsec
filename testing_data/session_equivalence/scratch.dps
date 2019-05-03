@@ -1,11 +1,13 @@
 free a,b,c.
 const alpha.
 fun f/1.
+fun h/2.
 
-let P = in(a,x); (in(b,y);out(c,c) | in(c,z);out(c,c)).
-let R = in(c,x); (in(c,y); out(c,x) | in(c,z); in(c,zz)).
+let P = in(a,x); (in(b,y);out(c,c) | in(c,z);out(c,c)). // reflexivity raises Not_found
+let R = in(c,x); (in(c,y); out(c,x) | in(c,z); in(c,zz)). // reflexivity ok
+let loli = in(c,x); in(c,y); out(c,h(x,y)). // instant, even with !^6 (11 min deepsec)
 
-query sess_equiv(R,R).
+query sess_equiv(P,P).
 
 
 /* Known issues to be addressed:
