@@ -6,10 +6,10 @@ fun h/2.
 let P = in(a,x); (in(b,y);out(c,c) | in(c,z);out(c,c)). // reflexivity raises Not_found
 let R = in(c,x); (in(c,y); out(c,x) | in(c,z); in(c,zz)). // reflexivity ok
 let loli = in(c,x); in(c,y); out(c,h(x,y)). // instant, even with !^6 (11 min deepsec)
-let S(t) = in(c,x); out(c,t).
+let bangloli = !^17 loli.
+let S1 = in(c,x); out(c,x).
+let S2 = in(c,x); out(c,a).
+let T1 = in(c,x).
+let T2 = if a = a then 0 else in(c,x).
 
-query sess_equiv(in(c,x); out(c,x),in(c,x); out(c,a)).
-
-
-/* Known issues to be addressed:
-1. During the reflexivity check of in(a,x); (in(b,y);out(c,c) | in(c,z);out(c,c)), a Constraint_system_set.find fails. */
+query sess_equiv(S1, S2).

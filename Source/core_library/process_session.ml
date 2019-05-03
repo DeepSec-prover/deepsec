@@ -72,20 +72,19 @@ end = struct
     | Some (i,_) ->
       {block with bounds_axiom = Some (i,Axiom.index_of ax)}
 
-  (* checking whether a block is not allowed after a block list
-  NB. the lexicographic ordering is reversed compared to the paper [BDH15]. The point is to avoid conflict with symmetries; with the definition below, the smaller the smaller (w.r.t. lexicographic ordering), the less chances to be faulty: we thus avoid problems with symmetries blocking executions of instruction of non-minimal labels. *)
+  (* checking whether a block is not allowed after a block list *)
   let rec is_faulty_block (block:t) (block_list:t list) : bool =
     match block_list with
     | [] -> false
     | b_i::q ->
       let comp_lab = Label.independent block.label b_i.label in
-      if comp_lab > 0 then
+      if comp_lab < 0 then
         match b_i.bounds_axiom with
         | None -> true
         | Some (min_ax,max_ax) ->
           block.maximal_var < min_ax &&
           IntSet.for_all (fun ax -> ax < min_ax || ax > max_ax) block.used_axioms
-      else if comp_lab < 0 then is_faulty_block block q
+      else if comp_lab > 0 then is_faulty_block block q
       else false
 
   (* applies a snd order substitution on a block list and computes the bound
@@ -96,7 +95,7 @@ end = struct
         let max_var = ref 0 in
         let used_axioms = ref IntSet.empty in
         List.iter (fun var ->
-          let r' = f (of_variable var) in
+          let r' = f (Term.of_variable var) in
           Term.iter_variables_and_axioms (fun ax_op var_op ->
             match ax_op,var_op with
             | Some ax, None ->
@@ -960,7 +959,7 @@ end
 (* type for representing internal states *)
 module Configuration : sig
   type t
-  val print_trace : t -> string (* returns a string displaying the trace needed to reach this configuration *)
+  val print_trace : (fst_ord, name) Subst.t -> t -> string (* returns a string displaying the trace needed to reach this configuration *)
   val check_block : (snd_ord, axiom) Subst.t -> t -> bool (* verifies the blocks stored in the configuration are authorised *)
   val inputs : t -> Labelled_process.t list (* returns the available inputs *)
   val outputs : t -> Labelled_process.t list (* returns the available outputs (in particular they are executable, i.e. they output a message). *)
@@ -1000,15 +999,19 @@ end = struct
   }
 
   (* for interface purposes *)
-  let print_action (act:action) : string =
+  let print_action (fst_subst:(fst_ord,name) Subst.t) (act:action) : string =
     match act with
     | InAction(ch,_,x) ->
-      Printf.sprintf "In(%s,%s)" (Symbol.display Latex ch) (Term.display Latex Protocol x)
+      let recipe = Subst.apply fst_subst x (fun x f -> f x) in
+      Printf.sprintf "In(%s,%s)" (Symbol.display Latex ch) (Term.display Latex Protocol recipe)
     | OutAction(ch,_,t) ->
-      Printf.sprintf "Out(%s,%s)" (Symbol.display Latex ch) (Term.display Latex Protocol t)
+      let output = Subst.apply fst_subst t (fun x f -> f x) in
+      Printf.sprintf "Out(%s,%s)" (Symbol.display Latex ch) (Term.display Latex Protocol output)
 
-  let print_trace (conf:t) : string =
-    List.fold_left (fun accu act -> print_action act^accu) "" conf.trace
+  let print_trace (fst_subst:(fst_ord,name) Subst.t) (conf:t) : string =
+    List.fold_left (fun accu act ->
+      print_action fst_subst act^accu
+    ) "" conf.trace
 
   (* lifting operations on block to configurations *)
   let check_block (snd_subst:(snd_ord,axiom) Subst.t) (c:t) : bool =

@@ -180,6 +180,7 @@ module Constraint_system_set = struct
       let symp = Constraint_system.get_additional_data cs in
       if Configuration.check_block snd_subst symp.conf then m::accu
       else (
+        (* Printf.printf "index %d -> non authorised block\n" cs_fa; *)
         begin match symp.status with
         | Both -> replace csys_set cs_fa (Constraint_system.replace_additional_data cs {symp with status = Exists})
         | ForAll -> remove csys_set cs_fa
@@ -224,19 +225,6 @@ let new_symbolic_process (conf:Configuration.t) (status:status) : symbolic_proce
   next_transitions = [];
   status = status;
 }
-
-(*
-(* adds a transition in a list (and upgrades it if it already exists) *)
-let rec upgrade_transition_in_set (transition:transition) (accu:transition list) : transition list =
-  let rec upgrade memo l =
-    match l with
-    | [] -> accu
-    | tr :: t ->
-      if transition.label = tr.label then
-        {transition with forall = transition.forall || tr.forall} :: List.rev_append memo t
-      else upgrade (tr::memo) t in
-  upgrade [] accu *)
-
 
 
 (* normalising configurations and constructing next_transitions:
@@ -340,7 +328,6 @@ let get_axiom ?calling:(s="get_axiom") (v:vars) : axiom =
       Config.internal_error (Printf.sprintf "[process_session.ml >> %s] Missing axiom in argument." s)
     | Some x -> x
 
-
 let generate_next_transitions (status:status) (v:vars) (type_of_transition:Configuration.Transition.kind option) (csys_set:Constraint_system_set.t) (cs:constraint_system) : transition list =
   let symp = Constraint_system.get_additional_data cs in
   let accu : transition list ref = ref [] in
@@ -388,7 +375,6 @@ let generate_next_transitions (status:status) (v:vars) (type_of_transition:Confi
   !accu
 
 
-
 (* determines the type of the next transitions of a constraint system set, and generates the corresponding second-order variable or axiom. *)
 let determine_next_transition (n:partition_tree_node) : Configuration.Transition.kind option * vars =
   if Constraint_system_set.is_empty n.csys_set then
@@ -408,7 +394,6 @@ let determine_next_transition (n:partition_tree_node) : Configuration.Transition
       trans, {snd_ord = Some new_var; axiom = None}
     | Some RNeg ->
       trans, {snd_ord = None; axiom = Some (Axiom.create (n.size_frame+1))}
-
 
 
 (* releases skeletons and removes improper blocks *)
@@ -574,6 +559,7 @@ let split_partition_tree_node (n:partition_tree_node) (f_cont:partition_tree_nod
     | [] -> f_next()
     | (m,c) :: t ->
       let node = replace_data m c in
+      (* Printf.printf "- treating node %s (father: %s, remaining after that: %d)\n" node.id n.id (List.length t); *)
       f_cont node (fun () -> branch_on_nodes t f_next) in
 
   branch_on_nodes new_node_data f_next
@@ -591,18 +577,9 @@ let string_of_result (res:result_analysis) : string =
   | Not_Equivalent csys ->
     "Not Equivalent processes.\nAttack trace: "^(
       let symp = Constraint_system.get_additional_data csys in
-      Configuration.print_trace symp.conf
+      let sol = Constraint_system.get_substitution_solution Protocol csys in
+      Configuration.print_trace sol symp.conf
     )
-
-
-
-(* condition under which a partition tree node induces an attack on equivalence by session. Returns the index of the incriminated constraint system, if any. *)
-(* let verify_violation_equivalence (n:partition_tree_node) : unit =
-  match List.find_opt (fun (cs_fa,cs_ex_l) -> cs_ex_l = []) n.matching with
-  | None -> ()
-  | Some (cs_fa,_) ->
-    raise (Not_Session_Equivalent (Constraint_system_set.find n.csys_set cs_fa)) *)
-
 
 
 (** operations to perform on a node after the constraint solving **)
@@ -626,8 +603,12 @@ let remove_unauthorised_blocks (node:partition_tree_node) (csys_set:int Constrai
 (* construction of the successor nodes of a partition tree. This includes generating the next transitions, normalising the symbolic processes, applying the internal constraint solver (to split in different nodes non statically equivalent constraint systems), and performing skeleton checks/block-authorisation checks on the resulting nodes.
 NB. The continuations f_cont and f_next respectively link to recursive calls to apply_one_transition_and_rules, and to the final operations of the procedure. *)
 let apply_one_transition_and_rules (n:partition_tree_node) (f_cont:partition_tree_node->(unit->unit)->unit) (f_next:unit->unit) : unit =
+  (* Printf.printf "\n==> STARTING NODE %s\n" n.id; *)
   let (transition_type,node_to_split) = generate_next_node n in
+  (* Printf.printf "node to be split:\n"; *)
+  (* print_node node_to_split; *)
   split_partition_tree_node node_to_split (fun node f_next1 ->
+    (* print_node node; *)
     let csys_set = Constraint_system_set.cast node.csys_set in
     match transition_type with
     | None ->
@@ -672,7 +653,6 @@ let apply_one_transition_and_rules (n:partition_tree_node) (f_cont:partition_tre
           f_cont {final_node with size_frame = node.size_frame+1} f_next2
       ) csys_set f_next1
   ) f_next
-
 
 
 let equivalence (conf1:Configuration.t) (conf2:Configuration.t) : result_analysis =
