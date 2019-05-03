@@ -12,4 +12,4 @@ let S2 = in(c,x); out(c,a).
 let T1 = in(c,x).
 let T2 = if a = a then 0 else in(c,x).
 
-query sess_equiv(S1, S2).
+query sess_equiv(S2, S1).

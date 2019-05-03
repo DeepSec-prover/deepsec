@@ -497,62 +497,6 @@ end = struct
 
     unfold_list true [] [] l (fun accu -> accu)
 
-  (* let unfold_input ?filter:(f:Label.t->bool=fun _ -> true) ?allow_channel_renaming:(opt:bool=false) ?at_most:(nb:int= -1) (l:t list) : (t * input_data) list =
-
-    let rec unfold countdown accu leftovers p f_cont =
-      if countdown = 0 then accu
-      else
-        match p.proc with
-        | OutputSure _ ->
-          Config.internal_error "[process_session.ml >> unfold_input] Ill-formed process, focus should not be applied in this case."
-        | Par l -> unfold_list countdown accu leftovers l f_cont
-        | Bang(_,[],[]) -> f_cont countdown accu
-        | Bang(_,_::_,_) -> Config.internal_error "[process_session.ml >> unfold_input] Symmetries should not be broken when executing inputs."
-        | Bang(_,[],[pp]) -> unfold countdown accu leftovers pp f_cont
-        | Bang(b,[],(pp::(qq::ll as tl) as l)) ->
-          if b = Repl || (opt && b = Channel) then
-            let left =
-              if ll = [] then qq
-              else {proc = Bang(b,[],tl); label = None} in
-            unfold countdown accu (left::leftovers) pp f_cont
-          else unfold_list ~bang:(Some []) countdown accu leftovers l f_cont
-        | Input (ch,x,pp) ->
-          let lab = get_label p in
-          if f lab then
-            let res = {
-              channel = ch;
-              var = x;
-              lab = lab;
-              leftovers = leftovers;
-            } in
-            f_cont (countdown-1) ((pp,res)::accu)
-          else f_cont countdown accu
-        | New _
-        | If _
-        | Output _ ->
-          Config.internal_error "[process_session.ml >> unfold_input] Unfolding should only be applied on normalised processes."
-        | Start _ -> Config.internal_error "[process_session.ml >> unfold_input] Unexpected Start constructor."
-
-    and unfold_list ?bang:(memo=None) countdown accu leftovers l f_cont =
-      if countdown = 0 then accu
-      else
-        match l with
-        | [] -> f_cont countdown accu
-        | p :: t ->
-          match memo with
-          | None -> (* case of a list of parallel processes *)
-            unfold countdown accu (List.rev_append t leftovers) p (fun n accu1 ->
-              unfold_list n accu1 (p::leftovers) t f_cont
-            )
-          | Some memo -> (* case of a list of replicated processes *)
-            let lefts =
-              {proc = Bang(Channel,[],List.rev_append memo t); label = None} :: leftovers in
-            unfold countdown accu lefts p (fun n accu1 ->
-              unfold_list ~bang:(Some (p::memo)) n accu1 leftovers t f_cont
-            ) in
-
-    unfold_list nb [] [] l (fun n accu -> accu) *)
-
   (* executing outputs with symmetries. Returns a list of ([c],[t],[lab],[l]) where [l] is the leftovers left after executing an output of [t] on channel [c], with label [lab].
   NB. the extracted outputs are consumed. *)
   type output_data = {
@@ -612,56 +556,6 @@ end = struct
     match unfold [] lp (fun p -> p) (fun accu -> accu) with
     | [] -> Config.internal_error "[process_session.ml >> unfold_output] No output could be unfolded."
     | (p,odata) :: accu -> (p,{odata with optim = true}) :: accu
-
-  (* let unfold_output ?filter:(f:Label.t->bool=fun _ -> true) ?at_most:(nb:int= -1) (lp:t) : (t * output_data) list =
-
-    let rec unfold countdown accu p rebuild f_cont =
-      if countdown = 0 then accu
-      else
-        match p.proc with
-        | Input _ -> f_cont countdown accu
-        | OutputSure(c,t,pp) ->
-          let lab = get_label p in
-          if not (f lab) then f_cont countdown accu
-          else
-            let res = {channel = c; term = t; lab = lab; context = rebuild} in
-            f_cont (countdown-1) ((pp,res)::accu)
-        | If _
-        | New _
-        | Output _ ->
-          Config.internal_error "[process_session.ml >> unfold_output] Should only be called on normalised processes."
-        | Start _ -> Config.internal_error "[process_session.ml >> unfold_output] Unexpected Start constructor."
-        | Par l ->
-          let add_par l = rebuild {proc = Par l; label = None} in
-          unfold_list countdown accu [] l add_par f_cont
-        | Bang(b,brok,[]) ->
-          let add_bang l = rebuild {proc = Bang(b,l,[]); label = None} in
-          unfold_list countdown accu [] brok add_bang f_cont
-        | Bang(Channel,brok,l) ->
-          let add_bang1 x = rebuild {proc = Bang(Channel,brok,x); label = None} in
-          let add_bang2 x = rebuild {proc = Bang(Channel,x,l); label = None} in
-          unfold_list countdown accu [] l add_bang1 (fun n ac ->
-            unfold_list n ac [] brok add_bang2 f_cont
-          )
-        | Bang(Repl,brok,pp::t) ->
-          let add_bang h = rebuild {proc = Bang(Repl,h::brok,t); label = None} in
-          unfold countdown accu pp add_bang f_cont
-
-
-    and unfold_list countdown accu memo l rebuild f_cont =
-      if countdown = 0 then accu
-      else
-        match l with
-        | [] -> f_cont countdown accu
-        | pp :: t ->
-          let add_list_to_rebuild p =
-            if nil p then rebuild (List.rev_append memo t)
-            else rebuild (p::List.rev_append memo t) in
-          unfold countdown accu pp add_list_to_rebuild (fun n acp ->
-            unfold_list n acp (pp::memo) t rebuild f_cont
-          ) in
-
-    unfold nb [] lp (fun p -> p) (fun n accu -> accu) *)
 
   module Skeleton = struct
     (* comparison of skeletons (parallel operators excluded) *)
@@ -959,7 +853,7 @@ end
 (* type for representing internal states *)
 module Configuration : sig
   type t
-  val print_trace : (fst_ord, name) Subst.t -> t -> string (* returns a string displaying the trace needed to reach this configuration *)
+  val print_trace : (fst_ord, name) Subst.t -> (snd_ord, axiom) Subst.t -> t -> string (* returns a string displaying the trace needed to reach this configuration *)
   val check_block : (snd_ord, axiom) Subst.t -> t -> bool (* verifies the blocks stored in the configuration are authorised *)
   val inputs : t -> Labelled_process.t list (* returns the available inputs *)
   val outputs : t -> Labelled_process.t list (* returns the available outputs (in particular they are executable, i.e. they output a message). *)
@@ -999,19 +893,25 @@ end = struct
   }
 
   (* for interface purposes *)
-  let print_action (fst_subst:(fst_ord,name) Subst.t) (act:action) : string =
+  let print_action (fst_subst:(fst_ord,name) Subst.t) (snd_subst:(snd_ord,axiom) Subst.t) (act:action) : string =
     match act with
-    | InAction(ch,_,x) ->
-      let recipe = Subst.apply fst_subst x (fun x f -> f x) in
-      Printf.sprintf "In(%s,%s)" (Symbol.display Latex ch) (Term.display Latex Protocol recipe)
-    | OutAction(ch,_,t) ->
-      let output = Subst.apply fst_subst t (fun x f -> f x) in
-      Printf.sprintf "Out(%s,%s)" (Symbol.display Latex ch) (Term.display Latex Protocol output)
+    | InAction(ch,var_X,x) ->
+      let recipe =
+        Subst.apply snd_subst (of_variable var_X) (fun x f -> f x) in
+      let input =
+        Rewrite_rules.normalise (Subst.apply fst_subst x (fun x f -> f x)) in
+      Printf.sprintf "In(%s,%s) => concrete input: %s\n" (Symbol.display Latex ch) (Term.display Latex Recipe recipe) (Term.display Latex Protocol input)
+    | OutAction(ch,ax,t) ->
+      let output =
+        Rewrite_rules.normalise (Subst.apply fst_subst t (fun x f -> f x)) in
+      Printf.sprintf "Out(%s,%s) => referred later as %s\n" (Symbol.display Latex ch) (Term.display Latex Protocol output) (Axiom.display Latex ax)
 
-  let print_trace (fst_subst:(fst_ord,name) Subst.t) (conf:t) : string =
-    List.fold_left (fun accu act ->
-      print_action fst_subst act^accu
-    ) "" conf.trace
+  let print_trace (fst_subst:(fst_ord,name) Subst.t) (snd_subst:(snd_ord,axiom) Subst.t) (conf:t) : string =
+    snd (
+      List.fold_left (fun (count,accu) act ->
+        count-1,Printf.sprintf "%d) %s%s" count (print_action fst_subst snd_subst act) accu
+      ) (List.length conf.trace,"") conf.trace
+    )
 
   (* lifting operations on block to configurations *)
   let check_block (snd_subst:(snd_ord,axiom) Subst.t) (c:t) : bool =

@@ -84,6 +84,7 @@ let print_transition (source:ref_to_constraint) (tr:transition) : unit =
 
 type constraint_system = symbolic_process Constraint_system.t
 and symbolic_process = {
+  origin : bool; (* origin of the process (true=left, right=false). NB: not taken into account during the analysis, only for printing purposes. *)
   conf : Configuration.t;
   next_transitions : transition list; (* the list of transitions from the process, including the label and the constraint system obtained after normalisation.
   NB. the boolean is set to false when the transition is only used for existential purposes *)
@@ -220,12 +221,36 @@ let print_node (n:partition_tree_node) : unit =
 
 
 (* a symbolic process with non-generated transitions *)
-let new_symbolic_process (conf:Configuration.t) (status:status) : symbolic_process = {
+let new_symbolic_process (origin:bool) (conf:Configuration.t) (status:status) : symbolic_process = {
+  origin = origin;
   conf = conf;
   next_transitions = [];
   status = status;
 }
 
+
+
+(* same, for the initial transition at the root of the partition tree *)
+let add_transition_start (csys_set:Constraint_system_set.t) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord, Term.name) Subst.t) (cs:constraint_system) (lab:Label.t) : unit =
+  Configuration.normalise lab conf eqn (fun gather conf_norm new_proc ->
+    let equations = Labelled_process.Normalise.equations gather in
+    let disequations = Labelled_process.Normalise.disequations gather in
+    let origin = (Constraint_system.get_additional_data cs).origin in
+    try
+      let cs1 = Constraint_system.apply_substitution cs equations in
+      let cs2 = Constraint_system.add_disequations cs1 disequations in
+      let cs3 = Constraint_system.replace_additional_data cs2 (new_symbolic_process origin conf_norm Both) in
+
+      let transition = {
+        target = Constraint_system_set.add_new_elt csys_set cs3;
+        label = lab;
+        forall = true;
+        new_proc = new_proc;
+      } in
+      accu := transition :: !accu
+    with
+      | Constraint_system.Bot -> ()
+  )
 
 (* normalising configurations and constructing next_transitions:
 case of an output of 'term' bound to axiom 'ax', to be normalised in
@@ -237,6 +262,7 @@ let add_transition_output (csys_set:Constraint_system_set.t) (accu:transition li
     let equations = Labelled_process.Normalise.equations gather in
     let disequations = Labelled_process.Normalise.disequations gather in
     let t0 = Subst.apply equations od.term (fun x f -> f x) in
+    let origin = (Constraint_system.get_additional_data cs).origin in
 
     try
       let cs1 =
@@ -246,33 +272,12 @@ let add_transition_output (csys_set:Constraint_system_set.t) (accu:transition li
       let cs3 =
         Constraint_system.add_disequations cs2 disequations in
       let cs4 =
-        Constraint_system.replace_additional_data cs3 (new_symbolic_process conf_norm new_status) in
+        Constraint_system.replace_additional_data cs3 (new_symbolic_process origin conf_norm new_status) in
 
       let transition = {
         target = Constraint_system_set.add_new_elt csys_set cs4;
         label = od.lab;
         forall = od.optim;
-        new_proc = new_proc;
-      } in
-      accu := transition :: !accu
-    with
-      | Constraint_system.Bot -> ()
-  )
-
-(* same, for the initial transition at the root of the partition tree *)
-let add_transition_start (csys_set:Constraint_system_set.t) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord, Term.name) Subst.t) (cs:constraint_system) (symp:symbolic_process) (lab:Label.t) : unit =
-  Configuration.normalise lab conf eqn (fun gather conf_norm new_proc ->
-    let equations = Labelled_process.Normalise.equations gather in
-    let disequations = Labelled_process.Normalise.disequations gather in
-    try
-      let cs1 = Constraint_system.apply_substitution cs equations in
-      let cs2 = Constraint_system.add_disequations cs1 disequations in
-      let cs3 = Constraint_system.replace_additional_data cs2 (new_symbolic_process conf_norm Both) in
-
-      let transition = {
-        target = Constraint_system_set.add_new_elt csys_set cs3;
-        label = lab;
-        forall = true;
         new_proc = new_proc;
       } in
       accu := transition :: !accu
@@ -286,6 +291,7 @@ let add_transition_input (csys_set:Constraint_system_set.t) (accu:transition lis
   Configuration.normalise idata.lab conf eqn (fun gather conf_norm new_proc ->
     let equations = Labelled_process.Normalise.equations gather in
     let disequations = Labelled_process.Normalise.disequations gather in
+    let origin = (Constraint_system.get_additional_data cs).origin in
     let inp = Subst.apply equations (of_variable idata.var) (fun x f -> f x) in
     let ded_fact = BasicFact.create var_X inp in
 
@@ -297,7 +303,7 @@ let add_transition_input (csys_set:Constraint_system_set.t) (accu:transition lis
       let cs3 =
         Constraint_system.add_disequations cs2 disequations in
       let cs4 =
-        Constraint_system.replace_additional_data cs3 (new_symbolic_process conf_norm new_status) in
+        Constraint_system.replace_additional_data cs3 (new_symbolic_process origin conf_norm new_status) in
 
       let transition = {
         target = Constraint_system_set.add_new_elt csys_set cs4;
@@ -336,7 +342,7 @@ let generate_next_transitions (status:status) (v:vars) (type_of_transition:Confi
   | Some RStart ->
     let conf = Configuration.Transition.apply_start symp.conf in
     let eqn = Constraint_system.get_substitution_solution Protocol cs in
-    add_transition_start csys_set accu conf eqn cs symp Label.initial
+    add_transition_start csys_set accu conf eqn cs Label.initial
   | Some RNeg ->
     let ax = get_axiom v in
     List.iter_with_memo (fun proc memo ->
@@ -575,11 +581,13 @@ let string_of_result (res:result_analysis) : string =
   match res with
   | Equivalent -> "Equivalent processes."
   | Not_Equivalent csys ->
-    "Not Equivalent processes.\nAttack trace: "^(
-      let symp = Constraint_system.get_additional_data csys in
-      let sol = Constraint_system.get_substitution_solution Protocol csys in
-      Configuration.print_trace sol symp.conf
-    )
+    let symp = Constraint_system.get_additional_data csys in
+    let origin = if symp.origin then "left" else "right" in
+    let trace =
+      let (fst,snd) = Constraint_system.instantiate_when_solved csys in
+      Configuration.print_trace fst snd symp.conf in
+
+    Printf.sprintf "Not Equivalent processes. Attack Trace (in the %s process):\n%s" origin trace
 
 
 (** operations to perform on a node after the constraint solving **)
@@ -603,12 +611,8 @@ let remove_unauthorised_blocks (node:partition_tree_node) (csys_set:int Constrai
 (* construction of the successor nodes of a partition tree. This includes generating the next transitions, normalising the symbolic processes, applying the internal constraint solver (to split in different nodes non statically equivalent constraint systems), and performing skeleton checks/block-authorisation checks on the resulting nodes.
 NB. The continuations f_cont and f_next respectively link to recursive calls to apply_one_transition_and_rules, and to the final operations of the procedure. *)
 let apply_one_transition_and_rules (n:partition_tree_node) (f_cont:partition_tree_node->(unit->unit)->unit) (f_next:unit->unit) : unit =
-  (* Printf.printf "\n==> STARTING NODE %s\n" n.id; *)
   let (transition_type,node_to_split) = generate_next_node n in
-  (* Printf.printf "node to be split:\n"; *)
-  (* print_node node_to_split; *)
   split_partition_tree_node node_to_split (fun node f_next1 ->
-    (* print_node node; *)
     let csys_set = Constraint_system_set.cast node.csys_set in
     match transition_type with
     | None ->
@@ -661,8 +665,8 @@ let equivalence (conf1:Configuration.t) (conf2:Configuration.t) : result_analysi
   Rewrite_rules.initialise_skeletons ();
   Data_structure.Tools.initialise_constructor ();
 
-  let symp1 = new_symbolic_process conf1 Both in
-  let symp2 = new_symbolic_process conf2 Both in
+  let symp1 = new_symbolic_process true conf1 Both in
+  let symp2 = new_symbolic_process false conf2 Both in
 
   let csys1 = Constraint_system.empty symp1 in
   let csys2 = Constraint_system.empty symp2 in
