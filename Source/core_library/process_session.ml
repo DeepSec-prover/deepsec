@@ -138,7 +138,7 @@ module Labelled_process : sig
     | Output of symbol * protocol_term * t
     | OutputSure of symbol * protocol_term * t
     | If of protocol_term * protocol_term * t * t
-    (* | Let of protocol_term * protocol_term * labelled_process * labelled_process *)
+    | Let of protocol_term * protocol_term * protocol_term * t * t
     | New of name * t
     | Par of t list
     | Bang of bang_status * t list * t list
@@ -200,7 +200,7 @@ end = struct
     | Output of symbol * protocol_term * t
     | OutputSure of symbol * protocol_term * t
     | If of protocol_term * protocol_term * t * t
-    (* | Let of protocol_term * protocol_term * labelled_process * labelled_process *)
+    | Let of protocol_term * protocol_term * protocol_term * t * t
     | New of name * t
     | Par of t list
     | Bang of bang_status * t list * t list (* The two lists model the replicated processes, the first one being reserved for processes where symmetries are temporarily broken due to the execution of outputs. *)
@@ -257,6 +257,12 @@ end = struct
             f_cont (Printf.sprintf "if %s=%s then (%s) else (%s)" (Term.display Latex Protocol u) (Term.display Latex Protocol v) s1 s2)
           )
         )
+      | Let(u,_,v,p1,p2) ->
+        browse p1 (fun s1 ->
+          browse p2 (fun s2 ->
+            f_cont (Printf.sprintf "Let %s=%s in (%s) else (%s)" (Term.display Latex Protocol u) (Term.display Latex Protocol v) s1 s2)
+          )
+        )
       | New(n,pp) ->
         browse pp (fun s ->
           f_cont (Printf.sprintf "new %s; %s" (Name.display Latex n) s)
@@ -285,6 +291,7 @@ end = struct
     | Par l -> {lp with proc = Par (List.map restaure_sym l)}
     | Bang(b,l1,l2) ->
       {lp with proc = Bang (Repl,[],List.map restaure_sym l1 @ l2)}
+    | Let _
     | If _
     | New _
     | Output _ -> Config.internal_error "[process_session.ml >> restaure_sym] Should only be applied on normalised processes."
@@ -329,6 +336,7 @@ end = struct
         f_cont {lp with label = Some (Label.add_position prefix i)} (i+1)
       | New _
       | If _
+      | Let _
       | Output _ -> Config.internal_error "[process_session.ml >> labelling] Only normalised processes should be assigned with labels."
       | Start _ -> Config.internal_error "[process_session.ml >> labelling] Unexpected Start constructor."
 
@@ -351,6 +359,7 @@ end = struct
     | OutputSure _ -> {lp with label = Some prefix}
     | Output _
     | If _
+    | Let _
     | New _ ->
       Config.internal_error "[process_session.ml >> labelling] Only normalised processes should be assigned with labels."
     | Start _ -> Config.internal_error "[process_session.ml >> labelling] Unexpected Start constructor."
@@ -375,62 +384,75 @@ end = struct
     )
 
   let rec fresh_copy_of (lp:t) : t =
-    let rec browse rho p =
+    let rec browse rho bound_vars p =
       match p.proc with
       | Input(c,x,p) ->
-        {proc = Input(c,x,browse rho p); label = None}
+        {proc = Input(c,x,browse rho (x::bound_vars) p); label = None}
       | Output(c,t,p) ->
-        {proc = Output(c,apply_renaming_on_term rho t,browse rho p); label = None}
+        {proc = Output(c,apply_renaming_on_term rho t,browse rho bound_vars p); label = None}
       | OutputSure(c,t,p) ->
-        {proc = OutputSure(c,apply_renaming_on_term rho t,browse rho p); label = None}
+        {proc = OutputSure(c,apply_renaming_on_term rho t,browse rho bound_vars p); label = None}
       | If(u,v,p1,p2) ->
         let uu = apply_renaming_on_term rho u in
         let vv = apply_renaming_on_term rho v in
-        {proc = If(uu,vv,browse rho p1,browse rho p2); label = None}
+        {proc = If(uu,vv,browse rho bound_vars p1,browse rho bound_vars p2); label = None}
+      | Let(u,u',v,p1,p2) ->
+        let uu = apply_renaming_on_term rho u in
+        let bound_vars_u = Term.get_vars_not_in Protocol u bound_vars in
+        let fresh = Variable.Renaming.fresh Protocol bound_vars_u Universal in
+        let uu' = Variable.Renaming.apply_on_terms fresh uu (fun x f -> f x) in
+        let vv = apply_renaming_on_term rho v in
+        {proc = Let(uu,uu',vv,browse rho (List.rev_append bound_vars_u bound_vars) p1,browse rho bound_vars p2); label = None}
       | New(n,p) ->
         let nn = Name.fresh() in
-        {proc = New(nn,browse (Name.Renaming.compose rho n nn) p); label = None}
+        {proc = New(nn,browse (Name.Renaming.compose rho n nn) bound_vars p); label = None}
       | Par l ->
-        {proc = Par(List.map (browse rho) l); label = None}
+        {proc = Par(List.map (browse rho bound_vars) l); label = None}
       | Bang(b,[],l) ->
-        {proc = Bang(b,[],List.map (browse rho) l); label = None}
+        {proc = Bang(b,[],List.map (browse rho bound_vars) l); label = None}
       | Bang _ -> Config.internal_error "[process_session.ml >> fresh_copy] Unexpected case."
       | Start _ -> Config.internal_error "[process_session.ml >> fresh_copy] Unexpected Start constructor." in
-    browse (Name.Renaming.identity) lp
+    browse (Name.Renaming.identity) [] lp
 
   (* conversion from expansed processes
   TODO: verify during testing that nested bangs (without news/ifs in between) are collapsed *)
   let of_expansed_process (p:Process.expansed_process) : t =
-    let rec browse p =
+    let rec browse bound_vars p =
       match p with
       | Process.Nil -> {proc = Par []; label = None}
       | Process.Output(ch,_,_)
       | Process.Input(ch,_,_) when not (is_function ch) ->
         Config.internal_error "[process_session.ml >> of_expansed_process] Inputs/Outputs should only be done on atomic channels."
       | Process.Output(ch,t,pp) ->
-        {proc = Output(root ch,t,browse pp); label = None}
+        {proc = Output(root ch,t,browse bound_vars pp); label = None}
       | Process.Input(ch,x,pp) ->
-        {proc = Input(root ch,x,browse pp); label = None}
+        {proc = Input(root ch,x,browse (x::bound_vars) pp); label = None}
       | Process.IfThenElse(t1,t2,pthen,pelse) ->
-        let p_then = browse pthen in
-        let p_else = browse pelse in
+        let p_then = browse bound_vars pthen in
+        let p_else = browse bound_vars pelse in
         {proc = If(t1,t2,p_then,p_else); label = None}
+      | Process.Let(t1,t2,pthen,pelse) ->
+        let bound_vars_t1 = Term.get_vars_not_in Protocol t1 bound_vars in
+        let fresh = Variable.Renaming.fresh Protocol bound_vars_t1 Universal in
+        let tt1 = Variable.Renaming.apply_on_terms fresh t1 (fun x f -> f x) in
+        let pthen = browse (List.rev_append bound_vars_t1 bound_vars) pthen in
+        let pelse = browse bound_vars_t1 pelse in
+        {proc = Let(t1,tt1,t2,pthen,pelse); label = None}
       | Process.New(n,pp) ->
-        {proc = New(n,browse pp); label = None}
+        {proc = New(n,browse bound_vars pp); label = None}
       | Process.Par lp ->
         let lll =
           List.rev_map (fun (pp,i) ->
-            let proc = browse pp in
+            let proc = browse bound_vars pp in
             if i = 1 then proc
             else
               let l = Func.loop (fun _ ac -> fresh_copy_of proc :: ac) [] 0 (i-1) in
               {proc = Bang (Repl,[],l); label = None}
           ) lp in
         {proc = Par lll; label = None}
-      | Process.Choice _
-      | Process.Let _ -> Config.internal_error "[process_session.ml >> plain_process_of_expansed_process] *Choice* and *Let* not implemented yet for equivalence by session." in
+      | Process.Choice _ -> Config.internal_error "[process_session.ml >> plain_process_of_expansed_process] *Choice* and *Let* not implemented yet for equivalence by session." in
 
-    {proc = Start (browse p); label = Some Label.initial}
+    {proc = Start (browse [] p); label = Some Label.initial}
 
   let factor (p:t) : t = p
 
@@ -473,6 +495,7 @@ end = struct
         f_cont ((pp,res)::accu)
       | New _
       | If _
+      | Let _
       | Output _ ->
         Config.internal_error "[process_session.ml >> unfold_input] Unfolding should only be applied on normalised processes."
       | Start _ -> Config.internal_error "[process_session.ml >> unfold_input] Unexpected Start constructor."
@@ -522,6 +545,7 @@ end = struct
         if optim then [pp,res]
         else f_cont ((pp,res)::accu)
       | If _
+      | Let _
       | New _
       | Output _ ->
         Config.internal_error "[process_session.ml >> unfold_output] Should only be called on normalised processes."
@@ -600,6 +624,10 @@ end = struct
       | EqTop
       | EqList of (fst_ord, name) Subst.t list
 
+    type dismodulo_result =
+      | DiseqBot
+      | DiseqTop
+      | DiseqList of (fst_ord, name) Diseq.t list
 
     let rec normalise (p:t) (cstr:constraints) (f_cont:constraints->t->(unit->unit)->unit) (f_next:unit->unit) : unit =
       match p.proc with
@@ -704,6 +732,64 @@ end = struct
 
             else_next f_next_equations
         end
+      | Let(u,uelse,v,pthen,pelse) ->
+        let (u,uelse,v) =
+          Subst.apply cstr.equations (u,uelse,v) (fun (x,y,z) f -> f x, f y, f z) in
+
+        let positive_branch f_next =
+          let eqn_modulo_list_result =
+            try
+              EqList (Modulo.syntactic_equations_of_equations [Modulo.create_equation u v])
+            with
+              | Modulo.Bot -> EqBot
+              | Modulo.Top -> EqTop in
+
+          match eqn_modulo_list_result with
+          | EqBot -> f_next()
+          | EqTop -> normalise pthen cstr f_cont f_next
+          | EqList eqn_modulo_list ->
+            let f_next_equations =
+              List.fold_left (fun acc_f_next eqn_modulo ->
+                let new_diseqn_op =
+                  try
+                    let new_diseqn =
+                      List.fold_left (fun acc diseqn ->
+                        let new_diseqn =
+                          Diseq.apply_and_normalise Protocol eqn_modulo diseqn in
+                        if Diseq.is_top new_diseqn then acc
+                        else if Diseq.is_bot new_diseqn then
+                          raise Bot_disequations
+                        else new_diseqn::acc
+                      ) [] cstr.disequations in
+                    Some new_diseqn
+                  with
+                  | Bot_disequations -> None in
+                match new_diseqn_op with
+                  | None -> acc_f_next
+                  | Some new_diseqn ->
+                    let new_eqn = Subst.compose cstr.equations eqn_modulo in
+                    let new_cstr =
+                      {equations = new_eqn; disequations = new_diseqn} in
+                    (fun () -> normalise pthen new_cstr f_cont acc_f_next)
+              ) f_next eqn_modulo_list in
+            f_next_equations () in
+
+        let negative_branch f_next =
+          let disequations_modulo_result =
+            try
+              DiseqList (Modulo.syntactic_disequations_of_disequations (Modulo.create_disequation uelse v))
+            with
+            | Modulo.Bot -> DiseqBot
+            | Modulo.Top -> DiseqTop in
+
+          match disequations_modulo_result with
+          | DiseqBot -> f_next ()
+          | DiseqTop -> normalise pelse cstr f_cont f_next
+          | DiseqList diseqn_modulo ->
+            let new_diseqn = List.rev_append diseqn_modulo cstr.disequations in
+            normalise pelse {cstr with disequations = new_diseqn} f_cont f_next in
+
+        positive_branch (fun () -> negative_branch f_next)
       | New(_,p) -> normalise p cstr f_cont f_next
       | Par l ->
         normalise_list l cstr (fun gather l_norm f_next1 ->
