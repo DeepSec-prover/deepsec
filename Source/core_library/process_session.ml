@@ -775,14 +775,14 @@ end = struct
             f_next_equations () in
 
         let negative_branch f_next =
-          let disequations_modulo_result =
+          let diseqn_modulo_result =
             try
               DiseqList (Modulo.syntactic_disequations_of_disequations (Modulo.create_disequation uelse v))
             with
             | Modulo.Bot -> DiseqBot
             | Modulo.Top -> DiseqTop in
 
-          match disequations_modulo_result with
+          match diseqn_modulo_result with
           | DiseqBot -> f_next ()
           | DiseqTop -> normalise pelse cstr f_cont f_next
           | DiseqList diseqn_modulo ->
