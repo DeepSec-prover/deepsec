@@ -878,8 +878,8 @@ module Configuration : sig
   end
 end = struct
   type action =
-    | InAction of symbol * snd_ord_variable * protocol_term
-    | OutAction of symbol * axiom * protocol_term
+    | InAction of symbol * snd_ord_variable * protocol_term * Label.t
+    | OutAction of symbol * axiom * protocol_term * Label.t
 
   type t = {
     input_proc : Labelled_process.t list;
@@ -895,16 +895,16 @@ end = struct
   (* for interface purposes *)
   let print_action (fst_subst:(fst_ord,name) Subst.t) (snd_subst:(snd_ord,axiom) Subst.t) (act:action) : string =
     match act with
-    | InAction(ch,var_X,x) ->
+    | InAction(ch,var_X,x,lab) ->
       let recipe =
         Subst.apply snd_subst (of_variable var_X) (fun x f -> f x) in
       let input =
         Rewrite_rules.normalise (Subst.apply fst_subst x (fun x f -> f x)) in
-      Printf.sprintf "In(%s,%s) => concrete input: %s\n" (Symbol.display Latex ch) (Term.display Latex Recipe recipe) (Term.display Latex Protocol input)
-    | OutAction(ch,ax,t) ->
+      Printf.sprintf "@label:%s In(%s,%s) => concrete input: %s\n" (Label.to_string lab) (Symbol.display Latex ch) (Term.display Latex Recipe recipe) (Term.display Latex Protocol input)
+    | OutAction(ch,ax,t,lab) ->
       let output =
         Rewrite_rules.normalise (Subst.apply fst_subst t (fun x f -> f x)) in
-      Printf.sprintf "Out(%s,%s) => referred later as %s\n" (Symbol.display Latex ch) (Term.display Latex Protocol output) (Axiom.display Latex ax)
+      Printf.sprintf "@label:%s Out(%s,%s) => referred later as %s\n" (Label.to_string lab) (Symbol.display Latex ch) (Term.display Latex Protocol output) (Axiom.display Latex ax)
 
   let print_trace (fst_subst:(fst_ord,name) Subst.t) (snd_subst:(snd_ord,axiom) Subst.t) (conf:t) : string =
     snd (
@@ -924,18 +924,6 @@ end = struct
   (* returns the (sure) outputs of a process *)
   let outputs (conf:t) : Labelled_process.t list =
     conf.sure_output_proc
-
-  (* empties a process *)
-  (* let clear (c:t) : t = {
-    input_proc = [];
-    focused_proc = None;
-    sure_output_proc = [];
-    sure_unchecked_skeletons = None;
-    to_normalise = None;
-    trace = c.trace;
-    ongoing_block = c.ongoing_block;
-    previous_blocks = c.previous_blocks;
-  } *)
 
   (* TODO. makes initial configuration simpler, helps for optimisations. Includes factorisation. *)
   let clean_inital (c:t) : t =
@@ -1072,7 +1060,7 @@ end = struct
       {conf with
         to_normalise = Some p;
         sure_output_proc = leftovers;
-        trace = OutAction(od.channel,ax,od.term)::conf.trace;
+        trace = OutAction(od.channel,ax,od.term,od.lab)::conf.trace;
         ongoing_block = Block.add_axiom ax conf.ongoing_block;
       }
 
@@ -1091,7 +1079,7 @@ end = struct
           } in
           let conf_app = {conf with
             focused_proc = Some pp;
-            trace = InAction(ch,var_X,Term.of_variable x) :: conf.trace;
+            trace = InAction(ch,var_X,Term.of_variable x,idata.lab) :: conf.trace;
             ongoing_block = Block.add_variable var_X conf.ongoing_block;
           } in
           idata,conf_app
@@ -1111,7 +1099,7 @@ end = struct
         focused_proc = Some pp;
         ongoing_block = Block.create idata.lab;
         previous_blocks = c.ongoing_block :: c.previous_blocks;
-        trace = InAction(idata.channel,var_X,Term.of_variable idata.var) :: c.trace;
+        trace = InAction(idata.channel,var_X,Term.of_variable idata.var,idata.lab) :: c.trace;
       }
   end
 end

@@ -57,6 +57,17 @@ type recipe = (snd_ord, axiom) term
     When display renamings are given to display functions, they will display the names and variables according to these renaming. *)
 type display_renamings
 
+(** a wrapper for second-order variables and axioms. *)
+type vars = {
+  snd_ord : snd_ord_variable option;
+  axiom : axiom option;
+}
+
+(** acces functions for the wrapper. Raises [internal_error] inc ase of fail. *)
+val get_snd_ord : vars -> snd_ord_variable
+val get_axiom : vars -> axiom
+
+
 (** [generate_display_renaming n_l fst_l snd_l] generates display renamings so that names and variables will be displayed with consecutive indices
     starting from 0. This is very useful for pretty printing. *)
 val generate_display_renaming : name list -> fst_ord_variable list -> snd_ord_variable list -> display_renamings

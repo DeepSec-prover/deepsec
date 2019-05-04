@@ -11,5 +11,7 @@ let S1 = in(c,x); out(c,x).
 let S2 = in(c,x); out(c,a).
 let T1 = in(c,x).
 let T2 = if a = a then 0 else in(c,x).
+let U1 = out(a,a) | out(b,b).
+let U2 = out(a,a) | out(b,a). // bad attack trace found with U1
 
-query sess_equiv(S2, S1).
+query sess_equiv(U1, U2).

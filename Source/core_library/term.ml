@@ -87,6 +87,21 @@ type fst_ord_variable = (fst_ord, name) variable
 
 type snd_ord_variable = (snd_ord, axiom) variable
 
+type vars = {
+  snd_ord : snd_ord_variable option;
+  axiom : axiom option;
+}
+let get_snd_ord v =
+  match v.snd_ord with
+  | None -> Config.internal_error "[term.ml >> get_snd_ord] Unexpected case."
+  | Some x -> x
+  
+let get_axiom v =
+  match v.axiom with
+  | None -> Config.internal_error "[term.ml >> get_axiom] Unexpected case."
+  | Some x -> x
+
+
 type display_renamings =
   {
     rho_name : (name * name) list;
