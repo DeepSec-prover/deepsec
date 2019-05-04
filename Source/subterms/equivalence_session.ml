@@ -87,8 +87,8 @@ module Symbolic : sig
     val replace_conf : t -> Configuration.t -> t
     val get_transitions : t -> transition list
     val set_transitions : t -> transition list -> t
-    val get_origin_process : t -> bool
-    val init : bool -> Configuration.t -> Status.t -> t
+    val get_origin_process : t -> string
+    val init : string -> Configuration.t -> Status.t -> t
     val successor : t -> Configuration.t -> Status.t -> t
     val solution : t -> (fst_ord, name) Subst.t * (snd_ord, axiom) Subst.t (* gets the solution of a symbolic process (in solved form) *)
   end
@@ -165,7 +165,7 @@ end = struct
 
   module Process = struct
     type process = {
-      origin : bool;
+      origin : string;
       conf : Configuration.t;
       next_transitions : transition list;
       status : Status.t;
@@ -261,7 +261,9 @@ end = struct
           Some (Constraint_system.replace_additional_data cs_upd add_data)
       ) res;
       match Matching.remove matching !indexes_to_remove with
-      | _, Some index -> raise (Process.Attack_Witness (find res index))
+      | _, Some index ->
+        (* Printf.printf "Oh, %s triggers an attack!\n" (Index.to_string index); *)
+        raise (Process.Attack_Witness (find res index))
       | cleared_matching, None -> res,cleared_matching
 
     (* removing useless constraint systems (exists-only matching no forall) *)
@@ -291,9 +293,11 @@ end = struct
         else (
           (* Printf.printf "index %d -> non authorised block\n" cs_fa; *)
           begin match symp.status with
-          | Both -> replace csys_set cs_fa (Constraint_system.replace_additional_data cs {symp with status = Exists})
+          | Both ->
+            replace csys_set cs_fa (Constraint_system.replace_additional_data cs {symp with status = Exists})
           | ForAll -> remove csys_set cs_fa
-          | Exists -> Config.internal_error "[equivalence_session.ml >> remove_unauthorised_blocks] A purely-existential constraint system should not appear in the first components of matching." end;
+          | Exists ->
+            Config.internal_error "[equivalence_session.ml >> remove_unauthorised_blocks] A purely-existential constraint system should not appear in the first components of matching." end;
           accu
         )
       ) [] matching
@@ -302,7 +306,7 @@ end = struct
   module Transition = struct
     (* for printing purpose *)
     let print (source:Index.t) (tr:transition) : unit =
-      Printf.printf "%d -> %d (lab=%s, forall=%b) " source tr.target (Label.to_string tr.label) tr.forall
+      Printf.printf "%d -> %d (lab=%s, forall=%b, after reduced subprocess:%s) " source tr.target (Label.to_string tr.label) tr.forall (Labelled_process.print tr.new_proc)
 
     let is_universal t =
       t.forall
@@ -313,7 +317,6 @@ end = struct
     let get_target t =
       t.target
 
-    (* same, for the initial transition at the root of the partition tree *)
     let add_transition_start (csys_set:Set.t) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord, Term.name) Subst.t) (cs:Process.t) (lab:Label.t) : unit =
       Configuration.normalise lab conf eqn (fun gather conf_norm new_proc ->
         let equations = Labelled_process.Normalise.equations gather in
@@ -334,11 +337,6 @@ end = struct
           | Constraint_system.Bot -> ()
       )
 
-    (* normalising configurations and constructing next_transitions:
-    case of an output of 'term' bound to axiom 'ax', to be normalised in
-    configuration 'conf' to update constraint system 'cs' of first-order solution
-    'eqn', all that for a transition of type 'status'. The resulting transitions
-    are stored in 'csys_set' and 'accu'. *)
     let add_transition_output (csys_set:Set.t) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord, Term.name) Subst.t) (cs:Process.t) (ax:axiom) (od:Labelled_process.output_data) (new_status:Status.t) : unit =
       Configuration.normalise ~context:od.context od.lab conf eqn (fun gather conf_norm new_proc ->
         let equations = Labelled_process.Normalise.equations gather in
@@ -365,8 +363,6 @@ end = struct
           | Constraint_system.Bot -> ()
       )
 
-    (* normalising configurations and constructing next_transitions: case of a focused input on variable 'x' and second-order var_X, to be normalised in configuration 'conf' to update constraint system 'cs' of additional data 'symp' and first-order solution 'eqn', all that for a transition of type 'status'.
-    The resulting constraint_system is added to 'accu'.*)
     let add_transition_input (csys_set:Set.t) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord,Term.name) Subst.t) (cs:Process.t) (var_X:snd_ord_variable) (idata:Labelled_process.input_data) (new_status:Status.t) : unit =
       Configuration.normalise idata.lab conf eqn (fun gather conf_norm new_proc ->
         let equations = Labelled_process.Normalise.equations gather in
@@ -543,7 +539,7 @@ end = struct
       Symbolic.Set.iter (fun id csys ->
         Printf.printf "%s [Status " (Symbolic.Index.to_string id);
         Symbolic.Status.print (Symbolic.Process.get_status csys);
-        print_string "] "
+        Printf.printf ",origin %s] " (Symbolic.Process.get_origin_process csys)
       ) n.csys_set;
       Printf.printf "\nsize frame: %d\nmatching: " n.size_frame;
       Symbolic.Matching.iter (fun i l ->
@@ -607,6 +603,8 @@ end = struct
       Symbolic.Set.map (fun i csys ->
         let next_transitions =
           Symbolic.Transition.generate vars trans new_csys_set csys in
+        (* Printf.printf "Transitions generated from %s: \n" (Symbolic.Index.to_string i); *)
+        (* List.iter (fun tr -> Symbolic.Transition.print i tr; print_endline "") next_transitions; *)
         Symbolic.Process.set_transitions csys next_transitions
       ) n.csys_set;
 
@@ -671,6 +669,7 @@ end = struct
         | (m,c) :: t ->
           let node = replace_data m c in
           (* Printf.printf "- treating node %s (father: %s, remaining after that: %d)\n" node.id n.id (List.length t); *)
+          (* print node; *)
           f_cont node (fun () -> branch_on_nodes t f_next) in
 
       branch_on_nodes new_node_data f_next
@@ -679,7 +678,10 @@ end = struct
     let decast (node:t) (csys_set:Symbolic.Index.t Constraint_system.Set.t) : t =
       let (csys_set_decast,matching_decast) =
         Symbolic.Set.decast node.csys_set node.matching csys_set in
-      {node with csys_set = csys_set_decast; matching = matching_decast}
+      {node with
+        csys_set = csys_set_decast;
+        matching = matching_decast;
+        id = fresh_id()}
 
     (* removes (forall-quantified) constraint systems with unauthorised blocks *)
     let remove_unauthorised_blocks (node:t) (csys_set:Symbolic.Index.t Constraint_system.Set.t) : t =
@@ -698,7 +700,11 @@ end = struct
     - performing skeleton/block-authorisation checks on the resulting nodes.
   NB. The continuations f_cont indicates what to do with the generated nodes, and f_next what to do once all nodes have been explored. *)
   let generate_successors (n:Node.t) (f_cont:Node.t->(unit->unit)->unit) (f_next:unit->unit) : unit =
+    (* Printf.printf "\n==> EXPLORATION FROM %s\n" n.id;
+    Node.print n; *)
     let (transition_type,node_to_split) = Node.generate_next n in
+    (* Printf.printf "--> new node to split:\n";
+    Node.print node_to_split; *)
     Node.split node_to_split (fun node f_next1 ->
       let csys_set = Symbolic.Set.cast node.csys_set in
       match transition_type with
@@ -765,8 +771,7 @@ let string_of_result (res:result_analysis) : string =
   match res with
   | Equivalent -> "Equivalent processes."
   | Not_Equivalent csys ->
-    let origin =
-      if Symbolic.Process.get_origin_process csys then "left" else "right" in
+    let origin = Symbolic.Process.get_origin_process csys in
     let trace =
       let (fst,snd) = Symbolic.Process.solution csys in
       Configuration.print_trace fst snd (Symbolic.Process.get_conf csys) in
@@ -781,9 +786,9 @@ let equivalence (conf1:Configuration.t) (conf2:Configuration.t) : result_analysi
 
   (* initial node *)
   let csys_set_root = Symbolic.Set.empty() in
-  let symp1 = Symbolic.Process.init true conf1 Symbolic.Status.init in
+  let symp1 = Symbolic.Process.init "LEFT" conf1 Symbolic.Status.init in
   let index1 = Symbolic.Set.add_new_elt csys_set_root symp1 in
-  let symp2 = Symbolic.Process.init false conf2 Symbolic.Status.init in
+  let symp2 = Symbolic.Process.init "RIGHT" conf2 Symbolic.Status.init in
   let index2 = Symbolic.Set.add_new_elt csys_set_root symp2 in
   let matching_root =
     Symbolic.Matching.add_match index1 [index2,BijectionSet.initial] (

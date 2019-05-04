@@ -807,38 +807,30 @@ end = struct
       print_endline "";
     ) bset
 
-  (* restricts a bijection_set with the set of bijections pi such that
-  pi(l1) = l2. Returns None if the resulting set is empty. Assumes that the
-  argument was not already empty. *)
-  let update_cont ?abort_if_fails:(stop:bool=false) (l1:Label.t) (l2:Label.t) (p1:Labelled_process.t) (p2:Labelled_process.t) (bset:t) (f_fail:t->t option->t option): t option =
+
+  (* updates a bijection set after two matched transitions on labels (l1,l2), where the subprocesses reduced by the transition become p1 and p2 respectively. *)
+  let update (l1:Label.t) (l2:Label.t) (p1:Labelled_process.t) (p2:Labelled_process.t) (bset:t) : t option =
     let rec search memo s =
       match s with
-      | [] -> if stop then None else f_fail memo (init bset p1 p2)
+      | [] -> None
       | (ll1,ll2) :: t ->
         match LabelSet.find_opt l1 ll1, LabelSet.find_opt l2 ll2 with
         | None,None -> search ((ll1,ll2) :: memo) t
         | Some _,Some _ ->
-          if LabelSet.is_singleton ll1 then
-            Some (List.rev_append ((ll1,ll2)::t) memo)
-          else
-            let ll1' = LabelSet.remove l1 ll1 in
-            let ll2' = LabelSet.remove l2 ll2 in
-            let single1 = LabelSet.singleton l1 in
-            let single2 = LabelSet.singleton l2 in
-            Some (List.rev_append ((single1,single2)::(ll1',ll2')::t) memo)
+          let bset_upd =
+            if LabelSet.is_singleton ll1 then
+              List.rev_append memo ((ll1,ll2)::t)
+            else
+              let ll1' = LabelSet.remove l1 ll1 in
+              let ll2' = LabelSet.remove l2 ll2 in
+              let single1 = LabelSet.singleton l1 in
+              let single2 = LabelSet.singleton l2 in
+              List.rev_append memo ((single1,single2)::(ll1',ll2')::t) in
+            if Labelled_process.contains_par p1 || Labelled_process.contains_par p2 then
+              init bset_upd p1 p2
+            else Some bset_upd
         | _ -> None in
     search [] bset
-
-
-  let update (l1:Label.t) (l2:Label.t) (p1:Labelled_process.t) (p2:Labelled_process.t) (bset:t) : t option =
-    update_cont l1 l2 p1 p2 bset (fun memo extended_bset ->
-      match extended_bset with
-      | None -> None
-      | Some s ->
-        match update_cont ~abort_if_fails:true l1 l2 p1 p2 s (fun _ _ -> None) with
-        | None -> None
-        | Some res -> Some (List.rev_append res memo)
-    )
 
 
   (* given a bijection set and a label l, computes the set of labels that are
