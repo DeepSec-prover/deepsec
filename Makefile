@@ -8,8 +8,10 @@ SOURCE = Source/
 # configures and compiles
 compil:
 	$(SOURCE)configure
-	ocamlbuild -use-ocamlfind $(PACKAGES) $(INCLUDES) $(SOURCE)main.native
+	ocamlbuild -use-ocamlfind $(PACKAGES) $(INCLUDES) $(SOURCE)main.native worker.native manager.native
 	mv main.native $(EXECUTABLE)
+	mv worker.native worker_deepsec
+	mv manager.native manager_deepsec
 
 
 # documentation
