@@ -225,4 +225,4 @@ let yolo =
   let (y,=a) = h(x,x) in
   out(c,x).
 
-query trace_equiv(!^6 in(c,x);out(c,x),!^6 in(c,x);out(c,x)).
+query trace_equiv(!^5 in(c,x);out(c,x),!^5 in(c,x);out(c,x)).
