@@ -233,54 +233,56 @@ end = struct
       match p.label with
       | None -> "X"
       | Some l -> Label.to_string l in
-    let rec browse p f_cont =
+    let tab i =
+      Func.loop (fun _ s -> s^"   ") "" 1 i in
+    let rec browse indent p f_cont =
       match p.proc with
       | Start pp ->
-        browse pp (fun s ->
+        browse indent pp (fun s ->
           f_cont (Printf.sprintf "Start(lab=%s); %s" lab s)
         )
       | Input(c,x,pp) ->
-        browse pp (fun s ->
+        browse indent pp (fun s ->
           f_cont (Printf.sprintf "In(lab=%s,%s,%s); %s" lab (Symbol.display Latex c) (Variable.display Latex Protocol x) s)
         )
       | Output(c,t,pp) ->
-        browse pp (fun s ->
+        browse indent pp (fun s ->
           f_cont (Printf.sprintf "OutUNSURE(lab=%s,%s,%s); %s" lab (Symbol.display Latex c) (Term.display Latex Protocol t) s)
         )
       | OutputSure(c,t,pp) ->
-        browse pp (fun s ->
+        browse indent pp (fun s ->
           f_cont (Printf.sprintf "Out(lab=%s,%s,%s); %s" lab (Symbol.display Latex c) (Term.display Latex Protocol t)s)
         )
       | If(u,v,p1,p2) ->
-        browse p1 (fun s1 ->
-          browse p2 (fun s2 ->
+        browse indent p1 (fun s1 ->
+          browse indent p2 (fun s2 ->
             f_cont (Printf.sprintf "if %s=%s then (%s) else (%s)" (Term.display Latex Protocol u) (Term.display Latex Protocol v) s1 s2)
           )
         )
       | Let(u,_,v,p1,p2) ->
-        browse p1 (fun s1 ->
-          browse p2 (fun s2 ->
+        browse indent p1 (fun s1 ->
+          browse indent p2 (fun s2 ->
             f_cont (Printf.sprintf "Let %s=%s in (%s) else (%s)" (Term.display Latex Protocol u) (Term.display Latex Protocol v) s1 s2)
           )
         )
       | New(n,pp) ->
-        browse pp (fun s ->
+        browse indent pp (fun s ->
           f_cont (Printf.sprintf "new %s; %s" (Name.display Latex n) s)
         )
       | Par l ->
         f_cont (List.fold_left (fun accu pp ->
-          accu ^ browse pp (fun s -> "\n| "^s)
+          browse (indent+1) pp (fun s -> Printf.sprintf "%s\n%s| %s" accu (tab indent) s)
         ) "" l)
       | Bang(b,l1,l2) ->
         f_cont (
           List.fold_left (fun accu pp ->
-            accu ^ browse pp (fun s -> "\n! "^s)
+            browse (indent+1) pp (fun s -> Printf.sprintf "%s\n%s! %s" accu (tab indent) s)
           ) "" l2 ^
           List.fold_left (fun accu pp ->
-            accu ^ browse pp (fun s -> "\n!X "^s)
+            browse (indent+1) pp (fun s -> Printf.sprintf "%s\n%s!X %s" accu (tab indent) s)
           ) "" l1
         ) in
-    browse p (fun s -> s)
+    browse 0 p (fun s -> s)
 
   (* restaures all broken symmetries at toplevel
   NB. the sorting is here to unsure a sound combination of symmetries and the reduced semantics *)
@@ -421,8 +423,8 @@ end = struct
       match p with
       | Process.Nil -> {proc = Par []; label = None}
       | Process.Output(ch,_,_)
-      | Process.Input(ch,_,_) when not (is_function ch) ->
-        Config.internal_error "[process_session.ml >> of_expansed_process] Inputs/Outputs should only be done on atomic channels."
+      | Process.Input(ch,_,_) when not (is_function ch) || not (Symbol.is_public (root ch)) ->
+        Config.internal_error "[process_session.ml >> of_expansed_process] Inputs/Outputs should only be done on atomic public channels."
       | Process.Output(ch,t,pp) ->
         {proc = Output(root ch,t,browse bound_vars pp); label = None}
       | Process.Input(ch,x,pp) ->
@@ -446,11 +448,14 @@ end = struct
             let proc = browse bound_vars pp in
             if i = 1 then proc
             else
-              let l = Func.loop (fun _ ac -> fresh_copy_of proc :: ac) [] 0 (i-1) in
+              let l =
+                Func.loop (fun _ ac -> fresh_copy_of proc :: ac) [] 0 (i-1) in
               {proc = Bang (Repl,[],l); label = None}
           ) lp in
-        {proc = Par lll; label = None}
-      | Process.Choice _ -> Config.internal_error "[process_session.ml >> plain_process_of_expansed_process] *Choice* and *Let* not implemented yet for equivalence by session." in
+        begin match lll with
+        | [p] -> p
+        | _ -> {proc = Par lll; label = None} end
+      | Process.Choice _ -> Config.internal_error "[process_session.ml >> plain_process_of_expansed_process] *Choice* not implemented yet for equivalence by session." in
 
     {proc = Start (browse [] p); label = Some Label.initial}
 
@@ -800,10 +805,10 @@ end = struct
       | Bang(b,l1,l2) ->
         normalise_list l1 cstr (fun gather1 l1_norm f_next1 ->
           normalise_list l2 gather1 (fun gather2 l2_norm f_next2 ->
-              match l1_norm,l2_norm with
-              | [],[p]
-              | [p],[] -> f_cont gather2 p f_next1
-              | _ -> f_cont gather2 {p with proc = Bang(b,l1_norm,l2_norm)} f_next2
+            match l1_norm,l2_norm with
+            | [],[p]
+            | [p],[] -> f_cont gather2 p f_next1
+            | _ -> f_cont gather2 {p with proc = Bang(b,l1_norm,l2_norm)} f_next2
             ) f_next1
         ) f_next
       | Start _ -> Config.internal_error "[process_session.ml >> normalise] Unexpected Start constructor."
@@ -816,7 +821,7 @@ end = struct
           normalise_list t gather1 (fun gather2 l_norm f_next2 ->
             let l_tot_norm =
               match p_norm.proc with
-              | Par ll -> List.rev_append ll l_norm
+              | Par [p]
               | Bang(_,[],[p])
               | Bang(_,[p],[]) -> p :: l_norm
               | _ -> p_norm :: l_norm in
@@ -1008,6 +1013,7 @@ end = struct
     c
 
   let of_expansed_process (p:Process.expansed_process) : t =
+    (* Printf.printf "converting %s\n" (Labelled_process.print (Labelled_process.of_expansed_process p)); *)
     {
       input_proc = [];
       focused_proc = Some (Labelled_process.of_expansed_process p);

@@ -195,7 +195,7 @@ let rec excecute_queries id = function
     let result = Equivalence_session.equivalence conf1 conf2 in
     let running_time = Unix.time () -. !start_time in
     print_endline (Equivalence_session.string_of_result result);
-    print_endline (Printf.sprintf "[time: %ds]" (int_of_float running_time));
+    print_endline (Printf.sprintf "Running time: %ds" (int_of_float running_time));
     let _ = Sys.command "rm -f index_old.html" in
     (Session result,running_time) :: excecute_queries (id+1) q
   | _ -> Config.internal_error "Observational_equivalence not implemented"
