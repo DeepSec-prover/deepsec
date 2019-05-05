@@ -96,17 +96,19 @@ module Symbolic : sig
   (* a module for representing matchings between within sets of symbolic processes. A matching can be seen as a mapping from indexes (referring to a symbolic process P1) to their matchers, i.e. lists of indexes (referring to processes P2) with bijection sets (mapping the labels of P1 to the label of P2). *)
   module Matching : sig
     type t
-    val empty : t
+    val empty : t (* the empty matching *)
     val add_match : Index.t -> (Index.t * BijectionSet.t) list -> t -> t
     val fold : (Index.t -> (Index.t * BijectionSet.t) list -> 'a -> 'a) -> t -> 'a -> 'a (* computation over indexes and their matchers. *)
     val iter : (Index.t -> (Index.t * BijectionSet.t) list -> unit) -> t -> unit (* iteration of an operation over indexes and their matchers. *)
     val remove : t -> Index.t list -> t * Index.t option (* removes a list of indexes from a matching. In case an index ends up with no matchers because of this, an empty matching is returned along with this index. *)
     val clean : t -> Index.t list -> t (* removes indexes that do not need to be matched anymore. In particular, matchers are not affected and this can not create attacks, by opposition to [remove] NB. Assumes that, if a index i is removed but used as a matcher for an other index j, then j also appears in the list of indexes to remove. *)
-    val print : t -> unit
+    val print : t -> unit (* prints a matching *)
   end
 
   (* a module for representing sets of symbolic processes. As they often need to be compared by matchings, they are stored in a table and referred by indexes. *)
   module Set : sig
+
+    (** instances of IndexedSet **)
     type t
     val empty : unit -> t
     val is_empty : t -> bool
@@ -118,6 +120,8 @@ module Symbolic : sig
     val map_filter : (Index.t -> Process.t -> Process.t option) -> t -> unit
     val copy : t -> t
     val add_new_elt : t -> Process.t -> Index.t
+
+
     val cast : t -> Index.t Constraint_system.Set.t (* cast into a usual constraint system set *)
     val decast : t -> Matching.t -> Index.t Constraint_system.Set.t -> t * Matching.t (* restrict a set and a matching based on the indexes remaining in a Constraint_system.Set.t after calling the constraint solver.
     NB. Performs an attack check at the same time, and raises Attack_Witness if one is found *)
@@ -135,6 +139,7 @@ module Symbolic : sig
     val generate : vars -> Configuration.Transition.kind option -> Set.t -> Process.t -> transition list
   end
 end = struct
+  (* abstraction of integer indexes *)
   module Index = struct
     type t = int
     let to_string = string_of_int
@@ -511,14 +516,14 @@ module PartitionTree : sig
   (* functions operating on one node of the partition tree *)
   module Node : sig
     type t
-    val init : Symbolic.Set.t -> Symbolic.Matching.t -> t
-    val print : t -> unit
-    val release_skeleton : t -> t
-    val clean : t -> unit
-    val generate_next : t -> Configuration.Transition.kind option * t
-    val split : t -> (t->(unit->unit)->unit) -> (unit->unit) -> unit
-    val decast : t -> Symbolic.Index.t Constraint_system.Set.t -> t
-    val remove_unauthorised_blocks : t -> Symbolic.Index.t Constraint_system.Set.t -> t
+    val init : Symbolic.Set.t -> Symbolic.Matching.t -> t (* creates the root of the partition tree from an initial set and a matching *)
+    val print : t -> unit (* prints out the data of a node *)
+    val release_skeleton : t -> t (* marks the skeletons as checked and removes the proof obligations corresponding to improper blocks *)
+    val clean : t -> unit (* application of Symbolic.Set.clean *)
+    val generate_next : t -> Configuration.Transition.kind option * t (* computes the transitions from a given node, and puts all the new processes into one new node *)
+    val split : t -> (t->(unit->unit)->unit) -> (unit->unit) -> unit (* splits a node into several subnode with independent matchings *)
+    val decast : t -> Symbolic.Index.t Constraint_system.Set.t -> t (* after the constraint solver removes constraints systems from a Constraint_system.Set.t, [decast] applies the same restriction to the Symbolic.Set.t and the corresponding matching *)
+    val remove_unauthorised_blocks : t -> Symbolic.Index.t Constraint_system.Set.t -> t (* removes unauthorised blocks from a node *)
   end
 
   val explore_from : Node.t -> unit (* explores the partition tree from a given node. Raises Attack_Witness if an attack is found furing the exploration *)
@@ -575,7 +580,6 @@ end = struct
         | Some RNeg ->
           trans, {snd_ord = None; axiom = Some (Axiom.create (n.size_frame+1))}
 
-    (* releases skeletons and removes improper blocks *)
     let release_skeleton (n:t) : t =
       let improper_indexes = ref [] in
       Symbolic.Set.map_filter (fun index csys ->
@@ -588,7 +592,6 @@ end = struct
       ) n.csys_set;
       {n with matching = Symbolic.Matching.clean n.matching !improper_indexes}
 
-    (* applies Constraint_system_set.clean to a node *)
     let clean (n:t) : unit =
       Symbolic.Set.clean n.csys_set n.matching
 

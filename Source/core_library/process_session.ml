@@ -12,7 +12,8 @@ module Label : sig
   val initial : t (* an initial, empty label *)
   val add_position : t -> int -> t (* adds a position at the end of a label *)
   val independent : t -> t -> int (* returns 0 if one label is prefix of the other, and compares them lexicographically otherwise *)
-  val to_string : t -> string
+  val to_string : t -> string (* conversion to printable *)
+  val to_list : t -> int list (* TODO remove this and never use it again *)
 end = struct
   type t = int list
   let initial = [0]
@@ -22,13 +23,15 @@ end = struct
     | [] -> Config.internal_error "[process_session.ml >> Label.to_string] Unexpected case."
     | h :: t ->
       List.fold_left (Printf.sprintf "%s.%d") (string_of_int h) t
-
   let rec independent (l:t) (ll:t) : int =
     match l,ll with
-    | [],_
-    | _,[] -> 0
-    | p::l,pp::ll when p <> pp -> compare p pp
-    | _::l,_::ll -> independent l ll
+    | [], _ -> 0
+    | _, [] -> 0
+    | t1::q1, t2::q2 ->
+        match compare t1 t2 with
+          | 0 -> independent q1 q2
+          | i -> i
+  let to_list x = x
 end
 
 
@@ -39,6 +42,7 @@ module Block : sig
   val add_variable : snd_ord_variable -> t -> t (* adds a second order variable in a block *)
   val add_axiom : axiom -> t -> t (* adds an axiom in a block *)
   val is_authorised : t list -> t -> (snd_ord, axiom) Subst.t -> bool (* checks whether a block is authorised after a list of blocks *)
+  val print : t -> string (* converts a block into a string *)
 end = struct
   module IntSet = Set.Make(struct type t = int let compare = compare end)
 
@@ -50,7 +54,16 @@ end = struct
     used_axioms : IntSet.t
   }
 
-  (* creates an empty block *)
+  let print b =
+    let ax = match b.bounds_axiom with
+      | None -> "No"
+      | Some (i,j) -> Printf.sprintf "[%d,%d]" i j in
+    let axset =
+      IntSet.fold (Printf.sprintf "%d %s") b.used_axioms "" in
+    let snd =
+      List.fold_left (fun s x -> s^" "^Variable.display Terminal Recipe x) "" b.recipes in
+    Printf.sprintf "Block: label: %s, axioms: %s, used axioms: %s, variables: %s, maximal var: %d" (Label.to_string b.label) ax axset snd b.maximal_var
+
   let create (label:Label.t) : t = {
       label = label;
       recipes = [];
@@ -59,11 +72,9 @@ end = struct
       used_axioms = IntSet.empty
   }
 
-  (* adds a second-order variable in the recipes of a block *)
   let add_variable (snd_var:snd_ord_variable) (block:t) : t =
     { block with recipes = (snd_var :: block.recipes) }
 
-  (* adds an axiom in a block and updates the bounds *)
   let add_axiom (ax:axiom) (block:t) : t =
     match block.bounds_axiom with
     | None ->
@@ -72,7 +83,6 @@ end = struct
     | Some (i,_) ->
       {block with bounds_axiom = Some (i,Axiom.index_of ax)}
 
-  (* checking whether a block is not allowed after a block list *)
   let rec is_faulty_block (block:t) (block_list:t list) : bool =
     match block_list with
     | [] -> false
@@ -111,13 +121,14 @@ end = struct
       ) l
     )
 
-  (* checking whether a block is authorised after a block list *)
   let is_authorised (block_list:t list) (cur_block:t) (snd_subst:(snd_ord,axiom) Subst.t) : bool =
+    let block_list_upd =
+      apply_snd_subst_on_block snd_subst (cur_block::block_list) in
+    (* Printf.printf "AUTHORISATION CHECK:\n";
+    List.iter (fun b -> Printf.printf "%s\n" (print b)) block_list_upd; *)
     match block_list with
     | [] -> true
     | _ ->
-      let block_list_upd =
-        apply_snd_subst_on_block snd_subst (cur_block::block_list) in
       let rec explore_block block_list =
         match block_list with
         | []
@@ -243,31 +254,31 @@ end = struct
         )
       | Input(c,x,pp) ->
         browse indent pp (fun s ->
-          f_cont (Printf.sprintf "In(lab=%s,%s,%s); %s" lab (Symbol.display Latex c) (Variable.display Latex Protocol x) s)
+          f_cont (Printf.sprintf "In(lab=%s,%s,%s); %s" lab (Symbol.display Terminal c) (Variable.display Terminal Protocol x) s)
         )
       | Output(c,t,pp) ->
         browse indent pp (fun s ->
-          f_cont (Printf.sprintf "OutUNSURE(lab=%s,%s,%s); %s" lab (Symbol.display Latex c) (Term.display Latex Protocol t) s)
+          f_cont (Printf.sprintf "OutUNSURE(lab=%s,%s,%s); %s" lab (Symbol.display Terminal c) (Term.display Terminal Protocol t) s)
         )
       | OutputSure(c,t,pp) ->
         browse indent pp (fun s ->
-          f_cont (Printf.sprintf "Out(lab=%s,%s,%s); %s" lab (Symbol.display Latex c) (Term.display Latex Protocol t)s)
+          f_cont (Printf.sprintf "Out(lab=%s,%s,%s); %s" lab (Symbol.display Terminal c) (Term.display Terminal Protocol t)s)
         )
       | If(u,v,p1,p2) ->
         browse indent p1 (fun s1 ->
           browse indent p2 (fun s2 ->
-            f_cont (Printf.sprintf "if %s=%s then (%s) else (%s)" (Term.display Latex Protocol u) (Term.display Latex Protocol v) s1 s2)
+            f_cont (Printf.sprintf "if %s=%s then (%s) else (%s)" (Term.display Terminal Protocol u) (Term.display Terminal Protocol v) s1 s2)
           )
         )
       | Let(u,_,v,p1,p2) ->
         browse indent p1 (fun s1 ->
           browse indent p2 (fun s2 ->
-            f_cont (Printf.sprintf "Let %s=%s in (%s) else (%s)" (Term.display Latex Protocol u) (Term.display Latex Protocol v) s1 s2)
+            f_cont (Printf.sprintf "Let %s=%s in (%s) else (%s)" (Term.display Terminal Protocol u) (Term.display Terminal Protocol v) s1 s2)
           )
         )
       | New(n,pp) ->
         browse indent pp (fun s ->
-          f_cont (Printf.sprintf "new %s; %s" (Name.display Latex n) s)
+          f_cont (Printf.sprintf "new %s; %s" (Name.display Terminal n) s)
         )
       | Par l ->
         f_cont (List.fold_left (fun accu pp ->
@@ -983,11 +994,11 @@ end = struct
         Subst.apply snd_subst (of_variable var_X) (fun x f -> f x) in
       let input =
         Rewrite_rules.normalise (Subst.apply fst_subst x (fun x f -> f x)) in
-      Printf.sprintf "@label:%s In(%s,%s) => concrete input: %s\n" (Label.to_string lab) (Symbol.display Latex ch) (Term.display Latex Recipe recipe) (Term.display Latex Protocol input)
+      Printf.sprintf "@label:%s In(%s,%s) => concrete input: %s\n" (Label.to_string lab) (Symbol.display Terminal ch) (Term.display Terminal Recipe recipe) (Term.display Terminal Protocol input)
     | OutAction(ch,ax,t,lab) ->
       let output =
         Rewrite_rules.normalise (Subst.apply fst_subst t (fun x f -> f x)) in
-      Printf.sprintf "@label:%s Out(%s,%s) => referred later as %s\n" (Label.to_string lab) (Symbol.display Latex ch) (Term.display Latex Protocol output) (Axiom.display Latex ax)
+      Printf.sprintf "@label:%s Out(%s,%s) => referred later as %s\n" (Label.to_string lab) (Symbol.display Terminal ch) (Term.display Terminal Protocol output) (Axiom.display Terminal ax)
 
   let print_trace (fst_subst:(fst_ord,name) Subst.t) (snd_subst:(snd_ord,axiom) Subst.t) (conf:t) : string =
     snd (
@@ -998,7 +1009,11 @@ end = struct
 
   (* lifting operations on block to configurations *)
   let check_block (snd_subst:(snd_ord,axiom) Subst.t) (c:t) : bool =
-    Block.is_authorised c.previous_blocks c.ongoing_block snd_subst
+    match c.previous_blocks with
+    | [] -> true
+    | h :: t -> Block.is_authorised t h snd_subst
+    (* NB. the alternative below triggers bugs
+    Block.is_authorised c.previous_blocks c.ongoing_block snd_subst *)
 
   (* returns the inputs of the process *)
   let inputs (conf:t) : Labelled_process.t list =
@@ -1181,7 +1196,7 @@ end = struct
       {c with
         input_proc = idata.leftovers;
         focused_proc = Some pp;
-        ongoing_block = Block.create idata.lab;
+        ongoing_block = Block.add_variable var_X (Block.create idata.lab);
         previous_blocks = c.ongoing_block :: c.previous_blocks;
         trace = InAction(idata.channel,var_X,Term.of_variable idata.var,idata.lab) :: c.trace;
       }

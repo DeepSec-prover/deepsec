@@ -32,22 +32,22 @@ let create_tab k =
   );
   internal_create_tab k
 
-    
+
 let mkRuntime f =
   let rt = int_of_float f in
   let hours = rt / 3600 in
-  let rem = rt mod 3600 in 
+  let rem = rt mod 3600 in
   let mins = rem / 60 in
   let secs = rem mod 60 in
-  
+
   let h = ( if hours>0 then ((string_of_int hours)^"h") else "") in
   let m = ( if mins>0 then ((string_of_int mins)^"m") else "") in
   let s = ((string_of_int secs)^"s") in
   h^(m^s)
 
-    
+
   (* Printf.sprintf "%ih %im %is" hours mins secs *)
-   
+
 let mkDate t =
   let weekday d =
     match d with
@@ -80,8 +80,8 @@ let mkDate t =
     (weekday t.Unix.tm_wday) (month t.Unix.tm_mon) t.Unix.tm_mday (1900 + t.Unix.tm_year)
     t.Unix.tm_hour t.Unix.tm_min t.Unix.tm_sec in
   d
-    
-    
+
+
 (**** Special character ****)
 
 let neqi = function

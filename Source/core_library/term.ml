@@ -95,7 +95,7 @@ let get_snd_ord v =
   match v.snd_ord with
   | None -> Config.internal_error "[term.ml >> get_snd_ord] Unexpected case."
   | Some x -> x
-  
+
 let get_axiom v =
   match v.axiom with
   | None -> Config.internal_error "[term.ml >> get_axiom] Unexpected case."
