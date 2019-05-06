@@ -313,13 +313,15 @@ end = struct
           Subst.apply sol_restr (u,v) (fun (u,v) f ->
             Rewrite_rules.normalise (f u),Rewrite_rules.normalise (f v)
           ) in
-        browse sol_restr (List.rev_append new_vars bound) indent p1 (fun s1 ->
-          browse sol bound (indent+1) p2 (fun s2 ->
-            let else_branch =
-              if s2 = "" then ""
-              else Printf.sprintf "\n%selse%s" (tab indent) s2 in
-            f_cont (Printf.sprintf "\n%slet %s = %s in%s%s" (tab indent) (Term.display Terminal Protocol u) (Term.display Terminal Protocol v) s1 else_branch)
-          )
+        browse sol bound (indent+1) p2 (fun s2 ->
+          if s2 = "" then
+            browse sol_restr (List.rev_append new_vars bound) indent p1 (fun s1 ->
+              f_cont (Printf.sprintf "\n%slet %s = %s in%s" (tab indent) (Term.display Terminal Protocol u) (Term.display Terminal Protocol v) s1)
+            )
+          else
+            browse sol_restr (List.rev_append new_vars bound) (indent+1) p1 (fun s1 ->
+              f_cont (Printf.sprintf "\n%slet %s = %s in%s\n%selse%s" (tab indent) (Term.display Terminal Protocol u) (Term.display Terminal Protocol v) s1 (tab indent) s2)
+            )
         )
       | New(n,pp) ->
         browse sol bound indent pp (fun s ->
