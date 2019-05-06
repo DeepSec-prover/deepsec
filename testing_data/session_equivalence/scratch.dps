@@ -2,10 +2,10 @@ free c.
 fun mac/2.
 
 let A =
-  in(c,z); new k; !^2 in(c,x); in(c,y); out(c,(x,k)).
+  in(c,z);in(c,zz);let alpha = z in new k; !^2 in(c,x); in(c,y); out(c,(y,alpha)).
 
 let B =
-  in(c,z); new k; !^2 in(c,x); in(c,y); out(c,x).
+  in(c,z); in(c,zz); new k; !^2 in(c,x); in(c,y);out(c,(x,y,k)).
 
 
 query sess_equiv(A,B).

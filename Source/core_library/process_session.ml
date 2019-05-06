@@ -259,7 +259,7 @@ end = struct
   let print ?solution:(fst_subst:(fst_ord, name) Subst.t=Subst.identity) ?highlight:(idh:id= -1) (p:t) : string =
     let on_id i s = if i = idh then bold_red s else s in
     let semicolon s = if s = "" then "" else ";" in
-    let rec browse indent p f_cont =
+    let rec browse sol bound indent p f_cont =
       let lab delim =
         match p.label with
         | None -> ""
@@ -267,37 +267,38 @@ end = struct
           (* Printf.sprintf "lab=%s%s" (Label.to_string l) delim in *)
       match p.proc with
       | Start (pp,id) ->
-        browse indent pp (fun s ->
+        browse sol bound indent pp (fun s ->
           let instr = on_id id (Printf.sprintf "start(%s)" (lab "")) in
           f_cont (Printf.sprintf "\n%s%s%s%s" (tab indent) instr (semicolon s) s)
         )
       | Input(c,x,pp,id) ->
-        browse indent pp (fun s ->
+        let sol = Subst.restrict sol (fun y -> not (Variable.is_equal x y)) in
+        browse sol (x::bound) indent pp (fun s ->
           let instr =
             on_id id (Printf.sprintf "in(%s%s,%s)" (lab ",") (Symbol.display Terminal c) (Variable.display Terminal Protocol x)) in
           f_cont (Printf.sprintf "\n%s%s%s%s" (tab indent) instr (semicolon s) s)
         )
       | Output(c,t,pp,_) ->
         let t =
-          Subst.apply fst_subst t (fun t f -> Rewrite_rules.normalise (f t)) in
-        browse indent pp (fun s ->
+          Subst.apply sol t (fun t f -> Rewrite_rules.normalise (f t)) in
+        browse sol bound indent pp (fun s ->
           f_cont (Printf.sprintf "\n%sout(%s%s,%s)%s%s" (tab indent) (lab ",") (Symbol.display Terminal c) (Term.display Terminal Protocol t) (semicolon s) s)
         )
       | OutputSure(c,t,pp,id) ->
         let t =
-          Subst.apply fst_subst t (fun t f -> Rewrite_rules.normalise (f t)) in
-        browse indent pp (fun s ->
+          Subst.apply sol t (fun t f -> Rewrite_rules.normalise (f t)) in
+        browse sol bound indent pp (fun s ->
           let instr =
             on_id id (Printf.sprintf "out(%s%s,%s)" (lab ",") (Symbol.display Terminal c) (Term.display Terminal Protocol t)) in
           f_cont (Printf.sprintf "\n%s%s%s%s" (tab indent) instr (semicolon s) s)
         )
       | If(u,v,p1,p2) ->
         let (u,v) =
-          Subst.apply fst_subst (u,v) (fun (u,v) f ->
+          Subst.apply sol (u,v) (fun (u,v) f ->
             Rewrite_rules.normalise (f u),Rewrite_rules.normalise (f v)
           ) in
-        browse (indent+1) p1 (fun s1 ->
-          browse (indent+1) p2 (fun s2 ->
+        browse sol bound (indent+1) p1 (fun s1 ->
+          browse sol bound (indent+1) p2 (fun s2 ->
             let else_branch =
               if s2 = "" then ""
               else Printf.sprintf "\n%selse%s" (tab indent) s2 in
@@ -305,12 +306,15 @@ end = struct
           )
         )
       | Let(u,_,v,p1,p2) ->
+        let new_vars = get_vars_not_in Protocol u bound in
+        let sol_restr =
+          Subst.restrict sol (fun x -> not (List.mem x new_vars)) in
         let (u,v) =
-          Subst.apply fst_subst (u,v) (fun (u,v) f ->
+          Subst.apply sol_restr (u,v) (fun (u,v) f ->
             Rewrite_rules.normalise (f u),Rewrite_rules.normalise (f v)
           ) in
-        browse indent p1 (fun s1 ->
-          browse (indent+1) p2 (fun s2 ->
+        browse sol_restr (List.rev_append new_vars bound) indent p1 (fun s1 ->
+          browse sol bound (indent+1) p2 (fun s2 ->
             let else_branch =
               if s2 = "" then ""
               else Printf.sprintf "\n%selse%s" (tab indent) s2 in
@@ -318,50 +322,50 @@ end = struct
           )
         )
       | New(n,pp) ->
-        browse indent pp (fun s ->
+        browse sol bound indent pp (fun s ->
           f_cont (Printf.sprintf "\n%snew %s%s%s" (tab indent) (Name.display Terminal n) (semicolon s) s)
         )
       | Par []
       | Bang(_,[],[]) -> f_cont ""
       | Par [p]
       | Bang(_,[p],[])
-      | Bang(_,[],[p]) -> browse indent p f_cont
+      | Bang(_,[],[p]) -> browse sol bound indent p f_cont
       | Par (p::t) ->
-        browse (indent+1) p (fun s ->
-          browse_list "|" indent t (fun sl ->
+        browse sol bound (indent+1) p (fun s ->
+          browse_list sol bound "|" indent t (fun sl ->
             f_cont (Printf.sprintf "%s%s" s sl)
           )
         )
       | Bang(b,[],p::t) ->
-        browse (indent+1) p (fun s ->
+        browse sol bound (indent+1) p (fun s ->
           f_cont (Printf.sprintf "\n%s%s%s" (tab indent) (string_of_bang b (List.length t+1)) s)
         )
       | Bang(b,p::t,[]) ->
-        browse (indent+1) p (fun s ->
-          browse_list (string_of_broken_bang b) indent t (fun sl ->
+        browse sol bound (indent+1) p (fun s ->
+          browse_list sol bound (string_of_broken_bang b) indent t (fun sl ->
             f_cont (Printf.sprintf "%s%s" s sl)
           )
         )
       | Bang(b,p1::t1,p2::t2) ->
-        browse (indent+1) p1 (fun s1 ->
-          browse (indent+1) p2 (fun s2 ->
-            browse_list (string_of_broken_bang b) indent t1 (fun sl1 ->
+        browse sol bound (indent+1) p1 (fun s1 ->
+          browse sol bound (indent+1) p2 (fun s2 ->
+            browse_list sol bound (string_of_broken_bang b) indent t1 (fun sl1 ->
               f_cont (Printf.sprintf "%s%s\n%s%s%s" s1 sl1 (tab indent) (string_of_bang b (List.length t2+1)) s2)
             )
           )
         )
 
-      and browse_list delim indent l f_cont =
+      and browse_list sol bound delim indent l f_cont =
         match l with
         | [] -> f_cont ""
         | p :: t ->
-          browse (indent+1) p (fun s ->
-            browse_list delim indent t (fun sl ->
+          browse sol bound (indent+1) p (fun s ->
+            browse_list sol bound delim indent t (fun sl ->
               f_cont (Printf.sprintf "\n%s%s%s%s" (tab indent) delim s sl)
             )
           ) in
 
-    browse 0 p (fun s -> s)
+    browse fst_subst [] 0 p (fun s -> s)
 
   let rec restaure_sym (lp:t) : t =
     match lp.proc with
@@ -470,7 +474,7 @@ end = struct
       | Input(c,x,p,_) ->
         let xx = Variable.fresh Protocol Free Variable.fst_ord_type in
         browse (Variable.Renaming.compose rho_v x xx) rho_n (xx::bound_vars) p (id+1) (fun id_max p_fresh ->
-          f_cont id_max {proc = Input(c,x,p_fresh,id); label = None}
+          f_cont id_max {proc = Input(c,xx,p_fresh,id); label = None}
         )
       | Output(c,t,p,_) ->
         browse rho_v rho_n bound_vars p (id+1) (fun id_max p_fresh ->

@@ -195,6 +195,7 @@ let rec excecute_queries id = function
     let result = Equivalence_session.equivalence conf1 conf2 in
     let running_time = Unix.time () -. !start_time in
     let res = Equivalence_session.string_of_result result in
+    flush stdout;
     ignore (Sys.command (Printf.sprintf "printf \"%s\"" res));
     print_endline (Printf.sprintf "\nRunning time: %ds" (int_of_float running_time));
     let _ = Sys.command "rm -f index_old.html" in

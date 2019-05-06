@@ -568,7 +568,7 @@ end = struct
         let csys = Symbolic.Set.choose n.csys_set in
         let trans =
           Configuration.Transition.next (Symbolic.Process.get_conf csys) in
-        Configuration.Transition.print_kind trans;
+        (* Configuration.Transition.print_kind trans; *)
         match trans with
         | None
         | Some RStart -> trans, {snd_ord = None; axiom = None}
