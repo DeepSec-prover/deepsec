@@ -5,7 +5,6 @@ open Display
 open Extensions
 
 
-
 (* a module for representing process labels *)
 module Label : sig
   type t
@@ -13,7 +12,6 @@ module Label : sig
   val add_position : t -> int -> t (* adds a position at the end of a label *)
   val independent : t -> t -> int (* returns 0 if one label is prefix of the other, and compares them lexicographically otherwise *)
   val to_string : t -> string (* conversion to printable *)
-  val to_list : t -> int list (* TODO remove this and never use it again *)
 end = struct
   type t = int list
   let initial = [0]
@@ -141,32 +139,34 @@ end
 (* a module for labelled processes *)
 module Labelled_process : sig
   type t
-
+  type id
   type bang_status
   type plain =
-    | Start of t
-    | Input of symbol * fst_ord_variable * t
-    | Output of symbol * protocol_term * t
-    | OutputSure of symbol * protocol_term * t
+    | Start of t * id
+    | Input of symbol * fst_ord_variable * t * id
+    | Output of symbol * protocol_term * t * id
+    | OutputSure of symbol * protocol_term * t * id
     | If of protocol_term * protocol_term * t * t
     | Let of protocol_term * protocol_term * protocol_term * t * t
     | New of name * t
     | Par of t list
     | Bang of bang_status * t list * t list
 
-  val print : t -> string
-  val of_expansed_process : Process.expansed_process -> t (* converts an expansed process into a process, starting with a Start constructor and label [initial]. *)
+  val print : ?highlight:id -> t -> string (* converts a process into a string, while highlighting the instruction at the given identifier *)
+  val of_expansed_process : ?optim:(t -> t) -> Process.expansed_process -> t (* converts an expansed process into a process starting with a Start constructor and label [initial]. Also attributes id to all observable instructions. *)
+  val of_process_list : t list -> t (* groups a list of processes together *)
   val elements : ?init:(t list) -> t -> t list (* extracts the list of parallel subprocesses *)
   val nil : t -> bool (* checks if this represents the null process *)
   val empty : Label.t -> t (* a labelled process with empty data. For typing purposes (only way to construct a Labelled_process.t outside of this module) *)
-  val contains_output : t -> bool (* checks whether a normalised process contains an executable output *)
-  val contains_par : t -> bool (* checks whether a normalised process does not start right away by an input or an output *)
+  val contains_output_toplevel : t -> bool (* checks whether a normalised process contains an executable output *)
+  val not_pure_io_toplevel : t -> bool (* checks whether a normalised process does not start right away by an input or an output *)
   type input_data = {
     channel : symbol; (* channel on which the input is performed *)
     var : fst_ord_variable; (* variable bound by the input *)
     optim : bool; (* whether this input is needed for forall processes *)
     lab : Label.t; (* label of the executed input *)
     leftovers : t list; (* what remains after the input is executed *)
+    id : id; (* the id of the executed instruction *)
   }
   val unfold_input : ?optim:bool -> t list -> (t * input_data) list (* function computing all potential ways of unfolding one input from a list of processes. *)
   type output_data = {
@@ -175,6 +175,7 @@ module Labelled_process : sig
     optim : bool; (* whether this output is needed for forall processes *)
     lab : Label.t; (* label of the executed output *)
     context : t -> t; (* suroundings of the executed output *)
+    id : id; (* the id of the executed instruction *)
   }
   val unfold_output : ?optim:bool -> t -> (t * output_data) list (* function computing all potential ways of unfolding one output from a process.
   NB. Unfolding outputs break symmetries (just as symmetries), but they can be restaured at the end of negative phases (see function [restaure_sym]). *)
@@ -182,6 +183,14 @@ module Labelled_process : sig
   val labelling : Label.t -> t -> t (* assigns labels to the parallel processes at toplevel, with a given label prefix *)
   val get_label : ?error_msg:string -> t -> Label.t (* gets the label of a process, and returns an error message if it has not been assigned *)
   val get_proc : t -> plain
+
+  (* operations on initial labelled process that do not affect the decision of equivalence but make it more efficient *)
+  module Optimisation : sig
+    val remove_non_observable : t -> t (* removes subprocesses that do not contain observable actions *)
+    val flatten : t -> t (* push new names as deep as possible to facilitate the detection of symmetries, and flatten unecessary nested constructs *)
+    val factor : t -> t (* factors structurally equivalent parallel processes *)
+    val factor_up_to_renaming : t -> t -> t * t (* factors at toplevel parallel processes that are structurally equivalent up to bijective channel channel renaming. This factorisation has to be common to the two processes under equivalence check, therefore the two arguments *)
+  end
 
   (* comparison of process skeletons *)
   module Skeleton : sig
@@ -204,33 +213,29 @@ end = struct
     proc : plain;
     label : Label.t option; (* None if the label has not been attributed yet *)
   }
-
   and plain =
-    | Start of t (* a symbol that will only be found at the very toplevel of the initial processes, for convinience. Treated as an input action. *)
-    | Input of symbol * fst_ord_variable * t
-    | Output of symbol * protocol_term * t
-    | OutputSure of symbol * protocol_term * t
+    | Start of t * id (* a symbol that will only be found at the very toplevel of the initial processes, for convinience. Treated as an input action. *)
+    | Input of symbol * fst_ord_variable * t * id
+    | Output of symbol * protocol_term * t * id
+    | OutputSure of symbol * protocol_term * t * id
     | If of protocol_term * protocol_term * t * t
     | Let of protocol_term * protocol_term * protocol_term * t * t
     | New of name * t
     | Par of t list
     | Bang of bang_status * t list * t list (* The two lists model the replicated processes, the first one being reserved for processes where symmetries are temporarily broken due to the execution of outputs. *)
-
+  and id = int
   and bang_status =
     | Repl (* symmetry up to structural equivalence *)
     | Channel (* symmetry up to structural equivalence and channel renaming *)
 
-  (* checks whether a process models the nil process *)
   let nil (p:t) : bool =
     match p.proc with
     | Par []
     | Bang (_,[],[]) -> true
     | _ -> false
 
-  (* en empty process *)
   let empty (lab:Label.t) : t = {proc = Par []; label = Some lab}
 
-  (* extracts the data of a process *)
   let get_label ?error_msg:(s="[process_session.ml >> Label.Process.get_label] Unassigned label.") (p:t) : Label.t =
     match p.label with
     | None -> Config.internal_error s
@@ -238,65 +243,114 @@ end = struct
 
   let get_proc (p:t) : plain = p.proc
 
+  (* formatting function *)
+  let bold_red s = Printf.sprintf "\\033[1;31m%s\\033[0m" s
+  let tab i = Func.loop (fun _ s -> s^"   ") "" 1 i
+  let string_of_bang b n =
+    match b with
+    | Repl -> Printf.sprintf "!^%d" n
+    | Channel -> Printf.sprintf "!c^%d" n
+  let string_of_broken_bang b =
+    match b with
+    | Repl -> "X"
+    | Channel -> "Xc"
 
-  let print (p:t) : string =
-    let lab =
-      match p.label with
-      | None -> "X"
-      | Some l -> Label.to_string l in
-    let tab i =
-      Func.loop (fun _ s -> s^"   ") "" 1 i in
+  (* conversion into a string *)
+  let print ?highlight:(idh:id= -1) (p:t) : string =
+    let on_id i s = if i = idh then bold_red s else s in
+    let semicolon s = if s = "" then "" else ";" in
     let rec browse indent p f_cont =
+      let lab delim =
+        match p.label with
+        | None -> ""
+        | Some l -> "" in
+          (* Printf.sprintf "lab=%s%s" (Label.to_string l) delim in *)
       match p.proc with
-      | Start pp ->
+      | Start (pp,id) ->
         browse indent pp (fun s ->
-          f_cont (Printf.sprintf "Start(lab=%s); %s" lab s)
+          let instr = on_id id (Printf.sprintf "start(%s)" (lab "")) in
+          f_cont (Printf.sprintf "\n%s%s%s%s" (tab indent) instr (semicolon s) s)
         )
-      | Input(c,x,pp) ->
+      | Input(c,x,pp,id) ->
         browse indent pp (fun s ->
-          f_cont (Printf.sprintf "In(lab=%s,%s,%s); %s" lab (Symbol.display Terminal c) (Variable.display Terminal Protocol x) s)
+          let instr =
+            on_id id (Printf.sprintf "in(%s%s,%s)" (lab ",") (Symbol.display Terminal c) (Variable.display Terminal Protocol x)) in
+          f_cont (Printf.sprintf "\n%s%s%s%s" (tab indent) instr (semicolon s) s)
         )
-      | Output(c,t,pp) ->
+      | Output(c,t,pp,_) ->
         browse indent pp (fun s ->
-          f_cont (Printf.sprintf "OutUNSURE(lab=%s,%s,%s); %s" lab (Symbol.display Terminal c) (Term.display Terminal Protocol t) s)
+          f_cont (Printf.sprintf "\n%sout(%s%s,%s)%s%s" (tab indent) (lab ",") (Symbol.display Terminal c) (Term.display Terminal Protocol t) (semicolon s) s)
         )
-      | OutputSure(c,t,pp) ->
+      | OutputSure(c,t,pp,id) ->
         browse indent pp (fun s ->
-          f_cont (Printf.sprintf "Out(lab=%s,%s,%s); %s" lab (Symbol.display Terminal c) (Term.display Terminal Protocol t)s)
+          let instr =
+            on_id id (Printf.sprintf "out(%s%s,%s)" (lab ",") (Symbol.display Terminal c) (Term.display Terminal Protocol t)) in
+          f_cont (Printf.sprintf "\n%s%s%s%s" (tab indent) instr (semicolon s) s)
         )
       | If(u,v,p1,p2) ->
-        browse indent p1 (fun s1 ->
-          browse indent p2 (fun s2 ->
-            f_cont (Printf.sprintf "if %s=%s then (%s) else (%s)" (Term.display Terminal Protocol u) (Term.display Terminal Protocol v) s1 s2)
+        browse (indent+1) p1 (fun s1 ->
+          browse (indent+1) p2 (fun s2 ->
+            let else_branch =
+              if s2 = "" then ""
+              else Printf.sprintf "\n%selse%s" (tab indent) s2 in
+            f_cont (Printf.sprintf "\n%sif %s = %s then%s%s" (tab indent) (Term.display Terminal Protocol u) (Term.display Terminal Protocol v) s1 else_branch)
           )
         )
       | Let(u,_,v,p1,p2) ->
         browse indent p1 (fun s1 ->
-          browse indent p2 (fun s2 ->
-            f_cont (Printf.sprintf "Let %s=%s in (%s) else (%s)" (Term.display Terminal Protocol u) (Term.display Terminal Protocol v) s1 s2)
+          browse (indent+1) p2 (fun s2 ->
+            let else_branch =
+              if s2 = "" then ""
+              else Printf.sprintf "\n%selse%s" (tab indent) s2 in
+            f_cont (Printf.sprintf "\n%slet %s = %s in%s%s" (tab indent) (Term.display Terminal Protocol u) (Term.display Terminal Protocol v) s1 else_branch)
           )
         )
       | New(n,pp) ->
         browse indent pp (fun s ->
-          f_cont (Printf.sprintf "new %s; %s" (Name.display Terminal n) s)
+          f_cont (Printf.sprintf "\n%snew %s%s%s" (tab indent) (Name.display Terminal n) (semicolon s) s)
         )
-      | Par l ->
-        f_cont (List.fold_left (fun accu pp ->
-          browse (indent+1) pp (fun s -> Printf.sprintf "%s\n%s| %s" accu (tab indent) s)
-        ) "" l)
-      | Bang(b,l1,l2) ->
-        f_cont (
-          List.fold_left (fun accu pp ->
-            browse (indent+1) pp (fun s -> Printf.sprintf "%s\n%s! %s" accu (tab indent) s)
-          ) "" l2 ^
-          List.fold_left (fun accu pp ->
-            browse (indent+1) pp (fun s -> Printf.sprintf "%s\n%s!X %s" accu (tab indent) s)
-          ) "" l1
-        ) in
+      | Par []
+      | Bang(_,[],[]) -> f_cont ""
+      | Par [p]
+      | Bang(_,[p],[])
+      | Bang(_,[],[p]) -> browse indent p f_cont
+      | Par (p::t) ->
+        browse (indent+1) p (fun s ->
+          browse_list "|" indent t (fun sl ->
+            f_cont (Printf.sprintf "%s%s" s sl)
+          )
+        )
+      | Bang(b,[],p::t) ->
+        browse (indent+1) p (fun s ->
+          f_cont (Printf.sprintf "\n%s%s%s" (tab indent) (string_of_bang b (List.length t+1)) s)
+        )
+      | Bang(b,p::t,[]) ->
+        browse (indent+1) p (fun s ->
+          browse_list (string_of_broken_bang b) indent t (fun sl ->
+            f_cont (Printf.sprintf "%s%s" s sl)
+          )
+        )
+      | Bang(b,p1::t1,p2::t2) ->
+        browse (indent+1) p1 (fun s1 ->
+          browse (indent+1) p2 (fun s2 ->
+            browse_list (string_of_broken_bang b) indent t1 (fun sl1 ->
+              f_cont (Printf.sprintf "%s%s\n%s%s%s" s1 sl1 (tab indent) (string_of_bang b (List.length t2+1)) s2)
+            )
+          )
+        )
+
+      and browse_list delim indent l f_cont =
+        match l with
+        | [] -> f_cont ""
+        | p :: t ->
+          browse (indent+1) p (fun s ->
+            browse_list delim indent t (fun sl ->
+              f_cont (Printf.sprintf "\n%s%s%s%s" (tab indent) delim s sl)
+            )
+          ) in
+
     browse 0 p (fun s -> s)
 
-  (* restaures all broken symmetries at toplevel
-  NB. the sorting is here to unsure a sound combination of symmetries and the reduced semantics *)
   let rec restaure_sym (lp:t) : t =
     match lp.proc with
     | Input _
@@ -310,19 +364,16 @@ end = struct
     | Output _ -> Config.internal_error "[process_session.ml >> restaure_sym] Should only be applied on normalised processes."
     | Start _ -> Config.internal_error "[process_session.ml >> restaure_sym] Unexpected Start constructor."
 
-  (* checks whether the process contains an output at toplevel.
-  Should not take the symmetries into account while doing so. *)
-  let rec contains_output (lp:t) : bool =
+  let rec contains_output_toplevel (lp:t) : bool =
     match lp.proc with
     | Input _ -> false
     | OutputSure _ -> true
-    | Par l -> List.exists contains_output l
-    | Bang (_,l1,l2) -> List.exists contains_output (l1@l2)
+    | Par l -> List.exists contains_output_toplevel l
+    | Bang (_,l1,l2) -> List.exists contains_output_toplevel (l1@l2)
     | Start _ -> Config.internal_error "[process_session.ml >> contains_output] Unexpected Start constructor."
     | _ -> Config.internal_error "[process_session.ml >> contains_output] Should only be applied on normalised processes."
 
-  (* checks parallels at toplevel *)
-  let contains_par (lp:t) : bool =
+  let not_pure_io_toplevel (lp:t) : bool =
     match lp.proc with
     | Input _
     | OutputSure _ -> false
@@ -331,7 +382,6 @@ end = struct
     | Start _ -> Config.internal_error "[process_session.ml >> contains_par] Unexpected Start constructor."
     | _ -> Config.internal_error "[process_session.ml >> contains_output] Should only be applied on normalised processes."
 
-  (* adding labels to normalised processes *)
   let labelling (prefix:Label.t) (lp:t) : t =
     let rec assign i lp f_cont =
       match lp.proc with
@@ -379,7 +429,6 @@ end = struct
     | Par _
     | Bang _ -> assign 0 lp (fun proc pos -> proc)
 
-  (* extracts the list of parallel labelled_process from a labelled_process *)
   let elements ?init:(init:t list=[]) (lp:t) : t list =
     let rec gather accu lp = match lp with
       | {proc = Par l; _} -> List.fold_left gather accu l
@@ -387,7 +436,7 @@ end = struct
       | _ -> lp :: accu in
     gather init lp
 
-  (* conversion from a usual process *)
+  (* application of renaming. Useful for generating fresh copies of processes *)
   let apply_renaming_on_term (rho:Name.Renaming.t) (t:Term.protocol_term) : Term.protocol_term =
     Name.Renaming.apply_on_terms rho t (fun x f -> f x)
 
@@ -396,91 +445,150 @@ end = struct
       Term.name_of (f (Term.of_name n))
     )
 
-  let rec fresh_copy_of (lp:t) : t =
-    let rec browse rho bound_vars p =
+  (* generates several copies of a process with freshly renamed New names *)
+  let rec fresh_copy (nb:int) (p:t) (id:id) (f_cont:id->t list->'a) : 'a =
+    let rec browse rho bound_vars p id f_cont =
       match p.proc with
-      | Input(c,x,p) ->
-        {proc = Input(c,x,browse rho (x::bound_vars) p); label = None}
-      | Output(c,t,p) ->
-        {proc = Output(c,apply_renaming_on_term rho t,browse rho bound_vars p); label = None}
-      | OutputSure(c,t,p) ->
-        {proc = OutputSure(c,apply_renaming_on_term rho t,browse rho bound_vars p); label = None}
+      | Input(c,x,p,_) ->
+        browse rho (x::bound_vars) p (id+1) (fun id_max p_fresh ->
+          f_cont id_max {proc = Input(c,x,p_fresh,id); label = None}
+        )
+      | Output(c,t,p,_) ->
+        browse rho bound_vars p (id+1) (fun id_max p_fresh ->
+          f_cont id_max {proc = Output(c,apply_renaming_on_term rho t,p_fresh,id); label = None}
+        )
+      | OutputSure(c,t,p,_) ->
+        Config.internal_error "[process_session.ml >> fresh_copy] Outputs should not be sure before the analysis starts."
       | If(u,v,p1,p2) ->
         let uu = apply_renaming_on_term rho u in
         let vv = apply_renaming_on_term rho v in
-        {proc = If(uu,vv,browse rho bound_vars p1,browse rho bound_vars p2); label = None}
+        browse rho bound_vars p1 id (fun id1 p1_fresh ->
+          browse rho bound_vars p2 id1 (fun id2 p2_fresh ->
+            f_cont id2 {proc = If(uu,vv,p1_fresh,p2_fresh); label = None}
+          )
+        )
       | Let(u,u',v,p1,p2) ->
         let uu = apply_renaming_on_term rho u in
         let bound_vars_u = Term.get_vars_not_in Protocol u bound_vars in
         let fresh = Variable.Renaming.fresh Protocol bound_vars_u Universal in
         let uu' = Variable.Renaming.apply_on_terms fresh uu (fun x f -> f x) in
         let vv = apply_renaming_on_term rho v in
-        {proc = Let(uu,uu',vv,browse rho (List.rev_append bound_vars_u bound_vars) p1,browse rho bound_vars p2); label = None}
+        browse rho (List.rev_append bound_vars_u bound_vars) p1 id (fun id1 p1_fresh ->
+          browse rho bound_vars p2 id1 (fun id2 p2_fresh ->
+            f_cont id2 {proc = Let(uu,uu',vv,p1_fresh,p2_fresh); label = None}
+          )
+        )
       | New(n,p) ->
         let nn = Name.fresh() in
-        {proc = New(nn,browse (Name.Renaming.compose rho n nn) bound_vars p); label = None}
+        browse (Name.Renaming.compose rho n nn) bound_vars p id (fun id_max p_fresh ->
+          f_cont id_max {proc = New(nn,p_fresh); label = None}
+        )
       | Par l ->
-        {proc = Par(List.map (browse rho bound_vars) l); label = None}
-      | Bang(b,[],l) ->
-        {proc = Bang(b,[],List.map (browse rho bound_vars) l); label = None}
-      | Bang _ -> Config.internal_error "[process_session.ml >> fresh_copy] Unexpected case."
-      | Start _ -> Config.internal_error "[process_session.ml >> fresh_copy] Unexpected Start constructor." in
-    browse (Name.Renaming.identity) [] lp
+        browse_list rho bound_vars l id (fun id_max l_fresh ->
+          f_cont id_max {proc = Par l_fresh; label = None}
+        )
+      | Bang(Repl,[],l) ->
+        browse_list rho bound_vars l id (fun id_max l_fresh ->
+          f_cont id_max {proc = Bang(Repl,[],l_fresh); label = None}
+        )
+      | Bang _ -> Config.internal_error "[process_session.ml >> fresh_copy] Unexpected type of bang."
+      | Start _ -> Config.internal_error "[process_session.ml >> fresh_copy] Unexpected Start constructor."
 
-  (* conversion from expansed processes
-  TODO: verify during testing that nested bangs (without news/ifs in between) are collapsed *)
-  let of_expansed_process (p:Process.expansed_process) : t =
-    let rec browse bound_vars p =
+    and browse_list rho bound_vars l id f_cont =
+      match l with
+      | [] -> f_cont id []
+      | p :: t ->
+        browse rho bound_vars p id (fun id_max p_fresh ->
+          browse_list rho bound_vars t id_max (fun id_l l_fresh ->
+            f_cont id_l (p_fresh::l_fresh)
+          )
+        ) in
+
+    let rec browse_iter nb p id f_cont =
+      if nb = 0 then f_cont id []
+      else
+        browse (Name.Renaming.identity) [] p id (fun id_max p_fresh ->
+          browse_iter (nb-1) p id_max (fun id_final l_fresh ->
+            f_cont id_final (p_fresh::l_fresh)
+          )
+        ) in
+
+    browse_iter nb p id f_cont
+
+  (* conversion from expansed processes *)
+  let of_expansed_process ?optim:(opti:t->t=fun x->x) (p:Process.expansed_process) : t =
+    let rec browse bound_vars p id f_cont =
       match p with
-      | Process.Nil -> {proc = Par []; label = None}
+      | Process.Nil ->
+        f_cont id {proc = Par []; label = None}
       | Process.Output(ch,_,_)
       | Process.Input(ch,_,_) when not (is_function ch) || not (Symbol.is_public (root ch)) ->
         Config.internal_error "[process_session.ml >> of_expansed_process] Inputs/Outputs should only be done on atomic public channels."
       | Process.Output(ch,t,pp) ->
-        {proc = Output(root ch,t,browse bound_vars pp); label = None}
+        browse bound_vars pp (id+1) (fun id_max p_conv ->
+          f_cont id_max {proc = Output(root ch,t,p_conv,id); label = None}
+        )
       | Process.Input(ch,x,pp) ->
-        {proc = Input(root ch,x,browse (x::bound_vars) pp); label = None}
+        browse (x::bound_vars) pp (id+1) (fun id_max p_conv ->
+          f_cont id_max {proc = Input(root ch,x,p_conv,id); label = None}
+        )
       | Process.IfThenElse(t1,t2,pthen,pelse) ->
-        let p_then = browse bound_vars pthen in
-        let p_else = browse bound_vars pelse in
-        {proc = If(t1,t2,p_then,p_else); label = None}
+        browse bound_vars pthen id (fun id1 pthen ->
+          browse bound_vars pelse id1 (fun id2 pelse ->
+            f_cont id2 {proc = If(t1,t2,pthen,pelse); label = None}
+          )
+        )
       | Process.Let(t1,t2,pthen,pelse) ->
         let bound_vars_t1 = Term.get_vars_not_in Protocol t1 bound_vars in
         let fresh = Variable.Renaming.fresh Protocol bound_vars_t1 Universal in
         let tt1 = Variable.Renaming.apply_on_terms fresh t1 (fun x f -> f x) in
-        let pthen = browse (List.rev_append bound_vars_t1 bound_vars) pthen in
-        let pelse = browse bound_vars_t1 pelse in
-        {proc = Let(t1,tt1,t2,pthen,pelse); label = None}
+        browse (List.rev_append bound_vars_t1 bound_vars) pthen id (fun id1 pthen ->
+          browse bound_vars pelse id1 (fun id2 pelse ->
+            f_cont id2 {proc = Let(t1,tt1,t2,pthen,pelse); label = None}
+          )
+        )
       | Process.New(n,pp) ->
-        {proc = New(n,browse bound_vars pp); label = None}
+        browse bound_vars pp id (fun id_max p_conv ->
+          f_cont id_max {proc = New(n,p_conv); label = None}
+        )
       | Process.Par lp ->
-        let lll =
-          List.rev_map (fun (pp,i) ->
-            let proc = browse bound_vars pp in
-            if i = 1 then proc
+        browse_list bound_vars lp id (fun id_max l_conv ->
+          match l_conv with
+          | [p] -> f_cont id_max p
+          | l -> f_cont id_max {proc = Par l; label = None}
+        )
+      | Process.Choice _ -> Config.internal_error "[process_session.ml >> plain_process_of_expansed_process] *Choice* not implemented yet for equivalence by session."
+
+    and browse_list bound_vars l id f_cont =
+      match l with
+      | [] -> f_cont id []
+      | (pp,i) :: t ->
+        browse bound_vars pp id (fun id_max p_conv ->
+          browse_list bound_vars t id_max (fun id_l l_conv ->
+            if i = 1 then f_cont id_l (p_conv :: l_conv)
             else
-              let l =
-                Func.loop (fun _ ac -> fresh_copy_of proc :: ac) [] 0 (i-1) in
-              {proc = Bang (Repl,[],l); label = None}
-          ) lp in
-        begin match lll with
-        | [p] -> p
-        | _ -> {proc = Par lll; label = None} end
-      | Process.Choice _ -> Config.internal_error "[process_session.ml >> plain_process_of_expansed_process] *Choice* not implemented yet for equivalence by session." in
+              fresh_copy i p_conv id_l (fun id_final l_fresh ->
+                f_cont id_final ({proc = Bang(Repl,[],l_fresh); label = None} :: l_conv)
+              )
+          )
+        ) in
 
-    {proc = Start (browse [] p); label = Some Label.initial}
+    browse [] p 1 (fun _ p_conv ->
+      opti {proc = Start (p_conv,0); label = Some Label.initial}
+    )
 
-  let factor (p:t) : t = p
+  let of_process_list (l:t list) : t =
+    match l with
+    | [p] -> p
+    | l -> {proc = Par l; label = None}
 
-
-  (* executing inputs with symmetries. Returns a list of (c,x,lab,p,li) where [li] is the leftovers after executing an input binding of [x] on channel [c], with label [lab].
-  NB. The extracted inputs are consumed. *)
   type input_data = {
     channel : symbol;
     var : fst_ord_variable;
     optim : bool;
     lab : Label.t;
     leftovers : t list;
+    id : id;
   }
   let unfold_input ?optim:(optim:bool=false) (l:t list) : (t * input_data) list =
 
@@ -500,13 +608,14 @@ end = struct
           unfold forall accu leftovers_pp pp (fun accu_pp ->
             unfold_list ~bang:(Some ([pp],Channel)) false accu_pp leftovers tl f_cont
           )
-      | Input (ch,x,pp) ->
+      | Input (ch,x,pp,id) ->
         let res = {
           channel = ch;
           var = x;
           optim = forall;
           lab = get_label p;
           leftovers = leftovers;
+          id = id;
         } in
         f_cont ((pp,res)::accu)
       | New _
@@ -536,27 +645,27 @@ end = struct
 
     unfold_list true [] [] l (fun accu -> accu)
 
-  (* executing outputs with symmetries. Returns a list of ([c],[t],[lab],[l]) where [l] is the leftovers left after executing an output of [t] on channel [c], with label [lab].
-  NB. the extracted outputs are consumed. *)
   type output_data = {
     channel : symbol;
     term : protocol_term;
     optim : bool;
     lab : Label.t;
     context : t -> t;
+    id : id;
   }
   let unfold_output ?optim:(optim:bool=false) (lp:t) : (t * output_data) list =
 
     let rec unfold accu p rebuild f_cont =
       match p.proc with
       | Input _ -> f_cont accu
-      | OutputSure(c,t,pp) ->
+      | OutputSure(c,t,pp,id) ->
         let res = {
           channel = c;
           term = t;
           optim = false;
           lab = get_label p;
-          context = rebuild
+          context = rebuild;
+          id = id;
         } in
         if optim then [pp,res]
         else f_cont ((pp,res)::accu)
@@ -597,14 +706,91 @@ end = struct
     | [] -> Config.internal_error "[process_session.ml >> unfold_output] No output could be unfolded."
     | (p,odata) :: accu -> (p,{odata with optim = true}) :: accu
 
+  module Optimisation = struct
+    (* removing subprocesses that cannot trigger observable actions (for optimisation purposes; does not affect the decision of equivalence) *)
+    let void = {proc = Par []; label = None}
+    let replace (p:t) (plain:plain) : t = {p with proc = plain}
+    let remove_non_observable (p:t) : t =
+      let rec browse p f_cont =
+        match p.proc with
+        | Start (pp,id) ->
+          browse pp (fun _ pp_norm ->
+            f_cont false (replace p (Start (pp_norm,id)))
+          )
+        | Output(c,t,pp,id) ->
+          browse pp (fun _ pp_norm ->
+            f_cont false (replace p (Output(c,t,pp_norm,id)))
+          )
+        | OutputSure(c,t,pp,id) ->
+          browse pp (fun _ pp_norm ->
+            f_cont false (replace p (OutputSure(c,t,pp_norm,id)))
+          )
+        | Input(c,x,pp,id) ->
+          browse pp (fun _ pp_norm ->
+            f_cont false (replace p (Input(c,x,pp_norm,id)))
+          )
+        | If(u,v,p1,p2) ->
+          browse p1 (fun propagate1 p1_norm ->
+            browse p2 (fun propagate2 p2_norm ->
+              match propagate1,propagate2 with
+              | true,true -> f_cont true void
+              | true,false -> f_cont false (replace p (If(u,v,void,p2_norm)))
+              | false,true -> f_cont false (replace p (If(u,v,p1_norm,void)))
+              | false,false -> f_cont false (replace p (If(u,v,p1_norm,p2_norm)))
+            )
+          )
+        | Let(u,uu,v,p1,p2) ->
+          browse p1 (fun propagate1 p1_norm ->
+            browse p2 (fun propagate2 p2_norm ->
+              match propagate1,propagate2 with
+              | true,true -> f_cont true void
+              | true,false -> f_cont false (replace p (Let(u,uu,v,void,p2_norm)))
+              | false,true -> f_cont false (replace p (Let(u,uu,v,p1_norm,void)))
+              | false,false -> f_cont false (replace p (Let(u,uu,v,p1_norm,p2_norm)))
+            )
+          )
+        | New(n,pp) ->
+          browse p (fun propagate pp_norm ->
+            if propagate then f_cont true void
+            else f_cont false (replace p (New(n,pp_norm)))
+          )
+        | Par l ->
+          browse_list l (fun propagate l_norm ->
+            if propagate then f_cont true void
+            else f_cont false (replace p (Par l_norm))
+          )
+        | Bang (b,l1,l2) ->
+          browse_list l1 (fun propagate1 l1_norm ->
+            browse_list l2 (fun propagate2 l2_norm ->
+              if propagate1 && propagate2 then f_cont true void
+              else f_cont false (replace p (Bang(b,l1_norm,l2_norm)))
+            )
+          )
+      and browse_list l f_cont =
+        match l with
+        | [] -> f_cont true []
+        | pp :: t ->
+          browse pp (fun propagate_pp pp_norm ->
+            browse_list t (fun propagate_l l_norm ->
+              if propagate_pp then f_cont propagate_l l_norm
+              else f_cont false (pp::l_norm)
+            )
+          ) in
+      browse p (fun _ x -> x)
+
+    let flatten (p:t) : t = p
+    let factor (p:t) : t = p
+    let factor_up_to_renaming p1 p2 = p1 , p2
+  end
+
   module Skeleton = struct
     (* comparison of skeletons (parallel operators excluded) *)
     let compare_atomic (p1:t) (p2:t) : int =
       match p1.proc, p2.proc with
       | OutputSure _ , Input _  -> -1
       | Input _, OutputSure _ -> 1
-      | Input(c1,_,_), Input(c2,_,_)
-      | OutputSure(c1,_,_), OutputSure(c2,_,_) -> Symbol.order c1 c2
+      | Input(c1,_,_,_), Input(c2,_,_,_)
+      | OutputSure(c1,_,_,_), OutputSure(c2,_,_,_) -> Symbol.order c1 c2
       | _ -> Config.internal_error "[process_session.ml >> compare_io_process] Unexpected case."
 
     (* Checks whether two lists of atomic processes have identical skeletons.
@@ -649,7 +835,7 @@ end = struct
       match p.proc with
       | OutputSure _
       | Input _ -> f_cont cstr p f_next
-      | Output(ch,t,p) ->
+      | Output(ch,t,p,id) ->
         let tt =
           Rewrite_rules.normalise (Subst.apply cstr.equations t (fun x f -> f x)) in
 
@@ -662,7 +848,7 @@ end = struct
 
         begin match eqn_modulo_list_result with
         | EqBot -> f_cont cstr {p with proc = Par []} f_next
-        | EqTop -> f_cont cstr {p with proc = OutputSure(ch,t,p)} f_next
+        | EqTop -> f_cont cstr {p with proc = OutputSure(ch,t,p,id)} f_next
         | EqList eqn_modulo_list ->
           let f_next_equations =
             List.fold_left (fun acc_f_next equations_modulo ->
@@ -683,7 +869,7 @@ end = struct
                | None -> acc_f_next
                | Some new_diseqn ->
                   let new_eqn = Subst.compose cstr.equations equations_modulo in
-                  fun () -> f_cont {equations = new_eqn; disequations = new_diseqn} {p with proc = OutputSure(ch,t,p)} acc_f_next
+                  fun () -> f_cont {equations = new_eqn; disequations = new_diseqn} {p with proc = OutputSure(ch,t,p,id)} acc_f_next
             ) f_next eqn_modulo_list in
 
           let f_next_disequation f_next =
@@ -928,7 +1114,7 @@ end = struct
               let single1 = LabelSet.singleton l1 in
               let single2 = LabelSet.singleton l2 in
               List.rev_append memo ((single1,single2)::(ll1',ll2')::t) in
-            if Labelled_process.contains_par p1 || Labelled_process.contains_par p2 then
+            if Labelled_process.not_pure_io_toplevel p1 || Labelled_process.not_pure_io_toplevel p2 then
               init bset_upd p1 p2
             else Some bset_upd
         | _ -> None in
@@ -971,9 +1157,14 @@ module Configuration : sig
     val apply_start : t -> t (* removes the start at the beginning of the process *)
   end
 end = struct
+  type state = {
+    current_proc : Labelled_process.t;
+    id : Labelled_process.id;
+    label : Label.t;
+  }
   type action =
-    | InAction of symbol * snd_ord_variable * protocol_term * Label.t
-    | OutAction of symbol * axiom * protocol_term * Label.t
+    | InAction of symbol * snd_ord_variable * protocol_term * state
+    | OutAction of symbol * axiom * protocol_term * state
 
   type t = {
     input_proc : Labelled_process.t list;
@@ -986,46 +1177,52 @@ end = struct
     previous_blocks : Block.t list;
   }
 
-  (* for interface purposes *)
+  let to_process (conf:t) : Labelled_process.t =
+    let l = conf.input_proc @ conf.sure_output_proc in
+    match conf.focused_proc with
+    | None -> Labelled_process.of_process_list l
+    | Some p -> Labelled_process.of_process_list (p::l)
+
+  (* color printing *)
+  let bold_blue s = Printf.sprintf "\\033[1;34m%s\\033[0m" s
+
   let print_action (fst_subst:(fst_ord,name) Subst.t) (snd_subst:(snd_ord,axiom) Subst.t) (act:action) : string =
     match act with
-    | InAction(ch,var_X,x,lab) ->
+    | InAction(ch,var_X,x,s) ->
       let recipe =
         Subst.apply snd_subst (of_variable var_X) (fun x f -> f x) in
       let input =
         Rewrite_rules.normalise (Subst.apply fst_subst x (fun x f -> f x)) in
-      Printf.sprintf "@label:%s In(%s,%s) => concrete input: %s\n" (Label.to_string lab) (Symbol.display Terminal ch) (Term.display Terminal Recipe recipe) (Term.display Terminal Protocol input)
-    | OutAction(ch,ax,t,lab) ->
+      let msg =
+        Printf.sprintf "input on channel %s of %s = %s\n" (Symbol.display Terminal ch) (Term.display Terminal Recipe recipe) (Term.display Terminal Protocol input) in
+      Printf.sprintf "%s%s" (bold_blue msg) (Labelled_process.print ~highlight:s.id s.current_proc)
+    | OutAction(ch,ax,t,s) ->
       let output =
         Rewrite_rules.normalise (Subst.apply fst_subst t (fun x f -> f x)) in
-      Printf.sprintf "@label:%s Out(%s,%s) => referred later as %s\n" (Label.to_string lab) (Symbol.display Terminal ch) (Term.display Terminal Protocol output) (Axiom.display Terminal ax)
+      let msg =
+        Printf.sprintf "output on channel %s of %s, referred as %s\n" (Symbol.display Terminal ch) (Term.display Terminal Protocol output) (Axiom.display Terminal ax) in
+      Printf.sprintf "%s%s" (bold_blue msg) (Labelled_process.print ~highlight:s.id s.current_proc)
 
   let print_trace (fst_subst:(fst_ord,name) Subst.t) (snd_subst:(snd_ord,axiom) Subst.t) (conf:t) : string =
     snd (
       List.fold_left (fun (count,accu) act ->
-        count-1,Printf.sprintf "%d) %s%s" count (print_action fst_subst snd_subst act) accu
+        count-1,Printf.sprintf "\n\n%s %s%s" (bold_blue (Printf.sprintf "%d)" count)) (print_action fst_subst snd_subst act) accu
       ) (List.length conf.trace,"") conf.trace
     )
 
-  (* lifting operations on block to configurations *)
   let check_block (snd_subst:(snd_ord,axiom) Subst.t) (c:t) : bool =
-    match c.previous_blocks with
+    Block.is_authorised c.previous_blocks c.ongoing_block snd_subst
+    (* match c.previous_blocks with
     | [] -> true
-    | h :: t -> Block.is_authorised t h snd_subst
+    | h :: t -> Block.is_authorised c.previous_blocks c.ongoing_block snd_subst *)
     (* NB. the alternative below triggers bugs
     Block.is_authorised c.previous_blocks c.ongoing_block snd_subst *)
 
-  (* returns the inputs of the process *)
   let inputs (conf:t) : Labelled_process.t list =
     conf.input_proc
 
-  (* returns the (sure) outputs of a process *)
   let outputs (conf:t) : Labelled_process.t list =
     conf.sure_output_proc
-
-  (* TODO. makes initial configuration simpler, helps for optimisations. Includes factorisation. *)
-  let clean_inital (c:t) : t =
-    c
 
   let of_expansed_process (p:Process.expansed_process) : t =
     (* Printf.printf "converting %s\n" (Labelled_process.print (Labelled_process.of_expansed_process p)); *)
@@ -1068,21 +1265,17 @@ end = struct
         ) (fun () -> ())
       | _, _ -> Config.internal_error "[process_session.ml >> normalise_configuration] A configuration cannot be released and focused at the same time."
 
-  (* takes two configuration as an argument, and performs a skeleton check (on
-  their focused process if any, or sure_uncheked_skeletons otherwise). *)
   let check_skeleton (conf1:t) (conf2:t) : bool =
 
     match conf1.focused_proc, conf2.focused_proc, conf1.sure_unchecked_skeletons, conf2.sure_unchecked_skeletons with
     | Some p1, Some p2, None, None
     | None, None, Some p1, Some p2 ->
-      if Labelled_process.contains_output p1 || Labelled_process.contains_output p2 then
+      if Labelled_process.contains_output_toplevel p1 || Labelled_process.contains_output_toplevel p2 then
         Labelled_process.Skeleton.equal (p1::conf1.sure_output_proc) (p2::conf2.sure_output_proc)
       else Labelled_process.Skeleton.equal [p1] [p2]
     | _ ->
       Config.internal_error "[process_session.ml >> update_matching] Comparing processes in inconsistent states."
 
-  (* Assuming all skeleton checks have been performed with this skeleton, removes the unchecked states and updates the focus if needed.
-  Returns None at the end of improper blocks. *)
   let release_skeleton (c:t) : t option =
     match c.focused_proc, c.sure_unchecked_skeletons with
     | Some p, _ ->
@@ -1092,7 +1285,7 @@ end = struct
         Some {c with focused_proc = None; sure_output_proc = p::c.sure_output_proc}
       | _ ->
         if Labelled_process.nil p then None
-        else if Labelled_process.contains_output p then
+        else if Labelled_process.contains_output_toplevel p then
           Some {c with focused_proc = None; sure_output_proc = p::c.sure_output_proc}
         else
           Some {c with focused_proc = None; input_proc = p::c.input_proc} end
@@ -1105,7 +1298,7 @@ end = struct
       | _ ->
         if Labelled_process.nil p then
           Some {c with sure_unchecked_skeletons = None}
-        else if Labelled_process.contains_output p then
+        else if Labelled_process.contains_output_toplevel p then
           Some {c with sure_unchecked_skeletons = None; sure_output_proc = p::c.sure_output_proc}
         else
           Some {c with sure_unchecked_skeletons = None; input_proc = Labelled_process.restaure_sym p::c.input_proc} end
@@ -1149,17 +1342,22 @@ end = struct
       match conf.focused_proc with
       | Some p ->
         begin match Labelled_process.get_proc p with
-        | Start pp -> {conf with focused_proc = Some pp}
+        | Start (pp,_) -> {conf with focused_proc = Some pp}
         | _ -> Config.internal_error "[process_session.ml Configuration.Transition.apply_start] Error during the initialisation of processes. (1)" end
       | _ ->
         Config.internal_error "[process_session.ml >> Configuration.Transition.apply_start] Error during the initialisation of processes. (2)"
 
     (* syntactic transformation of a configuration after executing an output *)
     let apply_neg (ax:axiom) (p:Labelled_process.t) (od:Labelled_process.output_data) (leftovers:Labelled_process.t list) (conf:t) : t =
+      let state = {
+        current_proc = to_process conf;
+        id = od.id;
+        label = od.lab;
+      } in
       {conf with
         to_normalise = Some p;
         sure_output_proc = leftovers;
-        trace = OutAction(od.channel,ax,od.term,od.lab)::conf.trace;
+        trace = OutAction(od.channel,ax,od.term,state)::conf.trace;
         ongoing_block = Block.add_axiom ax conf.ongoing_block;
       }
 
@@ -1168,17 +1366,23 @@ end = struct
       match conf.focused_proc with
       | Some p ->
         begin match Labelled_process.get_proc p with
-        | Input(ch,x,pp) ->
+        | Input(ch,x,pp,id) ->
           let idata = {
             Labelled_process.channel = ch;
             Labelled_process.var = x;
             Labelled_process.lab = Labelled_process.get_label p;
+            Labelled_process.id = id;
             Labelled_process.leftovers = []; (* field not relevant here *)
             Labelled_process.optim = true; (* field not relevant here *)
           } in
+          let state = {
+            current_proc = to_process conf;
+            id = idata.id;
+            label = idata.lab;
+          } in
           let conf_app = {conf with
             focused_proc = Some pp;
-            trace = InAction(ch,var_X,Term.of_variable x,idata.lab) :: conf.trace;
+            trace = InAction(ch,var_X,Term.of_variable x,state) :: conf.trace;
             ongoing_block = Block.add_variable var_X conf.ongoing_block;
           } in
           idata,conf_app
@@ -1187,18 +1391,23 @@ end = struct
         Config.internal_error "[process_session.ml >> Configuration.Transition.apply_pos] Process should be focused."
 
     (* syntactic transformation of a configuration after focusing an input *)
-    let apply_focus (var_X:snd_ord_variable) (focus:Labelled_process.t * Labelled_process.input_data) (c:t) : t =
+    let apply_focus (var_X:snd_ord_variable) (focus:Labelled_process.t * Labelled_process.input_data) (conf:t) : t =
       Config.debug (fun () ->
-        if c.focused_proc <> None then
+        if conf.focused_proc <> None then
           Config.internal_error "[process_session.ml >> add_focus] Unexpected case."
       );
       let (pp,idata) = focus in
-      {c with
+      let state = {
+        current_proc = to_process conf;
+        id = idata.id;
+        label = idata.lab;
+      } in
+      {conf with
         input_proc = idata.leftovers;
         focused_proc = Some pp;
         ongoing_block = Block.add_variable var_X (Block.create idata.lab);
-        previous_blocks = c.ongoing_block :: c.previous_blocks;
-        trace = InAction(idata.channel,var_X,Term.of_variable idata.var,idata.lab) :: c.trace;
+        previous_blocks = conf.ongoing_block :: conf.previous_blocks;
+        trace = InAction(idata.channel,var_X,Term.of_variable idata.var,state) :: conf.trace;
       }
   end
 end

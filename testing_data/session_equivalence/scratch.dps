@@ -1,20 +1,11 @@
 free c.
-const ok, error.
 fun mac/2.
 
-
 let A =
-  /* in(c,yolo); // the attack is found without this dumb input */
-  new n_t;
-  out(c,n_t).
+  (!^2 in(c,x); out(c,x)) | in(c,x); in(c,y).
 
-let B(k) =
-  in(c,n_t);
-  out(c,mac(n_t,k)).
-
-let sys1 = !^2 A | new k; !^2 B(k).
-/* let sys2 = !^2 A | new k; !^2 B(k). */
+let B =
+  new k; (!^2 in(c,x); if x = c then out(c,k) else out(c,x)) | in(c,x); in(c,y).
 
 
-/* query sess_equiv(sys1,sys2). */
-query trace_equiv(sys1,sys1).
+query sess_equiv(A,B).

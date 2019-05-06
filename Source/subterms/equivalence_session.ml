@@ -779,10 +779,10 @@ let string_of_result (res:result_analysis) : string =
       let (fst,snd) = Symbolic.Process.solution csys in
       Configuration.print_trace fst snd (Symbolic.Process.get_conf csys) in
 
-    Printf.sprintf "Not Equivalent processes. Attack Trace (in the %s process):\n%s" origin trace
+    Printf.sprintf "Not Equivalent processes. Attack Trace (in the %s process):%s" origin trace
+
 
 let equivalence (conf1:Configuration.t) (conf2:Configuration.t) : result_analysis =
-
   (* initialisation of the rewrite system *)
   Rewrite_rules.initialise_skeletons ();
   Data_structure.Tools.initialise_constructor ();
