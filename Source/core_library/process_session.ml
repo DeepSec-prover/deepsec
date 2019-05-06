@@ -152,7 +152,7 @@ module Labelled_process : sig
     | Par of t list
     | Bang of bang_status * t list * t list
 
-  val print : ?highlight:id -> t -> string (* converts a process into a string, while highlighting the instruction at the given identifier *)
+  val print : ?solution:((fst_ord, name) Subst.t) -> ?highlight:id -> t -> string (* converts a process into a string, while highlighting the instruction at the given identifier *)
   val of_expansed_process : ?optim:(t -> t) -> Process.expansed_process -> t (* converts an expansed process into a process starting with a Start constructor and label [initial]. Also attributes id to all observable instructions. *)
   val of_process_list : t list -> t (* groups a list of processes together *)
   val elements : ?init:(t list) -> t -> t list (* extracts the list of parallel subprocesses *)
@@ -256,7 +256,7 @@ end = struct
     | Channel -> "Xc"
 
   (* conversion into a string *)
-  let print ?highlight:(idh:id= -1) (p:t) : string =
+  let print ?solution:(fst_subst:(fst_ord, name) Subst.t=Subst.identity) ?highlight:(idh:id= -1) (p:t) : string =
     let on_id i s = if i = idh then bold_red s else s in
     let semicolon s = if s = "" then "" else ";" in
     let rec browse indent p f_cont =
@@ -278,16 +278,24 @@ end = struct
           f_cont (Printf.sprintf "\n%s%s%s%s" (tab indent) instr (semicolon s) s)
         )
       | Output(c,t,pp,_) ->
+        let t =
+          Subst.apply fst_subst t (fun t f -> Rewrite_rules.normalise (f t)) in
         browse indent pp (fun s ->
           f_cont (Printf.sprintf "\n%sout(%s%s,%s)%s%s" (tab indent) (lab ",") (Symbol.display Terminal c) (Term.display Terminal Protocol t) (semicolon s) s)
         )
       | OutputSure(c,t,pp,id) ->
+        let t =
+          Subst.apply fst_subst t (fun t f -> Rewrite_rules.normalise (f t)) in
         browse indent pp (fun s ->
           let instr =
             on_id id (Printf.sprintf "out(%s%s,%s)" (lab ",") (Symbol.display Terminal c) (Term.display Terminal Protocol t)) in
           f_cont (Printf.sprintf "\n%s%s%s%s" (tab indent) instr (semicolon s) s)
         )
       | If(u,v,p1,p2) ->
+        let (u,v) =
+          Subst.apply fst_subst (u,v) (fun (u,v) f ->
+            Rewrite_rules.normalise (f u),Rewrite_rules.normalise (f v)
+          ) in
         browse (indent+1) p1 (fun s1 ->
           browse (indent+1) p2 (fun s2 ->
             let else_branch =
@@ -297,6 +305,10 @@ end = struct
           )
         )
       | Let(u,_,v,p1,p2) ->
+        let (u,v) =
+          Subst.apply fst_subst (u,v) (fun (u,v) f ->
+            Rewrite_rules.normalise (f u),Rewrite_rules.normalise (f v)
+          ) in
         browse indent p1 (fun s1 ->
           browse (indent+1) p2 (fun s2 ->
             let else_branch =
@@ -440,66 +452,75 @@ end = struct
   let apply_renaming_on_term (rho:Name.Renaming.t) (t:Term.protocol_term) : Term.protocol_term =
     Name.Renaming.apply_on_terms rho t (fun x f -> f x)
 
-  let apply_renaming_on_name (rho:Name.Renaming.t) (n:Term.name) : Term.name =
-    Name.Renaming.apply_on_terms rho n (fun n f ->
-      Term.name_of (f (Term.of_name n))
-    )
+  let apply_alpha_on_term (rho:(fst_ord, name) Variable.Renaming.t) (t:Term.protocol_term) : Term.protocol_term =
+    Variable.Renaming.apply_on_terms rho t (fun x f -> f x)
 
-  (* generates several copies of a process with freshly renamed New names *)
+  let fresh_vars_and_renaming (accu:(fst_ord, name) Variable.Renaming.t) (l:fst_ord_variable list) : (fst_ord, name) Variable.Renaming.t * fst_ord_variable list =
+    List.fold_left (fun (accu,l) x ->
+      let xx = Variable.fresh Protocol Free Variable.fst_ord_type in
+      Variable.Renaming.compose accu x xx, xx::l
+    ) (accu,[]) l
+
+  (* generates several copies of a process with freshly renamed New names, input variables, and positions *)
   let rec fresh_copy (nb:int) (p:t) (id:id) (f_cont:id->t list->'a) : 'a =
-    let rec browse rho bound_vars p id f_cont =
+    let rec browse rho_v rho_n bound_vars p id f_cont =
+      let apply t =
+        apply_renaming_on_term rho_n (apply_alpha_on_term rho_v t) in
       match p.proc with
       | Input(c,x,p,_) ->
-        browse rho (x::bound_vars) p (id+1) (fun id_max p_fresh ->
+        let xx = Variable.fresh Protocol Free Variable.fst_ord_type in
+        browse (Variable.Renaming.compose rho_v x xx) rho_n (xx::bound_vars) p (id+1) (fun id_max p_fresh ->
           f_cont id_max {proc = Input(c,x,p_fresh,id); label = None}
         )
       | Output(c,t,p,_) ->
-        browse rho bound_vars p (id+1) (fun id_max p_fresh ->
-          f_cont id_max {proc = Output(c,apply_renaming_on_term rho t,p_fresh,id); label = None}
+        browse rho_v rho_n bound_vars p (id+1) (fun id_max p_fresh ->
+          f_cont id_max {proc = Output(c,apply t,p_fresh,id); label = None}
         )
       | OutputSure(c,t,p,_) ->
         Config.internal_error "[process_session.ml >> fresh_copy] Outputs should not be sure before the analysis starts."
       | If(u,v,p1,p2) ->
-        let uu = apply_renaming_on_term rho u in
-        let vv = apply_renaming_on_term rho v in
-        browse rho bound_vars p1 id (fun id1 p1_fresh ->
-          browse rho bound_vars p2 id1 (fun id2 p2_fresh ->
+        let uu = apply u in
+        let vv = apply v in
+        browse rho_v rho_n bound_vars p1 id (fun id1 p1_fresh ->
+          browse rho_v rho_n bound_vars p2 id1 (fun id2 p2_fresh ->
             f_cont id2 {proc = If(uu,vv,p1_fresh,p2_fresh); label = None}
           )
         )
       | Let(u,u',v,p1,p2) ->
-        let uu = apply_renaming_on_term rho u in
         let bound_vars_u = Term.get_vars_not_in Protocol u bound_vars in
-        let fresh = Variable.Renaming.fresh Protocol bound_vars_u Universal in
-        let uu' = Variable.Renaming.apply_on_terms fresh uu (fun x f -> f x) in
-        let vv = apply_renaming_on_term rho v in
-        browse rho (List.rev_append bound_vars_u bound_vars) p1 id (fun id1 p1_fresh ->
-          browse rho bound_vars p2 id1 (fun id2 p2_fresh ->
+        let fresh' = Variable.Renaming.fresh Protocol bound_vars_u Universal in
+        let (rho_v',new_bounds) = fresh_vars_and_renaming rho_v bound_vars_u in
+        let uu =
+          apply_renaming_on_term rho_n (apply_alpha_on_term rho_v' u) in
+        let uu' = apply_alpha_on_term fresh' (apply u) in
+        let vv = apply v in
+        browse rho_v' rho_n (List.rev_append new_bounds bound_vars) p1 id (fun id1 p1_fresh ->
+          browse rho_v rho_n bound_vars p2 id1 (fun id2 p2_fresh ->
             f_cont id2 {proc = Let(uu,uu',vv,p1_fresh,p2_fresh); label = None}
           )
         )
       | New(n,p) ->
         let nn = Name.fresh() in
-        browse (Name.Renaming.compose rho n nn) bound_vars p id (fun id_max p_fresh ->
+        browse rho_v (Name.Renaming.compose rho_n n nn) bound_vars p id (fun id_max p_fresh ->
           f_cont id_max {proc = New(nn,p_fresh); label = None}
         )
       | Par l ->
-        browse_list rho bound_vars l id (fun id_max l_fresh ->
+        browse_list rho_v rho_n bound_vars l id (fun id_max l_fresh ->
           f_cont id_max {proc = Par l_fresh; label = None}
         )
       | Bang(Repl,[],l) ->
-        browse_list rho bound_vars l id (fun id_max l_fresh ->
+        browse_list rho_v rho_n bound_vars l id (fun id_max l_fresh ->
           f_cont id_max {proc = Bang(Repl,[],l_fresh); label = None}
         )
       | Bang _ -> Config.internal_error "[process_session.ml >> fresh_copy] Unexpected type of bang."
       | Start _ -> Config.internal_error "[process_session.ml >> fresh_copy] Unexpected Start constructor."
 
-    and browse_list rho bound_vars l id f_cont =
+    and browse_list rho_v rho_n bound_vars l id f_cont =
       match l with
       | [] -> f_cont id []
       | p :: t ->
-        browse rho bound_vars p id (fun id_max p_fresh ->
-          browse_list rho bound_vars t id_max (fun id_l l_fresh ->
+        browse rho_v rho_n bound_vars p id (fun id_max p_fresh ->
+          browse_list rho_v rho_n bound_vars t id_max (fun id_l l_fresh ->
             f_cont id_l (p_fresh::l_fresh)
           )
         ) in
@@ -507,7 +528,7 @@ end = struct
     let rec browse_iter nb p id f_cont =
       if nb = 0 then f_cont id []
       else
-        browse (Name.Renaming.identity) [] p id (fun id_max p_fresh ->
+        browse Variable.Renaming.identity Name.Renaming.identity [] p id (fun id_max p_fresh ->
           browse_iter (nb-1) p id_max (fun id_final l_fresh ->
             f_cont id_final (p_fresh::l_fresh)
           )
@@ -1195,13 +1216,13 @@ end = struct
         Rewrite_rules.normalise (Subst.apply fst_subst x (fun x f -> f x)) in
       let msg =
         Printf.sprintf "input on channel %s of %s = %s\n" (Symbol.display Terminal ch) (Term.display Terminal Recipe recipe) (Term.display Terminal Protocol input) in
-      Printf.sprintf "%s%s" (bold_blue msg) (Labelled_process.print ~highlight:s.id s.current_proc)
+      Printf.sprintf "%s%s" (bold_blue msg) (Labelled_process.print ~solution:fst_subst ~highlight:s.id s.current_proc)
     | OutAction(ch,ax,t,s) ->
       let output =
         Rewrite_rules.normalise (Subst.apply fst_subst t (fun x f -> f x)) in
       let msg =
         Printf.sprintf "output on channel %s of %s, referred as %s\n" (Symbol.display Terminal ch) (Term.display Terminal Protocol output) (Axiom.display Terminal ax) in
-      Printf.sprintf "%s%s" (bold_blue msg) (Labelled_process.print ~highlight:s.id s.current_proc)
+      Printf.sprintf "%s%s" (bold_blue msg) (Labelled_process.print ~solution:fst_subst ~highlight:s.id s.current_proc)
 
   let print_trace (fst_subst:(fst_ord,name) Subst.t) (snd_subst:(snd_ord,axiom) Subst.t) (conf:t) : string =
     snd (
@@ -1212,11 +1233,6 @@ end = struct
 
   let check_block (snd_subst:(snd_ord,axiom) Subst.t) (c:t) : bool =
     Block.is_authorised c.previous_blocks c.ongoing_block snd_subst
-    (* match c.previous_blocks with
-    | [] -> true
-    | h :: t -> Block.is_authorised c.previous_blocks c.ongoing_block snd_subst *)
-    (* NB. the alternative below triggers bugs
-    Block.is_authorised c.previous_blocks c.ongoing_block snd_subst *)
 
   let inputs (conf:t) : Labelled_process.t list =
     conf.input_proc
