@@ -2309,7 +2309,7 @@ module Rule = struct
                       csys_1::set
                     end
                   with Bot -> set
-                ) positive_to_check_csys_list (List.tl to_check_csys_1)
+                ) positive_to_check_csys_list checked_csys_1
               in
 
               let diseq = Diseq.of_substitution_recipe mgs l_vars in
