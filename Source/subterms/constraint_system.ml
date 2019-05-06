@@ -1253,9 +1253,11 @@ module Set = struct
 
     List.hd csys_set
 
-  let elements csys_set = csys_set
-
   let of_list l_csys = l_csys
+
+  let find f csys_set = List.find_opt f csys_set
+  
+  let elements csys_set = csys_set
 
   let find_representative csys_set predicate =
     let true_csys = ref None
@@ -1293,8 +1295,6 @@ module Set = struct
   let for_all f csys_set = List.for_all f csys_set
 
   let exists f csys_set = List.exists f csys_set
-
-  let find f csys_set = List.find_opt f csys_set
 
   let is_empty csys_set = csys_set = []
 
@@ -2313,7 +2313,7 @@ module Rule = struct
                       csys_1::set
                     end
                   with Bot -> set
-                ) positive_to_check_csys_list (List.tl to_check_csys_1)
+                ) positive_to_check_csys_list checked_csys_1
               in
 
               let diseq = Diseq.of_substitution_recipe mgs l_vars in
