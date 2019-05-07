@@ -181,7 +181,7 @@ module Labelled_process : sig
   NB. Unfolding outputs break symmetries (just as symmetries), but they can be restaured at the end of negative phases (see function [restaure_sym]). *)
   val restaure_sym : t -> t (* restaures symmetries that have been temporarily broken by unfolding outputs *)
   val labelling : Label.t -> t -> t (* assigns labels to the parallel processes at toplevel, with a given label prefix *)
-  val get_label : ?error_msg:string -> t -> Label.t (* gets the label of a process, and returns an error message if it has not been assigned *)
+  val get_label : t -> Label.t (* gets the label of a process, and returns an error message if it has not been assigned *)
   val get_proc : t -> plain
 
   (* operations on initial labelled process that do not affect the decision of equivalence but make it more efficient *)
@@ -236,9 +236,9 @@ end = struct
 
   let empty (lab:Label.t) : t = {proc = Par []; label = Some lab}
 
-  let get_label ?error_msg:(s="[process_session.ml >> Label.Process.get_label] Unassigned label.") (p:t) : Label.t =
+  let get_label (p:t) : Label.t =
     match p.label with
-    | None -> Config.internal_error s
+    | None -> Config.internal_error "[process_session.ml >> Label.Process.get_label] Unassigned label."
     | Some lab -> lab
 
   let get_proc (p:t) : plain = p.proc
@@ -375,21 +375,22 @@ end = struct
     | OutputSure _ -> lp
     | Par l -> {lp with proc = Par (List.map restaure_sym l)}
     | Bang(b,l1,l2) ->
-      {lp with proc = Bang (Repl,[],List.map restaure_sym l1 @ l2)}
+      {lp with proc = Bang (b,[],List.map restaure_sym l1 @ l2)}
     | Let _
     | If _
     | New _
     | Output _ -> Config.internal_error "[process_session.ml >> restaure_sym] Should only be applied on normalised processes."
     | Start _ -> Config.internal_error "[process_session.ml >> restaure_sym] Unexpected Start constructor."
 
+  (* checks whether a normalised process contains an executable output. Cannot be run on a start process *)
   let rec contains_output_toplevel (lp:t) : bool =
     match lp.proc with
     | Input _ -> false
     | OutputSure _ -> true
     | Par l -> List.exists contains_output_toplevel l
     | Bang (_,l1,l2) -> List.exists contains_output_toplevel (l1@l2)
-    | Start _ -> Config.internal_error "[process_session.ml >> contains_output] Unexpected Start constructor."
-    | _ -> Config.internal_error "[process_session.ml >> contains_output] Should only be applied on normalised processes."
+    | Start _ -> Config.internal_error "[process_session.ml >> contains_output_toplevel] Unexpected Start constructor."
+    | _ -> Config.internal_error "[process_session.ml >> contains_output_toplevel] Should only be applied on normalised processes."
 
   let not_pure_io_toplevel (lp:t) : bool =
     match lp.proc with
@@ -400,6 +401,9 @@ end = struct
     | Start _ -> Config.internal_error "[process_session.ml >> contains_par] Unexpected Start constructor."
     | _ -> Config.internal_error "[process_session.ml >> contains_output] Should only be applied on normalised processes."
 
+  (* The labeled process [lp] should not already have a label, i.e. [lp.label = None]
+      No borken symmetries are allowed too.
+      Note that only the outputs and input receive a label. The intermediary Bang and Par do not have labels.*)
   let labelling (prefix:Label.t) (lp:t) : t =
     let rec assign i lp f_cont =
       match lp.proc with
@@ -429,7 +433,8 @@ end = struct
           assign_list i_max t (fun l_labelled j_max ->
             f_cont (p_labelled :: l_labelled) j_max
           )
-        ) in
+        )
+    in
 
     Config.debug (fun () ->
       if lp.label <> None then
@@ -445,7 +450,7 @@ end = struct
       Config.internal_error "[process_session.ml >> labelling] Only normalised processes should be assigned with labels."
     | Start _ -> Config.internal_error "[process_session.ml >> labelling] Unexpected Start constructor."
     | Par _
-    | Bang _ -> assign 0 lp (fun proc pos -> proc)
+    | Bang _ -> assign 0 lp (fun proc _ -> proc)
 
   let elements ?init:(init:t list=[]) (lp:t) : t list =
     let rec gather accu lp = match lp with
@@ -463,73 +468,76 @@ end = struct
 
   let fresh_vars_and_renaming (accu:(fst_ord, name) Variable.Renaming.t) (l:fst_ord_variable list) : (fst_ord, name) Variable.Renaming.t * fst_ord_variable list =
     List.fold_left (fun (accu,l) x ->
-      let xx = Variable.fresh Protocol Free Variable.fst_ord_type in
+      let xx = Variable.fresh_from x in
       Variable.Renaming.compose accu x xx, xx::l
     ) (accu,[]) l
 
   (* generates several copies of a process with freshly renamed New names, input variables, and positions *)
-  let rec fresh_copy (nb:int) (p:t) (id:id) (f_cont:id->t list->'a) : 'a =
+  let fresh_copy (nb:int) (p:t) (id:id) (f_cont:id->t list->'a) : 'a =
     let rec browse rho_v rho_n bound_vars p id f_cont =
-      let apply t =
-        apply_renaming_on_term rho_n (apply_alpha_on_term rho_v t) in
+      let apply t = apply_renaming_on_term rho_n (apply_alpha_on_term rho_v t) in
       match p.proc with
       | Input(c,x,p,_) ->
-        let xx = Variable.fresh Protocol Free Variable.fst_ord_type in
-        browse (Variable.Renaming.compose rho_v x xx) rho_n (xx::bound_vars) p (id+1) (fun id_max p_fresh ->
-          f_cont id_max {proc = Input(c,xx,p_fresh,id); label = None}
-        )
+          Config.debug (fun () ->
+            if Variable.quantifier_of x != Free
+            then Config.internal_error "[process_sessions.ml >> fresh_copy] All variables "
+          );
+          let xx = Variable.fresh_from x in
+          browse (Variable.Renaming.compose rho_v x xx) rho_n (xx::bound_vars) p (id+1) (fun id_max p_fresh ->
+            f_cont id_max {proc = Input(c,xx,p_fresh,id); label = None}
+          )
       | Output(c,t,p,_) ->
-        browse rho_v rho_n bound_vars p (id+1) (fun id_max p_fresh ->
-          f_cont id_max {proc = Output(c,apply t,p_fresh,id); label = None}
-        )
+          browse rho_v rho_n bound_vars p (id+1) (fun id_max p_fresh ->
+            f_cont id_max {proc = Output(c,apply t,p_fresh,id); label = None}
+          )
       | OutputSure(c,t,p,_) ->
-        Config.internal_error "[process_session.ml >> fresh_copy] Outputs should not be sure before the analysis starts."
+          Config.internal_error "[process_session.ml >> fresh_copy] Outputs should not be sure before the analysis starts."
       | If(u,v,p1,p2) ->
-        let uu = apply u in
-        let vv = apply v in
-        browse rho_v rho_n bound_vars p1 id (fun id1 p1_fresh ->
-          browse rho_v rho_n bound_vars p2 id1 (fun id2 p2_fresh ->
-            f_cont id2 {proc = If(uu,vv,p1_fresh,p2_fresh); label = None}
+          let uu = apply u in
+          let vv = apply v in
+          browse rho_v rho_n bound_vars p1 id (fun id1 p1_fresh ->
+            browse rho_v rho_n bound_vars p2 id1 (fun id2 p2_fresh ->
+              f_cont id2 {proc = If(uu,vv,p1_fresh,p2_fresh); label = None}
+            )
           )
-        )
       | Let(u,u',v,p1,p2) ->
-        let bound_vars_u = Term.get_vars_not_in Protocol u bound_vars in
-        let fresh' = Variable.Renaming.fresh Protocol bound_vars_u Universal in
-        let (rho_v',new_bounds) = fresh_vars_and_renaming rho_v bound_vars_u in
-        let uu =
-          apply_renaming_on_term rho_n (apply_alpha_on_term rho_v' u) in
-        let uu' = apply_alpha_on_term fresh' (apply u) in
-        let vv = apply v in
-        browse rho_v' rho_n (List.rev_append new_bounds bound_vars) p1 id (fun id1 p1_fresh ->
-          browse rho_v rho_n bound_vars p2 id1 (fun id2 p2_fresh ->
-            f_cont id2 {proc = Let(uu,uu',vv,p1_fresh,p2_fresh); label = None}
+          let bound_vars_u = Term.get_vars_not_in Protocol u bound_vars in
+          let fresh' = Variable.Renaming.fresh Protocol bound_vars_u Universal in
+          let (rho_v',new_bounds) = fresh_vars_and_renaming rho_v bound_vars_u in
+          let uu =
+            apply_renaming_on_term rho_n (apply_alpha_on_term rho_v' u) in
+          let uu' = apply_alpha_on_term fresh' (apply u) in
+          let vv = apply v in
+          browse rho_v' rho_n (List.rev_append new_bounds bound_vars) p1 id (fun id1 p1_fresh ->
+            browse rho_v rho_n bound_vars p2 id1 (fun id2 p2_fresh ->
+              f_cont id2 {proc = Let(uu,uu',vv,p1_fresh,p2_fresh); label = None}
+            )
           )
-        )
       | New(n,p) ->
-        let nn = Name.fresh() in
-        browse rho_v (Name.Renaming.compose rho_n n nn) bound_vars p id (fun id_max p_fresh ->
-          f_cont id_max {proc = New(nn,p_fresh); label = None}
-        )
+          let nn = Name.fresh_from n in
+          browse rho_v (Name.Renaming.compose rho_n n nn) bound_vars p id (fun id_max p_fresh ->
+            f_cont id_max {proc = New(nn,p_fresh); label = None}
+          )
       | Par l ->
-        browse_list rho_v rho_n bound_vars l id (fun id_max l_fresh ->
-          f_cont id_max {proc = Par l_fresh; label = None}
-        )
+          browse_list rho_v rho_n bound_vars l id (fun id_max l_fresh ->
+            f_cont id_max {proc = Par l_fresh; label = None}
+          )
       | Bang(Repl,[],l) ->
-        browse_list rho_v rho_n bound_vars l id (fun id_max l_fresh ->
-          f_cont id_max {proc = Bang(Repl,[],l_fresh); label = None}
-        )
+          browse_list rho_v rho_n bound_vars l id (fun id_max l_fresh ->
+            f_cont id_max {proc = Bang(Repl,[],l_fresh); label = None}
+          )
       | Bang _ -> Config.internal_error "[process_session.ml >> fresh_copy] Unexpected type of bang."
       | Start _ -> Config.internal_error "[process_session.ml >> fresh_copy] Unexpected Start constructor."
 
-    and browse_list rho_v rho_n bound_vars l id f_cont =
-      match l with
+    and browse_list rho_v rho_n bound_vars l id f_cont = match l with
       | [] -> f_cont id []
       | p :: t ->
-        browse rho_v rho_n bound_vars p id (fun id_max p_fresh ->
-          browse_list rho_v rho_n bound_vars t id_max (fun id_l l_fresh ->
-            f_cont id_l (p_fresh::l_fresh)
+          browse rho_v rho_n bound_vars p id (fun id_max p_fresh ->
+            browse_list rho_v rho_n bound_vars t id_max (fun id_l l_fresh ->
+              f_cont id_l (p_fresh::l_fresh)
+            )
           )
-        ) in
+    in
 
     let rec browse_iter nb p id f_cont =
       if nb = 0 then f_cont id []
@@ -560,9 +568,9 @@ end = struct
           f_cont id_max {proc = Input(root ch,x,p_conv,id); label = None}
         )
       | Process.IfThenElse(t1,t2,pthen,pelse) ->
-        browse bound_vars pthen id (fun id1 pthen ->
-          browse bound_vars pelse id1 (fun id2 pelse ->
-            f_cont id2 {proc = If(t1,t2,pthen,pelse); label = None}
+        browse bound_vars pthen id (fun id1 pthen' ->
+          browse bound_vars pelse id1 (fun id2 pelse' ->
+            f_cont id2 {proc = If(t1,t2,pthen',pelse'); label = None}
           )
         )
       | Process.Let(t1,t2,pthen,pelse) ->
@@ -617,7 +625,10 @@ end = struct
     leftovers : t list;
     id : id;
   }
-  let unfold_input ?optim:(optim:bool=false) (l:t list) : (t * input_data) list =
+
+  (* Processes in given to [unfold_input] should all be normalised. Moreover, [unfold_input]
+  is applied when there is no more output available, hence no output at top-level. *)
+  let unfold_input ?(optim=false) (l:t list) : (t * input_data) list =
 
     let rec unfold forall accu leftovers p f_cont =
       match p.proc with
@@ -627,8 +638,7 @@ end = struct
       | Bang(_,[],[]) -> f_cont accu
       | Bang(_,_::_,_) -> Config.internal_error "[process_session.ml >> unfold_input] Symmetries should not be broken when executing inputs."
       | Bang(b,[],pp::tl) ->
-        let left_pp = {proc = Bang(b,[],tl); label = None} in
-        let leftovers_pp = if tl = [] then leftovers else left_pp::leftovers in
+        let leftovers_pp = if tl = [] then leftovers else {proc = Bang(b,[],tl); label = None}::leftovers in
         if b = Repl || optim then
           unfold forall accu leftovers_pp pp f_cont
         else
@@ -652,11 +662,11 @@ end = struct
         Config.internal_error "[process_session.ml >> unfold_input] Unfolding should only be applied on normalised processes."
       | Start _ -> Config.internal_error "[process_session.ml >> unfold_input] Unexpected Start constructor."
 
-    and unfold_list ?bang:(memo=None) forall accu leftovers l f_cont =
+    and unfold_list ?(bang=None) forall accu leftovers l f_cont =
       match l with
       | [] -> f_cont accu
       | p :: t ->
-        match memo with
+        match bang with
         | None -> (* case of a list of parallel processes *)
           unfold forall accu (List.rev_append t leftovers) p (fun accu1 ->
             unfold_list forall accu1 (p::leftovers) t f_cont
@@ -665,7 +675,8 @@ end = struct
           let lefts = List.rev_append memo t in
           let leftovers1 =
             if lefts = [] then leftovers
-            else {proc = Bang(b,[],lefts); label = None} :: leftovers in
+            else {proc = Bang(b,[],lefts); label = None} :: leftovers
+          in
           unfold forall accu leftovers1 p (fun accu1 ->
             unfold_list ~bang:(Some (p::memo,b)) forall accu1 leftovers t f_cont
           ) in
@@ -680,6 +691,8 @@ end = struct
     context : t -> t;
     id : id;
   }
+
+  (* Processes in given to [unfold_input] should all be normalised. *)
   let unfold_output ?optim:(optim:bool=false) (lp:t) : (t * output_data) list =
 
     let rec unfold accu p rebuild f_cont =

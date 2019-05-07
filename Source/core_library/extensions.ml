@@ -37,7 +37,7 @@ module List = struct
 
   (* rev_map + filter (on the transformed elements, based on whether the
   result of the transformation is None or not) *)
-  let rec mapif_opt f l =
+  let mapif_opt f l =
     List.fold_left (fun ac x ->
       match f x with
       | None -> ac
