@@ -12,7 +12,9 @@ OCAMLOPT=$(if $(PROFIL),ocamloptp -p -P a,$(if $(DEBUG), ocamlc -g,ocamlopt))
 OCAMLDEP=ocamldep $(if $(DEBUG), ,-native)
 OCAMLDOC=ocamldoc
 
-GITCOMMIT:= $(shell Source/get-git-commit)
+GITCOMMIT=$(head -n 1 <(git rev-parse HEAD 2>/dev/null))
+GITBRANCH=$(git branch | grep \* | cut -d ' ' -f2)
+
 
 CMOX= $(if $(DEBUG),cmo,cmx)
 CMXA= $(if $(DEBUG),cma,cmxa)
@@ -58,7 +60,7 @@ EXE_MANAGER_OBJ = $(EXE_MANAGER_ML:.ml=.$(CMOX))
 ### Targets
 
 all: .display_obj $(ALL_OBJ)
-	@sed -e 's/GITCOMMIT/$(GITCOMMIT)/g' -e's/VERSION/$(VERSION)/g' < Source/core_library/config.ml.in > Source/core_library/config.ml
+	@sed -e 's/GITCOMMIT/$(GITCOMMIT)/g' -e's/VERSION/$(VERSION)/g' -e 's/GITBRANCH/${GITBRANCH}/g' < Source/core_library/config.ml.in > Source/core_library/config.ml
 	@echo
 	@echo The main executable:
 	@echo
