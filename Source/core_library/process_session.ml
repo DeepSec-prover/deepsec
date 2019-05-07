@@ -831,9 +831,6 @@ end = struct
       let l2 = sort (elts p2) in
       try List.for_all2 (fun p q -> compare_atomic p q = 0) l1 l2
       with Invalid_argument _ -> false
-
-    (* compares the skeletons of two processes and updates *)
-    let compare (p1:t) (p2:t) = 0
   end
 
   module Normalise = struct
@@ -1298,7 +1295,7 @@ end = struct
         Labelled_process.Skeleton.equal (p1::conf1.sure_output_proc) (p2::conf2.sure_output_proc)
       else Labelled_process.Skeleton.equal [p1] [p2]
     | _ ->
-      Config.internal_error "[process_session.ml >> update_matching] Comparing processes in inconsistent states."
+      Config.internal_error "[process_session.ml >> check_skeleton] Comparing processes in inconsistent states."
 
   let release_skeleton (c:t) : t option =
     match c.focused_proc, c.sure_unchecked_skeletons with

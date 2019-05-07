@@ -593,6 +593,8 @@ end = struct
       {n with matching = Symbolic.Matching.clean n.matching !improper_indexes}
 
     let clean (n:t) : unit =
+      (* Printf.printf "node about to be cleaned:\n";
+      print n; *)
       Symbolic.Set.clean n.csys_set n.matching
 
     (* From a partition tree node, generates the transitions and creates a new node with all the resulting processes inside. A
@@ -677,8 +679,8 @@ end = struct
         | [] -> f_next()
         | (m,c) :: t ->
           let node = replace_data m c in
-          (* Printf.printf "- treating node %s (father: %s, remaining after that: %d)\n" node.id n.id (List.length t); *)
-          (* print node; *)
+          (* Printf.printf "- treating node %s (father: %s, remaining after that: %d)\n" node.id n.id (List.length t);
+          print node; *)
           f_cont node (fun () -> branch_on_nodes t f_next) in
 
       branch_on_nodes new_node_data f_next
