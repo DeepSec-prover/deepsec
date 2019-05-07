@@ -152,7 +152,7 @@ module Labelled_process : sig
     | Par of t list
     | Bang of bang_status * t list * t list
 
-  val print : ?solution:((fst_ord, name) Subst.t) -> ?highlight:id -> t -> string (* converts a process into a string, while highlighting the instruction at the given identifier *)
+  val print : ?labels:bool -> ?solution:((fst_ord, name) Subst.t) -> ?highlight:id -> t -> string (* converts a process into a string, while highlighting the instruction at the given identifier *)
   val of_expansed_process : ?optim:(t -> t) -> Process.expansed_process -> t (* converts an expansed process into a process starting with a Start constructor and label [initial]. Also attributes id to all observable instructions. *)
   val of_process_list : t list -> t (* groups a list of processes together *)
   val elements : ?init:(t list) -> t -> t list (* extracts the list of parallel subprocesses *)
@@ -256,15 +256,15 @@ end = struct
     | Channel -> "Xc"
 
   (* conversion into a string *)
-  let print ?solution:(fst_subst:(fst_ord, name) Subst.t=Subst.identity) ?highlight:(idh:id= -1) (p:t) : string =
+  let print ?labels:(print_labs:bool=false) ?solution:(fst_subst:(fst_ord, name) Subst.t=Subst.identity) ?highlight:(idh:id= -1) (p:t) : string =
     let on_id i s = if i = idh then bold_red s else s in
     let semicolon s = if s = "" then "" else ";" in
     let rec browse sol bound indent p f_cont =
       let lab delim =
         match p.label with
         | None -> ""
-        | Some l -> "" in
-          (* Printf.sprintf "lab=%s%s" (Label.to_string l) delim in *)
+        | Some l when not print_labs -> ""
+        | Some l -> Printf.sprintf "lab=%s%s" (Label.to_string l) delim in
       match p.proc with
       | Start (pp,id) ->
         browse sol bound indent pp (fun s ->

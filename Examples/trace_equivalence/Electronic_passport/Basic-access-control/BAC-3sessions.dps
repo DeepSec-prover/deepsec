@@ -14,7 +14,7 @@ reduc sdec(senc(x,y),y) -> x.
 // Description of the reader role
 
 let reader(k_e,k_m) =
-  out(c,get_challenge);
+  /* out(c,get_challenge); */
   in(c,xn_t);
   new n_r;
   new k_r;
@@ -25,9 +25,9 @@ let reader(k_e,k_m) =
 // Description of the passport role
 
 let passport(k_e,k_m) =
-  in(c,x);
-  if x = get_challenge
-  then
+  /* in(c,x); */
+  /* if x = get_challenge */
+  /* then */
     new n_t;
     out(c,n_t);
     in(c,y);
@@ -45,8 +45,8 @@ let system1 =
   !^3 (new k_e; new k_m; (passport(k_e,k_m) | reader(k_e,k_m))).
 
 let system2 =
-    (new k_e; new k_m; !^2 (passport(k_e,k_m) | reader(k_e,k_m)))
-  | (new k_e; new k_m; (passport(k_e,k_m) | reader(k_e,k_m))).
+    new k_e; new k_m; (!^2 passport(k_e,k_m) | !^2 reader(k_e,k_m))
+  | new k_e; new k_m; (passport(k_e,k_m) | reader(k_e,k_m)).
 
 
 query trace_equiv(system1,system2).
