@@ -18,9 +18,8 @@ Automated verification has become an essential part in the security evaluation o
 2. Inside the directory `deepsec`, run `make`
 3. The executable program `deepsec` has been built.
 4. Add the `deepsec` executable to your path, e.g. if your shell is bash, add the line `export DEEPSEC_DIR=<path_to_the_deepsec_folder>/deepsec` to the .bash_profile file
-5. Additionally, you can build html and Latex code documentation with `make doc`
 
-Step 4 is not mandatory but highly recommended. If the variable `DEEPSEC_DIR` is not defined, `deepsec` can only be used with the option `-deepsec_dir <path to the deepsec folder>/deepsec`.
+The fourth step is not mandatory but highly recommended. If the variable `DEEPSEC_DIR` is not defined, `deepsec` can only be used with the option `-deepsec_dir <path to the deepsec folder>/deepsec`.
 
 Note that two executable programs are compile at the same time as `deepsec`: `worker_deepsec` and `manager_deepsec`. These executables are used by DeepSec to distribute the computation through multi-core architectures and clusters of computers. They should note be used manually nor should they be moved from the `deepsec` folder.
 
