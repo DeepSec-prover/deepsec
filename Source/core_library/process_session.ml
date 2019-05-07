@@ -225,8 +225,8 @@ end = struct
     | Bang of bang_status * t list * t list (* The two lists model the replicated processes, the first one being reserved for processes where symmetries are temporarily broken due to the execution of outputs. *)
   and id = int
   and bang_status =
-    | Repl (* symmetry up to structural equivalence *)
-    | Channel (* symmetry up to structural equivalence and channel renaming *)
+    | Strong (* symmetry up to structural equivalence *)
+    | Partial (* symmetry up to channel renaming, or obtained after refactorisation during the analysis. Can only be used for enumerating the traces to be matched, and not for enumerating the traces that match them *)
 
   let nil (p:t) : bool =
     match p.proc with
@@ -248,12 +248,12 @@ end = struct
   let tab i = Func.loop (fun _ s -> s^"   ") "" 1 i
   let string_of_bang b n =
     match b with
-    | Repl -> Printf.sprintf "!^%d" n
-    | Channel -> Printf.sprintf "!c^%d" n
+    | Strong -> Printf.sprintf "!^%d" n
+    | Partial -> Printf.sprintf "!c^%d" n
   let string_of_broken_bang b =
     match b with
-    | Repl -> "X"
-    | Channel -> "Xc"
+    | Strong -> "X"
+    | Partial -> "Xc"
 
   (* conversion into a string *)
   let print ?labels:(print_labs:bool=false) ?solution:(fst_subst:(fst_ord, name) Subst.t=Subst.identity) ?highlight:(idh:id= -1) (p:t) : string =
@@ -372,9 +372,11 @@ end = struct
   let rec restaure_sym (lp:t) : t =
     match lp.proc with
     | Input _
-    | OutputSure _ -> lp
+    | OutputSure _
+    | Bang(_,[],_) -> (* no restauration needed *)
+      lp
     | Par l -> {lp with proc = Par (List.map restaure_sym l)}
-    | Bang(b,l1,l2) ->
+    | Bang(b,l1,l2) -> (* non trivial restauration: symmetry cannot be restaured to Strong *)
       {lp with proc = Bang (b,[],List.map restaure_sym l1 @ l2)}
     | Let _
     | If _
@@ -402,7 +404,7 @@ end = struct
     | _ -> Config.internal_error "[process_session.ml >> contains_output] Should only be applied on normalised processes."
 
   (* The labeled process [lp] should not already have a label, i.e. [lp.label = None]
-      No borken symmetries are allowed too.
+      No broken symmetries are allowed too.
       Note that only the outputs and input receive a label. The intermediary Bang and Par do not have labels.*)
   let labelling (prefix:Label.t) (lp:t) : t =
     let rec assign i lp f_cont =
@@ -522,9 +524,9 @@ end = struct
           browse_list rho_v rho_n bound_vars l id (fun id_max l_fresh ->
             f_cont id_max {proc = Par l_fresh; label = None}
           )
-      | Bang(Repl,[],l) ->
+      | Bang(Strong,[],l) ->
           browse_list rho_v rho_n bound_vars l id (fun id_max l_fresh ->
-            f_cont id_max {proc = Bang(Repl,[],l_fresh); label = None}
+            f_cont id_max {proc = Bang(Strong,[],l_fresh); label = None}
           )
       | Bang _ -> Config.internal_error "[process_session.ml >> fresh_copy] Unexpected type of bang."
       | Start _ -> Config.internal_error "[process_session.ml >> fresh_copy] Unexpected Start constructor."
@@ -603,7 +605,7 @@ end = struct
             if i = 1 then f_cont id_l (p_conv :: l_conv)
             else
               fresh_copy i p_conv id_l (fun id_final l_fresh ->
-                f_cont id_final ({proc = Bang(Repl,[],l_fresh); label = None} :: l_conv)
+                f_cont id_final ({proc = Bang(Strong,[],l_fresh); label = None} :: l_conv)
               )
           )
         ) in
@@ -626,8 +628,7 @@ end = struct
     id : id;
   }
 
-  (* Processes in given to [unfold_input] should all be normalised. Moreover, [unfold_input]
-  is applied when there is no more output available, hence no output at top-level. *)
+  (* Processes in given to [unfold_input] should all be normalised. Moreover, [unfold_input] is applied when there is no more output available, hence no output at top-level. *)
   let unfold_input ?(optim=false) (l:t list) : (t * input_data) list =
 
     let rec unfold forall accu leftovers p f_cont =
@@ -639,11 +640,11 @@ end = struct
       | Bang(_,_::_,_) -> Config.internal_error "[process_session.ml >> unfold_input] Symmetries should not be broken when executing inputs."
       | Bang(b,[],pp::tl) ->
         let leftovers_pp = if tl = [] then leftovers else {proc = Bang(b,[],tl); label = None}::leftovers in
-        if b = Repl || optim then
+        if b = Strong || optim then
           unfold forall accu leftovers_pp pp f_cont
         else
           unfold forall accu leftovers_pp pp (fun accu_pp ->
-            unfold_list ~bang:(Some ([pp],Channel)) false accu_pp leftovers tl f_cont
+            unfold_list ~bang:(Some [pp]) false accu_pp leftovers tl f_cont
           )
       | Input (ch,x,pp,id) ->
         let res = {
@@ -671,14 +672,14 @@ end = struct
           unfold forall accu (List.rev_append t leftovers) p (fun accu1 ->
             unfold_list forall accu1 (p::leftovers) t f_cont
           )
-        | Some (memo,b) -> (* case of a list of replicated processes *)
+        | Some memo -> (* case of a list of replicated processes *)
           let lefts = List.rev_append memo t in
           let leftovers1 =
             if lefts = [] then leftovers
-            else {proc = Bang(b,[],lefts); label = None} :: leftovers
+            else {proc = Bang(Partial,[],lefts); label = None} :: leftovers
           in
           unfold forall accu leftovers1 p (fun accu1 ->
-            unfold_list ~bang:(Some (p::memo,b)) forall accu1 leftovers t f_cont
+            unfold_list ~bang:(Some (p::memo)) forall accu1 leftovers t f_cont
           ) in
 
     unfold_list true [] [] l (fun accu -> accu)
@@ -692,7 +693,7 @@ end = struct
     id : id;
   }
 
-  (* Processes in given to [unfold_input] should all be normalised. *)
+  (* Processes in given to [unfold_output] should all be normalised. Unfolding an output p in a Bang(b,l1,p::l2) will temporarily break the symmetry, i.e. p will be transferred into l1. *)
   let unfold_output ?optim:(optim:bool=false) (lp:t) : (t * output_data) list =
 
     let rec unfold accu p rebuild f_cont =
@@ -721,15 +722,12 @@ end = struct
       | Bang(b,brok,[]) ->
         let add_bang l = rebuild {proc = Bang(b,l,[]); label = None} in
         unfold_list accu [] brok add_bang f_cont
-      | Bang(Channel,brok,l) ->
-        let add_bang1 x = rebuild {proc = Bang(Channel,brok,x); label = None} in
-        let add_bang2 x = rebuild {proc = Bang(Channel,x,l); label = None} in
+      | Bang(b,brok,l) ->
+        let add_bang1 x = rebuild {proc = Bang(b,brok,x); label = None} in
+        let add_bang2 x = rebuild {proc = Bang(b,x,l); label = None} in
         unfold_list accu [] l add_bang1 (fun ac ->
           unfold_list ac [] brok add_bang2 f_cont
         )
-      | Bang(Repl,brok,pp::t) ->
-        let add_bang h = rebuild {proc = Bang(Repl,h::brok,t); label = None} in
-        unfold accu pp add_bang f_cont
 
     and unfold_list accu memo l rebuild f_cont =
       match l with
@@ -842,9 +840,6 @@ end = struct
       let l2 = sort (elts p2) in
       try List.for_all2 (fun p q -> compare_atomic p q = 0) l1 l2
       with Invalid_argument _ -> false
-
-    (* compares the skeletons of two processes and updates *)
-    let compare (p1:t) (p2:t) = 0
   end
 
   module Normalise = struct
@@ -1298,7 +1293,7 @@ end = struct
           f_cont gather conf_rel labelled_p;
           f_next ()
         ) (fun () -> ())
-      | _, _ -> Config.internal_error "[process_session.ml >> normalise_configuration] A configuration cannot be released and focused at the same time."
+      | _, _ -> Config.internal_error "[process_session.ml >> normalise] A configuration cannot be released and focused at the same time."
 
   let check_skeleton (conf1:t) (conf2:t) : bool =
 
@@ -1309,7 +1304,7 @@ end = struct
         Labelled_process.Skeleton.equal (p1::conf1.sure_output_proc) (p2::conf2.sure_output_proc)
       else Labelled_process.Skeleton.equal [p1] [p2]
     | _ ->
-      Config.internal_error "[process_session.ml >> update_matching] Comparing processes in inconsistent states."
+      Config.internal_error "[process_session.ml >> check_skeleton] Comparing processes in inconsistent states."
 
   let release_skeleton (c:t) : t option =
     match c.focused_proc, c.sure_unchecked_skeletons with

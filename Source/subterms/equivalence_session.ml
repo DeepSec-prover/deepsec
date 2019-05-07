@@ -703,6 +703,7 @@ end = struct
     - performing skeleton/block-authorisation checks on the resulting nodes.
   NB. The continuations f_cont indicates what to do with the generated nodes, and f_next what to do once all nodes have been explored. *)
   let generate_successors (n:Node.t) (f_cont:Node.t->(unit->unit)->unit) (f_next:unit->unit) : unit =
+    Node.clean n;
     (* Printf.printf "\n==> EXPLORATION FROM %s\n" n.id;
     Node.print n; *)
     let (transition_type,node_to_split) = Node.generate_next n in
