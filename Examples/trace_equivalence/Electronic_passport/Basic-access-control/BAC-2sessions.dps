@@ -58,4 +58,4 @@ let system2 =
   ).
 
 
-query trace_equiv(system1,system2).
+query sess_equiv(system1,system2).

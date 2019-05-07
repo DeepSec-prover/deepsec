@@ -225,8 +225,8 @@ end = struct
     | Bang of bang_status * t list * t list (* The two lists model the replicated processes, the first one being reserved for processes where symmetries are temporarily broken due to the execution of outputs. *)
   and id = int
   and bang_status =
-    | Repl (* symmetry up to structural equivalence *)
-    | Channel (* symmetry up to structural equivalence and channel renaming *)
+    | Strong (* symmetry up to structural equivalence *)
+    | Partial (* symmetry up to channel renaming, or obtained after refactorisation during the analysis. Can only be used for enumerating the traces to be matched, and not for enumerating the traces that match them *)
 
   let nil (p:t) : bool =
     match p.proc with
@@ -248,12 +248,12 @@ end = struct
   let tab i = Func.loop (fun _ s -> s^"   ") "" 1 i
   let string_of_bang b n =
     match b with
-    | Repl -> Printf.sprintf "!^%d" n
-    | Channel -> Printf.sprintf "!c^%d" n
+    | Strong -> Printf.sprintf "!^%d" n
+    | Partial -> Printf.sprintf "!c^%d" n
   let string_of_broken_bang b =
     match b with
-    | Repl -> "X"
-    | Channel -> "Xc"
+    | Strong -> "X"
+    | Partial -> "Xc"
 
   (* conversion into a string *)
   let print ?labels:(print_labs:bool=false) ?solution:(fst_subst:(fst_ord, name) Subst.t=Subst.identity) ?highlight:(idh:id= -1) (p:t) : string =
@@ -372,10 +372,12 @@ end = struct
   let rec restaure_sym (lp:t) : t =
     match lp.proc with
     | Input _
-    | OutputSure _ -> lp
+    | OutputSure _
+    | Bang(_,[],_) -> (* no restauration needed *)
+      lp
     | Par l -> {lp with proc = Par (List.map restaure_sym l)}
-    | Bang(b,l1,l2) ->
-      {lp with proc = Bang (Repl,[],List.map restaure_sym l1 @ l2)}
+    | Bang(b,l1,l2) -> (* non trivial restauration: symmetry cannot be restaured to Strong *)
+      {lp with proc = Bang (Partial,[],List.map restaure_sym l1 @ l2)}
     | Let _
     | If _
     | New _
@@ -514,9 +516,9 @@ end = struct
         browse_list rho_v rho_n bound_vars l id (fun id_max l_fresh ->
           f_cont id_max {proc = Par l_fresh; label = None}
         )
-      | Bang(Repl,[],l) ->
+      | Bang(Strong,[],l) ->
         browse_list rho_v rho_n bound_vars l id (fun id_max l_fresh ->
-          f_cont id_max {proc = Bang(Repl,[],l_fresh); label = None}
+          f_cont id_max {proc = Bang(Strong,[],l_fresh); label = None}
         )
       | Bang _ -> Config.internal_error "[process_session.ml >> fresh_copy] Unexpected type of bang."
       | Start _ -> Config.internal_error "[process_session.ml >> fresh_copy] Unexpected Start constructor."
@@ -595,7 +597,7 @@ end = struct
             if i = 1 then f_cont id_l (p_conv :: l_conv)
             else
               fresh_copy i p_conv id_l (fun id_final l_fresh ->
-                f_cont id_final ({proc = Bang(Repl,[],l_fresh); label = None} :: l_conv)
+                f_cont id_final ({proc = Bang(Strong,[],l_fresh); label = None} :: l_conv)
               )
           )
         ) in
@@ -629,11 +631,11 @@ end = struct
       | Bang(b,[],pp::tl) ->
         let left_pp = {proc = Bang(b,[],tl); label = None} in
         let leftovers_pp = if tl = [] then leftovers else left_pp::leftovers in
-        if b = Repl || optim then
+        if b = Strong || optim then
           unfold forall accu leftovers_pp pp f_cont
         else
           unfold forall accu leftovers_pp pp (fun accu_pp ->
-            unfold_list ~bang:(Some ([pp],Channel)) false accu_pp leftovers tl f_cont
+            unfold_list ~bang:(Some ([pp],b)) false accu_pp leftovers tl f_cont
           )
       | Input (ch,x,pp,id) ->
         let res = {
@@ -708,15 +710,15 @@ end = struct
       | Bang(b,brok,[]) ->
         let add_bang l = rebuild {proc = Bang(b,l,[]); label = None} in
         unfold_list accu [] brok add_bang f_cont
-      | Bang(Channel,brok,l) ->
-        let add_bang1 x = rebuild {proc = Bang(Channel,brok,x); label = None} in
-        let add_bang2 x = rebuild {proc = Bang(Channel,x,l); label = None} in
+      | Bang(b,brok,l) ->
+        let add_bang1 x = rebuild {proc = Bang(b,brok,x); label = None} in
+        let add_bang2 x = rebuild {proc = Bang(b,x,l); label = None} in
         unfold_list accu [] l add_bang1 (fun ac ->
           unfold_list ac [] brok add_bang2 f_cont
         )
-      | Bang(Repl,brok,pp::t) ->
-        let add_bang h = rebuild {proc = Bang(Repl,h::brok,t); label = None} in
-        unfold accu pp add_bang f_cont
+      (* | Bang(Strong,brok,pp::t) ->
+        let add_bang h = rebuild {proc = Bang(Strong,h::brok,t); label = None} in
+        unfold accu pp add_bang f_cont *)
 
     and unfold_list accu memo l rebuild f_cont =
       match l with

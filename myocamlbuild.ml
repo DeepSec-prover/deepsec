@@ -10,6 +10,7 @@ dispatch begin function
           A"-short-functors";
           A"-t";
           A"Documentation DeepSec";
-        ]
+        ];
+      (* flag ["ocaml"; "compile"] (S [ A "-w"; A "A-44-e"]) *)
   | _ -> ()
 end

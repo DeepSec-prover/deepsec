@@ -1,11 +1,48 @@
-free c.
+// Unlinkability
+
 fun mac/2.
 
-let A =
-  in(c,z);in(c,zz);let alpha = z in new k; !^2 in(c,x); in(c,y); out(c,(y,alpha)).
+free c.
 
-let B =
-  in(c,z); in(c,zz); new k; !^2 in(c,x); in(c,y);out(c,(x,y,k)).
+free Error_6300.
+free get_challenge.
+const error,ok.
+
+fun senc/2.
+
+reduc sdec(senc(x,y),y) -> x.
+
+// Description of the reader role
+
+let reader(k_e,k_m) =
+  /* out(c,get_challenge); */
+  in(c,xn_t);
+  new n_r;
+  new k_r;
+  let xm = senc((n_r,xn_t,k_r),k_e) in
+  out(c,(xm,mac(xm,k_m)));
+  in(c,y).
+
+// Description of the passport role
+
+let passport =
+  /* in(c,x); */
+  /* if x = get_challenge */
+  /* then */
+    /* new n_t; */
+    out(c,ok);
+    in(c,x).
+    /* let (xm_e,xm_m) = y in */
+    /* if x = ok then out(c,ok) */
+    /* else out(c,error). */
+
+// Unlinkability
+
+let system1 =
+  !^2 passport.
+
+let system2 =
+  passport | passport.
 
 
-query sess_equiv(A,B).
+query sess_equiv(system1,system2).

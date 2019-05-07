@@ -600,14 +600,14 @@ end = struct
     let generate_next (n:t) : Configuration.Transition.kind option * t =
       let new_id = fresh_id () in
 
-      (** Generation of the transitions **)
+      (* Generation of the transitions *)
       let new_csys_set = Symbolic.Set.empty() in
       let (trans,vars) = data_next_transition n in
       Symbolic.Set.map (fun i csys ->
         let next_transitions =
           Symbolic.Transition.generate vars trans new_csys_set csys in
-        (* Printf.printf "Transitions generated from %s: \n" (Symbolic.Index.to_string i); *)
-        (* List.iter (fun tr -> Symbolic.Transition.print i tr; print_endline "") next_transitions; *)
+        (* Printf.printf "Transitions generated from %s: \n" (Symbolic.Index.to_string i);
+        List.iter (fun tr -> Symbolic.Transition.print i tr; print_endline "") next_transitions; *)
         Symbolic.Process.set_transitions csys next_transitions
       ) n.csys_set;
 
@@ -633,9 +633,15 @@ end = struct
                     let reduc_fa = Symbolic.Transition.get_reduc tr_fa in
                     let reduc_ex = Symbolic.Transition.get_reduc tr_ex in
                     match BijectionSet.update lab_fa lab_ex reduc_fa reduc_ex bset with
-                    | Some bset_upd when skel_check target_fa target_ex ->
-                      (target_ex,bset_upd) :: accu4
-                    | _ -> accu4
+                    | Some bset_upd ->
+                      if skel_check target_fa target_ex then
+                        (target_ex,bset_upd) :: accu4
+                      else
+                        (* let () = Printf.printf "unfortunately, (%s,%s) is not a suitable matching (bad skeleton)\n" (Symbolic.Index.to_string target_fa) (Symbolic.Index.to_string target_ex) in *)
+                        accu4
+                    | _ ->
+                      (* Printf.printf "unfortunately, (%s,%s) is not a suitable matching (incompatible with previous matching)\n" (Symbolic.Index.to_string target_fa) (Symbolic.Index.to_string target_ex); *)
+                      accu4
                   ) accu3 (Symbolic.Process.get_transitions symp_ex)
                 ) [] cs_ex_list in
               Symbolic.Matching.add_match (Symbolic.Transition.get_target tr_fa) cs_ex_list_new accu2
@@ -703,10 +709,11 @@ end = struct
     - performing skeleton/block-authorisation checks on the resulting nodes.
   NB. The continuations f_cont indicates what to do with the generated nodes, and f_next what to do once all nodes have been explored. *)
   let generate_successors (n:Node.t) (f_cont:Node.t->(unit->unit)->unit) (f_next:unit->unit) : unit =
+    Node.clean n;
     (* Printf.printf "\n==> EXPLORATION FROM %s\n" n.id;
     Node.print n; *)
     let (transition_type,node_to_split) = Node.generate_next n in
-    (* Printf.printf "--> new node to split:\n";
+    (* Printf.printf "--> new node to split (father: %s):\n" n.id;
     Node.print node_to_split; *)
     Node.split node_to_split (fun node f_next1 ->
       let csys_set = Symbolic.Set.cast node.csys_set in
@@ -719,6 +726,8 @@ end = struct
         (* very beginning of the analysis: only a skeleton check is needed before moving on to the constructing the successor nodes (no unauthorised blocks possible). *)
         Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
           let node_decast = Node.decast node csys_set in
+          (* Printf.printf "After constraint solving (Start): %s -> %s\n" node.id node_decast.id;
+          Node.print node_decast; *)
           let final_node = Node.release_skeleton node_decast in
           f_cont final_node f_next2
         ) csys_set f_next1
@@ -728,6 +737,8 @@ end = struct
           if Constraint_system.Set.is_empty csys_set then f_next2()
           else
             let node_decast = Node.decast node csys_set in
+            (* Printf.printf "After constraint solving (Focus): %s -> %s\n" node.id node_decast.id;
+            Node.print node_decast; *)
             let node_autho =
               Node.remove_unauthorised_blocks node_decast csys_set in
             let final_node = Node.release_skeleton node_autho in
@@ -739,6 +750,8 @@ end = struct
           if Constraint_system.Set.is_empty csys_set then f_next2()
           else
             let node_decast = Node.decast node csys_set in
+            (* Printf.printf "After constraint solving (Pos): %s -> %s\n" node.id node_decast.id;
+            Node.print node_decast; *)
             let node_autho = Node.remove_unauthorised_blocks node_decast csys_set in
             let final_node = Node.release_skeleton node_autho in
             f_cont final_node f_next2
@@ -749,6 +762,8 @@ end = struct
           if Constraint_system.Set.is_empty csys_set then f_next2()
           else
             let node_decast = Node.decast node csys_set in
+            (* Printf.printf "After constraint solving (Neg): %s -> %s\n" node.id node_decast.id;
+            Node.print node_decast; *)
             let node_autho =
               Node.remove_unauthorised_blocks node_decast csys_set in
             let final_node = Node.release_skeleton node_autho in

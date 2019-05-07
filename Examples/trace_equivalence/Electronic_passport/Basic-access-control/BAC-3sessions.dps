@@ -49,4 +49,4 @@ let system2 =
   | new k_e; new k_m; (passport(k_e,k_m) | reader(k_e,k_m)).
 
 
-query trace_equiv(system1,system2).
+query sess_equiv(system1,system2).
