@@ -334,7 +334,7 @@ let trace_equivalence_determinate conf1 conf2 =
 
   let equiv_pbl = Equivalence_determinate.initialise_equivalence_problem else_branch csys_set_2 in
 
-  let data =
+  let data : EquivJob.data_determinate =
     {
       EquivJob.init_conf1 = conf1;
       EquivJob.init_conf2 = conf2;
@@ -377,7 +377,7 @@ let trace_equivalence_determinate conf1 conf2 =
     | _ -> Config.internal_error "[distributed_equivalence.ml >> trace_equivalence_determinate] We should expect an output for determinate equivalence."
 
 let session (goal:Equivalence_session.goal) (conf1:Process_session.Configuration.t) (conf2:Process_session.Configuration.t) : Equivalence_session.result_analysis * Process_session.Configuration.t * Process_session.Configuration.t =
-  let root =Equivalence_session.compute_root goal conf1 conf2 in
+  let root = Equivalence_session.compute_root goal conf1 conf2 in
   let setting = Symbol.get_settings () in
   let v_counter = Variable.get_counter () in
   let n_counter = Name.get_counter () in

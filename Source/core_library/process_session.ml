@@ -845,7 +845,7 @@ end = struct
 
     (* Checks whether two lists of atomic processes have identical skeletons.
     TODO: current implementation quite naive (does not take symmetries into account), may be improved. *)
-    let rec equal (p1:t list) (p2:t list) : bool =
+    let equal (p1:t list) (p2:t list) : bool =
       let sort = List.fast_sort (fun p q -> compare_atomic p q) in
       let elts l = List.fold_left (fun accu p -> elements ~init:accu p) [] l in
       let l1 = sort (elts p1) in
@@ -1152,15 +1152,19 @@ end = struct
         match LabelSet.find_opt l1 ll1, LabelSet.find_opt l2 ll2 with
         | None,None -> search ((ll1,ll2) :: memo) t
         | Some _,Some _ ->
+          let label_discardable =
+            Labelled_process.not_pure_io_toplevel p1 || Labelled_process.not_pure_io_toplevel p2 in
           let bset_upd =
             if LabelSet.is_singleton ll1 then
-              List.rev_append memo ((ll1,ll2)::t)
+              if label_discardable then List.rev_append memo t
+              else List.rev_append memo ((ll1,ll2)::t)
             else
               let ll1' = LabelSet.remove l1 ll1 in
               let ll2' = LabelSet.remove l2 ll2 in
               let single1 = LabelSet.singleton l1 in
               let single2 = LabelSet.singleton l2 in
-              List.rev_append memo ((single1,single2)::(ll1',ll2')::t) in
+              if label_discardable then List.rev_append memo ((ll1',ll2')::t)
+              else List.rev_append memo ((single1,single2)::(ll1',ll2')::t) in
             if Labelled_process.not_pure_io_toplevel p1 || Labelled_process.not_pure_io_toplevel p2 then
               init bset_upd p1 p2
             else Some bset_upd
@@ -1334,9 +1338,9 @@ end = struct
           Some {c with focused_proc = None; input_proc = p::c.input_proc} end
     | _, Some p ->
       begin match Labelled_process.get_proc p with
-      | Input _ ->
+      | Labelled_process.Input _ ->
         Some {c with sure_unchecked_skeletons = None; input_proc = p::c.input_proc}
-      | OutputSure _ ->
+      | Labelled_process.OutputSure _ ->
         Some {c with sure_unchecked_skeletons = None; sure_output_proc = p::c.sure_output_proc}
       | _ ->
         if Labelled_process.nil p then
@@ -1346,7 +1350,7 @@ end = struct
         else
           Some {c with sure_unchecked_skeletons = None; input_proc = Labelled_process.restaure_sym p::c.input_proc} end
     | _, _ ->
-        Config.internal_error "[process_session.ml >> release_skeleton_without_check] A process is either focused or released."
+        Config.internal_error "[process_session.ml >> release_skeleton] A process is either focused or released."
 
   module Transition = struct
     type kind =
@@ -1370,10 +1374,10 @@ end = struct
       match c.focused_proc with
       | Some p ->
         begin match Labelled_process.get_proc p with
-        | Input _ -> Some RPos
-        | Start _ -> Some RStart
+        | Labelled_process.Input _ -> Some RPos
+        | Labelled_process.Start _ -> Some RStart
         | _ ->
-          Config.internal_error "[process_session.ml >> next_rule] Ill-formed focused state, should have been released or normalised." end
+          Config.internal_error "[process_session.ml >> Configuration.Transition.next] Ill-formed focused state, should have been released or normalised." end
       | None ->
         if c.sure_output_proc <> [] then Some RNeg
         else match c.input_proc with
@@ -1385,7 +1389,7 @@ end = struct
       match conf.focused_proc with
       | Some p ->
         begin match Labelled_process.get_proc p with
-        | Start (pp,_) -> {conf with focused_proc = Some pp}
+        | Labelled_process.Start (pp,_) -> {conf with focused_proc = Some pp}
         | _ -> Config.internal_error "[process_session.ml Configuration.Transition.apply_start] Error during the initialisation of processes. (1)" end
       | _ ->
         Config.internal_error "[process_session.ml >> Configuration.Transition.apply_start] Error during the initialisation of processes. (2)"
@@ -1394,13 +1398,15 @@ end = struct
     let apply_neg (ax:axiom) (p:Labelled_process.t) (od:Labelled_process.output_data) (leftovers:Labelled_process.t list) (conf:t) : t =
       let state = {
         current_proc = to_process conf;
-        id = od.id;
-        label = od.lab;
+        id = od.Labelled_process.id;
+        label = od.Labelled_process.lab;
       } in
+      let ch = od.Labelled_process.channel in
+      let term = od.Labelled_process.term in
       {conf with
         to_normalise = Some p;
         sure_output_proc = leftovers;
-        trace = OutAction(od.channel,ax,od.term,state)::conf.trace;
+        trace = OutAction(ch,ax,term,state)::conf.trace;
         ongoing_block = Block.add_axiom ax conf.ongoing_block;
       }
 
@@ -1409,8 +1415,8 @@ end = struct
       match conf.focused_proc with
       | Some p ->
         begin match Labelled_process.get_proc p with
-        | Input(ch,x,pp,id) ->
-          let idata = {
+        | Labelled_process.Input(ch,x,pp,id) ->
+          let idata : Labelled_process.input_data = {
             Labelled_process.channel = ch;
             Labelled_process.var = x;
             Labelled_process.lab = Labelled_process.get_label p;
@@ -1418,10 +1424,10 @@ end = struct
             Labelled_process.leftovers = []; (* field not relevant here *)
             Labelled_process.optim = true; (* field not relevant here *)
           } in
-          let state = {
+          let state : state = {
             current_proc = to_process conf;
-            id = idata.id;
-            label = idata.lab;
+            id = idata.Labelled_process.id;
+            label = idata.Labelled_process.lab;
           } in
           let conf_app = {conf with
             focused_proc = Some pp;
@@ -1442,8 +1448,8 @@ end = struct
       let (pp,idata) = focus in
       let state = {
         current_proc = to_process conf;
-        id = idata.id;
-        label = idata.lab;
+        id = idata.Labelled_process.id;
+        label = idata.Labelled_process.lab;
       } in
       {conf with
         input_proc = idata.leftovers;

@@ -26,7 +26,7 @@ module List = struct
   let foldl f l a = fold_left (fun a x -> f x a) a l
 
   (* rev_map + filter (on the transformed elements) *)
-  let mapif pred f l =
+  let map_if pred f l =
     let rec map_filter ac pred f l = match l with
       | [] -> ac
       | p :: t ->
@@ -37,20 +37,12 @@ module List = struct
 
   (* rev_map + filter (on the transformed elements, based on whether the
   result of the transformation is None or not) *)
-  let mapif_opt f l =
+  let map_if_opt f l =
     List.fold_left (fun ac x ->
       match f x with
       | None -> ac
       | Some y -> y :: ac
     ) [] l
-
-  (* rev_map, with an optional accumulator *)
-  let rev_map ?init:(accu=[]) f l =
-    List.fold_left (fun ac x -> f x :: ac) accu l
-
-  (* tail recursive filter, without caring about preserving the ordering *)
-  let rev_filter f l =
-    List.fold_left (fun accu x -> if f x then x::accu else accu) [] l
 
   (* removes all elements of a list verifying a given predicate, and returns
   one such element (if any). The ordering is not preserved. *)
@@ -623,6 +615,16 @@ module Map = struct
           if f_remove v dd
           then concat ll rr
           else join ll v dd rr
+
+    let rec map_filter f = function
+      | Empty -> Empty
+      | Node {l; v; d; r; _} ->
+        let ll = map_filter f l in
+        let rr = map_filter f r in
+        match f v d with
+        | None -> concat ll rr
+        | Some dd -> join ll v dd rr
+
 
     let rec partition p = function
         Empty -> (Empty, Empty)
@@ -1284,41 +1286,6 @@ module Set = struct
       | Node{l;v;r;_} -> iter (f v) l; iter (f v) r
 
   end
-end
-
-
-
-
-module Array =  struct
-  include Array
-
-  (* finds the small index of an array satisfying a predicate *)
-  let find_opt (f:int->'a->bool) (t:'a array) : int option =
-    let rec search i =
-      if i = Array.length t then None
-      else if f i t.(i) then Some i
-      else search (i+1) in
-    search 0
-
-  (* swaps two indexes of an array *)
-  let swap v i j =
-    let x = v.(i) in
-    v.(i) <- v.(j);
-    v.(j) <- x
-
-  (* applies the permutation (j i i+1 ... j-1) to an array *)
-  let rec move_down_to v i j =
-    if i > j then (swap v i (i-1); move_down_to v (i-1) j)
-
-  (* applies the permutation (i j j-1 ... i+1) to an array *)
-  let rec move_up_to v i j =
-    if i < j then (swap v i (i+1); move_up_to v (i+1) j)
-
-  (* returns true if the arrays v1 is lexicographically smaller than v2, when
-  they are restricted to their indexes between a and b included. *)
-  let rec compare_lex v1 v2 a b =
-    a > b || v2.(a) > v1.(a) || (v1.(a) = v2.(a) && compare_lex v1 v2 (a+1) b)
-
 end
 
 
