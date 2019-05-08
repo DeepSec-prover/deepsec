@@ -4,60 +4,6 @@ open Display
 open Process_session
 
 
-(* type of mutable sets with implicit integer indexes. *)
-(* module IndexedSet (O:sig type elt end) : sig
-  type t
-  type elt = O.elt
-  val empty : unit -> t (* creates an empty data structure. *)
-  val is_empty : t -> bool (* checks the emptiness of the table *)
-  val choose : t -> elt (* returns an element of the table, and raises Internal_error if it is empty *)
-  val add_new_elt : t -> elt -> int (* adds a new element and returns the corresponding fresh index. *)
-  val find : t -> int -> elt (* same as find_opt but raises Internal_error if not found *)
-  val remove : t -> int -> unit (* removes an element at a given index *)
-  val replace : t -> int -> elt -> unit (* replaces an element at an index *)
-  val map : (int -> elt -> elt) -> t -> unit (* applies a function on each element *)
-  val filter : (int -> elt -> bool) -> t -> unit (* removes all elements whose index do not satisfy a given predicate *)
-  val map_filter : (int -> elt -> elt option) -> t -> unit (* applies map but removes elements if the transformation returns None. *)
-  val iter : (int -> elt -> unit) -> t -> unit (* iterates an operation. NB. This operation should *not* modify the table itself. *)
-  val copy : t -> t (* creates a static copy of the table *)
-  val elements : (int -> elt -> 'a) -> t -> 'a list (* computes the list of binders (index,element) of the table and stores them in a list, after applying a transformation to them. For example, elements (fun x _ -> x) set returns the list of indexes of set. *)
-end = struct
-  type index = int
-  type elt = O.elt
-  type t = (index, elt) Hashtbl.t * index ref
-  let empty () : t = Hashtbl.create 100,ref (-1)
-  exception Stop of elt
-  let is_empty (set,_) =
-    try Hashtbl.iter (fun _ x -> raise (Stop x)) set; true
-    with Stop _ -> false
-  let choose (set,_) =
-    try
-      Hashtbl.iter (fun _ x -> raise (Stop x)) set;
-      Config.internal_error "[equivalence_session.ml >> IndexedSet.choose] Unexpected empty table."
-    with Stop x -> x
-  let add_new_elt (set,ind) x =
-    incr ind;
-    Hashtbl.add set !ind x;
-    !ind
-  let replace (set,_) i x =  Hashtbl.replace set i x
-  let find_opt (set,_) i = Hashtbl.find_opt set i
-  let find set i =
-    match find_opt set i with
-    | None ->
-      Config.internal_error (Printf.sprintf "[equivalence_session.ml >> IndexedSet.find] Constraint system %d not found in table." i)
-    | Some x -> x
-  let remove (set,_) i = Hashtbl.remove set i
-  let map f (set,_) =
-    Hashtbl.filter_map_inplace (fun i x -> Some (f i x)) set
-  let filter f (set,_) =
-    Hashtbl.filter_map_inplace (fun i x -> if f i x then Some x else None) set
-  let map_filter f (set,_) = Hashtbl.filter_map_inplace f set
-  let iter f (set,_) = Hashtbl.iter f set
-  let elements f (set,_) =
-    Hashtbl.fold (fun index elt accu -> f index elt::accu) set []
-  let copy (set,ind) = Hashtbl.copy set,ref !ind
-end *)
-
 module IndexedSet (O:sig type elt end) : sig
   type t
   type elt = O.elt
@@ -395,7 +341,7 @@ end = struct
           | Constraint_system.Bot -> ()
       )
 
-    let add_transition_output (csys_set:Set.t ref) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord, Term.name) Subst.t) (cs:Process.t) (ax:axiom) (od:Labelled_process.output_data) (new_status:Status.t) : unit =
+    let add_transition_output (csys_set:Set.t ref) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord, Term.name) Subst.t) (cs:Process.t) (ax:axiom) (od:Labelled_process.Output.data) (new_status:Status.t) : unit =
       Configuration.normalise ~context:od.context od.lab conf eqn (fun gather conf_norm new_proc ->
         let equations = Labelled_process.Normalise.equations gather in
         let disequations = Labelled_process.Normalise.disequations gather in
@@ -423,7 +369,7 @@ end = struct
           | Constraint_system.Bot -> ()
       )
 
-    let add_transition_input (csys_set:Set.t ref) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord,Term.name) Subst.t) (cs:Process.t) (var_X:snd_ord_variable) (idata:Labelled_process.input_data) (new_status:Status.t) : unit =
+    let add_transition_input (csys_set:Set.t ref) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord,Term.name) Subst.t) (cs:Process.t) (var_X:snd_ord_variable) (idata:Labelled_process.Input.data) (new_status:Status.t) : unit =
       Configuration.normalise idata.lab conf eqn (fun gather conf_norm new_proc ->
         let equations = Labelled_process.Normalise.equations gather in
         let disequations = Labelled_process.Normalise.disequations gather in
@@ -473,12 +419,12 @@ end = struct
             let next_status =
               Status.downgrade_forall status output_data.optim in
             add_transition_output csys_set accu conf eqn cs ax output_data next_status
-          ) (Labelled_process.unfold_output ~optim:(status=ForAll) proc)
+          ) (Labelled_process.Output.unfold ~optim:(status=ForAll) proc)
         ) (Configuration.outputs symp.conf)
       | Some RFocus ->
         let var_X = get_snd_ord v in
         let potential_focuses =
-          Labelled_process.unfold_input ~optim:(status=ForAll) (Configuration.inputs symp.conf) in
+          Labelled_process.Input.unfold ~optim:(status=ForAll) (Configuration.inputs symp.conf) in
         List.iter (fun focus ->
           let conf_exec =
             Configuration.Transition.apply_focus var_X focus symp.conf in
