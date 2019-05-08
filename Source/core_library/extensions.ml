@@ -616,6 +616,16 @@ module Map = struct
           then concat ll rr
           else join ll v dd rr
 
+    let rec map_filter f = function
+      | Empty -> Empty
+      | Node {l; v; d; r; _} ->
+        let ll = map_filter f l in
+        let rr = map_filter f r in
+        match f v d with
+        | None -> concat ll rr
+        | Some dd -> join ll v dd rr
+
+
     let rec partition p = function
         Empty -> (Empty, Empty)
       | Node {l; v; d; r; _} ->
@@ -1276,41 +1286,6 @@ module Set = struct
       | Node{l;v;r;_} -> iter (f v) l; iter (f v) r
 
   end
-end
-
-
-
-
-module Array =  struct
-  include Array
-
-  (* finds the small index of an array satisfying a predicate *)
-  let find_opt (f:int->'a->bool) (t:'a array) : int option =
-    let rec search i =
-      if i = Array.length t then None
-      else if f i t.(i) then Some i
-      else search (i+1) in
-    search 0
-
-  (* swaps two indexes of an array *)
-  let swap v i j =
-    let x = v.(i) in
-    v.(i) <- v.(j);
-    v.(j) <- x
-
-  (* applies the permutation (j i i+1 ... j-1) to an array *)
-  let rec move_down_to v i j =
-    if i > j then (swap v i (i-1); move_down_to v (i-1) j)
-
-  (* applies the permutation (i j j-1 ... i+1) to an array *)
-  let rec move_up_to v i j =
-    if i < j then (swap v i (i+1); move_up_to v (i+1) j)
-
-  (* returns true if the arrays v1 is lexicographically smaller than v2, when
-  they are restricted to their indexes between a and b included. *)
-  let rec compare_lex v1 v2 a b =
-    a > b || v2.(a) > v1.(a) || (v1.(a) = v2.(a) && compare_lex v1 v2 (a+1) b)
-
 end
 
 
