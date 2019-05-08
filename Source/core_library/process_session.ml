@@ -1152,15 +1152,19 @@ end = struct
         match LabelSet.find_opt l1 ll1, LabelSet.find_opt l2 ll2 with
         | None,None -> search ((ll1,ll2) :: memo) t
         | Some _,Some _ ->
+          let label_discardable =
+            Labelled_process.not_pure_io_toplevel p1 || Labelled_process.not_pure_io_toplevel p2 in
           let bset_upd =
             if LabelSet.is_singleton ll1 then
-              List.rev_append memo ((ll1,ll2)::t)
+              if label_discardable then List.rev_append memo t
+              else List.rev_append memo ((ll1,ll2)::t)
             else
               let ll1' = LabelSet.remove l1 ll1 in
               let ll2' = LabelSet.remove l2 ll2 in
               let single1 = LabelSet.singleton l1 in
               let single2 = LabelSet.singleton l2 in
-              List.rev_append memo ((single1,single2)::(ll1',ll2')::t) in
+              if label_discardable then List.rev_append memo ((ll1',ll2')::t)
+              else List.rev_append memo ((single1,single2)::(ll1',ll2')::t) in
             if Labelled_process.not_pure_io_toplevel p1 || Labelled_process.not_pure_io_toplevel p2 then
               init bset_upd p1 p2
             else Some bset_upd
