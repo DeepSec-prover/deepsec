@@ -1098,7 +1098,7 @@ module BijectionSet : sig
   val print : t -> unit
 end = struct
   (* sets of bijections with the skeleton-compatibility requirement *)
-  (* TODO. make the datastructure more efficient. Could be more practical when there are a lot of singletons to handle the operation "get all potential labels matching with a given label l". *)
+  (* TODO. may ake the datastructure more efficient. Could be more practical when there are a lot of singletons to handle the operation "get all potential labels matching with a given label l". *)
   type t = (Label.Set.t * Label.Set.t) list
 
   (* the initial bijection set *)
