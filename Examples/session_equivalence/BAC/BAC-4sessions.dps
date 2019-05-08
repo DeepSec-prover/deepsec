@@ -63,4 +63,4 @@ let system_4 = // attack
   new k_e; new k_m; !^4 system(k_e,k_m).
 
 
-query session_equiv(system_1111,system_211).
+query session_incl(system_1111,system_211).
