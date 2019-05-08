@@ -1,7 +1,7 @@
 (* Process manipulation for equivalence by session *)
 
-open Term
 open Extensions
+open Term
 
 
 (* a module for representing process labels *)
@@ -137,6 +137,40 @@ end = struct
       explore_block block_list_upd
 end
 
+(* multisets of unacessible private channels *)
+module PrivateChannels : sig
+  type t
+  val equal : t -> t -> bool
+  val compare : t -> t -> int
+  val to_string : t -> string
+  val from_symbol : symbol -> t
+  val from_name : name -> t
+end = struct
+  type t =
+    | Symbol of symbol
+    | Name of name
+  let compare (x:t) (y:t) : int =
+    match x,y with
+    | Symbol f, Symbol g -> Symbol.order f g
+    | Name n, Name m -> Name.order n m
+    | Symbol _, _ -> -1
+    | Name _, _ -> -1
+  let equal (c:t) (d:t) : bool =
+    compare c d = 0
+  let to_string (c:t) : string =
+    Printf.sprintf "<%s>" (
+      match c with
+      | Symbol f -> Symbol.display Terminal f
+      | Name n -> Name.display Terminal n
+    )
+  let from_symbol (s:symbol) : t =
+    if not (Symbol.is_public s) then Symbol s
+    else Config.internal_error "[process_session.ml >> PrivateChannels.from_symbol] Unexpected case."
+  let from_name (n:name) : t=
+    Name n
+end
+
+module NonToplevelChannels = Multiset.Make(PrivateChannels)
 
 (* a module for labelled processes *)
 module Labelled_process : sig
