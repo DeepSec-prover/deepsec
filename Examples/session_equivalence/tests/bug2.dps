@@ -12,4 +12,4 @@ let system2 =
   passport | passport.
 
 
-query sess_equiv(system1,system2). // equivalent
+query session_equiv(system1,system2). // equivalent

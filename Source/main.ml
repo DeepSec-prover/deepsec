@@ -111,6 +111,26 @@ let start_time = ref (Unix.time ())
 
 let por_disable = ref false
 
+let execute_query_session goal exproc1 exproc2 id =
+  start_time := Unix.time ();
+  Printf.printf "\nExecuting query %d...\n" id;
+  flush_all ();
+  let conf1 = Process_session.Configuration.of_expansed_process exproc1 in
+  let conf2 = Process_session.Configuration.of_expansed_process exproc2 in
+  let (result,conf1,conf2,running_time) =
+    if !Config.distributed then begin
+      let (result,conf1,conf2) =
+        Distributed_equivalence.session goal conf1 conf2 in
+      (result,conf1,conf2,Unix.time() -. !start_time)
+    end
+    else begin
+      let result = Equivalence_session.analysis goal conf1 conf2 in
+      (result,conf1,conf2,Unix.time() -. !start_time)
+    end in
+  Equivalence_session.publish_result goal id conf1 conf2 result running_time;
+  (Session result,running_time)
+
+
 let rec excecute_queries id = function
   | [] -> []
   | (Process.Trace_Equivalence,exproc1,exproc2)::q ->
@@ -187,19 +207,11 @@ let rec excecute_queries id = function
     flush_all ();
     result::(excecute_queries (id+1) q)
   | (Process.Session_Equivalence,exproc1,exproc2)::q ->
-    start_time := Unix.time ();
-    Printf.printf "\nExecuting query %d...\n" id;
-    flush_all ();
-    let conf1 = Process_session.Configuration.of_expansed_process exproc1 in
-    let conf2 = Process_session.Configuration.of_expansed_process exproc2 in
-    let result = Equivalence_session.equivalence conf1 conf2 in
-    let running_time = Unix.time () -. !start_time in
-    let res = Equivalence_session.string_of_result result in
-    flush stdout;
-    ignore (Sys.command (Printf.sprintf "printf \"%s\"" res));
-    print_endline (Printf.sprintf "\nRunning time: %ds" (int_of_float running_time));
-    let _ = Sys.command "rm -f index_old.html" in
-    (Session result,running_time) :: excecute_queries (id+1) q
+    let res = execute_query_session Equivalence_session.Equivalence exproc1 exproc2 id in
+    res :: excecute_queries (id+1) q
+  | (Process.Session_Inclusion,exproc1,exproc2)::q ->
+    let res = execute_query_session Equivalence_session.Inclusion exproc1 exproc2 id in
+    res :: excecute_queries (id+1) q
   | _ -> Config.internal_error "Observational_equivalence not implemented"
 
 let process_file path =

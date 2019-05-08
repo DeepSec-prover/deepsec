@@ -212,6 +212,7 @@ type equivalence =
   | Trace_Equivalence
   | Observational_Equivalence
   | Session_Equivalence
+  | Session_Inclusion
 
 (** The type [output_gathering] represents the differents elements that were necessary to satisfy for the out transition to occur.*)
 type output_gathering =

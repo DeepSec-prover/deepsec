@@ -11,4 +11,4 @@ let B(k) =
 
 let sys = A | new k; !^2 B(k).
 
-query trace_equiv(sys,sys). // equivalent
+query session_equiv(sys,sys). // equivalent

@@ -24,4 +24,4 @@ let system1 =
 let system2 =
   new k; (passport(k) | reader(k)).
 
-query sess_equiv(system1,system2). // non-equivalent
+query session_equiv(system1,system2). // non-equivalent

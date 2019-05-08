@@ -40,7 +40,7 @@ let passport(c,k_e,k_m) =
     else out(c,Error_6300).
 
 let system(k_e,k_m) =
-  passport(c,k_e,k_m) | reader(d,k_e,k_m).
+  passport(c,k_e,k_m) | reader(c,k_e,k_m).
 
 let system_fresh =
   new k_e; new k_m; system(k_e,k_m).
@@ -63,4 +63,4 @@ let system_4 = // attack
   new k_e; new k_m; !^4 system(k_e,k_m).
 
 
-query sess_equiv(system_1111,system_211).
+query session_equiv(system_1111,system_211).

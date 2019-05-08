@@ -44,18 +44,16 @@ let passport(k_e,k_m) =
       else out(c,Error_6300)
     else out(c,Error_6300).
 
+let system(k_e,k_m) =
+  passport(k_e,k_m) | reader(k_e,k_m).
+
 // Unlinkability
 
 let system1 =
-  (new k_e; new k_m; (passport(k_e,k_m) | reader(k_e,k_m))) |
-  (new k_e; new k_m; (passport(k_e,k_m) | reader(k_e,k_m))).
+  !^2 new k_e; new k_m; system(k_e,k_m).
 
 let system2 =
-  new k_e; new k_m;
-  (
-    passport(k_e,k_m) | reader(k_e,k_m) |
-    passport(k_e,k_m) | reader(k_e,k_m)
-  ).
+  new k_e; new k_m; !^2 system(k_e,k_m).
 
 
-query sess_equiv(system1,system2).
+query session_equiv(system1,system2).
