@@ -1,0 +1,11 @@
+DeepSec - DEciding Equivalence Properties for SECurity protocols
+Version: 1.01
+Git hash: )
+Git branch: GITBRANCH
+
+Opening file Examples/session_inclusion/BAC/BAC-4sessions.dps
+Executing the queries...
+
+Executing query 1...
+Result query 1: Process inclusion proved.
+Running time: 86s
