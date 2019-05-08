@@ -1,0 +1,791 @@
+DeepSec - DEciding Equivalence Properties for SECurity protocols
+Version: 1.01
+Git hash: )
+Git branch: GITBRANCH
+
+Opening file Examples/session_inclusion/BAC/BAC-3sessions.dps
+Executing the queries...
+
+Executing query 1...
+Starting distributed computing...
+Generation of sets of constraint systems...
+Number of sets of constraint systems generated: 714
+Sets of constraint systems remaining: 714                                      Sets of constraint systems remaining: 694                                      Sets of constraint systems remaining: 683                                      Sets of constraint systems remaining: 676                                      Sets of constraint systems remaining: 672                                      Sets of constraint systems remaining: 669                                      Sets of constraint systems remaining: 665                                      Sets of constraint systems remaining: 664                                      Sets of constraint systems remaining: 662                                      Sets of constraint systems remaining: 660                                      Sets of constraint systems remaining: 659                                      Sets of constraint systems remaining: 657                                      Sets of constraint systems remaining: 655                                      Sets of constraint systems remaining: 654                                      Sets of constraint systems remaining: 653                                      Sets of constraint systems remaining: 651                                      Sets of constraint systems remaining: 648                                      Sets of constraint systems remaining: 645                                      Sets of constraint systems remaining: 643                                      Sets of constraint systems remaining: 642                                      Sets of constraint systems remaining: 641                                      Sets of constraint systems remaining: 640                                      Sets of constraint systems remaining: 639                                      Sets of constraint systems remaining: 638                                      Sets of constraint systems remaining: 637                                      Sets of constraint systems remaining: 636                                      Sets of constraint systems remaining: 635                                      Sets of constraint systems remaining: 634                                      Sets of constraint systems remaining: 633                                      Sets of constraint systems remaining: 632                                      Sets of constraint systems remaining: 631                                      Sets of constraint systems remaining: 630                                      Sets of constraint systems remaining: 628                                      Sets of constraint systems remaining: 627                                      Sets of constraint systems remaining: 625                                      Sets of constraint systems remaining: 624                                      Sets of constraint systems remaining: 621                                      Sets of constraint systems remaining: 620                                      Sets of constraint systems remaining: 619                                      Sets of constraint systems remaining: 618                                      Sets of constraint systems remaining: 617                                      Sets of constraint systems remaining: 616                                      Sets of constraint systems remaining: 615                                      Sets of constraint systems remaining: 614                                      Sets of constraint systems remaining: 613                                      Sets of constraint systems remaining: 612                                      Sets of constraint systems remaining: 611                                      Sets of constraint systems remaining: 610                                      Sets of constraint systems remaining: 609                                      Sets of constraint systems remaining: 608                                      Sets of constraint systems remaining: 607                                      Sets of constraint systems remaining: 606                                      Sets of constraint systems remaining: 605                                      Sets of constraint systems remaining: 604                                      Sets of constraint systems remaining: 603                                      Sets of constraint systems remaining: 601                                      Sets of constraint systems remaining: 600                                      Sets of constraint systems remaining: 599                                      Sets of constraint systems remaining: 598                                      Sets of constraint systems remaining: 597                                      Sets of constraint systems remaining: 596                                      Sets of constraint systems remaining: 595                                      Sets of constraint systems remaining: 594                                      Sets of constraint systems remaining: 593                                      Sets of constraint systems remaining: 592                                      Sets of constraint systems remaining: 591                                      Sets of constraint systems remaining: 590                                      Sets of constraint systems remaining: 589                                      Sets of constraint systems remaining: 588                                      Sets of constraint systems remaining: 587                                      Sets of constraint systems remaining: 586                                      Sets of constraint systems remaining: 585                                      Sets of constraint systems remaining: 584                                      Sets of constraint systems remaining: 583                                      Sets of constraint systems remaining: 582                                      Sets of constraint systems remaining: 581                                      Sets of constraint systems remaining: 580                                      Sets of constraint systems remaining: 579                                      Sets of constraint systems remaining: 578                                      Sets of constraint systems remaining: 577                                      Sets of constraint systems remaining: 576                                      Sets of constraint systems remaining: 575                                      Sets of constraint systems remaining: 574                                      Sets of constraint systems remaining: 573                                      Sets of constraint systems remaining: 572                                      Sets of constraint systems remaining: 571                                      Sets of constraint systems remaining: 570                                      Sets of constraint systems remaining: 569                                      Sets of constraint systems remaining: 568                                      Sets of constraint systems remaining: 567                                      Sets of constraint systems remaining: 566                                      Sets of constraint systems remaining: 565                                      Sets of constraint systems remaining: 564                                      Sets of constraint systems remaining: 563                                      Sets of constraint systems remaining: 562                                      Sets of constraint systems remaining: 561                                      Sets of constraint systems remaining: 560                                      Sets of constraint systems remaining: 559                                      Sets of constraint systems remaining: 558                                      Sets of constraint systems remaining: 557                                      Sets of constraint systems remaining: 556                                      Sets of constraint systems remaining: 555                                      Sets of constraint systems remaining: 554                                      Sets of constraint systems remaining: 552                                      Sets of constraint systems remaining: 550                                      Sets of constraint systems remaining: 548                                      Sets of constraint systems remaining: 547                                      Sets of constraint systems remaining: 546                                      Sets of constraint systems remaining: 545                                      Sets of constraint systems remaining: 543                                      Sets of constraint systems remaining: 542                                      Sets of constraint systems remaining: 541                                      Sets of constraint systems remaining: 540                                      Sets of constraint systems remaining: 539                                      Sets of constraint systems remaining: 538                                      Sets of constraint systems remaining: 537                                      Sets of constraint systems remaining: 536                                      Sets of constraint systems remaining: 535                                      Sets of constraint systems remaining: 534                                      Sets of constraint systems remaining: 533                                      Sets of constraint systems remaining: 532                                      Sets of constraint systems remaining: 531                                      Sets of constraint systems remaining: 530                                      Sets of constraint systems remaining: 529                                      Sets of constraint systems remaining: 528                                      Sets of constraint systems remaining: 527                                      Sets of constraint systems remaining: 526                                      Sets of constraint systems remaining: 525                                      Sets of constraint systems remaining: 524                                      Sets of constraint systems remaining: 523                                      Sets of constraint systems remaining: 522                                      Sets of constraint systems remaining: 521                                      Sets of constraint systems remaining: 520                                      Sets of constraint systems remaining: 519                                      Sets of constraint systems remaining: 518                                      Sets of constraint systems remaining: 517                                      Sets of constraint systems remaining: 516                                      Sets of constraint systems remaining: 515                                      Sets of constraint systems remaining: 514                                      Sets of constraint systems remaining: 513                                      Sets of constraint systems remaining: 512                                      Sets of constraint systems remaining: 511                                      Sets of constraint systems remaining: 510                                      Sets of constraint systems remaining: 509                                      Sets of constraint systems remaining: 508                                      Sets of constraint systems remaining: 507                                      Sets of constraint systems remaining: 506                                      Sets of constraint systems remaining: 505                                      Sets of constraint systems remaining: 504                                      Sets of constraint systems remaining: 503                                      Sets of constraint systems remaining: 502                                      Sets of constraint systems remaining: 501                                      Sets of constraint systems remaining: 500                                      Sets of constraint systems remaining: 499                                      Sets of constraint systems remaining: 498                                      Sets of constraint systems remaining: 497                                      Sets of constraint systems remaining: 496                                      Sets of constraint systems remaining: 495                                      Sets of constraint systems remaining: 494                                      Sets of constraint systems remaining: 493                                      Sets of constraint systems remaining: 492                                      Sets of constraint systems remaining: 491                                      Sets of constraint systems remaining: 490                                      Sets of constraint systems remaining: 489                                      Sets of constraint systems remaining: 488                                      Sets of constraint systems remaining: 487                                      Sets of constraint systems remaining: 486                                      Sets of constraint systems remaining: 485                                      Sets of constraint systems remaining: 484                                      Sets of constraint systems remaining: 483                                      Sets of constraint systems remaining: 482                                      Sets of constraint systems remaining: 481                                      Sets of constraint systems remaining: 480                                      Sets of constraint systems remaining: 479                                      Sets of constraint systems remaining: 478                                      Sets of constraint systems remaining: 477                                      Sets of constraint systems remaining: 476                                      Sets of constraint systems remaining: 475                                      Sets of constraint systems remaining: 474                                      Sets of constraint systems remaining: 473                                      Sets of constraint systems remaining: 472                                      Sets of constraint systems remaining: 471                                      Sets of constraint systems remaining: 470                                      Sets of constraint systems remaining: 469                                      Sets of constraint systems remaining: 468                                      Sets of constraint systems remaining: 467                                      Sets of constraint systems remaining: 466                                      Sets of constraint systems remaining: 465                                      Sets of constraint systems remaining: 464                                      Sets of constraint systems remaining: 463                                      Sets of constraint systems remaining: 462                                      Sets of constraint systems remaining: 460                                      Sets of constraint systems remaining: 458                                      Sets of constraint systems remaining: 457                                      Sets of constraint systems remaining: 456                                      Sets of constraint systems remaining: 455                                      Sets of constraint systems remaining: 454                                      Sets of constraint systems remaining: 452                                      Sets of constraint systems remaining: 450                                      Sets of constraint systems remaining: 448                                      Sets of constraint systems remaining: 446                                      Sets of constraint systems remaining: 445                                      Sets of constraint systems remaining: 444                                      Sets of constraint systems remaining: 442                                      Sets of constraint systems remaining: 441                                      Sets of constraint systems remaining: 440                                      Sets of constraint systems remaining: 439                                      Sets of constraint systems remaining: 438                                      Sets of constraint systems remaining: 437                                      Sets of constraint systems remaining: 436                                      Sets of constraint systems remaining: 435                                      Sets of constraint systems remaining: 434                                      Sets of constraint systems remaining: 433                                      Sets of constraint systems remaining: 432                                      Sets of constraint systems remaining: 431                                      Sets of constraint systems remaining: 430                                      Sets of constraint systems remaining: 429                                      Sets of constraint systems remaining: 428                                      Sets of constraint systems remaining: 427                                      Sets of constraint systems remaining: 426                                      Sets of constraint systems remaining: 425                                      Sets of constraint systems remaining: 424                                      Sets of constraint systems remaining: 423                                      Sets of constraint systems remaining: 422                                      Sets of constraint systems remaining: 421                                      Sets of constraint systems remaining: 420                                      Sets of constraint systems remaining: 419                                      Sets of constraint systems remaining: 418                                      Sets of constraint systems remaining: 417                                      Sets of constraint systems remaining: 416                                      Sets of constraint systems remaining: 415                                      Sets of constraint systems remaining: 414                                      Sets of constraint systems remaining: 413                                      Sets of constraint systems remaining: 412                                      Sets of constraint systems remaining: 411                                      Sets of constraint systems remaining: 410                                      Sets of constraint systems remaining: 409                                      Sets of constraint systems remaining: 408                                      Sets of constraint systems remaining: 407                                      Sets of constraint systems remaining: 406                                      Sets of constraint systems remaining: 405                                      Sets of constraint systems remaining: 404                                      Sets of constraint systems remaining: 403                                      Sets of constraint systems remaining: 402                                      Sets of constraint systems remaining: 401                                      Sets of constraint systems remaining: 400                                      Sets of constraint systems remaining: 399                                      Sets of constraint systems remaining: 398                                      Sets of constraint systems remaining: 397                                      Sets of constraint systems remaining: 396                                      Sets of constraint systems remaining: 395                                      Sets of constraint systems remaining: 393                                      Sets of constraint systems remaining: 392                                      Sets of constraint systems remaining: 390                                      Sets of constraint systems remaining: 389                                      Sets of constraint systems remaining: 388                                      Sets of constraint systems remaining: 387                                      Sets of constraint systems remaining: 386                                      Sets of constraint systems remaining: 385                                      Sets of constraint systems remaining: 384                                      Sets of constraint systems remaining: 383                                      Sets of constraint systems remaining: 382                                      Sets of constraint systems remaining: 381                                      Sets of constraint systems remaining: 380                                      Sets of constraint systems remaining: 379                                      Sets of constraint systems remaining: 378                                      Sets of constraint systems remaining: 377                                      Sets of constraint systems remaining: 376                                      Sets of constraint systems remaining: 375                                      Sets of constraint systems remaining: 374                                      Sets of constraint systems remaining: 373                                      Sets of constraint systems remaining: 372                                      Sets of constraint systems remaining: 371                                      Sets of constraint systems remaining: 370                                      Sets of constraint systems remaining: 369                                      Sets of constraint systems remaining: 368                                      Sets of constraint systems remaining: 366                                      Sets of constraint systems remaining: 364                                      Sets of constraint systems remaining: 363                                      Sets of constraint systems remaining: 362                                      Sets of constraint systems remaining: 361                                      Sets of constraint systems remaining: 360                                      Sets of constraint systems remaining: 359                                      Sets of constraint systems remaining: 358                                      Sets of constraint systems remaining: 357                                      Sets of constraint systems remaining: 356                                      Sets of constraint systems remaining: 355                                      Sets of constraint systems remaining: 354                                      Sets of constraint systems remaining: 353                                      Sets of constraint systems remaining: 352                                      Sets of constraint systems remaining: 351                                      Sets of constraint systems remaining: 350                                      Sets of constraint systems remaining: 349                                      Sets of constraint systems remaining: 348                                      Sets of constraint systems remaining: 347                                      Sets of constraint systems remaining: 346                                      Sets of constraint systems remaining: 345                                      Sets of constraint systems remaining: 344                                      Sets of constraint systems remaining: 343                                      Sets of constraint systems remaining: 342                                      Sets of constraint systems remaining: 341                                      Sets of constraint systems remaining: 340                                      Sets of constraint systems remaining: 339                                      Sets of constraint systems remaining: 338                                      Sets of constraint systems remaining: 337                                      Sets of constraint systems remaining: 336                                      Sets of constraint systems remaining: 335                                      Sets of constraint systems remaining: 334                                      Sets of constraint systems remaining: 333                                      Sets of constraint systems remaining: 332                                      Sets of constraint systems remaining: 331                                      Sets of constraint systems remaining: 330                                      Sets of constraint systems remaining: 329                                      Sets of constraint systems remaining: 328                                      Sets of constraint systems remaining: 327                                      Sets of constraint systems remaining: 326                                      Sets of constraint systems remaining: 325                                      Sets of constraint systems remaining: 324                                      Sets of constraint systems remaining: 323                                      Sets of constraint systems remaining: 322                                      Sets of constraint systems remaining: 321                                      Sets of constraint systems remaining: 319                                      Sets of constraint systems remaining: 318                                      Sets of constraint systems remaining: 317                                      Sets of constraint systems remaining: 316                                      Sets of constraint systems remaining: 315                                      Sets of constraint systems remaining: 314                                      Sets of constraint systems remaining: 313                                      Sets of constraint systems remaining: 312                                      Sets of constraint systems remaining: 311                                      Sets of constraint systems remaining: 310                                      Sets of constraint systems remaining: 309                                      Sets of constraint systems remaining: 308                                      Sets of constraint systems remaining: 307                                      Computation completed                                                           
+Result query 1: Process Inclusion disproved. Attack Trace:
+[1;34m
+Origin:
+[0m
+start();
+!^3
+   new k_e_41;
+   new k_m_42;
+      in(c,x_93);
+      if x_93 = get_challenge then
+         new n_t_43;
+         out(c,n_t_43);
+         in(c,y_94);
+         let (xm_e_98,xm_m_97) = y_94 in
+         let (xm_m_97,(xn_r_103,n_t_43,xk_r_102)) = (mac(xm_e_98,k_m_42),sdec(xm_e_98,k_e_41)) in
+            new k_t_44;
+            let z_106 = senc((n_t_43,xn_r_103,k_t_44),k_e_41) in
+            out(c,(z_106,mac(z_106,k_m_42)))
+         else
+            out(c,Error_6300)
+   |
+      out(c,get_challenge);
+      in(c,xn_t_107);
+      new n_r_45;
+      new k_r_46;
+      let xm_109 = senc((n_r_45,xn_t_107,k_r_46),k_e_41) in
+      out(c,(xm_109,mac(xm_109,k_m_42)));
+      in(c,y_110)
+
+[1;34m1)[0m [1;34moutput on channel c of get_challenge, referred as ax_1
+[0m
+!^3
+      in(c,x_93);
+      if x_93 = get_challenge then
+         new n_t_43;
+         out(c,n_t_43);
+         in(c,y_94);
+         let (xm_e_98,xm_m_97) = y_94 in
+         let (xm_m_97,(xn_r_103,n_t_43,xk_r_102)) = (mac(xm_e_98,k_m_42),sdec(xm_e_98,k_e_41)) in
+            new k_t_44;
+            let z_106 = senc((n_t_43,xn_r_103,k_t_44),k_e_41) in
+            out(c,(z_106,mac(z_106,k_m_42)))
+         else
+            out(c,Error_6300)
+   |
+      [1;31mout(c,get_challenge)[0m;
+      in(c,xn_t_107);
+      new n_r_45;
+      new k_r_46;
+      let xm_109 = senc((n_r_45,xn_t_107,k_r_46),k_e_41) in
+      out(c,(xm_109,mac(xm_109,k_m_42)));
+      in(c,y_110)
+
+[1;34m2)[0m [1;34moutput on channel c of get_challenge, referred as ax_2
+[0m
+      in(c,x_93);
+      if x_93 = get_challenge then
+         new n_t_43;
+         out(c,n_t_43);
+         in(c,y_94);
+         let (xm_e_98,xm_m_97) = y_94 in
+         let (xm_m_97,(xn_r_103,n_t_43,xk_r_102)) = (mac(xm_e_98,k_m_42),sdec(xm_e_98,k_e_41)) in
+            new k_t_44;
+            let z_106 = senc((n_t_43,xn_r_103,k_t_44),k_e_41) in
+            out(c,(z_106,mac(z_106,k_m_42)))
+         else
+            out(c,Error_6300)
+   |
+      in(c,xn_t_107);
+      new n_r_45;
+      new k_r_46;
+      let xm_109 = senc((n_r_45,xn_t_107,k_r_46),k_e_41) in
+      out(c,(xm_109,mac(xm_109,k_m_42)));
+      in(c,y_110)
+!^2
+      in(c,x_111);
+      if x_111 = get_challenge then
+         new n_t_49;
+         out(c,n_t_49);
+         in(c,y_112);
+         let (xm_e_116,xm_m_115) = y_112 in
+         let (xm_m_115,(xn_r_121,n_t_49,xk_r_120)) = (mac(xm_e_116,k_m_48),sdec(xm_e_116,k_e_47)) in
+            new k_t_50;
+            let z_124 = senc((n_t_49,xn_r_121,k_t_50),k_e_47) in
+            out(c,(z_124,mac(z_124,k_m_48)))
+         else
+            out(c,Error_6300)
+   |
+      [1;31mout(c,get_challenge)[0m;
+      in(c,xn_t_125);
+      new n_r_51;
+      new k_r_52;
+      let xm_127 = senc((n_r_51,xn_t_125,k_r_52),k_e_47) in
+      out(c,(xm_127,mac(xm_127,k_m_48)));
+      in(c,y_128)
+
+[1;34m3)[0m [1;34moutput on channel c of get_challenge, referred as ax_3
+[0m
+      in(c,x_93);
+      if x_93 = get_challenge then
+         new n_t_43;
+         out(c,n_t_43);
+         in(c,y_94);
+         let (xm_e_98,xm_m_97) = y_94 in
+         let (xm_m_97,(xn_r_103,n_t_43,xk_r_102)) = (mac(xm_e_98,k_m_42),sdec(xm_e_98,k_e_41)) in
+            new k_t_44;
+            let z_106 = senc((n_t_43,xn_r_103,k_t_44),k_e_41) in
+            out(c,(z_106,mac(z_106,k_m_42)))
+         else
+            out(c,Error_6300)
+   |
+      in(c,xn_t_107);
+      new n_r_45;
+      new k_r_46;
+      let xm_109 = senc((n_r_45,xn_t_107,k_r_46),k_e_41) in
+      out(c,(xm_109,mac(xm_109,k_m_42)));
+      in(c,y_110)
+X
+      in(c,x_111);
+      if x_111 = get_challenge then
+         new n_t_49;
+         out(c,n_t_49);
+         in(c,y_112);
+         let (xm_e_116,xm_m_115) = y_112 in
+         let (xm_m_115,(xn_r_121,n_t_49,xk_r_120)) = (mac(xm_e_116,k_m_48),sdec(xm_e_116,k_e_47)) in
+            new k_t_50;
+            let z_124 = senc((n_t_49,xn_r_121,k_t_50),k_e_47) in
+            out(c,(z_124,mac(z_124,k_m_48)))
+         else
+            out(c,Error_6300)
+   |
+      in(c,xn_t_125);
+      new n_r_51;
+      new k_r_52;
+      let xm_127 = senc((n_r_51,xn_t_125,k_r_52),k_e_47) in
+      out(c,(xm_127,mac(xm_127,k_m_48)));
+      in(c,y_128)
+!^1
+      in(c,x_129);
+      if x_129 = get_challenge then
+         new n_t_55;
+         out(c,n_t_55);
+         in(c,y_130);
+         let (xm_e_134,xm_m_133) = y_130 in
+         let (xm_m_133,(xn_r_139,n_t_55,xk_r_138)) = (mac(xm_e_134,k_m_54),sdec(xm_e_134,k_e_53)) in
+            new k_t_56;
+            let z_142 = senc((n_t_55,xn_r_139,k_t_56),k_e_53) in
+            out(c,(z_142,mac(z_142,k_m_54)))
+         else
+            out(c,Error_6300)
+   |
+      [1;31mout(c,get_challenge)[0m;
+      in(c,xn_t_143);
+      new n_r_57;
+      new k_r_58;
+      let xm_145 = senc((n_r_57,xn_t_143,k_r_58),k_e_53) in
+      out(c,(xm_145,mac(xm_145,k_m_54)));
+      in(c,y_146)
+
+[1;34m4)[0m [1;34minput on channel c of get_challenge = get_challenge
+[0m
+!^3
+      [1;31min(c,x_93)[0m;
+      if x_93 = get_challenge then
+         new n_t_43;
+         out(c,n_t_43);
+         in(c,y_94);
+         let (xm_e_98,xm_m_97) = y_94 in
+         let (xm_m_97,(xn_r_103,n_t_43,xk_r_102)) = (mac(xm_e_98,k_m_42),sdec(xm_e_98,k_e_41)) in
+            new k_t_44;
+            let z_106 = senc((n_t_43,xn_r_103,k_t_44),k_e_41) in
+            out(c,(z_106,mac(z_106,k_m_42)))
+         else
+            out(c,Error_6300)
+   |
+      in(c,xn_t_107);
+      new n_r_45;
+      new k_r_46;
+      let xm_109 = senc((n_r_45,xn_t_107,k_r_46),k_e_41) in
+      out(c,(xm_109,mac(xm_109,k_m_42)));
+      in(c,y_110)
+
+[1;34m5)[0m [1;34moutput on channel c of n_t_43, referred as ax_4
+[0m
+   in(c,xn_t_107);
+   new n_r_45;
+   new k_r_46;
+   let xm_109 = senc((n_r_45,xn_t_107,k_r_46),k_e_41) in
+   out(c,(xm_109,mac(xm_109,k_m_42)));
+   in(c,y_110)
+|
+   !^2
+         in(c,x_111);
+         if x_111 = get_challenge then
+            new n_t_49;
+            out(c,n_t_49);
+            in(c,y_112);
+            let (xm_e_116,xm_m_115) = y_112 in
+            let (xm_m_115,(xn_r_121,n_t_49,xk_r_120)) = (mac(xm_e_116,k_m_48),sdec(xm_e_116,k_e_47)) in
+               new k_t_50;
+               let z_124 = senc((n_t_49,xn_r_121,k_t_50),k_e_47) in
+               out(c,(z_124,mac(z_124,k_m_48)))
+            else
+               out(c,Error_6300)
+      |
+         in(c,xn_t_125);
+         new n_r_51;
+         new k_r_52;
+         let xm_127 = senc((n_r_51,xn_t_125,k_r_52),k_e_47) in
+         out(c,(xm_127,mac(xm_127,k_m_48)));
+         in(c,y_128)
+|
+   [1;31mout(c,n_t_43)[0m;
+   in(c,y_94);
+   let (xm_e_98,xm_m_97) = y_94 in
+   let (xm_m_97,(xn_r_103,n_t_43,xk_r_102)) = (mac(xm_e_98,k_m_42),sdec(xm_e_98,k_e_41)) in
+      new k_t_44;
+      let z_106 = senc((n_t_43,xn_r_103,k_t_44),k_e_41) in
+      out(c,(z_106,mac(z_106,k_m_42)))
+   else
+      out(c,Error_6300)
+
+[1;34m6)[0m [1;34minput on channel c of get_challenge = get_challenge
+[0m
+   in(c,y_94);
+   let (xm_e_98,xm_m_97) = y_94 in
+   let (xm_m_97,(xn_r_103,n_t_43,xk_r_102)) = (mac(xm_e_98,k_m_42),sdec(xm_e_98,k_e_41)) in
+      new k_t_44;
+      let z_106 = senc((n_t_43,xn_r_103,k_t_44),k_e_41) in
+      out(c,(z_106,mac(z_106,k_m_42)))
+   else
+      out(c,Error_6300)
+|
+   in(c,xn_t_107);
+   new n_r_45;
+   new k_r_46;
+   let xm_109 = senc((n_r_45,xn_t_107,k_r_46),k_e_41) in
+   out(c,(xm_109,mac(xm_109,k_m_42)));
+   in(c,y_110)
+|
+   !^2
+         [1;31min(c,x_111)[0m;
+         if x_111 = get_challenge then
+            new n_t_49;
+            out(c,n_t_49);
+            in(c,y_112);
+            let (xm_e_116,xm_m_115) = y_112 in
+            let (xm_m_115,(xn_r_121,n_t_49,xk_r_120)) = (mac(xm_e_116,k_m_48),sdec(xm_e_116,k_e_47)) in
+               new k_t_50;
+               let z_124 = senc((n_t_49,xn_r_121,k_t_50),k_e_47) in
+               out(c,(z_124,mac(z_124,k_m_48)))
+            else
+               out(c,Error_6300)
+      |
+         in(c,xn_t_125);
+         new n_r_51;
+         new k_r_52;
+         let xm_127 = senc((n_r_51,xn_t_125,k_r_52),k_e_47) in
+         out(c,(xm_127,mac(xm_127,k_m_48)));
+         in(c,y_128)
+
+[1;34m7)[0m [1;34moutput on channel c of n_t_49, referred as ax_5
+[0m
+   in(c,xn_t_125);
+   new n_r_51;
+   new k_r_52;
+   let xm_127 = senc((n_r_51,xn_t_125,k_r_52),k_e_47) in
+   out(c,(xm_127,mac(xm_127,k_m_48)));
+   in(c,y_128)
+|
+      in(c,x_129);
+      if x_129 = get_challenge then
+         new n_t_55;
+         out(c,n_t_55);
+         in(c,y_130);
+         let (xm_e_134,xm_m_133) = y_130 in
+         let (xm_m_133,(xn_r_139,n_t_55,xk_r_138)) = (mac(xm_e_134,k_m_54),sdec(xm_e_134,k_e_53)) in
+            new k_t_56;
+            let z_142 = senc((n_t_55,xn_r_139,k_t_56),k_e_53) in
+            out(c,(z_142,mac(z_142,k_m_54)))
+         else
+            out(c,Error_6300)
+   |
+      in(c,xn_t_143);
+      new n_r_57;
+      new k_r_58;
+      let xm_145 = senc((n_r_57,xn_t_143,k_r_58),k_e_53) in
+      out(c,(xm_145,mac(xm_145,k_m_54)));
+      in(c,y_146)
+|
+   in(c,xn_t_107);
+   new n_r_45;
+   new k_r_46;
+   let xm_109 = senc((n_r_45,xn_t_107,k_r_46),k_e_41) in
+   out(c,(xm_109,mac(xm_109,k_m_42)));
+   in(c,y_110)
+|
+   in(c,y_94);
+   let (xm_e_98,xm_m_97) = y_94 in
+   let (xm_m_97,(xn_r_103,n_t_43,xk_r_102)) = (mac(xm_e_98,k_m_42),sdec(xm_e_98,k_e_41)) in
+      new k_t_44;
+      let z_106 = senc((n_t_43,xn_r_103,k_t_44),k_e_41) in
+      out(c,(z_106,mac(z_106,k_m_42)))
+   else
+      out(c,Error_6300)
+|
+   [1;31mout(c,n_t_49)[0m;
+   in(c,y_112);
+   let (xm_e_116,xm_m_115) = y_112 in
+   let (xm_m_115,(xn_r_121,n_t_49,xk_r_120)) = (mac(xm_e_116,k_m_48),sdec(xm_e_116,k_e_47)) in
+      new k_t_50;
+      let z_124 = senc((n_t_49,xn_r_121,k_t_50),k_e_47) in
+      out(c,(z_124,mac(z_124,k_m_48)))
+   else
+      out(c,Error_6300)
+
+[1;34m8)[0m [1;34minput on channel c of ax_5 = n_t_49
+[0m
+   in(c,y_112);
+   let (xm_e_116,xm_m_115) = y_112 in
+   let (xm_m_115,(xn_r_121,n_t_49,xk_r_120)) = (mac(xm_e_116,k_m_48),sdec(xm_e_116,k_e_47)) in
+      new k_t_50;
+      let z_124 = senc((n_t_49,xn_r_121,k_t_50),k_e_47) in
+      out(c,(z_124,mac(z_124,k_m_48)))
+   else
+      out(c,Error_6300)
+|
+   in(c,xn_t_125);
+   new n_r_51;
+   new k_r_52;
+   let xm_127 = senc((n_r_51,xn_t_125,k_r_52),k_e_47) in
+   out(c,(xm_127,mac(xm_127,k_m_48)));
+   in(c,y_128)
+|
+      in(c,x_129);
+      if x_129 = get_challenge then
+         new n_t_55;
+         out(c,n_t_55);
+         in(c,y_130);
+         let (xm_e_134,xm_m_133) = y_130 in
+         let (xm_m_133,(xn_r_139,n_t_55,xk_r_138)) = (mac(xm_e_134,k_m_54),sdec(xm_e_134,k_e_53)) in
+            new k_t_56;
+            let z_142 = senc((n_t_55,xn_r_139,k_t_56),k_e_53) in
+            out(c,(z_142,mac(z_142,k_m_54)))
+         else
+            out(c,Error_6300)
+   |
+      in(c,xn_t_143);
+      new n_r_57;
+      new k_r_58;
+      let xm_145 = senc((n_r_57,xn_t_143,k_r_58),k_e_53) in
+      out(c,(xm_145,mac(xm_145,k_m_54)));
+      in(c,y_146)
+|
+   [1;31min(c,xn_t_107)[0m;
+   new n_r_45;
+   new k_r_46;
+   let xm_109 = senc((n_r_45,xn_t_107,k_r_46),k_e_41) in
+   out(c,(xm_109,mac(xm_109,k_m_42)));
+   in(c,y_110)
+|
+   in(c,y_94);
+   let (xm_e_98,xm_m_97) = y_94 in
+   let (xm_m_97,(xn_r_103,n_t_43,xk_r_102)) = (mac(xm_e_98,k_m_42),sdec(xm_e_98,k_e_41)) in
+      new k_t_44;
+      let z_106 = senc((n_t_43,xn_r_103,k_t_44),k_e_41) in
+      out(c,(z_106,mac(z_106,k_m_42)))
+   else
+      out(c,Error_6300)
+
+[1;34m9)[0m [1;34moutput on channel c of (senc((n_r_45,n_t_49,k_r_46),k_e_41),mac(senc((n_r_45,n_t_49,k_r_46),k_e_41),k_m_42)), referred as ax_6
+[0m
+   in(c,y_94);
+   let (xm_e_98,xm_m_97) = y_94 in
+   let (xm_m_97,(xn_r_103,n_t_43,xk_r_102)) = (mac(xm_e_98,k_m_42),sdec(xm_e_98,k_e_41)) in
+      new k_t_44;
+      let z_106 = senc((n_t_43,xn_r_103,k_t_44),k_e_41) in
+      out(c,(z_106,mac(z_106,k_m_42)))
+   else
+      out(c,Error_6300)
+|
+      in(c,x_129);
+      if x_129 = get_challenge then
+         new n_t_55;
+         out(c,n_t_55);
+         in(c,y_130);
+         let (xm_e_134,xm_m_133) = y_130 in
+         let (xm_m_133,(xn_r_139,n_t_55,xk_r_138)) = (mac(xm_e_134,k_m_54),sdec(xm_e_134,k_e_53)) in
+            new k_t_56;
+            let z_142 = senc((n_t_55,xn_r_139,k_t_56),k_e_53) in
+            out(c,(z_142,mac(z_142,k_m_54)))
+         else
+            out(c,Error_6300)
+   |
+      in(c,xn_t_143);
+      new n_r_57;
+      new k_r_58;
+      let xm_145 = senc((n_r_57,xn_t_143,k_r_58),k_e_53) in
+      out(c,(xm_145,mac(xm_145,k_m_54)));
+      in(c,y_146)
+|
+   in(c,xn_t_125);
+   new n_r_51;
+   new k_r_52;
+   let xm_127 = senc((n_r_51,xn_t_125,k_r_52),k_e_47) in
+   out(c,(xm_127,mac(xm_127,k_m_48)));
+   in(c,y_128)
+|
+   in(c,y_112);
+   let (xm_e_116,xm_m_115) = y_112 in
+   let (xm_m_115,(xn_r_121,n_t_49,xk_r_120)) = (mac(xm_e_116,k_m_48),sdec(xm_e_116,k_e_47)) in
+      new k_t_50;
+      let z_124 = senc((n_t_49,xn_r_121,k_t_50),k_e_47) in
+      out(c,(z_124,mac(z_124,k_m_48)))
+   else
+      out(c,Error_6300)
+|
+   [1;31mout(c,(senc((n_r_45,n_t_49,k_r_46),k_e_41),mac(senc((n_r_45,n_t_49,k_r_46),k_e_41),k_m_42)))[0m;
+   in(c,y_110)
+
+[1;34m10)[0m [1;34minput on channel c of (proj_{1,2}(ax_6),proj_{2,2}(ax_6)) = (senc((n_r_45,n_t_49,k_r_46),k_e_41),mac(senc((n_r_45,n_t_49,k_r_46),k_e_41),k_m_42))
+[0m
+   in(c,y_110)
+|
+   in(c,y_94);
+   let (xm_e_98,xm_m_97) = y_94 in
+   let (xm_m_97,(xn_r_103,n_t_43,xk_r_102)) = (mac(xm_e_98,k_m_42),sdec(xm_e_98,k_e_41)) in
+      new k_t_44;
+      let z_106 = senc((n_t_43,xn_r_103,k_t_44),k_e_41) in
+      out(c,(z_106,mac(z_106,k_m_42)))
+   else
+      out(c,Error_6300)
+|
+      in(c,x_129);
+      if x_129 = get_challenge then
+         new n_t_55;
+         out(c,n_t_55);
+         in(c,y_130);
+         let (xm_e_134,xm_m_133) = y_130 in
+         let (xm_m_133,(xn_r_139,n_t_55,xk_r_138)) = (mac(xm_e_134,k_m_54),sdec(xm_e_134,k_e_53)) in
+            new k_t_56;
+            let z_142 = senc((n_t_55,xn_r_139,k_t_56),k_e_53) in
+            out(c,(z_142,mac(z_142,k_m_54)))
+         else
+            out(c,Error_6300)
+   |
+      in(c,xn_t_143);
+      new n_r_57;
+      new k_r_58;
+      let xm_145 = senc((n_r_57,xn_t_143,k_r_58),k_e_53) in
+      out(c,(xm_145,mac(xm_145,k_m_54)));
+      in(c,y_146)
+|
+   in(c,xn_t_125);
+   new n_r_51;
+   new k_r_52;
+   let xm_127 = senc((n_r_51,xn_t_125,k_r_52),k_e_47) in
+   out(c,(xm_127,mac(xm_127,k_m_48)));
+   in(c,y_128)
+|
+   [1;31min(c,y_112)[0m;
+   let (xm_e_116,xm_m_115) = y_112 in
+   let (xm_m_115,(xn_r_121,n_t_49,xk_r_120)) = (mac(xm_e_116,k_m_48),sdec(xm_e_116,k_e_47)) in
+      new k_t_50;
+      let z_124 = senc((n_t_49,xn_r_121,k_t_50),k_e_47) in
+      out(c,(z_124,mac(z_124,k_m_48)))
+   else
+      out(c,Error_6300)
+
+[1;34m11)[0m [1;34moutput on channel c of Error_6300, referred as ax_7
+[0m
+   in(c,xn_t_125);
+   new n_r_51;
+   new k_r_52;
+   let xm_127 = senc((n_r_51,xn_t_125,k_r_52),k_e_47) in
+   out(c,(xm_127,mac(xm_127,k_m_48)));
+   in(c,y_128)
+|
+      in(c,x_129);
+      if x_129 = get_challenge then
+         new n_t_55;
+         out(c,n_t_55);
+         in(c,y_130);
+         let (xm_e_134,xm_m_133) = y_130 in
+         let (xm_m_133,(xn_r_139,n_t_55,xk_r_138)) = (mac(xm_e_134,k_m_54),sdec(xm_e_134,k_e_53)) in
+            new k_t_56;
+            let z_142 = senc((n_t_55,xn_r_139,k_t_56),k_e_53) in
+            out(c,(z_142,mac(z_142,k_m_54)))
+         else
+            out(c,Error_6300)
+   |
+      in(c,xn_t_143);
+      new n_r_57;
+      new k_r_58;
+      let xm_145 = senc((n_r_57,xn_t_143,k_r_58),k_e_53) in
+      out(c,(xm_145,mac(xm_145,k_m_54)));
+      in(c,y_146)
+|
+   in(c,y_94);
+   let (xm_e_98,xm_m_97) = y_94 in
+   let (xm_m_97,(xn_r_103,n_t_43,xk_r_102)) = (mac(xm_e_98,k_m_42),sdec(xm_e_98,k_e_41)) in
+      new k_t_44;
+      let z_106 = senc((n_t_43,xn_r_103,k_t_44),k_e_41) in
+      out(c,(z_106,mac(z_106,k_m_42)))
+   else
+      out(c,Error_6300)
+|
+   in(c,y_110)
+|
+   [1;31mout(c,Error_6300)[0m
+
+[1;34m12)[0m [1;34minput on channel c of get_challenge = get_challenge
+[0m
+   in(c,xn_t_125);
+   new n_r_51;
+   new k_r_52;
+   let xm_127 = senc((n_r_51,xn_t_125,k_r_52),k_e_47) in
+   out(c,(xm_127,mac(xm_127,k_m_48)));
+   in(c,y_128)
+|
+      [1;31min(c,x_129)[0m;
+      if x_129 = get_challenge then
+         new n_t_55;
+         out(c,n_t_55);
+         in(c,y_130);
+         let (xm_e_134,xm_m_133) = y_130 in
+         let (xm_m_133,(xn_r_139,n_t_55,xk_r_138)) = (mac(xm_e_134,k_m_54),sdec(xm_e_134,k_e_53)) in
+            new k_t_56;
+            let z_142 = senc((n_t_55,xn_r_139,k_t_56),k_e_53) in
+            out(c,(z_142,mac(z_142,k_m_54)))
+         else
+            out(c,Error_6300)
+   |
+      in(c,xn_t_143);
+      new n_r_57;
+      new k_r_58;
+      let xm_145 = senc((n_r_57,xn_t_143,k_r_58),k_e_53) in
+      out(c,(xm_145,mac(xm_145,k_m_54)));
+      in(c,y_146)
+|
+   in(c,y_94);
+   let (xm_e_98,xm_m_97) = y_94 in
+   let (xm_m_97,(xn_r_103,n_t_43,xk_r_102)) = (mac(xm_e_98,k_m_42),sdec(xm_e_98,k_e_41)) in
+      new k_t_44;
+      let z_106 = senc((n_t_43,xn_r_103,k_t_44),k_e_41) in
+      out(c,(z_106,mac(z_106,k_m_42)))
+   else
+      out(c,Error_6300)
+|
+   in(c,y_110)
+
+[1;34m13)[0m [1;34moutput on channel c of n_t_55, referred as ax_8
+[0m
+   in(c,xn_t_143);
+   new n_r_57;
+   new k_r_58;
+   let xm_145 = senc((n_r_57,xn_t_143,k_r_58),k_e_53) in
+   out(c,(xm_145,mac(xm_145,k_m_54)));
+   in(c,y_146)
+|
+   in(c,y_110)
+|
+   in(c,y_94);
+   let (xm_e_98,xm_m_97) = y_94 in
+   let (xm_m_97,(xn_r_103,n_t_43,xk_r_102)) = (mac(xm_e_98,k_m_42),sdec(xm_e_98,k_e_41)) in
+      new k_t_44;
+      let z_106 = senc((n_t_43,xn_r_103,k_t_44),k_e_41) in
+      out(c,(z_106,mac(z_106,k_m_42)))
+   else
+      out(c,Error_6300)
+|
+   in(c,xn_t_125);
+   new n_r_51;
+   new k_r_52;
+   let xm_127 = senc((n_r_51,xn_t_125,k_r_52),k_e_47) in
+   out(c,(xm_127,mac(xm_127,k_m_48)));
+   in(c,y_128)
+|
+   [1;31mout(c,n_t_55)[0m;
+   in(c,y_130);
+   let (xm_e_134,xm_m_133) = y_130 in
+   let (xm_m_133,(xn_r_139,n_t_55,xk_r_138)) = (mac(xm_e_134,k_m_54),sdec(xm_e_134,k_e_53)) in
+      new k_t_56;
+      let z_142 = senc((n_t_55,xn_r_139,k_t_56),k_e_53) in
+      out(c,(z_142,mac(z_142,k_m_54)))
+   else
+      out(c,Error_6300)
+
+[1;34m14)[0m [1;34minput on channel c of ax_8 = n_t_55
+[0m
+   in(c,y_130);
+   let (xm_e_134,xm_m_133) = y_130 in
+   let (xm_m_133,(xn_r_139,n_t_55,xk_r_138)) = (mac(xm_e_134,k_m_54),sdec(xm_e_134,k_e_53)) in
+      new k_t_56;
+      let z_142 = senc((n_t_55,xn_r_139,k_t_56),k_e_53) in
+      out(c,(z_142,mac(z_142,k_m_54)))
+   else
+      out(c,Error_6300)
+|
+   in(c,xn_t_143);
+   new n_r_57;
+   new k_r_58;
+   let xm_145 = senc((n_r_57,xn_t_143,k_r_58),k_e_53) in
+   out(c,(xm_145,mac(xm_145,k_m_54)));
+   in(c,y_146)
+|
+   in(c,y_110)
+|
+   in(c,y_94);
+   let (xm_e_98,xm_m_97) = y_94 in
+   let (xm_m_97,(xn_r_103,n_t_43,xk_r_102)) = (mac(xm_e_98,k_m_42),sdec(xm_e_98,k_e_41)) in
+      new k_t_44;
+      let z_106 = senc((n_t_43,xn_r_103,k_t_44),k_e_41) in
+      out(c,(z_106,mac(z_106,k_m_42)))
+   else
+      out(c,Error_6300)
+|
+   [1;31min(c,xn_t_125)[0m;
+   new n_r_51;
+   new k_r_52;
+   let xm_127 = senc((n_r_51,xn_t_125,k_r_52),k_e_47) in
+   out(c,(xm_127,mac(xm_127,k_m_48)));
+   in(c,y_128)
+
+[1;34m15)[0m [1;34moutput on channel c of (senc((n_r_51,n_t_55,k_r_52),k_e_47),mac(senc((n_r_51,n_t_55,k_r_52),k_e_47),k_m_48)), referred as ax_9
+[0m
+   in(c,y_94);
+   let (xm_e_98,xm_m_97) = y_94 in
+   let (xm_m_97,(xn_r_103,n_t_43,xk_r_102)) = (mac(xm_e_98,k_m_42),sdec(xm_e_98,k_e_41)) in
+      new k_t_44;
+      let z_106 = senc((n_t_43,xn_r_103,k_t_44),k_e_41) in
+      out(c,(z_106,mac(z_106,k_m_42)))
+   else
+      out(c,Error_6300)
+|
+   in(c,y_110)
+|
+   in(c,xn_t_143);
+   new n_r_57;
+   new k_r_58;
+   let xm_145 = senc((n_r_57,xn_t_143,k_r_58),k_e_53) in
+   out(c,(xm_145,mac(xm_145,k_m_54)));
+   in(c,y_146)
+|
+   in(c,y_130);
+   let (xm_e_134,xm_m_133) = y_130 in
+   let (xm_m_133,(xn_r_139,n_t_55,xk_r_138)) = (mac(xm_e_134,k_m_54),sdec(xm_e_134,k_e_53)) in
+      new k_t_56;
+      let z_142 = senc((n_t_55,xn_r_139,k_t_56),k_e_53) in
+      out(c,(z_142,mac(z_142,k_m_54)))
+   else
+      out(c,Error_6300)
+|
+   [1;31mout(c,(senc((n_r_51,n_t_55,k_r_52),k_e_47),mac(senc((n_r_51,n_t_55,k_r_52),k_e_47),k_m_48)))[0m;
+   in(c,y_128)
+
+[1;34m16)[0m [1;34minput on channel c of (proj_{1,2}(ax_9),proj_{2,2}(ax_9)) = (senc((n_r_51,n_t_55,k_r_52),k_e_47),mac(senc((n_r_51,n_t_55,k_r_52),k_e_47),k_m_48))
+[0m
+   in(c,y_128)
+|
+   in(c,y_94);
+   let (xm_e_98,xm_m_97) = y_94 in
+   let (xm_m_97,(xn_r_103,n_t_43,xk_r_102)) = (mac(xm_e_98,k_m_42),sdec(xm_e_98,k_e_41)) in
+      new k_t_44;
+      let z_106 = senc((n_t_43,xn_r_103,k_t_44),k_e_41) in
+      out(c,(z_106,mac(z_106,k_m_42)))
+   else
+      out(c,Error_6300)
+|
+   in(c,y_110)
+|
+   in(c,xn_t_143);
+   new n_r_57;
+   new k_r_58;
+   let xm_145 = senc((n_r_57,xn_t_143,k_r_58),k_e_53) in
+   out(c,(xm_145,mac(xm_145,k_m_54)));
+   in(c,y_146)
+|
+   [1;31min(c,y_130)[0m;
+   let (xm_e_134,xm_m_133) = y_130 in
+   let (xm_m_133,(xn_r_139,n_t_55,xk_r_138)) = (mac(xm_e_134,k_m_54),sdec(xm_e_134,k_e_53)) in
+      new k_t_56;
+      let z_142 = senc((n_t_55,xn_r_139,k_t_56),k_e_53) in
+      out(c,(z_142,mac(z_142,k_m_54)))
+   else
+      out(c,Error_6300)
+
+[1;34m17)[0m [1;34moutput on channel c of Error_6300, referred as ax_10
+[0m
+   in(c,xn_t_143);
+   new n_r_57;
+   new k_r_58;
+   let xm_145 = senc((n_r_57,xn_t_143,k_r_58),k_e_53) in
+   out(c,(xm_145,mac(xm_145,k_m_54)));
+   in(c,y_146)
+|
+   in(c,y_110)
+|
+   in(c,y_94);
+   let (xm_e_98,xm_m_97) = y_94 in
+   let (xm_m_97,(xn_r_103,n_t_43,xk_r_102)) = (mac(xm_e_98,k_m_42),sdec(xm_e_98,k_e_41)) in
+      new k_t_44;
+      let z_106 = senc((n_t_43,xn_r_103,k_t_44),k_e_41) in
+      out(c,(z_106,mac(z_106,k_m_42)))
+   else
+      out(c,Error_6300)
+|
+   in(c,y_128)
+|
+   [1;31mout(c,Error_6300)[0m
+
+[1;34m18)[0m [1;34minput on channel c of ax_4 = n_t_43
+[0m
+   [1;31min(c,xn_t_143)[0m;
+   new n_r_57;
+   new k_r_58;
+   let xm_145 = senc((n_r_57,xn_t_143,k_r_58),k_e_53) in
+   out(c,(xm_145,mac(xm_145,k_m_54)));
+   in(c,y_146)
+|
+   in(c,y_110)
+|
+   in(c,y_94);
+   let (xm_e_98,xm_m_97) = y_94 in
+   let (xm_m_97,(xn_r_103,n_t_43,xk_r_102)) = (mac(xm_e_98,k_m_42),sdec(xm_e_98,k_e_41)) in
+      new k_t_44;
+      let z_106 = senc((n_t_43,xn_r_103,k_t_44),k_e_41) in
+      out(c,(z_106,mac(z_106,k_m_42)))
+   else
+      out(c,Error_6300)
+|
+   in(c,y_128)
+
+[1;34m19)[0m [1;34moutput on channel c of (senc((n_r_57,n_t_43,k_r_58),k_e_53),mac(senc((n_r_57,n_t_43,k_r_58),k_e_53),k_m_54)), referred as ax_11
+[0m
+   in(c,y_128)
+|
+   in(c,y_94);
+   let (xm_e_98,xm_m_97) = y_94 in
+   let (xm_m_97,(xn_r_103,n_t_43,xk_r_102)) = (mac(xm_e_98,k_m_42),sdec(xm_e_98,k_e_41)) in
+      new k_t_44;
+      let z_106 = senc((n_t_43,xn_r_103,k_t_44),k_e_41) in
+      out(c,(z_106,mac(z_106,k_m_42)))
+   else
+      out(c,Error_6300)
+|
+   in(c,y_110)
+|
+   [1;31mout(c,(senc((n_r_57,n_t_43,k_r_58),k_e_53),mac(senc((n_r_57,n_t_43,k_r_58),k_e_53),k_m_54)))[0m;
+   in(c,y_146)
+
+[1;34m20)[0m [1;34minput on channel c of (proj_{1,2}(ax_11),proj_{2,2}(ax_11)) = (senc((n_r_57,n_t_43,k_r_58),k_e_53),mac(senc((n_r_57,n_t_43,k_r_58),k_e_53),k_m_54))
+[0m
+   in(c,y_146)
+|
+   in(c,y_128)
+|
+   [1;31min(c,y_94)[0m;
+   let (xm_e_98,xm_m_97) = y_94 in
+   let (xm_m_97,(xn_r_103,n_t_43,xk_r_102)) = (mac(xm_e_98,k_m_42),sdec(xm_e_98,k_e_41)) in
+      new k_t_44;
+      let z_106 = senc((n_t_43,xn_r_103,k_t_44),k_e_41) in
+      out(c,(z_106,mac(z_106,k_m_42)))
+   else
+      out(c,Error_6300)
+|
+   in(c,y_110)
+
+[1;34m21)[0m [1;34moutput on channel c of Error_6300, referred as ax_12
+[0m
+   in(c,y_110)
+|
+   in(c,y_128)
+|
+   in(c,y_146)
+|
+   [1;31mout(c,Error_6300)[0m
+Running time: 0s

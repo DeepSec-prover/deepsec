@@ -1,0 +1,502 @@
+DeepSec - DEciding Equivalence Properties for SECurity protocols
+Version: 1.01
+Git hash: )
+Git branch: GITBRANCH
+
+Opening file Examples/session_inclusion/BAC/BAC-2sessions.dps
+Executing the queries...
+
+Executing query 1...
+Result query 1: Process Inclusion disproved. Attack Trace:
+[1;34m
+Origin:
+[0m
+start();
+!^2
+   new k_e_33;
+   new k_m_34;
+      in(c,x_90);
+      if x_90 = get_challenge then
+         new n_t_35;
+         out(c,n_t_35);
+         in(c,y_91);
+         let (xm_e_95,xm_m_94) = y_91 in
+         if xm_m_94 = mac(xm_e_95,k_m_34) then
+            let (xn_r_101,xn_t_100,xk_r_99) = sdec(xm_e_95,k_e_33) in
+               if xn_t_100 = n_t_35 then
+                  new k_t_36;
+                  let z_103 = senc((n_t_35,xn_r_101,k_t_36),k_e_33) in
+                  out(c,(z_103,mac(z_103,k_m_34)))
+               else
+                  out(c,Error_6300)
+            else
+               out(c,Error_6300)
+         else
+            out(c,Error_6300)
+   |
+      out(c,get_challenge);
+      in(c,xn_t_104);
+      new n_r_37;
+      new k_r_38;
+      let xm_106 = senc((n_r_37,xn_t_104,k_r_38),k_e_33) in
+      out(c,(xm_106,mac(xm_106,k_m_34)));
+      in(c,y_107)
+
+[1;34m1)[0m [1;34moutput on channel c of get_challenge, referred as ax_1
+[0m
+!^2
+      in(c,x_90);
+      if x_90 = get_challenge then
+         new n_t_35;
+         out(c,n_t_35);
+         in(c,y_91);
+         let (xm_e_95,xm_m_94) = y_91 in
+         if xm_m_94 = mac(xm_e_95,k_m_34) then
+            let (xn_r_101,xn_t_100,xk_r_99) = sdec(xm_e_95,k_e_33) in
+               if xn_t_100 = n_t_35 then
+                  new k_t_36;
+                  let z_103 = senc((n_t_35,xn_r_101,k_t_36),k_e_33) in
+                  out(c,(z_103,mac(z_103,k_m_34)))
+               else
+                  out(c,Error_6300)
+            else
+               out(c,Error_6300)
+         else
+            out(c,Error_6300)
+   |
+      [1;31mout(c,get_challenge)[0m;
+      in(c,xn_t_104);
+      new n_r_37;
+      new k_r_38;
+      let xm_106 = senc((n_r_37,xn_t_104,k_r_38),k_e_33) in
+      out(c,(xm_106,mac(xm_106,k_m_34)));
+      in(c,y_107)
+
+[1;34m2)[0m [1;34moutput on channel c of get_challenge, referred as ax_2
+[0m
+      in(c,x_90);
+      if x_90 = get_challenge then
+         new n_t_35;
+         out(c,n_t_35);
+         in(c,y_91);
+         let (xm_e_95,xm_m_94) = y_91 in
+         if xm_m_94 = mac(xm_e_95,k_m_34) then
+            let (xn_r_101,xn_t_100,xk_r_99) = sdec(xm_e_95,k_e_33) in
+               if xn_t_100 = n_t_35 then
+                  new k_t_36;
+                  let z_103 = senc((n_t_35,xn_r_101,k_t_36),k_e_33) in
+                  out(c,(z_103,mac(z_103,k_m_34)))
+               else
+                  out(c,Error_6300)
+            else
+               out(c,Error_6300)
+         else
+            out(c,Error_6300)
+   |
+      in(c,xn_t_104);
+      new n_r_37;
+      new k_r_38;
+      let xm_106 = senc((n_r_37,xn_t_104,k_r_38),k_e_33) in
+      out(c,(xm_106,mac(xm_106,k_m_34)));
+      in(c,y_107)
+!^1
+      in(c,x_108);
+      if x_108 = get_challenge then
+         new n_t_41;
+         out(c,n_t_41);
+         in(c,y_109);
+         let (xm_e_113,xm_m_112) = y_109 in
+         if xm_m_112 = mac(xm_e_113,k_m_40) then
+            let (xn_r_119,xn_t_118,xk_r_117) = sdec(xm_e_113,k_e_39) in
+               if xn_t_118 = n_t_41 then
+                  new k_t_42;
+                  let z_121 = senc((n_t_41,xn_r_119,k_t_42),k_e_39) in
+                  out(c,(z_121,mac(z_121,k_m_40)))
+               else
+                  out(c,Error_6300)
+            else
+               out(c,Error_6300)
+         else
+            out(c,Error_6300)
+   |
+      [1;31mout(c,get_challenge)[0m;
+      in(c,xn_t_122);
+      new n_r_43;
+      new k_r_44;
+      let xm_124 = senc((n_r_43,xn_t_122,k_r_44),k_e_39) in
+      out(c,(xm_124,mac(xm_124,k_m_40)));
+      in(c,y_125)
+
+[1;34m3)[0m [1;34minput on channel c of get_challenge = get_challenge
+[0m
+!^2
+      [1;31min(c,x_90)[0m;
+      if x_90 = get_challenge then
+         new n_t_35;
+         out(c,n_t_35);
+         in(c,y_91);
+         let (xm_e_95,xm_m_94) = y_91 in
+         if xm_m_94 = mac(xm_e_95,k_m_34) then
+            let (xn_r_101,xn_t_100,xk_r_99) = sdec(xm_e_95,k_e_33) in
+               if xn_t_100 = n_t_35 then
+                  new k_t_36;
+                  let z_103 = senc((n_t_35,xn_r_101,k_t_36),k_e_33) in
+                  out(c,(z_103,mac(z_103,k_m_34)))
+               else
+                  out(c,Error_6300)
+            else
+               out(c,Error_6300)
+         else
+            out(c,Error_6300)
+   |
+      in(c,xn_t_104);
+      new n_r_37;
+      new k_r_38;
+      let xm_106 = senc((n_r_37,xn_t_104,k_r_38),k_e_33) in
+      out(c,(xm_106,mac(xm_106,k_m_34)));
+      in(c,y_107)
+
+[1;34m4)[0m [1;34moutput on channel c of n_t_35, referred as ax_3
+[0m
+   in(c,xn_t_104);
+   new n_r_37;
+   new k_r_38;
+   let xm_106 = senc((n_r_37,xn_t_104,k_r_38),k_e_33) in
+   out(c,(xm_106,mac(xm_106,k_m_34)));
+   in(c,y_107)
+|
+      in(c,x_108);
+      if x_108 = get_challenge then
+         new n_t_41;
+         out(c,n_t_41);
+         in(c,y_109);
+         let (xm_e_113,xm_m_112) = y_109 in
+         if xm_m_112 = mac(xm_e_113,k_m_40) then
+            let (xn_r_119,xn_t_118,xk_r_117) = sdec(xm_e_113,k_e_39) in
+               if xn_t_118 = n_t_41 then
+                  new k_t_42;
+                  let z_121 = senc((n_t_41,xn_r_119,k_t_42),k_e_39) in
+                  out(c,(z_121,mac(z_121,k_m_40)))
+               else
+                  out(c,Error_6300)
+            else
+               out(c,Error_6300)
+         else
+            out(c,Error_6300)
+   |
+      in(c,xn_t_122);
+      new n_r_43;
+      new k_r_44;
+      let xm_124 = senc((n_r_43,xn_t_122,k_r_44),k_e_39) in
+      out(c,(xm_124,mac(xm_124,k_m_40)));
+      in(c,y_125)
+|
+   [1;31mout(c,n_t_35)[0m;
+   in(c,y_91);
+   let (xm_e_95,xm_m_94) = y_91 in
+   if xm_m_94 = mac(xm_e_95,k_m_34) then
+      let (xn_r_101,xn_t_100,xk_r_99) = sdec(xm_e_95,k_e_33) in
+         if xn_t_100 = n_t_35 then
+            new k_t_36;
+            let z_103 = senc((n_t_35,xn_r_101,k_t_36),k_e_33) in
+            out(c,(z_103,mac(z_103,k_m_34)))
+         else
+            out(c,Error_6300)
+      else
+         out(c,Error_6300)
+   else
+      out(c,Error_6300)
+
+[1;34m5)[0m [1;34minput on channel c of get_challenge = get_challenge
+[0m
+   in(c,y_91);
+   let (xm_e_95,xm_m_94) = y_91 in
+   if xm_m_94 = mac(xm_e_95,k_m_34) then
+      let (xn_r_101,xn_t_100,xk_r_99) = sdec(xm_e_95,k_e_33) in
+         if xn_t_100 = n_t_35 then
+            new k_t_36;
+            let z_103 = senc((n_t_35,xn_r_101,k_t_36),k_e_33) in
+            out(c,(z_103,mac(z_103,k_m_34)))
+         else
+            out(c,Error_6300)
+      else
+         out(c,Error_6300)
+   else
+      out(c,Error_6300)
+|
+   in(c,xn_t_104);
+   new n_r_37;
+   new k_r_38;
+   let xm_106 = senc((n_r_37,xn_t_104,k_r_38),k_e_33) in
+   out(c,(xm_106,mac(xm_106,k_m_34)));
+   in(c,y_107)
+|
+      [1;31min(c,x_108)[0m;
+      if x_108 = get_challenge then
+         new n_t_41;
+         out(c,n_t_41);
+         in(c,y_109);
+         let (xm_e_113,xm_m_112) = y_109 in
+         if xm_m_112 = mac(xm_e_113,k_m_40) then
+            let (xn_r_119,xn_t_118,xk_r_117) = sdec(xm_e_113,k_e_39) in
+               if xn_t_118 = n_t_41 then
+                  new k_t_42;
+                  let z_121 = senc((n_t_41,xn_r_119,k_t_42),k_e_39) in
+                  out(c,(z_121,mac(z_121,k_m_40)))
+               else
+                  out(c,Error_6300)
+            else
+               out(c,Error_6300)
+         else
+            out(c,Error_6300)
+   |
+      in(c,xn_t_122);
+      new n_r_43;
+      new k_r_44;
+      let xm_124 = senc((n_r_43,xn_t_122,k_r_44),k_e_39) in
+      out(c,(xm_124,mac(xm_124,k_m_40)));
+      in(c,y_125)
+
+[1;34m6)[0m [1;34moutput on channel c of n_t_41, referred as ax_4
+[0m
+   in(c,xn_t_122);
+   new n_r_43;
+   new k_r_44;
+   let xm_124 = senc((n_r_43,xn_t_122,k_r_44),k_e_39) in
+   out(c,(xm_124,mac(xm_124,k_m_40)));
+   in(c,y_125)
+|
+   in(c,xn_t_104);
+   new n_r_37;
+   new k_r_38;
+   let xm_106 = senc((n_r_37,xn_t_104,k_r_38),k_e_33) in
+   out(c,(xm_106,mac(xm_106,k_m_34)));
+   in(c,y_107)
+|
+   in(c,y_91);
+   let (xm_e_95,xm_m_94) = y_91 in
+   if xm_m_94 = mac(xm_e_95,k_m_34) then
+      let (xn_r_101,xn_t_100,xk_r_99) = sdec(xm_e_95,k_e_33) in
+         if xn_t_100 = n_t_35 then
+            new k_t_36;
+            let z_103 = senc((n_t_35,xn_r_101,k_t_36),k_e_33) in
+            out(c,(z_103,mac(z_103,k_m_34)))
+         else
+            out(c,Error_6300)
+      else
+         out(c,Error_6300)
+   else
+      out(c,Error_6300)
+|
+   [1;31mout(c,n_t_41)[0m;
+   in(c,y_109);
+   let (xm_e_113,xm_m_112) = y_109 in
+   if xm_m_112 = mac(xm_e_113,k_m_40) then
+      let (xn_r_119,xn_t_118,xk_r_117) = sdec(xm_e_113,k_e_39) in
+         if xn_t_118 = n_t_41 then
+            new k_t_42;
+            let z_121 = senc((n_t_41,xn_r_119,k_t_42),k_e_39) in
+            out(c,(z_121,mac(z_121,k_m_40)))
+         else
+            out(c,Error_6300)
+      else
+         out(c,Error_6300)
+   else
+      out(c,Error_6300)
+
+[1;34m7)[0m [1;34minput on channel c of ax_4 = n_t_41
+[0m
+   in(c,y_109);
+   let (xm_e_113,xm_m_112) = y_109 in
+   if xm_m_112 = mac(xm_e_113,k_m_40) then
+      let (xn_r_119,xn_t_118,xk_r_117) = sdec(xm_e_113,k_e_39) in
+         if xn_t_118 = n_t_41 then
+            new k_t_42;
+            let z_121 = senc((n_t_41,xn_r_119,k_t_42),k_e_39) in
+            out(c,(z_121,mac(z_121,k_m_40)))
+         else
+            out(c,Error_6300)
+      else
+         out(c,Error_6300)
+   else
+      out(c,Error_6300)
+|
+   in(c,xn_t_122);
+   new n_r_43;
+   new k_r_44;
+   let xm_124 = senc((n_r_43,xn_t_122,k_r_44),k_e_39) in
+   out(c,(xm_124,mac(xm_124,k_m_40)));
+   in(c,y_125)
+|
+   [1;31min(c,xn_t_104)[0m;
+   new n_r_37;
+   new k_r_38;
+   let xm_106 = senc((n_r_37,xn_t_104,k_r_38),k_e_33) in
+   out(c,(xm_106,mac(xm_106,k_m_34)));
+   in(c,y_107)
+|
+   in(c,y_91);
+   let (xm_e_95,xm_m_94) = y_91 in
+   if xm_m_94 = mac(xm_e_95,k_m_34) then
+      let (xn_r_101,xn_t_100,xk_r_99) = sdec(xm_e_95,k_e_33) in
+         if xn_t_100 = n_t_35 then
+            new k_t_36;
+            let z_103 = senc((n_t_35,xn_r_101,k_t_36),k_e_33) in
+            out(c,(z_103,mac(z_103,k_m_34)))
+         else
+            out(c,Error_6300)
+      else
+         out(c,Error_6300)
+   else
+      out(c,Error_6300)
+
+[1;34m8)[0m [1;34moutput on channel c of (senc((n_r_37,n_t_41,k_r_38),k_e_33),mac(senc((n_r_37,n_t_41,k_r_38),k_e_33),k_m_34)), referred as ax_5
+[0m
+   in(c,y_91);
+   let (xm_e_95,xm_m_94) = y_91 in
+   if xm_m_94 = mac(xm_e_95,k_m_34) then
+      let (xn_r_101,xn_t_100,xk_r_99) = sdec(xm_e_95,k_e_33) in
+         if xn_t_100 = n_t_35 then
+            new k_t_36;
+            let z_103 = senc((n_t_35,xn_r_101,k_t_36),k_e_33) in
+            out(c,(z_103,mac(z_103,k_m_34)))
+         else
+            out(c,Error_6300)
+      else
+         out(c,Error_6300)
+   else
+      out(c,Error_6300)
+|
+   in(c,xn_t_122);
+   new n_r_43;
+   new k_r_44;
+   let xm_124 = senc((n_r_43,xn_t_122,k_r_44),k_e_39) in
+   out(c,(xm_124,mac(xm_124,k_m_40)));
+   in(c,y_125)
+|
+   in(c,y_109);
+   let (xm_e_113,xm_m_112) = y_109 in
+   if xm_m_112 = mac(xm_e_113,k_m_40) then
+      let (xn_r_119,xn_t_118,xk_r_117) = sdec(xm_e_113,k_e_39) in
+         if xn_t_118 = n_t_41 then
+            new k_t_42;
+            let z_121 = senc((n_t_41,xn_r_119,k_t_42),k_e_39) in
+            out(c,(z_121,mac(z_121,k_m_40)))
+         else
+            out(c,Error_6300)
+      else
+         out(c,Error_6300)
+   else
+      out(c,Error_6300)
+|
+   [1;31mout(c,(senc((n_r_37,n_t_41,k_r_38),k_e_33),mac(senc((n_r_37,n_t_41,k_r_38),k_e_33),k_m_34)))[0m;
+   in(c,y_107)
+
+[1;34m9)[0m [1;34minput on channel c of (kI_1,kI_0) = (kI_1,kI_0)
+[0m
+   in(c,y_107)
+|
+   [1;31min(c,y_91)[0m;
+   let (xm_e_95,xm_m_94) = y_91 in
+   if xm_m_94 = mac(xm_e_95,k_m_34) then
+      let (xn_r_101,xn_t_100,xk_r_99) = sdec(xm_e_95,k_e_33) in
+         if xn_t_100 = n_t_35 then
+            new k_t_36;
+            let z_103 = senc((n_t_35,xn_r_101,k_t_36),k_e_33) in
+            out(c,(z_103,mac(z_103,k_m_34)))
+         else
+            out(c,Error_6300)
+      else
+         out(c,Error_6300)
+   else
+      out(c,Error_6300)
+|
+   in(c,xn_t_122);
+   new n_r_43;
+   new k_r_44;
+   let xm_124 = senc((n_r_43,xn_t_122,k_r_44),k_e_39) in
+   out(c,(xm_124,mac(xm_124,k_m_40)));
+   in(c,y_125)
+|
+   in(c,y_109);
+   let (xm_e_113,xm_m_112) = y_109 in
+   if xm_m_112 = mac(xm_e_113,k_m_40) then
+      let (xn_r_119,xn_t_118,xk_r_117) = sdec(xm_e_113,k_e_39) in
+         if xn_t_118 = n_t_41 then
+            new k_t_42;
+            let z_121 = senc((n_t_41,xn_r_119,k_t_42),k_e_39) in
+            out(c,(z_121,mac(z_121,k_m_40)))
+         else
+            out(c,Error_6300)
+      else
+         out(c,Error_6300)
+   else
+      out(c,Error_6300)
+
+[1;34m10)[0m [1;34moutput on channel c of Error_6300, referred as ax_6
+[0m
+   in(c,y_109);
+   let (xm_e_113,xm_m_112) = y_109 in
+   if xm_m_112 = mac(xm_e_113,k_m_40) then
+      let (xn_r_119,xn_t_118,xk_r_117) = sdec(xm_e_113,k_e_39) in
+         if xn_t_118 = n_t_41 then
+            new k_t_42;
+            let z_121 = senc((n_t_41,xn_r_119,k_t_42),k_e_39) in
+            out(c,(z_121,mac(z_121,k_m_40)))
+         else
+            out(c,Error_6300)
+      else
+         out(c,Error_6300)
+   else
+      out(c,Error_6300)
+|
+   in(c,xn_t_122);
+   new n_r_43;
+   new k_r_44;
+   let xm_124 = senc((n_r_43,xn_t_122,k_r_44),k_e_39) in
+   out(c,(xm_124,mac(xm_124,k_m_40)));
+   in(c,y_125)
+|
+   in(c,y_107)
+|
+   [1;31mout(c,Error_6300)[0m
+
+[1;34m11)[0m [1;34minput on channel c of (proj_{1,2}(ax_5),proj_{2,2}(ax_5)) = (senc((n_r_37,n_t_41,k_r_38),k_e_33),mac(senc((n_r_37,n_t_41,k_r_38),k_e_33),k_m_34))
+[0m
+   [1;31min(c,y_109)[0m;
+   let (xm_e_113,xm_m_112) = y_109 in
+   if xm_m_112 = mac(xm_e_113,k_m_40) then
+      let (xn_r_119,xn_t_118,xk_r_117) = sdec(xm_e_113,k_e_39) in
+         if xn_t_118 = n_t_41 then
+            new k_t_42;
+            let z_121 = senc((n_t_41,xn_r_119,k_t_42),k_e_39) in
+            out(c,(z_121,mac(z_121,k_m_40)))
+         else
+            out(c,Error_6300)
+      else
+         out(c,Error_6300)
+   else
+      out(c,Error_6300)
+|
+   in(c,xn_t_122);
+   new n_r_43;
+   new k_r_44;
+   let xm_124 = senc((n_r_43,xn_t_122,k_r_44),k_e_39) in
+   out(c,(xm_124,mac(xm_124,k_m_40)));
+   in(c,y_125)
+|
+   in(c,y_107)
+
+[1;34m12)[0m [1;34moutput on channel c of Error_6300, referred as ax_7
+[0m
+   in(c,y_107)
+|
+   in(c,xn_t_122);
+   new n_r_43;
+   new k_r_44;
+   let xm_124 = senc((n_r_43,xn_t_122,k_r_44),k_e_39) in
+   out(c,(xm_124,mac(xm_124,k_m_40)));
+   in(c,y_125)
+|
+   [1;31mout(c,Error_6300)[0m
+Running time: 0s
