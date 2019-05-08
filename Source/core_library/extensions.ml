@@ -26,7 +26,7 @@ module List = struct
   let foldl f l a = fold_left (fun a x -> f x a) a l
 
   (* rev_map + filter (on the transformed elements) *)
-  let mapif pred f l =
+  let map_if pred f l =
     let rec map_filter ac pred f l = match l with
       | [] -> ac
       | p :: t ->
@@ -37,20 +37,12 @@ module List = struct
 
   (* rev_map + filter (on the transformed elements, based on whether the
   result of the transformation is None or not) *)
-  let rec mapif_opt f l =
+  let rec map_if_opt f l =
     List.fold_left (fun ac x ->
       match f x with
       | None -> ac
       | Some y -> y :: ac
     ) [] l
-
-  (* rev_map, with an optional accumulator *)
-  let rev_map ?init:(accu=[]) f l =
-    List.fold_left (fun ac x -> f x :: ac) accu l
-
-  (* tail recursive filter, without caring about preserving the ordering *)
-  let rev_filter f l =
-    List.fold_left (fun accu x -> if f x then x::accu else accu) [] l
 
   (* removes all elements of a list verifying a given predicate, and returns
   one such element (if any). The ordering is not preserved. *)

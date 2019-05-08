@@ -241,7 +241,7 @@ end = struct
     let clean m to_remove =
       if to_remove = [] then m
       else
-        List.rev_filter (fun (cs_fa,_) ->
+        List.filter_unordered (fun (cs_fa,_) ->
           not (List.mem cs_fa to_remove)
         ) m
   end
@@ -606,8 +606,8 @@ end = struct
       Symbolic.Set.map (fun i csys ->
         let next_transitions =
           Symbolic.Transition.generate vars trans new_csys_set csys in
-        (* Printf.printf "Transitions generated from %s: \n" (Symbolic.Index.to_string i); *)
-        (* List.iter (fun tr -> Symbolic.Transition.print i tr; print_endline "") next_transitions; *)
+        (* Printf.printf "Transitions generated from %s: \n" (Symbolic.Index.to_string i);
+        List.iter (fun tr -> Symbolic.Transition.print i tr; print_endline "") next_transitions; *)
         Symbolic.Process.set_transitions csys next_transitions
       ) n.csys_set;
 
