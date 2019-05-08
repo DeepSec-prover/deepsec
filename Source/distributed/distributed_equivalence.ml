@@ -334,7 +334,7 @@ let trace_equivalence_determinate conf1 conf2 =
 
   let equiv_pbl = Equivalence_determinate.initialise_equivalence_problem else_branch csys_set_2 in
 
-  let data =
+  let data : EquivJob.data_determinate =
     {
       EquivJob.init_conf1 = conf1;
       EquivJob.init_conf2 = conf2;
