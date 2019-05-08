@@ -160,29 +160,37 @@ module Labelled_process : sig
   val empty : Label.t -> t (* a labelled process with empty data. For typing purposes (only way to construct a Labelled_process.t outside of this module) *)
   val contains_output_toplevel : t -> bool (* checks whether a normalised process contains an executable output *)
   val not_pure_io_toplevel : t -> bool (* checks whether a normalised process does not start right away by an input or an output *)
-  type input_data = {
-    channel : symbol; (* channel on which the input is performed *)
-    var : fst_ord_variable; (* variable bound by the input *)
-    optim : bool; (* whether this input is needed for forall processes *)
-    lab : Label.t; (* label of the executed input *)
-    leftovers : t list; (* what remains after the input is executed *)
-    id : id; (* the id of the executed instruction *)
-  }
-  val unfold_input : ?optim:bool -> t list -> (t * input_data) list (* function computing all potential ways of unfolding one input from a list of processes. *)
-  type output_data = {
-    channel : symbol; (* channel on which the output is performed *)
-    term : protocol_term; (* output term *)
-    optim : bool; (* whether this output is needed for forall processes *)
-    lab : Label.t; (* label of the executed output *)
-    context : t -> t; (* suroundings of the executed output *)
-    id : id; (* the id of the executed instruction *)
-  }
-  val unfold_output : ?optim:bool -> t -> (t * output_data) list (* function computing all potential ways of unfolding one output from a process.
-  NB. Unfolding outputs break symmetries (just as symmetries), but they can be restaured at the end of negative phases (see function [restaure_sym]). *)
-  val restaure_sym : t -> t (* restaures symmetries that have been temporarily broken by unfolding outputs *)
   val labelling : Label.t -> t -> t (* assigns labels to the parallel processes at toplevel, with a given label prefix *)
   val get_label : t -> Label.t (* gets the label of a process, and returns an error message if it has not been assigned *)
   val get_proc : t -> plain
+
+  (* extraction of inputs from processes *)
+  module Input : sig
+    type data = {
+      channel : symbol; (* channel on which the input is performed *)
+      var : fst_ord_variable; (* variable bound by the input *)
+      optim : bool; (* whether this input is needed for forall processes *)
+      lab : Label.t; (* label of the executed input *)
+      leftovers : t list; (* what remains after the input is executed *)
+      id : id; (* the id of the executed instruction *)
+    }
+    val unfold : ?optim:bool -> t list -> (t * data) list (* function computing all potential ways of unfolding one input from a list of processes. *)
+  end
+
+  (* extraction of outputs from processes *)
+  module Output : sig
+    type data = {
+      channel : symbol; (* channel on which the output is performed *)
+      term : protocol_term; (* output term *)
+      optim : bool; (* whether this output is needed for forall processes *)
+      lab : Label.t; (* label of the executed output *)
+      context : t -> t; (* suroundings of the executed output *)
+      id : id; (* the id of the executed instruction *)
+    }
+    val unfold : ?optim:bool -> t -> (t * data) list (* function computing all potential ways of unfolding one output from a process.
+    NB. Unfolding outputs break symmetries (just as symmetries), but they can be restaured at the end of negative phases (see function [restaure_sym]). *)
+    val restaure_sym : t -> t (* restaures symmetries that have been temporarily broken by unfolding outputs *)
+  end
 
   (* operations on initial labelled process that do not affect the decision of equivalence but make it more efficient *)
   module Optimisation : sig
@@ -368,21 +376,6 @@ end = struct
           ) in
 
     browse fst_subst [] 0 p (fun s -> s)
-
-  let rec restaure_sym (lp:t) : t =
-    match lp.proc with
-    | Input _
-    | OutputSure _
-    | Bang(_,[],_) -> (* no restauration needed *)
-      lp
-    | Par l -> {lp with proc = Par (List.map restaure_sym l)}
-    | Bang(b,l1,l2) -> (* non trivial restauration: symmetry cannot be restaured to Strong *)
-      {lp with proc = Bang (b,[],List.map restaure_sym l1 @ l2)}
-    | Let _
-    | If _
-    | New _
-    | Output _ -> Config.internal_error "[process_session.ml >> restaure_sym] Should only be applied on normalised processes."
-    | Start _ -> Config.internal_error "[process_session.ml >> restaure_sym] Unexpected Start constructor."
 
   (* checks whether a normalised process contains an executable output. Cannot be run on a start process *)
   let rec contains_output_toplevel (lp:t) : bool =
@@ -619,142 +612,161 @@ end = struct
     | [p] -> p
     | l -> {proc = Par l; label = None}
 
-  type input_data = {
-    channel : symbol;
-    var : fst_ord_variable;
-    optim : bool;
-    lab : Label.t;
-    leftovers : t list;
-    id : id;
-  }
+  module Input = struct
+    type data = {
+      channel : symbol;
+      var : fst_ord_variable;
+      optim : bool;
+      lab : Label.t;
+      leftovers : t list;
+      id : id;
+    }
 
-  (* Processes in given to [unfold_input] should all be normalised. Moreover, [unfold_input] is applied when there is no more output available, hence no output at top-level. *)
-  let unfold_input ?(optim=false) (l:t list) : (t * input_data) list =
+    (* Processes in given to [unfold_input] should all be normalised. Moreover, [unfold_input] is applied when there is no more output available, hence no output at top-level. *)
+    let unfold ?(optim=false) (l:t list) : (t * data) list =
 
-    let rec unfold forall accu leftovers p f_cont =
-      match p.proc with
-      | OutputSure _ ->
-        Config.internal_error "[process_session.ml >> unfold_input] Ill-formed process, focus should not be applied in this case."
-      | Par l -> unfold_list forall accu leftovers l f_cont
-      | Bang(_,[],[]) -> f_cont accu
-      | Bang(_,_::_,_) -> Config.internal_error "[process_session.ml >> unfold_input] Symmetries should not be broken when executing inputs."
-      | Bang(b,[],pp::tl) ->
-        let leftovers_pp = if tl = [] then leftovers else {proc = Bang(b,[],tl); label = None}::leftovers in
-        if b = Strong || optim then
-          unfold forall accu leftovers_pp pp f_cont
-        else
-          unfold forall accu leftovers_pp pp (fun accu_pp ->
-            unfold_list ~bang:(Some [pp]) false accu_pp leftovers tl f_cont
+      let rec unfold forall accu leftovers p f_cont =
+        match p.proc with
+        | OutputSure _ ->
+          Config.internal_error "[process_session.ml >> unfold_input] Ill-formed process, focus should not be applied in this case."
+        | Par l -> unfold_list forall accu leftovers l f_cont
+        | Bang(_,[],[]) -> f_cont accu
+        | Bang(_,_::_,_) -> Config.internal_error "[process_session.ml >> unfold_input] Symmetries should not be broken when executing inputs."
+        | Bang(b,[],pp::tl) ->
+          let leftovers_pp = if tl = [] then leftovers else {proc = Bang(b,[],tl); label = None}::leftovers in
+          if b = Strong || optim then
+            unfold forall accu leftovers_pp pp f_cont
+          else
+            unfold forall accu leftovers_pp pp (fun accu_pp ->
+              unfold_list ~bang:(Some [pp]) false accu_pp leftovers tl f_cont
+            )
+        | Input (ch,x,pp,id) ->
+          let res = {
+            channel = ch;
+            var = x;
+            optim = forall;
+            lab = get_label p;
+            leftovers = leftovers;
+            id = id;
+          } in
+          f_cont ((pp,res)::accu)
+        | New _
+        | If _
+        | Let _
+        | Output _ ->
+          Config.internal_error "[process_session.ml >> unfold_input] Unfolding should only be applied on normalised processes."
+        | Start _ -> Config.internal_error "[process_session.ml >> unfold_input] Unexpected Start constructor."
+
+      and unfold_list ?(bang=None) forall accu leftovers l f_cont =
+        match l with
+        | [] -> f_cont accu
+        | p :: t ->
+          match bang with
+          | None -> (* case of a list of parallel processes *)
+            unfold forall accu (List.rev_append t leftovers) p (fun accu1 ->
+              unfold_list forall accu1 (p::leftovers) t f_cont
+            )
+          | Some memo -> (* case of a list of replicated processes *)
+            let lefts = List.rev_append memo t in
+            let leftovers1 =
+              if lefts = [] then leftovers
+              else {proc = Bang(Partial,[],lefts); label = None} :: leftovers
+            in
+            unfold forall accu leftovers1 p (fun accu1 ->
+              unfold_list ~bang:(Some (p::memo)) forall accu1 leftovers t f_cont
+            ) in
+
+      unfold_list true [] [] l (fun accu -> accu)
+  end
+
+  module Output = struct
+    type data = {
+      channel : symbol;
+      term : protocol_term;
+      optim : bool;
+      lab : Label.t;
+      context : t -> t;
+      id : id;
+    }
+
+    (* Processes in given to [unfold_output] should all be normalised. Unfolding an output p in a Bang(b,l1,p::l2) will temporarily break the symmetry, i.e. p will be transferred into l1. *)
+    let unfold ?(optim=false) (lp:t) : (t * data) list =
+
+      let rec unfold accu p rebuild f_cont =
+        match p.proc with
+        | Input _ -> f_cont accu
+        | OutputSure(c,t,pp,id) ->
+          let res = {
+            channel = c;
+            term = t;
+            optim = false;
+            lab = get_label p;
+            context = rebuild;
+            id = id;
+          } in
+          if optim then [pp,res]
+          else f_cont ((pp,res)::accu)
+        | If _
+        | Let _
+        | New _
+        | Output _ ->
+          Config.internal_error "[process_session.ml >> unfold_output] Should only be called on normalised processes."
+        | Start _ -> Config.internal_error "[process_session.ml >> unfold_output] Unexpected Start constructor."
+        | Par l ->
+          let add_par l = rebuild {proc = Par l; label = None} in
+          unfold_list accu [] l add_par f_cont
+        | Bang(b,brok,l) ->
+          let add_bang x =
+            rebuild {proc = Bang(b,x,l); label = None} in
+          let add_broken_bang x y =
+            rebuild {proc = Bang(b,brok@x,y); label = None} in
+          unfold_list accu [] brok add_bang (fun ac ->
+            unfold_list_and_break ac [] l add_broken_bang f_cont
           )
-      | Input (ch,x,pp,id) ->
-        let res = {
-          channel = ch;
-          var = x;
-          optim = forall;
-          lab = get_label p;
-          leftovers = leftovers;
-          id = id;
-        } in
-        f_cont ((pp,res)::accu)
-      | New _
-      | If _
-      | Let _
-      | Output _ ->
-        Config.internal_error "[process_session.ml >> unfold_input] Unfolding should only be applied on normalised processes."
-      | Start _ -> Config.internal_error "[process_session.ml >> unfold_input] Unexpected Start constructor."
 
-    and unfold_list ?(bang=None) forall accu leftovers l f_cont =
-      match l with
-      | [] -> f_cont accu
-      | p :: t ->
-        match bang with
-        | None -> (* case of a list of parallel processes *)
-          unfold forall accu (List.rev_append t leftovers) p (fun accu1 ->
-            unfold_list forall accu1 (p::leftovers) t f_cont
+      and unfold_list accu memo l rebuild f_cont =
+        match l with
+        | [] -> f_cont accu
+        | pp :: t ->
+          let add_list_to_rebuild p =
+            rebuild (List.rev_append memo (if nil p then t else p::t)) in
+          unfold accu pp add_list_to_rebuild (fun acp ->
+            unfold_list acp (pp::memo) t rebuild f_cont
           )
-        | Some memo -> (* case of a list of replicated processes *)
-          let lefts = List.rev_append memo t in
-          let leftovers1 =
-            if lefts = [] then leftovers
-            else {proc = Bang(Partial,[],lefts); label = None} :: leftovers
-          in
-          unfold forall accu leftovers1 p (fun accu1 ->
-            unfold_list ~bang:(Some (p::memo)) forall accu1 leftovers t f_cont
+
+      and unfold_list_and_break accu memo l rebuild f_cont =
+        match l with
+        | [] -> f_cont accu
+        | pp :: t ->
+          let add_list_to_rebuild p =
+            rebuild (List.rev (if nil p then memo else p::memo)) t in
+          unfold accu pp add_list_to_rebuild (fun acp ->
+            unfold_list_and_break acp (pp::memo) t rebuild f_cont
           ) in
 
-    unfold_list true [] [] l (fun accu -> accu)
+      (* final call. The list is reversed to unsure that smallest labels are unfolded first.
+      NB. the code below is not equivalent to:
+       unfold [] lp (fun p -> p) (fun accu -> match List.rev accu with [...]
+      This is because unfold doesn't always call its continuation *)
+      match unfold [] lp (fun p -> p) List.rev with
+      | [] -> Config.internal_error "[process_session.ml >> unfold_output] No output could be unfolded."
+      | (p,odata) :: t -> (p,{odata with optim = true}) :: t
 
-  type output_data = {
-    channel : symbol;
-    term : protocol_term;
-    optim : bool;
-    lab : Label.t;
-    context : t -> t;
-    id : id;
-  }
-
-  (* Processes in given to [unfold_output] should all be normalised. Unfolding an output p in a Bang(b,l1,p::l2) will temporarily break the symmetry, i.e. p will be transferred into l1. *)
-  let unfold_output ?optim:(optim:bool=false) (lp:t) : (t * output_data) list =
-
-    let rec unfold accu p rebuild f_cont =
-      match p.proc with
-      | Input _ -> f_cont accu
-      | OutputSure(c,t,pp,id) ->
-        let res = {
-          channel = c;
-          term = t;
-          optim = false;
-          lab = get_label p;
-          context = rebuild;
-          id = id;
-        } in
-        if optim then [pp,res]
-        else f_cont ((pp,res)::accu)
-      | If _
+    let rec restaure_sym (lp:t) : t =
+      match lp.proc with
+      | Input _
+      | OutputSure _
+      | Bang(_,[],_) -> (* no restauration needed *)
+        lp
+      | Par l -> {lp with proc = Par (List.map restaure_sym l)}
+      | Bang(b,l1,l2) -> (* non trivial restauration: symmetry cannot be restaured to Strong *)
+        {lp with proc = Bang (b,[],List.map restaure_sym l1 @ l2)}
       | Let _
+      | If _
       | New _
-      | Output _ ->
-        Config.internal_error "[process_session.ml >> unfold_output] Should only be called on normalised processes."
-      | Start _ -> Config.internal_error "[process_session.ml >> unfold_output] Unexpected Start constructor."
-      | Par l ->
-        let add_par l = rebuild {proc = Par l; label = None} in
-        unfold_list accu [] l add_par f_cont
-      | Bang(b,brok,l) ->
-        let add_bang x =
-          rebuild {proc = Bang(b,x,l); label = None} in
-        let add_broken_bang x y =
-          rebuild {proc = Bang(b,brok@x,y); label = None} in
-        unfold_list accu [] brok add_bang (fun ac ->
-          unfold_list_and_break ac [] l add_broken_bang f_cont
-        )
-
-    and unfold_list accu memo l rebuild f_cont =
-      match l with
-      | [] -> f_cont accu
-      | pp :: t ->
-        let add_list_to_rebuild p =
-          rebuild (List.rev_append memo (if nil p then t else p::t)) in
-        unfold accu pp add_list_to_rebuild (fun acp ->
-          unfold_list acp (pp::memo) t rebuild f_cont
-        )
-
-    and unfold_list_and_break accu memo l rebuild f_cont =
-      match l with
-      | [] -> f_cont accu
-      | pp :: t ->
-        let add_list_to_rebuild p =
-          rebuild (List.rev (if nil p then memo else p::memo)) t in
-        unfold accu pp add_list_to_rebuild (fun acp ->
-          unfold_list_and_break acp (pp::memo) t rebuild f_cont
-        ) in
-
-    (* final call. The list is reversed to unsure that smallest labels are unfolded first.
-    NB. the code below is not equivalent to:
-     unfold [] lp (fun p -> p) (fun accu -> match List.rev accu with [...]
-    This is because unfold doesn't always call its continuation *)
-    match unfold [] lp (fun p -> p) List.rev with
-    | [] -> Config.internal_error "[process_session.ml >> unfold_output] No output could be unfolded."
-    | (p,odata) :: t -> (p,{odata with optim = true}) :: t
+      | Output _ -> Config.internal_error "[process_session.ml >> restaure_sym] Should only be applied on normalised processes."
+      | Start _ -> Config.internal_error "[process_session.ml >> restaure_sym] Unexpected Start constructor."
+  end
 
   module Optimisation = struct
     (* removing subprocesses that cannot trigger observable actions (for optimisation purposes; does not affect the decision of equivalence) *)
@@ -1203,9 +1215,9 @@ module Configuration : sig
       | RStart
     val print_kind : kind option -> unit
     val next : t -> kind option (* computes the next kind of transition to apply (None if the process has no transition possible). *)
-    val apply_neg : axiom -> Labelled_process.t -> Labelled_process.output_data -> Labelled_process.t list -> t -> t (* executes an output in a configuration *)
-    val apply_pos : snd_ord_variable -> t -> Labelled_process.input_data * t (* executes a focused input in a configuration *)
-    val apply_focus : snd_ord_variable -> (Labelled_process.t * Labelled_process.input_data) -> t -> t (* focuses an input in a configuration *)
+    val apply_neg : axiom -> Labelled_process.t -> Labelled_process.Output.data -> Labelled_process.t list -> t -> t (* executes an output in a configuration *)
+    val apply_pos : snd_ord_variable -> t -> Labelled_process.Input.data * t (* executes a focused input in a configuration *)
+    val apply_focus : snd_ord_variable -> (Labelled_process.t * Labelled_process.Input.data) -> t -> t (* focuses an input in a configuration *)
     val apply_start : t -> t (* removes the start at the beginning of the process *)
   end
 end = struct
@@ -1348,7 +1360,7 @@ end = struct
         else if Labelled_process.contains_output_toplevel p then
           Some {c with sure_unchecked_skeletons = None; sure_output_proc = p::c.sure_output_proc}
         else
-          Some {c with sure_unchecked_skeletons = None; input_proc = Labelled_process.restaure_sym p::c.input_proc} end
+          Some {c with sure_unchecked_skeletons = None; input_proc = Labelled_process.Output.restaure_sym p::c.input_proc} end
     | _, _ ->
         Config.internal_error "[process_session.ml >> release_skeleton] A process is either focused or released."
 
@@ -1395,14 +1407,14 @@ end = struct
         Config.internal_error "[process_session.ml >> Configuration.Transition.apply_start] Error during the initialisation of processes. (2)"
 
     (* syntactic transformation of a configuration after executing an output *)
-    let apply_neg (ax:axiom) (p:Labelled_process.t) (od:Labelled_process.output_data) (leftovers:Labelled_process.t list) (conf:t) : t =
+    let apply_neg (ax:axiom) (p:Labelled_process.t) (od:Labelled_process.Output.data) (leftovers:Labelled_process.t list) (conf:t) : t =
       let state = {
         current_proc = to_process conf;
-        id = od.Labelled_process.id;
-        label = od.Labelled_process.lab;
+        id = od.id;
+        label = od.lab;
       } in
-      let ch = od.Labelled_process.channel in
-      let term = od.Labelled_process.term in
+      let ch = od.channel in
+      let term = od.term in
       {conf with
         to_normalise = Some p;
         sure_output_proc = leftovers;
@@ -1411,23 +1423,23 @@ end = struct
       }
 
     (* syntactic transformation of a configuration after executing a focused input. Also retrieves and returns the input_data of the focus state. *)
-    let apply_pos (var_X:snd_ord_variable) (conf:t) : Labelled_process.input_data * t =
+    let apply_pos (var_X:snd_ord_variable) (conf:t) : Labelled_process.Input.data * t =
       match conf.focused_proc with
       | Some p ->
         begin match Labelled_process.get_proc p with
         | Labelled_process.Input(ch,x,pp,id) ->
-          let idata : Labelled_process.input_data = {
-            Labelled_process.channel = ch;
-            Labelled_process.var = x;
-            Labelled_process.lab = Labelled_process.get_label p;
-            Labelled_process.id = id;
-            Labelled_process.leftovers = []; (* field not relevant here *)
-            Labelled_process.optim = true; (* field not relevant here *)
+          let idata : Labelled_process.Input.data = {
+            channel = ch;
+            var = x;
+            lab = Labelled_process.get_label p;
+            id = id;
+            leftovers = []; (* field not relevant here *)
+            optim = true; (* field not relevant here *)
           } in
           let state : state = {
             current_proc = to_process conf;
-            id = idata.Labelled_process.id;
-            label = idata.Labelled_process.lab;
+            id = idata.id;
+            label = idata.lab;
           } in
           let conf_app = {conf with
             focused_proc = Some pp;
@@ -1440,7 +1452,7 @@ end = struct
         Config.internal_error "[process_session.ml >> Configuration.Transition.apply_pos] Process should be focused."
 
     (* syntactic transformation of a configuration after focusing an input *)
-    let apply_focus (var_X:snd_ord_variable) (focus:Labelled_process.t * Labelled_process.input_data) (conf:t) : t =
+    let apply_focus (var_X:snd_ord_variable) (focus:Labelled_process.t * Labelled_process.Input.data) (conf:t) : t =
       Config.debug (fun () ->
         if conf.focused_proc <> None then
           Config.internal_error "[process_session.ml >> add_focus] Unexpected case."
@@ -1448,8 +1460,8 @@ end = struct
       let (pp,idata) = focus in
       let state = {
         current_proc = to_process conf;
-        id = idata.Labelled_process.id;
-        label = idata.Labelled_process.lab;
+        id = idata.id;
+        label = idata.lab;
       } in
       {conf with
         input_proc = idata.leftovers;
