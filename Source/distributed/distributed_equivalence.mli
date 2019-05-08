@@ -45,7 +45,7 @@ module DistribEquivalence : sig
   val display_workers : unit -> string
 
   val nb_workers : int ref
-    
+
   (** Corresponds to the minimum number of jobs initially generated before distribution. Note that this number is necessarily bigger than
       the number of workers launched. Its initial value is 100. *)
   val minimum_nb_of_jobs : int ref
@@ -84,3 +84,5 @@ end
 val trace_equivalence : Process.semantics -> Process.process -> Process.process -> Equivalence.result_trace_equivalence * Process.process * Process.process
 
 val trace_equivalence_determinate : Process_determinate.configuration -> Process_determinate.configuration -> Equivalence_determinate.result_trace_equivalence * Process_determinate.configuration * Process_determinate.configuration
+
+val session : Equivalence_session.goal -> Process_session.Configuration.t -> Process_session.Configuration.t -> Equivalence_session.result_analysis * Process_session.Configuration.t * Process_session.Configuration.t

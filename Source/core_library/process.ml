@@ -1695,6 +1695,7 @@ type equivalence =
   | Trace_Equivalence
   | Observational_Equivalence
   | Session_Equivalence
+  | Session_Inclusion
 
 type output_gathering =
   {

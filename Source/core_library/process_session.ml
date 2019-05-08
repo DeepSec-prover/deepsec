@@ -719,14 +719,13 @@ end = struct
       | Par l ->
         let add_par l = rebuild {proc = Par l; label = None} in
         unfold_list accu [] l add_par f_cont
-      | Bang(b,brok,[]) ->
-        let add_bang l = rebuild {proc = Bang(b,l,[]); label = None} in
-        unfold_list accu [] brok add_bang f_cont
       | Bang(b,brok,l) ->
-        let add_bang1 x = rebuild {proc = Bang(b,brok,x); label = None} in
-        let add_bang2 x = rebuild {proc = Bang(b,x,l); label = None} in
-        unfold_list accu [] l add_bang1 (fun ac ->
-          unfold_list ac [] brok add_bang2 f_cont
+        let add_bang x =
+          rebuild {proc = Bang(b,x,l); label = None} in
+        let add_broken_bang x y =
+          rebuild {proc = Bang(b,brok@x,y); label = None} in
+        unfold_list accu [] brok add_bang (fun ac ->
+          unfold_list_and_break ac [] l add_broken_bang f_cont
         )
 
     and unfold_list accu memo l rebuild f_cont =
@@ -734,15 +733,28 @@ end = struct
       | [] -> f_cont accu
       | pp :: t ->
         let add_list_to_rebuild p =
-          if nil p then rebuild (List.rev_append memo t)
-          else rebuild (List.rev_append memo (p::t)) in
+          rebuild (List.rev_append memo (if nil p then t else p::t)) in
         unfold accu pp add_list_to_rebuild (fun acp ->
           unfold_list acp (pp::memo) t rebuild f_cont
+        )
+
+    and unfold_list_and_break accu memo l rebuild f_cont =
+      match l with
+      | [] -> f_cont accu
+      | pp :: t ->
+        let add_list_to_rebuild p =
+          rebuild (List.rev (if nil p then memo else p::memo)) t in
+        unfold accu pp add_list_to_rebuild (fun acp ->
+          unfold_list_and_break acp (pp::memo) t rebuild f_cont
         ) in
 
-    match unfold [] lp (fun p -> p) (fun accu -> accu) with
+    (* final call. The list is reversed to unsure that smallest labels are unfolded first.
+    NB. the code below is not equivalent to:
+     unfold [] lp (fun p -> p) (fun accu -> match List.rev accu with [...]
+    This is because unfold doesn't always call its continuation *)
+    match unfold [] lp (fun p -> p) List.rev with
     | [] -> Config.internal_error "[process_session.ml >> unfold_output] No output could be unfolded."
-    | (p,odata) :: accu -> (p,{odata with optim = true}) :: accu
+    | (p,odata) :: t -> (p,{odata with optim = true}) :: t
 
   module Optimisation = struct
     (* removing subprocesses that cannot trigger observable actions (for optimisation purposes; does not affect the decision of equivalence) *)
@@ -1119,7 +1131,7 @@ end = struct
     | Some l ->
       let convert procs =
         LabelSet.of_list (List.rev_map Labelled_process.get_label procs) in
-      Some (List.rev_map ~init:accu (fun (ec1,ec2)->convert ec1, convert ec2) l)
+      Some (List.fold_left (fun ac (ec1,ec2) -> (convert ec1, convert ec2) :: ac) accu l)
 
   (* prints a bijection set *)
   let print (bset:t) : unit =
@@ -1169,6 +1181,7 @@ end
 module Configuration : sig
   type t
   val print_trace : (fst_ord, name) Subst.t -> (snd_ord, axiom) Subst.t -> t -> string (* returns a string displaying the trace needed to reach this configuration *)
+  val to_process : t -> Labelled_process.t (* conversion into a process, for interface purpose *)
   val check_block : (snd_ord, axiom) Subst.t -> t -> bool (* verifies the blocks stored in the configuration are authorised *)
   val inputs : t -> Labelled_process.t list (* returns the available inputs *)
   val outputs : t -> Labelled_process.t list (* returns the available outputs (in particular they are executable, i.e. they output a message). *)

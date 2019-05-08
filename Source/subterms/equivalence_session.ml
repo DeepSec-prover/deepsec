@@ -70,7 +70,9 @@ module Symbolic : sig
   (* a status of symbolic processes in equivalence proofs *)
   module Status : sig
     type t
-    val init : t (* the status of the initial processes of the partition tree *)
+    val init_for_equivalence : t (* the status of the initial processes for equivalence proofs *)
+    val init_for_inclusion_left : t (* the status of the initial left processes for inclusion proofs *)
+    val init_for_inclusion_right : t (* the status of the initial right processes for inclusion proofs *)
     val downgrade_forall : t -> bool -> t (* given the status of a process, and a boolean telling whether a transition is useful to consider for ForAll processes, computes the status of the target of the transition *)
     val print : t -> unit (* for debugging purposes *)
   end
@@ -150,7 +152,9 @@ end = struct
       | ForAll
       | Exists
       | Both
-    let init = Both
+    let init_for_equivalence = Both
+    let init_for_inclusion_left = ForAll
+    let init_for_inclusion_right = Exists
     let downgrade_forall (s:t) (forall:bool) : t =
       if forall then s else Exists
     let print (s:t) : unit =
@@ -241,7 +245,7 @@ end = struct
     let clean m to_remove =
       if to_remove = [] then m
       else
-        List.rev_filter (fun (cs_fa,_) ->
+        List.filter_unordered (fun (cs_fa,_) ->
           not (List.mem cs_fa to_remove)
         ) m
   end
@@ -526,7 +530,9 @@ module PartitionTree : sig
     val remove_unauthorised_blocks : t -> Symbolic.Index.t Constraint_system.Set.t -> t (* removes unauthorised blocks from a node *)
   end
 
-  val explore_from : Node.t -> unit (* explores the partition tree from a given node. Raises Attack_Witness if an attack is found furing the exploration *)
+  val generate_successors : Node.t -> (Node.t->(unit->unit)->unit) -> (unit->unit) -> unit (* generates the successor nodes of a given node in the partition tree, and applies a continuation to each of them. A final continuation is applied when all nodes have been explored.
+  NB. Raises Attack_Witness if an attack is found furing the exploration *)
+  val explore_from : Node.t -> unit (* recursive application of [generate_successors] to explore the whole tree rooted in at given node. *)
 end = struct
   module Node = struct
     type t = {
@@ -606,8 +612,8 @@ end = struct
       Symbolic.Set.map (fun i csys ->
         let next_transitions =
           Symbolic.Transition.generate vars trans new_csys_set csys in
-        (* Printf.printf "Transitions generated from %s: \n" (Symbolic.Index.to_string i); *)
-        (* List.iter (fun tr -> Symbolic.Transition.print i tr; print_endline "") next_transitions; *)
+        (* Printf.printf "Transitions generated from %s: \n" (Symbolic.Index.to_string i);
+        List.iter (fun tr -> Symbolic.Transition.print i tr; print_endline "") next_transitions; *)
         Symbolic.Process.set_transitions csys next_transitions
       ) n.csys_set;
 
@@ -767,32 +773,51 @@ end
 
 
 (* mapping everything to a decision procedure *)
+type goal =
+  | Equivalence
+  | Inclusion
+
 type result_analysis =
   | Equivalent
   | Not_Equivalent of Symbolic.Process.t
 
-let string_of_result (res:result_analysis) : string =
+let string_of_result (goal:goal) (p1:Labelled_process.t) (p2:Labelled_process.t) (res:result_analysis) : string =
   match res with
-  | Equivalent -> "Equivalent processes."
+  | Equivalent ->
+    if goal = Equivalence then "Equivalent processes."
+    else "Process inclusion proved."
   | Not_Equivalent csys ->
     let origin = Symbolic.Process.get_origin_process csys in
+    let p = if origin = "LEFT" then p1 else p2 in
+    let sp = Labelled_process.print p in
     let trace =
       let (fst,snd) = Symbolic.Process.solution csys in
       Configuration.print_trace fst snd (Symbolic.Process.get_conf csys) in
+    let bold_blue s = Printf.sprintf "\\033[1;34m%s\\033[0m" s in
+    if goal = Equivalence then
+      Printf.sprintf "Not Equivalent processes. Attack Trace:\n%s%s%s" (bold_blue (Printf.sprintf "\nOrigin (%s process):\n" origin)) sp trace
+    else
+      Printf.sprintf "Process Inclusion disproved. Attack Trace:\n%s%s%s" (bold_blue "\nOrigin:\n") sp trace
 
-    Printf.sprintf "Not Equivalent processes. Attack Trace (in the %s process):%s" origin trace
 
-
-let equivalence (conf1:Configuration.t) (conf2:Configuration.t) : result_analysis =
+(* computes the root of the partition tree *)
+let compute_root (goal:goal) (conf1:Configuration.t) (conf2:Configuration.t) : PartitionTree.Node.t =
   (* initialisation of the rewrite system *)
   Rewrite_rules.initialise_skeletons ();
   Data_structure.Tools.initialise_constructor ();
 
-  (* initial node *)
+  (* initial set of symbolic processes *)
   let csys_set_root = Symbolic.Set.empty() in
-  let symp1 = Symbolic.Process.init "LEFT" conf1 Symbolic.Status.init in
+  let (status_left,status_right) =
+    match goal with
+    | Equivalence ->
+      (Symbolic.Status.init_for_equivalence, Symbolic.Status.init_for_equivalence)
+    | Inclusion ->
+      (Symbolic.Status.init_for_inclusion_left, Symbolic.Status.init_for_inclusion_right) in
+
+  let symp1 = Symbolic.Process.init "LEFT" conf1 status_left in
   let index1 = Symbolic.Set.add_new_elt csys_set_root symp1 in
-  let symp2 = Symbolic.Process.init "RIGHT" conf2 Symbolic.Status.init in
+  let symp2 = Symbolic.Process.init "RIGHT" conf2 status_right in
   let index2 = Symbolic.Set.add_new_elt csys_set_root symp2 in
   let matching_root =
     Symbolic.Matching.add_match index1 [index2,BijectionSet.initial] (
@@ -800,11 +825,23 @@ let equivalence (conf1:Configuration.t) (conf2:Configuration.t) : result_analysi
         Symbolic.Matching.empty
       )
     ) in
-  let root = PartitionTree.Node.init csys_set_root matching_root  in
+  PartitionTree.Node.init csys_set_root matching_root
 
-  (* exploration of the tree *)
+(* overall analysis *)
+let analysis (goal:goal) (conf1:Configuration.t) (conf2:Configuration.t) : result_analysis =
+  let root = compute_root goal conf1 conf2 in
   try
     PartitionTree.explore_from root;
     Equivalent
   with
     | Symbolic.Process.Attack_Witness symp -> Not_Equivalent symp
+
+(* printing of the result *)
+let publish_result (goal:goal) (id:int) (conf1:Process_session.Configuration.t) (conf2:Process_session.Configuration.t) (result:result_analysis) (running_time:float) : unit =
+  Printf.printf "Result query %d: " id;
+  flush stdout;
+  let res =
+    string_of_result goal (Process_session.Configuration.to_process conf1) (Process_session.Configuration.to_process conf2) result in
+  ignore (Sys.command (Printf.sprintf "printf \"%s\"" res));
+  print_endline (Printf.sprintf "\nRunning time: %ds" (int_of_float running_time));
+  ignore(Sys.command "rm -f index_old.html")

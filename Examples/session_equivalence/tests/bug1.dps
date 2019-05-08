@@ -1,0 +1,14 @@
+free c.
+fun mac/2.
+
+let A =
+  new n_t;
+  out(c,n_t).
+
+let B(k) =
+  in(c,x);
+  out(c,mac(x,k)).
+
+let sys = A | new k; !^2 B(k).
+
+query session_equiv(sys,sys). // equivalent

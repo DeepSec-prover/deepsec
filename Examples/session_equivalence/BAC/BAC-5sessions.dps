@@ -39,14 +39,35 @@ let passport(k_e,k_m) =
       else 0
     else out(c,Error_6300).
 
+let system(k_e,k_m) =
+  passport(k_e,k_m) | reader(k_e,k_m).
+
+let fresh_system =
+  new k_e; new k_m; system(k_e,k_m).
+
 // Unlinkability
 
-let system1 =
-  !^3 (new k_e; new k_m; (passport(k_e,k_m) | reader(k_e,k_m))).
+let system_11111 =
+  !^5 fresh_system.
 
-let system2 =
-    new k_e; new k_m; (!^2 passport(k_e,k_m) | !^2 reader(k_e,k_m))
-  | new k_e; new k_m; (passport(k_e,k_m) | reader(k_e,k_m)).
+let system_2111 =
+  new k_e; new k_m; !^2 system(k_e,k_m) | !^3 fresh_system.
+
+let system_311 =
+  new k_e; new k_m; !^3 system(k_e,k_m) | !^2 fresh_system.
+
+let system_41 =
+  new k_e; new k_m; !^4 system(k_e,k_m) | fresh_system.
+
+let system_5 =
+  new k_e; new k_m; !^5 system(k_e,k_m).
+
+let system_221 =
+  !^2 new k_e; new k_m; !^2 system(k_e,k_m) | fresh_system.
+
+let system_32 =
+  new k_e; new k_m; !^3 system(k_e,k_m) |
+  new k_e; new k_m; !^2 system(k_e,k_m).
 
 
-query trace_equiv(system1,system2).
+query session_equiv(system_11111,system_2111).

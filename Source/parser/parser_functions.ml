@@ -42,6 +42,7 @@ type query =
   | Trace_Eq of extended_process * extended_process
   | Obs_Eq of extended_process * extended_process
   | Sess_Eq of extended_process * extended_process
+  | Sess_Incl of extended_process * extended_process
 
 type declaration =
   | Setting of setting * int
@@ -393,6 +394,7 @@ let query_list = ref []
 let parse_query env line = function
   | Trace_Eq(proc_1,proc_2) -> query_list := (Process.Trace_Equivalence,parse_extended_process env proc_1, parse_extended_process env proc_2)::!query_list
   | Sess_Eq(proc_1,proc_2) -> query_list := (Process.Session_Equivalence,parse_extended_process env proc_1, parse_extended_process env proc_2)::!query_list
+  | Sess_Incl(proc_1,proc_2) -> query_list := (Process.Session_Inclusion,parse_extended_process env proc_1, parse_extended_process env proc_2)::!query_list
   | Obs_Eq(_,_) -> error_message line "Observational equivalence not implemented yet"
 
 (****** Parse declaration *******)

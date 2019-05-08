@@ -12,7 +12,7 @@ open Parser_functions
 %token FREE CONST
 %token NEW IF THEN ELSE IN OUT LET
 %token PHASE
-%token QUERY TRACEEQ OBSEQ SESSEQ
+%token QUERY TRACEEQ OBSEQ SESSEQ SESSINCL
 
 %token EQ
 %token SLASH SEMI DOT MID BANG COMMA
@@ -113,6 +113,8 @@ query_declaration:
       { Obs_Eq($4,$6) }
   | QUERY SESSEQ LPAR extended_process COMMA extended_process RPAR DOT
       { Sess_Eq($4,$6) }
+  | QUERY SESSINCL LPAR extended_process COMMA extended_process RPAR DOT
+      { Sess_Incl($4,$6) }
 
 /****** Extended process declaration *******/
 

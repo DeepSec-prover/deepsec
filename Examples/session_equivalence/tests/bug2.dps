@@ -1,0 +1,15 @@
+free c.
+const ok.
+
+let passport =
+  out(c,ok);
+  in(c,x).
+
+let system1 =
+  !^2 passport.
+
+let system2 =
+  passport | passport.
+
+
+query session_equiv(system1,system2). // equivalent
