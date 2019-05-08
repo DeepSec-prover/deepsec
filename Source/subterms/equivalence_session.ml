@@ -5,7 +5,7 @@ open Process_session
 
 
 (* type of mutable sets with implicit integer indexes. *)
-module IndexedSet (O:sig type elt end) : sig
+(* module IndexedSet (O:sig type elt end) : sig
   type t
   type elt = O.elt
   val empty : unit -> t (* creates an empty data structure. *)
@@ -56,8 +56,49 @@ end = struct
   let elements f (set,_) =
     Hashtbl.fold (fun index elt accu -> f index elt::accu) set []
   let copy (set,ind) = Hashtbl.copy set,ref !ind
-end
+end *)
 
+module IndexedSet (O:sig type elt end) : sig
+  type t
+  type elt = O.elt
+  val empty : t (* creates an empty data structure. *)
+  val is_empty : t -> bool (* checks the emptiness of the table *)
+  val choose : t -> elt (* returns an element of the table, and raises Internal_error if it is empty *)
+  val add_new_elt : t -> elt -> t * int (* adds a new element and returns the corresponding fresh index. *)
+  val find : t -> int -> elt (* same as find_opt but raises Internal_error if not found *)
+  val remove : t -> int -> t (* removes an element at a given index *)
+  val replace : t -> int -> elt -> t (* replaces an element at an index *)
+  val map : (int -> elt -> elt) -> t -> t (* applies a function on each element *)
+  val filter : (int -> elt -> bool) -> t -> t (* removes all elements whose index do not satisfy a given predicate *)
+  val map_filter : (int -> elt -> elt option) -> t -> t (* applies map but removes elements if the transformation returns None. *)
+  val iter : (int -> elt -> unit) -> t -> unit (* iterates an operation. NB. This operation should *not* modify the table itself. *)
+  (* val copy : t -> t (* creates a static copy of the table *) *)
+  val elements : (int -> elt -> 'a) -> t -> 'a list (* computes the list of binders (index,element) of the table and stores them in a list, after applying a transformation to them. For example, elements (fun x _ -> x) set returns the list of indexes of set. *)
+end = struct
+  type index = int
+  type elt = O.elt
+
+  module M = Map.Make(struct type t = index let compare = compare end)
+  type t = elt M.t * index ref
+  let empty : t = M.empty, ref (-1)
+  let is_empty (set,_) = M.is_empty set
+  let choose (set,_) = snd (M.choose set)
+  let add_new_elt (set,ind) x = incr ind; (M.add !ind x set,ind),!ind
+  let replace (set,im) i x =  (M.replace i (fun _ -> x) set,im)
+  let find_opt (set,_) i = M.find_opt i set
+  let find set i =
+    match find_opt set i with
+    | None ->
+      Config.internal_error (Printf.sprintf "[equivalence_session.ml >> IndexedSet.find] Constraint system %d not found in table." i)
+    | Some x -> x
+  let remove (set,im) i = (M.remove i set,im)
+  let map f (set,i) = (M.mapi f set,i)
+  let filter f (set,im) =  (M.filter f set,im)
+  let map_filter f (set,i) = M.map_filter f set,i
+  let iter f (set,_) = M.iter f set
+  let elements f (set,_) =
+    M.fold (fun index elt accu -> f index elt::accu) set []
+end
 
 (* a module for representing symbolic processes (process with symbolic variables and constraint systems). Sets of symbolic processes are represented as mutable tables with indexes *)
 module Symbolic : sig
@@ -112,23 +153,22 @@ module Symbolic : sig
 
     (** instances of IndexedSet **)
     type t
-    val empty : unit -> t
+    val empty : t
     val is_empty : t -> bool
     val choose : t -> Process.t
     val find : t -> Index.t -> Process.t
     val iter : (Index.t -> Process.t -> unit) -> t -> unit
-    val map : (Index.t -> Process.t -> Process.t) -> t -> unit
-    val filter : (Index.t -> Process.t -> bool) -> t -> unit
-    val map_filter : (Index.t -> Process.t -> Process.t option) -> t -> unit
-    val copy : t -> t
-    val add_new_elt : t -> Process.t -> Index.t
+    val map : (Index.t -> Process.t -> Process.t) -> t -> t
+    val filter : (Index.t -> Process.t -> bool) -> t -> t
+    val map_filter : (Index.t -> Process.t -> Process.t option) -> t -> t
+    val add_new_elt : t -> Process.t -> t * Index.t
 
 
     val cast : t -> Index.t Constraint_system.Set.t (* cast into a usual constraint system set *)
     val decast : t -> Matching.t -> Index.t Constraint_system.Set.t -> t * Matching.t (* restrict a set and a matching based on the indexes remaining in a Constraint_system.Set.t after calling the constraint solver.
     NB. Performs an attack check at the same time, and raises Attack_Witness if one is found *)
-    val clean : t -> Matching.t -> unit (* removes the existential status of the processes of a set that are not used as matchers *)
-    val remove_unauthorised_blocks : t -> Matching.t -> (snd_ord, axiom) Subst.t -> Matching.t (* removes the processes of a set that start faulty traces, and removes their universal status in the matching *)
+    val clean : t -> Matching.t -> t (* removes the existential status of the processes of a set that are not used as matchers *)
+    val remove_unauthorised_blocks : t -> Matching.t -> (snd_ord, axiom) Subst.t -> t * Matching.t (* removes the processes of a set that start faulty traces, and removes their universal status in the matching *)
   end
 
   (* basic functions for computing the transitions from a symbolic process *)
@@ -138,7 +178,7 @@ module Symbolic : sig
     val get_label : transition -> Label.t
     val get_reduc : transition -> Labelled_process.t (* returns the subprocess on which the transition has been performed. The subprocess has already been transformed by the transition *)
     val get_target : transition -> Index.t
-    val generate : vars -> Configuration.Transition.kind option -> Set.t -> Process.t -> transition list
+    val generate : vars -> Configuration.Transition.kind option -> Set.t ref -> Process.t -> transition list
   end
 end = struct
   (* abstraction of integer indexes *)
@@ -258,25 +298,25 @@ end = struct
 
     (* inverse operation: restrains a partition node based on the result of the constraint solver. Raises Attack_Witness if an attack is found. *)
     let decast (baseline:t) (matching:Matching.t) (csys_set:Index.t Constraint_system.Set.t) : t * Matching.t =
-      let res = copy baseline in
       let indexes_to_remove = ref [] in
-      map_filter (fun i cs ->
-        match Constraint_system.Set.find (fun cs -> i = Constraint_system.get_additional_data cs) csys_set with
-        | None ->
-          indexes_to_remove := i :: !indexes_to_remove;
-          None
-        | Some cs_upd ->
-          let add_data = Constraint_system.get_additional_data cs in
-          Some (Constraint_system.replace_additional_data cs_upd add_data)
-      ) res;
+      let new_procs =
+        map_filter (fun i cs ->
+          match Constraint_system.Set.find (fun cs -> i = Constraint_system.get_additional_data cs) csys_set with
+          | None ->
+            indexes_to_remove := i :: !indexes_to_remove;
+            None
+          | Some cs_upd ->
+            let add_data = Constraint_system.get_additional_data cs in
+            Some (Constraint_system.replace_additional_data cs_upd add_data)
+        ) baseline in
       match Matching.remove matching !indexes_to_remove with
       | _, Some index ->
         (* Printf.printf "Oh, %s triggers an attack!\n" (Index.to_string index); *)
-        raise (Process.Attack_Witness (find res index))
-      | cleared_matching, None -> res,cleared_matching
+        raise (Process.Attack_Witness (find new_procs index))
+      | cleared_matching, None -> new_procs,cleared_matching
 
     (* removing useless constraint systems (exists-only matching no forall) *)
-    let clean (csys_set:t) (m:Matching.t) : unit =
+    let clean (csys_set:t) (m:Matching.t) : t =
       let useless_existential_index index =
         List.for_all (fun (_,cs_ex_list) ->
           List.for_all (fun (cs_ex,_) -> cs_ex <> index) cs_ex_list
@@ -294,22 +334,29 @@ end = struct
 
     (* remove configurations with unauthorised blocks, and returns the updated
     matching *)
-    let remove_unauthorised_blocks (csys_set:t) (matching:Matching.t) (snd_subst:(snd_ord,axiom) Subst.t) : Matching.t =
-      List.fold_left (fun accu ((cs_fa,_) as m) ->
-        let cs = find csys_set cs_fa in
-        let symp = Constraint_system.get_additional_data cs in
-        if Configuration.check_block snd_subst symp.conf then m::accu
-        else (
-          (* Printf.printf "index %d -> non authorised block\n" cs_fa; *)
-          begin match symp.status with
-          | Both ->
-            replace csys_set cs_fa (Constraint_system.replace_additional_data cs {symp with status = Exists})
-          | ForAll -> remove csys_set cs_fa
-          | Exists ->
-            Config.internal_error "[equivalence_session.ml >> remove_unauthorised_blocks] A purely-existential constraint system should not appear in the first components of matching." end;
-          accu
-        )
-      ) [] matching
+    let remove_unauthorised_blocks (csys_set:t) (matching:Matching.t) (snd_subst:(snd_ord,axiom) Subst.t) : t * Matching.t =
+      let (indexes_to_remove,new_matching) =
+        List.fold_left (fun (accu_ind,accu_match) ((cs_fa,_) as m) ->
+          let cs = find csys_set cs_fa in
+          let symp = Constraint_system.get_additional_data cs in
+          if Configuration.check_block snd_subst symp.conf then
+            accu_ind,m::accu_match
+          else cs_fa::accu_ind,accu_match
+        ) ([],[]) matching in
+      let new_procs =
+        map_filter (fun i cs ->
+          (* Printf.printf "index %d -> non authorised block\n" i; *)
+          let symp = Constraint_system.get_additional_data cs in
+          if List.mem i indexes_to_remove then
+            match symp.status with
+            | Both ->
+              Some (Constraint_system.replace_additional_data cs {symp with status = Exists})
+            | ForAll -> None
+            | Exists ->
+              Config.internal_error "[equivalence_session.ml >> remove_unauthorised_blocks] A purely-existential constraint system should not appear in the first components of matching."
+          else Some cs
+        ) csys_set in
+      new_procs,new_matching
   end
 
   module Transition = struct
@@ -326,27 +373,29 @@ end = struct
     let get_target t =
       t.target
 
-    let add_transition_start (csys_set:Set.t) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord, Term.name) Subst.t) (cs:Process.t) (lab:Label.t) : unit =
+    let add_transition_start (csys_set:Set.t ref) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord, Term.name) Subst.t) (cs:Process.t) (lab:Label.t) (status:Status.t) : unit =
       Configuration.normalise lab conf eqn (fun gather conf_norm new_proc ->
         let equations = Labelled_process.Normalise.equations gather in
         let disequations = Labelled_process.Normalise.disequations gather in
         try
           let cs1 = Constraint_system.apply_substitution cs equations in
           let cs2 = Constraint_system.add_disequations cs1 disequations in
-          let cs3 = Process.successor cs2 conf_norm Both in
+          let cs3 = Process.successor cs2 conf_norm status in
+          let (new_set,target) = Set.add_new_elt !csys_set cs3 in
 
           let transition = {
-            target = Set.add_new_elt csys_set cs3;
+            target = target;
             label = lab;
             forall = true;
             new_proc = new_proc;
           } in
-          accu := transition :: !accu
+          accu := transition :: !accu;
+          csys_set := new_set
         with
           | Constraint_system.Bot -> ()
       )
 
-    let add_transition_output (csys_set:Set.t) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord, Term.name) Subst.t) (cs:Process.t) (ax:axiom) (od:Labelled_process.output_data) (new_status:Status.t) : unit =
+    let add_transition_output (csys_set:Set.t ref) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord, Term.name) Subst.t) (cs:Process.t) (ax:axiom) (od:Labelled_process.output_data) (new_status:Status.t) : unit =
       Configuration.normalise ~context:od.context od.lab conf eqn (fun gather conf_norm new_proc ->
         let equations = Labelled_process.Normalise.equations gather in
         let disequations = Labelled_process.Normalise.disequations gather in
@@ -360,19 +409,21 @@ end = struct
           let cs3 =
             Constraint_system.add_disequations cs2 disequations in
           let cs4 = Process.successor cs3 conf_norm new_status in
+          let (new_set,target) = Set.add_new_elt !csys_set cs4 in
 
           let transition = {
-            target = Set.add_new_elt csys_set cs4;
+            target = target;
             label = od.lab;
             forall = od.optim;
             new_proc = new_proc;
           } in
-          accu := transition :: !accu
+          accu := transition :: !accu;
+          csys_set := new_set
         with
           | Constraint_system.Bot -> ()
       )
 
-    let add_transition_input (csys_set:Set.t) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord,Term.name) Subst.t) (cs:Process.t) (var_X:snd_ord_variable) (idata:Labelled_process.input_data) (new_status:Status.t) : unit =
+    let add_transition_input (csys_set:Set.t ref) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord,Term.name) Subst.t) (cs:Process.t) (var_X:snd_ord_variable) (idata:Labelled_process.input_data) (new_status:Status.t) : unit =
       Configuration.normalise idata.lab conf eqn (fun gather conf_norm new_proc ->
         let equations = Labelled_process.Normalise.equations gather in
         let disequations = Labelled_process.Normalise.disequations gather in
@@ -387,19 +438,21 @@ end = struct
           let cs3 =
             Constraint_system.add_disequations cs2 disequations in
           let cs4 = Process.successor cs3 conf_norm new_status in
+          let (new_set,target) = Set.add_new_elt !csys_set cs4 in
 
           let transition = {
-            target = Set.add_new_elt csys_set cs4;
+            target = target;
             label = idata.lab;
             forall = idata.optim;
             new_proc = new_proc;
           } in
-          accu := transition :: !accu
+          accu := transition :: !accu;
+          csys_set := new_set
         with
           | Constraint_system.Bot -> ()
       )
 
-    let generate (v:vars) (type_of_transition:Configuration.Transition.kind option) (csys_set:Set.t) (cs:Process.t) : transition list =
+    let generate (v:vars) (type_of_transition:Configuration.Transition.kind option) (csys_set:Set.t ref) (cs:Process.t) : transition list =
       let status = Process.get_status cs in
       let symp = Constraint_system.get_additional_data cs in
       let accu : transition list ref = ref [] in
@@ -408,7 +461,7 @@ end = struct
       | Some RStart ->
         let conf = Configuration.Transition.apply_start symp.conf in
         let eqn = Constraint_system.get_substitution_solution Protocol cs in
-        add_transition_start csys_set accu conf eqn cs Label.initial
+        add_transition_start csys_set accu conf eqn cs Label.initial symp.status
       | Some RNeg ->
         let ax = get_axiom v in
         List.iter_with_memo (fun proc memo ->
@@ -523,7 +576,7 @@ module PartitionTree : sig
     val init : Symbolic.Set.t -> Symbolic.Matching.t -> t (* creates the root of the partition tree from an initial set and a matching *)
     val print : t -> unit (* prints out the data of a node *)
     val release_skeleton : t -> t (* marks the skeletons as checked and removes the proof obligations corresponding to improper blocks *)
-    val clean : t -> unit (* application of Symbolic.Set.clean *)
+    val clean : t -> t (* application of Symbolic.Set.clean *)
     val generate_next : t -> Configuration.Transition.kind option * t (* computes the transitions from a given node, and puts all the new processes into one new node *)
     val split : t -> (t->(unit->unit)->unit) -> (unit->unit) -> unit (* splits a node into several subnode with independent matchings *)
     val decast : t -> Symbolic.Index.t Constraint_system.Set.t -> t (* after the constraint solver removes constraints systems from a Constraint_system.Set.t, [decast] applies the same restriction to the Symbolic.Set.t and the corresponding matching *)
@@ -588,18 +641,21 @@ end = struct
 
     let release_skeleton (n:t) : t =
       let improper_indexes = ref [] in
-      Symbolic.Set.map_filter (fun index csys ->
-        let conf = Symbolic.Process.get_conf csys in
-        match Configuration.release_skeleton conf with
-        | None ->
-          improper_indexes := index :: !improper_indexes; None
-        | Some conf_rel ->
-          Some (Symbolic.Process.replace_conf csys conf_rel)
-      ) n.csys_set;
-      {n with matching = Symbolic.Matching.clean n.matching !improper_indexes}
+      let new_set =
+        Symbolic.Set.map_filter (fun index csys ->
+          let conf = Symbolic.Process.get_conf csys in
+          match Configuration.release_skeleton conf with
+          | None ->
+            improper_indexes := index :: !improper_indexes; None
+          | Some conf_rel ->
+            Some (Symbolic.Process.replace_conf csys conf_rel)
+        ) n.csys_set in
+      {n with
+        csys_set = new_set;
+        matching = Symbolic.Matching.clean n.matching !improper_indexes}
 
-    let clean (n:t) : unit =
-      Symbolic.Set.clean n.csys_set n.matching
+    let clean (n:t) : t =
+      {n with csys_set = Symbolic.Set.clean n.csys_set n.matching}
 
     (* From a partition tree node, generates the transitions and creates a new node with all the resulting processes inside. A
     NB. The constraint solving and the skeleton checks remain to be done after this function call. *)
@@ -607,15 +663,17 @@ end = struct
       let new_id = fresh_id () in
 
       (** Generation of the transitions **)
-      let new_csys_set = Symbolic.Set.empty() in
       let (trans,vars) = data_next_transition n in
-      Symbolic.Set.map (fun i csys ->
-        let next_transitions =
-          Symbolic.Transition.generate vars trans new_csys_set csys in
-        (* Printf.printf "Transitions generated from %s: \n" (Symbolic.Index.to_string i);
-        List.iter (fun tr -> Symbolic.Transition.print i tr; print_endline "") next_transitions; *)
-        Symbolic.Process.set_transitions csys next_transitions
-      ) n.csys_set;
+      let new_csys_set = ref Symbolic.Set.empty in
+      let csys_set_with_transitions =
+        Symbolic.Set.map (fun i csys ->
+          let next_transitions =
+            Symbolic.Transition.generate vars trans new_csys_set csys in
+          (* Printf.printf "Transitions generated from %s: \n" (Symbolic.Index.to_string i);
+          List.iter (fun tr -> Symbolic.Transition.print i tr; print_endline "") next_transitions; *)
+          Symbolic.Process.set_transitions csys next_transitions
+        ) n.csys_set in
+      let new_csys_set = !new_csys_set in
 
       let get_conf i =
         Symbolic.Process.get_conf (Symbolic.Set.find new_csys_set i) in
@@ -624,13 +682,13 @@ end = struct
 
       let new_matching =
         Symbolic.Matching.fold (fun cs_fa cs_ex_list (accu1:Symbolic.Matching.t) ->
-          let symp_fa = Symbolic.Set.find n.csys_set cs_fa in
+          let symp_fa = Symbolic.Set.find csys_set_with_transitions cs_fa in
           List.fold_left (fun (accu2:Symbolic.Matching.t) (tr_fa:Symbolic.transition) ->
             if not (Symbolic.Transition.is_universal tr_fa) then accu2
             else
               let cs_ex_list_new =
                 List.fold_left (fun (accu3:(Symbolic.Index.t*BijectionSet.t) list) (cs_ex,bset) ->
-                  let symp_ex = Symbolic.Set.find n.csys_set cs_ex in
+                  let symp_ex = Symbolic.Set.find csys_set_with_transitions cs_ex in
                   List.fold_left (fun (accu4:(Symbolic.Index.t*BijectionSet.t) list) (tr_ex:Symbolic.transition) ->
                     let lab_fa = Symbolic.Transition.get_label tr_fa in
                     let lab_ex = Symbolic.Transition.get_label tr_ex in
@@ -649,8 +707,8 @@ end = struct
         ) n.matching Symbolic.Matching.empty in
 
       (** final node **)
-      let new_node = {n with csys_set = new_csys_set; matching = new_matching; id = new_id} in
-      clean new_node;
+      let new_node =
+        clean {n with csys_set = new_csys_set; matching = new_matching; id = new_id} in
       trans,new_node
 
     (* splits a partition tree node into independent component (i.e. into components whose matchings are disjoint) and applies a continuation on each of them. *)
@@ -666,10 +724,10 @@ end = struct
       let new_node_data =
         Symbolic.Matching.fold add_matching_in_data_list n.matching (List.rev_map (fun c -> Symbolic.Matching.empty,c) comps) in
       let replace_data m c =
-        let csys_set = Symbolic.Set.copy n.csys_set in
-        Symbolic.Set.filter (fun i _ ->
-          Graph.ConnectedComponent.mem i c
-        ) csys_set;
+        let csys_set =
+          Symbolic.Set.filter (fun i _ ->
+            Graph.ConnectedComponent.mem i c
+          ) n.csys_set in
         {n with csys_set = csys_set; matching = m; id = fresh_id()} in
 
       let rec branch_on_nodes l f_next =
@@ -698,9 +756,9 @@ end = struct
         Constraint_system.Set.optimise_snd_ord_recipes csys_set in
       let csys = Constraint_system.Set.choose csys_set_opt in
       let subst = Constraint_system.get_substitution_solution Recipe csys in
-      let matching_authorised =
+      let (new_set,matching_authorised) =
         Symbolic.Set.remove_unauthorised_blocks node.csys_set node.matching subst in
-      {node with matching = matching_authorised}
+      {node with csys_set = new_set; matching = matching_authorised}
   end
 
   (* construction of the successor nodes of a partition tree. This includes:
@@ -709,7 +767,7 @@ end = struct
     - performing skeleton/block-authorisation checks on the resulting nodes.
   NB. The continuations f_cont indicates what to do with the generated nodes, and f_next what to do once all nodes have been explored. *)
   let generate_successors (n:Node.t) (f_cont:Node.t->(unit->unit)->unit) (f_next:unit->unit) : unit =
-    Node.clean n;
+    let n = Node.clean n in
     (* Printf.printf "\n==> EXPLORATION FROM %s\n" n.id;
     Node.print n; *)
     let (transition_type,node_to_split) = Node.generate_next n in
@@ -807,24 +865,29 @@ let compute_root (goal:goal) (conf1:Configuration.t) (conf2:Configuration.t) : P
   Data_structure.Tools.initialise_constructor ();
 
   (* initial set of symbolic processes *)
-  let csys_set_root = Symbolic.Set.empty() in
+  let csys_set_root = Symbolic.Set.empty in
   let (status_left,status_right) =
     match goal with
     | Equivalence ->
       (Symbolic.Status.init_for_equivalence, Symbolic.Status.init_for_equivalence)
     | Inclusion ->
       (Symbolic.Status.init_for_inclusion_left, Symbolic.Status.init_for_inclusion_right) in
-
   let symp1 = Symbolic.Process.init "LEFT" conf1 status_left in
-  let index1 = Symbolic.Set.add_new_elt csys_set_root symp1 in
+  let (csys_set_root,index1) = Symbolic.Set.add_new_elt csys_set_root symp1 in
   let symp2 = Symbolic.Process.init "RIGHT" conf2 status_right in
-  let index2 = Symbolic.Set.add_new_elt csys_set_root symp2 in
+  let (csys_set_root,index2) = Symbolic.Set.add_new_elt csys_set_root symp2 in
   let matching_root =
-    Symbolic.Matching.add_match index1 [index2,BijectionSet.initial] (
-      Symbolic.Matching.add_match index2 [index1,BijectionSet.initial] (
-        Symbolic.Matching.empty
+    match goal with
+    | Equivalence ->
+      Symbolic.Matching.add_match index1 [index2,BijectionSet.initial] (
+        Symbolic.Matching.add_match index2 [index1,BijectionSet.initial] (
+          Symbolic.Matching.empty
+        )
       )
-    ) in
+    | Inclusion ->
+      Symbolic.Matching.add_match index1 [index2,BijectionSet.initial] (
+        Symbolic.Matching.empty
+      ) in
   PartitionTree.Node.init csys_set_root matching_root
 
 (* overall analysis *)
