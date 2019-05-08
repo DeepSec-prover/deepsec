@@ -1,7 +1,6 @@
 (* Process manipulation for equivalence by session *)
 
 open Term
-open Display
 open Extensions
 
 
@@ -12,6 +11,8 @@ module Label : sig
   val add_position : t -> int -> t (* adds a position at the end of a label *)
   val independent : t -> t -> int (* returns 0 if one label is prefix of the other, and compares them lexicographically otherwise *)
   val to_string : t -> string (* conversion to printable *)
+  (* operations on sets of labels *)
+  module Set : Set.S with type elt = t
 end = struct
   type t = int list
   let initial = [0]
@@ -30,6 +31,7 @@ end = struct
           | 0 -> independent q1 q2
           | i -> i
   let to_list x = x
+  module Set = Set.Make(struct type t = int list let compare = compare end)
 end
 
 
@@ -1096,13 +1098,12 @@ module BijectionSet : sig
   val print : t -> unit
 end = struct
   (* sets of bijections with the skeleton-compatibility requirement *)
-  (* TODO. make the datastructure more efficient. Could be more practical when there are a lot of singletons to handle the operation "get all potential labels matching with a given label l". *)
-  module LabelSet = Set.Make(struct type t = Label.t let compare = compare end)
-  type t = (LabelSet.t * LabelSet.t) list
+  (* TODO. may ake the datastructure more efficient. Could be more practical when there are a lot of singletons to handle the operation "get all potential labels matching with a given label l". *)
+  type t = (Label.Set.t * Label.Set.t) list
 
   (* the initial bijection set *)
   let initial : t =
-    [LabelSet.singleton Label.initial, LabelSet.singleton Label.initial]
+    [Label.Set.singleton Label.initial, Label.Set.singleton Label.initial]
 
   (* partitions a list in equiv. classes wrt to some equivalence relation *)
   type 'a partition = 'a list list
@@ -1142,15 +1143,15 @@ end = struct
     | None -> None
     | Some l ->
       let convert procs =
-        LabelSet.of_list (List.rev_map Labelled_process.get_label procs) in
+        Label.Set.of_list (List.rev_map Labelled_process.get_label procs) in
       Some (List.fold_left (fun ac (ec1,ec2) -> (convert ec1, convert ec2) :: ac) accu l)
 
   (* prints a bijection set *)
   let print (bset:t) : unit =
     List.iter (fun (s1,s2) ->
-      LabelSet.iter (fun lab -> Printf.printf "%s;" (Label.to_string lab)) s1;
+      Label.Set.iter (fun lab -> Printf.printf "%s;" (Label.to_string lab)) s1;
       Printf.printf "   [MATCHABLE WITH]   ";
-      LabelSet.iter (fun lab -> Printf.printf "%s;" (Label.to_string lab)) s2;
+      Label.Set.iter (fun lab -> Printf.printf "%s;" (Label.to_string lab)) s2;
       print_endline "";
     ) bset
 
@@ -1161,20 +1162,20 @@ end = struct
       match s with
       | [] -> None
       | (ll1,ll2) :: t ->
-        match LabelSet.find_opt l1 ll1, LabelSet.find_opt l2 ll2 with
+        match Label.Set.find_opt l1 ll1, Label.Set.find_opt l2 ll2 with
         | None,None -> search ((ll1,ll2) :: memo) t
         | Some _,Some _ ->
           let label_discardable =
             Labelled_process.not_pure_io_toplevel p1 || Labelled_process.not_pure_io_toplevel p2 in
           let bset_upd =
-            if LabelSet.is_singleton ll1 then
+            if Label.Set.is_singleton ll1 then
               if label_discardable then List.rev_append memo t
               else List.rev_append memo ((ll1,ll2)::t)
             else
-              let ll1' = LabelSet.remove l1 ll1 in
-              let ll2' = LabelSet.remove l2 ll2 in
-              let single1 = LabelSet.singleton l1 in
-              let single2 = LabelSet.singleton l2 in
+              let ll1' = Label.Set.remove l1 ll1 in
+              let ll2' = Label.Set.remove l2 ll2 in
+              let single1 = Label.Set.singleton l1 in
+              let single2 = Label.Set.singleton l2 in
               if label_discardable then List.rev_append memo ((ll1',ll2')::t)
               else List.rev_append memo ((single1,single2)::(ll1',ll2')::t) in
             if Labelled_process.not_pure_io_toplevel p1 || Labelled_process.not_pure_io_toplevel p2 then
@@ -1185,11 +1186,12 @@ end = struct
 
 
   (* given a bijection set and a label l, computes the set of labels that are
-  compatible with l wrt one bijection. *)
+  compatible with l wrt one bijection.
+  NB. Not used anymore in the current version *)
   let get_compatible_labels (l:Label.t) (s:t) : Label.t list =
-    match List.find_opt (fun (labset,_) -> LabelSet.mem l labset) s with
+    match List.find_opt (fun (labset,_) -> Label.Set.mem l labset) s with
     | None -> Config.internal_error "[process_session.ml >> get_compatible_labels] Unexpected case"
-    | Some pair -> LabelSet.elements (snd pair)
+    | Some pair -> Label.Set.elements (snd pair)
 end
 
 
