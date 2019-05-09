@@ -1,0 +1,90 @@
+% PACKAGE FOR RENDERING NICE LATEX USING MARKDOWN
+% Itsaka Rakotonirina, september 2018
+%
+%
+% possible languages (options): english (by default), french
+
+
+\NeedsTeXFormat{LaTeX2e}[1999/01/01]
+\ProvidesPackage{chetor}[05/02/2014]
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% OPTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newif\if@english \@englishtrue
+\newif\if@french \@frenchfalse
+
+\DeclareOption{french}{\@frenchtrue \@englishfalse}
+\DeclareOption{english}{\@frenchfalse \@englishtrue}
+\DeclareOption*{}
+\ProcessOptions
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PACKAGES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\RequirePackage[utf8]{inputenc}
+\if@english
+	\RequirePackage[english]{babel}
+\fi
+\if@french
+	\RequirePackage[french]{babel}
+\fi
+
+\RequirePackage[T1]{fontenc}
+\RequirePackage[tt=false]{libertine}
+\RequirePackage{amsthm} % should be loaded before newtxmath
+\RequirePackage[libertine]{newtxmath}
+\newcommand\todo{{\color{red} todo}\xspace}
+% \usepackage{a4wide}
+\usepackage{fullpage}
+\let\bfseriesbis=\bfseries
+\def\bfseries{\sffamily\bfseriesbis}
+\setlength\parskip{0.3\baselineskip}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% BASIC COMMANDS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\newcommand\pic{{$\cdot$}}
+\newcommand\etal{{\it et al.}\xspace}
+
+\if@french
+	\newcommand\ssi{\mathit{ssi}\xspace}
+	\renewcommand\iff{\mathit{ssi}\xspace}
+	\renewcommand\th{\mathit{e}\xspace}
+\fi
+\if@english
+	\newcommand\ssi{\mathit{iff}\xspace}
+	\renewcommand\iff{\mathit{iff}\xspace}
+	\renewcommand\th{\mathit{th}\xspace}
+\fi
+
+
+% SETS
+\newcommand\eint[2]{\llbracket #1,#2\rrbracket}
+\newcommand\N{\mathbb N}
+\newcommand\R{\mathcal R}
+\newcommand\Z{\mathbb Z}
+\let\oldemptyset\emptyset
+\let\emptyset\varnothing
+\let\oldepsilon\epsilon
+\let\epsilon\varepsilon
+\let\oldrho\rho
+\let\rho\varrho
+
+
+
+% auxiliary stuff for Markdown
+\renewcommand\rule[2]{} % reoving badly-looking rules
+
+
+
+\endinput
