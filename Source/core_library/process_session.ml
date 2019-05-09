@@ -809,7 +809,7 @@ end = struct
         lp
       | Par l -> {lp with proc = Par (List.map restaure_sym l)}
       | Bang(b,l1,l2) -> (* non trivial restauration: symmetry cannot be restaured to Strong *)
-        {lp with proc = Bang (b,[],List.map restaure_sym l1 @ l2)}
+        {lp with proc = Bang (Partial,[],List.map restaure_sym l1 @ l2)}
       | Let _
       | If _
       | New _

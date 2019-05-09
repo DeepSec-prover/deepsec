@@ -508,6 +508,7 @@ end = struct
         let found = ref false in
         let size = ref 0 in
         Symbolic.Set.iter (fun _ p ->
+          Printf.printf "origin: %s, " (Symbolic.Process.get_origin_process p);
           Symbolic.Status.print (Symbolic.Process.get_status p);
           print_string "\n";
           incr size;
@@ -723,7 +724,9 @@ end = struct
         Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
           let node_decast = Node.decast node csys_set in
           let final_node = Node.release_skeleton node_decast in
-          f_cont final_node f_next2
+          Node.split final_node (fun node_split f_next3 ->
+            f_cont node_split f_next3
+          ) f_next2
         ) csys_set f_next1
       | Some RFocus ->
         (* focus and execution of an input. *)
@@ -734,7 +737,9 @@ end = struct
             let node_autho =
               Node.remove_unauthorised_blocks node_decast csys_set in
             let final_node = Node.release_skeleton node_autho in
-            f_cont final_node f_next2
+            Node.split final_node (fun node_split f_next3 ->
+              f_cont node_split f_next3
+            ) f_next2
         ) csys_set f_next1
       | Some RPos ->
         (* execution of a focused input. The skeleton check releases the focus if necessary, and unauthorised blocks may arise due to the constraint solving. *)
@@ -744,7 +749,9 @@ end = struct
             let node_decast = Node.decast node csys_set in
             let node_autho = Node.remove_unauthorised_blocks node_decast csys_set in
             let final_node = Node.release_skeleton node_autho in
-            f_cont final_node f_next2
+            Node.split final_node (fun node_split f_next3 ->
+              f_cont node_split f_next3
+            ) f_next2
         ) csys_set f_next1
       | Some RNeg ->
         (* execution of outputs. Similar to the input case, except that the size of the frame is increased by one. *)
@@ -755,7 +762,9 @@ end = struct
             let node_autho =
               Node.remove_unauthorised_blocks node_decast csys_set in
             let final_node = Node.release_skeleton node_autho in
-            f_cont {final_node with size_frame = node.size_frame+1} f_next2
+            Node.split {final_node with size_frame = node.size_frame+1} (fun node_split f_next3 ->
+              f_cont node_split f_next3
+            ) f_next2
         ) csys_set f_next1
     ) f_next
     end
