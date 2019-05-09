@@ -1,13 +1,5 @@
-DeepSec - DEciding Equivalence Properties for SECurity protocols
-Version: 1.01
-Git hash: )
-Git branch: GITBRANCH
+Attack BAC 3
 
-Opening file Examples/session_equivalence/BAC/BAC-3sessions.dps
-Executing the queries...
-
-Executing query 1...
-Result query 1: Not Equivalent processes. Attack Trace:
 [1;34m
 Origin (LEFT process):
 [0m
@@ -784,4 +776,3 @@ X
    in(c,y_146)
 |
    [1;31mout(c,Error_6300)[0m
-Running time: 2s
