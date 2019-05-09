@@ -1,13 +1,5 @@
-DeepSec - DEciding Equivalence Properties for SECurity protocols
-Version: 1.01
-Git hash: )
-Git branch: GITBRANCH
+BAC 5 (4 identical passports + 1 fresh passports) attack
 
-Opening file Examples/session_equivalence/BAC/BAC-5sessions-1fresh.dps
-Executing the queries...
-
-Executing query 1...
-Result query 1: Not Equivalent processes. Attack Trace:
 [1;34m
 Origin (LEFT process):
 [0m
@@ -1628,4 +1620,3 @@ X
    in(c,y_292)
 |
    [1;31mout(c,Error_6300)[0m
-Running time: 30s
