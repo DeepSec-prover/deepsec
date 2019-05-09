@@ -1,3 +1,4 @@
+(* reimplementation and extension of the module List *)
 module List = struct
 
   include List
@@ -70,8 +71,8 @@ module List = struct
     fold_left_with_memo (fun () -> f) () l
 end
 
-let flip (f:'a->'b->'c) : 'b->'a->'c = fun x y -> f y x
 
+(* reimplementation and extension of the module Map *)
 module Map = struct
   (**************************************************************************)
   (*                                                                        *)
@@ -710,6 +711,7 @@ module Map = struct
 end
 
 
+(* reimplementation and extension of the module Set *)
 module Set = struct
   (**************************************************************************)
   (*                                                                        *)
@@ -1289,6 +1291,90 @@ module Set = struct
 end
 
 
+(* multisets represented as maps from elements to multiplicity *)
+module Multiset = struct
+  (* functions of the module *)
+  module type S = sig
+    type t
+    type elt
+    val empty : t (* an empty multiset *)
+    val add : elt -> t -> t (* increases the multiplicity of an element *)
+    val remove : elt -> t -> t (* decreases the multiplicity of an element (internal error if the element is not already present) *)
+    val mem : elt -> t -> bool (* checks membership *)
+  end
+
+  (* instanciation *)
+  module Make(O:sig type t val compare : t -> t -> int end) = struct
+    type elt = O.t
+
+    module MS = Map.Make(O)
+    type t = int MS.t
+
+    let empty = MS.empty
+    let add x set =
+      match MS.find_opt x set with
+      | None -> MS.add x 1 set
+      | Some n -> MS.add x (n+1) set
+    let remove x set =
+      match MS.find_opt x set with
+      | None -> Config.internal_error "[process_session.ml >> Multiset.remove] removing an absent channel."
+      | Some 1 -> MS.remove x set
+      | Some n -> MS.add x (n+1) set
+    let mem x set =
+      MS.find_opt x set <> None
+  end
+end
+
+
+(* sets modelled as maps with implicit integer keys. Useful on types where the comparison function is not available *)
+module IndexedSet = struct
+  module type S = sig
+    type t
+    type elt
+    val empty : t (* creates an empty data structure. *)
+    val is_empty : t -> bool (* checks the emptiness of the table *)
+    val choose : t -> elt (* returns an element of the table, and raises Internal_error if it is empty *)
+    val add_new_elt : t -> elt -> t * int (* adds a new element and returns the corresponding fresh index. *)
+    val find : t -> int -> elt (* same as find_opt but raises Internal_error if not found *)
+    val remove : t -> int -> t (* removes an element at a given index *)
+    val replace : t -> int -> elt -> t (* replaces an element at an index *)
+    val map : (int -> elt -> elt) -> t -> t (* applies a function on each element *)
+    val filter : (int -> elt -> bool) -> t -> t (* removes all elements whose index do not satisfy a given predicate *)
+    val map_filter : (int -> elt -> elt option) -> t -> t (* applies map but removes elements if the transformation returns None. *)
+    val iter : (int -> elt -> unit) -> t -> unit (* iterates an operation. NB. This operation should *not* modify the table itself. *)
+    (* val copy : t -> t (* creates a static copy of the table *) *)
+    val elements : (int -> elt -> 'a) -> t -> 'a list (* computes the list of binders (index,element) of the table and stores them in a list, after applying a transformation to them. For example, elements (fun x _ -> x) set returns the list of indexes of set. *)
+  end
+
+  module Make(O:sig type elt end) : S with type elt = O.elt = struct
+    type index = int
+    type elt = O.elt
+
+    module M = Map.Make(struct type t = index let compare = compare end)
+    type t = elt M.t * index ref
+    let empty : t = M.empty, ref (-1)
+    let is_empty (set,_) = M.is_empty set
+    let choose (set,_) = snd (M.choose set)
+    let add_new_elt (set,ind) x = incr ind; (M.add !ind x set,ind),!ind
+    let replace (set,im) i x =  (M.replace i (fun _ -> x) set,im)
+    let find_opt (set,_) i = M.find_opt i set
+    let find set i =
+      match find_opt set i with
+      | None ->
+        Config.internal_error (Printf.sprintf "[equivalence_session.ml >> IndexedSet.find] Constraint system %d not found in table." i)
+      | Some x -> x
+    let remove (set,im) i = (M.remove i set,im)
+    let map f (set,i) = (M.mapi f set,i)
+    let filter f (set,im) =  (M.filter f set,im)
+    let map_filter f (set,i) = M.map_filter f set,i
+    let iter f (set,_) = M.iter f set
+    let elements f (set,_) =
+      M.fold (fun index elt accu -> f index elt::accu) set []
+  end
+end
+
+
+(* functional loops over integers *)
 module Func = struct
   let rec loop f x i n = if i > n then x else loop f (f i x) (i+1) n
   let rec downloop f x i n = if i < n then x else downloop f (f i x) (i-1) n

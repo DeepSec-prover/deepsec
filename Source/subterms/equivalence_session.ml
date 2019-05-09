@@ -1,50 +1,7 @@
 open Extensions
 open Term
-open Display
 open Process_session
 
-
-module IndexedSet (O:sig type elt end) : sig
-  type t
-  type elt = O.elt
-  val empty : t (* creates an empty data structure. *)
-  val is_empty : t -> bool (* checks the emptiness of the table *)
-  val choose : t -> elt (* returns an element of the table, and raises Internal_error if it is empty *)
-  val add_new_elt : t -> elt -> t * int (* adds a new element and returns the corresponding fresh index. *)
-  val find : t -> int -> elt (* same as find_opt but raises Internal_error if not found *)
-  val remove : t -> int -> t (* removes an element at a given index *)
-  val replace : t -> int -> elt -> t (* replaces an element at an index *)
-  val map : (int -> elt -> elt) -> t -> t (* applies a function on each element *)
-  val filter : (int -> elt -> bool) -> t -> t (* removes all elements whose index do not satisfy a given predicate *)
-  val map_filter : (int -> elt -> elt option) -> t -> t (* applies map but removes elements if the transformation returns None. *)
-  val iter : (int -> elt -> unit) -> t -> unit (* iterates an operation. NB. This operation should *not* modify the table itself. *)
-  (* val copy : t -> t (* creates a static copy of the table *) *)
-  val elements : (int -> elt -> 'a) -> t -> 'a list (* computes the list of binders (index,element) of the table and stores them in a list, after applying a transformation to them. For example, elements (fun x _ -> x) set returns the list of indexes of set. *)
-end = struct
-  type index = int
-  type elt = O.elt
-
-  module M = Map.Make(struct type t = index let compare = compare end)
-  type t = elt M.t * index ref
-  let empty : t = M.empty, ref (-1)
-  let is_empty (set,_) = M.is_empty set
-  let choose (set,_) = snd (M.choose set)
-  let add_new_elt (set,ind) x = incr ind; (M.add !ind x set,ind),!ind
-  let replace (set,im) i x =  (M.replace i (fun _ -> x) set,im)
-  let find_opt (set,_) i = M.find_opt i set
-  let find set i =
-    match find_opt set i with
-    | None ->
-      Config.internal_error (Printf.sprintf "[equivalence_session.ml >> IndexedSet.find] Constraint system %d not found in table." i)
-    | Some x -> x
-  let remove (set,im) i = (M.remove i set,im)
-  let map f (set,i) = (M.mapi f set,i)
-  let filter f (set,im) =  (M.filter f set,im)
-  let map_filter f (set,i) = M.map_filter f set,i
-  let iter f (set,_) = M.iter f set
-  let elements f (set,_) =
-    M.fold (fun index elt accu -> f index elt::accu) set []
-end
 
 (* a module for representing symbolic processes (process with symbolic variables and constraint systems). Sets of symbolic processes are represented as mutable tables with indexes *)
 module Symbolic : sig
@@ -237,7 +194,7 @@ end = struct
   end
 
   module Set = struct
-    include IndexedSet(struct type elt = Process.t end)
+    include IndexedSet.Make(struct type elt = Process.t end)
 
     let cast (csys_set:t) : Index.t Constraint_system.Set.t =
       Constraint_system.Set.of_list (elements (fun x cs -> Constraint_system.replace_additional_data cs x) csys_set)

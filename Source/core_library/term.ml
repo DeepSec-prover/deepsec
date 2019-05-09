@@ -3516,12 +3516,13 @@ module Rewrite_rules = struct
     match Subst.unify_protocol_opt (List.combine lhs1 lhs2) with
     | None -> None
     | Some subst ->
-        match Subst.apply subst (rhs1 :: rhs2 :: lhs1) (flip List.map) with
-        | rhs1' :: rhs2' :: lhs ->
-            if is_equal Protocol rhs1' rhs2'
-            then None
-            else Some(lhs,rhs1',rhs2')
-        | _ -> Config.internal_error "[term.ml >> critical_pair_joinable] unexpected case"
+      let flip (f:'a->'b->'c) : 'b->'a->'c = fun x y -> f y x in
+      match Subst.apply subst (rhs1 :: rhs2 :: lhs1) (flip List.map) with
+      | rhs1' :: rhs2' :: lhs ->
+          if is_equal Protocol rhs1' rhs2'
+          then None
+          else Some(lhs,rhs1',rhs2')
+      | _ -> Config.internal_error "[term.ml >> critical_pair_joinable] unexpected case"
 
   (* verifies that the reduction rules of a given destructor are subterm
   convergent *)
