@@ -138,13 +138,15 @@ end = struct
 end
 
 (* multisets of unacessible private channels *)
-module PrivateChannels : sig
+module Channel : sig
   type t
   val equal : t -> t -> bool
   val compare : t -> t -> int
+  val is_public : t -> bool
   val to_string : t -> string
-  val from_symbol : symbol -> t
-  val from_name : name -> t
+  val from_term : protocol_term -> t
+  val apply_renaming : Name.Renaming.t -> t -> t
+  module Set : Set.S with type elt = t
 end = struct
   type t =
     | Symbol of symbol
@@ -157,20 +159,32 @@ end = struct
     | Name _, _ -> -1
   let equal (c:t) (d:t) : bool =
     compare c d = 0
+  let is_public (c:t) : bool =
+    match c with
+    | Symbol f -> Symbol.is_public f
+    | Name _ -> false
   let to_string (c:t) : string =
-    Printf.sprintf "<%s>" (
+    let b = is_public c in
+    let display =
       match c with
       | Symbol f -> Symbol.display Terminal f
-      | Name n -> Name.display Terminal n
-    )
-  let from_symbol (s:symbol) : t =
-    if not (Symbol.is_public s) then Symbol s
-    else Config.internal_error "[process_session.ml >> PrivateChannels.from_symbol] Unexpected case."
-  let from_name (n:name) : t=
-    Name n
+      | Name n -> Name.display Terminal n in
+    if b then display
+    else Printf.sprintf "<%s>" display
+  let from_term (t:protocol_term) : t =
+    if Term.is_symbol t then Symbol (Term.root t)
+    else if Term.is_name t then Name (Term.name_of t)
+    else Config.internal "[process_session.ml >> Channel.from_term] Channels should be names or symbols."
+  let apply_renaming (rho:Name.Renaming.t) (c:t) : t =
+    match c with
+    | Symbol _ -> c
+    | Name n ->
+      Name.Renaming.apply_on_terms rho (Term.of_name n) (fun x f -> f x)
+  type elt = t
+  module Set = Set.Make(struct type t = elt let compare = compare end)
 end
 
-module NonToplevelChannels = Multiset.Make(PrivateChannels)
+module NonToplevelChannels = Multiset.Make(Channel)
 
 (* a module for labelled processes *)
 module Labelled_process : sig
@@ -179,9 +193,9 @@ module Labelled_process : sig
   type bang_status
   type plain =
     | Start of t * id
-    | Input of symbol * fst_ord_variable * t * id
-    | Output of symbol * protocol_term * t * id
-    | OutputSure of symbol * protocol_term * t * id
+    | Input of Channel.t * fst_ord_variable * t * id
+    | Output of Channel.t * protocol_term * t * id
+    | OutputSure of Channel.t * protocol_term * t * id
     | If of protocol_term * protocol_term * t * t
     | Let of protocol_term * protocol_term * protocol_term * t * t
     | New of name * t
@@ -189,7 +203,7 @@ module Labelled_process : sig
     | Bang of bang_status * t list * t list
 
   val print : ?labels:bool -> ?solution:((fst_ord, name) Subst.t) -> ?highlight:id -> t -> string (* converts a process into a string, while highlighting the instruction at the given identifier *)
-  val of_expansed_process : ?optim:(t -> t) -> Process.expansed_process -> t (* converts an expansed process into a process starting with a Start constructor and label [initial]. Also attributes id to all observable instructions. *)
+  val of_expansed_process : ?preprocessing:(t -> t) -> Process.expansed_process -> t (* converts an expansed process into a process starting with a Start constructor and label [initial]. Also attributes id to all observable instructions. *)
   val of_process_list : t list -> t (* groups a list of processes together *)
   val elements : ?init:(t list) -> t -> t list (* extracts the list of parallel subprocesses *)
   val nil : t -> bool (* checks if this represents the null process *)
@@ -200,23 +214,24 @@ module Labelled_process : sig
   val get_label : t -> Label.t (* gets the label of a process, and returns an error message if it has not been assigned *)
   val get_proc : t -> plain
 
+
   (* extraction of inputs from processes *)
   module Input : sig
     type data = {
-      channel : symbol; (* channel on which the input is performed *)
+      channel : Channel.t; (* channel on which the input is performed *)
       var : fst_ord_variable; (* variable bound by the input *)
       optim : bool; (* whether this input is needed for forall processes *)
       lab : Label.t; (* label of the executed input *)
       leftovers : t list; (* what remains after the input is executed *)
       id : id; (* the id of the executed instruction *)
     }
-    val unfold : ?optim:bool -> t list -> (t * data) list (* function computing all potential ways of unfolding one input from a list of processes. *)
+    val unfold : ?optim:false -> (t-> data-> 'a) -> t list -> (t * data) list * 'a list  (* function computing all potential ways of unfolding one input from a list of processes. Private and Public inputs are separated and a transformation is applied to private inputs. *)
   end
 
   (* extraction of outputs from processes *)
   module Output : sig
     type data = {
-      channel : symbol; (* channel on which the output is performed *)
+      channel : Channel.t; (* channel on which the output is performed *)
       term : protocol_term; (* output term *)
       optim : bool; (* whether this output is needed for forall processes *)
       lab : Label.t; (* label of the executed output *)
@@ -226,6 +241,21 @@ module Labelled_process : sig
     val unfold : ?optim:bool -> t -> (t * data) list (* function computing all potential ways of unfolding one output from a process.
     NB. Unfolding outputs break symmetries (just as symmetries), but they can be restaured at the end of negative phases (see function [restaure_sym]). *)
     val restaure_sym : t -> t (* restaures symmetries that have been temporarily broken by unfolding outputs *)
+  end
+
+  (* extraction of private communications and public inputs (using the module Input) *)
+  module PrivateComm : sig =
+    type data = {
+      channel : Channel.t; (* channel on which the output is performed *)
+      var : fst_ord_variable; (* variable bound by the input *)
+      term : protocol_term; (* output term *)
+      optim : bool; (* whether this input is needed for forall processes *)
+      labs : Label.t * Label.t; (* labels of the executed input *)
+
+      leftovers : t list; (* what remains after the input is executed *)
+      ids : id * id; (* the ids of the executed instructions *)
+    }
+    val unfold : ?optim:bool -> t list -> (t * t * data) list * (t * data) list (* computes all potential unfolding of private communications and public inputs *)
   end
 
   (* operations on initial labelled process that do not affect the decision of equivalence but make it more efficient *)
@@ -259,9 +289,9 @@ end = struct
   }
   and plain =
     | Start of t * id (* a symbol that will only be found at the very toplevel of the initial processes, for convinience. Treated as an input action. *)
-    | Input of symbol * fst_ord_variable * t * id
-    | Output of symbol * protocol_term * t * id
-    | OutputSure of symbol * protocol_term * t * id
+    | Input of Channel.t * fst_ord_variable * t * id
+    | Output of Channel.t * protocol_term * t * id
+    | OutputSure of Channel.t * protocol_term * t * id
     | If of protocol_term * protocol_term * t * t
     | Let of protocol_term * protocol_term * protocol_term * t * t
     | New of name * t
@@ -293,7 +323,7 @@ end = struct
   let string_of_bang b n =
     match b with
     | Strong -> Printf.sprintf "!^%d" n
-    | Partial -> Printf.sprintf "!c^%d" n
+    | Partial -> Printf.sprintf "!A^%d" n
   let string_of_broken_bang b =
     match b with
     | Strong -> "X"
@@ -319,21 +349,21 @@ end = struct
         let sol = Subst.restrict sol (fun y -> not (Variable.is_equal x y)) in
         browse sol (x::bound) indent pp (fun s ->
           let instr =
-            on_id id (Printf.sprintf "in(%s%s,%s)" (lab ",") (Symbol.display Terminal c) (Variable.display Terminal Protocol x)) in
+            on_id id (Printf.sprintf "in(%s%s,%s)" (lab ",") (Channel.to_string c) (Variable.display Terminal Protocol x)) in
           f_cont (Printf.sprintf "\n%s%s%s%s" (tab indent) instr (semicolon s) s)
         )
       | Output(c,t,pp,_) ->
         let t =
           Subst.apply sol t (fun t f -> Rewrite_rules.normalise (f t)) in
         browse sol bound indent pp (fun s ->
-          f_cont (Printf.sprintf "\n%sout(%s%s,%s)%s%s" (tab indent) (lab ",") (Symbol.display Terminal c) (Term.display Terminal Protocol t) (semicolon s) s)
+          f_cont (Printf.sprintf "\n%sout(%s%s,%s)%s%s" (tab indent) (lab ",") (Channel.to_string c) (Term.display Terminal Protocol t) (semicolon s) s)
         )
       | OutputSure(c,t,pp,id) ->
         let t =
           Subst.apply sol t (fun t f -> Rewrite_rules.normalise (f t)) in
         browse sol bound indent pp (fun s ->
           let instr =
-            on_id id (Printf.sprintf "out(%s%s,%s)" (lab ",") (Symbol.display Terminal c) (Term.display Terminal Protocol t)) in
+            on_id id (Printf.sprintf "out(%s%s,%s)" (lab ",") (Channel.to_string c) (Term.display Terminal Protocol t)) in
           f_cont (Printf.sprintf "\n%s%s%s%s" (tab indent) instr (semicolon s) s)
         )
       | If(u,v,p1,p2) ->
@@ -413,11 +443,11 @@ end = struct
 
     browse fst_subst [] 0 p (fun s -> s)
 
-  (* checks whether a normalised process contains an executable output. Cannot be run on a start process *)
-  let rec contains_output_toplevel (lp:t) : bool =
+  (* checks whether a normalised process contains an executable public output. Cannot be run on a start process *)
+  let rec contains_public_output_toplevel (lp:t) : bool =
     match lp.proc with
     | Input _ -> false
-    | OutputSure _ -> true
+    | OutputSure (c,_,_,_) -> Channel.is_public c
     | Par l -> List.exists contains_output_toplevel l
     | Bang (_,l1,l2) -> List.exists contains_output_toplevel (l1@l2)
     | Start _ -> Config.internal_error "[process_session.ml >> contains_output_toplevel] Unexpected Start constructor."
@@ -429,8 +459,8 @@ end = struct
     | OutputSure _ -> false
     | Par _
     | Bang _ -> true
-    | Start _ -> Config.internal_error "[process_session.ml >> contains_par] Unexpected Start constructor."
-    | _ -> Config.internal_error "[process_session.ml >> contains_output] Should only be applied on normalised processes."
+    | Start _ -> Config.internal_error "[process_session.ml >> not_pure_io] Unexpected Start constructor."
+    | _ -> Config.internal_error "[process_session.ml >> not_pure_io] Should only be applied on normalised processes."
 
   (* The labeled process [lp] should not already have a label, i.e. [lp.label = None]
       No broken symmetries are allowed too.
@@ -511,15 +541,15 @@ end = struct
       | Input(c,x,p,_) ->
           Config.debug (fun () ->
             if Variable.quantifier_of x != Free
-            then Config.internal_error "[process_sessions.ml >> fresh_copy] All variables "
+            then Config.internal_error "[process_sessions.ml >> fresh_copy] All variables should be free."
           );
           let xx = Variable.fresh_from x in
           browse (Variable.Renaming.compose rho_v x xx) rho_n (xx::bound_vars) p (id+1) (fun id_max p_fresh ->
-            f_cont id_max {proc = Input(c,xx,p_fresh,id); label = None}
+            f_cont id_max {proc = Input(Channel.apply_renaming rho_n c,xx,p_fresh,id); label = None}
           )
       | Output(c,t,p,_) ->
           browse rho_v rho_n bound_vars p (id+1) (fun id_max p_fresh ->
-            f_cont id_max {proc = Output(c,apply t,p_fresh,id); label = None}
+            f_cont id_max {proc = Output(Channel.apply_renaming rho_n c,apply t,p_fresh,id); label = None}
           )
       | OutputSure(c,t,p,_) ->
           Config.internal_error "[process_session.ml >> fresh_copy] Outputs should not be sure before the analysis starts."
@@ -581,22 +611,20 @@ end = struct
 
     browse_iter nb p id f_cont
 
-  (* conversion from expansed processes *)
-  let of_expansed_process ?optim:(opti:t->t=fun x->x) (p:Process.expansed_process) : t =
+  (* conversion from expansed processes
+  TODO. include a check that no names used as private channels are output *)
+  let of_expansed_process ?preprocessing:(preprocessing:t->t=fun x->x) (p:Process.expansed_process) : t =
     let rec browse bound_vars p id f_cont =
       match p with
       | Process.Nil ->
         f_cont id {proc = Par []; label = None}
-      | Process.Output(ch,_,_)
-      | Process.Input(ch,_,_) when not (is_function ch) || not (Symbol.is_public (root ch)) ->
-        Config.internal_error "[process_session.ml >> of_expansed_process] Inputs/Outputs should only be done on atomic public channels."
       | Process.Output(ch,t,pp) ->
         browse bound_vars pp (id+1) (fun id_max p_conv ->
-          f_cont id_max {proc = Output(root ch,t,p_conv,id); label = None}
+          f_cont id_max {proc = Output(Channel.of_term ch,t,p_conv,id); label = None}
         )
       | Process.Input(ch,x,pp) ->
         browse (x::bound_vars) pp (id+1) (fun id_max p_conv ->
-          f_cont id_max {proc = Input(root ch,x,p_conv,id); label = None}
+          f_cont id_max {proc = Input(Channel.of_term ch,x,p_conv,id); label = None}
         )
       | Process.IfThenElse(t1,t2,pthen,pelse) ->
         browse bound_vars pthen id (fun id1 pthen' ->
@@ -640,13 +668,71 @@ end = struct
         ) in
 
     browse [] p 1 (fun _ p_conv ->
-      opti {proc = Start (p_conv,0); label = Some Label.initial}
+      preprocessing {proc = Start (p_conv,0); label = Some Label.initial}
     )
 
   let of_process_list (l:t list) : t =
     match l with
     | [p] -> p
     | l -> {proc = Par l; label = None}
+
+  (* browse a normalised process and returns all executable inputs and outputs (up to symmetry). Separates between public and private outputs.
+  - these inputs/outputs can be ignored or transformed before being returned, using the argument [add_to_accu]: [add_to_accu p leftovers b accu] adds the unfoldable process [p] (with parallel leftovers [leftovers]) to the list [accu]. [b] indicates whether this would be done if [Partial] symmetries were taken into account
+  - the flag [optim] indicates that [Partial] symmetries should be taken into account. It has the same behaviour (but is more efficient) as replacing [add_to_accu] by [fun p b l -> if b then add_to_accu p b l else l].
+  NB. Once a symmetry is broken by this function, it cannot be recovered
+  NB. Assumes that a negative phase is not in progress (not public output available, and symmetries are not waiting to be restaured). Raises an exception if a violation if this assumption is spotted. *)
+  let unfold_with_leftovers (optim:bool) (init_accu_pub:'a list) (add_accu_pub:t->t list->bool->'a list->'a list)  (init_accu_priv:'b list) (add_accu_priv:t->t list->bool->'b list->'b list) (l:t list) : 'a list * 'b list =
+    let rec unfold forall accu_pub accu_priv leftovers p f_cont =
+      match p.proc with
+      | OutputSure (c,_,_,_) ->
+        if Channel.is_public c then
+          Config.internal_error "[process_session.ml >> unfold_with_leftovers] No public output should be available."
+        else
+          f_cont accu_pub (add_accu_priv p leftovers forall accu_priv)
+      | Input (c,_,_,_) ->
+        if Channel.is_public c then
+          f_cont (add_accu_pub p leftovers forall accu_pub) accu_priv
+        else
+          f_cont accu_pub (add_accu_priv p leftovers forall accu_priv)
+      | Par l ->
+        unfold_list None forall accu_pub accu_priv leftovers l f_cont
+      | Bang(_,[],[]) ->
+        f_cont accu_pub accu_priv
+      | Bang(_,_::_,_) ->
+        Config.internal_error "[process_session.ml >> unfold_with_leftovers] Symmetries should not be broken."
+      | Bang(b,[],pp::tl) ->
+        let leftovers_pp = if tl = [] then leftovers else {proc = Bang(b,[],tl); label = None}::leftovers in
+        if b = Strong || optim then
+          unfold forall accu_pub accu_priv leftovers_pp pp f_cont
+        else
+          unfold forall accu_pub accu_priv leftovers_pp pp (fun accu_pub_pp accu_priv_pp  ->
+            unfold_list (Some [pp]) false accu_pub_pp accu_priv_pp leftovers tl f_cont
+          )
+      | New _
+      | If _
+      | Let _
+      | Output _ ->
+        Config.internal_error "[process_session.ml >> unfold_with_leftovers] Unfolding should only be applied on normalised processes."
+      | Start _ -> Config.internal_error "[process_session.ml >> unfold_with_leftovers] Unexpected Start constructor."
+
+    and unfold_list bang forall accu_pub accu_priv leftovers l f_cont =
+      match l with
+      | [] -> f_cont accu_pub accu_priv
+      | p :: t ->
+        match bang with
+        | None -> (* case of a list of parallel processes *)
+          unfold forall accu_pub accu_priv (List.rev_append t leftovers) p (fun accu_pub1 accu_priv1 ->
+            unfold_list forall accu_pub1 accu_priv1 (p::leftovers) t f_cont
+          )
+        | Some memo -> (* case of a list of replicated processes *)
+          let leftovers1 =
+            {proc = Bang(Partial,[],List.rev_append memo t); label = None} :: leftovers
+          in
+          unfold forall accu_pub accu_priv leftovers1 p (fun accu_pub1 accu_priv1 ->
+            unfold_list (Some (p::memo)) forall accu_pub1 accu_priv1 leftovers t f_cont
+          ) in
+
+    unfold_list None true init_accu_pub init_accu_priv [] l (fun accu_pub accu_priv -> accu_pub,accu_priv)
 
   module Input = struct
     type data = {
@@ -657,27 +743,13 @@ end = struct
       leftovers : t list;
       id : id;
     }
-
-    (* Processes in given to [unfold_input] should all be normalised. Moreover, [unfold_input] is applied when there is no more output available, hence no output at top-level. *)
-    let unfold ?(optim=false) (l:t list) : (t * data) list =
-
-      let rec unfold forall accu leftovers p f_cont =
+    (* Processes in given to [unfold_input] should all be normalised. Moreover, [unfold_input] is applied when there is no more public output available, hence no public output at top-level. *)
+    let unfold ?(optim=false) (priv:t->data->'a list->'a list) (l:t list) : (t * data) list * 'a list =
+      let add_accu f p leftovers forall accu =
         match p.proc with
-        | OutputSure _ ->
-          Config.internal_error "[process_session.ml >> unfold_input] Ill-formed process, focus should not be applied in this case."
-        | Par l -> unfold_list forall accu leftovers l f_cont
-        | Bang(_,[],[]) -> f_cont accu
-        | Bang(_,_::_,_) -> Config.internal_error "[process_session.ml >> unfold_input] Symmetries should not be broken when executing inputs."
-        | Bang(b,[],pp::tl) ->
-          let leftovers_pp = if tl = [] then leftovers else {proc = Bang(b,[],tl); label = None}::leftovers in
-          if b = Strong || optim then
-            unfold forall accu leftovers_pp pp f_cont
-          else
-            unfold forall accu leftovers_pp pp (fun accu_pp ->
-              unfold_list ~bang:(Some [pp]) false accu_pp leftovers tl f_cont
-            )
-        | Input (ch,x,pp,id) ->
-          let res = {
+        | OutputSure _ -> accu
+        | Input(ch,x,pp,id) ->
+          let idata = {
             channel = ch;
             var = x;
             optim = forall;
@@ -685,34 +757,8 @@ end = struct
             leftovers = leftovers;
             id = id;
           } in
-          f_cont ((pp,res)::accu)
-        | New _
-        | If _
-        | Let _
-        | Output _ ->
-          Config.internal_error "[process_session.ml >> unfold_input] Unfolding should only be applied on normalised processes."
-        | Start _ -> Config.internal_error "[process_session.ml >> unfold_input] Unexpected Start constructor."
-
-      and unfold_list ?(bang=None) forall accu leftovers l f_cont =
-        match l with
-        | [] -> f_cont accu
-        | p :: t ->
-          match bang with
-          | None -> (* case of a list of parallel processes *)
-            unfold forall accu (List.rev_append t leftovers) p (fun accu1 ->
-              unfold_list forall accu1 (p::leftovers) t f_cont
-            )
-          | Some memo -> (* case of a list of replicated processes *)
-            let lefts = List.rev_append memo t in
-            let leftovers1 =
-              if lefts = [] then leftovers
-              else {proc = Bang(Partial,[],lefts); label = None} :: leftovers
-            in
-            unfold forall accu leftovers1 p (fun accu1 ->
-              unfold_list ~bang:(Some (p::memo)) forall accu1 leftovers t f_cont
-            ) in
-
-      unfold_list true [] [] l (fun accu -> accu)
+          f pp idata accu in
+      unfold_with_leftovers optim [] (add_accu (fun x y l -> (x,y)::l)) [] (add_accu priv) l
   end
 
   module Output = struct
@@ -731,6 +777,7 @@ end = struct
       let rec unfold accu p rebuild f_cont =
         match p.proc with
         | Input _ -> f_cont accu
+        | OutputSure(c,_,_,_) when Channel.is_private c -> f_cont accu
         | OutputSure(c,t,pp,id) ->
           let res = {
             channel = c;
@@ -802,6 +849,23 @@ end = struct
       | New _
       | Output _ -> Config.internal_error "[process_session.ml >> restaure_sym] Should only be applied on normalised processes."
       | Start _ -> Config.internal_error "[process_session.ml >> restaure_sym] Unexpected Start constructor."
+  end
+
+  module PrivateComm = struct
+    type data = {
+      channel : Channel.t;
+      var : fst_ord_variable;
+      term : protocol_term;
+      optim : bool;
+      labs : Label.t * Label.t;
+      leftovers : t list;
+      ids : id * id;
+      conflict_toplevel : bool;
+      conflict_future : bool;
+    }
+
+    let unfold_from_one accu (leftovers:t list) (additional_leftovers:'a list) (add:t->'a list->'a list) (p:t) (final_combination:) :  
+
   end
 
   module Optimisation = struct
@@ -881,6 +945,7 @@ end = struct
     let factor_up_to_renaming p1 p2 = p1 , p2
   end
 
+  (* TODO : SKELETON NEEDS TO BE UPDATED FOR PRIVATE CHANNELS *)
   module Skeleton = struct
     (* comparison of skeletons (parallel operators excluded) *)
     let compare_atomic (p1:t) (p2:t) : int =
@@ -1212,9 +1277,9 @@ end = struct
               let single2 = Label.Set.singleton l2 in
               if label_discardable then List.rev_append memo ((ll1',ll2')::t)
               else List.rev_append memo ((single1,single2)::(ll1',ll2')::t) in
-            if Labelled_process.not_pure_io_toplevel p1 || Labelled_process.not_pure_io_toplevel p2 then
-              init bset_upd p1 p2
-            else Some bset_upd
+          if label_discardable then
+            init bset_upd p1 p2
+          else Some bset_upd
         | _ -> None in
     search [] bset
 
