@@ -668,14 +668,15 @@ end = struct
         | Par l -> unfold_list forall accu leftovers l f_cont
         | Bang(_,[],[]) -> f_cont accu
         | Bang(_,_::_,_) -> Config.internal_error "[process_session.ml >> unfold_input] Symmetries should not be broken when executing inputs."
+        | Bang(b,[],[pp]) -> unfold forall accu leftovers pp f_cont
         | Bang(b,[],pp::tl) ->
-          let leftovers_pp = if tl = [] then leftovers else {proc = Bang(b,[],tl); label = None}::leftovers in
-          if b = Strong || optim then
-            unfold forall accu leftovers_pp pp f_cont
-          else
-            unfold forall accu leftovers_pp pp (fun accu_pp ->
-              unfold_list ~bang:(Some [pp]) false accu_pp leftovers tl f_cont
-            )
+            let leftovers_pp = {proc = Bang(b,[],tl); label = None}::leftovers in
+            if b = Strong || optim then
+              unfold forall accu leftovers_pp pp f_cont
+            else
+              unfold forall accu leftovers_pp pp (fun accu_pp ->
+                unfold_list_bang accu_pp [pp] leftovers tl f_cont
+              )
         | Input (ch,x,pp,id) ->
           let res = {
             channel = ch;
@@ -693,24 +694,24 @@ end = struct
           Config.internal_error "[process_session.ml >> unfold_input] Unfolding should only be applied on normalised processes."
         | Start _ -> Config.internal_error "[process_session.ml >> unfold_input] Unexpected Start constructor."
 
-      and unfold_list ?(bang=None) forall accu leftovers l f_cont =
-        match l with
+      (* Case of a list of parallel processes *)
+      and unfold_list forall accu leftovers l_proc f_cont = match l_proc with
         | [] -> f_cont accu
         | p :: t ->
-          match bang with
-          | None -> (* case of a list of parallel processes *)
             unfold forall accu (List.rev_append t leftovers) p (fun accu1 ->
               unfold_list forall accu1 (p::leftovers) t f_cont
             )
-          | Some memo -> (* case of a list of replicated processes *)
-            let lefts = List.rev_append memo t in
-            let leftovers1 =
-              if lefts = [] then leftovers
-              else {proc = Bang(Partial,[],lefts); label = None} :: leftovers
-            in
-            unfold forall accu leftovers1 p (fun accu1 ->
-              unfold_list ~bang:(Some (p::memo)) forall accu1 leftovers t f_cont
-            ) in
+
+      (* Case of a list of replicated processes
+         Invariant: [leftovers_bang] is never empty. *)
+      and unfold_list_bang accu leftovers_bang leftovers l_proc f_cont = match l_proc with
+        | [] -> f_cont accu
+        | p :: t ->
+            let leftovers1 = { proc = Bang(Partial,[],(List.rev_append leftovers_bang t)); label = None } :: leftovers in
+            unfold false accu leftovers1 p (fun accu1 ->
+              unfold_list_bang accu1 (p::leftovers_bang) leftovers t f_cont
+            )
+      in
 
       unfold_list true [] [] l (fun accu -> accu)
   end
@@ -728,20 +729,19 @@ end = struct
     (* Processes in given to [unfold_output] should all be normalised. Unfolding an output p in a Bang(b,l1,p::l2) will temporarily break the symmetry, i.e. p will be transferred into l1. *)
     let unfold ?(optim=false) (lp:t) : (t * data) list =
 
-      let rec unfold accu p rebuild f_cont =
-        match p.proc with
+      let rec unfold accu p rebuild f_cont = match p.proc with
         | Input _ -> f_cont accu
         | OutputSure(c,t,pp,id) ->
-          let res = {
-            channel = c;
-            term = t;
-            optim = false;
-            lab = get_label p;
-            context = rebuild;
-            id = id;
-          } in
-          if optim then [pp,res]
-          else f_cont ((pp,res)::accu)
+            let res = {
+              channel = c;
+              term = t;
+              optim = false;
+              lab = get_label p;
+              context = rebuild;
+              id = id;
+            } in
+            if optim then [pp,res]
+            else f_cont ((pp,res)::accu)
         | If _
         | Let _
         | New _
@@ -749,23 +749,36 @@ end = struct
           Config.internal_error "[process_session.ml >> unfold_output] Should only be called on normalised processes."
         | Start _ -> Config.internal_error "[process_session.ml >> unfold_output] Unexpected Start constructor."
         | Par l ->
-          let add_par l = rebuild {proc = Par l; label = None} in
-          unfold_list accu [] l add_par f_cont
-        | Bang(b,brok,l) ->
-          let add_bang x =
-            rebuild {proc = Bang(b,x,l); label = None} in
-          let add_broken_bang x y =
-            rebuild {proc = Bang(b,brok@x,y); label = None} in
-          unfold_list accu [] brok add_bang (fun ac ->
-            unfold_list_and_break ac [] l add_broken_bang f_cont
-          )
+            let add_par l = rebuild { proc = Par l; label = None } in
+            unfold_list accu [] l add_par f_cont
+        | Bang(Partial,brok,l) ->
+            let add_bang x = rebuild { proc = Bang(Partial,x,l); label = None } in
+
+            let add_broken_bang x y = rebuild {proc = Bang(Partial,brok@x,y); label = None} in
+
+            unfold_list accu [] brok add_bang (fun ac ->
+              unfold_list_and_break ac [] l add_broken_bang f_cont
+            )
+        | Bang(Strong,brok,[]) ->
+            let add_bang x = rebuild { proc = Bang(Strong,x,[]); label = None } in
+
+            unfold_list accu [] brok add_bang f_cont
+        | Bang(Strong,brok,pp::t) ->
+            let add_bang x = rebuild { proc = Bang(Strong,x,pp::t); label = None } in
+
+            let add_broken_bang x = rebuild {proc = Bang(Strong,brok@[x],t); label = None} in
+
+            unfold accu pp add_broken_bang (fun accu1 ->
+              unfold_list accu1 [] brok add_bang f_cont
+            )
 
       and unfold_list accu memo l rebuild f_cont =
         match l with
         | [] -> f_cont accu
         | pp :: t ->
           let add_list_to_rebuild p =
-            rebuild (List.rev_append memo (if nil p then t else p::t)) in
+            rebuild (List.rev_append memo (if nil p then t else p::t))
+          in
           unfold accu pp add_list_to_rebuild (fun acp ->
             unfold_list acp (pp::memo) t rebuild f_cont
           )

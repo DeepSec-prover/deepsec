@@ -484,6 +484,7 @@ module PartitionTree : sig
     val split : t -> (t->(unit->unit)->unit) -> (unit->unit) -> unit (* splits a node into several subnode with independent matchings *)
     val decast : t -> Symbolic.Index.t Constraint_system.Set.t -> t (* after the constraint solver removes constraints systems from a Constraint_system.Set.t, [decast] applies the same restriction to the Symbolic.Set.t and the corresponding matching *)
     val remove_unauthorised_blocks : t -> Symbolic.Index.t Constraint_system.Set.t -> t (* removes unauthorised blocks from a node *)
+    val test_node : t -> unit
   end
 
   val generate_successors : Node.t -> (Node.t->(unit->unit)->unit) -> (unit->unit) -> unit (* generates the successor nodes of a given node in the partition tree, and applies a continuation to each of them. A final continuation is applied when all nodes have been explored.
@@ -497,6 +498,35 @@ end = struct
       size_frame : int;
       id : string; (* only for debugging purposes *)
     }
+
+    let total_node = ref 0
+    let only_exists = ref 0
+    exception Found
+
+    let test_node n =
+      incr total_node;
+        let found = ref false in
+        let size = ref 0 in
+        Symbolic.Set.iter (fun _ p ->
+          Symbolic.Status.print (Symbolic.Process.get_status p);
+          print_string "\n";
+          incr size;
+          flush_all ();
+          if (Symbolic.Process.get_status p) = Symbolic.Status.init_for_inclusion_right
+          then found := true
+        ) n.csys_set;
+      if !found
+      then
+        begin incr only_exists;
+        Printf.printf "-- Total = %d, size = %d, Only_exists = %d\n" !total_node !size !only_exists;
+        flush_all ()
+        end
+      else
+        begin
+        Printf.printf "-- Total = %d (size = %d)\n" !total_node !size;
+        flush_all ()
+        end
+
     let fresh_id =
       let x = ref (-1) in
       fun () -> incr x; Printf.sprintf "n%d" !x
@@ -673,6 +703,11 @@ end = struct
     let n = Node.clean n in
     (* Printf.printf "\n==> EXPLORATION FROM %s\n" n.id;
     Node.print n; *)
+    if Symbolic.Set.is_empty n.csys_set
+    then f_next ()
+    else
+    begin
+    Node.test_node n;
     let (transition_type,node_to_split) = Node.generate_next n in
     (* Printf.printf "--> new node to split:\n";
     Node.print node_to_split; *)
@@ -723,6 +758,7 @@ end = struct
             f_cont {final_node with size_frame = node.size_frame+1} f_next2
         ) csys_set f_next1
     ) f_next
+    end
 
   let rec explore (n:Node.t) (f_next:unit->unit) : unit =
     generate_successors n explore f_next
