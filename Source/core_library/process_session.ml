@@ -2,6 +2,7 @@
 
 open Extensions
 open Term
+open Display
 
 
 (* a module for representing process labels *)
@@ -30,7 +31,6 @@ end = struct
         match compare t1 t2 with
           | 0 -> independent q1 q2
           | i -> i
-  let to_list x = x
   module Set = Set.Make(struct type t = int list let compare = compare end)
 end
 
@@ -191,7 +191,7 @@ module Labelled_process : sig
   val print : ?labels:bool -> ?solution:((fst_ord, name) Subst.t) -> ?highlight:id -> t -> string (* converts a process into a string, while highlighting the instruction at the given identifier *)
   val of_expansed_process : ?optim:(t -> t) -> Process.expansed_process -> t (* converts an expansed process into a process starting with a Start constructor and label [initial]. Also attributes id to all observable instructions. *)
   val of_process_list : t list -> t (* groups a list of processes together *)
-  val elements : ?init:(t list) -> t -> t list (* extracts the list of parallel subprocesses *)
+  val elements : ?init:(t list) -> t -> t list (* extracts the list of parallel subprocesses (Order not preserved)*)
   val nil : t -> bool (* checks if this represents the null process *)
   val empty : Label.t -> t (* a labelled process with empty data. For typing purposes (only way to construct a Labelled_process.t outside of this module) *)
   val contains_output_toplevel : t -> bool (* checks whether a normalised process contains an executable output *)
@@ -199,6 +199,14 @@ module Labelled_process : sig
   val labelling : Label.t -> t -> t (* assigns labels to the parallel processes at toplevel, with a given label prefix *)
   val get_label : t -> Label.t (* gets the label of a process, and returns an error message if it has not been assigned *)
   val get_proc : t -> plain
+
+  type process_skel =
+    {
+      input_skel : (symbol * int * Label.t list) list ;
+      output_skel : (symbol * int * Label.t list) list
+    }
+
+  val labelling2 : Label.t -> t -> t * process_skel
 
   (* extraction of inputs from processes *)
   module Input : sig
@@ -233,7 +241,7 @@ module Labelled_process : sig
     val remove_non_observable : t -> t (* removes subprocesses that do not contain observable actions *)
     val flatten : t -> t (* push new names as deep as possible to facilitate the detection of symmetries, and flatten unecessary nested constructs *)
     val factor : t -> t (* factors structurally equivalent parallel processes *)
-    val factor_up_to_renaming : t -> t -> t * t (* factors at toplevel parallel processes that are structurally equivalent up to bijective channel channel renaming. This factorisation has to be common to the two processes under equivalence check, therefore the two arguments *)
+    val factor_up_to_renaming : t -> t -> t * t (* factors at toplevel parallel processes that are structurally equivalent up to bijective channel renaming. This factorisation has to be common to the two processes under equivalence check, therefore the two arguments *)
   end
 
   (* comparison of process skeletons *)
@@ -307,7 +315,7 @@ end = struct
       let lab delim =
         match p.label with
         | None -> ""
-        | Some l when not print_labs -> ""
+        | Some _ when not print_labs -> ""
         | Some l -> Printf.sprintf "lab=%s%s" (Label.to_string l) delim in
       match p.proc with
       | Start (pp,id) ->
@@ -472,21 +480,96 @@ end = struct
         Config.internal_error "[process_session.ml >> labelling] Already labelled process."
     );
     match lp.proc with
-    | Input _
-    | OutputSure _ -> {lp with label = Some prefix}
-    | Output _
-    | If _
-    | Let _
-    | New _ ->
-      Config.internal_error "[process_session.ml >> labelling] Only normalised processes should be assigned with labels."
-    | Start _ -> Config.internal_error "[process_session.ml >> labelling] Unexpected Start constructor."
-    | Par _
-    | Bang _ -> assign 0 lp (fun proc _ -> proc)
+      | Input _
+      | OutputSure _ -> {lp with label = Some prefix}
+      | Output _
+      | If _
+      | Let _
+      | New _ ->
+        Config.internal_error "[process_session.ml >> labelling] Only normalised processes should be assigned with labels."
+      | Start _ -> Config.internal_error "[process_session.ml >> labelling] Unexpected Start constructor."
+      | Par _
+      | Bang _ -> assign 0 lp (fun proc _ -> proc)
 
-  let elements ?init:(init:t list=[]) (lp:t) : t list =
+  type process_skel =
+    {
+      input_skel : (symbol * int * Label.t list) list ;
+      output_skel : (symbol * int * Label.t list) list
+    }
+
+  let rec add_in_process_skel_symbol ch label skel_list = match skel_list with
+    | [] -> [ch,1,[label]]
+    | ((ch',size,list_label) as t)::q ->
+        let cmp_ch = Symbol.order ch ch' in
+
+        if cmp_ch = -1
+        then (ch,1,[label])::skel_list
+        else if cmp_ch = 0
+        then (ch',size+1,label::list_label)::q
+        else t::(add_in_process_skel_symbol ch label q)
+
+  let add_in_process_skel is_out ch label proc_skel =
+    if is_out
+    then { proc_skel with output_skel = add_in_process_skel_symbol ch label proc_skel.output_skel }
+    else { proc_skel with input_skel = add_in_process_skel_symbol ch label proc_skel.input_skel }
+
+  let labelling2 (prefix:Label.t) (lbl_proc:t) : t * process_skel =
+
+    let process_skel = ref { input_skel = []; output_skel = [] } in
+
+    let rec assign f_cont next_i lbl_proc  = match lbl_proc.proc with
+      | OutputSure(c,_,_,_) ->
+          let label = Label.add_position prefix next_i in
+          process_skel := add_in_process_skel true c label !process_skel;
+          f_cont { lbl_proc with label = Some label } (next_i+1)
+      | Input(c,_,_,_) ->
+          let label = Label.add_position prefix next_i in
+          process_skel := add_in_process_skel false c label !process_skel;
+          f_cont { lbl_proc with label = Some label } (next_i+1)
+      | Par list_lbl_proc ->
+          assign_list (fun list_lbl_proc1 next_i1->
+            f_cont { proc = Par list_lbl_proc1; label = None } next_i1
+          ) next_i list_lbl_proc
+      | Bang(b,[],list_lbl_proc) ->
+          assign_list (fun list_lbl_proc1 next_i1 ->
+            f_cont { proc = Bang(b,[],list_lbl_proc1); label = None } next_i1
+          ) next_i list_lbl_proc
+      | _ -> Config.internal_error "[process_sessions.ml >> labelling] Labelling is done only on normalised process without broken symmetry."
+
+    and assign_list f_cont next_i = function
+      | [] -> f_cont [] next_i
+      | p :: t ->
+        assign (fun p1 next_i1 ->
+          assign_list (fun t1 next_i2 ->
+            f_cont (p1 :: t1) next_i2
+          ) next_i1 t
+        ) next_i p
+
+    in
+
+    Config.debug (fun () ->
+      if lbl_proc.label <> None then
+        Config.internal_error "[process_session.ml >> labelling] Already labelled process."
+    );
+    match lbl_proc.proc with
+      | Input(ch,_,_,_) ->
+          {lbl_proc with label = Some prefix}, { input_skel = [ch,1,[prefix]]; output_skel = [] }
+      | OutputSure(ch,_,_,_) ->
+          {lbl_proc with label = Some prefix}, { input_skel = []; output_skel = [ch,1,[prefix]] }
+      | Par _
+      | Bang _ ->
+          let lbl_proc' = assign (fun proc _ -> proc) 0 lbl_proc in
+          lbl_proc', !process_skel
+      | Output _
+      | If _
+      | Let _
+      | New _ -> Config.internal_error "[process_session.ml >> labelling] Only normalised processes should be assigned with labels."
+      | Start _ -> Config.internal_error "[process_session.ml >> labelling] Unexpected Start constructor."
+
+  let elements ?(init=[]) (lp:t) : t list =
     let rec gather accu lp = match lp with
       | {proc = Par l; _} -> List.fold_left gather accu l
-      | {proc = Bang (_,l1,l2); _} -> List.fold_left gather accu (l1@l2)
+      | {proc = Bang (_,l1,l2); _} -> List.fold_left gather (List.fold_left gather accu l1) l2
       | _ -> lp :: accu in
     gather init lp
 
@@ -521,8 +604,7 @@ end = struct
           browse rho_v rho_n bound_vars p (id+1) (fun id_max p_fresh ->
             f_cont id_max {proc = Output(c,apply t,p_fresh,id); label = None}
           )
-      | OutputSure(c,t,p,_) ->
-          Config.internal_error "[process_session.ml >> fresh_copy] Outputs should not be sure before the analysis starts."
+      | OutputSure _ -> Config.internal_error "[process_session.ml >> fresh_copy] Outputs should not be sure before the analysis starts."
       | If(u,v,p1,p2) ->
           let uu = apply u in
           let vv = apply v in
@@ -532,6 +614,8 @@ end = struct
             )
           )
       | Let(u,u',v,p1,p2) ->
+          (* VINCENT: Improve that part. I think we could have something more linear. Add that in terms.ml.
+             I leave the warning for now. *)
           let bound_vars_u = Term.get_vars_not_in Protocol u bound_vars in
           let fresh' = Variable.Renaming.fresh Protocol bound_vars_u Universal in
           let (rho_v',new_bounds) = fresh_vars_and_renaming rho_v bound_vars_u in
@@ -668,7 +752,7 @@ end = struct
         | Par l -> unfold_list forall accu leftovers l f_cont
         | Bang(_,[],[]) -> f_cont accu
         | Bang(_,_::_,_) -> Config.internal_error "[process_session.ml >> unfold_input] Symmetries should not be broken when executing inputs."
-        | Bang(b,[],[pp]) -> unfold forall accu leftovers pp f_cont
+        | Bang(_,[],[pp]) -> unfold forall accu leftovers pp f_cont
         | Bang(b,[],pp::tl) ->
             let leftovers_pp = {proc = Bang(b,[],tl); label = None}::leftovers in
             if b = Strong || optim then
@@ -808,8 +892,8 @@ end = struct
       | Bang(_,[],_) -> (* no restauration needed *)
         lp
       | Par l -> {lp with proc = Par (List.map restaure_sym l)}
-      | Bang(b,l1,l2) -> (* non trivial restauration: symmetry cannot be restaured to Strong *)
-        {lp with proc = Bang (Partial,[],List.map restaure_sym l1 @ l2)}
+      | Bang(_,l1,l2) -> (* non trivial restauration: symmetry cannot be restaured to Strong *)
+        {lp with proc = Bang (Partial,[],(List.map restaure_sym l1) @ l2)}
       | Let _
       | If _
       | New _
@@ -820,8 +904,51 @@ end = struct
   module Optimisation = struct
     (* removing subprocesses that cannot trigger observable actions (for optimisation purposes; does not affect the decision of equivalence) *)
     let void = {proc = Par []; label = None}
-    let replace (p:t) (plain:plain) : t = {p with proc = plain}
-    let remove_non_observable (p:t) : t =
+
+    (* VINCENT: Possible new function for remove_non_observable. CAREFUL: Your function is never called. *)
+    let rec remove_non_observable p0 = match p0.proc with
+      | Start(p,id) -> { p0 with proc = Start(remove_non_observable p,id) }
+      | Output(c,t,p,id) -> { p0 with proc = Output(c,t,remove_non_observable p,id) }
+      | OutputSure _ -> Config.internal_error "[process_sessions.ml >> Optimisation.remove_non_observable] Should only be applied at the beginning of the verification."
+      | Input(c,x,p,id) -> { p0 with proc = Input(c,x,remove_non_observable p,id) }
+      | If(u,v,p1,p2) ->
+          let p1' = remove_non_observable p1
+          and p2' = remove_non_observable p2 in
+          if nil p1' && nil p2'
+          then void
+          else { p0 with proc = If(u,v,p1',p2') }
+      | Let(pat,pat_uni,u, p1, p2) ->
+          let p1' = remove_non_observable p1
+          and p2' = remove_non_observable p2 in
+          if nil p1' && nil p2'
+          then void
+          else { p0 with proc = Let(pat,pat_uni,u,p1',p2') }
+      | New(n,p) ->
+          let p' = remove_non_observable p in
+          if nil p'
+          then void
+          else { p0 with proc = New(n,p') }
+      | Par l_proc ->
+          let l_proc' = remove_non_observable_list l_proc in
+          if l_proc' = []
+          then void
+          else { p0 with proc = Par l_proc' }
+      | Bang(Strong,[],l_proc) ->
+          let l_proc' = remove_non_observable_list l_proc in
+          if l_proc' = []
+          then void
+          else { p0 with proc = Bang(Strong,[],l_proc') }
+      | Bang _ ->  Config.internal_error "[process_sessions.ml >> Optimisation.remove_non_observable] All replication should be strong without broken symmetry at the beginning of the verification."
+
+    and remove_non_observable_list = function
+      | [] -> []
+      | p::q ->
+          let p' = remove_non_observable p in
+          if nil p'
+          then remove_non_observable_list q
+          else p'::(remove_non_observable_list q)
+
+    (*let remove_non_observable (p:t) : t =
       let rec browse p f_cont =
         match p.proc with
         | Start (pp,id) ->
@@ -888,6 +1015,7 @@ end = struct
             )
           ) in
       browse p (fun _ x -> x)
+    *)
 
     let flatten (p:t) : t = p
     let factor (p:t) : t = p
@@ -907,12 +1035,16 @@ end = struct
     (* Checks whether two lists of atomic processes have identical skeletons.
     TODO: current implementation quite naive (does not take symmetries into account), may be improved. *)
     let equal (p1:t list) (p2:t list) : bool =
-      let sort = List.fast_sort (fun p q -> compare_atomic p q) in
-      let elts l = List.fold_left (fun accu p -> elements ~init:accu p) [] l in
-      let l1 = sort (elts p1) in
-      let l2 = sort (elts p2) in
-      try List.for_all2 (fun p q -> compare_atomic p q = 0) l1 l2
-      with Invalid_argument _ -> false
+      let sort = List.fast_sort compare_atomic in
+      let l1 = List.fold_left (fun accu p -> elements ~init:accu p) [] p1
+      and l2 = List.fold_left (fun accu p -> elements ~init:accu p) [] p2 in
+
+      if List.length l1 = List.length l2
+      then
+        let sorted_l1 = sort l1 in
+        let sorted_l2 = sort l2 in
+        List.for_all2 (fun p q -> compare_atomic p q = 0) sorted_l1 sorted_l2
+      else false
   end
 
   module Normalise = struct
@@ -939,58 +1071,58 @@ end = struct
       | DiseqTop
       | DiseqList of (fst_ord, name) Diseq.t list
 
-    let rec normalise (p:t) (cstr:constraints) (f_cont:constraints->t->(unit->unit)->unit) (f_next:unit->unit) : unit =
-      match p.proc with
+    let rec normalise (proc:t) (cstr:constraints) (f_cont:constraints->t->(unit->unit)->unit) (f_next:unit->unit) : unit =
+      match proc.proc with
       | OutputSure _
-      | Input _ -> f_cont cstr p f_next
+      | Input _ -> f_cont cstr proc f_next
       | Output(ch,t,p,id) ->
-        let tt =
-          Rewrite_rules.normalise (Subst.apply cstr.equations t (fun x f -> f x)) in
+        let tt = Rewrite_rules.normalise (Subst.apply cstr.equations t (fun x f -> f x)) in
 
         let eqn_modulo_list_result =
           try
             EqList (Modulo.syntactic_equations_of_equations [Modulo.create_equation tt tt])
           with
-          | Modulo.Bot -> EqBot
-          | Modulo.Top -> EqTop in
+            | Modulo.Bot -> EqBot
+            | Modulo.Top -> EqTop in
 
         begin match eqn_modulo_list_result with
-        | EqBot -> f_cont cstr {p with proc = Par []} f_next
-        | EqTop -> f_cont cstr {p with proc = OutputSure(ch,t,p,id)} f_next
-        | EqList eqn_modulo_list ->
-          let f_next_equations =
-            List.fold_left (fun acc_f_next equations_modulo ->
-              let new_disequations_op =
+          | EqBot -> f_cont cstr {p with proc = Par []} f_next
+          | EqTop -> f_cont cstr {p with proc = OutputSure(ch,t,p,id)} f_next
+          | EqList eqn_modulo_list ->
+            let f_next_equations =
+              List.fold_left (fun acc_f_next equations_modulo ->
+                let new_disequations_op =
+                  try
+                    let new_disequations =
+                      List.fold_left (fun acc diseq ->
+                        let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
+                        if Diseq.is_top new_diseq then acc
+                        else if Diseq.is_bot new_diseq then raise Bot_disequations
+                        else new_diseq::acc
+                      ) [] cstr.disequations in
+                    Some new_disequations
+                  with
+                    | Bot_disequations -> None in
+
+                match new_disequations_op with
+                 | None -> acc_f_next
+                 | Some new_diseqn ->
+                    let new_eqn = Subst.compose cstr.equations equations_modulo in
+                    fun () -> f_cont {equations = new_eqn; disequations = new_diseqn} {proc with proc = OutputSure(ch,t,p,id)} acc_f_next
+              ) f_next eqn_modulo_list
+            in
+
+            let f_next_disequation f_next =
+              let diseqn_modulo =
                 try
-                  let new_disequations =
-                    List.fold_left (fun acc diseq ->
-                      let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
-                      if Diseq.is_top new_diseq then acc
-                      else if Diseq.is_bot new_diseq then raise Bot_disequations
-                      else new_diseq::acc
-                    ) [] cstr.disequations in
-                  Some new_disequations
+                  Modulo.syntactic_disequations_of_disequations (Modulo.create_disequation tt tt)
                 with
-                  | Bot_disequations -> None in
+                | Modulo.Bot
+                | Modulo.Top -> Config.internal_error "[process_session.ml >> normalise] The disequations cannot be top or bot." in
+              let new_diseqn = List.rev_append cstr.disequations diseqn_modulo in
+              f_cont {cstr with disequations = new_diseqn} {proc with proc = Par []} f_next in
 
-              match new_disequations_op with
-               | None -> acc_f_next
-               | Some new_diseqn ->
-                  let new_eqn = Subst.compose cstr.equations equations_modulo in
-                  fun () -> f_cont {equations = new_eqn; disequations = new_diseqn} {p with proc = OutputSure(ch,t,p,id)} acc_f_next
-            ) f_next eqn_modulo_list in
-
-          let f_next_disequation f_next =
-            let diseqn_modulo =
-              try
-                Modulo.syntactic_disequations_of_disequations (Modulo.create_disequation tt tt)
-              with
-              | Modulo.Bot
-              | Modulo.Top -> Config.internal_error "[process_session.ml >> normalise] The disequations cannot be top or bot." in
-            let new_diseqn = List.rev_append cstr.disequations diseqn_modulo in
-            f_cont {cstr with disequations = new_diseqn} {p with proc = Par []} f_next in
-
-          f_next_disequation f_next_equations
+            f_next_disequation f_next_equations
         end
       | If(u,v,pthen,pelse) ->
         let (u_1,v_1) = Subst.apply cstr.equations (u,v) (fun (x,y) f -> f x, f y) in
@@ -1105,15 +1237,15 @@ end = struct
         normalise_list l cstr (fun gather l_norm f_next1 ->
           match l_norm with
             | [p] -> f_cont gather p f_next1
-            | _ -> f_cont gather {p with proc = Par l_norm} f_next1
+            | _ -> f_cont gather {proc with proc = Par l_norm} f_next1
         ) f_next
       | Bang(b,l1,l2) ->
         normalise_list l1 cstr (fun gather1 l1_norm f_next1 ->
           normalise_list l2 gather1 (fun gather2 l2_norm f_next2 ->
             match l1_norm,l2_norm with
-            | [],[p]
-            | [p],[] -> f_cont gather2 p f_next1
-            | _ -> f_cont gather2 {p with proc = Bang(b,l1_norm,l2_norm)} f_next2
+            | [],[p] -> f_cont gather2 p f_next2
+            | _::_,_ -> Config.internal_error "[process_session.ml >> normalise] Broken bang should not occur during normalisation."
+            | _ -> f_cont gather2 {proc with proc = Bang(b,l1_norm,l2_norm)} f_next2
             ) f_next1
         ) f_next
       | Start _ -> Config.internal_error "[process_session.ml >> normalise] Unexpected Start constructor."
@@ -1127,9 +1259,11 @@ end = struct
             let l_tot_norm =
               match p_norm.proc with
               | Par [p]
-              | Bang(_,[],[p])
-              | Bang(_,[p],[]) -> p :: l_norm
-              | _ -> p_norm :: l_norm in
+              | Bang(_,[],[p]) -> p :: l_norm
+              | Par [] | Bang(_,[],[]) -> l_norm
+              | Bang(_,_::_,_) -> Config.internal_error "[process_session.ml >> normalise_list] Broken bang should not occur during normalisation."
+              | _ -> p_norm :: l_norm
+            in
             f_cont gather2 l_tot_norm f_next2
           ) f_next1
         ) f_next
@@ -1158,7 +1292,7 @@ end = struct
     let rec insert memo partition x =
       match partition with
       | [] -> [x] :: memo
-      | [] :: t -> Config.internal_error "[process_session.ml >> equivalence_classes] Unexpected case"
+      | [] :: _ -> Config.internal_error "[process_session.ml >> equivalence_classes] Unexpected case"
       | (y::_ as equiv_class) :: t ->
         if equiv x y then List.rev_append memo ((x::equiv_class) :: t)
         else insert (equiv_class :: memo) t x in
@@ -1213,32 +1347,29 @@ end = struct
         | None,None -> search ((ll1,ll2) :: memo) t
         | Some _,Some _ ->
           let label_discardable =
-            Labelled_process.not_pure_io_toplevel p1 || Labelled_process.not_pure_io_toplevel p2 in
+            Labelled_process.not_pure_io_toplevel p1 || Labelled_process.not_pure_io_toplevel p2
+          in
           let bset_upd =
-            if Label.Set.is_singleton ll1 then
-              if label_discardable then List.rev_append memo t
+            if Label.Set.is_singleton ll1
+            then
+              if label_discardable
+              then List.rev_append memo t
               else List.rev_append memo ((ll1,ll2)::t)
             else
               let ll1' = Label.Set.remove l1 ll1 in
               let ll2' = Label.Set.remove l2 ll2 in
               let single1 = Label.Set.singleton l1 in
               let single2 = Label.Set.singleton l2 in
-              if label_discardable then List.rev_append memo ((ll1',ll2')::t)
-              else List.rev_append memo ((single1,single2)::(ll1',ll2')::t) in
-            if Labelled_process.not_pure_io_toplevel p1 || Labelled_process.not_pure_io_toplevel p2 then
-              init bset_upd p1 p2
-            else Some bset_upd
+              if label_discardable
+              then List.rev_append memo ((ll1',ll2')::t)
+              else List.rev_append memo ((single1,single2)::(ll1',ll2')::t)
+          in
+          if Labelled_process.not_pure_io_toplevel p1 || Labelled_process.not_pure_io_toplevel p2 then
+            init bset_upd p1 p2
+          else Some bset_upd
         | _ -> None in
     search [] bset
 
-
-  (* given a bijection set and a label l, computes the set of labels that are
-  compatible with l wrt one bijection.
-  NB. Not used anymore in the current version *)
-  let get_compatible_labels (l:Label.t) (s:t) : Label.t list =
-    match List.find_opt (fun (labset,_) -> Label.Set.mem l labset) s with
-    | None -> Config.internal_error "[process_session.ml >> get_compatible_labels] Unexpected case"
-    | Some pair -> Label.Set.elements (snd pair)
 end
 
 
@@ -1251,7 +1382,16 @@ module Configuration : sig
   val inputs : t -> Labelled_process.t list (* returns the available inputs *)
   val outputs : t -> Labelled_process.t list (* returns the available outputs (in particular they are executable, i.e. they output a message). *)
   val of_expansed_process : Process.expansed_process -> t (* converts a process as obtained from the parser into a configuration. This includes some cleaning procedure as well as factorisation. *)
-  val normalise : ?context:(Labelled_process.t->Labelled_process.t) -> Label.t -> t -> (fst_ord, name) Subst.t -> (Labelled_process.Normalise.constraints->t->Labelled_process.t->unit) -> unit (* normalises a configuration, labels the new process, and puts it in standby for skeleton checks. In case an output has just been executed, the optional ?context argument gives the process context of the execution in order to reconstruct the symmetries afterwards. *)
+  val normalise :
+    ?context:(Labelled_process.t->Labelled_process.t) ->
+    Label.t ->
+    t ->
+    (fst_ord, name) Subst.t ->
+    (Labelled_process.Normalise.constraints->t->Labelled_process.t->unit) ->
+    unit
+    (* normalises a configuration, labels the new process, and puts it in standby for skeleton checks.
+       In case an output has just been executed, the optional ?context argument gives the process context
+       of the execution in order to reconstruct the symmetries afterwards. *)
   val check_skeleton : t -> t -> bool (* compares two skeletons in standby *)
   val release_skeleton : t -> t option (* assuming all skeletons have been checked, marks them as not in standby anymore. *)
 
@@ -1270,6 +1410,8 @@ module Configuration : sig
     val apply_start : t -> t (* removes the start at the beginning of the process *)
   end
 end = struct
+  (* Change state for the current_proc. Too costly to do all these operations just for the trace reconstruction. Do it later when there is an attack. *)
+
   type state = {
     current_proc : Labelled_process.t;
     id : Labelled_process.id;
@@ -1283,7 +1425,7 @@ end = struct
     input_proc : Labelled_process.t list;
     focused_proc : Labelled_process.t option;
     sure_output_proc : Labelled_process.t list;
-    sure_unchecked_skeletons : Labelled_process.t option;
+    sure_unchecked_skeletons : (Labelled_process.t * (Labelled_process.t -> Labelled_process.t)) option;
     to_normalise : Labelled_process.t option;
     trace : action list;
     ongoing_block : Block.t;
@@ -1365,7 +1507,7 @@ end = struct
         Labelled_process.Normalise.normalise p eqn_cast (fun gather p_norm f_next ->
           let labelled_p = Labelled_process.labelling prefix p_norm in
           let conf_rel = {conf with
-            sure_unchecked_skeletons = Some (rebuild labelled_p);
+            sure_unchecked_skeletons = Some (labelled_p, rebuild);
             to_normalise = None;
           } in
           f_cont gather conf_rel labelled_p;
@@ -1377,10 +1519,7 @@ end = struct
 
     match conf1.focused_proc, conf2.focused_proc, conf1.sure_unchecked_skeletons, conf2.sure_unchecked_skeletons with
     | Some p1, Some p2, None, None
-    | None, None, Some p1, Some p2 ->
-      if Labelled_process.contains_output_toplevel p1 || Labelled_process.contains_output_toplevel p2 then
-        Labelled_process.Skeleton.equal (p1::conf1.sure_output_proc) (p2::conf2.sure_output_proc)
-      else Labelled_process.Skeleton.equal [p1] [p2]
+    | None, None, Some (p1,_), Some (p2,_) -> Labelled_process.Skeleton.equal [p1] [p2]
     | _ ->
       Config.internal_error "[process_session.ml >> check_skeleton] Comparing processes in inconsistent states."
 
@@ -1388,28 +1527,31 @@ end = struct
     match c.focused_proc, c.sure_unchecked_skeletons with
     | Some p, _ ->
       begin match Labelled_process.get_proc p with
-      | Labelled_process.Input _ -> Some c
-      | Labelled_process.OutputSure _ ->
-        Some {c with focused_proc = None; sure_output_proc = p::c.sure_output_proc}
-      | _ ->
-        if Labelled_process.nil p then None
-        else if Labelled_process.contains_output_toplevel p then
+        | Labelled_process.Input _ -> Some c
+        | Labelled_process.OutputSure _ ->
           Some {c with focused_proc = None; sure_output_proc = p::c.sure_output_proc}
-        else
-          Some {c with focused_proc = None; input_proc = p::c.input_proc} end
-    | _, Some p ->
-      begin match Labelled_process.get_proc p with
-      | Labelled_process.Input _ ->
-        Some {c with sure_unchecked_skeletons = None; input_proc = p::c.input_proc}
-      | Labelled_process.OutputSure _ ->
-        Some {c with sure_unchecked_skeletons = None; sure_output_proc = p::c.sure_output_proc}
-      | _ ->
-        if Labelled_process.nil p then
-          Some {c with sure_unchecked_skeletons = None}
-        else if Labelled_process.contains_output_toplevel p then
-          Some {c with sure_unchecked_skeletons = None; sure_output_proc = p::c.sure_output_proc}
-        else
-          Some {c with sure_unchecked_skeletons = None; input_proc = Labelled_process.Output.restaure_sym p::c.input_proc} end
+        | _ ->
+          if Labelled_process.nil p then None
+          else if Labelled_process.contains_output_toplevel p then
+            Some {c with focused_proc = None; sure_output_proc = p::c.sure_output_proc}
+          else
+            Some {c with focused_proc = None; input_proc = p::c.input_proc}
+      end
+    | _, Some (p,rebuild) ->
+      let p' = rebuild p in
+      begin match Labelled_process.get_proc p' with
+        | Labelled_process.Input _ ->
+          Some {c with sure_unchecked_skeletons = None; input_proc = p'::c.input_proc}
+        | Labelled_process.OutputSure _ ->
+          Some {c with sure_unchecked_skeletons = None; sure_output_proc = p'::c.sure_output_proc}
+        | _ -> (* TO DO : Split better the transition *)
+          if Labelled_process.nil p' then
+            Some {c with sure_unchecked_skeletons = None}
+          else if Labelled_process.contains_output_toplevel p' then
+            Some {c with sure_unchecked_skeletons = None; sure_output_proc = p'::c.sure_output_proc}
+          else
+            Some {c with sure_unchecked_skeletons = None; input_proc = Labelled_process.Output.restaure_sym p'::c.input_proc}
+      end
     | _, _ ->
         Config.internal_error "[process_session.ml >> release_skeleton] A process is either focused or released."
 
@@ -1435,10 +1577,11 @@ end = struct
       match c.focused_proc with
       | Some p ->
         begin match Labelled_process.get_proc p with
-        | Labelled_process.Input _ -> Some RPos
-        | Labelled_process.Start _ -> Some RStart
-        | _ ->
-          Config.internal_error "[process_session.ml >> Configuration.Transition.next] Ill-formed focused state, should have been released or normalised." end
+          | Labelled_process.Input _ -> Some RPos
+          | Labelled_process.Start _ -> Some RStart
+          | _ ->
+            Config.internal_error "[process_session.ml >> Configuration.Transition.next] Ill-formed focused state, should have been released or normalised."
+        end
       | None ->
         if c.sure_output_proc <> [] then Some RNeg
         else match c.input_proc with
@@ -1450,20 +1593,22 @@ end = struct
       match conf.focused_proc with
       | Some p ->
         begin match Labelled_process.get_proc p with
-        | Labelled_process.Start (pp,_) -> {conf with focused_proc = Some pp}
-        | _ -> Config.internal_error "[process_session.ml Configuration.Transition.apply_start] Error during the initialisation of processes. (1)" end
+          | Labelled_process.Start (pp,_) -> {conf with focused_proc = Some pp}
+          | _ -> Config.internal_error "[process_session.ml Configuration.Transition.apply_start] Error during the initialisation of processes. (1)"
+        end
       | _ ->
         Config.internal_error "[process_session.ml >> Configuration.Transition.apply_start] Error during the initialisation of processes. (2)"
 
     (* syntactic transformation of a configuration after executing an output *)
+    (* VINCENT : Check what [p] corresponds to. Since it's after executing an output, why the output.data only used for [ch] and [term] ? *)
     let apply_neg (ax:axiom) (p:Labelled_process.t) (od:Labelled_process.Output.data) (leftovers:Labelled_process.t list) (conf:t) : t =
       let state = {
         current_proc = to_process conf;
-        id = od.id;
-        label = od.lab;
+        id = od.Labelled_process.Output.id;
+        label = od.Labelled_process.Output.lab;
       } in
-      let ch = od.channel in
-      let term = od.term in
+      let ch = od.Labelled_process.Output.channel in
+      let term = od.Labelled_process.Output.term in
       {conf with
         to_normalise = Some p;
         sure_output_proc = leftovers;
@@ -1478,17 +1623,17 @@ end = struct
         begin match Labelled_process.get_proc p with
         | Labelled_process.Input(ch,x,pp,id) ->
           let idata : Labelled_process.Input.data = {
-            channel = ch;
-            var = x;
-            lab = Labelled_process.get_label p;
-            id = id;
-            leftovers = []; (* field not relevant here *)
-            optim = true; (* field not relevant here *)
+            Labelled_process.Input.channel = ch;
+            Labelled_process.Input.var = x;
+            Labelled_process.Input.lab = Labelled_process.get_label p;
+            Labelled_process.Input.id = id;
+            Labelled_process.Input.leftovers = []; (* field not relevant here *)
+            Labelled_process.Input.optim = true; (* field not relevant here *)
           } in
           let state : state = {
             current_proc = to_process conf;
-            id = idata.id;
-            label = idata.lab;
+            id = idata.Labelled_process.Input.id;
+            label = idata.Labelled_process.Input.lab;
           } in
           let conf_app = {conf with
             focused_proc = Some pp;
@@ -1509,15 +1654,15 @@ end = struct
       let (pp,idata) = focus in
       let state = {
         current_proc = to_process conf;
-        id = idata.id;
-        label = idata.lab;
+        id = idata.Labelled_process.Input.id;
+        label = idata.Labelled_process.Input.lab;
       } in
       {conf with
-        input_proc = idata.leftovers;
+        input_proc = idata.Labelled_process.Input.leftovers;
         focused_proc = Some pp;
-        ongoing_block = Block.add_variable var_X (Block.create idata.lab);
+        ongoing_block = Block.add_variable var_X (Block.create idata.Labelled_process.Input.lab);
         previous_blocks = conf.ongoing_block :: conf.previous_blocks;
-        trace = InAction(idata.channel,var_X,Term.of_variable idata.var,state) :: conf.trace;
+        trace = InAction(idata.Labelled_process.Input.channel,var_X,Term.of_variable idata.Labelled_process.Input.var,state) :: conf.trace;
       }
   end
 end

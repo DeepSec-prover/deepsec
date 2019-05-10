@@ -109,10 +109,11 @@ end = struct
   end
 
   type transition = {
-    target : Index.t;
-    label : Label.t;
-    forall : bool;
-    new_proc : Labelled_process.t;
+    target : Index.t; (* Fresh index generated while generated the next transition of a constraint system. *)
+    label : Label.t; (* Label on which the actions was done. *)
+    forall : bool; (* Whether the transition has a forall label (without taking into account the status of the
+      original constraint system.) *)
+    new_proc : Labelled_process.t; (* Resulting proess obtain after transition *)
   }
 
   module Process = struct
@@ -152,6 +153,7 @@ end = struct
   end
 
   module Matching = struct
+    (* Vincent: Change that... can do much better with indexes containing links. *)
     type matching_forall_exists = Index.t * (Index.t * BijectionSet.t) list
     type t = matching_forall_exists list
 
@@ -708,7 +710,7 @@ end = struct
     then f_next ()
     else
     begin
-    Node.test_node n;
+    (*Node.test_node n;*)
     let (transition_type,node_to_split) = Node.generate_next n in
     (* Printf.printf "--> new node to split:\n";
     Node.print node_to_split; *)

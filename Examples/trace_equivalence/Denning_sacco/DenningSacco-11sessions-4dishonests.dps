@@ -78,4 +78,4 @@ let Pideal =
     processA(ca11,a,kas,b) | processB(cb11,b,kbs,a) | processS(cs11,a,kas,b,kbs)
   ).
 
-query session_equiv(Preal,Pideal).
+query trace_equiv(Preal,Pideal).
