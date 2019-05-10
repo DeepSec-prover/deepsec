@@ -158,7 +158,10 @@ end = struct
     | Symbol _, _ -> -1
     | Name _, _ -> -1
   let equal (c:t) (d:t) : bool =
-    compare c d = 0
+    match c,d with
+    | Symbol f, Symbol g -> Symbol.is_equal f g
+    | Name n, Name m -> Name.is_equal n m
+    | _, _ -> false
   let is_public (c:t) : bool =
     match c with
     | Symbol f -> Symbol.is_public f
@@ -172,14 +175,14 @@ end = struct
     if b then display
     else Printf.sprintf "<%s>" display
   let from_term (t:protocol_term) : t =
-    if Term.is_symbol t then Symbol (Term.root t)
+    if Term.is_function t then Symbol (Term.root t)
     else if Term.is_name t then Name (Term.name_of t)
-    else Config.internal "[process_session.ml >> Channel.from_term] Channels should be names or symbols."
+    else Config.internal_error "[process_session.ml >> Channel.from_term] Channels should be names or symbols."
   let apply_renaming (rho:Name.Renaming.t) (c:t) : t =
     match c with
     | Symbol _ -> c
     | Name n ->
-      Name.Renaming.apply_on_terms rho (Term.of_name n) (fun x f -> f x)
+      Name (Term.name_of (Name.Renaming.apply_on_terms rho (Term.of_name n) (fun x f -> f x)))
   type elt = t
   module Set = Set.Make(struct type t = elt let compare = compare end)
 end
@@ -208,7 +211,7 @@ module Labelled_process : sig
   val elements : ?init:(t list) -> t -> t list (* extracts the list of parallel subprocesses *)
   val nil : t -> bool (* checks if this represents the null process *)
   val empty : Label.t -> t (* a labelled process with empty data. For typing purposes (only way to construct a Labelled_process.t outside of this module) *)
-  val contains_output_toplevel : t -> bool (* checks whether a normalised process contains an executable output *)
+  val contains_public_output_toplevel : t -> bool (* checks whether a normalised process contains an executable output *)
   val not_pure_io_toplevel : t -> bool (* checks whether a normalised process does not start right away by an input or an output *)
   val labelling : Label.t -> t -> t (* assigns labels to the parallel processes at toplevel, with a given label prefix *)
   val get_label : t -> Label.t (* gets the label of a process, and returns an error message if it has not been assigned *)
@@ -225,7 +228,7 @@ module Labelled_process : sig
       leftovers : t list; (* what remains after the input is executed *)
       id : id; (* the id of the executed instruction *)
     }
-    val unfold : ?optim:false -> (t-> data-> 'a) -> t list -> (t * data) list * 'a list  (* function computing all potential ways of unfolding one input from a list of processes. Private and Public inputs are separated and a transformation is applied to private inputs. *)
+    val unfold : ?optim:bool -> (t-> data-> 'a) -> t list -> (t * data) list * 'a list  (* function computing all potential ways of unfolding one input from a list of processes. Private and Public inputs are separated and a transformation is applied to private inputs. *)
   end
 
   (* extraction of outputs from processes *)
@@ -244,7 +247,7 @@ module Labelled_process : sig
   end
 
   (* extraction of private communications and public inputs (using the module Input) *)
-  module PrivateComm : sig =
+  module PrivateComm : sig
     type data = {
       channel : Channel.t; (* channel on which the output is performed *)
       var : fst_ord_variable; (* variable bound by the input *)
@@ -254,8 +257,10 @@ module Labelled_process : sig
 
       leftovers : t list; (* what remains after the input is executed *)
       ids : id * id; (* the ids of the executed instructions *)
+      conflict_toplevel : bool;
+      conflict_future : bool;
     }
-    val unfold : ?optim:bool -> t list -> (t * t * data) list * (t * data) list (* computes all potential unfolding of private communications and public inputs *)
+    val unfold : ?optim:bool -> t list -> (t * Input.data) list * (t * t * data) list (* computes all potential unfolding of private communications and public inputs *)
   end
 
   (* operations on initial labelled process that do not affect the decision of equivalence but make it more efficient *)
@@ -448,8 +453,8 @@ end = struct
     match lp.proc with
     | Input _ -> false
     | OutputSure (c,_,_,_) -> Channel.is_public c
-    | Par l -> List.exists contains_output_toplevel l
-    | Bang (_,l1,l2) -> List.exists contains_output_toplevel (l1@l2)
+    | Par l -> List.exists contains_public_output_toplevel l
+    | Bang (_,l1,l2) -> List.exists contains_public_output_toplevel (l1@l2)
     | Start _ -> Config.internal_error "[process_session.ml >> contains_output_toplevel] Unexpected Start constructor."
     | _ -> Config.internal_error "[process_session.ml >> contains_output_toplevel] Should only be applied on normalised processes."
 
@@ -620,11 +625,11 @@ end = struct
         f_cont id {proc = Par []; label = None}
       | Process.Output(ch,t,pp) ->
         browse bound_vars pp (id+1) (fun id_max p_conv ->
-          f_cont id_max {proc = Output(Channel.of_term ch,t,p_conv,id); label = None}
+          f_cont id_max {proc = Output(Channel.from_term ch,t,p_conv,id); label = None}
         )
       | Process.Input(ch,x,pp) ->
         browse (x::bound_vars) pp (id+1) (fun id_max p_conv ->
-          f_cont id_max {proc = Input(Channel.of_term ch,x,p_conv,id); label = None}
+          f_cont id_max {proc = Input(Channel.from_term ch,x,p_conv,id); label = None}
         )
       | Process.IfThenElse(t1,t2,pthen,pelse) ->
         browse bound_vars pthen id (fun id1 pthen' ->
@@ -676,37 +681,26 @@ end = struct
     | [p] -> p
     | l -> {proc = Par l; label = None}
 
-  (* browse a normalised process and returns all executable inputs and outputs (up to symmetry). Separates between public and private outputs.
-  - these inputs/outputs can be ignored or transformed before being returned, using the argument [add_to_accu]: [add_to_accu p leftovers b accu] adds the unfoldable process [p] (with parallel leftovers [leftovers]) to the list [accu]. [b] indicates whether this would be done if [Partial] symmetries were taken into account
-  - the flag [optim] indicates that [Partial] symmetries should be taken into account. It has the same behaviour (but is more efficient) as replacing [add_to_accu] by [fun p b l -> if b then add_to_accu p b l else l].
-  NB. Once a symmetry is broken by this function, it cannot be recovered
-  NB. Assumes that a negative phase is not in progress (not public output available, and symmetries are not waiting to be restaured). Raises an exception if a violation if this assumption is spotted. *)
-  let unfold_with_leftovers (optim:bool) (init_accu_pub:'a list) (add_accu_pub:t->t list->bool->'a list->'a list)  (init_accu_priv:'b list) (add_accu_priv:t->t list->bool->'b list->'b list) (l:t list) : 'a list * 'b list =
-    let rec unfold forall accu_pub accu_priv leftovers p f_cont =
+  (* browse executable inputs and outputs of a normalised process *)
+  let unfold_with_leftovers (optim:bool) (accu:'a) (add_to_accu:t->t list->bool->'a->'a)  (p:t) (leftovers:t list) : 'a =
+    let rec unfold forall accu leftovers p f_cont =
       match p.proc with
-      | OutputSure (c,_,_,_) ->
-        if Channel.is_public c then
-          Config.internal_error "[process_session.ml >> unfold_with_leftovers] No public output should be available."
-        else
-          f_cont accu_pub (add_accu_priv p leftovers forall accu_priv)
-      | Input (c,_,_,_) ->
-        if Channel.is_public c then
-          f_cont (add_accu_pub p leftovers forall accu_pub) accu_priv
-        else
-          f_cont accu_pub (add_accu_priv p leftovers forall accu_priv)
+      | OutputSure _
+      | Input _ ->
+        f_cont (add_to_accu p leftovers forall accu)
       | Par l ->
-        unfold_list None forall accu_pub accu_priv leftovers l f_cont
+        unfold_list forall accu leftovers l f_cont
       | Bang(_,[],[]) ->
-        f_cont accu_pub accu_priv
+        f_cont accu
       | Bang(_,_::_,_) ->
         Config.internal_error "[process_session.ml >> unfold_with_leftovers] Symmetries should not be broken."
       | Bang(b,[],pp::tl) ->
         let leftovers_pp = if tl = [] then leftovers else {proc = Bang(b,[],tl); label = None}::leftovers in
         if b = Strong || optim then
-          unfold forall accu_pub accu_priv leftovers_pp pp f_cont
+          unfold forall accu leftovers_pp pp f_cont
         else
-          unfold forall accu_pub accu_priv leftovers_pp pp (fun accu_pub_pp accu_priv_pp  ->
-            unfold_list (Some [pp]) false accu_pub_pp accu_priv_pp leftovers tl f_cont
+          unfold forall accu leftovers_pp pp (fun accu  ->
+            unfold_bang [pp] accu leftovers tl f_cont
           )
       | New _
       | If _
@@ -715,36 +709,35 @@ end = struct
         Config.internal_error "[process_session.ml >> unfold_with_leftovers] Unfolding should only be applied on normalised processes."
       | Start _ -> Config.internal_error "[process_session.ml >> unfold_with_leftovers] Unexpected Start constructor."
 
-    and unfold_list bang forall accu_pub accu_priv leftovers l f_cont =
+    and unfold_list forall accu leftovers l f_cont =
       match l with
-      | [] -> f_cont accu_pub accu_priv
+      | [] -> f_cont accu
       | p :: t ->
-        match bang with
-        | None -> (* case of a list of parallel processes *)
-          unfold forall accu_pub accu_priv (List.rev_append t leftovers) p (fun accu_pub1 accu_priv1 ->
-            unfold_list forall accu_pub1 accu_priv1 (p::leftovers) t f_cont
-          )
-        | Some memo -> (* case of a list of replicated processes *)
-          let leftovers1 =
-            {proc = Bang(Partial,[],List.rev_append memo t); label = None} :: leftovers
-          in
-          unfold forall accu_pub accu_priv leftovers1 p (fun accu_pub1 accu_priv1 ->
-            unfold_list (Some (p::memo)) forall accu_pub1 accu_priv1 leftovers t f_cont
-          ) in
+        unfold forall accu (List.rev_append t leftovers) p (fun accu1 ->
+          unfold_list forall accu1 (p::leftovers) t f_cont
+        )
 
-    unfold_list None true init_accu_pub init_accu_priv [] l (fun accu_pub accu_priv -> accu_pub,accu_priv)
+    and unfold_bang memo accu leftovers t f_cont =
+      let leftovers1 =
+        {proc = Bang(Partial,[],List.rev_append memo t); label = None} :: leftovers in
+      unfold false accu leftovers1 p (fun accu1 ->
+        unfold_bang (p::memo) accu1 leftovers t f_cont
+      ) in
+
+    unfold optim accu leftovers p (fun accu -> accu)
+
 
   module Input = struct
     type data = {
-      channel : symbol;
+      channel : Channel.t;
       var : fst_ord_variable;
       optim : bool;
       lab : Label.t;
       leftovers : t list;
       id : id;
     }
-    (* Processes in given to [unfold_input] should all be normalised. Moreover, [unfold_input] is applied when there is no more public output available, hence no public output at top-level. *)
-    let unfold ?(optim=false) (priv:t->data->'a list->'a list) (l:t list) : (t * data) list * 'a list =
+    (* Processes given to [unfold_input] should all be normalised. Moreover, [unfold_input] is applied when there is no more public output available, hence no public output at top-level. *)
+    (* let unfold ?(optim=false) (priv:t->data->'a list->'a list) (l:t list) : (t * data) list * 'a list =
       let add_accu f p leftovers forall accu =
         match p.proc with
         | OutputSure _ -> accu
@@ -758,12 +751,13 @@ end = struct
             id = id;
           } in
           f pp idata accu in
-      unfold_with_leftovers optim [] (add_accu (fun x y l -> (x,y)::l)) [] (add_accu priv) l
+      unfold_with_leftovers optim [] (add_accu (fun x y l -> (x,y)::l)) [] (add_accu priv) l *)
+    let unfold = failwith "to remove"
   end
 
   module Output = struct
     type data = {
-      channel : symbol;
+      channel : Channel.t;
       term : protocol_term;
       optim : bool;
       lab : Label.t;
@@ -777,7 +771,7 @@ end = struct
       let rec unfold accu p rebuild f_cont =
         match p.proc with
         | Input _ -> f_cont accu
-        | OutputSure(c,_,_,_) when Channel.is_private c -> f_cont accu
+        | OutputSure(c,_,_,_) when not (Channel.is_public c) -> f_cont accu
         | OutputSure(c,t,pp,id) ->
           let res = {
             channel = c;
@@ -798,13 +792,25 @@ end = struct
         | Par l ->
           let add_par l = rebuild {proc = Par l; label = None} in
           unfold_list accu [] l add_par f_cont
-        | Bang(b,brok,l) ->
+        | Bang(Partial,brok,l) ->
           let add_bang x =
-            rebuild {proc = Bang(b,x,l); label = None} in
+            rebuild {proc = Bang(Partial,x,l); label = None} in
           let add_broken_bang x y =
-            rebuild {proc = Bang(b,brok@x,y); label = None} in
+            rebuild {proc = Bang(Partial,brok@x,y); label = None} in
           unfold_list accu [] brok add_bang (fun ac ->
             unfold_list_and_break ac [] l add_broken_bang f_cont
+          )
+        | Bang(Strong,brok,[]) ->
+          let add_bang x =
+            rebuild {proc = Bang(Strong,x,[]); label = None} in
+          unfold_list accu [] brok add_bang f_cont
+        | Bang(Strong,brok,(pp::t as l)) ->
+          let add_bang x =
+            rebuild {proc = Bang(Strong,x,l); label = None} in
+          let add_broken_bang x =
+            rebuild {proc = Bang(Strong,brok@[x],t); label = None} in
+          unfold_list accu [] brok add_bang (fun ac ->
+            unfold ac pp add_broken_bang f_cont
           )
 
       and unfold_list accu memo l rebuild f_cont =
@@ -843,7 +849,7 @@ end = struct
         lp
       | Par l -> {lp with proc = Par (List.map restaure_sym l)}
       | Bang(b,l1,l2) -> (* non trivial restauration: symmetry cannot be restaured to Strong *)
-        {lp with proc = Bang (b,[],List.map restaure_sym l1 @ l2)}
+        {lp with proc = Bang (Partial,[],List.map restaure_sym l1 @ l2)}
       | Let _
       | If _
       | New _
@@ -863,9 +869,45 @@ end = struct
       conflict_toplevel : bool;
       conflict_future : bool;
     }
-
-    let unfold_from_one accu (leftovers:t list) (additional_leftovers:'a list) (add:t->'a list->'a list) (p:t) (final_combination:) :  
-
+    let unfold ?(optim=false) (l:t list) : (t * Input.data) list * (t * t * data) list =
+      List.fold_left_with_memo (fun accu p leftovers_left leftovers_right ->
+        let leftovers = List.rev_append leftovers_left leftovers_right in
+        unfold_with_leftovers optim accu (fun proc leftovers_proc forall (ac_pub,ac_priv) ->
+          match proc.proc with
+          | Input(c,x,pp,id) when Channel.is_public c ->
+            let res : Input.data = {
+              channel = c;
+              var = x;
+              optim = forall;
+              lab = get_label proc;
+              leftovers = leftovers_proc;
+              id = id;
+            } in
+            (pp,res)::ac_pub,ac_priv
+          | OutputSure(c_out,t,pp_out,id_out) when not (Channel.is_public c_out) ->
+            let ac_priv_upd =
+              List.fold_left_with_memo (fun ac_priv1 proc1 leftovers1_left leftovers1_right ->
+                unfold_with_leftovers optim ac_priv1 (fun proc2 leftovers_proc2 forall_in ac_priv2 ->
+                  match proc2.proc with
+                  | Input(c_in,x,pp_in,id_in) when Channel.equal c_in c_out ->
+                    let res = {
+                      channel = c_in;
+                      var = x;
+                      term = t;
+                      optim = forall && forall_in;
+                      labs = get_label proc, get_label proc2;
+                      leftovers = leftovers_proc2;
+                      ids = id_in,id_out;
+                      conflict_toplevel = false;
+                      conflict_future = false; (* TODO implem the optim? *)
+                    } in
+                    (pp_in,pp_out,res) :: ac_priv2
+                  | _ -> ac_priv2
+                ) proc1 (List.rev_append leftovers1_left leftovers1_right)
+              ) ac_priv leftovers_proc in
+            ac_pub,ac_priv_upd
+        ) p leftovers
+      ) ([],[]) l
   end
 
   module Optimisation = struct
@@ -953,7 +995,7 @@ end = struct
       | OutputSure _ , Input _  -> -1
       | Input _, OutputSure _ -> 1
       | Input(c1,_,_,_), Input(c2,_,_,_)
-      | OutputSure(c1,_,_,_), OutputSure(c2,_,_,_) -> Symbol.order c1 c2
+      | OutputSure(c1,_,_,_), OutputSure(c2,_,_,_) -> Channel.compare c1 c2
       | _ -> Config.internal_error "[process_session.ml >> compare_io_process] Unexpected case."
 
     (* Checks whether two lists of atomic processes have identical skeletons.
@@ -1181,6 +1223,8 @@ end = struct
               | Par [p]
               | Bang(_,[],[p])
               | Bang(_,[p],[]) -> p :: l_norm
+              | Par []
+              | Bang(_,[],[]) -> l_norm
               | _ -> p_norm :: l_norm in
             f_cont gather2 l_tot_norm f_next2
           ) f_next1
@@ -1328,14 +1372,14 @@ end = struct
     label : Label.t;
   }
   type action =
-    | InAction of symbol * snd_ord_variable * protocol_term * state
-    | OutAction of symbol * axiom * protocol_term * state
+    | InAction of Channel.t * snd_ord_variable * protocol_term * state
+    | OutAction of Channel.t * axiom * protocol_term * state
 
   type t = {
     input_proc : Labelled_process.t list;
     focused_proc : Labelled_process.t option;
     sure_output_proc : Labelled_process.t list;
-    sure_unchecked_skeletons : Labelled_process.t option;
+    sure_unchecked_skeletons : (Labelled_process.t * (Labelled_process.t -> Labelled_process.t)) option;
     to_normalise : Labelled_process.t option;
     trace : action list;
     ongoing_block : Block.t;
@@ -1359,13 +1403,13 @@ end = struct
       let input =
         Rewrite_rules.normalise (Subst.apply fst_subst x (fun x f -> f x)) in
       let msg =
-        Printf.sprintf "input on channel %s of %s = %s\n" (Symbol.display Terminal ch) (Term.display Terminal Recipe recipe) (Term.display Terminal Protocol input) in
+        Printf.sprintf "input on channel %s of %s = %s\n" (Channel.to_string ch) (Term.display Terminal Recipe recipe) (Term.display Terminal Protocol input) in
       Printf.sprintf "%s%s" (bold_blue msg) (Labelled_process.print ~solution:fst_subst ~highlight:s.id s.current_proc)
     | OutAction(ch,ax,t,s) ->
       let output =
         Rewrite_rules.normalise (Subst.apply fst_subst t (fun x f -> f x)) in
       let msg =
-        Printf.sprintf "output on channel %s of %s, referred as %s\n" (Symbol.display Terminal ch) (Term.display Terminal Protocol output) (Axiom.display Terminal ax) in
+        Printf.sprintf "output on channel %s of %s, referred as %s\n" (Channel.to_string ch) (Term.display Terminal Protocol output) (Axiom.display Terminal ax) in
       Printf.sprintf "%s%s" (bold_blue msg) (Labelled_process.print ~solution:fst_subst ~highlight:s.id s.current_proc)
 
   let print_trace (fst_subst:(fst_ord,name) Subst.t) (snd_subst:(snd_ord,axiom) Subst.t) (conf:t) : string =
@@ -1417,7 +1461,7 @@ end = struct
         Labelled_process.Normalise.normalise p eqn_cast (fun gather p_norm f_next ->
           let labelled_p = Labelled_process.labelling prefix p_norm in
           let conf_rel = {conf with
-            sure_unchecked_skeletons = Some (rebuild labelled_p);
+            sure_unchecked_skeletons = Some (labelled_p,rebuild);
             to_normalise = None;
           } in
           f_cont gather conf_rel labelled_p;
@@ -1426,13 +1470,10 @@ end = struct
       | _, _ -> Config.internal_error "[process_session.ml >> normalise] A configuration cannot be released and focused at the same time."
 
   let check_skeleton (conf1:t) (conf2:t) : bool =
-
     match conf1.focused_proc, conf2.focused_proc, conf1.sure_unchecked_skeletons, conf2.sure_unchecked_skeletons with
     | Some p1, Some p2, None, None
-    | None, None, Some p1, Some p2 ->
-      if Labelled_process.contains_output_toplevel p1 || Labelled_process.contains_output_toplevel p2 then
-        Labelled_process.Skeleton.equal (p1::conf1.sure_output_proc) (p2::conf2.sure_output_proc)
-      else Labelled_process.Skeleton.equal [p1] [p2]
+    | None, None, Some (p1,_), Some (p2,_) ->
+      Labelled_process.Skeleton.equal [p1] [p2]
     | _ ->
       Config.internal_error "[process_session.ml >> check_skeleton] Comparing processes in inconsistent states."
 
@@ -1445,23 +1486,24 @@ end = struct
         Some {c with focused_proc = None; sure_output_proc = p::c.sure_output_proc}
       | _ ->
         if Labelled_process.nil p then None
-        else if Labelled_process.contains_output_toplevel p then
+        else if Labelled_process.contains_public_output_toplevel p then
           Some {c with focused_proc = None; sure_output_proc = p::c.sure_output_proc}
         else
           Some {c with focused_proc = None; input_proc = p::c.input_proc} end
-    | _, Some p ->
-      begin match Labelled_process.get_proc p with
+    | _, Some (p,rebuild) ->
+      let pp = rebuild p in
+      begin match Labelled_process.get_proc pp with
       | Labelled_process.Input _ ->
-        Some {c with sure_unchecked_skeletons = None; input_proc = p::c.input_proc}
+        Some {c with sure_unchecked_skeletons = None; input_proc = pp::c.input_proc}
       | Labelled_process.OutputSure _ ->
-        Some {c with sure_unchecked_skeletons = None; sure_output_proc = p::c.sure_output_proc}
+        Some {c with sure_unchecked_skeletons = None; sure_output_proc = pp::c.sure_output_proc}
       | _ ->
-        if Labelled_process.nil p then
+        if Labelled_process.nil pp then
           Some {c with sure_unchecked_skeletons = None}
-        else if Labelled_process.contains_output_toplevel p then
-          Some {c with sure_unchecked_skeletons = None; sure_output_proc = p::c.sure_output_proc}
+        else if Labelled_process.contains_public_output_toplevel pp then
+          Some {c with sure_unchecked_skeletons = None; sure_output_proc = pp::c.sure_output_proc}
         else
-          Some {c with sure_unchecked_skeletons = None; input_proc = Labelled_process.Output.restaure_sym p::c.input_proc} end
+          Some {c with sure_unchecked_skeletons = None; input_proc = Labelled_process.Output.restaure_sym pp::c.input_proc} end
     | _, _ ->
         Config.internal_error "[process_session.ml >> release_skeleton] A process is either focused or released."
 

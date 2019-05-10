@@ -367,7 +367,8 @@ end = struct
         add_transition_start csys_set accu conf eqn cs Label.initial symp.status
       | Some RNeg ->
         let ax = get_axiom v in
-        List.iter_with_memo (fun proc memo ->
+        List.iter_with_memo (fun proc memo_left memo_right ->
+          let memo = List.rev_append memo_left memo_right in
           List.iter (fun (pp,output_data) ->
             let conf =
               Configuration.Transition.apply_neg ax pp output_data memo symp.conf in

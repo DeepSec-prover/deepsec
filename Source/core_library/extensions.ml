@@ -60,14 +60,14 @@ module List = struct
 
   (* a variant of the iterators where the remainder of the list can be taken
   as an argument of the iterated function *)
-  let fold_left_with_memo (f:'a->'b->'b list->'a) (x:'a) (l:'b list) : 'a =
+  let fold_left_with_memo (f:'a->'b->'b list->'b list->'a) (x:'a) (l:'b list) : 'a =
     let rec browse memo ac l =
       match l with
       | [] -> ac
-      | h :: t -> browse (h::memo) (f ac h (List.rev_append memo t)) t in
+      | h :: t -> browse (h::memo) (f ac h memo t) t in
     browse [] x l
 
-  let iter_with_memo (f:'a->'a list->unit) (l:'a list) : unit =
+  let iter_with_memo (f:'a->'a list->'a list->unit) (l:'a list) : unit =
     fold_left_with_memo (fun () -> f) () l
 end
 
