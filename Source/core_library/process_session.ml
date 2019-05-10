@@ -228,7 +228,7 @@ module Labelled_process : sig
       leftovers : t list; (* what remains after the input is executed *)
       id : id; (* the id of the executed instruction *)
     }
-    val unfold : ?optim:bool -> (t-> data-> 'a) -> t list -> (t * data) list * 'a list  (* function computing all potential ways of unfolding one input from a list of processes. Private and Public inputs are separated and a transformation is applied to private inputs. *)
+    val unfold : ?optim:bool -> t list -> (t * data) list (* function computing all potential ways of unfolding one input from a list of processes. *)
   end
 
   (* extraction of outputs from processes *)
