@@ -656,9 +656,13 @@ end = struct
         | None, _ -> Config.internal_error "[equivalence_session.ml >> split_partition_tree_node] Unexpected case."
         | Some (ml,c),remainder ->
           let new_matching = Symbolic.Matching.add_match i matchers ml in
-          (new_matching,c) :: remainder in
+          (new_matching,c) :: remainder
+      in
+
       let new_node_data =
-        Symbolic.Matching.fold add_matching_in_data_list n.matching (List.rev_map (fun c -> Symbolic.Matching.empty,c) comps) in
+        Symbolic.Matching.fold add_matching_in_data_list n.matching (List.rev_map (fun c -> Symbolic.Matching.empty,c) comps)
+      in
+
       let replace_data m c =
         let csys_set =
           Symbolic.Set.filter (fun i _ ->
