@@ -1090,58 +1090,58 @@ end = struct
       | DiseqTop
       | DiseqList of (fst_ord, name) Diseq.t list
 
-    let rec normalise (p:t) (cstr:constraints) (f_cont:constraints->t->(unit->unit)->unit) (f_next:unit->unit) : unit =
-      match p.proc with
+    let rec normalise (proc:t) (cstr:constraints) (f_cont:constraints->t->(unit->unit)->unit) (f_next:unit->unit) : unit =
+      match proc.proc with
       | OutputSure _
-      | Input _ -> f_cont cstr p f_next
+      | Input _ -> f_cont cstr proc f_next
       | Output(ch,t,p,id) ->
-        let tt =
-          Rewrite_rules.normalise (Subst.apply cstr.equations t (fun x f -> f x)) in
+        let tt = Rewrite_rules.normalise (Subst.apply cstr.equations t (fun x f -> f x)) in
 
         let eqn_modulo_list_result =
           try
             EqList (Modulo.syntactic_equations_of_equations [Modulo.create_equation tt tt])
           with
-          | Modulo.Bot -> EqBot
-          | Modulo.Top -> EqTop in
+            | Modulo.Bot -> EqBot
+            | Modulo.Top -> EqTop in
 
         begin match eqn_modulo_list_result with
-        | EqBot -> f_cont cstr {p with proc = Par []} f_next
-        | EqTop -> f_cont cstr {p with proc = OutputSure(ch,t,p,id)} f_next
-        | EqList eqn_modulo_list ->
-          let f_next_equations =
-            List.fold_left (fun acc_f_next equations_modulo ->
-              let new_disequations_op =
+          | EqBot -> f_cont cstr {p with proc = Par []} f_next
+          | EqTop -> f_cont cstr {p with proc = OutputSure(ch,t,p,id)} f_next
+          | EqList eqn_modulo_list ->
+            let f_next_equations =
+              List.fold_left (fun acc_f_next equations_modulo ->
+                let new_disequations_op =
+                  try
+                    let new_disequations =
+                      List.fold_left (fun acc diseq ->
+                        let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
+                        if Diseq.is_top new_diseq then acc
+                        else if Diseq.is_bot new_diseq then raise Bot_disequations
+                        else new_diseq::acc
+                      ) [] cstr.disequations in
+                    Some new_disequations
+                  with
+                    | Bot_disequations -> None in
+
+                match new_disequations_op with
+                 | None -> acc_f_next
+                 | Some new_diseqn ->
+                    let new_eqn = Subst.compose cstr.equations equations_modulo in
+                    fun () -> f_cont {equations = new_eqn; disequations = new_diseqn} {proc with proc = OutputSure(ch,t,p,id)} acc_f_next
+              ) f_next eqn_modulo_list
+            in
+
+            let f_next_disequation f_next =
+              let diseqn_modulo =
                 try
-                  let new_disequations =
-                    List.fold_left (fun acc diseq ->
-                      let new_diseq = Diseq.apply_and_normalise Protocol equations_modulo diseq in
-                      if Diseq.is_top new_diseq then acc
-                      else if Diseq.is_bot new_diseq then raise Bot_disequations
-                      else new_diseq::acc
-                    ) [] cstr.disequations in
-                  Some new_disequations
+                  Modulo.syntactic_disequations_of_disequations (Modulo.create_disequation tt tt)
                 with
-                  | Bot_disequations -> None in
+                | Modulo.Bot
+                | Modulo.Top -> Config.internal_error "[process_session.ml >> normalise] The disequations cannot be top or bot." in
+              let new_diseqn = List.rev_append cstr.disequations diseqn_modulo in
+              f_cont {cstr with disequations = new_diseqn} {proc with proc = Par []} f_next in
 
-              match new_disequations_op with
-               | None -> acc_f_next
-               | Some new_diseqn ->
-                  let new_eqn = Subst.compose cstr.equations equations_modulo in
-                  fun () -> f_cont {equations = new_eqn; disequations = new_diseqn} {p with proc = OutputSure(ch,t,p,id)} acc_f_next
-            ) f_next eqn_modulo_list in
-
-          let f_next_disequation f_next =
-            let diseqn_modulo =
-              try
-                Modulo.syntactic_disequations_of_disequations (Modulo.create_disequation tt tt)
-              with
-              | Modulo.Bot
-              | Modulo.Top -> Config.internal_error "[process_session.ml >> normalise] The disequations cannot be top or bot." in
-            let new_diseqn = List.rev_append cstr.disequations diseqn_modulo in
-            f_cont {cstr with disequations = new_diseqn} {p with proc = Par []} f_next in
-
-          f_next_disequation f_next_equations
+            f_next_disequation f_next_equations
         end
       | If(u,v,pthen,pelse) ->
         let (u_1,v_1) = Subst.apply cstr.equations (u,v) (fun (x,y) f -> f x, f y) in
@@ -1256,15 +1256,15 @@ end = struct
         normalise_list l cstr (fun gather l_norm f_next1 ->
           match l_norm with
             | [p] -> f_cont gather p f_next1
-            | _ -> f_cont gather {p with proc = Par l_norm} f_next1
+            | _ -> f_cont gather {proc with proc = Par l_norm} f_next1
         ) f_next
       | Bang(b,l1,l2) ->
         normalise_list l1 cstr (fun gather1 l1_norm f_next1 ->
           normalise_list l2 gather1 (fun gather2 l2_norm f_next2 ->
             match l1_norm,l2_norm with
-            | [],[p]
-            | [p],[] -> f_cont gather2 p f_next1
-            | _ -> f_cont gather2 {p with proc = Bang(b,l1_norm,l2_norm)} f_next2
+            | [],[p] -> f_cont gather2 p f_next2
+            | _::_,_ -> Config.internal_error "[process_session.ml >> normalise] Broken bang should not occur during normalisation."
+            | _ -> f_cont gather2 {proc with proc = Bang(b,l1_norm,l2_norm)} f_next2
             ) f_next1
         ) f_next
       | Start _ -> Config.internal_error "[process_session.ml >> normalise] Unexpected Start constructor."
@@ -1278,11 +1278,11 @@ end = struct
             let l_tot_norm =
               match p_norm.proc with
               | Par [p]
-              | Bang(_,[],[p])
-              | Bang(_,[p],[]) -> p :: l_norm
-              | Par []
-              | Bang(_,[],[]) -> l_norm
-              | _ -> p_norm :: l_norm in
+              | Bang(_,[],[p]) -> p :: l_norm
+              | Par [] | Bang(_,[],[]) -> l_norm
+              | Bang(_,_::_,_) -> Config.internal_error "[process_session.ml >> normalise_list] Broken bang should not occur during normalisation."
+              | _ -> p_norm :: l_norm
+            in
             f_cont gather2 l_tot_norm f_next2
           ) f_next1
         ) f_next
