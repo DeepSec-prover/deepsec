@@ -213,6 +213,12 @@ module Labelled_process : sig
   val empty : Label.t -> t (* a labelled process with empty data. For typing purposes (only way to construct a Labelled_process.t outside of this module) *)
   val contains_public_output_toplevel : t -> bool (* checks whether a normalised process contains an executable output *)
   val not_pure_io_toplevel : t -> bool (* checks whether a normalised process does not start right away by an input or an output *)
+  type process_skel = {
+    input_skel : (Channel.t * int * Label.t list) list ;
+    output_skel : (Channel.t * int * Label.t list) list
+  }
+
+  val labelling2 : Label.t -> t -> t * process_skel
   val labelling : Label.t -> t -> t (* assigns labels to the parallel processes at toplevel, with a given label prefix *)
   val get_label : t -> Label.t (* gets the label of a process, and returns an error message if it has not been assigned *)
   val get_proc : t -> plain
@@ -518,6 +524,80 @@ end = struct
     | Par _
     | Bang _ -> assign 0 lp (fun proc _ -> proc)
 
+
+  type process_skel = {
+    input_skel : (Channel.t * int * Label.t list) list ;
+    output_skel : (Channel.t * int * Label.t list) list
+  }
+
+  let rec add_in_process_skel_symbol ch label skel_list =
+    match skel_list with
+    | [] -> [ch,1,[label]]
+    | ((ch',size,list_label) as t)::q ->
+      let cmp_ch = Symbol.order ch ch' in
+      if cmp_ch < 0 then (ch,1,[label])::skel_list
+      else if cmp_ch = 0 then (ch',size+1,label::list_label)::q
+      else t::(add_in_process_skel_symbol ch label q)
+
+  let add_in_process_skel is_out ch label proc_skel =
+    if is_out then
+      {proc_skel with output_skel = add_in_process_skel_symbol ch label proc_skel.output_skel}
+    else
+      {proc_skel with input_skel = add_in_process_skel_symbol ch label proc_skel.input_skel}
+
+  let labelling2 (prefix:Label.t) (lbl_proc:t) : t * process_skel =
+
+    let process_skel = ref {input_skel = []; output_skel = []} in
+
+    let rec assign f_cont next_i lbl_proc  =
+      match lbl_proc.proc with
+      | OutputSure(c,_,_,_) ->
+        let label = Label.add_position prefix next_i in
+        process_skel := add_in_process_skel true c label !process_skel;
+        f_cont { lbl_proc with label = Some label } (next_i+1)
+      | Input(c,_,_,_) ->
+        let label = Label.add_position prefix next_i in
+        process_skel := add_in_process_skel false c label !process_skel;
+        f_cont { lbl_proc with label = Some label } (next_i+1)
+      | Par list_lbl_proc ->
+        assign_list (fun list_lbl_proc1 next_i1->
+          f_cont { proc = Par list_lbl_proc1; label = None } next_i1
+        ) next_i list_lbl_proc
+      | Bang(b,[],list_lbl_proc) ->
+        assign_list (fun list_lbl_proc1 next_i1 ->
+          f_cont { proc = Bang(b,[],list_lbl_proc1); label = None } next_i1
+        ) next_i list_lbl_proc
+      | _ -> Config.internal_error "[process_sessions.ml >> labelling] Labelling is done only on normalised process without broken symmetry."
+
+    and assign_list f_cont next_i = function
+      | [] -> f_cont [] next_i
+      | p :: t ->
+        assign (fun p1 next_i1 ->
+          assign_list (fun t1 next_i2 ->
+            f_cont (p1 :: t1) next_i2
+          ) next_i1 t
+        ) next_i p
+    in
+
+    Config.debug (fun () ->
+      if lbl_proc.label <> None then
+        Config.internal_error "[process_session.ml >> labelling] Already labelled process."
+    );
+    match lbl_proc.proc with
+    | Input(ch,_,_,_) ->
+      {lbl_proc with label = Some prefix}, { input_skel = [ch,1,[prefix]]; output_skel = [] }
+    | OutputSure(ch,_,_,_) ->
+      {lbl_proc with label = Some prefix}, { input_skel = []; output_skel = [ch,1,[prefix]] }
+    | Par _
+    | Bang _ ->
+    let lbl_proc' = assign (fun proc _ -> proc) 0 lbl_proc in
+      lbl_proc', !process_skel
+    | Output _
+    | If _
+    | Let _
+    | New _ -> Config.internal_error "[process_session.ml >> labelling] Only normalised processes should be assigned with labels."
+    | Start _ -> Config.internal_error "[process_session.ml >> labelling] Unexpected Start constructor."
+
   let elements ?init:(init:t list=[]) (lp:t) : t list =
     let rec gather accu lp = match lp with
       | {proc = Par l; _} -> List.fold_left gather accu l
@@ -544,54 +624,55 @@ end = struct
       let apply t = apply_renaming_on_term rho_n (apply_alpha_on_term rho_v t) in
       match p.proc with
       | Input(c,x,p,_) ->
-          Config.debug (fun () ->
-            if Variable.quantifier_of x != Free
-            then Config.internal_error "[process_sessions.ml >> fresh_copy] All variables should be free."
-          );
-          let xx = Variable.fresh_from x in
-          browse (Variable.Renaming.compose rho_v x xx) rho_n (xx::bound_vars) p (id+1) (fun id_max p_fresh ->
-            f_cont id_max {proc = Input(Channel.apply_renaming rho_n c,xx,p_fresh,id); label = None}
-          )
+        Config.debug (fun () ->
+          if Variable.quantifier_of x != Free
+          then Config.internal_error "[process_sessions.ml >> fresh_copy] All variables should be free."
+        );
+        let xx = Variable.fresh_from x in
+        browse (Variable.Renaming.compose rho_v x xx) rho_n (xx::bound_vars) p (id+1) (fun id_max p_fresh ->
+          f_cont id_max {proc = Input(Channel.apply_renaming rho_n c,xx,p_fresh,id); label = None}
+        )
       | Output(c,t,p,_) ->
-          browse rho_v rho_n bound_vars p (id+1) (fun id_max p_fresh ->
-            f_cont id_max {proc = Output(Channel.apply_renaming rho_n c,apply t,p_fresh,id); label = None}
-          )
+        browse rho_v rho_n bound_vars p (id+1) (fun id_max p_fresh ->
+          f_cont id_max {proc = Output(Channel.apply_renaming rho_n c,apply t,p_fresh,id); label = None}
+        )
       | OutputSure(c,t,p,_) ->
-          Config.internal_error "[process_session.ml >> fresh_copy] Outputs should not be sure before the analysis starts."
+        Config.internal_error "[process_session.ml >> fresh_copy] Outputs should not be sure before the analysis starts."
       | If(u,v,p1,p2) ->
-          let uu = apply u in
-          let vv = apply v in
-          browse rho_v rho_n bound_vars p1 id (fun id1 p1_fresh ->
-            browse rho_v rho_n bound_vars p2 id1 (fun id2 p2_fresh ->
-              f_cont id2 {proc = If(uu,vv,p1_fresh,p2_fresh); label = None}
-            )
+        let uu = apply u in
+        let vv = apply v in
+        browse rho_v rho_n bound_vars p1 id (fun id1 p1_fresh ->
+          browse rho_v rho_n bound_vars p2 id1 (fun id2 p2_fresh ->
+            f_cont id2 {proc = If(uu,vv,p1_fresh,p2_fresh); label = None}
           )
+        )
       | Let(u,u',v,p1,p2) ->
-          let bound_vars_u = Term.get_vars_not_in Protocol u bound_vars in
-          let fresh' = Variable.Renaming.fresh Protocol bound_vars_u Universal in
-          let (rho_v',new_bounds) = fresh_vars_and_renaming rho_v bound_vars_u in
-          let uu =
-            apply_renaming_on_term rho_n (apply_alpha_on_term rho_v' u) in
-          let uu' = apply_alpha_on_term fresh' (apply u) in
-          let vv = apply v in
-          browse rho_v' rho_n (List.rev_append new_bounds bound_vars) p1 id (fun id1 p1_fresh ->
-            browse rho_v rho_n bound_vars p2 id1 (fun id2 p2_fresh ->
-              f_cont id2 {proc = Let(uu,uu',vv,p1_fresh,p2_fresh); label = None}
-            )
+        (* VINCENT: Improve that part. I think we could have something more linear. Add that in terms.ml. I leave the warning for now. *)
+        let bound_vars_u = Term.get_vars_not_in Protocol u bound_vars in
+        let fresh' = Variable.Renaming.fresh Protocol bound_vars_u Universal in
+        let (rho_v',new_bounds) = fresh_vars_and_renaming rho_v bound_vars_u in
+        let uu =
+          apply_renaming_on_term rho_n (apply_alpha_on_term rho_v' u) in
+        let uu' = apply_alpha_on_term fresh' (apply u) in
+        let vv = apply v in
+        browse rho_v' rho_n (List.rev_append new_bounds bound_vars) p1 id (fun id1 p1_fresh ->
+          browse rho_v rho_n bound_vars p2 id1 (fun id2 p2_fresh ->
+            f_cont id2 {proc = Let(uu,uu',vv,p1_fresh,p2_fresh); label = None}
           )
+        )
       | New(n,p) ->
-          let nn = Name.fresh_from n in
-          browse rho_v (Name.Renaming.compose rho_n n nn) bound_vars p id (fun id_max p_fresh ->
-            f_cont id_max {proc = New(nn,p_fresh); label = None}
-          )
+        let nn = Name.fresh_from n in
+        browse rho_v (Name.Renaming.compose rho_n n nn) bound_vars p id (fun id_max p_fresh ->
+          f_cont id_max {proc = New(nn,p_fresh); label = None}
+        )
       | Par l ->
-          browse_list rho_v rho_n bound_vars l id (fun id_max l_fresh ->
-            f_cont id_max {proc = Par l_fresh; label = None}
-          )
+        browse_list rho_v rho_n bound_vars l id (fun id_max l_fresh ->
+          f_cont id_max {proc = Par l_fresh; label = None}
+        )
       | Bang(Strong,[],l) ->
-          browse_list rho_v rho_n bound_vars l id (fun id_max l_fresh ->
-            f_cont id_max {proc = Bang(Strong,[],l_fresh); label = None}
-          )
+        browse_list rho_v rho_n bound_vars l id (fun id_max l_fresh ->
+          f_cont id_max {proc = Bang(Strong,[],l_fresh); label = None}
+        )
       | Bang _ -> Config.internal_error "[process_session.ml >> fresh_copy] Unexpected type of bang."
       | Start _ -> Config.internal_error "[process_session.ml >> fresh_copy] Unexpected Start constructor."
 
@@ -914,73 +995,49 @@ end = struct
     (* removing subprocesses that cannot trigger observable actions (for optimisation purposes; does not affect the decision of equivalence) *)
     let void = {proc = Par []; label = None}
     let replace (p:t) (plain:plain) : t = {p with proc = plain}
-    let remove_non_observable (p:t) : t =
-      let rec browse p f_cont =
-        match p.proc with
-        | Start (pp,id) ->
-          browse pp (fun _ pp_norm ->
-            f_cont false (replace p (Start (pp_norm,id)))
-          )
-        | Output(c,t,pp,id) ->
-          browse pp (fun _ pp_norm ->
-            f_cont false (replace p (Output(c,t,pp_norm,id)))
-          )
-        | OutputSure(c,t,pp,id) ->
-          browse pp (fun _ pp_norm ->
-            f_cont false (replace p (OutputSure(c,t,pp_norm,id)))
-          )
-        | Input(c,x,pp,id) ->
-          browse pp (fun _ pp_norm ->
-            f_cont false (replace p (Input(c,x,pp_norm,id)))
-          )
-        | If(u,v,p1,p2) ->
-          browse p1 (fun propagate1 p1_norm ->
-            browse p2 (fun propagate2 p2_norm ->
-              match propagate1,propagate2 with
-              | true,true -> f_cont true void
-              | true,false -> f_cont false (replace p (If(u,v,void,p2_norm)))
-              | false,true -> f_cont false (replace p (If(u,v,p1_norm,void)))
-              | false,false -> f_cont false (replace p (If(u,v,p1_norm,p2_norm)))
-            )
-          )
-        | Let(u,uu,v,p1,p2) ->
-          browse p1 (fun propagate1 p1_norm ->
-            browse p2 (fun propagate2 p2_norm ->
-              match propagate1,propagate2 with
-              | true,true -> f_cont true void
-              | true,false -> f_cont false (replace p (Let(u,uu,v,void,p2_norm)))
-              | false,true -> f_cont false (replace p (Let(u,uu,v,p1_norm,void)))
-              | false,false -> f_cont false (replace p (Let(u,uu,v,p1_norm,p2_norm)))
-            )
-          )
-        | New(n,pp) ->
-          browse p (fun propagate pp_norm ->
-            if propagate then f_cont true void
-            else f_cont false (replace p (New(n,pp_norm)))
-          )
-        | Par l ->
-          browse_list l (fun propagate l_norm ->
-            if propagate then f_cont true void
-            else f_cont false (replace p (Par l_norm))
-          )
-        | Bang (b,l1,l2) ->
-          browse_list l1 (fun propagate1 l1_norm ->
-            browse_list l2 (fun propagate2 l2_norm ->
-              if propagate1 && propagate2 then f_cont true void
-              else f_cont false (replace p (Bang(b,l1_norm,l2_norm)))
-            )
-          )
-      and browse_list l f_cont =
-        match l with
-        | [] -> f_cont true []
-        | pp :: t ->
-          browse pp (fun propagate_pp pp_norm ->
-            browse_list t (fun propagate_l l_norm ->
-              if propagate_pp then f_cont propagate_l l_norm
-              else f_cont false (pp::l_norm)
-            )
-          ) in
-      browse p (fun _ x -> x)
+    (* VINCENT: Possible new function for remove_non_observable. CAREFUL: Your function is never called. *)
+    let rec remove_non_observable p0 =
+      match p0.proc with
+      | Start(p,id) -> { p0 with proc = Start(remove_non_observable p,id) }
+      | Output(c,t,p,id) -> { p0 with proc = Output(c,t,remove_non_observable p,id) }
+      | OutputSure _ -> Config.internal_error "[process_sessions.ml >> Optimisation.remove_non_observable] Should only be applied at the beginning of the verification."
+      | Input(c,x,p,id) -> { p0 with proc = Input(c,x,remove_non_observable p,id) }
+      | If(u,v,p1,p2) ->
+        let p1' = remove_non_observable p1
+        and p2' = remove_non_observable p2 in
+        if nil p1' && nil p2'
+        then void
+        else { p0 with proc = If(u,v,p1',p2') }
+      | Let(pat,pat_uni,u, p1, p2) ->
+        let p1' = remove_non_observable p1
+        and p2' = remove_non_observable p2 in
+        if nil p1' && nil p2'
+        then void
+        else { p0 with proc = Let(pat,pat_uni,u,p1',p2') }
+      | New(n,p) ->
+        let p' = remove_non_observable p in
+        if nil p'
+        then void
+        else { p0 with proc = New(n,p') }
+      | Par l_proc ->
+        let l_proc' = remove_non_observable_list l_proc in
+        if l_proc' = []
+        then void
+        else { p0 with proc = Par l_proc' }
+      | Bang(Strong,[],l_proc) ->
+        let l_proc' = remove_non_observable_list l_proc in
+        if l_proc' = []
+        then void
+        else { p0 with proc = Bang(Strong,[],l_proc') }
+      | Bang _ ->  Config.internal_error "[process_sessions.ml >> Optimisation.remove_non_observable] All replication should be strong without broken symmetry at the beginning of the verification."
+
+    and remove_non_observable_list = function
+      | [] -> []
+      | p::q ->
+          let p' = remove_non_observable p in
+          if nil p'
+          then remove_non_observable_list q
+          else p'::(remove_non_observable_list q)
 
     let flatten (p:t) : t = p
     let factor (p:t) : t = p
