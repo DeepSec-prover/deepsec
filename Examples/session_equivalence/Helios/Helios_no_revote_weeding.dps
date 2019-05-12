@@ -1,0 +1,103 @@
+free id1, id2, id3.
+
+free c.
+
+free noRevotingAllowed, replayedBallot.
+
+free yes, no.
+
+(* Randomized asymmetric encryption *)
+
+fun aenc/3.
+fun pk/1.
+
+reduc adec(sk, aenc(pk(sk), sr, xm)) -> xm.
+
+(* The zero knowledge proof definition. *)
+
+fun zkp/3.
+const zkpok.
+reduc checkzkp(zkp(xr, xv, aenc(xpk, xr, xv)), aenc(xpk, xr, xv)) -> zkpok.
+
+(* The natural number model *)
+
+const zero.
+fun s/1.
+
+(* The voting process *)
+
+let Voter(auth,id,v,pkE) =
+    new r;
+    let ballot = aenc(pkE, r, v) in
+    out(auth,ballot);
+    out(c, (id, ballot, zkp(r, v, ballot))).
+
+(* The Tally *)
+
+let Outcome(prv_ch,ballot1,ballot2,skE) =
+  in(prv_ch,z);
+  let (vote1,vote2,vote3,nb_vote) = z in
+
+  (* We check that we have 3 votes. *)
+  if nb_vote = s(s(s(zero))) then
+
+  (* We check the replayed Ballot *)
+  if (vote1,vote2) = (ballot1,ballot2) then
+  if vote3 = ballot1
+  then out(c,replayedBallot)
+  else if vote3 = ballot2
+  then out(c,replayedBallot)
+  else
+    (* No replay so we output *)
+    let xv1 = adec(skE, vote1) in
+    let xv2 = adec(skE, vote2) in
+    (out(c, xv1) | out(c, xv2) | out(c, adec(skE, vote3))). (* The decryption of the vallot of id3 is done at the lvl of the output allowing the attacker NOT to vote. *)
+
+let SubTally(prv_ch) =
+  in(prv_ch,z);
+  let (vote1,vote2,vote3,nb_vote) = z in
+
+  in(c, x);
+  let (yid, yblob, yzkp) = x in
+    if checkzkp(yzkp, yblob) = zkpok then
+      if yid = id1
+      then
+        if vote1 = zero
+        then out(prv_ch,(yblob,vote2,vote3,s(nb_vote)))
+        else out(c, noRevotingAllowed)
+      else if yid = id2
+      then
+        if vote2 = zero
+        then out(prv_ch,(vote1,yblob,vote3,s(nb_vote)))
+        else out(c, noRevotingAllowed)
+      else if yid = id3
+      then
+        if vote3 = zero
+        then out(prv_ch,(vote1,vote2,yblob,s(nb_vote)))
+        else out(c, noRevotingAllowed)
+      else out(prv_ch,(vote1,vote2,vote3,s(nb_vote)))
+    else out(prv_ch,(vote1,vote2,vote3,s(nb_vote)))
+  else out(prv_ch,(vote1,vote2,vote3,s(nb_vote))).
+
+let Tally(skE,auth1,auth2) =
+  new prv_ch;
+  in(auth1, x1);
+  in(auth2, x2);
+  (
+    out(prv_ch,(zero,zero,zero,zero))
+  | Outcome(prv_ch,x1,x2,skE)
+  | !^3 SubTally(prv_ch)
+  ).
+
+let VotingSystem(vote1,vote2) =
+  new skE;
+  new auth1;
+  new auth2;
+  out(c,pk(skE));
+  (Voter(auth1,id1,vote1,pk(skE)) | Voter(auth2,id2,vote2,pk(skE)) | Tally(skE,auth1,auth2)).
+
+(* Should find an attack. *)
+query trace_equiv(VotingSystem(yes,no),VotingSystem(no,no)).
+
+(* Should not find an attack. *)
+query trace_equiv(VotingSystem(yes,no),VotingSystem(no,yes)).

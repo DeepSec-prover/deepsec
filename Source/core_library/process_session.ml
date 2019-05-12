@@ -12,7 +12,19 @@ module Label : sig
   val independent : t -> t -> int (* returns 0 if one label is prefix of the other, and compares them lexicographically otherwise *)
   val to_string : t -> string (* conversion to printable *)
   (* operations on sets of labels *)
-  module Set : Set.S with type elt = t
+  val check_prefix : t -> t -> int option (* prefix l1 l2 returns Some i if l2 = l1@[i] and None otherwise *)
+  val last_position : t -> int (* extracts the last added position of a label *)
+
+  (* a module for sets of labels that are identical up to the last position *)
+  module Set : sig
+    type elt
+    type t
+    val is_empty : t -> bool (* emptiness check *)
+    val of_position_list : elt -> int list -> t (* takes a label [lab] and a list of positions [l] and returns the set of lab@[i], [i] in [l]. *)
+    val find_and_remove : elt -> t -> t option (* searches a label in a set, and returns this set without it. None is the element was not found *)
+    val singleton : elt -> t (* a singleton containing a label *)
+    val iter : (elt -> unit) -> t -> unit (* iteration of an operation over a set *)
+  end with type elt = t
 end = struct
   type t = int list
   let initial = [0]
@@ -31,7 +43,40 @@ end = struct
           | 0 -> independent q1 q2
           | i -> i
   let to_list x = x
-  module Set = Set.Make(struct type t = int list let compare = compare end)
+  let rec check_prefix (l1:t) (l2:t) : int option =
+    match l1,l2 with
+    | [],[i] -> Some i
+    | h1::t1, h2::t2 when h1 = h2 -> check_prefix t1 t2
+    | _ -> None
+  let rec last_position l =
+    match l with
+    | [] -> Config.internal_error "[process_session.ml >> Label.last_position] Empty labels."
+    | [h] -> h
+    | _::t -> last_position t
+
+  module Set = struct
+    type elt = int list
+    type t = elt * int list
+    let is_empty (lab,l) = l = []
+    let of_position_list label l = label,l
+    let find_and_remove x (lab,l) =
+      match check_prefix lab x with
+      | None -> None
+      | Some i ->
+        let rec search accu l =
+          match l with
+          | [] -> None
+          | h :: t ->
+            if i = h then Some (lab,List.rev_append accu t)
+            else search (h::accu) t in
+        search [] l
+    let rec singleton l=
+      match l with
+      | [] -> Config.internal_error "[process_session.ml >> Label.last_position] Empty labels."
+      | [h] -> [],[h]
+      | h::t -> let (res,pos) = singleton t in (h::res,pos)
+    let iter f (lab,l) = List.iter (fun x -> f (add_position lab x)) l
+  end
 end
 
 
@@ -205,6 +250,9 @@ module Labelled_process : sig
     | Par of t list
     | Bang of bang_status * t list * t list
 
+  val get_label : t -> Label.t (* gets the label of a process, and returns an error message if it has not been assigned *)
+  val get_proc : t -> plain
+
   val print : ?labels:bool -> ?solution:((fst_ord, name) Subst.t) -> ?highlight:id -> t -> string (* converts a process into a string, while highlighting the instruction at the given identifier *)
   val of_expansed_process : ?preprocessing:(t -> t) -> Process.expansed_process -> t (* converts an expansed process into a process starting with a Start constructor and label [initial]. Also attributes id to all observable instructions. *)
   val of_process_list : t list -> t (* groups a list of processes together *)
@@ -213,16 +261,18 @@ module Labelled_process : sig
   val empty : Label.t -> t (* a labelled process with empty data. For typing purposes (only way to construct a Labelled_process.t outside of this module) *)
   val contains_public_output_toplevel : t -> bool (* checks whether a normalised process contains an executable output *)
   val not_pure_io_toplevel : t -> bool (* checks whether a normalised process does not start right away by an input or an output *)
-  type process_skel = {
-    input_skel : (Channel.t * int * Label.t list) list ;
-    output_skel : (Channel.t * int * Label.t list) list
-  }
 
-  val labelling2 : Label.t -> t -> t * process_skel
-  val labelling : Label.t -> t -> t (* assigns labels to the parallel processes at toplevel, with a given label prefix *)
-  val get_label : t -> Label.t (* gets the label of a process, and returns an error message if it has not been assigned *)
-  val get_proc : t -> plain
 
+  (* comparison of process skeletons *)
+  module Skeleton : sig
+    type t
+    val empty : t (* skeleton of the nil process *)
+    val print : t -> string (* conversion to string *)
+    val add_action : bool -> Channel.t -> Label.t -> t -> t (* adds a labelled action into a skeleton. The first boolean is set to true if this action is an output. *)
+    val link : t -> t -> (int list * int list) list option (* tries to convert a skeleton into a bijection set and fails if they are not equal *)
+  end
+
+  val labelling : Label.t -> t -> t * Skeleton.t  (* assigns labels to the parallel processes at toplevel, with a given label prefix *)
 
   (* extraction of inputs from processes *)
   module Input : sig
@@ -275,12 +325,6 @@ module Labelled_process : sig
     val flatten : t -> t (* push new names as deep as possible to facilitate the detection of symmetries, and flatten unecessary nested constructs *)
     val factor : t -> t (* factors structurally equivalent parallel processes *)
     val factor_up_to_renaming : t -> t -> t * t (* factors at toplevel parallel processes that are structurally equivalent up to bijective channel channel renaming. This factorisation has to be common to the two processes under equivalence check, therefore the two arguments *)
-  end
-
-  (* comparison of process skeletons *)
-  module Skeleton : sig
-    val compare_atomic : t -> t -> int (* compares the skeleton of two processes having no parallel operators at toplevel *)
-    val equal : t list -> t list -> bool (* checks whether two processes have the same action at toplevel (after unfolding of parallel operators) *)
   end
 
   (* normalisation of processes (i.e. execution of instructions other than inputs and outputs) *)
@@ -473,110 +517,91 @@ end = struct
     | Start _ -> Config.internal_error "[process_session.ml >> not_pure_io] Unexpected Start constructor."
     | _ -> Config.internal_error "[process_session.ml >> not_pure_io] Should only be applied on normalised processes."
 
-  (* The labeled process [lp] should not already have a label, i.e. [lp.label = None]
-      No broken symmetries are allowed too.
-      Note that only the outputs and input receive a label. The intermediary Bang and Par do not have labels.*)
-  let labelling (prefix:Label.t) (lp:t) : t =
-    let rec assign i lp f_cont =
-      match lp.proc with
-      | Par l ->
-        assign_list i l (fun l_labelled i_max ->
-          f_cont {proc = Par l_labelled; label = None} i_max
-        )
-      | Bang(b,[],l) ->
-        assign_list i l (fun l_labelled i_max ->
-            f_cont {proc = Bang(b,[],l_labelled); label = None} i_max
-        )
-      | Bang _ -> Config.internal_error "[process_session.ml >> labelling] Symmetries should not be broken when labelling."
-      | Input _
-      | OutputSure _ ->
-        f_cont {lp with label = Some (Label.add_position prefix i)} (i+1)
-      | New _
-      | If _
-      | Let _
-      | Output _ -> Config.internal_error "[process_session.ml >> labelling] Only normalised processes should be assigned with labels."
-      | Start _ -> Config.internal_error "[process_session.ml >> labelling] Unexpected Start constructor."
 
-    and assign_list i l f_cont =
-      match l with
-      | [] -> f_cont [] i
-      | p :: t ->
-        assign i p (fun p_labelled i_max ->
-          assign_list i_max t (fun l_labelled j_max ->
-            f_cont (p_labelled :: l_labelled) j_max
-          )
-        )
-    in
+  module Skeleton = struct
+    type t = { (* each component (ch,mult,l) indicates [mult] action on the channel [ch], on labels of last positions in [l] *)
+      input_skel : (Channel.t * int * int list) list ;
+      output_skel : (Channel.t * int * int list) list ;
+      private_skel : int * int list ;
+    }
+    let empty = {input_skel = []; output_skel = []; private_skel = (0,[])}
+    let rec add_in_process_skel_symbol ch label skel_list =
+      match skel_list with
+      | [] -> [ch,1,[Label.last_position label]]
+      | ((ch',size,list_label) as t)::q ->
+        let cmp_ch = Channel.compare ch ch' in
+        if cmp_ch < 0 then (ch,1,[Label.last_position label])::skel_list
+        else if cmp_ch = 0 then (ch',size+1,Label.last_position label::list_label)::q
+        else t::(add_in_process_skel_symbol ch label q)
+    let add_action is_out ch label proc_skel =
+      if not (Channel.is_public ch) then
+        let (nb,l) = proc_skel.private_skel in
+        {proc_skel with private_skel = (nb+1,Label.last_position label::l)}
+      else if is_out then
+        {proc_skel with output_skel = add_in_process_skel_symbol ch label proc_skel.output_skel}
+      else
+        {proc_skel with input_skel = add_in_process_skel_symbol ch label proc_skel.input_skel}
 
-    Config.debug (fun () ->
-      if lp.label <> None then
-        Config.internal_error "[process_session.ml >> labelling] Already labelled process."
-    );
-    match lp.proc with
-    | Input _
-    | OutputSure _ -> {lp with label = Some prefix}
-    | Output _
-    | If _
-    | Let _
-    | New _ ->
-      Config.internal_error "[process_session.ml >> labelling] Only normalised processes should be assigned with labels."
-    | Start _ -> Config.internal_error "[process_session.ml >> labelling] Unexpected Start constructor."
-    | Par _
-    | Bang _ -> assign 0 lp (fun proc _ -> proc)
+    let print_list_skel (tag:string) (s:(Channel.t * int * int list) list) : string =
+      List.fold_left (fun s (ch,mult,_) ->
+        Printf.sprintf "%s, %d %s on %s" s mult tag (Channel.to_string ch)
+      ) "" s
 
+    let print (s:t) : string =
+      Printf.sprintf "%s%s, %d actions on private channels" (print_list_skel "inputs" s.input_skel) (print_list_skel "outputs" s.output_skel) (fst s.private_skel)
 
-  type process_skel = {
-    input_skel : (Channel.t * int * Label.t list) list ;
-    output_skel : (Channel.t * int * Label.t list) list
-  }
+    (* puts in parallel two lists of skeletons, assuming equality has already been checked *)
+    let rec link_lists l1 l2 accu =
+      match l1,l2 with
+      | [],[] -> Some accu
+      | (ch1,mult1,pos_list1)::t1, (ch2,mult2,pos_list2)::t2 when Channel.equal ch1 ch2 && mult1 = mult2 ->
+        link_lists t1 t2 ((pos_list1,pos_list2)::accu)
+      | _ -> None
 
-  let rec add_in_process_skel_symbol ch label skel_list =
-    match skel_list with
-    | [] -> [ch,1,[label]]
-    | ((ch',size,list_label) as t)::q ->
-      let cmp_ch = Symbol.order ch ch' in
-      if cmp_ch < 0 then (ch,1,[label])::skel_list
-      else if cmp_ch = 0 then (ch',size+1,label::list_label)::q
-      else t::(add_in_process_skel_symbol ch label q)
+    let link s1 s2 =
+      match link_lists s1.input_skel s2.input_skel [] with
+      | None -> None
+      | Some ac1 ->
+        match link_lists s1.output_skel s2.output_skel ac1 with
+        | None -> None
+        | Some ac2 ->
+          match s1.private_skel, s2.private_skel with
+          | (mult1,pos_list1),(mult2,pos_list2) when mult1 = mult2 ->
+            Some ((pos_list1,pos_list2)::ac2)
+          | _ -> None
+  end
 
-  let add_in_process_skel is_out ch label proc_skel =
-    if is_out then
-      {proc_skel with output_skel = add_in_process_skel_symbol ch label proc_skel.output_skel}
-    else
-      {proc_skel with input_skel = add_in_process_skel_symbol ch label proc_skel.input_skel}
+  let labelling (prefix:Label.t) (lbl_proc:t) : t * Skeleton.t =
 
-  let labelling2 (prefix:Label.t) (lbl_proc:t) : t * process_skel =
-
-    let process_skel = ref {input_skel = []; output_skel = []} in
-
-    let rec assign f_cont next_i lbl_proc  =
+    let rec assign process_skel next_i lbl_proc f_cont =
       match lbl_proc.proc with
       | OutputSure(c,_,_,_) ->
         let label = Label.add_position prefix next_i in
-        process_skel := add_in_process_skel true c label !process_skel;
-        f_cont { lbl_proc with label = Some label } (next_i+1)
+        let process_skel1 = Skeleton.add_action true c label process_skel in
+        f_cont {lbl_proc with label = Some label} process_skel1 (next_i+1)
       | Input(c,_,_,_) ->
         let label = Label.add_position prefix next_i in
-        process_skel := add_in_process_skel false c label !process_skel;
-        f_cont { lbl_proc with label = Some label } (next_i+1)
+        let process_skel1 = Skeleton.add_action false c label process_skel in
+        f_cont { lbl_proc with label = Some label } process_skel1 (next_i+1)
       | Par list_lbl_proc ->
-        assign_list (fun list_lbl_proc1 next_i1->
-          f_cont { proc = Par list_lbl_proc1; label = None } next_i1
-        ) next_i list_lbl_proc
+        assign_list process_skel next_i list_lbl_proc (fun list_lbl_proc1 process_skel1 next_i1 ->
+          f_cont { proc = Par list_lbl_proc1; label = None } process_skel1 next_i1
+        )
       | Bang(b,[],list_lbl_proc) ->
-        assign_list (fun list_lbl_proc1 next_i1 ->
-          f_cont { proc = Bang(b,[],list_lbl_proc1); label = None } next_i1
-        ) next_i list_lbl_proc
+        assign_list process_skel next_i list_lbl_proc (fun list_lbl_proc1 process_skel1 next_i1 ->
+          f_cont { proc = Bang(b,[],list_lbl_proc1); label = None } process_skel1 next_i1
+        )
       | _ -> Config.internal_error "[process_sessions.ml >> labelling] Labelling is done only on normalised process without broken symmetry."
 
-    and assign_list f_cont next_i = function
-      | [] -> f_cont [] next_i
+    and assign_list process_skel next_i list_proc f_cont =
+      match list_proc with
+      | [] -> f_cont [] process_skel next_i
       | p :: t ->
-        assign (fun p1 next_i1 ->
-          assign_list (fun t1 next_i2 ->
-            f_cont (p1 :: t1) next_i2
-          ) next_i1 t
-        ) next_i p
+        assign process_skel next_i p (fun p1 process_skel1 next_i1 ->
+          assign_list process_skel1 next_i1 t (fun t1 process_skel2 next_i2 ->
+            f_cont (p1 :: t1) process_skel2 next_i2
+          )
+        )
     in
 
     Config.debug (fun () ->
@@ -585,13 +610,14 @@ end = struct
     );
     match lbl_proc.proc with
     | Input(ch,_,_,_) ->
-      {lbl_proc with label = Some prefix}, { input_skel = [ch,1,[prefix]]; output_skel = [] }
+      { lbl_proc with label = Some prefix },
+      Skeleton.add_action false ch prefix Skeleton.empty
     | OutputSure(ch,_,_,_) ->
-      {lbl_proc with label = Some prefix}, { input_skel = []; output_skel = [ch,1,[prefix]] }
+      { lbl_proc with label = Some prefix },
+      Skeleton.add_action true ch prefix Skeleton.empty
     | Par _
     | Bang _ ->
-    let lbl_proc' = assign (fun proc _ -> proc) 0 lbl_proc in
-      lbl_proc', !process_skel
+      assign Skeleton.empty 0 lbl_proc (fun proc proc_skel _ -> proc,proc_skel)
     | Output _
     | If _
     | Let _
@@ -950,6 +976,7 @@ end = struct
       conflict_toplevel : bool;
       conflict_future : bool;
     }
+
     let unfold ?(optim=false) (l:t list) : (t * Input.data) list * (t * t * data) list =
       List.fold_left_with_memo (fun accu p leftovers_left leftovers_right ->
         let leftovers = List.rev_append leftovers_left leftovers_right in
@@ -987,6 +1014,7 @@ end = struct
                 ) proc1 (List.rev_append leftovers1_left leftovers1_right)
               ) ac_priv leftovers_proc in
             ac_pub,ac_priv_upd
+          | _ -> Config.internal_error "[process_session.ml >> Labelled_process.PrivateComm.unfold] Non-atomic or non-normalised process unfolded."
         ) p leftovers
       ) ([],[]) l
   end
@@ -1042,28 +1070,6 @@ end = struct
     let flatten (p:t) : t = p
     let factor (p:t) : t = p
     let factor_up_to_renaming p1 p2 = p1 , p2
-  end
-
-  (* TODO : SKELETON NEEDS TO BE UPDATED FOR PRIVATE CHANNELS *)
-  module Skeleton = struct
-    (* comparison of skeletons (parallel operators excluded) *)
-    let compare_atomic (p1:t) (p2:t) : int =
-      match p1.proc, p2.proc with
-      | OutputSure _ , Input _  -> -1
-      | Input _, OutputSure _ -> 1
-      | Input(c1,_,_,_), Input(c2,_,_,_)
-      | OutputSure(c1,_,_,_), OutputSure(c2,_,_,_) -> Channel.compare c1 c2
-      | _ -> Config.internal_error "[process_session.ml >> compare_io_process] Unexpected case."
-
-    (* Checks whether two lists of atomic processes have identical skeletons.
-    TODO: current implementation quite naive (does not take symmetries into account), may be improved. *)
-    let equal (p1:t list) (p2:t list) : bool =
-      let sort = List.fast_sort (fun p q -> compare_atomic p q) in
-      let elts l = List.fold_left (fun accu p -> elements ~init:accu p) [] l in
-      let l1 = sort (elts p1) in
-      let l2 = sort (elts p2) in
-      try List.for_all2 (fun p q -> compare_atomic p q = 0) l1 l2
-      with Invalid_argument _ -> false
   end
 
   module Normalise = struct
@@ -1294,7 +1300,7 @@ end
 module BijectionSet : sig
   type t
   val initial : t (* a singleton containing the unique matching between two processes of label Label.initial *)
-  val update : Label.t -> Label.t -> Labelled_process.t -> Labelled_process.t -> t -> t option (* [update l1 l2 p1 p2 bset] restricts the set [bset] to the bijections mapping [l1] to [l2]. In case [l1] is not in the domain of these bijections, the domain of [bset] is also extended to allow matchings of labels of p1 and p2 *)
+  val update : Label.t -> Label.t -> Labelled_process.Skeleton.t -> Labelled_process.Skeleton.t -> t -> t option (* [update l1 l2 p1 p2 bset] restricts the set [bset] to the bijections mapping [l1] to [l2]. In case [l1] is not in the domain of these bijections, the domain of [bset] is also extended to allow matchings of labels of p1 and p2 *)
   val print : t -> unit
 end = struct
   (* sets of bijections with the skeleton-compatibility requirement *)
@@ -1303,7 +1309,8 @@ end = struct
 
   (* the initial bijection set *)
   let initial : t =
-    [Label.Set.singleton Label.initial, Label.Set.singleton Label.initial]
+    let set = Label.Set.singleton Label.initial in
+    [set,set]
 
   (* partitions a list in equiv. classes wrt to some equivalence relation *)
   type 'a partition = 'a list list
@@ -1311,7 +1318,7 @@ end = struct
     let rec insert memo partition x =
       match partition with
       | [] -> [x] :: memo
-      | [] :: t -> Config.internal_error "[process_session.ml >> equivalence_classes] Unexpected case"
+      | [] :: _ -> Config.internal_error "[process_session.ml >> equivalence_classes] Unexpected case"
       | (y::_ as equiv_class) :: t ->
         if equiv x y then List.rev_append memo ((x::equiv_class) :: t)
         else insert (equiv_class :: memo) t x in
@@ -1332,20 +1339,6 @@ end = struct
           else browse ((ec1,ec2)::accu) p1' p2' in
     browse [] p1 p2
 
-  (* creates the bijection_set containing the possible matchings of two lists of
-  parallel processes. *)
-  let init (accu:t) (fp1:Labelled_process.t) (fp2:Labelled_process.t) : t option =
-    let check_skel lp1 lp2 =
-      Labelled_process.Skeleton.compare_atomic lp1 lp2 = 0 in
-    let partition lp =
-      equivalence_classes check_skel (Labelled_process.elements lp) in
-    match link_partitions check_skel (partition fp1) (partition fp2) with
-    | None -> None
-    | Some l ->
-      let convert procs =
-        Label.Set.of_list (List.rev_map Labelled_process.get_label procs) in
-      Some (List.fold_left (fun ac (ec1,ec2) -> (convert ec1, convert ec2) :: ac) accu l)
-
   (* prints a bijection set *)
   let print (bset:t) : unit =
     List.iter (fun (s1,s2) ->
@@ -1355,43 +1348,28 @@ end = struct
       print_endline "";
     ) bset
 
-
-  (* updates a bijection set after two matched transitions on labels (l1,l2), where the subprocesses reduced by the transition become p1 and p2 respectively. *)
-  let update (l1:Label.t) (l2:Label.t) (p1:Labelled_process.t) (p2:Labelled_process.t) (bset:t) : t option =
+  (* updates a bijection set after two matched transitions on labels (l1,l2). Returns None if this update is not possible (incompatible labels or skeletons). *)
+  let update (l1:Label.t) (l2:Label.t) (s1:Labelled_process.Skeleton.t) (s2:Labelled_process.Skeleton.t) (bset:t) : t option =
     let rec search memo s =
       match s with
       | [] -> None
       | (ll1,ll2) :: t ->
-        match Label.Set.find_opt l1 ll1, Label.Set.find_opt l2 ll2 with
-        | None,None -> search ((ll1,ll2) :: memo) t
-        | Some _,Some _ ->
-          let label_discardable =
-            Labelled_process.not_pure_io_toplevel p1 || Labelled_process.not_pure_io_toplevel p2 in
-          let bset_upd =
-            if Label.Set.is_singleton ll1 then
-              if label_discardable then List.rev_append memo t
-              else List.rev_append memo ((ll1,ll2)::t)
-            else
-              let ll1' = Label.Set.remove l1 ll1 in
-              let ll2' = Label.Set.remove l2 ll2 in
-              let single1 = Label.Set.singleton l1 in
-              let single2 = Label.Set.singleton l2 in
-              if label_discardable then List.rev_append memo ((ll1',ll2')::t)
-              else List.rev_append memo ((single1,single2)::(ll1',ll2')::t) in
-          if label_discardable then
-            init bset_upd p1 p2
-          else Some bset_upd
+        match Label.Set.find_and_remove l1 ll1, Label.Set.find_and_remove l2 ll2 with
+        | None, None -> search ((ll1,ll2) :: memo) t
+        | Some ll1', Some ll2' ->
+          if Label.Set.is_empty ll1' then Some (List.rev_append memo t)
+          else Some (List.rev_append memo ((ll1',ll2')::t))
         | _ -> None in
-    search [] bset
-
-
-  (* given a bijection set and a label l, computes the set of labels that are
-  compatible with l wrt one bijection.
-  NB. Not used anymore in the current version *)
-  let get_compatible_labels (l:Label.t) (s:t) : Label.t list =
-    match List.find_opt (fun (labset,_) -> Label.Set.mem l labset) s with
-    | None -> Config.internal_error "[process_session.ml >> get_compatible_labels] Unexpected case"
-    | Some pair -> Label.Set.elements (snd pair)
+    match Labelled_process.Skeleton.link s1 s2 with
+    | None -> None
+    | Some ([[_],[_]]) ->
+      search [Label.Set.singleton l1, Label.Set.singleton l2] bset
+    | Some linked_positions ->
+      let new_pairings =
+        List.rev_map (fun (pos_list1,pos_list2) ->
+          Label.Set.of_position_list l1 pos_list1, Label.Set.of_position_list l2 pos_list2
+        ) linked_positions in
+      search new_pairings bset
 end
 
 
@@ -1404,9 +1382,8 @@ module Configuration : sig
   val inputs : t -> Labelled_process.t list (* returns the available inputs *)
   val outputs : t -> Labelled_process.t list (* returns the available outputs (in particular they are executable, i.e. they output a message). *)
   val of_expansed_process : Process.expansed_process -> t (* converts a process as obtained from the parser into a configuration. This includes some cleaning procedure as well as factorisation. *)
-  val normalise : ?context:(Labelled_process.t->Labelled_process.t) -> Label.t -> t -> (fst_ord, name) Subst.t -> (Labelled_process.Normalise.constraints->t->Labelled_process.t->unit) -> unit (* normalises a configuration, labels the new process, and puts it in standby for skeleton checks. In case an output has just been executed, the optional ?context argument gives the process context of the execution in order to reconstruct the symmetries afterwards. *)
-  val check_skeleton : t -> t -> bool (* compares two skeletons in standby *)
-  val release_skeleton : t -> t option (* assuming all skeletons have been checked, marks them as not in standby anymore. *)
+  val normalise : ?context:(Labelled_process.t->Labelled_process.t) -> Label.t -> t -> (fst_ord, name) Subst.t -> (Labelled_process.Normalise.constraints->t->Labelled_process.Skeleton.t->unit) -> unit (* normalises a configuration, labels the new process, and puts it in standby for skeleton checks. In case an output has just been executed, the optional ?context argument gives the process context of the execution in order to reconstruct the symmetries afterwards. *)
+  val release_skeleton : t -> t option (* assuming all skeletons have been checked, marks them as not in standby anymore. Returns None in case of improper blocks. *)
 
   (* a module for operating on transitions *)
   module Transition : sig
@@ -1436,7 +1413,6 @@ end = struct
     input_proc : Labelled_process.t list;
     focused_proc : Labelled_process.t option;
     sure_output_proc : Labelled_process.t list;
-    sure_unchecked_skeletons : (Labelled_process.t * (Labelled_process.t -> Labelled_process.t)) option;
     to_normalise : Labelled_process.t option;
     trace : action list;
     ongoing_block : Block.t;
@@ -1491,7 +1467,6 @@ end = struct
       input_proc = [];
       focused_proc = Some (Labelled_process.of_expansed_process p);
       sure_output_proc = [];
-      sure_unchecked_skeletons = None;
       to_normalise = None;
       trace = [];
 
@@ -1499,45 +1474,44 @@ end = struct
       previous_blocks = [];
     }
 
-  let normalise ?context:(rebuild:Labelled_process.t->Labelled_process.t=fun t->t) (prefix:Label.t) (conf:t) (eqn:(fst_ord, name) Subst.t) (f_cont:Labelled_process.Normalise.constraints->t->Labelled_process.t->unit) : unit =
-    Config.debug (fun () ->
-      if conf.sure_unchecked_skeletons <> None then
-        Config.internal_error "[process_session.ml >> normalise_configuration] Sure unchecked should be empty."
-    );
+  let normalise ?context:(rebuild:Labelled_process.t->Labelled_process.t=fun t->t) (prefix:Label.t) (conf:t) (eqn:(fst_ord, name) Subst.t) (f_cont:Labelled_process.Normalise.constraints->t->Labelled_process.Skeleton.t->unit) : unit =
 
     let eqn_cast = Labelled_process.Normalise.constraints_of_equations eqn in
     match conf.to_normalise, conf.focused_proc with
-      | None, None -> f_cont eqn_cast conf (Labelled_process.empty prefix)
+      | None, None -> f_cont eqn_cast conf Labelled_process.Skeleton.empty
       | None, Some p ->
         Labelled_process.Normalise.normalise p eqn_cast (fun gather p_norm f_next ->
-          let labelled_p = Labelled_process.labelling prefix p_norm in
-          f_cont gather {conf with focused_proc = Some labelled_p} labelled_p;
+          let (labelled_p,skel) = Labelled_process.labelling prefix p_norm in
+          f_cont gather {conf with focused_proc = Some labelled_p} skel;
           f_next ()
         ) (fun () -> ())
       | Some p, None ->
         Labelled_process.Normalise.normalise p eqn_cast (fun gather p_norm f_next ->
-          let labelled_p = Labelled_process.labelling prefix p_norm in
-          let conf_rel = {conf with
-            sure_unchecked_skeletons = Some (labelled_p,rebuild);
-            to_normalise = None;
-          } in
-          f_cont gather conf_rel labelled_p;
+          let (labelled_p,skel) = Labelled_process.labelling prefix p_norm in
+          let pp = rebuild p in
+          let conf_base = {conf with to_normalise = None} in
+          let conf_final =
+            match Labelled_process.get_proc pp with
+            | Labelled_process.Input _ ->
+              {conf_base with input_proc = pp::conf_base.input_proc}
+            | Labelled_process.OutputSure _ ->
+              {conf_base with sure_output_proc = pp::conf_base.sure_output_proc}
+            | _ ->
+              if Labelled_process.nil pp then conf_base
+              else if Labelled_process.contains_public_output_toplevel pp then
+                {conf_base with sure_output_proc = pp::conf_base.sure_output_proc}
+              else
+                {conf_base with input_proc = Labelled_process.Output.restaure_sym pp::conf_base.input_proc} in
+          f_cont gather conf_final skel;
           f_next ()
         ) (fun () -> ())
       | _, _ -> Config.internal_error "[process_session.ml >> normalise] A configuration cannot be released and focused at the same time."
 
-  let check_skeleton (conf1:t) (conf2:t) : bool =
-    match conf1.focused_proc, conf2.focused_proc, conf1.sure_unchecked_skeletons, conf2.sure_unchecked_skeletons with
-    | Some p1, Some p2, None, None
-    | None, None, Some (p1,_), Some (p2,_) ->
-      Labelled_process.Skeleton.equal [p1] [p2]
-    | _ ->
-      Config.internal_error "[process_session.ml >> check_skeleton] Comparing processes in inconsistent states."
-
   let release_skeleton (c:t) : t option =
-    match c.focused_proc, c.sure_unchecked_skeletons with
-    | Some p, _ ->
-      begin match Labelled_process.get_proc p with
+    match c.focused_proc with
+    | None -> Some c
+    | Some p ->
+      match Labelled_process.get_proc p with
       | Labelled_process.Input _ -> Some c
       | Labelled_process.OutputSure _ ->
         Some {c with focused_proc = None; sure_output_proc = p::c.sure_output_proc}
@@ -1545,24 +1519,7 @@ end = struct
         if Labelled_process.nil p then None
         else if Labelled_process.contains_public_output_toplevel p then
           Some {c with focused_proc = None; sure_output_proc = p::c.sure_output_proc}
-        else
-          Some {c with focused_proc = None; input_proc = p::c.input_proc} end
-    | _, Some (p,rebuild) ->
-      let pp = rebuild p in
-      begin match Labelled_process.get_proc pp with
-      | Labelled_process.Input _ ->
-        Some {c with sure_unchecked_skeletons = None; input_proc = pp::c.input_proc}
-      | Labelled_process.OutputSure _ ->
-        Some {c with sure_unchecked_skeletons = None; sure_output_proc = pp::c.sure_output_proc}
-      | _ ->
-        if Labelled_process.nil pp then
-          Some {c with sure_unchecked_skeletons = None}
-        else if Labelled_process.contains_public_output_toplevel pp then
-          Some {c with sure_unchecked_skeletons = None; sure_output_proc = pp::c.sure_output_proc}
-        else
-          Some {c with sure_unchecked_skeletons = None; input_proc = Labelled_process.Output.restaure_sym pp::c.input_proc} end
-    | _, _ ->
-        Config.internal_error "[process_session.ml >> release_skeleton] A process is either focused or released."
+        else Some {c with focused_proc = None; input_proc = p::c.input_proc}
 
   module Transition = struct
     type kind =
@@ -1610,8 +1567,8 @@ end = struct
     let apply_neg (ax:axiom) (p:Labelled_process.t) (od:Labelled_process.Output.data) (leftovers:Labelled_process.t list) (conf:t) : t =
       let state = {
         current_proc = to_process conf;
-        id = od.id;
-        label = od.lab;
+        id = od.Labelled_process.Output.id;
+        label = od.Labelled_process.Output.lab;
       } in
       let ch = od.channel in
       let term = od.term in
@@ -1629,17 +1586,17 @@ end = struct
         begin match Labelled_process.get_proc p with
         | Labelled_process.Input(ch,x,pp,id) ->
           let idata : Labelled_process.Input.data = {
-            channel = ch;
-            var = x;
-            lab = Labelled_process.get_label p;
-            id = id;
-            leftovers = []; (* field not relevant here *)
-            optim = true; (* field not relevant here *)
+            Labelled_process.Input.channel = ch;
+            Labelled_process.Input.var = x;
+            Labelled_process.Input.lab = Labelled_process.get_label p;
+            Labelled_process.Input.id = id;
+            Labelled_process.Input.leftovers = []; (* field not relevant here *)
+            Labelled_process.Input.optim = true; (* field not relevant here *)
           } in
           let state : state = {
             current_proc = to_process conf;
-            id = idata.id;
-            label = idata.lab;
+            id = idata.Labelled_process.Input.id;
+            label = idata.Labelled_process.Input.lab;
           } in
           let conf_app = {conf with
             focused_proc = Some pp;
@@ -1660,15 +1617,15 @@ end = struct
       let (pp,idata) = focus in
       let state = {
         current_proc = to_process conf;
-        id = idata.id;
-        label = idata.lab;
+        id = idata.Labelled_process.Input.id;
+        label = idata.Labelled_process.Input.lab;
       } in
       {conf with
-        input_proc = idata.leftovers;
+        input_proc = idata.Labelled_process.Input.leftovers;
         focused_proc = Some pp;
-        ongoing_block = Block.add_variable var_X (Block.create idata.lab);
+        ongoing_block = Block.add_variable var_X (Block.create idata.Labelled_process.Input.lab);
         previous_blocks = conf.ongoing_block :: conf.previous_blocks;
-        trace = InAction(idata.channel,var_X,Term.of_variable idata.var,state) :: conf.trace;
+        trace = InAction(idata.Labelled_process.Input.channel,var_X,Term.of_variable idata.Labelled_process.Input.var,state) :: conf.trace;
       }
   end
 end

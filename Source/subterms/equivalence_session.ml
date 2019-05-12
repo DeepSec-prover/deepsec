@@ -22,7 +22,12 @@ module Symbolic : sig
   end
 
   (* a datatype for representing transitions between symbolic processes *)
-  type transition
+  type transition = {
+    target : Index.t;
+    skel_target : Labelled_process.Skeleton.t;
+    label : Label.t;
+    forall : bool;
+  }
 
   (* a module for representing symbolic processes *)
   module Process : sig
@@ -77,10 +82,6 @@ module Symbolic : sig
   (* basic functions for computing the transitions from a symbolic process *)
   module Transition : sig
     val print : Index.t -> transition -> unit (* printing a transition, with the index of the source *)
-    val is_universal : transition -> bool
-    val get_label : transition -> Label.t
-    val get_reduc : transition -> Labelled_process.t (* returns the subprocess on which the transition has been performed. The subprocess has already been transformed by the transition *)
-    val get_target : transition -> Index.t
     val generate : vars -> Configuration.Transition.kind option -> Set.t ref -> Process.t -> transition list
   end
 end = struct
@@ -110,9 +111,9 @@ end = struct
 
   type transition = {
     target : Index.t;
+    skel_target : Labelled_process.Skeleton.t;
     label : Label.t;
     forall : bool;
-    new_proc : Labelled_process.t;
   }
 
   module Process = struct
@@ -265,19 +266,10 @@ end = struct
   module Transition = struct
     (* for printing purpose *)
     let print (source:Index.t) (tr:transition) : unit =
-      Printf.printf "%d -> %d (lab=%s, forall=%b, after reduced subprocess:%s) " source tr.target (Label.to_string tr.label) tr.forall (Labelled_process.print tr.new_proc)
-
-    let is_universal t =
-      t.forall
-    let get_label t =
-      t.label
-    let get_reduc t =
-      t.new_proc
-    let get_target t =
-      t.target
+      Printf.printf "%d -> %d (lab=%s, forall=%b, after reduced subprocess:%s) " source tr.target (Label.to_string tr.label) tr.forall (Labelled_process.Skeleton.print tr.skel_target)
 
     let add_transition_start (csys_set:Set.t ref) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord, Term.name) Subst.t) (cs:Process.t) (lab:Label.t) (status:Status.t) : unit =
-      Configuration.normalise lab conf eqn (fun gather conf_norm new_proc ->
+      Configuration.normalise lab conf eqn (fun gather conf_norm skel ->
         let equations = Labelled_process.Normalise.equations gather in
         let disequations = Labelled_process.Normalise.disequations gather in
         try
@@ -288,9 +280,9 @@ end = struct
 
           let transition = {
             target = target;
+            skel_target = skel;
             label = lab;
             forall = true;
-            new_proc = new_proc;
           } in
           accu := transition :: !accu;
           csys_set := new_set
@@ -299,7 +291,7 @@ end = struct
       )
 
     let add_transition_output (csys_set:Set.t ref) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord, Term.name) Subst.t) (cs:Process.t) (ax:axiom) (od:Labelled_process.Output.data) (new_status:Status.t) : unit =
-      Configuration.normalise ~context:od.context od.lab conf eqn (fun gather conf_norm new_proc ->
+      Configuration.normalise ~context:od.context od.lab conf eqn (fun gather conf_norm skel ->
         let equations = Labelled_process.Normalise.equations gather in
         let disequations = Labelled_process.Normalise.disequations gather in
         let t0 = Subst.apply equations od.term (fun x f -> f x) in
@@ -316,9 +308,9 @@ end = struct
 
           let transition = {
             target = target;
+            skel_target = skel;
             label = od.lab;
             forall = od.optim;
-            new_proc = new_proc;
           } in
           accu := transition :: !accu;
           csys_set := new_set
@@ -327,7 +319,7 @@ end = struct
       )
 
     let add_transition_input (csys_set:Set.t ref) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord,Term.name) Subst.t) (cs:Process.t) (var_X:snd_ord_variable) (idata:Labelled_process.Input.data) (new_status:Status.t) : unit =
-      Configuration.normalise idata.lab conf eqn (fun gather conf_norm new_proc ->
+      Configuration.normalise idata.lab conf eqn (fun gather conf_norm skel ->
         let equations = Labelled_process.Normalise.equations gather in
         let disequations = Labelled_process.Normalise.disequations gather in
         let inp = Subst.apply equations (of_variable idata.var) (fun x f -> f x) in
@@ -345,9 +337,9 @@ end = struct
 
           let transition = {
             target = target;
+            skel_target = skel;
             label = idata.lab;
             forall = idata.optim;
-            new_proc = new_proc;
           } in
           accu := transition :: !accu;
           csys_set := new_set
@@ -579,34 +571,22 @@ end = struct
         ) n.csys_set in
       let new_csys_set = !new_csys_set in
 
-      let get_conf i =
-        Symbolic.Process.get_conf (Symbolic.Set.find new_csys_set i) in
-      let skel_check i j =
-        Configuration.check_skeleton (get_conf i) (get_conf j) in
-
       let new_matching =
         Symbolic.Matching.fold (fun cs_fa cs_ex_list (accu1:Symbolic.Matching.t) ->
           let symp_fa = Symbolic.Set.find csys_set_with_transitions cs_fa in
           List.fold_left (fun (accu2:Symbolic.Matching.t) (tr_fa:Symbolic.transition) ->
-            if not (Symbolic.Transition.is_universal tr_fa) then accu2
+            if not tr_fa.forall then accu2
             else
               let cs_ex_list_new =
                 List.fold_left (fun (accu3:(Symbolic.Index.t*BijectionSet.t) list) (cs_ex,bset) ->
                   let symp_ex = Symbolic.Set.find csys_set_with_transitions cs_ex in
                   List.fold_left (fun (accu4:(Symbolic.Index.t*BijectionSet.t) list) (tr_ex:Symbolic.transition) ->
-                    let lab_fa = Symbolic.Transition.get_label tr_fa in
-                    let lab_ex = Symbolic.Transition.get_label tr_ex in
-                    let target_fa = Symbolic.Transition.get_target tr_fa in
-                    let target_ex = Symbolic.Transition.get_target tr_ex in
-                    let reduc_fa = Symbolic.Transition.get_reduc tr_fa in
-                    let reduc_ex = Symbolic.Transition.get_reduc tr_ex in
-                    match BijectionSet.update lab_fa lab_ex reduc_fa reduc_ex bset with
-                    | Some bset_upd when skel_check target_fa target_ex ->
-                      (target_ex,bset_upd) :: accu4
+                    match BijectionSet.update tr_fa.label tr_ex.label tr_fa.skel_target tr_ex.skel_target bset with
+                    | Some bset_upd -> (tr_ex.target,bset_upd) :: accu4
                     | _ -> accu4
                   ) accu3 (Symbolic.Process.get_transitions symp_ex)
                 ) [] cs_ex_list in
-              Symbolic.Matching.add_match (Symbolic.Transition.get_target tr_fa) cs_ex_list_new accu2
+              Symbolic.Matching.add_match tr_fa.target cs_ex_list_new accu2
           ) accu1 (Symbolic.Process.get_transitions symp_fa)
         ) n.matching Symbolic.Matching.empty in
 
