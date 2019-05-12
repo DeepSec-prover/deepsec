@@ -191,7 +191,11 @@ module Channel : sig
   val to_string : t -> string
   val from_term : protocol_term -> t
   val apply_renaming : Name.Renaming.t -> t -> t
-  module Set : Set.S with type elt = t
+
+  module Set : sig
+    include Set.S with type elt = t
+    val apply_renaming : Name.Renaming.t -> t -> t
+  end
 end = struct
   type t =
     | Symbol of symbol
@@ -229,10 +233,13 @@ end = struct
     | Name n ->
       Name (Term.name_of (Name.Renaming.apply_on_terms rho (Term.of_name n) (fun x f -> f x)))
   type elt = t
-  module Set = Set.Make(struct type t = elt let compare = compare end)
-end
 
-module NonToplevelChannels = Multiset.Make(Channel)
+  module Set = struct
+    include Set.Make(struct type t = elt let compare = compare end)
+    let apply_renaming rho set =
+      map (apply_renaming rho) set
+  end
+end
 
 (* a module for labelled processes *)
 module Labelled_process : sig
@@ -241,9 +248,9 @@ module Labelled_process : sig
   type bang_status
   type plain =
     | Start of t * id
-    | Input of Channel.t * fst_ord_variable * t * id
-    | Output of Channel.t * protocol_term * t * id
-    | OutputSure of Channel.t * protocol_term * t * id
+    | Input of Channel.t * fst_ord_variable * t * Channel.Set.t * id
+    | Output of Channel.t * protocol_term * t * Channel.Set.t * id
+    | OutputSure of Channel.t * protocol_term * t * Channel.Set.t * id
     | If of protocol_term * protocol_term * t * t
     | Let of protocol_term * protocol_term * protocol_term * t * t
     | New of name * t
@@ -313,8 +320,8 @@ module Labelled_process : sig
 
       leftovers : t list; (* what remains after the input is executed *)
       ids : id * id; (* the ids of the executed instructions *)
-      conflict_toplevel : bool;
-      conflict_future : bool;
+      conflict_toplevel : bool; (* indicates if other internal communications are possible at toplevel with this channel *)
+      conflict_future : bool; (* indicates if other internal communications may be possible with this channel later in the trace, but are not available now. Overapproximation (i.e. is set to true more often that needed). *)
     }
     val unfold : ?optim:bool -> t list -> (t * Input.data) list * (t * t * data) list (* computes all potential unfolding of private communications and public inputs *)
   end
@@ -344,9 +351,9 @@ end = struct
   }
   and plain =
     | Start of t * id (* a symbol that will only be found at the very toplevel of the initial processes, for convinience. Treated as an input action. *)
-    | Input of Channel.t * fst_ord_variable * t * id
-    | Output of Channel.t * protocol_term * t * id
-    | OutputSure of Channel.t * protocol_term * t * id
+    | Input of Channel.t * fst_ord_variable * t * Channel.Set.t * id
+    | Output of Channel.t * protocol_term * t * Channel.Set.t * id
+    | OutputSure of Channel.t * protocol_term * t * Channel.Set.t * id
     | If of protocol_term * protocol_term * t * t
     | Let of protocol_term * protocol_term * protocol_term * t * t
     | New of name * t
@@ -369,7 +376,6 @@ end = struct
     match p.label with
     | None -> Config.internal_error "[process_session.ml >> Label.Process.get_label] Unassigned label."
     | Some lab -> lab
-
   let get_proc (p:t) : plain = p.proc
 
   (* formatting function *)
@@ -400,20 +406,20 @@ end = struct
           let instr = on_id id (Printf.sprintf "start(%s)" (lab "")) in
           f_cont (Printf.sprintf "\n%s%s%s%s" (tab indent) instr (semicolon s) s)
         )
-      | Input(c,x,pp,id) ->
+      | Input(c,x,pp,_,id) ->
         let sol = Subst.restrict sol (fun y -> not (Variable.is_equal x y)) in
         browse sol (x::bound) indent pp (fun s ->
           let instr =
             on_id id (Printf.sprintf "in(%s%s,%s)" (lab ",") (Channel.to_string c) (Variable.display Terminal Protocol x)) in
           f_cont (Printf.sprintf "\n%s%s%s%s" (tab indent) instr (semicolon s) s)
         )
-      | Output(c,t,pp,_) ->
+      | Output(c,t,pp,_,_) ->
         let t =
           Subst.apply sol t (fun t f -> Rewrite_rules.normalise (f t)) in
         browse sol bound indent pp (fun s ->
           f_cont (Printf.sprintf "\n%sout(%s%s,%s)%s%s" (tab indent) (lab ",") (Channel.to_string c) (Term.display Terminal Protocol t) (semicolon s) s)
         )
-      | OutputSure(c,t,pp,id) ->
+      | OutputSure(c,t,pp,_,id) ->
         let t =
           Subst.apply sol t (fun t f -> Rewrite_rules.normalise (f t)) in
         browse sol bound indent pp (fun s ->
@@ -502,7 +508,7 @@ end = struct
   let rec contains_public_output_toplevel (lp:t) : bool =
     match lp.proc with
     | Input _ -> false
-    | OutputSure (c,_,_,_) -> Channel.is_public c
+    | OutputSure (c,_,_,_,_) -> Channel.is_public c
     | Par l -> List.exists contains_public_output_toplevel l
     | Bang (_,l1,l2) -> List.exists contains_public_output_toplevel (l1@l2)
     | Start _ -> Config.internal_error "[process_session.ml >> contains_output_toplevel] Unexpected Start constructor."
@@ -575,11 +581,11 @@ end = struct
 
     let rec assign process_skel next_i lbl_proc f_cont =
       match lbl_proc.proc with
-      | OutputSure(c,_,_,_) ->
+      | OutputSure(c,_,_,_,_) ->
         let label = Label.add_position prefix next_i in
         let process_skel1 = Skeleton.add_action true c label process_skel in
         f_cont {lbl_proc with label = Some label} process_skel1 (next_i+1)
-      | Input(c,_,_,_) ->
+      | Input(c,_,_,_,_) ->
         let label = Label.add_position prefix next_i in
         let process_skel1 = Skeleton.add_action false c label process_skel in
         f_cont { lbl_proc with label = Some label } process_skel1 (next_i+1)
@@ -609,10 +615,10 @@ end = struct
         Config.internal_error "[process_session.ml >> labelling] Already labelled process."
     );
     match lbl_proc.proc with
-    | Input(ch,_,_,_) ->
+    | Input(ch,_,_,_,_) ->
       { lbl_proc with label = Some prefix },
       Skeleton.add_action false ch prefix Skeleton.empty
-    | OutputSure(ch,_,_,_) ->
+    | OutputSure(ch,_,_,_,_) ->
       { lbl_proc with label = Some prefix },
       Skeleton.add_action true ch prefix Skeleton.empty
     | Par _
@@ -645,31 +651,35 @@ end = struct
     ) (accu,[]) l
 
   (* generates several copies of a process with freshly renamed New names, input variables, and positions *)
-  let fresh_copy (nb:int) (p:t) (id:id) (f_cont:id->t list->'a) : 'a =
+  let fresh_copy (nb:int) (p:t) (id:id) (f_cont:id->Channel.Set.t->t list->'a) : 'a =
     let rec browse rho_v rho_n bound_vars p id f_cont =
       let apply t = apply_renaming_on_term rho_n (apply_alpha_on_term rho_v t) in
       match p.proc with
-      | Input(c,x,p,_) ->
+      | Input(c,x,p,nontop_channels,_) ->
         Config.debug (fun () ->
           if Variable.quantifier_of x != Free
           then Config.internal_error "[process_sessions.ml >> fresh_copy] All variables should be free."
         );
+        let nontop_channels_fresh =
+          Channel.Set.apply_renaming rho_n nontop_channels in
         let xx = Variable.fresh_from x in
-        browse (Variable.Renaming.compose rho_v x xx) rho_n (xx::bound_vars) p (id+1) (fun id_max p_fresh ->
-          f_cont id_max {proc = Input(Channel.apply_renaming rho_n c,xx,p_fresh,id); label = None}
+        browse (Variable.Renaming.compose rho_v x xx) rho_n (xx::bound_vars) p (id+1) (fun id_max _ p_fresh ->
+          f_cont id_max nontop_channels_fresh {proc = Input(Channel.apply_renaming rho_n c,xx,p_fresh,nontop_channels_fresh,id); label = None}
         )
-      | Output(c,t,p,_) ->
-        browse rho_v rho_n bound_vars p (id+1) (fun id_max p_fresh ->
-          f_cont id_max {proc = Output(Channel.apply_renaming rho_n c,apply t,p_fresh,id); label = None}
+      | Output(c,t,p,nontop_channels,_) ->
+        let nontop_channels_fresh =
+          Channel.Set.apply_renaming rho_n nontop_channels in
+        browse rho_v rho_n bound_vars p (id+1) (fun id_max _ p_fresh ->
+          f_cont id_max nontop_channels_fresh {proc = Output(Channel.apply_renaming rho_n c,apply t,p_fresh,nontop_channels_fresh,id); label = None}
         )
-      | OutputSure(c,t,p,_) ->
+      | OutputSure _ ->
         Config.internal_error "[process_session.ml >> fresh_copy] Outputs should not be sure before the analysis starts."
       | If(u,v,p1,p2) ->
         let uu = apply u in
         let vv = apply v in
-        browse rho_v rho_n bound_vars p1 id (fun id1 p1_fresh ->
-          browse rho_v rho_n bound_vars p2 id1 (fun id2 p2_fresh ->
-            f_cont id2 {proc = If(uu,vv,p1_fresh,p2_fresh); label = None}
+        browse rho_v rho_n bound_vars p1 id (fun id1 chans1 p1_fresh ->
+          browse rho_v rho_n bound_vars p2 id1 (fun id2 chans2 p2_fresh ->
+            f_cont id2 (Channel.Set.union chans1 chans2) {proc = If(uu,vv,p1_fresh,p2_fresh); label = None}
           )
         )
       | Let(u,u',v,p1,p2) ->
@@ -681,105 +691,115 @@ end = struct
           apply_renaming_on_term rho_n (apply_alpha_on_term rho_v' u) in
         let uu' = apply_alpha_on_term fresh' (apply u) in
         let vv = apply v in
-        browse rho_v' rho_n (List.rev_append new_bounds bound_vars) p1 id (fun id1 p1_fresh ->
-          browse rho_v rho_n bound_vars p2 id1 (fun id2 p2_fresh ->
-            f_cont id2 {proc = Let(uu,uu',vv,p1_fresh,p2_fresh); label = None}
+        browse rho_v' rho_n (List.rev_append new_bounds bound_vars) p1 id (fun id1 chans1 p1_fresh ->
+          browse rho_v rho_n bound_vars p2 id1 (fun id2 chans2 p2_fresh ->
+            f_cont id2 (Channel.Set.union chans1 chans2) {proc = Let(uu,uu',vv,p1_fresh,p2_fresh); label = None}
           )
         )
       | New(n,p) ->
         let nn = Name.fresh_from n in
-        browse rho_v (Name.Renaming.compose rho_n n nn) bound_vars p id (fun id_max p_fresh ->
-          f_cont id_max {proc = New(nn,p_fresh); label = None}
+        browse rho_v (Name.Renaming.compose rho_n n nn) bound_vars p id (fun id_max chans p_fresh ->
+          f_cont id_max chans {proc = New(nn,p_fresh); label = None}
         )
       | Par l ->
-        browse_list rho_v rho_n bound_vars l id (fun id_max l_fresh ->
-          f_cont id_max {proc = Par l_fresh; label = None}
+        browse_list rho_v rho_n bound_vars l id (fun id_max chans l_fresh ->
+          f_cont id_max chans {proc = Par l_fresh; label = None}
         )
       | Bang(Strong,[],l) ->
-        browse_list rho_v rho_n bound_vars l id (fun id_max l_fresh ->
-          f_cont id_max {proc = Bang(Strong,[],l_fresh); label = None}
+        browse_list rho_v rho_n bound_vars l id (fun id_max chans l_fresh ->
+          f_cont id_max chans {proc = Bang(Strong,[],l_fresh); label = None}
         )
       | Bang _ -> Config.internal_error "[process_session.ml >> fresh_copy] Unexpected type of bang."
       | Start _ -> Config.internal_error "[process_session.ml >> fresh_copy] Unexpected Start constructor."
 
     and browse_list rho_v rho_n bound_vars l id f_cont = match l with
-      | [] -> f_cont id []
+      | [] -> f_cont id Channel.Set.empty []
       | p :: t ->
-          browse rho_v rho_n bound_vars p id (fun id_max p_fresh ->
-            browse_list rho_v rho_n bound_vars t id_max (fun id_l l_fresh ->
-              f_cont id_l (p_fresh::l_fresh)
+          browse rho_v rho_n bound_vars p id (fun id_max chans p_fresh ->
+            browse_list rho_v rho_n bound_vars t id_max (fun id_l chans_l l_fresh ->
+              f_cont id_l (Channel.Set.union chans chans_l) (p_fresh::l_fresh)
             )
           )
     in
 
     let rec browse_iter nb p id f_cont =
-      if nb = 0 then f_cont id []
+      if nb = 0 then f_cont id Channel.Set.empty []
       else
-        browse Variable.Renaming.identity Name.Renaming.identity [] p id (fun id_max p_fresh ->
-          browse_iter (nb-1) p id_max (fun id_final l_fresh ->
-            f_cont id_final (p_fresh::l_fresh)
+        browse Variable.Renaming.identity Name.Renaming.identity [] p id (fun id_max chans p_fresh ->
+          browse_iter (nb-1) p id_max (fun id_final chans_final l_fresh ->
+            f_cont id_final (Channel.Set.union chans chans_final) (p_fresh::l_fresh)
           )
         ) in
 
     browse_iter nb p id f_cont
 
   (* conversion from expansed processes
-  TODO. include a check that no names used as private channels are output *)
+  TODO. include a check that no names used as private channels are output
+  TODO. test this function (in particular the computation of the set of in-depth private channels) *)
   let of_expansed_process ?preprocessing:(preprocessing:t->t=fun x->x) (p:Process.expansed_process) : t =
     let rec browse bound_vars p id f_cont =
       match p with
       | Process.Nil ->
-        f_cont id {proc = Par []; label = None}
+        f_cont id Channel.Set.empty {proc = Par []; label = None}
       | Process.Output(ch,t,pp) ->
-        browse bound_vars pp (id+1) (fun id_max p_conv ->
-          f_cont id_max {proc = Output(Channel.from_term ch,t,p_conv,id); label = None}
+        browse bound_vars pp (id+1) (fun id_max chans p_conv ->
+          let ch_conv = Channel.from_term ch in
+          let new_chans =
+            if Channel.is_public ch_conv then chans
+            else Channel.Set.add ch_conv chans in
+          f_cont id_max new_chans {proc = Output(ch_conv,t,p_conv,chans,id); label = None}
         )
       | Process.Input(ch,x,pp) ->
-        browse (x::bound_vars) pp (id+1) (fun id_max p_conv ->
-          f_cont id_max {proc = Input(Channel.from_term ch,x,p_conv,id); label = None}
+        browse (x::bound_vars) pp (id+1) (fun id_max chans p_conv ->
+          let ch_conv = Channel.from_term ch in
+          let new_chans =
+            if Channel.is_public ch_conv then chans
+            else Channel.Set.add ch_conv chans in
+          f_cont id_max new_chans {proc = Input(ch_conv,x,p_conv,chans,id); label = None}
         )
       | Process.IfThenElse(t1,t2,pthen,pelse) ->
-        browse bound_vars pthen id (fun id1 pthen' ->
-          browse bound_vars pelse id1 (fun id2 pelse' ->
-            f_cont id2 {proc = If(t1,t2,pthen',pelse'); label = None}
+        browse bound_vars pthen id (fun id1 chans1 pthen ->
+          browse bound_vars pelse id1 (fun id2 chans2 pelse ->
+            f_cont id2 (Channel.Set.union chans1 chans2) {proc = If(t1,t2,pthen,pelse); label = None}
           )
         )
       | Process.Let(t1,t2,pthen,pelse) ->
         let bound_vars_t1 = Term.get_vars_not_in Protocol t1 bound_vars in
         let fresh = Variable.Renaming.fresh Protocol bound_vars_t1 Universal in
         let tt1 = Variable.Renaming.apply_on_terms fresh t1 (fun x f -> f x) in
-        browse (List.rev_append bound_vars_t1 bound_vars) pthen id (fun id1 pthen ->
-          browse bound_vars pelse id1 (fun id2 pelse ->
-            f_cont id2 {proc = Let(t1,tt1,t2,pthen,pelse); label = None}
+        browse (List.rev_append bound_vars_t1 bound_vars) pthen id (fun id1 chans1 pthen ->
+          browse bound_vars pelse id1 (fun id2 chans2 pelse ->
+            f_cont id2 (Channel.Set.union chans1 chans2) {proc = Let(t1,tt1,t2,pthen,pelse); label = None}
           )
         )
       | Process.New(n,pp) ->
-        browse bound_vars pp id (fun id_max p_conv ->
-          f_cont id_max {proc = New(n,p_conv); label = None}
+        browse bound_vars pp id (fun id_max chans p_conv ->
+          f_cont id_max chans {proc = New(n,p_conv); label = None}
         )
       | Process.Par lp ->
-        browse_list bound_vars lp id (fun id_max l_conv ->
+        browse_list bound_vars lp id (fun id_max chans l_conv ->
           match l_conv with
-          | [p] -> f_cont id_max p
-          | l -> f_cont id_max {proc = Par l; label = None}
+          | [p] -> f_cont id_max chans p
+          | l -> f_cont id_max chans {proc = Par l; label = None}
         )
       | Process.Choice _ -> Config.internal_error "[process_session.ml >> plain_process_of_expansed_process] *Choice* not implemented yet for equivalence by session."
 
     and browse_list bound_vars l id f_cont =
       match l with
-      | [] -> f_cont id []
+      | [] -> f_cont id Channel.Set.empty []
       | (pp,i) :: t ->
-        browse bound_vars pp id (fun id_max p_conv ->
-          browse_list bound_vars t id_max (fun id_l l_conv ->
-            if i = 1 then f_cont id_l (p_conv :: l_conv)
+        browse bound_vars pp id (fun id_max chans1 p_conv ->
+          browse_list bound_vars t id_max (fun id_l chans2 l_conv ->
+            let chans = Channel.Set.union chans1 chans2 in
+            if i = 1 then f_cont id_l chans (p_conv :: l_conv)
             else
-              fresh_copy i p_conv id_l (fun id_final l_fresh ->
-                f_cont id_final ({proc = Bang(Strong,[],l_fresh); label = None} :: l_conv)
+              fresh_copy i p_conv id_l (fun id_final chans l_fresh ->
+                f_cont id_final chans ({proc = Bang(Strong,[],l_fresh); label = None} :: l_conv)
               )
           )
         ) in
 
-    browse [] p 1 (fun _ p_conv ->
+    browse [] p 1 (fun _ _ p_conv ->
       preprocessing {proc = Start (p_conv,0); label = Some Label.initial}
     )
 
@@ -802,9 +822,9 @@ end = struct
       | Bang(_,_::_,_) ->
         Config.internal_error "[process_session.ml >> unfold_with_leftovers] Symmetries should not be broken."
       | Bang(b,[],pp::tl) ->
-        let leftovers_pp = if tl = [] then leftovers else {proc = Bang(b,[],tl); label = None}::leftovers in
-        if b = Strong || optim then
-          unfold forall accu leftovers_pp pp f_cont
+        let leftovers_pp = if tl = [] then leftovers
+        else {proc = Bang(b,[],tl); label = None}::leftovers in
+        if b = Strong || optim then unfold forall accu leftovers_pp pp f_cont
         else
           unfold forall accu leftovers_pp pp (fun accu  ->
             unfold_bang [pp] accu leftovers tl f_cont
@@ -878,8 +898,8 @@ end = struct
       let rec unfold accu p rebuild f_cont =
         match p.proc with
         | Input _ -> f_cont accu
-        | OutputSure(c,_,_,_) when not (Channel.is_public c) -> f_cont accu
-        | OutputSure(c,t,pp,id) ->
+        | OutputSure(c,_,_,_,_) when not (Channel.is_public c) -> f_cont accu
+        | OutputSure(c,t,pp,_,id) ->
           let res = {
             channel = c;
             term = t;
@@ -977,45 +997,99 @@ end = struct
       conflict_future : bool;
     }
 
+    (* inserts an internal communication in a sorted list, and checks for toplevel conflicts at the same time. Assumes that comm.toplevel = true *)
+    let replace_conflict (p_in,p_out,data) b =
+      (p_in,p_out,{data with conflict_toplevel = b})
+    let rec insert (comm:t*t*data) (l:(t*t*data) list) : (t*t*data) list =
+      match l with
+      | [] -> [replace_conflict comm false]
+      | ((_,_,data1) as h) :: t ->
+        let (_,_,data) = comm in
+        let comp_ch = Channel.compare data.channel data1.channel in
+        if comp_ch < 0 then replace_conflict comm false :: l
+        else if comp_ch > 0 then h :: insert comm t
+        else if data1.conflict_toplevel then comm :: l
+        else comm :: replace_conflict h true :: t
+
+
+    let refine_conflict_future future_channels (p_in,p_out,data) =
+      (p_in,p_out,{data with conflict_future = Channel.Set.mem data.channel future_channels})
+
+    let priority comm =
+      let (_,_,data) = comm in
+      match data.conflict_future, data.conflict_toplevel, data.optim with
+      | true, _, false -> 0
+      | true, _, true -> 1
+      | false, true, false -> 2
+      | false, true, true -> 3
+      | false, false, _ -> 4
+
+    let compare_comm comm1 comm2 =
+      compare (priority comm2) (priority comm1)
+
+    let mark_forall optim l =
+      let rec mark i l =
+        match l with
+        | [] -> []
+        | ((p_in,p_out,data) as h) :: t ->
+          if priority h = i then
+            (p_in,p_out,{data with optim = true}) :: mark i t
+          else if optim then []
+          else List.rev_map (fun (p_in,p_out,data) -> (p_in,p_out,{data with optim = false})) t in
+      match l with
+      | [] -> []
+      | h :: t ->
+        if priority h = 4 then
+          if optim then [h]
+          else h :: List.rev_map (fun (p_in,p_out,data) -> (p_in,p_out,{data with optim = false})) t
+        else h :: mark (priority h) t
+
     let unfold ?(optim=false) (l:t list) : (t * Input.data) list * (t * t * data) list =
       List.fold_left_with_memo (fun accu p leftovers_left leftovers_right ->
         let leftovers = List.rev_append leftovers_left leftovers_right in
-        unfold_with_leftovers optim accu (fun proc leftovers_proc forall (ac_pub,ac_priv) ->
-          match proc.proc with
-          | Input(c,x,pp,id) when Channel.is_public c ->
-            let res : Input.data = {
-              channel = c;
-              var = x;
-              optim = forall;
-              lab = get_label proc;
-              leftovers = leftovers_proc;
-              id = id;
-            } in
-            (pp,res)::ac_pub,ac_priv
-          | OutputSure(c_out,t,pp_out,id_out) when not (Channel.is_public c_out) ->
-            let ac_priv_upd =
-              List.fold_left_with_memo (fun ac_priv1 proc1 leftovers1_left leftovers1_right ->
-                unfold_with_leftovers optim ac_priv1 (fun proc2 leftovers_proc2 forall_in ac_priv2 ->
-                  match proc2.proc with
-                  | Input(c_in,x,pp_in,id_in) when Channel.equal c_in c_out ->
-                    let res = {
-                      channel = c_in;
-                      var = x;
-                      term = t;
-                      optim = forall && forall_in;
-                      labs = get_label proc, get_label proc2;
-                      leftovers = leftovers_proc2;
-                      ids = id_in,id_out;
-                      conflict_toplevel = false;
-                      conflict_future = false; (* TODO implem the optim? *)
-                    } in
-                    (pp_in,pp_out,res) :: ac_priv2
-                  | _ -> ac_priv2
-                ) proc1 (List.rev_append leftovers1_left leftovers1_right)
-              ) ac_priv leftovers_proc in
-            ac_pub,ac_priv_upd
-          | _ -> Config.internal_error "[process_session.ml >> Labelled_process.PrivateComm.unfold] Non-atomic or non-normalised process unfolded."
-        ) p leftovers
+        let (public_input,internal_comm,future_channels) =
+          unfold_with_leftovers optim (fst accu,snd accu,Channel.Set.empty) (fun proc leftovers_proc forall (ac_pub,ac_priv,ac_chan) ->
+            match proc.proc with
+            | Input(c,x,pp,_,id) when Channel.is_public c ->
+              let res : Input.data = {
+                channel = c;
+                var = x;
+                optim = forall;
+                lab = get_label proc;
+                leftovers = leftovers_proc;
+                id = id;
+              } in
+              (pp,res)::ac_pub,ac_priv,ac_chan
+            | Input(_,_,_,chans_in,_) ->
+              ac_pub,ac_priv,Channel.Set.union chans_in ac_chan
+            | OutputSure(c_out,t,pp_out,chans_out,id_out) when not (Channel.is_public c_out) ->
+              let ac_priv_upd =
+                List.fold_left_with_memo (fun ac_priv1 proc1 leftovers1_left leftovers1_right ->
+                  unfold_with_leftovers optim ac_priv1 (fun proc2 leftovers_proc2 forall_in ac_priv2 ->
+                    match proc2.proc with
+                    | Input(c_in,x,pp_in,_,id_in) when Channel.equal c_in c_out ->
+                      let res = {
+                        channel = c_in;
+                        var = x;
+                        term = t;
+                        optim = forall && forall_in;
+                        labs = get_label proc, get_label proc2;
+                        leftovers = leftovers_proc2;
+                        ids = id_in,id_out;
+                        conflict_toplevel = true;
+                        conflict_future = true; (* TODO implem the optim? *)
+                      } in
+                      insert (pp_in,pp_out,res) ac_priv2
+                    | _ -> ac_priv2
+                  ) proc1 (List.rev_append leftovers1_left leftovers1_right)
+                ) ac_priv leftovers_proc in
+              ac_pub,ac_priv_upd,Channel.Set.union chans_out ac_chan
+            | _ -> Config.internal_error "[process_session.ml >> Labelled_process.PrivateComm.unfold] Non-atomic or non-normalised process unfolded."
+          ) p leftovers in
+
+        let internal_comm_refined = List.rev_map (refine_conflict_future future_channels) internal_comm in
+        let internal_comm_sorted = List.fast_sort compare_comm internal_comm_refined in
+        (public_input,mark_forall optim internal_comm_sorted)
       ) ([],[]) l
   end
 
@@ -1027,9 +1101,9 @@ end = struct
     let rec remove_non_observable p0 =
       match p0.proc with
       | Start(p,id) -> { p0 with proc = Start(remove_non_observable p,id) }
-      | Output(c,t,p,id) -> { p0 with proc = Output(c,t,remove_non_observable p,id) }
+      | Output(c,t,p,chans,id) -> { p0 with proc = Output(c,t,remove_non_observable p,chans,id) }
       | OutputSure _ -> Config.internal_error "[process_sessions.ml >> Optimisation.remove_non_observable] Should only be applied at the beginning of the verification."
-      | Input(c,x,p,id) -> { p0 with proc = Input(c,x,remove_non_observable p,id) }
+      | Input(c,x,p,chans,id) -> { p0 with proc = Input(c,x,remove_non_observable p,chans,id) }
       | If(u,v,p1,p2) ->
         let p1' = remove_non_observable p1
         and p2' = remove_non_observable p2 in
@@ -1100,7 +1174,7 @@ end = struct
       match proc.proc with
       | OutputSure _
       | Input _ -> f_cont cstr proc f_next
-      | Output(ch,t,p,id) ->
+      | Output(ch,t,p,chans,id) ->
         let tt = Rewrite_rules.normalise (Subst.apply cstr.equations t (fun x f -> f x)) in
 
         let eqn_modulo_list_result =
@@ -1112,7 +1186,7 @@ end = struct
 
         begin match eqn_modulo_list_result with
           | EqBot -> f_cont cstr {p with proc = Par []} f_next
-          | EqTop -> f_cont cstr {p with proc = OutputSure(ch,t,p,id)} f_next
+          | EqTop -> f_cont cstr {p with proc = OutputSure(ch,t,p,chans,id)} f_next
           | EqList eqn_modulo_list ->
             let f_next_equations =
               List.fold_left (fun acc_f_next equations_modulo ->
@@ -1133,7 +1207,7 @@ end = struct
                  | None -> acc_f_next
                  | Some new_diseqn ->
                     let new_eqn = Subst.compose cstr.equations equations_modulo in
-                    fun () -> f_cont {equations = new_eqn; disequations = new_diseqn} {proc with proc = OutputSure(ch,t,p,id)} acc_f_next
+                    fun () -> f_cont {equations = new_eqn; disequations = new_diseqn} {proc with proc = OutputSure(ch,t,p,chans,id)} acc_f_next
               ) f_next eqn_modulo_list
             in
 
@@ -1584,7 +1658,7 @@ end = struct
       match conf.focused_proc with
       | Some p ->
         begin match Labelled_process.get_proc p with
-        | Labelled_process.Input(ch,x,pp,id) ->
+        | Labelled_process.Input(ch,x,pp,_,id) ->
           let idata : Labelled_process.Input.data = {
             Labelled_process.Input.channel = ch;
             Labelled_process.Input.var = x;

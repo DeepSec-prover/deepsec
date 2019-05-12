@@ -153,6 +153,7 @@ end = struct
   end
 
   module Matching = struct
+    (* Vincent: Change that... can do much better with indexes containing links. *)
     type matching_forall_exists = Index.t * (Index.t * BijectionSet.t) list
     type t = matching_forall_exists list
 
@@ -652,58 +653,60 @@ end = struct
   NB. The continuations f_cont indicates what to do with the generated nodes, and f_next what to do once all nodes have been explored. *)
   let generate_successors (n:Node.t) (f_cont:Node.t->(unit->unit)->unit) (f_next:unit->unit) : unit =
     let n = Node.clean n in
-    (* Printf.printf "\n==> EXPLORATION FROM %s\n" n.id;
-    Node.print n; *)
-    let (transition_type,node_to_split) = Node.generate_next n in
-    (* Printf.printf "--> new node to split:\n";
-    Node.print node_to_split; *)
-    Node.split node_to_split (fun node f_next1 ->
-      let csys_set = Symbolic.Set.cast node.csys_set in
-      match transition_type with
-      | None ->
-        (* the end of the trace: one verifies that equivalence is not violated, which concludes the analysis of this branch. *)
-        let _ = Node.decast node in
-        f_next1 ()
-      | Some RStart ->
-        (* very beginning of the analysis: only a skeleton check is needed before moving on to the constructing the successor nodes (no unauthorised blocks possible). *)
-        Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
-          let node_decast = Node.decast node csys_set in
-          let final_node = Node.release_skeleton node_decast in
-          f_cont final_node f_next2
-        ) csys_set f_next1
-      | Some RFocus ->
-        (* focus and execution of an input. *)
-        Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
-          if Constraint_system.Set.is_empty csys_set then f_next2()
-          else
+    if Symbolic.Set.is_empty n.csys_set then f_next()
+    else begin
+      (* Printf.printf "\n==> EXPLORATION FROM %s\n" n.id;
+      Node.print n; *)
+      let (transition_type,node_to_split) = Node.generate_next n in
+      (* Printf.printf "--> new node to split:\n";
+      Node.print node_to_split; *)
+      Node.split node_to_split (fun node f_next1 ->
+        let csys_set = Symbolic.Set.cast node.csys_set in
+        match transition_type with
+        | None ->
+          (* the end of the trace: one verifies that equivalence is not violated, which concludes the analysis of this branch. *)
+          let _ = Node.decast node in
+          f_next1 ()
+        | Some RStart ->
+          (* very beginning of the analysis: only a skeleton check is needed before moving on to the constructing the successor nodes (no unauthorised blocks possible). *)
+          Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
             let node_decast = Node.decast node csys_set in
-            let node_autho =
-              Node.remove_unauthorised_blocks node_decast csys_set in
-            let final_node = Node.release_skeleton node_autho in
-            f_cont final_node f_next2
-        ) csys_set f_next1
-      | Some RPos ->
-        (* execution of a focused input. The skeleton check releases the focus if necessary, and unauthorised blocks may arise due to the constraint solving. *)
-        Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
-          if Constraint_system.Set.is_empty csys_set then f_next2()
-          else
-            let node_decast = Node.decast node csys_set in
-            let node_autho = Node.remove_unauthorised_blocks node_decast csys_set in
-            let final_node = Node.release_skeleton node_autho in
-            f_cont final_node f_next2
-        ) csys_set f_next1
-      | Some RNeg ->
-        (* execution of outputs. Similar to the input case, except that the size of the frame is increased by one. *)
-        Constraint_system.Rule.apply_rules_after_output false (fun csys_set f_next2 ->
-          if Constraint_system.Set.is_empty csys_set then f_next2()
-          else
-            let node_decast = Node.decast node csys_set in
-            let node_autho =
-              Node.remove_unauthorised_blocks node_decast csys_set in
-            let final_node = Node.release_skeleton node_autho in
-            f_cont {final_node with size_frame = node.size_frame+1} f_next2
-        ) csys_set f_next1
-    ) f_next
+            let final_node = Node.release_skeleton node_decast in
+            Node.split final_node f_cont f_next2
+          ) csys_set f_next1
+        | Some RFocus ->
+          (* focus and execution of an input. *)
+          Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
+            if Constraint_system.Set.is_empty csys_set then f_next2()
+            else
+              let node_decast = Node.decast node csys_set in
+              let node_autho =
+                Node.remove_unauthorised_blocks node_decast csys_set in
+              let final_node = Node.release_skeleton node_autho in
+              Node.split final_node f_cont f_next2
+          ) csys_set f_next1
+        | Some RPos ->
+          (* execution of a focused input. The skeleton check releases the focus if necessary, and unauthorised blocks may arise due to the constraint solving. *)
+          Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
+            if Constraint_system.Set.is_empty csys_set then f_next2()
+            else
+              let node_decast = Node.decast node csys_set in
+              let node_autho = Node.remove_unauthorised_blocks node_decast csys_set in
+              let final_node = Node.release_skeleton node_autho in
+              Node.split final_node f_cont f_next2
+          ) csys_set f_next1
+        | Some RNeg ->
+          (* execution of outputs. Similar to the input case, except that the size of the frame is increased by one. *)
+          Constraint_system.Rule.apply_rules_after_output false (fun csys_set f_next2 ->
+            if Constraint_system.Set.is_empty csys_set then f_next2()
+            else
+              let node_decast = Node.decast node csys_set in
+              let node_autho = Node.remove_unauthorised_blocks node_decast csys_set in
+              let final_node = Node.release_skeleton node_autho in
+              Node.split {final_node with size_frame = node.size_frame+1} f_cont f_next2
+          ) csys_set f_next1
+      ) f_next
+    end
 
   let rec explore (n:Node.t) (f_next:unit->unit) : unit =
     generate_successors n explore f_next
