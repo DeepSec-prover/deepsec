@@ -17,21 +17,18 @@ struct
       frame_size : int
     }
 
-  type data_determinate =
-    {
-      init_conf1 : Process_determinate.configuration;
-      init_conf2 : Process_determinate.configuration;
+  type data_determinate = {
+    init_conf1 : Process_determinate.configuration;
+    init_conf2 : Process_determinate.configuration;
 
-      equiv_problem : Equivalence_determinate.equivalence_problem
-    }
+    equiv_problem : Equivalence_determinate.equivalence_problem
+  }
 
-  type data_session =
-    {
-      init_conf1 : Process_session.Configuration.t;
-      init_conf2 : Process_session.Configuration.t;
-
-      node : Equivalence_session.PartitionTree.Node.t
-    }
+  type data_session = {
+    conf1 : Process_session.Configuration.t;
+    conf2 : Process_session.Configuration.t;
+    node : Equivalence_session.PartitionTree.Node.t
+  }
 
   type data_equivalence =
     | DStandard of data_standard
@@ -89,7 +86,7 @@ struct
     Data_structure.Tools.setup_stored_constructors job.stored_constructors;
 
     match job.data_equiv with
-      | DStandard data ->
+      | DStandard (data:data_standard) ->
           Config.display_trace := data.display_trace;
           let rec apply_rules csys_set frame_size f_next =
             Equivalence.apply_one_transition_and_rules_for_trace_equivalence data.chosen_semantics csys_set frame_size (fun csys_set size f_next ->
@@ -103,7 +100,7 @@ struct
           with
             | Equivalence.Not_Trace_Equivalent csys -> Not_Equivalent (OStandard (csys, data.init_proc1, data.init_proc2))
           end
-      | DDeterminate data ->
+      | DDeterminate (data:data_determinate) ->
           let rec apply_rules equiv_pbl f_next =
             Equivalence_determinate.apply_one_transition_and_rules equiv_pbl (fun eq_pbl_1 f_next_1 ->
               apply_rules eq_pbl_1 f_next_1
@@ -116,13 +113,13 @@ struct
           with
             | Equivalence_determinate.Not_Trace_Equivalent csys -> Not_Equivalent (ODeterminate (csys, data.init_conf1, data.init_conf2))
           end
-      | DSession data ->
+      | DSession (data:data_session) ->
         begin try
           Equivalence_session.PartitionTree.explore_from data.node;
           Equivalent
         with
         | Equivalence_session.Symbolic.Process.Attack_Witness csys ->
-          Not_Equivalent (OSession (csys, data.init_conf1, data.init_conf2))
+          Not_Equivalent (OSession (csys, data.conf1, data.conf2))
         end
 
   let digest result = match result with
@@ -203,7 +200,7 @@ struct
           else Jobs !job_list
         with
         | Equivalence_session.Symbolic.Process.Attack_Witness csys ->
-          Result (Not_Equivalent (OSession (csys, data.init_conf1, data.init_conf2)))
+          Result (Not_Equivalent (OSession (csys, data.conf1, data.conf2)))
         end
 end
 
@@ -382,8 +379,8 @@ let session (goal:Equivalence_session.goal) (conf1:Process_session.Configuration
   let v_counter = Variable.get_counter () in
   let n_counter = Name.get_counter () in
   let data = {
-      EquivJob.init_conf1 = conf1;
-      EquivJob.init_conf2 = conf2;
+      EquivJob.conf1 = conf1;
+      EquivJob.conf2 = conf2;
       EquivJob.node = root;
     } in
   let job = {

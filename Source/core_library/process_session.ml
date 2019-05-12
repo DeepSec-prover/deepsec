@@ -2,6 +2,7 @@
 
 open Extensions
 open Term
+open Display
 
 
 (* a module for representing process labels *)
@@ -42,7 +43,6 @@ end = struct
         match compare t1 t2 with
           | 0 -> independent q1 q2
           | i -> i
-  let to_list x = x
   let rec check_prefix (l1:t) (l2:t) : int option =
     match l1,l2 with
     | [],[i] -> Some i
@@ -57,7 +57,7 @@ end = struct
   module Set = struct
     type elt = int list
     type t = elt * int list
-    let is_empty (lab,l) = l = []
+    let is_empty (_,l) = l = []
     let of_position_list label l = label,l
     let find_and_remove x (lab,l) =
       match check_prefix lab x with
@@ -398,7 +398,7 @@ end = struct
       let lab delim =
         match p.label with
         | None -> ""
-        | Some l when not print_labs -> ""
+        | Some _ when not print_labs -> ""
         | Some l -> Printf.sprintf "lab=%s%s" (Label.to_string l) delim in
       match p.proc with
       | Start (pp,id) ->
@@ -682,7 +682,7 @@ end = struct
             f_cont id2 (Channel.Set.union chans1 chans2) {proc = If(uu,vv,p1_fresh,p2_fresh); label = None}
           )
         )
-      | Let(u,u',v,p1,p2) ->
+      | Let(u,_,v,p1,p2) ->
         (* VINCENT: Improve that part. I think we could have something more linear. Add that in terms.ml. I leave the warning for now. *)
         let bound_vars_u = Term.get_vars_not_in Protocol u bound_vars in
         let fresh' = Variable.Renaming.fresh Protocol bound_vars_u Universal in
@@ -975,7 +975,7 @@ end = struct
       | Bang(_,[],_) -> (* no restauration needed *)
         lp
       | Par l -> {lp with proc = Par (List.map restaure_sym l)}
-      | Bang(b,l1,l2) -> (* non trivial restauration: symmetry cannot be restaured to Strong *)
+      | Bang(_,l1,l2) -> (* non trivial restauration: symmetry cannot be restaured to Strong *)
         {lp with proc = Bang (Partial,[],List.map restaure_sym l1 @ l2)}
       | Let _
       | If _
@@ -1052,12 +1052,12 @@ end = struct
             match proc.proc with
             | Input(c,x,pp,_,id) when Channel.is_public c ->
               let res : Input.data = {
-                channel = c;
-                var = x;
-                optim = forall;
-                lab = get_label proc;
-                leftovers = leftovers_proc;
-                id = id;
+                Input.channel = c;
+                Input.var = x;
+                Input.optim = forall;
+                Input.lab = get_label proc;
+                Input.leftovers = leftovers_proc;
+                Input.id = id;
               } in
               (pp,res)::ac_pub,ac_priv,ac_chan
             | Input(_,_,_,chans_in,_) ->
@@ -1096,7 +1096,6 @@ end = struct
   module Optimisation = struct
     (* removing subprocesses that cannot trigger observable actions (for optimisation purposes; does not affect the decision of equivalence) *)
     let void = {proc = Par []; label = None}
-    let replace (p:t) (plain:plain) : t = {p with proc = plain}
     (* VINCENT: Possible new function for remove_non_observable. CAREFUL: Your function is never called. *)
     let rec remove_non_observable p0 =
       match p0.proc with
@@ -1386,33 +1385,6 @@ end = struct
     let set = Label.Set.singleton Label.initial in
     [set,set]
 
-  (* partitions a list in equiv. classes wrt to some equivalence relation *)
-  type 'a partition = 'a list list
-  let equivalence_classes (equiv:'a->'a->bool) (l:'a list) : 'a partition =
-    let rec insert memo partition x =
-      match partition with
-      | [] -> [x] :: memo
-      | [] :: _ -> Config.internal_error "[process_session.ml >> equivalence_classes] Unexpected case"
-      | (y::_ as equiv_class) :: t ->
-        if equiv x y then List.rev_append memo ((x::equiv_class) :: t)
-        else insert (equiv_class :: memo) t x in
-    List.fold_left (insert []) [] l
-
-  (* links two equivalence relations to form a bijection set. Returns None if the resulting set is empty. *)
-  let link_partitions (equiv:'a->'a->bool) (p1:'a partition) (p2:'a partition) : ('a list * 'a list) list option =
-    let rec browse accu p1 p2 =
-      match p1 with
-      | [] -> if p2 <> [] then None else Some accu
-      | [] :: _ ->
-        Config.internal_error "[process_session >> link_partitions] Unexpected case"
-      | (x::_ as ec1) :: p1' ->
-        match List.find_and_remove (fun ec2 -> equiv x (List.hd ec2)) p2 with
-        | None,_ -> None
-        | Some ec2,p2' ->
-          if List.length ec1 <> List.length ec2 then None
-          else browse ((ec1,ec2)::accu) p1' p2' in
-    browse [] p1 p2
-
   (* prints a bijection set *)
   let print (bset:t) : unit =
     List.iter (fun (s1,s2) ->
@@ -1562,7 +1534,7 @@ end = struct
       | Some p, None ->
         Labelled_process.Normalise.normalise p eqn_cast (fun gather p_norm f_next ->
           let (labelled_p,skel) = Labelled_process.labelling prefix p_norm in
-          let pp = rebuild p in
+          let pp = rebuild labelled_p in
           let conf_base = {conf with to_normalise = None} in
           let conf_final =
             match Labelled_process.get_proc pp with
@@ -1644,8 +1616,8 @@ end = struct
         id = od.Labelled_process.Output.id;
         label = od.Labelled_process.Output.lab;
       } in
-      let ch = od.channel in
-      let term = od.term in
+      let ch = od.Labelled_process.Output.channel in
+      let term = od.Labelled_process.Output.term in
       {conf with
         to_normalise = Some p;
         sure_output_proc = leftovers;

@@ -228,12 +228,12 @@ end = struct
         ) m in
       map_filter (fun index cs ->
         let symp = Constraint_system.get_additional_data cs in
-        match symp.status with
-        | Exists
-        | Both when useless_existential_index index ->
-          if symp.status = Exists then None
+        match symp.Process.status with
+        | Status.Exists
+        | Status.Both when useless_existential_index index ->
+          if symp.Process.status = Status.Exists then None
           else
-            Some (Constraint_system.replace_additional_data cs {symp with status = ForAll})
+            Some (Constraint_system.replace_additional_data cs {symp with Process.status = Status.ForAll})
         | _ -> Some cs
       ) csys_set
 
@@ -244,7 +244,7 @@ end = struct
         List.fold_left (fun (accu_ind,accu_match) ((cs_fa,_) as m) ->
           let cs = find csys_set cs_fa in
           let symp = Constraint_system.get_additional_data cs in
-          if Configuration.check_block snd_subst symp.conf then
+          if Configuration.check_block snd_subst symp.Process.conf then
             accu_ind,m::accu_match
           else cs_fa::accu_ind,accu_match
         ) ([],[]) matching in
@@ -253,11 +253,11 @@ end = struct
           (* Printf.printf "index %d -> non authorised block\n" i; *)
           let symp = Constraint_system.get_additional_data cs in
           if List.mem i indexes_to_remove then
-            match symp.status with
-            | Both ->
-              Some (Constraint_system.replace_additional_data cs {symp with status = Exists})
-            | ForAll -> None
-            | Exists ->
+            match symp.Process.status with
+            | Status.Both ->
+              Some (Constraint_system.replace_additional_data cs {symp with Process.status = Status.Exists})
+            | Status.ForAll -> None
+            | Status.Exists ->
               Config.internal_error "[equivalence_session.ml >> remove_unauthorised_blocks] A purely-existential constraint system should not appear in the first components of matching."
           else Some cs
         ) csys_set in
@@ -292,10 +292,10 @@ end = struct
       )
 
     let add_transition_output (csys_set:Set.t ref) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord, Term.name) Subst.t) (cs:Process.t) (ax:axiom) (od:Labelled_process.Output.data) (new_status:Status.t) : unit =
-      Configuration.normalise ~context:od.context od.lab conf eqn (fun gather conf_norm skel ->
+      Configuration.normalise ~context:od.Labelled_process.Output.context od.Labelled_process.Output.lab conf eqn (fun gather conf_norm skel ->
         let equations = Labelled_process.Normalise.equations gather in
         let disequations = Labelled_process.Normalise.disequations gather in
-        let t0 = Subst.apply equations od.term (fun x f -> f x) in
+        let t0 = Subst.apply equations od.Labelled_process.Output.term (fun x f -> f x) in
 
         try
           let cs1 =
@@ -310,8 +310,8 @@ end = struct
           let transition = {
             target = target;
             skel_target = skel;
-            label = od.lab;
-            forall = od.optim;
+            label = od.Labelled_process.Output.lab;
+            forall = od.Labelled_process.Output.optim;
           } in
           accu := transition :: !accu;
           csys_set := new_set
@@ -320,10 +320,10 @@ end = struct
       )
 
     let add_transition_input (csys_set:Set.t ref) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord,Term.name) Subst.t) (cs:Process.t) (var_X:snd_ord_variable) (idata:Labelled_process.Input.data) (new_status:Status.t) : unit =
-      Configuration.normalise idata.lab conf eqn (fun gather conf_norm skel ->
+      Configuration.normalise idata.Labelled_process.Input.lab conf eqn (fun gather conf_norm skel ->
         let equations = Labelled_process.Normalise.equations gather in
         let disequations = Labelled_process.Normalise.disequations gather in
-        let inp = Subst.apply equations (of_variable idata.var) (fun x f -> f x) in
+        let inp = Subst.apply equations (of_variable idata.Labelled_process.Input.var) (fun x f -> f x) in
         let ded_fact = BasicFact.create var_X inp in
 
         try
@@ -339,8 +339,8 @@ end = struct
           let transition = {
             target = target;
             skel_target = skel;
-            label = idata.lab;
-            forall = idata.optim;
+            label = idata.Labelled_process.Input.lab;
+            forall = idata.Labelled_process.Input.optim;
           } in
           accu := transition :: !accu;
           csys_set := new_set
@@ -354,45 +354,45 @@ end = struct
       let accu : transition list ref = ref [] in
       begin match type_of_transition with
       | None -> ()
-      | Some RStart ->
-        let conf = Configuration.Transition.apply_start symp.conf in
+      | Some Configuration.Transition.RStart ->
+        let conf = Configuration.Transition.apply_start symp.Process.conf in
         let eqn = Constraint_system.get_substitution_solution Protocol cs in
-        add_transition_start csys_set accu conf eqn cs Label.initial symp.status
-      | Some RNeg ->
+        add_transition_start csys_set accu conf eqn cs Label.initial symp.Process.status
+      | Some Configuration.Transition.RNeg ->
         let ax = get_axiom v in
         List.iter_with_memo (fun proc memo_left memo_right ->
           let memo = List.rev_append memo_left memo_right in
           List.iter (fun (pp,output_data) ->
             let conf =
-              Configuration.Transition.apply_neg ax pp output_data memo symp.conf in
+              Configuration.Transition.apply_neg ax pp output_data memo symp.Process.conf in
             let eqn =
               Constraint_system.get_substitution_solution Protocol cs in
             let next_status =
-              Status.downgrade_forall status output_data.optim in
+              Status.downgrade_forall status output_data.Labelled_process.Output.optim in
             add_transition_output csys_set accu conf eqn cs ax output_data next_status
-          ) (Labelled_process.Output.unfold ~optim:(status=ForAll) proc)
-        ) (Configuration.outputs symp.conf)
-      | Some RFocus ->
+          ) (Labelled_process.Output.unfold ~optim:(status=Status.ForAll) proc)
+        ) (Configuration.outputs symp.Process.conf)
+      | Some Configuration.Transition.RFocus ->
         let var_X = get_snd_ord v in
         let potential_focuses =
-          Labelled_process.Input.unfold ~optim:(status=ForAll) (Configuration.inputs symp.conf) in
+          Labelled_process.Input.unfold ~optim:(status=Status.ForAll) (Configuration.inputs symp.Process.conf) in
         List.iter (fun focus ->
           let conf_exec =
-            Configuration.Transition.apply_focus var_X focus symp.conf in
+            Configuration.Transition.apply_focus var_X focus symp.Process.conf in
           let eqn =
             Constraint_system.get_substitution_solution Protocol cs in
           let next_status =
-            Status.downgrade_forall status (snd focus).optim in
+            Status.downgrade_forall status (snd focus).Labelled_process.Input.optim in
           add_transition_input csys_set accu conf_exec eqn cs var_X (snd focus) next_status
         ) potential_focuses
-      | Some RPos ->
+      | Some Configuration.Transition.RPos ->
         let var_X = get_snd_ord v in
         let (idata,conf_exec) =
-          Configuration.Transition.apply_pos var_X symp.conf in
+          Configuration.Transition.apply_pos var_X symp.Process.conf in
         let eqn =
           Constraint_system.get_substitution_solution Protocol cs in
         let next_status =
-          Status.downgrade_forall status idata.optim in
+          Status.downgrade_forall status idata.Labelled_process.Input.optim in
         add_transition_input csys_set accu conf_exec eqn cs var_X idata next_status end;
       !accu
   end
@@ -527,13 +527,13 @@ end = struct
         (* Configuration.Transition.print_kind trans; *)
         match trans with
         | None
-        | Some RStart -> trans, {snd_ord = None; axiom = None}
-        | Some RFocus
-        | Some RPos ->
+        | Some Configuration.Transition.RStart -> trans, {snd_ord = None; axiom = None}
+        | Some Configuration.Transition.RFocus
+        | Some Configuration.Transition.RPos ->
           let new_var =
             Variable.fresh Recipe Free (Variable.snd_ord_type n.size_frame) in
           trans, {snd_ord = Some new_var; axiom = None}
-        | Some RNeg ->
+        | Some Configuration.Transition.RNeg ->
           trans, {snd_ord = None; axiom = Some (Axiom.create (n.size_frame+1))}
 
     let release_skeleton (n:t) : t =
@@ -559,11 +559,11 @@ end = struct
     let generate_next (n:t) : Configuration.Transition.kind option * t =
       let new_id = fresh_id () in
 
-      (** Generation of the transitions **)
+      (* Generation of the transitions *)
       let (trans,vars) = data_next_transition n in
       let new_csys_set = ref Symbolic.Set.empty in
       let csys_set_with_transitions =
-        Symbolic.Set.map (fun i csys ->
+        Symbolic.Set.map (fun _ csys ->
           let next_transitions =
             Symbolic.Transition.generate vars trans new_csys_set csys in
           (* Printf.printf "Transitions generated from %s: \n" (Symbolic.Index.to_string i);
@@ -576,22 +576,22 @@ end = struct
         Symbolic.Matching.fold (fun cs_fa cs_ex_list (accu1:Symbolic.Matching.t) ->
           let symp_fa = Symbolic.Set.find csys_set_with_transitions cs_fa in
           List.fold_left (fun (accu2:Symbolic.Matching.t) (tr_fa:Symbolic.transition) ->
-            if not tr_fa.forall then accu2
+            if not tr_fa.Symbolic.forall then accu2
             else
               let cs_ex_list_new =
                 List.fold_left (fun (accu3:(Symbolic.Index.t*BijectionSet.t) list) (cs_ex,bset) ->
                   let symp_ex = Symbolic.Set.find csys_set_with_transitions cs_ex in
                   List.fold_left (fun (accu4:(Symbolic.Index.t*BijectionSet.t) list) (tr_ex:Symbolic.transition) ->
-                    match BijectionSet.update tr_fa.label tr_ex.label tr_fa.skel_target tr_ex.skel_target bset with
-                    | Some bset_upd -> (tr_ex.target,bset_upd) :: accu4
+                    match BijectionSet.update tr_fa.Symbolic.label tr_ex.Symbolic.label tr_fa.Symbolic.skel_target tr_ex.Symbolic.skel_target bset with
+                    | Some bset_upd -> (tr_ex.Symbolic.target,bset_upd) :: accu4
                     | _ -> accu4
                   ) accu3 (Symbolic.Process.get_transitions symp_ex)
                 ) [] cs_ex_list in
-              Symbolic.Matching.add_match tr_fa.target cs_ex_list_new accu2
+              Symbolic.Matching.add_match tr_fa.Symbolic.target cs_ex_list_new accu2
           ) accu1 (Symbolic.Process.get_transitions symp_fa)
         ) n.matching Symbolic.Matching.empty in
 
-      (** final node **)
+      (* final node *)
       let new_node =
         clean {n with csys_set = new_csys_set; matching = new_matching; id = new_id} in
       trans,new_node
@@ -600,7 +600,7 @@ end = struct
     let split (n:t) (f_cont:t->(unit->unit)->unit) (f_next:unit->unit) : unit =
       let comps = Graph.connected_components (Graph.of_matching n.matching) in
 
-      let rec add_matching_in_data_list i matchers data =
+      let add_matching_in_data_list i matchers data =
         match List.find_and_remove (fun (_,c) -> Graph.ConnectedComponent.mem i c) data with
         | None, _ -> Config.internal_error "[equivalence_session.ml >> split_partition_tree_node] Unexpected case."
         | Some (ml,c),remainder ->
@@ -653,7 +653,7 @@ end = struct
   NB. The continuations f_cont indicates what to do with the generated nodes, and f_next what to do once all nodes have been explored. *)
   let generate_successors (n:Node.t) (f_cont:Node.t->(unit->unit)->unit) (f_next:unit->unit) : unit =
     let n = Node.clean n in
-    if Symbolic.Set.is_empty n.csys_set then f_next()
+    if Symbolic.Set.is_empty n.Node.csys_set then f_next()
     else begin
       (* Printf.printf "\n==> EXPLORATION FROM %s\n" n.id;
       Node.print n; *)
@@ -661,20 +661,20 @@ end = struct
       (* Printf.printf "--> new node to split:\n";
       Node.print node_to_split; *)
       Node.split node_to_split (fun node f_next1 ->
-        let csys_set = Symbolic.Set.cast node.csys_set in
+        let csys_set = Symbolic.Set.cast node.Node.csys_set in
         match transition_type with
         | None ->
           (* the end of the trace: one verifies that equivalence is not violated, which concludes the analysis of this branch. *)
           let _ = Node.decast node in
           f_next1 ()
-        | Some RStart ->
+        | Some Configuration.Transition.RStart ->
           (* very beginning of the analysis: only a skeleton check is needed before moving on to the constructing the successor nodes (no unauthorised blocks possible). *)
           Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
             let node_decast = Node.decast node csys_set in
             let final_node = Node.release_skeleton node_decast in
             Node.split final_node f_cont f_next2
           ) csys_set f_next1
-        | Some RFocus ->
+        | Some Configuration.Transition.RFocus ->
           (* focus and execution of an input. *)
           Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
             if Constraint_system.Set.is_empty csys_set then f_next2()
@@ -685,7 +685,7 @@ end = struct
               let final_node = Node.release_skeleton node_autho in
               Node.split final_node f_cont f_next2
           ) csys_set f_next1
-        | Some RPos ->
+        | Some Configuration.Transition.RPos ->
           (* execution of a focused input. The skeleton check releases the focus if necessary, and unauthorised blocks may arise due to the constraint solving. *)
           Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
             if Constraint_system.Set.is_empty csys_set then f_next2()
@@ -695,7 +695,7 @@ end = struct
               let final_node = Node.release_skeleton node_autho in
               Node.split final_node f_cont f_next2
           ) csys_set f_next1
-        | Some RNeg ->
+        | Some Configuration.Transition.RNeg ->
           (* execution of outputs. Similar to the input case, except that the size of the frame is increased by one. *)
           Constraint_system.Rule.apply_rules_after_output false (fun csys_set f_next2 ->
             if Constraint_system.Set.is_empty csys_set then f_next2()
@@ -703,7 +703,7 @@ end = struct
               let node_decast = Node.decast node csys_set in
               let node_autho = Node.remove_unauthorised_blocks node_decast csys_set in
               let final_node = Node.release_skeleton node_autho in
-              Node.split {final_node with size_frame = node.size_frame+1} f_cont f_next2
+              Node.split {final_node with Node.size_frame = node.Node.size_frame+1} f_cont f_next2
           ) csys_set f_next1
       ) f_next
     end
@@ -711,7 +711,7 @@ end = struct
   let rec explore (n:Node.t) (f_next:unit->unit) : unit =
     generate_successors n explore f_next
 
-  let rec explore_from (n:Node.t) : unit =
+  let explore_from (n:Node.t) : unit =
     explore n (fun () -> ())
 end
 

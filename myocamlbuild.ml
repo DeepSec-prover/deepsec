@@ -11,6 +11,6 @@ dispatch begin function
           A"-t";
           A"Documentation DeepSec";
         ];
-      (* flag ["ocaml"; "compile"] (S [ A "-w"; A "A-44-e"]) *)
+      flag ["ocaml"; "compile"] (S [ A "-w"; A "A-44-e"])
   | _ -> ()
 end
