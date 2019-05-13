@@ -109,11 +109,9 @@ let VotingSystem(vote1,vote2) =
   out(c,vk(sk2));
   (Voter(sk1,id1,vote1,pk(skE)) | Voter(sk2,id2,vote2,pk(skE)) | Tally(skE,vk(sk1),vk(sk2),vk(sk3))).
 
-(* Should find an attack. *)
-query trace_equiv(VotingSystem(yes,no),VotingSystem(no,no)).
 
 (* Should not find an attack. *)
-(*query trace_equiv(VotingSystem_twice1(yes,no),VotingSystem_twice1(no,yes)).*)
+query trace_equiv(VotingSystem_twice1(yes,no),VotingSystem_twice1(no,yes)).
 
 (* Should not find an attack. *)
 query trace_equiv(VotingSystem(yes,no),VotingSystem(no,yes)).

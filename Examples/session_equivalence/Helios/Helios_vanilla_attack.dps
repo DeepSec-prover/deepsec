@@ -55,6 +55,6 @@ let AnBy =
   ).
 
 
-query trace_equiv(AyBn,AnBy).
+query session_equiv(AyBn,AnBy).
 
 // privacy cannot be proven because of vote replay attack

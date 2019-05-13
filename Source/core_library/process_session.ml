@@ -1136,7 +1136,7 @@ end = struct
                         var = x;
                         term = t;
                         optim = forall && forall_in;
-                        labs = get_label proc, get_label proc2;
+                        labs = get_label proc2, get_label proc;
                         leftovers = leftovers_proc2;
                         ids = id_in,id_out;
                         conflict_toplevel = true;
@@ -1548,17 +1548,17 @@ end = struct
         Rewrite_rules.normalise (Subst.apply fst_subst x (fun x f -> f x)) in
       let msg =
         Printf.sprintf "input on channel %s of %s = %s\n" (Channel.to_string ch) (Term.display Terminal Recipe recipe) (Term.display Terminal Protocol input) in
-      Printf.sprintf "%s%s" (bold_blue msg) (Labelled_process.print ~solution:fst_subst ~highlight:[s.id] (to_process s.current_proc))
+      Printf.sprintf "%s%s" (bold_blue msg) (Labelled_process.print ~labels:true ~solution:fst_subst ~highlight:[s.id] (to_process s.current_proc))
     | OutAction(ch,ax,t,s) ->
       let output =
         Rewrite_rules.normalise (Subst.apply fst_subst t (fun x f -> f x)) in
       let msg =
         Printf.sprintf "output on channel %s of %s, referred as %s\n" (Channel.to_string ch) (Term.display Terminal Protocol output) (Axiom.display Terminal ax) in
-      Printf.sprintf "%s%s" (bold_blue msg) (Labelled_process.print ~solution:fst_subst ~highlight:[s.id] (to_process s.current_proc))
+      Printf.sprintf "%s%s" (bold_blue msg) (Labelled_process.print ~labels:true ~solution:fst_subst ~highlight:[s.id] (to_process s.current_proc))
     | ComAction(ch,s_in,s_out) ->
       let msg =
         Printf.sprintf "internal communication on channel %s\n" (Channel.to_string ch) in
-      Printf.sprintf "%s%s" (bold_blue msg) (Labelled_process.print ~solution:fst_subst ~highlight:[s_in.id;s_out.id] (to_process s_in.current_proc))
+      Printf.sprintf "%s%s" (bold_blue msg) (Labelled_process.print ~labels:true ~solution:fst_subst ~highlight:[s_in.id;s_out.id] (to_process s_in.current_proc))
 
   let print_trace (fst_subst:(fst_ord,name) Subst.t) (snd_subst:(snd_ord,axiom) Subst.t) (conf:t) : string =
     snd (
@@ -1604,17 +1604,11 @@ end = struct
             let pp = rebuild labelled_p in
             let conf_base = {conf with to_normalise = t} in
             let conf_final =
-              match Labelled_process.get_proc pp with
-              | Labelled_process.Input _ ->
-                {conf_base with input_proc = pp::conf_base.input_proc}
-              | Labelled_process.OutputSure _ ->
+              if Labelled_process.nil pp then conf_base
+              else if Labelled_process.contains_public_output_toplevel pp then
                 {conf_base with sure_output_proc = pp::conf_base.sure_output_proc}
-              | _ ->
-                if Labelled_process.nil pp then conf_base
-                else if Labelled_process.contains_public_output_toplevel pp then
-                  {conf_base with sure_output_proc = pp::conf_base.sure_output_proc}
-                else
-                  {conf_base with input_proc = Labelled_process.Output.restaure_sym pp::conf_base.input_proc} in
+              else
+                {conf_base with input_proc = Labelled_process.Output.restaure_sym pp::conf_base.input_proc} in
             normalise_all conf_final (skel::skel_list) gather1 f_cont;
             f_next ()
           ) (fun () -> ())
@@ -1630,8 +1624,6 @@ end = struct
     | Some (p,_) ->
       match Labelled_process.get_proc p with
       | Labelled_process.Input(ch,_,_,_,_) when Channel.is_public ch -> Some c
-      | Labelled_process.OutputSure _ ->
-        Some {c with focused_proc = None; sure_output_proc = p::c.sure_output_proc}
       | _ ->
         if Labelled_process.nil p then None
         else if Labelled_process.contains_public_output_toplevel p then
@@ -1748,6 +1740,7 @@ end = struct
     let apply_comm (com:Labelled_process.t * Labelled_process.t * Labelled_process.PrivateComm.data) (conf:t) : t =
       let (p_in,p_out,cdata) = com in
       let (label_in,label_out) = cdata.Labelled_process.PrivateComm.labs in
+      (* Printf.printf "Transforming configuration for internal communication between input %s\n(label %s)\nand output %s\n(label %s)\n" (Labelled_process.print ~labels:true p_in) (Label.to_string label_in) (Labelled_process.print ~labels:true p_out) (Label.to_string label_out); *)
       let is_deterministic =
         not cdata.Labelled_process.PrivateComm.conflict_toplevel && not cdata.Labelled_process.PrivateComm.conflict_future in
       let state_in = {
@@ -1764,11 +1757,13 @@ end = struct
       if is_deterministic then
         { conf with
           to_normalise = [p_out,label_out; p_in,label_in];
+          input_proc = cdata.Labelled_process.PrivateComm.leftovers;
           ongoing_block = Block.add_labels [label_in; label_out] conf.ongoing_block;
           trace = new_action :: conf.trace }
       else
         { conf with
           to_normalise = [p_out,label_out; p_in,label_in];
+          input_proc = cdata.Labelled_process.PrivateComm.leftovers;
           ongoing_block = Block.create [label_in; label_out];
           previous_blocks = conf.ongoing_block :: conf.previous_blocks;
           trace = new_action :: conf.trace }
