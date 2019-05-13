@@ -45,3 +45,19 @@ BAC
     - DeepSec vanilla: >12h (1 core), >12h (20 cores)
     - DeepSec session: SINCE 2:30AM (1 core), SINCE 2:30AM (20 cores)
     - DeepSec inclus.: ??? (1 core), ??? (20 cores)
+
+
+-------
+
+Helios
+-------
+
+* *Vanilla* **[violated]**
+  - DeepSec vanilla: ??? (1 core), <1s (20 cores)
+  - DeepSec session: ??? (1 core), <1s (20 cores)
+
+* *Helios Weeding (no revote)* **[equivalence]**
+  - DeepSec vanilla: ??? (1 core), 1s (20 cores)
+  - DeepSec session: ??? (1 core), 1s (20 cores)
+
+* *Helios ZKP (no revote)* **[equivalence]**

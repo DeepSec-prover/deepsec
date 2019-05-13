@@ -694,7 +694,7 @@ end = struct
   let fresh_vars_and_renaming (accu:(fst_ord, name) Variable.Renaming.t) (l:fst_ord_variable list) : (fst_ord, name) Variable.Renaming.t * fst_ord_variable list =
     List.fold_left (fun (accu,l) x ->
       let xx = Variable.fresh_from x in
-      Variable.Renaming.compose accu x xx, xx::l
+      Variable.Renaming.compose accu x xx, x::l
     ) (accu,[]) l
 
   (* generates several copies of a process with freshly renamed New names, input variables, and positions *)
