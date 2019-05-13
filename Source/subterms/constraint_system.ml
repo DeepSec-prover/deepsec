@@ -1355,8 +1355,6 @@ module Set = struct
       equal_modulo : ('a * (fst_ord, name) Variable.Renaming.t * Name.Renaming.t) list
     }
 
-
-
   let rec compress_one f_next csys vars names data prev = function
     | [] -> f_next prev { csys with additional_data = data }
     | csys' :: q ->
@@ -1387,10 +1385,10 @@ module Set = struct
   let compress_with_equal_modulo_renaming csys_set =
     compress_list (fun csys_set' -> csys_set') [] csys_set
 
-  let decompress_with_equal_modulo_renaming csys_set =
+  let decompress_with_equal_modulo_renaming (csys_set:'a compressed_data t) =
     List.fold_left (fun accu csys ->
       let orig_csys = { csys with additional_data = csys.additional_data.original } in
-      List.fold_left (fun accu' (data,v_rho,n_rho) ->
+      List.fold_left (fun accu' ((data:'a),v_rho,n_rho) ->
         let csys' = Term.apply_both_renamings v_rho n_rho map_vars_and_terms csys in
         { csys' with additional_data = data }::accu'
       ) (orig_csys::accu) csys.additional_data.equal_modulo
@@ -3334,27 +3332,98 @@ module Rule = struct
       )))
 
   let apply_rules_after_input_with_compression exists_private (f_continuation: 'a Set.t -> (unit -> unit) -> unit) (csys_set: 'a Set.t) f_next =
-    let compressed_csys_set = Set.compress_with_equal_modulo_renaming csys_set in
-    let decompression_before_continuation csys_set f_next =
-      f_continuation (Set.decompress_with_equal_modulo_renaming csys_set) f_next
-    in
-    if exists_private
-    then sat (sat_private (sat_disequation decompression_before_continuation)) compressed_csys_set f_next
-    else sat (sat_disequation decompression_before_continuation) compressed_csys_set f_next
+    if List.length csys_set >= 15
+    then
+      begin
+        (*let (csys_set':(int * 'a) Set.t) = List.mapi (fun i csys -> { csys with additional_data = (i+1,csys.additional_data) }) csys_set in*)
+        let compressed_csys_set = Set.compress_with_equal_modulo_renaming csys_set in
+        let decompression_before_continuation csys_set f_next =
+          f_continuation (Set.decompress_with_equal_modulo_renaming csys_set) f_next
+        in
+        (*let nb_son = ref [] in
+        let special_continuation csys_set f_next =
+          nb_son := (List.map (fun csys -> fst csys.additional_data ) csys_set):: !nb_son;
+          f_next ()
+        in
+        let nb_son_compress = ref [] in
+        let special_continuation_compress csys_set f_next =
+          nb_son_compress := (List.map (fun csys -> fst csys.additional_data.Set.original ) csys_set):: !nb_son_compress;
+          f_next ()
+        in
+        *)
+        let execute csys f_cont f_next =
+          if exists_private
+          then sat (sat_private (sat_disequation f_cont)) csys f_next
+          else sat (sat_disequation f_cont) csys f_next
+        in
+        (*
+        execute csys_set' special_continuation (fun () -> ());
+        execute compressed_csys_set special_continuation_compress (fun () -> ());
+
+        if !nb_son <> !nb_son_compress
+        then
+          begin
+            Printf.printf "----- Nb of csys in input:%d \n" (List.length csys_set');
+            Printf.printf "Nb of compressed csys :%d \n" (List.length compressed_csys_set);
+            let assoc =
+              Display.display_list (fun csys ->
+                let (origin_i,_) = csys.additional_data.Set.original in
+                Printf.sprintf "%d --> \n%s"
+                  origin_i
+                  (Display.display_list (fun ((i,_),v_rho,n_rho) ->
+                    Printf.sprintf "   * Id = %d / v_rho = %s / n_rho = %s" i (Variable.Renaming.display Terminal Protocol v_rho) (Name.Renaming.display Terminal n_rho)) "\n " csys.additional_data.Set.equal_modulo)
+              ) ";\n" compressed_csys_set
+            in
+            Printf.printf "Association :%s\n" assoc;
+            Printf.printf "Node sons, Normal execution: %s\n" (Display.display_list (fun l ->
+                Printf.sprintf "[ %s ]" (Display.display_list string_of_int "; " l)) "; " !nb_son);
+            Printf.printf "Node sons, compressed execution: %s\n" (Display.display_list (fun l ->
+                Printf.sprintf "[ %s ]" (Display.display_list string_of_int "; " l)) "; " !nb_son_compress);
+                Printf.printf "The initial set of constraint system: %s\n" (Set.display HTML csys_set);
+          end;
+          *)
+        execute compressed_csys_set decompression_before_continuation f_next
+        (*apply_rules_after_input exists_private f_continuation csys_set f_next*)
+      end
+    else apply_rules_after_input exists_private f_continuation csys_set f_next
 
   let apply_rules_after_output_with_compression exists_private (f_continuation: 'a Set.t -> (unit -> unit) -> unit) (csys_set: 'a Set.t) f_next =
-    let compressed_csys_set = Set.compress_with_equal_modulo_renaming csys_set in
-    let decompression_before_continuation csys_set f_next =
-      f_continuation (Set.decompress_with_equal_modulo_renaming csys_set) f_next
-    in
-    if exists_private
+    if List.length csys_set >= 15
     then
-      sat (sat_private (sat_disequation (normalisation_split_deduction_axiom (
-        normalisation_deduction_consequence (rewrite (equality_constructor (complete_equality_constructor_IK decompression_before_continuation)))
-      )))) compressed_csys_set f_next
-    else
-      sat (sat_disequation (normalisation_split_deduction_axiom (
-        normalisation_deduction_consequence (rewrite (equality_constructor (complete_equality_constructor_IK decompression_before_continuation)))
-      ))) compressed_csys_set f_next
+      begin
+        let compressed_csys_set = Set.compress_with_equal_modulo_renaming csys_set in
+        let decompression_before_continuation csys_set f_next =
+          f_continuation (Set.decompress_with_equal_modulo_renaming csys_set) f_next
+        in
+        (*let nb_son = ref [] in
+        let special_continuation csys f_next =
+          nb_son := (List.length csys):: !nb_son;
+          f_next ()
+        in
+        let nb_son_compress = ref [] in
+        let special_continuation_compress csys f_next =
+          nb_son_compress := (List.length (Set.decompress_with_equal_modulo_renaming csys)) :: !nb_son_compress;
+          f_next ()
+        in
+        *)
+        let execute csys f_cont f_next =
+          if exists_private
+          then
+            sat (sat_private (sat_disequation (normalisation_split_deduction_axiom (
+              normalisation_deduction_consequence (rewrite (equality_constructor (complete_equality_constructor_IK f_cont)))
+            )))) csys f_next
+          else
+            sat (sat_disequation (normalisation_split_deduction_axiom (
+              normalisation_deduction_consequence (rewrite (equality_constructor (complete_equality_constructor_IK f_cont)))
+            ))) csys f_next
+        in
+(*
+        execute csys_set special_continuation (fun () -> ());
+        execute compressed_csys_set special_continuation_compress (fun () -> ());
+        assert(!nb_son = !nb_son_compress);*)
+
+        execute compressed_csys_set decompression_before_continuation f_next
+      end
+    else apply_rules_after_output exists_private f_continuation csys_set f_next
 
 end

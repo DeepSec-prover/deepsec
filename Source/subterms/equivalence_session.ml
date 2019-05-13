@@ -909,8 +909,7 @@ end = struct
       let (trans,vars) = data_next_transition n in
       let n = match trans with
         | Some Configuration.Transition.RFocus ->
-            (*delete_equal_modulo_existential (delete_equal_modulo_universal (remove_improper_labels n))*)
-            n
+            delete_equal_modulo_existential (delete_equal_modulo_universal (remove_improper_labels n))
         | _ -> n
       in
       let new_csys_set = ref Symbolic.Set.empty in
@@ -1022,7 +1021,7 @@ end = struct
   let generate_successors (n:Node.t) (f_cont:Node.t->(unit->unit)->unit) (f_next:unit->unit) : unit =
     let n = Node.clean n in
      (*Printf.printf "\n==> EXPLORATION FROM %s\n" n.id;*)
-    (*Node.print (Node.delete_equal_modulo_existential n);*)
+    Node.print (Node.delete_equal_modulo_existential n);
     if Symbolic.Set.is_empty n.Node.csys_set
     then f_next ()
     else

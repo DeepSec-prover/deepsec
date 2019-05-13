@@ -816,7 +816,7 @@ end = struct
   let fresh_vars_and_renaming (accu:(fst_ord, name) Variable.Renaming.t) (l:fst_ord_variable list) : (fst_ord, name) Variable.Renaming.t * fst_ord_variable list =
     List.fold_left (fun (accu,l) x ->
       let xx = Variable.fresh_from x in
-      Variable.Renaming.compose accu x xx, xx::l
+      Variable.Renaming.compose accu x xx, x::l
     ) (accu,[]) l
 
   (* generates several copies of a process with freshly renamed New names, input variables, and positions *)
@@ -830,7 +830,7 @@ end = struct
             then Config.internal_error "[process_sessions.ml >> fresh_copy] All variables "
           );
           let xx = Variable.fresh_from x in
-          browse (Variable.Renaming.compose rho_v x xx) rho_n (xx::bound_vars) p (id+1) (fun id_max p_fresh ->
+          browse (Variable.Renaming.compose rho_v x xx) rho_n (x::bound_vars) p (id+1) (fun id_max p_fresh ->
             f_cont id_max {proc = Input(c,xx,p_fresh,id); label = None}
           )
       | Output(c,t,p,_) ->
@@ -1784,7 +1784,6 @@ end = struct
 
       match_list_list_processes f_next !proc_list_list
 
-
   (*   let match_processes proc_list1 proc_list2 bset1 bset2 =
         let list_pairs2 = ref [] in
         let list_pairs1 = ref [] in
@@ -2157,7 +2156,7 @@ end = struct
   let get_block_list t = t.ongoing_block :: t.previous_blocks
 
   let display_blocks conf =
-    Printf.sprintf "-- Previous Blocks = %s\nOngoing Block = %s" (Display.display_list Block.print "; " conf.previous_blocks) (Block.print conf.ongoing_block)
+    Printf.sprintf "-- Previous Blocks =\n%s--Ongoing Block = %s" (Display.display_list (fun b -> Printf.sprintf "%s\n" (Block.print b)) ";" (List.rev conf.previous_blocks)) (Block.print conf.ongoing_block)
 
   let to_process (conf:t) : Labelled_process.t =
     let l = conf.input_proc @ conf.sure_output_proc @ conf.improper_input_proc in

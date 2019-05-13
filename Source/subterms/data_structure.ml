@@ -1368,7 +1368,7 @@ module Eq = struct
     | Conj diseq_list -> Display.display_list (Diseq.display out ~rho:rho at) (Printf.sprintf " %s " (Display.wedge out)) diseq_list
 
   let match_variables_and_names f_next eq1 eq2 = match eq1, eq2 with
-    | Top, Top | Bot, Bot -> ()
+    | Top, Top | Bot, Bot -> f_next ()
     | Conj diseq_l1, Conj diseq_l2 ->
         if List.length diseq_l1 <> List.length diseq_l2
         then raise No_Match;
