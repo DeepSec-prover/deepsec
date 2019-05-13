@@ -218,4 +218,4 @@ let VotingSystem51(vote1,vote2) =
 /* query session_equiv(VotingSystem(yes,no),VotingSystem(no,yes)). */
 
 (* Should not find an attack. *)
-query trace_equiv(VotingSystem22(yes,no),VotingSystem22(no,yes)).
+query session_equiv(VotingSystem21(yes,no),VotingSystem21(no,yes)).
