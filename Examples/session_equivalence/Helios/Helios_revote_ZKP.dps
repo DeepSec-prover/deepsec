@@ -111,7 +111,7 @@ let VotingSystem(vote1,vote2) =
 
 
 (* Should not find an attack. *)
-query trace_equiv(VotingSystem_twice1(yes,no),VotingSystem_twice1(no,yes)).
+query session_equiv(VotingSystem(yes,no),VotingSystem(no,yes)).
 
 (* Should not find an attack. *)
-query trace_equiv(VotingSystem(yes,no),VotingSystem(no,yes)).
+query session_equiv(VotingSystem_twice1(yes,no),VotingSystem_twice1(no,yes)).
