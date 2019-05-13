@@ -592,7 +592,7 @@ end = struct
         let csys = Symbolic.Set.choose n.csys_set in
         let trans =
           Configuration.Transition.next (Symbolic.Process.get_conf csys) in
-        (* Configuration.Transition.print_kind trans; *)
+        Configuration.Transition.print_kind trans;
         match trans with
         | None
         | Some Configuration.Transition.RStart -> trans, {snd_ord = None; axiom = None}
@@ -643,11 +643,11 @@ end = struct
       let (trans,vars) = data_next_transition n in
       let new_csys_set = ref Symbolic.Set.empty in
       let csys_set_with_transitions =
-        Symbolic.Set.map (fun _ csys ->
+        Symbolic.Set.map (fun i csys ->
           let next_transitions =
             Symbolic.Transition.generate vars trans new_csys_set csys in
-          (* Printf.printf "Transitions generated from %s: \n" (Symbolic.Index.to_string i);
-          List.iter (fun tr -> Symbolic.Transition.print i tr; print_endline "") next_transitions; *)
+          Printf.printf "Transitions generated from %s: \n" (Symbolic.Index.to_string i);
+          List.iter (fun tr -> Symbolic.Transition.print i tr; print_endline "") next_transitions;
           Symbolic.Process.set_transitions csys next_transitions
         ) n.csys_set in
       let new_csys_set = !new_csys_set in

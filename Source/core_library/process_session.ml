@@ -881,19 +881,22 @@ end = struct
     and unfold_list forall accu leftovers l f_cont =
       match l with
       | [] -> f_cont accu
-      | p :: t ->
-        unfold forall accu (List.rev_append t leftovers) p (fun accu1 ->
-          unfold_list forall accu1 (p::leftovers) t f_cont
+      | pp :: t ->
+        unfold forall accu (List.rev_append t leftovers) pp (fun accu1 ->
+          unfold_list forall accu1 (pp::leftovers) t f_cont
         )
 
-    and unfold_bang memo accu leftovers t f_cont =
-      let leftovers1 =
-        {proc = Bang(Partial,[],List.rev_append memo t); label = None} :: leftovers in
-      unfold false accu leftovers1 p (fun accu1 ->
-        unfold_bang (p::memo) accu1 leftovers t f_cont
-      ) in
+    and unfold_bang memo accu leftovers l f_cont =
+      match l with
+      | [] -> f_cont accu
+      | pp :: t ->
+        let leftovers_pp =
+          {proc = Bang(Partial,[],List.rev_append memo t); label = None} :: leftovers in
+        unfold false accu leftovers_pp pp (fun accu1 ->
+          unfold_bang (pp::memo) accu1 leftovers t f_cont
+        ) in
 
-    unfold optim accu leftovers p (fun accu -> accu)
+    unfold true accu leftovers p (fun accu -> accu)
 
 
   module Output = struct
