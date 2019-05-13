@@ -199,7 +199,7 @@ let VotingSystem42(vote1,vote2) =
     Tally(skE,vk(sk1),vk(sk2),vk(sk3))
   ).
 
-let VotingSystem42(vote1,vote2) =
+let VotingSystem51(vote1,vote2) =
   new skE;
   out(c,pk(skE));
   new sk1;
