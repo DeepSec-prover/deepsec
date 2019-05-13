@@ -6,11 +6,12 @@ open Display
 
 
 (* a module for representing process labels *)
-module Label : sig
-  type t
+(*module Label : sig
+  type t = int list
   val initial : t (* an initial, empty label *)
   val add_position : t -> int -> t (* adds a position at the end of a label *)
   val independent : t -> t -> int (* returns 0 if one label is prefix of the other, and compares them lexicographically otherwise *)
+  val compare : t -> t -> int (* Alias of independent *)
   val to_string : t -> string (* conversion to printable *)
   (* operations on sets of labels *)
   module Set : Set.S with type elt = t
@@ -31,9 +32,88 @@ end = struct
         match compare t1 t2 with
           | 0 -> independent q1 q2
           | i -> i
+  let compare = independent
   module Set = Set.Make(struct type t = int list let compare = compare end)
-end
+end*)
 
+module Label : sig
+  type t =
+    { label : int list;
+      mutable link : t option;
+      prefix : t option
+    }
+  val initial : t (* an initial, empty label *)
+  val add_position : t -> int -> t (* adds a position at the end of a label *)
+  val independent : t -> t -> int (* returns 0 if one label is prefix of the other, and compares them lexicographically otherwise *)
+  val compare : t -> t -> int (* Alias of independent *)
+  val to_string : t -> string (* conversion to printable *)
+  val auto_cleanup : (unit -> 'a) -> 'a
+  val match_label : t -> t -> unit
+  val linked_labels : t list ref
+  (* operations on sets of labels *)
+  module Set : Set.S with type elt = t
+end = struct
+  type t =
+    { label : int list;
+      mutable link : t option;
+      prefix : t option
+    }
+  let initial = { label = [0]; link = None; prefix = None }
+  let add_position (prefix:t) (position:int) : t = { label = prefix.label @ [position]; link = None; prefix = Some prefix }
+  let to_string (lab:t) : string =
+    match lab.label with
+    | [] -> Config.internal_error "[process_session.ml >> Label.to_string] Unexpected case."
+    | h :: t ->
+      List.fold_left (Printf.sprintf "%s.%d") (string_of_int h) t
+  let rec independent (l:int list) (ll:int list) : int =
+    match l,ll with
+    | [], _ -> 0
+    | _, [] -> 0
+    | t1::q1, t2::q2 ->
+        match compare t1 t2 with
+          | 0 -> independent q1 q2
+          | i -> i
+  let independent lbl1 lbl2 = independent lbl1.label lbl2.label
+  type t_alias = t
+  module Set = Set.Make(struct type t = t_alias let compare lbl1 lbl2 = compare lbl1.label lbl2.label end)
+  let compare = independent
+
+  let linked_labels = ref []
+
+  let match_label lbl1 lbl2 = match lbl1.link with
+    | None ->
+        (* We first check the prefix: We assume that prefix are always matched before. *)
+        begin match lbl1.prefix, lbl2.prefix with
+          | None, None -> ();
+          | Some prefix1, Some prefix2 ->
+              begin match prefix1.link with
+                | None -> Config.internal_error "[Label.match_label] The prefix of labels should already be matched."
+                | Some prefix2' ->
+                    if prefix2 != prefix2'
+                    then raise No_Match
+              end
+          | _, _ -> raise No_Match
+        end;
+        (* Since the prefix corresponds, we can link the labels. *)
+        lbl1.link <- Some lbl2;
+        linked_labels := lbl1 :: !linked_labels
+    | Some lbl2' when lbl2 == lbl2' -> ()
+    | _ -> raise No_Match
+
+  let auto_cleanup f =
+    let tmp_linked_labels = !linked_labels in
+    linked_labels := [];
+
+    try
+      let r = f () in
+      List.iter (fun lbl -> lbl.link <- None) !linked_labels;
+      linked_labels := tmp_linked_labels;
+      r
+    with No_Match ->
+      List.iter (fun lbl -> lbl.link <- None) !linked_labels;
+      linked_labels := tmp_linked_labels;
+      raise No_Match
+end
 
 (* a module for representing blocks *)
 module Block : sig
@@ -43,6 +123,8 @@ module Block : sig
   val add_axiom : axiom -> t -> t (* adds an axiom in a block *)
   val is_authorised : t list -> t -> (snd_ord, axiom) Subst.t -> bool (* checks whether a block is authorised after a list of blocks *)
   val print : t -> string (* converts a block into a string *)
+  val match_labels : (Label.t list -> unit) -> t list -> t list -> unit
+  val check_labels : Label.t list -> Label.t list -> bool
 end = struct
   module IntSet = Set.Make(struct type t = int let compare = compare end)
 
@@ -135,6 +217,95 @@ end = struct
         | [_] -> true
         | block::q -> not (is_faulty_block block q) && explore_block q in
       explore_block block_list_upd
+
+  let rec match_list f_next block_l1 block_l2 = match block_l1, block_l2 with
+    | [], [] -> f_next ()
+    | _, [] | [],_ -> Config.internal_error "[process_sessions.ml >> Block.match_list] Number of blocks should be equal."
+    | b1::q1, b2::q2 ->
+        match_list (fun () ->
+          Label.match_label b1.label b2.label;
+        ) q1 q2
+
+  let match_labels f_next block_l1 block_l2 =
+    if !Label.linked_labels <> []
+    then Config.internal_error "[Block.match_labels] There should not be any linked labels.";
+
+    (* The two block list are in reverse order so we need to start matching from the end. *)
+    Label.auto_cleanup (fun () ->
+      match_list (fun () -> ()) block_l1 block_l2;
+      f_next !Label.linked_labels
+    )
+
+  type subsume_result =
+    | Left
+    | Right
+    | Both
+
+  let rec check_block_labels = function
+    | [] -> ()
+    | lbl1::q ->
+        let linked_lbl1 = match lbl1.Label.link with
+          | None -> Config.internal_error "[Block.check_block_labels] Labels should be linked."
+          | Some lbl1' -> lbl1'
+        in
+
+        List.iter (fun lbl2 ->
+          let linked_lbl2 = match lbl2.Label.link with
+            | None -> Config.internal_error "[Block.check_block_labels] Labels should be linked (2)."
+            | Some lbl2' -> lbl2'
+          in
+
+          if (Label.independent lbl1 lbl2) <> (Label.independent linked_lbl1 linked_lbl2)
+          then raise No_Match
+        ) q;
+
+        check_block_labels q
+
+  let rec check_process_labels subsume_result block_labels = function
+    | [] -> subsume_result
+    | p_lbl::q ->
+        let linked_p_lbl = match p_lbl.Label.link with
+          | None -> Config.internal_error "[Block.check_block_labels] Labels should be linked."
+          | Some lbl -> lbl
+        in
+
+        let subsume_result1 =
+          List.fold_left (fun subsume_result' b_lbl ->
+            let linked_b_lbl = match b_lbl.Label.link with
+              | None -> Config.internal_error "[Block.check_block_labels] Labels should be linked (2)."
+              | Some lbl -> lbl
+            in
+
+            match subsume_result' with
+              | Left ->
+                  let c = Label.independent linked_b_lbl linked_p_lbl in
+                  if c = 1 || (Label.independent b_lbl p_lbl = c)
+                  then Left
+                  else raise No_Match
+              | Right ->
+                  let c = Label.independent b_lbl p_lbl in
+                  if c = 1 || (Label.independent linked_b_lbl linked_p_lbl = c)
+                  then Right
+                  else raise No_Match
+              | Both ->
+                  let c = Label.independent b_lbl p_lbl in
+                  let c_linked = Label.independent linked_b_lbl linked_p_lbl in
+                  if c = c_linked
+                  then Both
+                  else
+                    if c_linked = 1
+                    then Left
+                    else if c = 1
+                    then Right
+                    else raise No_Match
+          ) subsume_result block_labels
+        in
+        check_process_labels subsume_result1 block_labels q
+
+  let check_labels labels_block labels_process =
+    check_block_labels labels_block;
+
+    not (check_process_labels Both labels_block labels_process = Right)
 end
 
 (* multisets of unacessible private channels *)
@@ -200,13 +371,20 @@ module Labelled_process : sig
   val get_label : t -> Label.t (* gets the label of a process, and returns an error message if it has not been assigned *)
   val get_proc : t -> plain
 
-  type process_skel =
+  val apply_substitution : (fst_ord, name) Subst.t -> t -> t
+
+  val get_improper_labels : (Label.t list -> t list -> t -> 'a) -> Label.t list -> t list -> t -> 'a
+
+  val get_improper_labels_list : (Label.t list -> t list -> t list -> 'a) -> Label.t list -> t list -> t list -> 'a
+
+  type skeletons =
     {
+      prefix : Label.t;
       input_skel : (symbol * int * Label.t list) list ;
       output_skel : (symbol * int * Label.t list) list
     }
 
-  val labelling2 : Label.t -> t -> t * process_skel
+  val labelling2 : Label.t -> t -> t * skeletons
 
   (* extraction of inputs from processes *)
   module Input : sig
@@ -229,7 +407,7 @@ module Labelled_process : sig
       optim : bool; (* whether this output is needed for forall processes *)
       lab : Label.t; (* label of the executed output *)
       context : t -> t; (* suroundings of the executed output *)
-      id : id; (* the id of the executed instruction *)
+      id : id; (* the id ofLz the executed instruction *)
     }
     val unfold : ?optim:bool -> t -> (t * data) list (* function computing all potential ways of unfolding one output from a process.
     NB. Unfolding outputs break symmetries (just as symmetries), but they can be restaured at the end of negative phases (see function [restaure_sym]). *)
@@ -242,6 +420,8 @@ module Labelled_process : sig
     val flatten : t -> t (* push new names as deep as possible to facilitate the detection of symmetries, and flatten unecessary nested constructs *)
     val factor : t -> t (* factors structurally equivalent parallel processes *)
     val factor_up_to_renaming : t -> t -> t * t (* factors at toplevel parallel processes that are structurally equivalent up to bijective channel renaming. This factorisation has to be common to the two processes under equivalence check, therefore the two arguments *)
+
+    val match_processes : t -> t -> unit
   end
 
   (* comparison of process skeletons *)
@@ -285,6 +465,44 @@ end = struct
     | Par []
     | Bang (_,[],[]) -> true
     | _ -> false
+
+
+  let rec get_improper_labels f_next imp_labels imp_procs proc =  match proc.proc with
+    | Start _
+    | Output _
+    | OutputSure _
+    | If _
+    | Let _
+    | New _ -> f_next imp_labels imp_procs proc
+    | Input(_,_,{ proc = Par []; _},_)
+    | Input(_,_,{ proc = Bang(_,[],[]); _},_) ->
+        begin match proc.label with
+          | None -> Config.internal_error "[process_session.ml] Should have a label"
+          | Some lbl -> f_next (lbl::imp_labels) (proc::imp_procs) { proc = Par [] ; label = None }
+        end
+    | Input _ -> f_next imp_labels imp_procs proc
+    | Par l_proc ->
+        get_improper_labels_list (fun imp_labels1 imp_procs1 l_proc1 ->
+          f_next imp_labels1 imp_procs1 { proc = Par l_proc1; label = None }
+        ) imp_labels imp_procs l_proc
+    | Bang(b,[],l_proc) ->
+        get_improper_labels_list (fun imp_labels1 imp_procs1 l_proc1 ->
+          match l_proc1 with
+            | [] | [_] ->  f_next imp_labels1 imp_procs1 { proc = Par l_proc1; label = None }
+            | _ -> f_next imp_labels1 imp_procs1 { proc = Bang(b,[],l_proc1); label = None }
+        ) imp_labels imp_procs l_proc
+    | _ -> Config.internal_error "[process_session.ml >> get_improper_labels] The function should only be applied before a focus step."
+
+  and get_improper_labels_list f_next imp_labels imp_procs = function
+    | [] -> f_next imp_labels imp_procs []
+    | proc::q ->
+        get_improper_labels (fun imp_labels1 imp_procs1 proc' ->
+          get_improper_labels_list (fun imp_labels2 imp_procs2 q' ->
+            if proc'.proc = Par []
+            then f_next imp_labels2 imp_procs2 q'
+            else f_next imp_labels2 imp_procs2 (proc'::q')
+          ) imp_labels1 imp_procs1 q
+        ) imp_labels imp_procs proc
 
   let empty (lab:Label.t) : t = {proc = Par []; label = Some lab}
 
@@ -440,6 +658,20 @@ end = struct
     | Start _ -> Config.internal_error "[process_session.ml >> contains_par] Unexpected Start constructor."
     | _ -> Config.internal_error "[process_session.ml >> contains_output] Should only be applied on normalised processes."
 
+  let rec map_term proc f = match proc.proc with
+    | Start(p,id) -> {proc with proc = Start(map_term p f,id) }
+    | Input(ch,x,p,id) -> {proc with proc = Input(ch,x,map_term p f ,id) }
+    | Output(ch,t,p,id) -> {proc with proc = Output(ch,f t, map_term p f, id)}
+    | OutputSure(ch,t,p,id) -> {proc with proc = OutputSure(ch,f t, map_term p f, id)}
+    | If(u,v,p1,p2) -> { proc with proc = If(f u, f v, map_term p1 f, map_term p2 f) }
+    | Let(u,u',v,p1,p2) -> { proc with proc = Let(f u, f u', f v, map_term p1 f, map_term p2 f) }
+    | New(n,p) -> { proc with proc = New(n,map_term p f) }
+    | Par p_list -> { proc with proc = Par(List.map (fun p -> map_term p f) p_list) }
+    | Bang(b,p_list,p_list') ->
+      { proc with proc = Bang(b,List.map (fun p -> map_term p f) p_list,List.map (fun p -> map_term p f) p_list') }
+
+  let apply_substitution subst p = Subst.apply subst p map_term
+
   (* The labeled process [lp] should not already have a label, i.e. [lp.label = None]
       No broken symmetries are allowed too.
       Note that only the outputs and input receive a label. The intermediary Bang and Par do not have labels.*)
@@ -491,8 +723,9 @@ end = struct
       | Par _
       | Bang _ -> assign 0 lp (fun proc _ -> proc)
 
-  type process_skel =
+  type skeletons =
     {
+      prefix : Label.t;
       input_skel : (symbol * int * Label.t list) list ;
       output_skel : (symbol * int * Label.t list) list
     }
@@ -513,9 +746,9 @@ end = struct
     then { proc_skel with output_skel = add_in_process_skel_symbol ch label proc_skel.output_skel }
     else { proc_skel with input_skel = add_in_process_skel_symbol ch label proc_skel.input_skel }
 
-  let labelling2 (prefix:Label.t) (lbl_proc:t) : t * process_skel =
+  let labelling2 (prefix:Label.t) (lbl_proc:t) : t * skeletons =
 
-    let process_skel = ref { input_skel = []; output_skel = [] } in
+    let process_skel = ref { prefix = prefix; input_skel = []; output_skel = [] } in
 
     let rec assign f_cont next_i lbl_proc  = match lbl_proc.proc with
       | OutputSure(c,_,_,_) ->
@@ -553,9 +786,9 @@ end = struct
     );
     match lbl_proc.proc with
       | Input(ch,_,_,_) ->
-          {lbl_proc with label = Some prefix}, { input_skel = [ch,1,[prefix]]; output_skel = [] }
+          {lbl_proc with label = Some prefix}, { prefix = prefix; input_skel = [ch,1,[prefix]]; output_skel = [] }
       | OutputSure(ch,_,_,_) ->
-          {lbl_proc with label = Some prefix}, { input_skel = []; output_skel = [ch,1,[prefix]] }
+          {lbl_proc with label = Some prefix}, { prefix = prefix; input_skel = []; output_skel = [ch,1,[prefix]] }
       | Par _
       | Bang _ ->
           let lbl_proc' = assign (fun proc _ -> proc) 0 lbl_proc in
@@ -1020,6 +1253,37 @@ end = struct
     let flatten (p:t) : t = p
     let factor (p:t) : t = p
     let factor_up_to_renaming p1 p2 = p1 , p2
+
+    let rec match_processes proc1 proc2 = match proc1.proc, proc2.proc with
+      | Start(p1,_), Start(p2,_) -> match_processes p1 p2
+      | Output(c1,t1,p1,_), Output(c2,t2,p2,_)
+      | OutputSure(c1,t1,p1,_), OutputSure(c2,t2,p2,_) when c1 == c2 ->
+          match_variables_and_names_in_terms t1 t2;
+          match_processes p1 p2
+      | Input(c1,x1,p1,_), Input(c2,x2,p2,_) when c1 == c2 ->
+          match_variables x1 x2;
+          match_processes p1 p2
+      | If(u1,v1,pthen1,pelse1), If(u2,v2,pthen2,pelse2) ->
+          match_variables_and_names_in_terms u1 u2;
+          match_variables_and_names_in_terms v1 v2;
+          match_processes pthen1 pthen2;
+          match_processes pelse1 pelse2
+      | Let(pat1,pat_uni1,u1,pthen1,pelse1), Let(pat2,pat_uni2,u2,pthen2,pelse2) ->
+          match_variables_and_names_in_terms pat1 pat2;
+          match_variables_and_names_in_terms pat_uni1 pat_uni2;
+          match_variables_and_names_in_terms u1 u2;
+          match_processes pthen1 pthen2;
+          match_processes pelse1 pelse2
+      | New(n1,p1), New(n2,p2) ->
+          match_names n1 n2;
+          match_processes p1 p2
+      | Par(p_list1), Par(p_list2) ->
+          List.iter2 match_processes p_list1 p_list2
+      | Bang(_,p_broken_list1,p_list1), Bang(_,p_broken_list2,p_list2) ->
+          List.iter2 match_processes p_list1 p_list2;
+          List.iter2 match_processes p_broken_list1 p_broken_list2
+      | _ -> raise No_Match
+
   end
 
   module Skeleton = struct
@@ -1277,10 +1541,25 @@ module BijectionSet : sig
   val initial : t (* a singleton containing the unique matching between two processes of label Label.initial *)
   val update : Label.t -> Label.t -> Labelled_process.t -> Labelled_process.t -> t -> t option (* [update l1 l2 p1 p2 bset] restricts the set [bset] to the bijections mapping [l1] to [l2]. In case [l1] is not in the domain of these bijections, the domain of [bset] is also extended to allow matchings of labels of p1 and p2 *)
   val print : t -> unit
+  val print_string : t -> string
+  val match_processes : (unit -> unit) -> Labelled_process.t list -> Labelled_process.t list -> t -> t -> unit
+  val match_list_processes : (unit -> unit) -> Labelled_process.t list -> Labelled_process.t list -> unit
+  val match_forall_processes :
+    (bool -> unit) ->
+    Labelled_process.t list ->
+    Labelled_process.t list ->
+    Block.t list ->
+    Block.t list ->
+    (int * t) list ->
+    (int * t) list ->
+    unit
+
+  val check_and_remove_improper_labels : t -> Label.t list -> Label.t list -> t
 end = struct
   (* sets of bijections with the skeleton-compatibility requirement *)
   (* TODO. may ake the datastructure more efficient. Could be more practical when there are a lot of singletons to handle the operation "get all potential labels matching with a given label l". *)
-  type t = (Label.Set.t * Label.Set.t) list
+  type t =
+    (Label.Set.t * Label.Set.t) list
 
   (* the initial bijection set *)
   let initial : t =
@@ -1336,9 +1615,60 @@ end = struct
       print_endline "";
     ) bset
 
+  let print_string (bset:t) : string =
+    List.fold_left (fun acc1 (s1,s2) ->
+      let acc2 = Label.Set.fold (fun lab acc -> Printf.sprintf "%s%s;" acc (Label.to_string lab)) s1 acc1 in
+      let acc3 = acc2 ^ "   [MATCHABLE WITH]   " in
+      let acc4 = Label.Set.fold (fun lab acc -> Printf.sprintf "%s%s;" acc (Label.to_string lab)) s2 acc3 in
+      acc4^"\n"
+    ) "" bset
+  (*
+  let total_bset = ref 0
+  let partial_bset = ref 0
+
+  let display_statistic bset =
+    let size = List.length bset in
+
+    let sum_size_set = ref 0 in
+    let max_size_set = ref 0 in
+    List.iter (fun (s1,_) ->
+      sum_size_set := Label.Set.cardinal s1 + !sum_size_set;
+      max_size_set := max !max_size_set (Label.Set.cardinal s1)
+    ) bset;
+    let average_size_set = !sum_size_set / size in
+
+    let number_label = ref 0 in
+    let max_size_label = ref 0 in
+    let sum_size_label = ref 0 in
+    List.iter (fun (s1,_) ->
+      Label.Set.iter (fun label ->
+        let size_lbl = List.length label in
+        incr number_label;
+        max_size_label := max !max_size_label size_lbl;
+        sum_size_label := !sum_size_label + size_lbl
+      ) s1
+    ) bset;
+
+    let average_label_size = !sum_size_label / !number_label in
+    incr total_bset;
+    if !max_size_set <> 1
+    then
+      begin
+      incr partial_bset;
+      Printf.printf "Total BSet = %d, Partial BSet = %d // Bijection Set: Nb of sets = %d, Average size of set = %d, Size Max of set = %d,  Average size of label = %d, Size maximum of label = %d\n"
+        !total_bset
+        !partial_bset
+        size average_size_set
+        !max_size_set
+        average_label_size
+        !max_size_label;
+      flush_all ()
+      end*)
+
 
   (* updates a bijection set after two matched transitions on labels (l1,l2), where the subprocesses reduced by the transition become p1 and p2 respectively. *)
   let update (l1:Label.t) (l2:Label.t) (p1:Labelled_process.t) (p2:Labelled_process.t) (bset:t) : t option =
+    (*display_statistic bset;*)
     let rec search memo s =
       match s with
       | [] -> None
@@ -1370,6 +1700,387 @@ end = struct
         | _ -> None in
     search [] bset
 
+  type matching_index =
+    {
+      id : int;
+      mutable link : (int * Labelled_process.t list * Labelled_process.t list) option
+    }
+
+  let rec match_one_process f_next p1 prev = function
+    | [] -> raise No_Match
+    | p2::q2 ->
+        try
+          Term.auto_cleanup_matching (fun () ->
+            Labelled_process.Optimisation.match_processes p1 p2;
+            f_next (List.rev_append prev q2)
+          )
+        with No_Match -> match_one_process f_next p1 (p2::prev) q2
+
+  let rec match_list_processes f_next proc_list1 proc_list2 = match proc_list1 with
+    | [] -> f_next ()
+    | p1::q1 ->
+        match_one_process (fun remain_proc_list2 ->
+          match_list_processes f_next q1 remain_proc_list2
+        ) p1 [] proc_list2
+
+  let rec match_list_list_processes f_next = function
+    | [] -> f_next ()
+    | (pl1,pl2)::q ->
+        match_list_processes (fun () ->
+          match_list_list_processes f_next q
+        ) pl1 pl2
+
+  let match_processes f_next proc_list1 proc_list2 bset1 bset2 =
+      let list_pairs2 = ref [] in
+      let list_pairs1 = ref [] in
+      let counter = ref 0 in
+      let list_index = ref [] in
+      List.iter (fun (set1,set2) ->
+        let id_set = { id = !counter; link = None } in
+        list_index := id_set :: !list_index;
+        incr counter;
+        let elts1 = Label.Set.elements set1 in
+        let elts2 = Label.Set.elements set2 in
+        List.iter2 (fun lbl1 lbl2 ->
+          let p = List.find (fun t -> (Labelled_process.get_label t) = lbl2) proc_list1 in
+          list_pairs1 := (lbl1, id_set, p) :: !list_pairs1
+        ) elts1 elts2
+      ) bset1;
+      List.iter (fun (set1,set2) ->
+        let id_set =  !counter in
+        incr counter;
+        let elts1 = Label.Set.elements set1 in
+        let elts2 = Label.Set.elements set2 in
+        List.iter2 (fun lbl1 lbl2 ->
+          let p = List.find (fun t -> (Labelled_process.get_label t) = lbl2) proc_list2 in
+          list_pairs2 := (lbl1, id_set, p) :: !list_pairs2
+        ) elts1 elts2
+      ) bset2;
+      list_pairs1 := List.sort (fun (lbl1,_,_) (lbl2,_,_) -> Label.independent lbl1 lbl2) !list_pairs1;
+      list_pairs2 := List.sort (fun (lbl1,_,_) (lbl2,_,_) -> Label.independent lbl1 lbl2) !list_pairs2;
+
+      let rec explore list1 list2 = match list1, list2 with
+        | [], [] -> ()
+        | _, [] | [],_ -> Config.internal_error "[process_session.ml >> BijectionSet.match_processes] The lists should be of same size."
+        | (_,match_index,p1)::q1, (_,id_set2,p2)::q2 ->
+            begin match match_index.link with
+              | None -> match_index.link <- Some (id_set2,[p1],[p2])
+              | Some (id_set1,p_list1,p_list2) ->
+                  if id_set1 <> id_set2
+                  then raise No_Match;
+                  match_index.link <- Some(id_set1,p1::p_list1,p2::p_list2)
+            end;
+            explore q1 q2
+      in
+
+      explore !list_pairs1 !list_pairs2;
+
+      let proc_list_list = ref [] in
+
+      List.iter (function
+        | { link = Some (_,pl1,pl2); _} -> proc_list_list := (pl1,pl2) :: !proc_list_list
+        | _ -> Config.internal_error "[process_session.ml >> BijectionSet.match_processes] Match index should be linked."
+      ) !list_index;
+
+      match_list_list_processes f_next !proc_list_list
+
+
+  (*   let match_processes proc_list1 proc_list2 bset1 bset2 =
+        let list_pairs2 = ref [] in
+        let list_pairs1 = ref [] in
+        let counter = ref 0 in
+        let list_index = ref [] in
+        List.iter (fun (set1,set2) ->
+          let id_set = { id = !counter; link = None } in
+          list_index := id_set :: !list_index;
+          incr counter;
+          let elts1 = Label.Set.elements set1 in
+          let elts2 = Label.Set.elements set2 in
+          List.iter2 (fun lbl1 lbl2 ->
+            let p = List.find (fun t -> (Labelled_process.get_label t) = lbl2) proc_list1 in
+            list_pairs1 := (lbl1, id_set, p) :: !list_pairs1
+          ) elts1 elts2
+        ) bset1;
+        List.iter (fun (set1,set2) ->
+          let id_set =  !counter in
+          incr counter;
+          let elts1 = Label.Set.elements set1 in
+          let elts2 = Label.Set.elements set2 in
+          List.iter2 (fun lbl1 lbl2 ->
+            let p = List.find (fun t -> (Labelled_process.get_label t) = lbl2) proc_list2 in
+            list_pairs2 := (lbl1, id_set, p) :: !list_pairs2
+          ) elts1 elts2
+        ) bset2;
+        list_pairs1 := List.sort (fun (lbl1,_,_) (lbl2,_,_) -> Label.independent lbl1 lbl2) !list_pairs1;
+        list_pairs2 := List.sort (fun (lbl1,_,_) (lbl2,_,_) -> Label.independent lbl1 lbl2) !list_pairs2;
+
+        let explore list1 list2 = match list1, list2 with
+          | [], [] -> ()
+          | _, [] | [],_ -> Config.internal_error "[process_session.ml >> BijectionSet.match_processes] The lists should be of same size."
+          | (_,match_index,p1)::q1, (_,id_set2,p2)::q2 ->
+              begin match match_index.link with
+                | None -> match_index.link <- Some (id_set2,[p1],[p2])
+                | Some (id_set1,p_list1,p_list2) ->
+                    if id_set1 <> id_set2
+                    then raise No_Match;
+                    match_index.link <- Some(id_set1,p1::p_list1,p2::p_list2)
+              end
+        in
+
+        explore !list_pairs1 !list_pairs2;
+
+        List.iter2 (fun (_,id_set1,p1) (_,id_set2,p2) ->
+          begin match !id_set1 with
+            | None -> id_set1 := Some id_set2
+            | Some id_set2' ->
+                if id_set2 != id_set2'
+                then raise No_Match
+          end;
+          Labelled_process.Optimisation.match_processes p1 p2
+        ) !list_pairs1 !list_pairs2*)
+
+  let rec match_one_forall_process f_next p1 prev = function
+    | [] -> raise No_Match
+    | p2::q2 ->
+        try
+          Term.auto_cleanup_matching (fun () ->
+            Label.auto_cleanup (fun () ->
+              Label.match_label (Labelled_process.get_label p1) (Labelled_process.get_label p2);
+              Labelled_process.Optimisation.match_processes p1 p2;
+              f_next (List.rev_append prev q2)
+            )
+          )
+        with No_Match -> match_one_forall_process f_next p1 (p2::prev) q2
+
+  let rec match_forall_list_processes f_next proc_list1 proc_list2 = match proc_list1 with
+    | [] -> f_next ()
+    | p1::q1 ->
+        match_one_forall_process (fun remain_proc_list2 ->
+          match_forall_list_processes f_next q1 remain_proc_list2
+        ) p1 [] proc_list2
+
+  type sorted_bset =
+    | Sorted of t
+    | Unsorted of t
+
+  let match_forall_processes f_next p1 p2 block_list1 block_list2 exist_list1 exist_list2 =
+    if List.length exist_list1 <> List.length exist_list2
+    then raise No_Match;
+
+    let sorted_exists1 = List.sort (fun (id1,_) (id2,_) -> compare id1 id2) exist_list1 in
+    let sorted_exists2 = List.sort (fun (id1,_) (id2,_) -> compare id1 id2) exist_list2 in
+
+    List.iter2 (fun (_,bset1) (_,bset2) ->
+      if List.length bset1 <> List.length bset2
+      then raise No_Match;
+    ) sorted_exists1 sorted_exists2;
+
+    (* Could use the inclusion but not sure it is useful *)
+    List.iter2 (fun (id1,_) (id2,_) -> if id1 <> id2 then raise No_Match) sorted_exists1 sorted_exists2;
+
+    let ref_exists2 = List.map (fun (_,bset) -> ref (Unsorted bset)) sorted_exists2 in
+
+    let rec check_exists_correspondence exists1 exists2 = match exists1, exists2 with
+      | [],[] -> ()
+      | [],_ | _,[] -> Config.internal_error "[BijectionSet.match_forall_processes] Unexpecting lists of same size."
+      | (_,bset1)::q1, bset2_ref::q2 ->
+
+          let sorted_bset2 = match !bset2_ref with
+            | Sorted bset -> bset
+            | Unsorted bset ->
+                let bset' = List.sort (fun (lbl_set1,_) (lbl_set2,_) -> Label.Set.compare lbl_set1 lbl_set2) bset in
+                bset2_ref := Sorted bset';
+                bset'
+          in
+
+          let matched_bset1 =
+            List.map (fun (lbl_set1,lbl_set2) ->
+              let lbl_set1' =
+                Label.Set.map (fun lbl -> match lbl.Label.link with
+                  | None -> Config.internal_error "[BijectionSet.match_forall_processes] All the labels of the first bset should have been matched."
+                  | Some lbl' -> lbl'
+                ) lbl_set1
+              in
+
+              (lbl_set1',lbl_set2)
+            ) bset1
+          in
+
+          let sorted_bset1 = List.sort (fun (lbl_set1,_) (lbl_set2,_) -> Label.Set.compare lbl_set1 lbl_set2) matched_bset1 in
+
+          List.iter2 (fun (lbl_set_fa1, lbl_set_ex1) (lbl_set_fa2,lbl_set_ex2) ->
+            if not ((Label.Set.equal lbl_set_fa1 lbl_set_fa2) && (Label.Set.equal lbl_set_ex1 lbl_set_ex2))
+            then raise No_Match
+          ) sorted_bset1 sorted_bset2;
+
+          check_exists_correspondence q1 q2
+    in
+
+    (* We start by matching the labels of the block *)
+    Block.match_labels (fun linked_label_blocks ->
+      (* I assume p1 and p2 are already split *)
+      let list_labels1 = List.rev_map Labelled_process.get_label p1 in
+      match_forall_list_processes (fun () ->
+        (* We check if the labels satisfy the desired properties. (may raise No_Match neither side are smaller)*)
+        let does_first_subsume = Block.check_labels linked_label_blocks list_labels1 in
+
+        (* We check that the exist_list corresponds. *)
+        check_exists_correspondence sorted_exists1 ref_exists2;
+
+        f_next does_first_subsume
+      ) p1 p2
+    ) block_list1 block_list2
+
+  let check_and_remove_improper_labels bset imp_labels_fa imp_labels_ex =
+    let bset',imp_labels_fa1,imp_labels_ex1 =
+      List.fold_left (fun (accu_bset,accu_fa,accu_ex) (set_fa,set_ex) ->
+        let one_lbl = Label.Set.choose set_fa in
+        if List.exists (fun lbl -> one_lbl.Label.label = lbl.Label.label) accu_fa
+        then
+          let accu_fa' =
+            Label.Set.fold (fun lbl_fa acc1 ->
+              List.remove (fun lbl -> lbl_fa.Label.label = lbl.Label.label) acc1
+            ) set_fa accu_fa
+          in
+          let accu_ex' =
+            Label.Set.fold (fun lbl_ex acc1 ->
+              List.remove (fun lbl -> lbl_ex.Label.label = lbl.Label.label) acc1
+            ) set_ex accu_ex
+          in
+          (accu_bset,accu_fa',accu_ex')
+        else (set_fa,set_ex)::accu_bset, accu_fa,accu_ex
+      ) ([],imp_labels_fa,imp_labels_ex) bset
+    in
+    if imp_labels_ex1 = [] && imp_labels_fa1 = []
+    then bset'
+    else raise Not_found
+end
+
+module BijectionSet2 =
+struct
+
+  module LabelMap = Map.Make(Label)
+
+  type t =
+    {
+      action_counter : int;
+      map1 : int LabelMap.t;
+      map2 : int LabelMap.t
+    }
+
+  (* [proc_skel1] and [proc_skel2] are the two skeletons of processes that we are
+     trying to match.
+     The function [update proc_skel1 proc_skel2 bset] will check that:
+       1) The two skeletons are equals
+       2) Update the bijection set [bset] w.r.t. the skeletons [proc_skel1] and
+          [proc_skel2] if the matching are allowed.
+     When any of the two conditions fails then the function returns [None]. Otherwise
+     it returns [Some bset'] where [bset'] is the updated bijection set.
+
+     Recall that the skeletons are ordered by increasing channels. *)
+  let update (proc_skel1:Labelled_process.skeletons) (proc_skel2:Labelled_process.skeletons) (bset:t) : t option =
+
+    let action_counter = ref bset.action_counter in
+
+    let label_actions1 = ref []
+    and label_actions2 = ref [] in
+
+    (* The function check the equality of skeltons and associate fresh action
+       counter to the label. *)
+    let rec check_sub_skeletons skel_l1 skel_l2 = match skel_l1, skel_l2 with
+      | [], [] -> true
+      | (ch1,nb1,label_l1)::q1, (ch2,nb2,label_l2)::q2 when ch1 == ch2 && nb1 = nb2 ->
+          incr action_counter;
+          List.iter (fun lbl -> label_actions1 := (lbl,!action_counter) :: !label_actions1) label_l1;
+          List.iter (fun lbl -> label_actions2 := (lbl,!action_counter) :: !label_actions2) label_l2;
+          check_sub_skeletons q1 q2
+      | _,_ -> false
+    in
+
+    (* Here we do first the check of skeletons then the update of the bijection set. We could try
+      to start by checking if the two prefix are matching before checking the skeletons. I think
+      the check of skeletons is probably faster in practice but that*)
+
+    if (check_sub_skeletons proc_skel1.Labelled_process.input_skel proc_skel2.Labelled_process.input_skel)
+      && (check_sub_skeletons proc_skel1.Labelled_process.output_skel proc_skel2.Labelled_process.output_skel)
+    then
+      (* Skeletons are equals *)
+      match !label_actions1 with
+        | [] ->
+            (* When there is no more action, we need to remove the matching when it is allowed. *)
+            let map2_ref = ref bset.map2 in
+            begin try
+              let map1' =
+                LabelMap.remove2 (fun act1 ->
+                  map2_ref :=
+                    LabelMap.remove2 (fun act2 ->
+                      if act1 <> act2 then raise Not_found
+                    ) proc_skel2.Labelled_process.prefix bset.map2
+                ) proc_skel1.Labelled_process.prefix bset.map1
+              in
+              Some { bset with map1 = map1'; map2 = !map2_ref }
+            with Not_found -> None
+            end
+        | [(lbl,action)] ->
+            (* When there is a unique action, it means that the new label is the same as the prefix.
+               Morover, the action in [label_actions2] must be the same. *)
+            Config.debug (fun () ->
+              if lbl <> proc_skel1.Labelled_process.prefix
+              then Config.internal_error "[process_session.ml >> BijectionSet.update] The label should be the prefix. (1)";
+              match !label_actions2 with
+                | [lbl2,action2] ->
+                    if lbl2 <> proc_skel2.Labelled_process.prefix
+                    then Config.internal_error "[process_session.ml >> BijectionSet.update] The label should be the prefix. (2)";
+                    if action <> action2
+                    then Config.internal_error "[process_session.ml >> BijectionSet.update] The actions should be equal.";
+                | _ -> Config.internal_error "[process_session.ml >> BijectionSet.update] The label actions should be equivalent since they have same skeletons."
+            );
+            let map2_ref = ref bset.map2 in
+            begin try
+              let map1' =
+                LabelMap.replace proc_skel1.Labelled_process.prefix (fun act1 ->
+                  map2_ref :=
+                    LabelMap.replace proc_skel2.Labelled_process.prefix (fun act2 ->
+                      if act1 = act2 then action else raise Not_found
+                    ) bset.map2;
+                  action
+                ) bset.map1
+              in
+              Some { action_counter = action; map1 = map1'; map2 = !map2_ref }
+            with Not_found -> None
+            end
+        | _ ->
+            (* Several skeletons to add. We start by checking the matching. *)
+            let (lbl1,act1) = List.hd !label_actions1
+            and (lbl2,act2) = List.hd !label_actions2 in
+
+            let map2_ref = ref bset.map2 in
+            begin try
+              let map1' =
+                LabelMap.replace lbl1 (fun old_act1 ->
+                  map2_ref :=
+                    LabelMap.replace lbl2 (fun old_act2 ->
+                      if old_act1 = old_act2 then act2 else raise Not_found
+                    ) bset.map2;
+                  act1
+                ) bset.map1
+              in
+              (* We inserted the first elements for each map and checked at the same
+                 that the matching was allowed. So we can add the rest. *)
+              let map1'' =
+                List.fold_left (fun acc (lbl,act) ->
+                  LabelMap.add lbl act acc
+                ) map1' (List.tl !label_actions1)
+              in
+              let map2'' =
+                List.fold_left (fun acc (lbl,act) ->
+                  LabelMap.add lbl act acc
+                ) !map2_ref (List.tl !label_actions2)
+              in
+              Some { action_counter = !action_counter; map1 = map1''; map2 = map2'' }
+            with Not_found -> None
+            end
+    else None
 end
 
 
@@ -1381,6 +2092,7 @@ module Configuration : sig
   val check_block : (snd_ord, axiom) Subst.t -> t -> bool (* verifies the blocks stored in the configuration are authorised *)
   val inputs : t -> Labelled_process.t list (* returns the available inputs *)
   val outputs : t -> Labelled_process.t list (* returns the available outputs (in particular they are executable, i.e. they output a message). *)
+  val elements : t -> Labelled_process.t list
   val of_expansed_process : Process.expansed_process -> t (* converts a process as obtained from the parser into a configuration. This includes some cleaning procedure as well as factorisation. *)
   val normalise :
     ?context:(Labelled_process.t->Labelled_process.t) ->
@@ -1394,6 +2106,10 @@ module Configuration : sig
        of the execution in order to reconstruct the symmetries afterwards. *)
   val check_skeleton : t -> t -> bool (* compares two skeletons in standby *)
   val release_skeleton : t -> t option (* assuming all skeletons have been checked, marks them as not in standby anymore. *)
+  val display_blocks : t -> string
+  val get_block_list : t -> Block.t list
+
+  val get_improper_labels : (Label.t list -> t -> 'a) -> t -> 'a
 
   (* a module for operating on transitions *)
   module Transition : sig
@@ -1430,13 +2146,31 @@ end = struct
     trace : action list;
     ongoing_block : Block.t;
     previous_blocks : Block.t list;
+    improper_input_proc : Labelled_process.t list
   }
 
+  let get_improper_labels f_next conf =
+    Labelled_process.get_improper_labels_list (fun imp_labels imp_procs proc_list ->
+      f_next imp_labels { conf with input_proc = proc_list; improper_input_proc = List.rev_append imp_procs conf.improper_input_proc }
+    ) [] [] conf.input_proc
+
+  let get_block_list t = t.ongoing_block :: t.previous_blocks
+
+  let display_blocks conf =
+    Printf.sprintf "-- Previous Blocks = %s\nOngoing Block = %s" (Display.display_list Block.print "; " conf.previous_blocks) (Block.print conf.ongoing_block)
+
   let to_process (conf:t) : Labelled_process.t =
-    let l = conf.input_proc @ conf.sure_output_proc in
+    let l = conf.input_proc @ conf.sure_output_proc @ conf.improper_input_proc in
     match conf.focused_proc with
     | None -> Labelled_process.of_process_list l
     | Some p -> Labelled_process.of_process_list (p::l)
+
+  let elements (conf:t) : Labelled_process.t list =
+    let accu1 = List.fold_left (fun accu lp -> Labelled_process.elements ~init:accu lp) [] conf.input_proc in
+    let accu2 = List.fold_left (fun accu lp -> Labelled_process.elements ~init:accu lp) accu1 conf.sure_output_proc in
+    match conf.focused_proc with
+      | None -> accu2
+      | Some p -> Labelled_process.elements ~init:accu2 p
 
   (* color printing *)
   let bold_blue s = Printf.sprintf "\\033[1;34m%s\\033[0m" s
@@ -1486,6 +2220,7 @@ end = struct
 
       ongoing_block = Block.create Label.initial;
       previous_blocks = [];
+      improper_input_proc = []
     }
 
   let normalise ?context:(rebuild:Labelled_process.t->Labelled_process.t=fun t->t) (prefix:Label.t) (conf:t) (eqn:(fst_ord, name) Subst.t) (f_cont:Labelled_process.Normalise.constraints->t->Labelled_process.t->unit) : unit =

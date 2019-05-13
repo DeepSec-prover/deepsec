@@ -27,8 +27,8 @@ struct
 
   type data_session =
     {
-      init_conf1 : Process_session.Configuration.t;
-      init_conf2 : Process_session.Configuration.t;
+      s_init_conf1 : Process_session.Configuration.t;
+      s_init_conf2 : Process_session.Configuration.t;
 
       node : Equivalence_session.PartitionTree.Node.t
     }
@@ -122,7 +122,7 @@ struct
           Equivalent
         with
         | Equivalence_session.Symbolic.Process.Attack_Witness csys ->
-          Not_Equivalent (OSession (csys, data.init_conf1, data.init_conf2))
+          Not_Equivalent (OSession (csys, data.s_init_conf1, data.s_init_conf2))
         end
 
   let digest result = match result with
@@ -203,7 +203,7 @@ struct
           else Jobs !job_list
         with
         | Equivalence_session.Symbolic.Process.Attack_Witness csys ->
-          Result (Not_Equivalent (OSession (csys, data.init_conf1, data.init_conf2)))
+          Result (Not_Equivalent (OSession (csys, data.s_init_conf1, data.s_init_conf2)))
         end
 end
 
@@ -382,8 +382,8 @@ let session (goal:Equivalence_session.goal) (conf1:Process_session.Configuration
   let v_counter = Variable.get_counter () in
   let n_counter = Name.get_counter () in
   let data = {
-      EquivJob.init_conf1 = conf1;
-      EquivJob.init_conf2 = conf2;
+      EquivJob.s_init_conf1 = conf1;
+      EquivJob.s_init_conf2 = conf2;
       EquivJob.node = root;
     } in
   let job = {

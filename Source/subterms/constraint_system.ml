@@ -138,6 +138,55 @@ let get_axioms_with_list csys ax_list =
 
 let is_solved csys = Tools.is_solved_DF csys.df
 
+let match_variables_and_names_term f_next t1 t2 =
+  auto_cleanup_matching (fun () ->
+    match_variables_and_names_in_terms t1 t2;
+    f_next ()
+  )
+
+let match_variables_and_names csys1 csys2 =
+  DF.iter2 match_variables_and_names_in_terms csys1.df csys2.df;
+  K.iter_terms2 match_variables_and_names_in_terms csys1.sdf csys2.sdf
+
+let match_variables_and_names_inital f_next csys1 csys2 =
+  Term.auto_cleanup_matching (fun () ->
+    DF.iter2 match_variables_and_names_in_terms csys1.df csys2.df;
+    K.iter_terms2 match_variables_and_names_in_terms csys1.sdf csys2.sdf;
+    UF.match_variables_and_names csys1.uf csys2.uf;
+
+    match_variables_and_names_elt_list (fun () ->
+      Subst.match_variables_and_names (fun () ->
+        Eq.match_variables_and_names (fun () ->
+          Eq.match_variables_and_names f_next csys1.sub_cons csys2.sub_cons
+        ) csys1.eqfst csys2.eqfst
+      ) csys1.i_subst_fst csys2.i_subst_fst
+    ) match_variables_and_names_term csys1.private_channels csys2.private_channels
+  )
+
+let iter_variables_and_terms f_var f_term csys =
+  DF.iter_variables_and_terms f_var f_term csys.df;
+  List.iter f_term csys.private_channels;
+  Eq.iter_variables_and_terms f_var f_term csys.eqfst;
+  K.iter_variables_and_terms f_var f_term csys.sdf;
+  UF.iter_variables_and_terms f_var f_term csys.uf;
+  Subst.iter_variables_and_terms f_var f_term csys.i_subst_fst;
+  Eq.iter_variables_and_terms f_var f_term csys.sub_cons
+
+let get_vars_and_names csys = Term.get_vars_and_names iter_variables_and_terms csys
+
+let map_vars_and_terms f_var f_term csys =
+  { csys with
+    df = DF.map_variables_and_terms f_var f_term csys.df;
+    private_channels = List.rev_map f_term csys.private_channels;
+    eqfst = Eq.map_variables_and_terms f_var f_term csys.eqfst;
+    sdf = K.map_variables_and_terms f_var f_term csys.sdf;
+    uf = UF.map_variables_and_terms f_var f_term csys.uf;
+    i_subst_fst = Subst.map_variables_and_terms f_var f_term csys.i_subst_fst;
+    sub_cons = Eq.map_variables_and_terms f_var f_term csys.sub_cons;
+    history_skeleton = List.map (fun hist -> { hist with diseq = Eq.Mixed.map_variables_and_terms f_var f_term hist.diseq} ) csys.history_skeleton
+  }
+
+
 (******** Display *******)
 
 let id_class_csys =
@@ -1256,7 +1305,7 @@ module Set = struct
   let of_list l_csys = l_csys
 
   let find f csys_set = List.find_opt f csys_set
-  
+
   let elements csys_set = csys_set
 
   let find_representative csys_set predicate =
@@ -1299,6 +1348,53 @@ module Set = struct
   let is_empty csys_set = csys_set = []
 
   let iter f csys_set = List.iter f csys_set
+
+  type 'a compressed_data =
+    {
+      original : 'a;
+      equal_modulo : ('a * (fst_ord, name) Variable.Renaming.t * Name.Renaming.t) list
+    }
+
+
+
+  let rec compress_one f_next csys vars names data prev = function
+    | [] -> f_next prev { csys with additional_data = data }
+    | csys' :: q ->
+        let result = ref None in
+        begin
+          try
+            match_variables_and_names_inital (fun () ->
+              let v_rho = Variable.Renaming.from_linked_vars vars in
+              let n_rho = Name.Renaming.from_linked_names names in
+              result := Some (v_rho,n_rho)
+            ) csys csys'
+          with No_Match -> ()
+        end;
+        match !result with
+          | None -> compress_one f_next csys vars names data (csys'::prev) q
+          | Some (v_rho,n_rho) ->
+              compress_one f_next csys vars names { data with equal_modulo = (csys'.additional_data,v_rho,n_rho)::data.equal_modulo } prev q
+
+  let rec compress_list f_next prev = function
+    | [] -> f_next prev
+    | csys :: q ->
+        let (vars,names) = get_vars_and_names csys in
+
+        compress_one (fun q' csys' ->
+          compress_list f_next (csys'::prev) q'
+        ) csys vars names { original = csys.additional_data; equal_modulo = [] } [] q
+
+  let compress_with_equal_modulo_renaming csys_set =
+    compress_list (fun csys_set' -> csys_set') [] csys_set
+
+  let decompress_with_equal_modulo_renaming csys_set =
+    List.fold_left (fun accu csys ->
+      let orig_csys = { csys with additional_data = csys.additional_data.original } in
+      List.fold_left (fun accu' (data,v_rho,n_rho) ->
+        let csys' = Term.apply_both_renamings v_rho n_rho map_vars_and_terms csys in
+        { csys' with additional_data = data }::accu'
+      ) (orig_csys::accu) csys.additional_data.equal_modulo
+    ) [] csys_set
 
   let display_initial id size =
 
@@ -3236,4 +3332,29 @@ module Rule = struct
       sat (sat_disequation (normalisation_split_deduction_axiom (
         normalisation_deduction_consequence (rewrite (equality_constructor (complete_equality_constructor_IK f_continuation)))
       )))
+
+  let apply_rules_after_input_with_compression exists_private (f_continuation: 'a Set.t -> (unit -> unit) -> unit) (csys_set: 'a Set.t) f_next =
+    let compressed_csys_set = Set.compress_with_equal_modulo_renaming csys_set in
+    let decompression_before_continuation csys_set f_next =
+      f_continuation (Set.decompress_with_equal_modulo_renaming csys_set) f_next
+    in
+    if exists_private
+    then sat (sat_private (sat_disequation decompression_before_continuation)) compressed_csys_set f_next
+    else sat (sat_disequation decompression_before_continuation) compressed_csys_set f_next
+
+  let apply_rules_after_output_with_compression exists_private (f_continuation: 'a Set.t -> (unit -> unit) -> unit) (csys_set: 'a Set.t) f_next =
+    let compressed_csys_set = Set.compress_with_equal_modulo_renaming csys_set in
+    let decompression_before_continuation csys_set f_next =
+      f_continuation (Set.decompress_with_equal_modulo_renaming csys_set) f_next
+    in
+    if exists_private
+    then
+      sat (sat_private (sat_disequation (normalisation_split_deduction_axiom (
+        normalisation_deduction_consequence (rewrite (equality_constructor (complete_equality_constructor_IK decompression_before_continuation)))
+      )))) compressed_csys_set f_next
+    else
+      sat (sat_disequation (normalisation_split_deduction_axiom (
+        normalisation_deduction_consequence (rewrite (equality_constructor (complete_equality_constructor_IK decompression_before_continuation)))
+      ))) compressed_csys_set f_next
+
 end

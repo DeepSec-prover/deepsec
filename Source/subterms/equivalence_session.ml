@@ -1,19 +1,23 @@
 open Extensions
 open Term
 open Process_session
+open Display
 
 
 (* a module for representing symbolic processes (process with symbolic variables and constraint systems). Sets of symbolic processes are represented as mutable tables with indexes *)
 module Symbolic : sig
   (* indexes to make simpler reference and comparison of constraint systems *)
   module Index : sig
-    type t
+    type t = int
     val to_string : t -> string
   end
 
   (* a status of symbolic processes in equivalence proofs *)
   module Status : sig
-    type t
+    type t =
+      ForAll
+      | Exists
+      | Both
     val init_for_equivalence : t (* the status of the initial processes for equivalence proofs *)
     val init_for_inclusion_left : t (* the status of the initial left processes for inclusion proofs *)
     val init_for_inclusion_right : t (* the status of the initial right processes for inclusion proofs *)
@@ -26,7 +30,13 @@ module Symbolic : sig
 
   (* a module for representing symbolic processes *)
   module Process : sig
-    type t
+  type process = {
+    origin : string;
+    conf : Configuration.t;
+    next_transitions : transition list;
+    status : Status.t;
+  }
+  type t = process Constraint_system.t
     exception Attack_Witness of t
     val get_status : t -> Status.t
     val get_conf : t -> Configuration.t
@@ -41,7 +51,8 @@ module Symbolic : sig
 
   (* a module for representing matchings between within sets of symbolic processes. A matching can be seen as a mapping from indexes (referring to a symbolic process P1) to their matchers, i.e. lists of indexes (referring to processes P2) with bijection sets (mapping the labels of P1 to the label of P2). *)
   module Matching : sig
-    type t
+    type matching_forall_exists = Index.t * (Index.t * BijectionSet.t) list
+    type t = matching_forall_exists list
     val empty : t (* the empty matching *)
     val add_match : Index.t -> (Index.t * BijectionSet.t) list -> t -> t
     val fold : (Index.t -> (Index.t * BijectionSet.t) list -> 'a -> 'a) -> t -> 'a -> 'a (* computation over indexes and their matchers. *)
@@ -49,6 +60,7 @@ module Symbolic : sig
     val remove : t -> Index.t list -> t * Index.t option (* removes a list of indexes from a matching. In case an index ends up with no matchers because of this, an empty matching is returned along with this index. *)
     val clean : t -> Index.t list -> t (* removes indexes that do not need to be matched anymore. In particular, matchers are not affected and this can not create attacks, by opposition to [remove] NB. Assumes that, if a index i is removed but used as a matcher for an other index j, then j also appears in the list of indexes to remove. *)
     val print : t -> unit (* prints a matching *)
+    val check_and_remove_improper_labels : t -> (Index.t * Label.t list) list -> t
   end
 
   (* a module for representing sets of symbolic processes. As they often need to be compared by matchings, they are stored in a table and referred by indexes. *)
@@ -72,6 +84,8 @@ module Symbolic : sig
     NB. Performs an attack check at the same time, and raises Attack_Witness if one is found *)
     val clean : t -> Matching.t -> t (* removes the existential status of the processes of a set that are not used as matchers *)
     val remove_unauthorised_blocks : t -> Matching.t -> (snd_ord, axiom) Subst.t -> t * Matching.t (* removes the processes of a set that start faulty traces, and removes their universal status in the matching *)
+
+    val get_improper_labels : t -> (Index.t * Label.t list) list * t
   end
 
   (* basic functions for computing the transitions from a symbolic process *)
@@ -193,6 +207,18 @@ end = struct
         List.filter_unordered (fun (cs_fa,_) ->
           not (List.mem cs_fa to_remove)
         ) m
+
+    let check_and_remove_improper_labels m imp_labels =
+      List.map (fun (i_fa, exists) ->
+        let imp_labels_fa = List.assoc i_fa imp_labels in
+        let exists' =
+          List.map (fun (i_ex,bset) ->
+            let imp_labels_ex = List.assoc i_ex imp_labels in
+            (i_ex,BijectionSet.check_and_remove_improper_labels bset imp_labels_fa imp_labels_ex)
+          ) exists
+        in
+        i_fa,exists'
+      ) m
   end
 
   module Set = struct
@@ -228,12 +254,12 @@ end = struct
         ) m in
       map_filter (fun index cs ->
         let symp = Constraint_system.get_additional_data cs in
-        match symp.status with
-        | Exists
-        | Both when useless_existential_index index ->
-          if symp.status = Exists then None
+        match symp.Process.status with
+        | Status.Exists
+        | Status.Both when useless_existential_index index ->
+          if symp.Process.status = Status.Exists then None
           else
-            Some (Constraint_system.replace_additional_data cs {symp with status = ForAll})
+            Some (Constraint_system.replace_additional_data cs {symp with Process.status = Status.ForAll})
         | _ -> Some cs
       ) csys_set
 
@@ -244,7 +270,7 @@ end = struct
         List.fold_left (fun (accu_ind,accu_match) ((cs_fa,_) as m) ->
           let cs = find csys_set cs_fa in
           let symp = Constraint_system.get_additional_data cs in
-          if Configuration.check_block snd_subst symp.conf then
+          if Configuration.check_block snd_subst symp.Process.conf then
             accu_ind,m::accu_match
           else cs_fa::accu_ind,accu_match
         ) ([],[]) matching in
@@ -253,15 +279,42 @@ end = struct
           (* Printf.printf "index %d -> non authorised block\n" i; *)
           let symp = Constraint_system.get_additional_data cs in
           if List.mem i indexes_to_remove then
-            match symp.status with
-            | Both ->
-              Some (Constraint_system.replace_additional_data cs {symp with status = Exists})
-            | ForAll -> None
-            | Exists ->
+            match symp.Process.status with
+            | Status.Both ->
+              Some (Constraint_system.replace_additional_data cs {symp with Process.status = Status.Exists})
+            | Status.ForAll -> None
+            | Status.Exists ->
               Config.internal_error "[equivalence_session.ml >> remove_unauthorised_blocks] A purely-existential constraint system should not appear in the first components of matching."
           else Some cs
         ) csys_set in
       new_procs,new_matching
+
+
+    let get_improper_labels csys_set =
+      let accu_imp_labels = ref [] in
+      let nb_imp_labels = ref 0 in
+
+      let csys_set' =
+        map (fun i proc ->
+          let conf = Process.get_conf proc in
+          Configuration.get_improper_labels (fun imp_labels conf' ->
+            if !accu_imp_labels = []
+            then
+              begin
+                accu_imp_labels := [i,imp_labels];
+                nb_imp_labels := List.length imp_labels
+              end
+            else
+              if List.length imp_labels <> !nb_imp_labels
+              then raise Not_found
+              else accu_imp_labels := (i,imp_labels) :: !accu_imp_labels;
+
+            Process.replace_conf proc conf'
+          ) conf
+        ) csys_set
+      in
+      !accu_imp_labels,csys_set'
+
   end
 
   module Transition = struct
@@ -301,10 +354,10 @@ end = struct
       )
 
     let add_transition_output (csys_set:Set.t ref) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord, Term.name) Subst.t) (cs:Process.t) (ax:axiom) (od:Labelled_process.Output.data) (new_status:Status.t) : unit =
-      Configuration.normalise ~context:od.context od.lab conf eqn (fun gather conf_norm new_proc ->
+      Configuration.normalise ~context:od.Labelled_process.Output.context od.Labelled_process.Output.lab conf eqn (fun gather conf_norm new_proc ->
         let equations = Labelled_process.Normalise.equations gather in
         let disequations = Labelled_process.Normalise.disequations gather in
-        let t0 = Subst.apply equations od.term (fun x f -> f x) in
+        let t0 = Subst.apply equations od.Labelled_process.Output.term (fun x f -> f x) in
 
         try
           let cs1 =
@@ -318,8 +371,8 @@ end = struct
 
           let transition = {
             target = target;
-            label = od.lab;
-            forall = od.optim;
+            label = od.Labelled_process.Output.lab;
+            forall = od.Labelled_process.Output.optim;
             new_proc = new_proc;
           } in
           accu := transition :: !accu;
@@ -329,10 +382,10 @@ end = struct
       )
 
     let add_transition_input (csys_set:Set.t ref) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord,Term.name) Subst.t) (cs:Process.t) (var_X:snd_ord_variable) (idata:Labelled_process.Input.data) (new_status:Status.t) : unit =
-      Configuration.normalise idata.lab conf eqn (fun gather conf_norm new_proc ->
+      Configuration.normalise idata.Labelled_process.Input.lab conf eqn (fun gather conf_norm new_proc ->
         let equations = Labelled_process.Normalise.equations gather in
         let disequations = Labelled_process.Normalise.disequations gather in
-        let inp = Subst.apply equations (of_variable idata.var) (fun x f -> f x) in
+        let inp = Subst.apply equations (of_variable idata.Labelled_process.Input.var) (fun x f -> f x) in
         let ded_fact = BasicFact.create var_X inp in
 
         try
@@ -347,8 +400,8 @@ end = struct
 
           let transition = {
             target = target;
-            label = idata.lab;
-            forall = idata.optim;
+            label = idata.Labelled_process.Input.lab;
+            forall = idata.Labelled_process.Input.optim;
             new_proc = new_proc;
           } in
           accu := transition :: !accu;
@@ -363,47 +416,48 @@ end = struct
       let accu : transition list ref = ref [] in
       begin match type_of_transition with
       | None -> ()
-      | Some RStart ->
-        let conf = Configuration.Transition.apply_start symp.conf in
+      | Some Configuration.Transition.RStart ->
+        let conf = Configuration.Transition.apply_start symp.Process.conf in
         let eqn = Constraint_system.get_substitution_solution Protocol cs in
-        add_transition_start csys_set accu conf eqn cs Label.initial symp.status
-      | Some RNeg ->
+        add_transition_start csys_set accu conf eqn cs Label.initial symp.Process.status
+      | Some Configuration.Transition.RNeg ->
         let ax = get_axiom v in
         List.iter_with_memo (fun proc memo ->
           List.iter (fun (pp,output_data) ->
             let conf =
-              Configuration.Transition.apply_neg ax pp output_data memo symp.conf in
+              Configuration.Transition.apply_neg ax pp output_data memo symp.Process.conf in
             let eqn =
               Constraint_system.get_substitution_solution Protocol cs in
             let next_status =
-              Status.downgrade_forall status output_data.optim in
+              Status.downgrade_forall status output_data.Labelled_process.Output.optim in
             add_transition_output csys_set accu conf eqn cs ax output_data next_status
-          ) (Labelled_process.Output.unfold ~optim:(status=ForAll) proc)
-        ) (Configuration.outputs symp.conf)
-      | Some RFocus ->
+          ) (Labelled_process.Output.unfold ~optim:(status=Status.ForAll) proc)
+        ) (Configuration.outputs symp.Process.conf)
+      | Some Configuration.Transition.RFocus ->
         let var_X = get_snd_ord v in
         let potential_focuses =
-          Labelled_process.Input.unfold ~optim:(status=ForAll) (Configuration.inputs symp.conf) in
+          Labelled_process.Input.unfold ~optim:(status=Status.ForAll) (Configuration.inputs symp.Process.conf) in
         List.iter (fun focus ->
           let conf_exec =
-            Configuration.Transition.apply_focus var_X focus symp.conf in
+            Configuration.Transition.apply_focus var_X focus symp.Process.conf in
           let eqn =
             Constraint_system.get_substitution_solution Protocol cs in
           let next_status =
-            Status.downgrade_forall status (snd focus).optim in
+            Status.downgrade_forall status (snd focus).Labelled_process.Input.optim in
           add_transition_input csys_set accu conf_exec eqn cs var_X (snd focus) next_status
         ) potential_focuses
-      | Some RPos ->
+      | Some Configuration.Transition.RPos ->
         let var_X = get_snd_ord v in
         let (idata,conf_exec) =
-          Configuration.Transition.apply_pos var_X symp.conf in
+          Configuration.Transition.apply_pos var_X symp.Process.conf in
         let eqn =
           Constraint_system.get_substitution_solution Protocol cs in
         let next_status =
-          Status.downgrade_forall status idata.optim in
+          Status.downgrade_forall status idata.Labelled_process.Input.optim in
         add_transition_input csys_set accu conf_exec eqn cs var_X idata next_status end;
       !accu
   end
+
 end
 
 
@@ -487,6 +541,7 @@ module PartitionTree : sig
     val decast : t -> Symbolic.Index.t Constraint_system.Set.t -> t (* after the constraint solver removes constraints systems from a Constraint_system.Set.t, [decast] applies the same restriction to the Symbolic.Set.t and the corresponding matching *)
     val remove_unauthorised_blocks : t -> Symbolic.Index.t Constraint_system.Set.t -> t (* removes unauthorised blocks from a node *)
     val test_node : t -> unit
+
   end
 
   val generate_successors : Node.t -> (Node.t->(unit->unit)->unit) -> (unit->unit) -> unit (* generates the successor nodes of a given node in the partition tree, and applies a continuation to each of them. A final continuation is applied when all nodes have been explored.
@@ -503,7 +558,6 @@ end = struct
 
     let total_node = ref 0
     let only_exists = ref 0
-    exception Found
 
     let test_node n =
       incr total_node;
@@ -530,24 +584,277 @@ end = struct
         flush_all ()
         end
 
+    (*let test_equality_modulo_of_existential n =
+      let rec explore_one id proc_l csys bset = function
+        | [] -> ()
+        | (id', proc_l',csys',bset')::q ->
+            begin try
+              Term.auto_cleanup_matching (fun () ->
+                Constraint_system.match_variables_and_names csys csys';
+                BijectionSet.match_processes (fun () ->
+                  Printf.printf "Found equal processes: %s and %s\n" (Symbolic.Index.to_string id) (Symbolic.Index.to_string id')
+                )  proc_l proc_l' bset bset';
+              )
+            with No_Match -> ()
+            end;
+            explore_one id proc_l csys bset q
+      in
+
+      let rec explore = function
+        | [] -> ()
+        | (id, proc_l,csys,bset)::q ->
+            explore_one id proc_l csys bset q;
+            explore q
+      in
+
+      Symbolic.Matching.iter (fun _ exist_list ->
+        let proc_csys_list =
+          List.map (fun (id_ex,bset) ->
+            let csys = Symbolic.Set.find n.csys_set id_ex in
+            let subst =  Constraint_system.get_substitution_solution Protocol csys in
+            let conf = Symbolic.Process.get_conf csys in
+            let proc_l1 = Configuration.elements conf in
+            let proc_l2 = List.map (fun lp -> Labelled_process.apply_substitution subst lp) proc_l1 in
+            (id_ex,proc_l2,csys,bset)
+          ) exist_list
+        in
+        explore proc_csys_list
+      ) n.matching
+    *)
+    (*let test_equality_modulo_of_forall n =
+      let found = ref false in
+
+      let rec explore_one id proc_l csys exist_list block_list= function
+        | [] -> ()
+        | (id',proc_l',csys',exist_list',block_list')::q ->
+            begin try
+              Term.auto_cleanup_matching (fun () ->
+                Constraint_system.match_variables_and_names csys csys';
+                BijectionSet.match_forall_processes (fun does_left_subsume ->
+                  if does_left_subsume
+                  then Printf.printf "Found equal modulo forall: %s subsumes %s\n" (Symbolic.Index.to_string id) (Symbolic.Index.to_string id')
+                  else Printf.printf "Found equal modulo forall: %s subsumes %s\n" (Symbolic.Index.to_string id') (Symbolic.Index.to_string id);
+                  found := true
+                ) proc_l proc_l' block_list block_list' exist_list exist_list';
+              )
+            with No_Match -> ()
+            end;
+            explore_one id proc_l csys exist_list block_list q
+      in
+
+      let rec explore = function
+        | [] -> ()
+        | (id,proc_l,csys,exist_list,block_list)::q ->
+            explore_one id proc_l csys exist_list block_list q;
+            explore q
+      in
+
+      let list_csys_proc =
+        List.map (fun (id_forall,exists_list) ->
+          let csys = Symbolic.Set.find n.csys_set id_forall in
+          let subst =  Constraint_system.get_substitution_solution Protocol csys in
+          let conf = Symbolic.Process.get_conf csys in
+          let proc_l1 = Configuration.elements conf in
+          let proc_l2 = List.map (fun lp -> Labelled_process.apply_substitution subst lp) proc_l1 in
+          (id_forall,proc_l2,csys,exists_list,Configuration.get_block_list conf)
+        ) n.matching
+      in
+
+      explore list_csys_proc;
+
+      !found
+    *)
+    (*let test_equality_modulo_constraint_system csys_set =
+      let rec explore_one csys1 = function
+        | [] -> []
+        | csys2::q ->
+            let found = ref false in
+            begin try
+              Term.auto_cleanup_matching (fun () ->
+                Constraint_system.match_variables_and_names csys1 csys2;
+                (*Printf.printf "Found equal constraint_system: %d and %d\n" (Constraint_system.get_additional_data csys1) (Constraint_system.get_additional_data csys2);*)
+                found := true
+              )
+            with No_Match -> ()
+            end;
+            if !found
+            then explore_one csys1 q
+            else csys2::(explore_one csys1 q)
+
+      and explore = function
+        | [] -> []
+        | csys1::q ->
+            let q' = explore_one csys1 q in
+            csys1::(explore q')
+      in
+      let csys_set' = explore (Constraint_system.Set.elements csys_set) in
+
+      if List.length csys_set' = Constraint_system.Set.size csys_set
+      then false
+      else
+        begin
+          (*Printf.printf "===> Previous size = %d / new size = %d\n" (Constraint_system.Set.size csys_set) (List.length csys_set');*)
+          true
+        end
+    *)
+    let delete_equal_modulo_existential n =
+      let node_deleted = ref false in
+
+      let rec explore_one id proc_l csys bset = function
+        | [] -> false
+        | (_, proc_l',csys',bset')::q ->
+            let equal =
+              try
+                Term.auto_cleanup_matching (fun () ->
+                  Constraint_system.match_variables_and_names csys csys';
+                  BijectionSet.match_processes (fun () -> ()) proc_l proc_l' bset bset';
+                  true
+                )
+              with No_Match -> false
+            in
+            equal || explore_one id proc_l csys bset q
+      in
+
+      let rec explore = function
+        | [] -> []
+        | (id, proc_l,csys,bset)::q ->
+            if explore_one id proc_l csys bset q
+            then (node_deleted := true; explore q)
+            else (id,bset)::(explore q)
+      in
+
+      let matching =
+        Symbolic.Matching.fold (fun id_forall id_exist_list accu ->
+          (*match id_exist_list with
+            | [] -> Config.internal_error "[Node.delete_equal_modulo_existential] there should be some existential symbolic process (otherwise an attack should have been raised)"
+            | [_] -> *)
+          if List.length id_exist_list >= 2
+          then
+            let proc_csys_list =
+              List.map (fun (id_ex,bset) ->
+                let csys = Symbolic.Set.find n.csys_set id_ex in
+                let subst =  Constraint_system.get_substitution_solution Protocol csys in
+                let conf = Symbolic.Process.get_conf csys in
+                let proc_l1 = Configuration.elements conf in
+                let proc_l2 = List.map (fun lp -> Labelled_process.apply_substitution subst lp) proc_l1 in
+                (id_ex,proc_l2,csys,bset)
+              ) id_exist_list
+            in
+            Symbolic.Matching.add_match id_forall (explore proc_csys_list) accu
+          else Symbolic.Matching.add_match id_forall id_exist_list accu
+        ) n.matching Symbolic.Matching.empty
+      in
+
+      if !node_deleted
+      then { n with csys_set = Symbolic.Set.clean n.csys_set matching; matching = matching }
+      else n
+
+    let delete_equal_modulo_universal n =
+      let symb_proc_to_downgrade = ref [] in
+
+      let rec explore_one f_not_subsumed f_is_subsumed prev_matching ((id,proc_l,csys,exist_list,block_list) as t) = function
+        | [] -> f_not_subsumed prev_matching
+        | ((id',proc_l',csys',exist_list',block_list') as t')::q ->
+            let result = ref None in
+            begin try
+              Term.auto_cleanup_matching (fun () ->
+                Constraint_system.match_variables_and_names csys csys';
+                BijectionSet.match_forall_processes (fun does_left_subsume ->
+                  result := Some does_left_subsume
+                ) proc_l proc_l' block_list block_list' exist_list exist_list';
+              )
+            with No_Match -> ()
+            end;
+
+            match !result with
+              | None -> explore_one f_not_subsumed f_is_subsumed (t'::prev_matching) t q
+              | Some true ->
+                  symb_proc_to_downgrade := id' :: !symb_proc_to_downgrade;
+                  explore_one f_not_subsumed f_is_subsumed prev_matching t q
+              | _ ->
+                  symb_proc_to_downgrade := id :: !symb_proc_to_downgrade;
+                  f_is_subsumed (List.rev_append prev_matching q)
+      in
+
+      let rec explore prev_matching = function
+        | [] -> prev_matching
+        | t::q ->
+            explore_one (explore (t::prev_matching)) (explore prev_matching) [] t q
+      in
+
+      match n.matching with
+        | [_] -> n
+        | _ ->
+          let list_csys_proc =
+            List.map (fun (id_forall,exists_list) ->
+              let csys = Symbolic.Set.find n.csys_set id_forall in
+              let subst =  Constraint_system.get_substitution_solution Protocol csys in
+              let conf = Symbolic.Process.get_conf csys in
+              let proc_l1 = Configuration.elements conf in
+              let proc_l2 = List.map (fun lp -> Labelled_process.apply_substitution subst lp) proc_l1 in
+              (id_forall,proc_l2,csys,exists_list,Configuration.get_block_list conf)
+            ) n.matching
+          in
+
+          let new_matching = explore [] list_csys_proc in
+
+          if !symb_proc_to_downgrade = []
+          then n
+          else
+            let new_matching' = List.rev_map (fun (id,_,_,exist_list,_) -> (id,exist_list)) new_matching in
+            let new_csys_set =
+              Symbolic.Set.map_filter (fun i cs ->
+                (* Printf.printf "index %d -> non authorised block\n" i; *)
+                let symp = Constraint_system.get_additional_data cs in
+                if List.mem i !symb_proc_to_downgrade then
+                  match symp.Symbolic.Process.status with
+                  | Symbolic.Status.Both ->
+                    Some (Constraint_system.replace_additional_data cs {symp with Symbolic.Process.status = Symbolic.Status.Exists})
+                  | Symbolic.Status.ForAll -> None
+                  | Symbolic.Status.Exists -> Config.internal_error "[equivalence_session.ml >> delete_equal_modulo_universal] A purely-existential constraint system should not appear in the first components of matching."
+                else Some cs
+              ) n.csys_set in
+            { n with csys_set = new_csys_set ; matching = new_matching' }
+
+    let remove_improper_labels n =
+      try
+        let index_imp_labels_list, csys_set' = Symbolic.Set.get_improper_labels n.csys_set in
+        let matching' = Symbolic.Matching.check_and_remove_improper_labels n.matching index_imp_labels_list in
+        { n with csys_set = csys_set'; matching = matching' }
+      with Not_found -> n
+
     let fresh_id =
       let x = ref (-1) in
       fun () -> incr x; Printf.sprintf "n%d" !x
     let print (n:t) : unit =
-      Printf.printf ">> Data node (id=%s):\n" n.id;
-      Printf.printf "indexes: ";
-      Symbolic.Set.iter (fun id csys ->
-        Printf.printf "%s [Status " (Symbolic.Index.to_string id);
-        Symbolic.Status.print (Symbolic.Process.get_status csys);
-        Printf.printf ",origin %s] " (Symbolic.Process.get_origin_process csys)
-      ) n.csys_set;
-      Printf.printf "\nsize frame: %d\nmatching: " n.size_frame;
-      Symbolic.Matching.iter (fun i l ->
-        Printf.printf "%s->[%s ]; " (Symbolic.Index.to_string i) (List.fold_left (fun s (j,_) ->
-          Printf.sprintf "%s %s" s (Symbolic.Index.to_string j)
-        ) "" l)
-      ) n.matching;
-      print_endline ""
+      if n.id <> ""
+      then
+      begin
+        Printf.printf ">> Data node (id=%s):\n" n.id;
+        Printf.printf "indexes: ";
+        Symbolic.Set.iter (fun id csys ->
+          Printf.printf "%s [Status " (Symbolic.Index.to_string id);
+          Symbolic.Status.print (Symbolic.Process.get_status csys);
+          Printf.printf ",origin %s] " (Symbolic.Process.get_origin_process csys)
+        ) n.csys_set;
+        Printf.printf "\nsize frame: %d\nmatching: " n.size_frame;
+        Symbolic.Matching.iter (fun i l ->
+          Printf.printf "%s->[%s ]; " (Symbolic.Index.to_string i) (List.fold_left (fun s (j,bset) ->
+            Printf.sprintf "%s %s -> %s\n" s (Symbolic.Index.to_string j) (BijectionSet.print_string bset)
+            (*Printf.sprintf "%s %s" s (Symbolic.Index.to_string j)*)
+          ) "" l)
+        ) n.matching;
+        print_endline "";
+        Symbolic.Set.iter (fun id p ->
+          let conf = Symbolic.Process.get_conf p in
+          let p' = Configuration.to_process conf in
+          let solution = Constraint_system.get_substitution_solution Protocol p in
+          Printf.printf "---Constraint_system %s : %s\n" (Symbolic.Index.to_string id) (Constraint_system.display HTML p);
+          Printf.printf "---Process %s : %s\n" (Symbolic.Index.to_string id) (Labelled_process.print ~labels:true ~solution:solution p');
+          print_string (Configuration.display_blocks conf)
+        ) n.csys_set;
+        flush_all ()
+      end
 
     let init set m = {
       csys_set = set;
@@ -566,13 +873,13 @@ end = struct
         (* Configuration.Transition.print_kind trans; *)
         match trans with
         | None
-        | Some RStart -> trans, {snd_ord = None; axiom = None}
-        | Some RFocus
-        | Some RPos ->
+        | Some Configuration.Transition.RStart -> trans, {snd_ord = None; axiom = None}
+        | Some Configuration.Transition.RFocus
+        | Some Configuration.Transition.RPos ->
           let new_var =
             Variable.fresh Recipe Free (Variable.snd_ord_type n.size_frame) in
           trans, {snd_ord = Some new_var; axiom = None}
-        | Some RNeg ->
+        | Some Configuration.Transition.RNeg ->
           trans, {snd_ord = None; axiom = Some (Axiom.create (n.size_frame+1))}
 
     let release_skeleton (n:t) : t =
@@ -598,11 +905,17 @@ end = struct
     let generate_next (n:t) : Configuration.Transition.kind option * t =
       let new_id = fresh_id () in
 
-      (** Generation of the transitions **)
+      (* Generation of the transitions *)
       let (trans,vars) = data_next_transition n in
+      let n = match trans with
+        | Some Configuration.Transition.RFocus ->
+            (*delete_equal_modulo_existential (delete_equal_modulo_universal (remove_improper_labels n))*)
+            n
+        | _ -> n
+      in
       let new_csys_set = ref Symbolic.Set.empty in
       let csys_set_with_transitions =
-        Symbolic.Set.map (fun i csys ->
+        Symbolic.Set.map (fun _ csys ->
           let next_transitions =
             Symbolic.Transition.generate vars trans new_csys_set csys in
           (* Printf.printf "Transitions generated from %s: \n" (Symbolic.Index.to_string i);
@@ -642,7 +955,7 @@ end = struct
           ) accu1 (Symbolic.Process.get_transitions symp_fa)
         ) n.matching Symbolic.Matching.empty in
 
-      (** final node **)
+      (* final node *)
       let new_node =
         clean {n with csys_set = new_csys_set; matching = new_matching; id = new_id} in
       trans,new_node
@@ -651,7 +964,7 @@ end = struct
     let split (n:t) (f_cont:t->(unit->unit)->unit) (f_next:unit->unit) : unit =
       let comps = Graph.connected_components (Graph.of_matching n.matching) in
 
-      let rec add_matching_in_data_list i matchers data =
+      let add_matching_in_data_list i matchers data =
         match List.find_and_remove (fun (_,c) -> Graph.ConnectedComponent.mem i c) data with
         | None, _ -> Config.internal_error "[equivalence_session.ml >> split_partition_tree_node] Unexpected case."
         | Some (ml,c),remainder ->
@@ -708,9 +1021,9 @@ end = struct
   NB. The continuations f_cont indicates what to do with the generated nodes, and f_next what to do once all nodes have been explored. *)
   let generate_successors (n:Node.t) (f_cont:Node.t->(unit->unit)->unit) (f_next:unit->unit) : unit =
     let n = Node.clean n in
-    (* Printf.printf "\n==> EXPLORATION FROM %s\n" n.id;
-    Node.print n; *)
-    if Symbolic.Set.is_empty n.csys_set
+     (*Printf.printf "\n==> EXPLORATION FROM %s\n" n.id;*)
+    (*Node.print (Node.delete_equal_modulo_existential n);*)
+    if Symbolic.Set.is_empty n.Node.csys_set
     then f_next ()
     else
     begin
@@ -719,22 +1032,26 @@ end = struct
     (* Printf.printf "--> new node to split:\n";
     Node.print node_to_split; *)
     Node.split node_to_split (fun node f_next1 ->
-      let csys_set = Symbolic.Set.cast node.csys_set in
+      let csys_set = Symbolic.Set.cast node.Node.csys_set in
+      (*ignore(Node.test_equality_modulo_constraint_system csys_set);*)
       match transition_type with
       | None ->
         (* the end of the trace: one verifies that equivalence is not violated, which concludes the analysis of this branch. *)
         let _ = Node.decast node in
         f_next1 ()
-      | Some RStart ->
+      | Some Configuration.Transition.RStart ->
         (* very beginning of the analysis: only a skeleton check is needed before moving on to the constructing the successor nodes (no unauthorised blocks possible). *)
         Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
           let node_decast = Node.decast node csys_set in
           let final_node = Node.release_skeleton node_decast in
-          Node.split final_node (fun node_split f_next3 ->
+          let final_node' = final_node in
+          (*let final_node' = Node.delete_equal_modulo_existential final_node in*)
+          (*Node.split final_node' (fun node_split f_next3 ->
             f_cont node_split f_next3
-          ) f_next2
+          ) f_next2*)
+          f_cont final_node' f_next2
         ) csys_set f_next1
-      | Some RFocus ->
+      | Some Configuration.Transition.RFocus ->
         (* focus and execution of an input. *)
         Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
           if Constraint_system.Set.is_empty csys_set then f_next2()
@@ -743,11 +1060,14 @@ end = struct
             let node_autho =
               Node.remove_unauthorised_blocks node_decast csys_set in
             let final_node = Node.release_skeleton node_autho in
-            Node.split final_node (fun node_split f_next3 ->
+            let final_node' = final_node in
+            (*let final_node' = Node.delete_equal_modulo_existential final_node in*)
+            (*Node.split final_node' (fun node_split f_next3 ->
               f_cont node_split f_next3
-            ) f_next2
+            ) f_next2*)
+            f_cont final_node' f_next2
         ) csys_set f_next1
-      | Some RPos ->
+      | Some Configuration.Transition.RPos ->
         (* execution of a focused input. The skeleton check releases the focus if necessary, and unauthorised blocks may arise due to the constraint solving. *)
         Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
           if Constraint_system.Set.is_empty csys_set then f_next2()
@@ -755,11 +1075,14 @@ end = struct
             let node_decast = Node.decast node csys_set in
             let node_autho = Node.remove_unauthorised_blocks node_decast csys_set in
             let final_node = Node.release_skeleton node_autho in
-            Node.split final_node (fun node_split f_next3 ->
+            let final_node' = final_node in
+            (*let final_node' = Node.delete_equal_modulo_existential final_node in*)
+            (*Node.split final_node' (fun node_split f_next3 ->
               f_cont node_split f_next3
-            ) f_next2
+            ) f_next2*)
+            f_cont final_node' f_next2
         ) csys_set f_next1
-      | Some RNeg ->
+      | Some Configuration.Transition.RNeg ->
         (* execution of outputs. Similar to the input case, except that the size of the frame is increased by one. *)
         Constraint_system.Rule.apply_rules_after_output false (fun csys_set f_next2 ->
           if Constraint_system.Set.is_empty csys_set then f_next2()
@@ -768,9 +1091,12 @@ end = struct
             let node_autho =
               Node.remove_unauthorised_blocks node_decast csys_set in
             let final_node = Node.release_skeleton node_autho in
-            Node.split {final_node with size_frame = node.size_frame+1} (fun node_split f_next3 ->
+            let final_node' = {final_node with Node.size_frame = node.Node.size_frame+1} in
+            (*let final_node' = Node.delete_equal_modulo_existential {final_node with size_frame = node.size_frame+1} in*)
+            (*Node.split final_node' (fun node_split f_next3 ->
               f_cont node_split f_next3
-            ) f_next2
+            ) f_next2*)
+            f_cont final_node' f_next2
         ) csys_set f_next1
     ) f_next
     end
@@ -778,7 +1104,7 @@ end = struct
   let rec explore (n:Node.t) (f_next:unit->unit) : unit =
     generate_successors n explore f_next
 
-  let rec explore_from (n:Node.t) : unit =
+  let explore_from (n:Node.t) : unit =
     explore n (fun () -> ())
 end
 

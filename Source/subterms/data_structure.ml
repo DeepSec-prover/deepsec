@@ -206,6 +206,16 @@ module K = struct
           | Not_found -> Config.internal_error "[Data_structure.ml >> get] There is no deduction fact in SDF with this recipe equivalent id."
         end
 
+  let iter_variables_and_terms (f_var:fst_ord_variable -> unit) (f_term:protocol_term -> unit) sdf =
+    IntMap.iter (fun _ cell -> Fact.iter_variables_and_terms_deduction f_var f_term cell.fact) sdf.map;
+    IntMap.iter (fun _ cell -> Fact.iter_variables_and_terms_deduction f_var f_term cell.g_fact) sdf.map_ground
+
+  let map_variables_and_terms (f_var:fst_ord_variable -> fst_ord_variable) (f_term:protocol_term -> protocol_term) sdf =
+    { sdf with
+      map = IntMap.map (fun cell -> { cell with fact = Fact.map_variables_and_terms_deduction f_var f_term cell.fact }) sdf.map;
+      map_ground = IntMap.map (fun cell -> { cell with g_fact = Fact.map_variables_and_terms_deduction f_var f_term cell.g_fact }) sdf.map_ground
+    }
+
   (******* Iterators ********)
 
   exception Out_of_type
@@ -213,6 +223,42 @@ module K = struct
   let iter sdf f =
     IntMap.iter (fun _ cell -> f cell.g_fact) sdf.map_ground;
     IntMap.iter (fun _ cell -> f cell.fact) sdf.map
+
+  let iter_terms2 f sdf1 sdf2 =
+    let term_ground_list1 = ref [] in
+    let term_list1 = ref [] in
+    let term_ground_list2 = ref [] in
+    let term_list2 = ref [] in
+    IntMap.iter (fun i cell ->
+      term_list1 := (i,Fact.get_protocol_term cell.fact) :: !term_list1;
+    ) sdf1.map;
+    IntMap.iter (fun i cell ->
+      term_ground_list1 := (i,Fact.get_protocol_term cell.g_fact) :: !term_ground_list1;
+    ) sdf1.map_ground;
+    IntMap.iter (fun i cell ->
+      term_list2 := (i,Fact.get_protocol_term cell.fact) :: !term_list2;
+    ) sdf2.map;
+    IntMap.iter (fun i cell ->
+      term_ground_list2 := (i,Fact.get_protocol_term cell.g_fact) :: !term_ground_list2;
+    ) sdf2.map_ground;
+
+    let rec iter2 l1 lg1 l2 lg2 = match l1, lg1, l2, lg2 with
+      | [],[],[],[] -> ()
+      | (i1,t1)::q1,_,(i2,t2)::q2,_ when i1 = i2 ->
+          f t1 t2;
+          iter2 q1 lg1 q2 lg2
+      | _, (i1,t1)::q1,(i2,t2)::q2,_ when i1 = i2 ->
+          f t1 t2;
+          iter2 l1 q1 q2 lg2
+      | (i1,t1)::q1,_,_,(i2,t2)::q2 when i1 = i2 ->
+          f t1 t2;
+          iter2 q1 lg1 l2 q2
+      | _,(i1,t1)::q1,_,(i2,t2)::q2 when i1 = i2 ->
+          f t1 t2;
+          iter2 l1 q1 l2 q2
+      | _ -> Config.internal_error "[data_structure.ml >> K.iter2] The two set K should have the same indexes."
+  in
+  iter2 !term_list1 !term_ground_list1 !term_list2 !term_ground_list2
 
   let iter_within_var_type k sdf f =
     begin try
@@ -688,6 +734,14 @@ module DF = struct
 
   let iter df f = VarMap.iter (fun x t -> f x t) df
 
+  let iter_variables_and_terms (_:fst_ord_variable -> unit) (f_term:protocol_term -> unit) df =
+    VarMap.iter (fun _ t -> f_term t) df
+
+  let map_variables_and_terms (_:fst_ord_variable -> fst_ord_variable) (f_term:protocol_term -> protocol_term) df =
+    VarMap.map (fun t -> f_term t) df
+
+  let iter2 = VarMap.iter2
+
   let display out ?(rho = None) ?(per_line = 8) ?(tab = 0) df = match out with
     | Testing ->
         if VarMap.is_empty df
@@ -799,6 +853,42 @@ module UF = struct
       eq_formula : state_eq_form
     }
 
+  (******** Testing *********)
+
+  let match_variables_and_names uf1 uf2 =
+    Config.debug (fun () ->
+      if uf1.eq_formula <> EqNone || uf2.eq_formula <> EqNone
+      then Config.internal_error "[data_structure.ml >> UF.match_variables_and_names] This function should only be applied on intial constraint systems."
+    );
+
+    match uf1.ded_formula, uf2.ded_formula with
+      | DedNone, DedNone -> ()
+      | DedSolved [fact1], DedSolved [fact2] ->
+          Term.match_variables_and_names_in_terms (Fact.get_protocol_term fact1) (Fact.get_protocol_term fact2)
+      | _ -> Config.internal_error "[data_structure.ml >> UF.match_variables_and_names] This function should only be applied on intial constraint systems (2)."
+
+  let iter_variables_and_terms (f_var:fst_ord_variable -> unit) (f_term:protocol_term -> unit) uf =
+    begin match uf.eq_formula with
+      | EqUnsolved form -> Fact.iter_variables_and_terms_formula Fact.Equality f_var f_term form
+      | _ -> ()
+    end;
+    begin match uf.ded_formula with
+      | DedSolved ded_list -> List.iter (Fact.iter_variables_and_terms_deduction f_var f_term) ded_list
+      | DedUnsolved form_list -> List.iter (Fact.iter_variables_and_terms_formula Fact.Deduction f_var f_term) form_list
+      | _ -> ()
+    end
+
+  let map_variables_and_terms (f_var:fst_ord_variable -> fst_ord_variable) (f_term:protocol_term -> protocol_term) uf =
+    let eq_form = match uf.eq_formula with
+      | EqUnsolved form -> EqUnsolved (Fact.map_variables_and_terms_formula Fact.Equality f_var f_term form)
+      | eq -> eq
+    in
+    let ded_form = match uf.ded_formula with
+      | DedSolved ded_list -> DedSolved(List.map (Fact.map_variables_and_terms_deduction f_var f_term) ded_list)
+      | DedUnsolved form_list -> DedUnsolved (List.map (Fact.map_variables_and_terms_formula Fact.Deduction f_var f_term) form_list)
+      | ded -> ded
+    in
+    { ded_formula = ded_form ; eq_formula = eq_form }
   (******** Generation ********)
 
   let empty =
@@ -1236,6 +1326,14 @@ module Eq = struct
     | Conj diseq_l ->
         List.fold_left (fun acc diseq -> Diseq.get_axioms_with_list diseq acc) l diseq_l
 
+  let iter_variables_and_terms (f_var:fst_ord_variable -> unit) (f_term:protocol_term -> unit) = function
+    | Conj l -> List.iter (Diseq.iter_variables_and_terms f_var f_term) l
+    | _ -> ()
+
+  let map_variables_and_terms (f_var:fst_ord_variable -> fst_ord_variable) (f_term:protocol_term -> protocol_term) = function
+    | Conj l -> Conj (List.map (Diseq.map_variables_and_terms f_var f_term) l)
+    | eq -> eq
+
   exception Is_Bot
 
   let apply at form subst = match form with
@@ -1269,6 +1367,15 @@ module Eq = struct
     | Bot -> Display.bot out
     | Conj diseq_list -> Display.display_list (Diseq.display out ~rho:rho at) (Printf.sprintf " %s " (Display.wedge out)) diseq_list
 
+  let match_variables_and_names f_next eq1 eq2 = match eq1, eq2 with
+    | Top, Top | Bot, Bot -> ()
+    | Conj diseq_l1, Conj diseq_l2 ->
+        if List.length diseq_l1 <> List.length diseq_l2
+        then raise No_Match;
+
+        match_variables_and_names_elt_list f_next Diseq.match_variables_and_names diseq_l1 diseq_l2
+    | _ -> raise No_Match
+
   module Mixed = struct
 
     type t =
@@ -1284,6 +1391,10 @@ module Eq = struct
       | MTop -> MConj [diseq]
       | MBot -> MBot
       | MConj diseq_l -> MConj (diseq::diseq_l)
+
+    let map_variables_and_terms (f_var:fst_ord_variable -> fst_ord_variable) (f_term:protocol_term -> protocol_term) = function
+      | MConj l -> MConj (List.map (Diseq.Mixed.map_variables_and_terms f_var f_term) l)
+      | eq -> eq
 
     let apply form fst_subst snd_subst = match form with
       | MTop -> MTop

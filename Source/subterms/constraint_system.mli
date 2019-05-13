@@ -71,6 +71,8 @@ val apply_substitution : 'a t -> (fst_ord, name) Subst.t -> 'a t
     @raise Internal_error if {% $\C$ %} is not in solved form. *)
 val instantiate_when_solved : 'a t -> (fst_ord, name) Subst.t * (snd_ord, axiom) Subst.t
 
+val match_variables_and_names : 'a t -> 'a t -> unit
+
 (** {3 Display function} *)
 
 val display : Display.output -> ?rho: display_renamings option -> ?hidden:bool -> ?id:int -> 'a t -> string
@@ -178,5 +180,11 @@ module Rule : sig
     bool -> ('a Set.t -> (unit -> unit) -> unit) -> 'a Set.t -> (unit -> unit) -> unit
 
   val apply_rules_after_output :
+    bool -> ('a Set.t -> (unit -> unit) -> unit) -> 'a Set.t -> (unit -> unit) -> unit
+
+  val apply_rules_after_input_with_compression :
+    bool -> ('a Set.t -> (unit -> unit) -> unit) -> 'a Set.t -> (unit -> unit) -> unit
+
+  val apply_rules_after_output_with_compression :
     bool -> ('a Set.t -> (unit -> unit) -> unit) -> 'a Set.t -> (unit -> unit) -> unit
 end
