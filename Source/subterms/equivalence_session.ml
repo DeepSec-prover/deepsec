@@ -739,11 +739,11 @@ end = struct
     let n = Node.clean n in
     if Symbolic.Set.is_empty n.Node.csys_set then f_next()
     else begin
-      (* Printf.printf "\n==> EXPLORATION FROM %s\n" n.id;
-      Node.print n; *)
+      Printf.printf "\n==> EXPLORATION FROM %s\n" n.Node.id;
+      Node.print n;
       let (transition_type,node_to_split) = Node.generate_next n in
-      (* Printf.printf "--> new node to split:\n";
-      Node.print node_to_split; *)
+      Printf.printf "--> new node to split:\n";
+      Node.print node_to_split;
       Node.split node_to_split (fun node f_next1 ->
         let csys_set = Symbolic.Set.cast node.Node.csys_set in
         match transition_type with

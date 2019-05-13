@@ -80,7 +80,8 @@ end = struct
   module Set = struct
     type elt = int list
     type t = elt * int list
-    let is_empty (_,l) = l = []
+    let is_empty (_,l) =
+      l = []
     let of_position_list label l = label,l
     let find_and_remove x (lab,l) =
       match check_prefix lab x with
@@ -612,8 +613,12 @@ end = struct
           match s1.private_input_skel, s2.private_input_skel with
           | (mult1,in_list1),(mult2,in_list2) when mult1 = mult2 ->
             begin match s1.private_output_skel, s2.private_output_skel with
-              | (mult1,out_list1),(mult2,out_list2) when mult1 = mult2 ->
-              Some ((in_list1,in_list2)::(out_list1,out_list2)::ac2)
+              | (mult1',out_list1),(mult2',out_list2) when mult1' = mult2' ->
+                let ac3 =
+                  if mult1 = 0 then ac2 else (in_list1,in_list2)::ac2 in
+                let ac4 =
+                  if mult1' = 0 then ac3 else (out_list1,out_list2)::ac3 in
+                Some ac4
               | _ -> None
             end
           | _ -> None
@@ -705,7 +710,7 @@ end = struct
         let nontop_channels_fresh =
           Channel.Set.apply_renaming rho_n nontop_channels in
         let xx = Variable.fresh_from x in
-        browse (Variable.Renaming.compose rho_v x xx) rho_n (xx::bound_vars) p (id+1) (fun id_max _ p_fresh ->
+        browse (Variable.Renaming.compose rho_v x xx) rho_n (x::bound_vars) p (id+1) (fun id_max _ p_fresh ->
           f_cont id_max nontop_channels_fresh {proc = Input(Channel.apply_renaming rho_n c,xx,p_fresh,nontop_channels_fresh,id); label = None}
         )
       | Output(c,t,p,nontop_channels,_) ->
@@ -1454,10 +1459,14 @@ end = struct
 
   (* updates a bijection set after two matched transitions on labels (l1,l2). Returns None if this update is not possible (incompatible labels or skeletons). *)
   let update (l1:Label.t) (l2:Label.t) (s1:Labelled_process.Skeleton.t) (s2:Labelled_process.Skeleton.t) (bset:t) : t option =
+    Printf.printf "Updating ";
+    print bset;
+    Printf.printf "with %s,%s and skeletons %s,%s\n" (Label.to_string l1) (Label.to_string l2) (Labelled_process.Skeleton.print s1) (Labelled_process.Skeleton.print s2);
     let rec search memo s =
       match s with
       | [] -> None
       | (ll1,ll2) :: t ->
+        assert (not (Label.Set.is_empty ll1) && not (Label.Set.is_empty ll2));
         match Label.Set.find_and_remove l1 ll1, Label.Set.find_and_remove l2 ll2 with
         | None, None -> search ((ll1,ll2) :: memo) t
         | Some ll1', Some ll2' ->
