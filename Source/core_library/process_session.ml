@@ -1121,7 +1121,6 @@ end = struct
                 Input.leftovers = leftovers;
                 Input.id = id;
               } in
-              Printf.printf "Input %b (label %s, id %d)\n" forall (Label.to_string res.Input.lab) res.Input.id;
               let ac_chan' = Channel.Set.union chans_in ac_chan in
               (pp,res)::ac_pub,ac_priv,ac_chan'
             | Input(_,_,_,chans_in,_) ->
@@ -1459,9 +1458,6 @@ end = struct
 
   (* updates a bijection set after two matched transitions on labels (l1,l2). Returns None if this update is not possible (incompatible labels or skeletons). *)
   let update (l1:Label.t) (l2:Label.t) (s1:Labelled_process.Skeleton.t) (s2:Labelled_process.Skeleton.t) (bset:t) : t option =
-    Printf.printf "Updating ";
-    print bset;
-    Printf.printf "with %s,%s and skeletons %s,%s\n" (Label.to_string l1) (Label.to_string l2) (Labelled_process.Skeleton.print s1) (Labelled_process.Skeleton.print s2);
     let rec search memo s =
       match s with
       | [] -> None

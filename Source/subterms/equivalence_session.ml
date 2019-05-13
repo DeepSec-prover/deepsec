@@ -443,7 +443,7 @@ end = struct
           let next_status =
             Status.downgrade_forall status (snd focus).Labelled_process.Input.optim in
           add_transition_input csys_set accu conf_exec eqn cs var_X (snd focus) next_status;
-          Printf.printf "Now there are %d transitions\n" (List.length !accu);
+          (* Printf.printf "Now there are %d transitions\n" (List.length !accu); *)
         ) potential_focuses;
         List.iter (fun ((_,_,cdata) as comm) ->
           let conf_exec =
@@ -463,8 +463,7 @@ end = struct
         let next_status =
           Status.downgrade_forall status idata.Labelled_process.Input.optim in
         add_transition_input csys_set accu conf_exec eqn cs var_X idata next_status end;
-      let res = List.filter_in_head (fun tr -> tr.forall) !accu in
-      res
+      List.filter_in_head (fun tr -> tr.forall) !accu
   end
 end
 
@@ -594,7 +593,7 @@ end = struct
         let csys = Symbolic.Set.choose n.csys_set in
         let trans =
           Configuration.Transition.next (Symbolic.Process.get_conf csys) in
-        Configuration.Transition.print_kind trans;
+        (* Configuration.Transition.print_kind trans; *)
         match trans with
         | None
         | Some Configuration.Transition.RStart -> trans, {snd_ord = None; axiom = None}
@@ -645,11 +644,11 @@ end = struct
       let (trans,vars) = data_next_transition n in
       let new_csys_set = ref Symbolic.Set.empty in
       let csys_set_with_transitions =
-        Symbolic.Set.map (fun i csys ->
+        Symbolic.Set.map (fun _ csys ->
           let next_transitions =
             Symbolic.Transition.generate vars trans new_csys_set csys in
-          Printf.printf "Transitions generated from %s: \n" (Symbolic.Index.to_string i);
-          List.iter (fun tr -> Symbolic.Transition.print i tr; print_endline "") next_transitions;
+          (* Printf.printf "Transitions generated from %s: \n" (Symbolic.Index.to_string i);
+          List.iter (fun tr -> Symbolic.Transition.print i tr; print_endline "") next_transitions; *)
           Symbolic.Process.set_transitions csys next_transitions
         ) n.csys_set in
       let new_csys_set = !new_csys_set in
@@ -739,11 +738,11 @@ end = struct
     let n = Node.clean n in
     if Symbolic.Set.is_empty n.Node.csys_set then f_next()
     else begin
-      Printf.printf "\n==> EXPLORATION FROM %s\n" n.Node.id;
-      Node.print n;
+      (* Printf.printf "\n==> EXPLORATION FROM %s\n" n.Node.id;
+      Node.print n; *)
       let (transition_type,node_to_split) = Node.generate_next n in
-      Printf.printf "--> new node to split:\n";
-      Node.print node_to_split;
+      (* Printf.printf "--> new node to split:\n";
+      Node.print node_to_split; *)
       Node.split node_to_split (fun node f_next1 ->
         let csys_set = Symbolic.Set.cast node.Node.csys_set in
         match transition_type with

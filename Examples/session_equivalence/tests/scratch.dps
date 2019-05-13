@@ -1,5 +1,5 @@
 free c.
 
-let A = out(c,c).
+let A = out(c,c); out(c,c).
 
 query session_equiv(A,A).
