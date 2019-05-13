@@ -783,7 +783,7 @@ end = struct
   (* conversion from expansed processes
   TODO. include a check that no names used as private channels are output
   TODO. test this function (in particular the computation of the set of in-depth private channels) *)
-  let of_expansed_process ?preprocessing:(preprocessing:t->t=fun x->x) (p:Process.expansed_process) : t =
+  let of_expansed_process ?(preprocessing:t->t=fun x->x) (p:Process.expansed_process) : t =
     let rec browse bound_vars p id f_cont =
       match p with
       | Process.Nil ->
@@ -1579,7 +1579,7 @@ end = struct
   let of_expansed_process (p:Process.expansed_process) : t =
     (* Printf.printf "converting %s\n" (Labelled_process.print (Labelled_process.of_expansed_process p)); *)
     { input_proc = [];
-      focused_proc = Some (Labelled_process.of_expansed_process p, Label.initial);
+      focused_proc = Some (Labelled_process.of_expansed_process ~preprocessing:Labelled_process.Optimisation.remove_non_observable p, Label.initial);
       sure_output_proc = [];
       to_normalise = [];
       trace = [];
