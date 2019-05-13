@@ -442,7 +442,8 @@ end = struct
             Constraint_system.get_substitution_solution Protocol cs in
           let next_status =
             Status.downgrade_forall status (snd focus).Labelled_process.Input.optim in
-          add_transition_input csys_set accu conf_exec eqn cs var_X (snd focus) next_status
+          add_transition_input csys_set accu conf_exec eqn cs var_X (snd focus) next_status;
+          Printf.printf "Now there are %d transitions\n" (List.length !accu);
         ) potential_focuses;
         List.iter (fun ((_,_,cdata) as comm) ->
           let conf_exec =
@@ -462,7 +463,8 @@ end = struct
         let next_status =
           Status.downgrade_forall status idata.Labelled_process.Input.optim in
         add_transition_input csys_set accu conf_exec eqn cs var_X idata next_status end;
-      List.filter_in_head (fun tr -> tr.forall) !accu
+      let res = List.filter_in_head (fun tr -> tr.forall) !accu in
+      res
   end
 end
 

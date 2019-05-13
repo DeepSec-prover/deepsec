@@ -1116,6 +1116,7 @@ end = struct
                 Input.leftovers = leftovers;
                 Input.id = id;
               } in
+              Printf.printf "Input %b (label %s, id %d)\n" forall (Label.to_string res.Input.lab) res.Input.id;
               let ac_chan' = Channel.Set.union chans_in ac_chan in
               (pp,res)::ac_pub,ac_priv,ac_chan'
             | Input(_,_,_,chans_in,_) ->
