@@ -69,6 +69,19 @@ module List = struct
 
   let iter_with_memo (f:'a->'a list->'a list->unit) (l:'a list) : unit =
     fold_left_with_memo (fun () -> f) () l
+
+  (* applies fold left while a given predicate is satisfied *)
+  let rec fold_left_while (pred:'b->bool) (f:'a->'b->'a) (accu:'a) (l:'b list) : 'a =
+    match l with
+    | [] -> accu
+    | h :: t ->
+      if pred h then fold_left_while pred f (f accu h) t
+      else accu
+
+  (* puts the elements of a list that verify a predicate in head *)
+  let filter_in_head (pred:'a->bool) (l:'a list) : 'a list =
+    let (yes,no) = partition_unordered pred l in
+    List.rev_append yes no
 end
 
 
@@ -1287,41 +1300,6 @@ module Set = struct
       | Empty -> Config.internal_error "[extensions.ml >> Set.choose_and_apply] The set should not be empty."
       | Node{l;v;r;_} -> iter (f v) l; iter (f v) r
 
-  end
-end
-
-
-(* multisets represented as maps from elements to multiplicity *)
-module Multiset = struct
-  (* functions of the module *)
-  module type S = sig
-    type t
-    type elt
-    val empty : t (* an empty multiset *)
-    val add : elt -> t -> t (* increases the multiplicity of an element *)
-    val remove : elt -> t -> t (* decreases the multiplicity of an element (internal error if the element is not already present) *)
-    val mem : elt -> t -> bool (* checks membership *)
-  end
-
-  (* instanciation *)
-  module Make(O:sig type t val compare : t -> t -> int end) = struct
-    type elt = O.t
-
-    module MS = Map.Make(O)
-    type t = int MS.t
-
-    let empty = MS.empty
-    let add x set =
-      match MS.find_opt x set with
-      | None -> MS.add x 1 set
-      | Some n -> MS.add x (n+1) set
-    let remove x set =
-      match MS.find_opt x set with
-      | None -> Config.internal_error "[process_session.ml >> Multiset.remove] removing an absent channel."
-      | Some 1 -> MS.remove x set
-      | Some n -> MS.add x (n+1) set
-    let mem x set =
-      MS.find_opt x set <> None
   end
 end
 

@@ -22,11 +22,16 @@ module Symbolic : sig
   end
 
   (* a datatype for representing transitions between symbolic processes *)
+  type transition_type =
+    | In
+    | Out
+    | Comm
   type transition = {
     target : Index.t;
-    skel_target : Labelled_process.Skeleton.t;
-    label : Label.t;
+    skel_target : Labelled_process.Skeleton.t one_or_two;
+    label : Label.t one_or_two;
     forall : bool;
+    type_of : transition_type;
   }
 
   (* a module for representing symbolic processes *)
@@ -109,11 +114,16 @@ end = struct
       )
   end
 
+  type transition_type =
+    | In
+    | Out
+    | Comm
   type transition = {
     target : Index.t;
-    skel_target : Labelled_process.Skeleton.t;
-    label : Label.t;
+    skel_target : Labelled_process.Skeleton.t one_or_two;
+    label : Label.t one_or_two;
     forall : bool;
+    type_of : transition_type;
   }
 
   module Process = struct
@@ -267,10 +277,22 @@ end = struct
   module Transition = struct
     (* for printing purpose *)
     let print (source:Index.t) (tr:transition) : unit =
-      Printf.printf "%d -> %d (lab=%s, forall=%b, after reduced subprocess:%s) " source tr.target (Label.to_string tr.label) tr.forall (Labelled_process.Skeleton.print tr.skel_target)
+      let string_labs =
+        match tr.label with
+        | Single label -> Label.to_string label
+        | Double (lab1,lab2) -> Printf.sprintf "%s/%s" (Label.to_string lab1) (Label.to_string lab2) in
+      let string_skels =
+        match tr.skel_target with
+        | Single skel -> Labelled_process.Skeleton.print skel
+        | Double (skel1,skel2) -> Printf.sprintf "%s/%s" (Labelled_process.Skeleton.print skel1) (Labelled_process.Skeleton.print skel2) in
+      Printf.printf "%d -> %d (lab=%s, forall=%b, after reduced subprocess:%s) " source tr.target string_labs tr.forall string_skels
 
     let add_transition_start (csys_set:Set.t ref) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord, Term.name) Subst.t) (cs:Process.t) (lab:Label.t) (status:Status.t) : unit =
-      Configuration.normalise lab conf eqn (fun gather conf_norm skel ->
+      Configuration.normalise conf eqn (fun gather conf_norm skel_list ->
+        let skel =
+          match skel_list with
+          | [skel] -> skel
+          | _ -> Config.internal_error "[equivalence_session.ml >> Symbolic.Transition.add_transition_input] Unexpected number of skeletons after normalisation." in
         let equations = Labelled_process.Normalise.equations gather in
         let disequations = Labelled_process.Normalise.disequations gather in
         try
@@ -281,9 +303,10 @@ end = struct
 
           let transition = {
             target = target;
-            skel_target = skel;
-            label = lab;
+            skel_target = Single skel;
+            label = Single lab;
             forall = true;
+            type_of = In;
           } in
           accu := transition :: !accu;
           csys_set := new_set
@@ -292,7 +315,11 @@ end = struct
       )
 
     let add_transition_output (csys_set:Set.t ref) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord, Term.name) Subst.t) (cs:Process.t) (ax:axiom) (od:Labelled_process.Output.data) (new_status:Status.t) : unit =
-      Configuration.normalise ~context:od.Labelled_process.Output.context od.Labelled_process.Output.lab conf eqn (fun gather conf_norm skel ->
+      Configuration.normalise ~context:od.Labelled_process.Output.context conf eqn (fun gather conf_norm skel_list ->
+        let skel =
+          match skel_list with
+          | [skel] -> skel
+          | _ -> Config.internal_error "[equivalence_session.ml >> Symbolic.Transition.add_transition_input] Unexpected number of skeletons after normalisation." in
         let equations = Labelled_process.Normalise.equations gather in
         let disequations = Labelled_process.Normalise.disequations gather in
         let t0 = Subst.apply equations od.Labelled_process.Output.term (fun x f -> f x) in
@@ -309,9 +336,10 @@ end = struct
 
           let transition = {
             target = target;
-            skel_target = skel;
-            label = od.Labelled_process.Output.lab;
+            skel_target = Single skel;
+            label = Single od.Labelled_process.Output.lab;
             forall = od.Labelled_process.Output.optim;
+            type_of = Out;
           } in
           accu := transition :: !accu;
           csys_set := new_set
@@ -320,33 +348,64 @@ end = struct
       )
 
     let add_transition_input (csys_set:Set.t ref) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord,Term.name) Subst.t) (cs:Process.t) (var_X:snd_ord_variable) (idata:Labelled_process.Input.data) (new_status:Status.t) : unit =
-      Configuration.normalise idata.Labelled_process.Input.lab conf eqn (fun gather conf_norm skel ->
+      Configuration.normalise conf eqn (fun gather conf_norm skel_list ->
+        let skel =
+          match skel_list with
+          | [skel] -> skel
+          | _ -> Config.internal_error "[equivalence_session.ml >> Symbolic.Transition.add_transition_input] Unexpected number of skeletons after normalisation." in
         let equations = Labelled_process.Normalise.equations gather in
         let disequations = Labelled_process.Normalise.disequations gather in
         let inp = Subst.apply equations (of_variable idata.Labelled_process.Input.var) (fun x f -> f x) in
         let ded_fact = BasicFact.create var_X inp in
 
         try
-          let cs1 =
-            Constraint_system.apply_substitution cs equations in
-          let cs2 =
-            Constraint_system.add_basic_fact cs1 ded_fact in
-          let cs3 =
-            Constraint_system.add_disequations cs2 disequations in
+          let cs1 = Constraint_system.apply_substitution cs equations in
+          let cs2 = Constraint_system.add_basic_fact cs1 ded_fact in
+          let cs3 = Constraint_system.add_disequations cs2 disequations in
           let cs4 = Process.successor cs3 conf_norm new_status in
           let (new_set,target) = Set.add_new_elt !csys_set cs4 in
 
           let transition = {
             target = target;
-            skel_target = skel;
-            label = idata.Labelled_process.Input.lab;
+            skel_target = Single skel;
+            label = Single idata.Labelled_process.Input.lab;
             forall = idata.Labelled_process.Input.optim;
+            type_of = In;
           } in
           accu := transition :: !accu;
           csys_set := new_set
         with
           | Constraint_system.Bot -> ()
       )
+
+    let add_transition_comm (csys_set:Set.t ref) (accu:transition list ref) (conf:Configuration.t) (eqn:(fst_ord,Term.name) Subst.t) (cs:Process.t) (cdata:Labelled_process.PrivateComm.data) (new_status:Status.t) : unit =
+      Configuration.normalise conf eqn (fun gather conf_norm skel_list ->
+        let (skel_in,skel_out) =
+          match skel_list with
+          | [x;y] -> x,y
+          | _ -> Config.internal_error "[equivalence_session.ml >> Symbolic.Transition.add_transition_input] Unexpected number of skeletons after normalisation." in
+        let equations = Labelled_process.Normalise.equations gather in
+        let disequations = Labelled_process.Normalise.disequations gather in
+
+        try
+          let cs1 = Constraint_system.apply_substitution cs equations in
+          let cs2 = Constraint_system.add_disequations cs1 disequations in
+          let cs3 = Process.successor cs2 conf_norm new_status in
+          let (new_set,target) = Set.add_new_elt !csys_set cs3 in
+
+          let transition = {
+            target = target;
+            skel_target = Double (skel_in,skel_out);
+            label = Double (cdata.Labelled_process.PrivateComm.labs);
+            forall = cdata.Labelled_process.PrivateComm.optim;
+            type_of = Comm;
+          } in
+          accu := transition :: !accu;
+          csys_set := new_set
+        with
+          | Constraint_system.Bot -> ()
+      )
+
 
     let generate (v:vars) (type_of_transition:Configuration.Transition.kind option) (csys_set:Set.t ref) (cs:Process.t) : transition list =
       let status = Process.get_status cs in
@@ -374,8 +433,8 @@ end = struct
         ) (Configuration.outputs symp.Process.conf)
       | Some Configuration.Transition.RFocus ->
         let var_X = get_snd_ord v in
-        let potential_focuses =
-          Labelled_process.Input.unfold ~optim:(status=Status.ForAll) (Configuration.inputs symp.Process.conf) in
+        let (potential_focuses,potential_comm) =
+          Labelled_process.PrivateComm.unfold ~optim:(status=Status.ForAll) (Configuration.inputs symp.Process.conf) in
         List.iter (fun focus ->
           let conf_exec =
             Configuration.Transition.apply_focus var_X focus symp.Process.conf in
@@ -384,7 +443,16 @@ end = struct
           let next_status =
             Status.downgrade_forall status (snd focus).Labelled_process.Input.optim in
           add_transition_input csys_set accu conf_exec eqn cs var_X (snd focus) next_status
-        ) potential_focuses
+        ) potential_focuses;
+        List.iter (fun ((_,_,cdata) as comm) ->
+          let conf_exec =
+            Configuration.Transition.apply_comm comm symp.Process.conf in
+          let eqn =
+            Constraint_system.get_substitution_solution Protocol cs in
+          let next_status =
+            Status.downgrade_forall status cdata.Labelled_process.PrivateComm.optim in
+          add_transition_comm csys_set accu conf_exec eqn cs cdata next_status
+        ) potential_comm
       | Some Configuration.Transition.RPos ->
         let var_X = get_snd_ord v in
         let (idata,conf_exec) =
@@ -394,7 +462,7 @@ end = struct
         let next_status =
           Status.downgrade_forall status idata.Labelled_process.Input.optim in
         add_transition_input csys_set accu conf_exec eqn cs var_X idata next_status end;
-      !accu
+      List.filter_in_head (fun tr -> tr.forall) !accu
   end
 end
 
@@ -554,6 +622,18 @@ end = struct
     let clean (n:t) : t =
       {n with csys_set = Symbolic.Set.clean n.csys_set n.matching}
 
+    (* updates a bijection set one or twice *)
+    let single_or_double_update l1 l2 s1 s2 bset =
+      match l1, l2, s1, s2 with
+      | Single lfa, Single lex, Single sfa, Single sfx ->
+        BijectionSet.update lfa lex sfa sfx bset
+      | Double (lfa1,lfa2), Double (lex1,lex2), Double (sfa1,sfa2), Double (sfx1,sfx2) ->
+        begin match BijectionSet.update lfa1 lex1 sfa1 sfx1 bset with
+          | None -> None
+          | Some bset_upd -> BijectionSet.update lfa2 lex2 sfa2 sfx2 bset_upd
+        end
+      | _ -> Config.internal_error "[equivalence_session.ml >> PartitionTree.Node.single_or_double_update] Inconsistent number of arguments."
+
     (* From a partition tree node, generates the transitions and creates a new node with all the resulting processes inside. A
     NB. The constraint solving and the skeleton checks remain to be done after this function call. *)
     let generate_next (n:t) : Configuration.Transition.kind option * t =
@@ -575,16 +655,18 @@ end = struct
       let new_matching =
         Symbolic.Matching.fold (fun cs_fa cs_ex_list (accu1:Symbolic.Matching.t) ->
           let symp_fa = Symbolic.Set.find csys_set_with_transitions cs_fa in
-          List.fold_left (fun (accu2:Symbolic.Matching.t) (tr_fa:Symbolic.transition) ->
+          List.fold_left_while (fun tr -> tr.Symbolic.forall) (fun (accu2:Symbolic.Matching.t) (tr_fa:Symbolic.transition) ->
             if not tr_fa.Symbolic.forall then accu2
             else
               let cs_ex_list_new =
                 List.fold_left (fun (accu3:(Symbolic.Index.t*BijectionSet.t) list) (cs_ex,bset) ->
                   let symp_ex = Symbolic.Set.find csys_set_with_transitions cs_ex in
                   List.fold_left (fun (accu4:(Symbolic.Index.t*BijectionSet.t) list) (tr_ex:Symbolic.transition) ->
-                    match BijectionSet.update tr_fa.Symbolic.label tr_ex.Symbolic.label tr_fa.Symbolic.skel_target tr_ex.Symbolic.skel_target bset with
-                    | Some bset_upd -> (tr_ex.Symbolic.target,bset_upd) :: accu4
-                    | _ -> accu4
+                    if tr_fa.Symbolic.type_of = tr_ex.Symbolic.type_of then
+                      match single_or_double_update tr_fa.Symbolic.label tr_ex.Symbolic.label tr_fa.Symbolic.skel_target tr_ex.Symbolic.skel_target bset with
+                      | None -> accu4
+                      | Some bset_upd -> (tr_ex.Symbolic.target,bset_upd) :: accu4
+                    else accu4
                   ) accu3 (Symbolic.Process.get_transitions symp_ex)
                 ) [] cs_ex_list in
               Symbolic.Matching.add_match tr_fa.Symbolic.target cs_ex_list_new accu2
