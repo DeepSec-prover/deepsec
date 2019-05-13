@@ -50,7 +50,7 @@ let Voter(vote,id,auth,psk) =
 (* MIXER *)
 
 let Mixer(mix_ch)  =
-  !^3 (in(scanner, onion); out(mix_ch,onion)).
+  !^3 in(scanner, onion); out(mix_ch,onion).
 
 let Outcome(mix_ch,authA,authB,sk) =
   (* Receiving onions of the authenticated onions of A and B *)
