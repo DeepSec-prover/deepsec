@@ -1329,11 +1329,11 @@ module IndexedSet = struct
     type elt = O.elt
 
     module M = Map.Make(struct type t = index let compare = compare end)
-    type t = elt M.t * index ref
-    let empty : t = M.empty, ref (-1)
+    type t = elt M.t * index
+    let empty : t = M.empty, 0
     let is_empty (set,_) = M.is_empty set
     let choose (set,_) = snd (M.choose set)
-    let add_new_elt (set,ind) x = incr ind; (M.add !ind x set,ind),!ind
+    let add_new_elt (set,ind) x = (M.add ind x set,ind),(ind+1)
     let replace (set,im) i x =  (M.replace i (fun _ -> x) set,im)
     let find_opt (set,_) i = M.find_opt i set
     let find set i =
