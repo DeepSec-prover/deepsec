@@ -49,11 +49,8 @@ let Voter(vote,id,auth,psk) =
 
 (* MIXER *)
 
-let Mixer(mix_ch) = /* avoids a false attack by decorreling the order of inputs and outputs in Mixer */
-  in(scanner,onion1);
-  in(scanner,onion2);
-  in(scanner,onion3);
-  (out(mix_ch,onion1) | out(mix_ch,onion2) | out(mix_ch,onion3)).
+let Mixer(mix_ch) = /* this is the process that triggers the false attack */
+  !^3 in(scanner, onion); out(mix_ch,onion).
 
 let Outcome(mix_ch,authA,authB,sk) =
   (* Receiving onions of the authenticated onions of A and B *)
