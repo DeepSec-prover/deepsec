@@ -9,9 +9,15 @@ fun enc/3. /* randomized assymetric encryption */
 reduc dec(enc(x,pk(y),z),y) -> x. /* decryption */
 fun sign/2. /* signatures */
 reduc verify(sign(m,y),pk(y)) -> m. /* check signatures */
+reduc
+  double(x,x,x1) -> yes;
+  double(x,x1,x) -> yes;
+  double(x1,x,x) -> yes.
+
 
 const sk_sign1,sk_sign2,sk_sign3 [private].
 const sk_enc [private].
+
 
 
 
@@ -30,9 +36,9 @@ let mixer =
   in(c,sign1);
   in(c,sign2);
   in(c,sign3); (
-    out(secure_channel,verify(sign1,sk_sign1)) |
-    out(secure_channel,verify(sign2,sk_sign2)) |
-    out(secure_channel,verify(sign3,sk_sign3))
+    out(secure_channel,verify(sign1,pk(sk_sign1))) |
+    out(secure_channel,verify(sign2,pk(sk_sign2))) |
+    out(secure_channel,verify(sign3,pk(sk_sign3)))
   ).
 
 /* bulletin board receiving and publishing the votes */
@@ -45,8 +51,8 @@ let board =
   let v1 = dec(x1,sk_enc) in
   let v2 = dec(x2,sk_enc) in
   let v3 = dec(x3,sk_enc) in
-  /* publication of the results */
-  out(board_channel,(v1,v2,v3)).
+  if double(v1,v2,v3) = yes then 0
+  else out(board_channel,(v1,v2,v3)).
 
 
 /* the voting system */

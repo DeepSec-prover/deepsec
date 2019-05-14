@@ -63,19 +63,19 @@ Helios
     - DeepSec session: <1s (1 core), <1s (20 cores)
   + revote (Alice x2, Bob x1) **[equivalence]**
     - DeepSec vanilla: >12h (1 core), 2h41 [redo?] (20 cores)
-    - DeepSec session: ??? (1 core), ??? (20 cores)
+    - DeepSec session: 16min (1 core), 1min10 (20 cores)
   + revote (Alice x3, Bob x1) **[equivalence]**
     - DeepSec vanilla: >12h (1 core), >12h (20 cores)
-    - DeepSec session: ??? (1 core), ??? (20 cores)
+    - DeepSec session: 44min (1 core), 2min41 (20 cores)
   + revote (Alice x2, Bob x2) **[equivalence]**
     - DeepSec vanilla: >12h (1 core), 2h53 (20 cores)
-    - DeepSec session: ??? (1 core), ??? (20 cores)
+    - DeepSec session: 50min (1 core), 3min27 (20 cores)
   + revote (Alice x4, Bob x1) **[equivalence]**
     - DeepSec vanilla: >12h (1 core), >12h (20 cores)
-    - DeepSec session: ??? (1 core), ??? (20 cores)
+    - DeepSec session: SINCE 5:30PM (1 core), 6min34 (20 cores)
   + revote (Alice x3, Bob x2) **[equivalence]**
     - DeepSec vanilla: >12h (1 core), >12h (20 cores)
-    - DeepSec session: ??? (1 core), ??? (20 cores)
+    - DeepSec session: SINCE 5:30PM (1 core), 8min28 (20 cores)
   + revote (Alice x5, Bob x1) **[equivalence]**
     - DeepSec vanilla: >12h (1 core), >12h (20 cores)
     - DeepSec session: ??? (1 core), ??? (20 cores)
@@ -92,5 +92,16 @@ Scytl
 -------
 
 * 5 roles **[equivalence]**
-  - DeepSec Vanilla: 56min (1 core), ??? (20 cores)
+  - DeepSec vanilla: 56min (1 core), 3min8 (20 cores)
   - DeepSec session: 1s (1 core), 1s (20 cores)
+
+
+-------
+
+AKA
+-------
+
+* anonymity
+  + 3 sessions **[equivalence]**
+    - DeepSec vanilla: 30s (20 cores)
+    - Deepsec session: ??? (20 cores)
