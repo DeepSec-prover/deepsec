@@ -72,13 +72,13 @@ Helios
     - DeepSec session: 50min (1 core), 3min27 (20 cores)
   + revote (Alice x4, Bob x1) **[equivalence]**
     - DeepSec vanilla: >12h (1 core), >12h (20 cores)
-    - DeepSec session: SINCE 5:30PM (1 core), 6min34 (20 cores)
+    - DeepSec session: 2h18 (1 core), 6min34 (20 cores)
   + revote (Alice x3, Bob x2) **[equivalence]**
     - DeepSec vanilla: >12h (1 core), >12h (20 cores)
     - DeepSec session: SINCE 5:30PM (1 core), 8min28 (20 cores)
   + revote (Alice x5, Bob x1) **[equivalence]**
     - DeepSec vanilla: >12h (1 core), >12h (20 cores)
-    - DeepSec session: ??? (1 core), 13min (20 cores)
+    - DeepSec session: SINCE 7:49PM (1 core), 13min (20 cores)
   + revote (Alice x4, Bob x2) **[equivalence]**
     - DeepSec vanilla: >12h (1 core), >12h (20 cores)
     - DeepSec session: ??? (1 core), 18min (20 cores)
@@ -97,6 +97,30 @@ Scytl
 * 5 roles **[equivalence]**
   - DeepSec vanilla: 56min (1 core), 3min8 (20 cores)
   - DeepSec session: 1s (1 core), 1s (20 cores)
+
+
+-------
+
+Running example paper
+-------
+
+* 2 honnest voters, 1 dishonnest voter
+  - DeepSec vanilla: ??? (1 core)
+  - DeepSec session: ??? (1 core)
+
+* 2 honnest voters, 2 dishonnest voters
+  - DeepSec vanilla: ??? (1 core)
+  - DeepSec session: ??? (1 core)
+
+* 2 honnest voters, 3 dishonnest voters
+  - DeepSec vanilla: ??? (1 core)
+  - DeepSec session: ??? (1 core)
+
+* 2 honnest voters, 4 dishonnest voters
+  - DeepSec vanilla: ??? (1 core)
+  - DeepSec session: ??? (1 core)
+
+
 
 
 -------
