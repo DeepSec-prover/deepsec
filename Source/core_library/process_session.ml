@@ -4,37 +4,6 @@ open Extensions
 open Term
 open Display
 
-(* a module for representing process labels *)
-(*module Label : sig
-  type t = int list
-  val initial : t (* an initial, empty label *)
-  val add_position : t -> int -> t (* adds a position at the end of a label *)
-  val independent : t -> t -> int (* returns 0 if one label is prefix of the other, and compares them lexicographically otherwise *)
-  val compare : t -> t -> int (* Alias of independent *)
-  val to_string : t -> string (* conversion to printable *)
-  (* operations on sets of labels *)
-  module Set : Set.S with type elt = t
-end = struct
-  type t = int list
-  let initial = [0]
-  let add_position (prefix:t) (position:int) : t = prefix @ [position]
-  let to_string (lab:t) : string =
-    match lab with
-    | [] -> Config.internal_error "[process_session.ml >> Label.to_string] Unexpected case."
-    | h :: t ->
-      List.fold_left (Printf.sprintf "%s.%d") (string_of_int h) t
-  let rec independent (l:t) (ll:t) : int =
-    match l,ll with
-    | [], _ -> 0
-    | _, [] -> 0
-    | t1::q1, t2::q2 ->
-        match compare t1 t2 with
-          | 0 -> independent q1 q2
-          | i -> i
-  let compare = independent
-  module Set = Set.Make(struct type t = int list let compare = compare end)
-end*)
-
 module Label : sig
   type t =
     { label : int list;
@@ -1974,7 +1943,7 @@ module Configuration : sig
   val get_improper_labels : (Label.t list -> t -> 'a) -> t -> 'a
 
   val force_release_skeleton : t -> t
-  
+
   (* a module for operating on transitions *)
   module Transition : sig
     type kind =
