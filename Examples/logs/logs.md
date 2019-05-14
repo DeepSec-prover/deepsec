@@ -62,28 +62,28 @@ Helios
     - DeepSec vanilla: 3s (1 core), 2s (20 cores)
     - DeepSec session: <1s (1 core), <1s (20 cores)
   + revote (Alice x2, Bob x1) **[equivalence]**
-    - DeepSec vanilla: >12h (1 core), 2h41 [to be checked] (20 cores)
+    - DeepSec vanilla: >12h (1 core), 2h41 [redo?] (20 cores)
     - DeepSec session: ??? (1 core), ??? (20 cores)
   + revote (Alice x3, Bob x1) **[equivalence]**
-    - DeepSec vanilla: >12h (1 core), ??? (20 cores)
+    - DeepSec vanilla: >12h (1 core), >12h (20 cores)
     - DeepSec session: ??? (1 core), ??? (20 cores)
   + revote (Alice x2, Bob x2) **[equivalence]**
     - DeepSec vanilla: >12h (1 core), 2h53 (20 cores)
     - DeepSec session: ??? (1 core), ??? (20 cores)
   + revote (Alice x4, Bob x1) **[equivalence]**
-    - DeepSec vanilla: >12h (1 core), ??? (20 cores)
+    - DeepSec vanilla: >12h (1 core), >12h (20 cores)
     - DeepSec session: ??? (1 core), ??? (20 cores)
   + revote (Alice x3, Bob x2) **[equivalence]**
-    - DeepSec vanilla: >12h (1 core), ??? (20 cores)
+    - DeepSec vanilla: >12h (1 core), >12h (20 cores)
     - DeepSec session: ??? (1 core), ??? (20 cores)
   + revote (Alice x5, Bob x1) **[equivalence]**
-    - DeepSec vanilla: >12h (1 core), ??? (20 cores)
+    - DeepSec vanilla: >12h (1 core), >12h (20 cores)
     - DeepSec session: ??? (1 core), ??? (20 cores)
   + revote (Alice x4, Bob x2) **[equivalence]**
-    - DeepSec vanilla: >12h (1 core), ??? (20 cores)
+    - DeepSec vanilla: >12h (1 core), >12h (20 cores)
     - DeepSec session: ??? (1 core), ??? (20 cores)
   + revote (Alice x3, Bob x3) **[equivalence]**
-    - DeepSec vanilla: >12h (1 core), ??? (20 cores)
+    - DeepSec vanilla: >12h (1 core), >12h (20 cores)
     - DeepSec session: ??? (1 core), ??? (20 cores)
 
 -------

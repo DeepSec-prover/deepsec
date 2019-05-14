@@ -1,0 +1,67 @@
+free c. /* communication channel */
+free secure_channel [private]. /* a secure channel between mixer and board */
+free board_channel. /* channel for annoucing the result of the election */
+
+const yes,no. /* potential votes */
+
+fun pk/1. /* public key generation */
+fun enc/3. /* randomized assymetric encryption */
+reduc dec(enc(x,pk(y),z),y) -> x. /* decryption */
+fun sign/2. /* signatures */
+reduc verify(sign(m,y),pk(y)) -> m. /* check signatures */
+
+const sk_sign1,sk_sign2,sk_sign3 [private].
+const sk_enc [private].
+
+
+
+/* a voter voting for v with public key pk */
+let honnest_voter(v,sk_sign) =
+  new r;
+  let v_enc = enc(v,pk(sk_enc),r) in
+  out(c,sign(v_enc,sk_sign)).
+
+/* a dishonnest voter that reveals its signature key */
+let dishonnest_voter(sk_sign) =
+  out(c,sk_sign).
+
+/* mixnet */
+let mixer =
+  in(c,sign1);
+  in(c,sign2);
+  in(c,sign3); (
+    out(secure_channel,verify(sign1,sk_sign1)) |
+    out(secure_channel,verify(sign2,sk_sign2)) |
+    out(secure_channel,verify(sign3,sk_sign3))
+  ).
+
+/* bulletin board receiving and publishing the votes */
+let board =
+  /* receiving the mixed votes */
+  in(secure_channel,x1);
+  in(secure_channel,x2);
+  in(secure_channel,x3);
+  /* decrypting the votes (fails if they are not encryptions) */
+  let v1 = dec(x1,sk_enc) in
+  let v2 = dec(x2,sk_enc) in
+  let v3 = dec(x3,sk_enc) in
+  /* publication of the results */
+  out(board_channel,(v1,v2,v3)).
+
+
+/* the voting system */
+let system(v1,v2) =
+  out(c,pk(sk_enc));
+  out(c,pk(sk_sign1));
+  out(c,pk(sk_sign2));
+  out(c,pk(sk_sign3));
+
+  honnest_voter(v1,sk_sign1) |
+  honnest_voter(v2,sk_sign2) |
+  dishonnest_voter(sk_sign3) |
+  mixer | board.
+
+
+
+/* vote privacy for 4 honnest voters and 2 dishonnest voter */
+query trace_equiv(system(yes,no),system(no,yes)).

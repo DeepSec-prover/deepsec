@@ -42,10 +42,10 @@ free scanner, board.
 free idA, idB.
 
 let Voter(vote,id,auth,psk) =
-    new r;
-    let onion = enc(vote, psk, r) in
-    out(scanner, (id, onion));
-    out(auth, onion).
+  new r;
+  let onion = enc(vote, psk, r) in
+  out(scanner, (id, onion));
+  out(auth, onion).
 
 (* MIXER *)
 

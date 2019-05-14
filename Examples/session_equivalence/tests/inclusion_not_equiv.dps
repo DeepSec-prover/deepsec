@@ -2,7 +2,7 @@ free c.
 const ok.
 
 
-// This is not a counterexample (session inclusion does not hold because of the skeleton check)
+// This is **not** an actual counterexample (session inclusion does not hold because of the skeleton check)
 let P =
   new k; (
     out(c,k) |
@@ -23,4 +23,4 @@ let Q =
   ).
 
 
-query session_incl(P,Q).
+query trace_equiv(P,Q).
