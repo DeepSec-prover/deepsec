@@ -1,7 +1,6 @@
 free c. /* communication channel */
-free reveal. /* channel to reveal information to the environment/attacker */
 free secure_channel [private]. /* a secure channel between mixer and board */
-free login_channel [private]. /* a secure channel to transmit signature keys */
+free login_channel [private]. /* a secure channel for sending signature keys */
 
 const yes,no. /* potential votes */
 
@@ -13,32 +12,39 @@ reduc verify(sign(m,y),pk(y)) -> m. /* check signatures */
 
 const sk_enc [private]. /* encryption key */
 
-
+free channel_Alice,channel_Bob.
 
 
 /* a voter voting for v with public key pk */
-let honnest_voter(v) =
+let honnest_voter(id,v) =
   new sk_sign;
   let pk_sign = pk(sk_sign) in
   new r;
   let v_enc = enc((v,pk_sign),pk(sk_enc),r) in
   out(login_channel,pk_sign);
-  out(reveal,pk_sign);
-  out(c,sign(v_enc,sk_sign)).
+  out(id,pk_sign);
+  out(id,sign(v_enc,sk_sign)).
 
 /* a dishonnest voter that reveals its signature key */
 let dishonnest_voter =
   new sk_sign;
   out(login_channel,pk(sk_sign));
-  out(reveal,sk_sign).
+  out(c,sk_sign).
 
-/* mixnet */
 let mixer =
-  /* receiving signature keys and signed votes */
-  in(login_channel,pk_sign);
-  in(c,x);
-  let (v,lolo) = dec(verify(x,pk_sign),sk_enc) in
-  out(c,v).
+  in(login_channel,pk_sign1); in(c,x1);
+  in(login_channel,pk_sign2); in(c,x2);
+  in(login_channel,pk_sign3); in(c,x3);
+  in(login_channel,pk_sign4); in(c,x4);
+  let (v1,=pk_sign1) = dec(verify(x1,pk_sign1),sk_enc) in
+  let (v2,=pk_sign2) = dec(verify(x2,pk_sign2),sk_enc) in
+  let (v3,=pk_sign3) = dec(verify(x3,pk_sign3),sk_enc) in
+  let (v4,=pk_sign4) = dec(verify(x4,pk_sign4),sk_enc) in (
+    out(secure_channel,v1) |
+    out(secure_channel,v2) |
+    out(secure_channel,v3) |
+    out(secure_channel,v4)
+  ).
 
 /* bulletin board receiving and publishing the votes */
 let board =
@@ -47,24 +53,20 @@ let board =
   in(secure_channel,x2);
   in(secure_channel,x3);
   in(secure_channel,x4);
-  /* decrypting the votes (fails if they are not encryptions) */
-  let (id1,v1) = dec(x1,sk_enc) in
-  let (id2,v2) = dec(x2,sk_enc) in
-  let (id3,v3) = dec(x3,sk_enc) in
-  let (id4,v4) = dec(x4,sk_enc) in
-  out(reveal,(v1,v2,v3,v4)).
+  out(c,(x1,x2,x3,x4)).
 
 
 /* the voting system */
 let system(v1,v2) =
-  out(c,sk_enc); (
-    honnest_voter(v1) |
-    honnest_voter(v2) |
+  out(c,pk(sk_enc)); (
+    honnest_voter(channel_Alice,v1) |
+    honnest_voter(channel_Bob,v2) |
     !^2 dishonnest_voter |
-    !^4 mixer
+    mixer |
+    board
   ).
 
 
 
 /* vote privacy for 4 honnest voters and 2 dishonnest voter */
-query session_equiv(system(yes,no),system(no,yes)).
+query session_equiv(system(yes,no),system(no,yes)). /* equivalence */
