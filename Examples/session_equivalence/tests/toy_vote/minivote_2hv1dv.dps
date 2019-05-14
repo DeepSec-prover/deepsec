@@ -83,3 +83,6 @@ let system_bis(v1,v2) =
 /* vote privacy for 4 honnest voters and 2 dishonnest voter */
 query session_equiv(system_bis(yes,no),system_bis(no,yes)). /* false attack */
 query session_equiv(system(yes,no),system(no,yes)). /* equivalence */
+
+query trace_equiv(system_bis(yes,no),system_bis(no,yes)). /* equivalence */
+query trace_equiv(system(yes,no),system(no,yes)). /* equivalence */
