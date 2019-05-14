@@ -219,7 +219,7 @@ module Channel : sig
   val compare : t -> t -> int
   val is_public : t -> bool
   val to_string : t -> string
-  val from_term : protocol_term -> t
+  val from_term : protocol_term -> t (* NB. prints an error message if the term is not a term or a symbol => should not be used after distributed computation starts *)
   val apply_renaming : Name.Renaming.t -> t -> t
 
   module Set : sig
@@ -256,7 +256,10 @@ end = struct
   let from_term (t:protocol_term) : t =
     if Term.is_function t then Symbol (Term.root t)
     else if Term.is_name t then Name (Term.name_of t)
-    else Config.internal_error "[process_session.ml >> Channel.from_term] Channels should be names or symbols."
+    else (
+      Printf.printf "Error! The term %s is used as a channel. Only public/private [constants] and [new names] are supported as channels for queries of equivalence by session.\n" (Term.display Terminal Protocol t);
+      exit 0
+    )
   let apply_renaming (rho:Name.Renaming.t) (c:t) : t =
     match c with
     | Symbol _ -> c
