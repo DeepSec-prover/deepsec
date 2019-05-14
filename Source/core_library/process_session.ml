@@ -1970,9 +1970,11 @@ module Configuration : sig
   val release_skeleton : t -> t option (* assuming all skeletons have been checked, marks them as not in standby anymore. *)
   val display_blocks : t -> string
   val get_block_list : t -> Block.t list
-  val occurs_in_process : fst_ord_variable -> t -> bool
+  val occurs_in_process : fst_ord_variable -> (fst_ord, name) Subst.t -> t -> bool
   val get_improper_labels : (Label.t list -> t -> 'a) -> t -> 'a
 
+  val force_release_skeleton : t -> t
+  
   (* a module for operating on transitions *)
   module Transition : sig
     type kind =
@@ -2013,16 +2015,20 @@ end = struct
 
   (* Function to only apply on configuration corresponding to a node of the
      partition tree (i.e. normalised) *)
-  let occurs_in_process v conf =
-    List.exists (Labelled_process.occurs v) conf.input_proc ||
-    List.exists (Labelled_process.occurs v) conf.sure_output_proc ||
+  let occurs_in_process v subst conf =
+    let test_function p =
+      let p' = Labelled_process.apply_substitution subst p in
+      Labelled_process.occurs v p'
+    in
+    List.exists test_function conf.input_proc ||
+    List.exists test_function conf.sure_output_proc ||
     begin match conf.focused_proc with
       | None -> false
-      | Some p -> Labelled_process.occurs v p
+      | Some p -> test_function p
     end ||
     begin match conf.sure_unchecked_skeletons with
       | None -> false
-      | Some (p,rebuild) -> Labelled_process.occurs v (rebuild p)
+      | Some (p,rebuild) -> test_function (rebuild p)
     end
 
   let get_improper_labels f_next conf =
@@ -2166,6 +2172,10 @@ end = struct
     | _, _ ->
         Config.internal_error "[process_session.ml >> release_skeleton] A process is either focused or released."
 
+  let force_release_skeleton conf =
+    match conf.sure_unchecked_skeletons with
+      | None -> conf
+      | Some (p,rebuild) -> { conf with sure_output_proc = (rebuild p) :: conf.sure_output_proc; sure_unchecked_skeletons = None }
   module Transition = struct
     type kind =
       | RFocus

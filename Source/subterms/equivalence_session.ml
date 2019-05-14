@@ -242,8 +242,10 @@ end = struct
       match Matching.remove matching !indexes_to_remove with
       | _, Some index ->
         (* Printf.printf "Oh, %s triggers an attack!\n" (Index.to_string index); *)
-        let (csys: Process.t) = find new_procs index in
-        raise (Process.Attack_Witness csys)
+        let csys = find new_procs index in
+        let conf = Process.get_conf csys in
+        let csys' = Process.replace_conf csys (Configuration.force_release_skeleton conf) in
+        raise (Process.Attack_Witness csys')
       | cleared_matching, None -> new_procs,cleared_matching
 
     (* removing useless constraint systems (exists-only matching no forall) *)
@@ -270,7 +272,9 @@ end = struct
         let conf = Process.get_conf csys in
         List.for_all (fun vars_snd ->
           let vars_fst = Constraint_system.get_associated_fst_ord_var csys vars_snd in
-          Constraint_system.occurs_in_frame csys vars_fst || Configuration.occurs_in_process vars_fst conf
+          let fst_subst = Constraint_system.get_substitution_solution Protocol csys in
+          Constraint_system.occurs_in_frame csys vars_fst ||
+          Configuration.occurs_in_process vars_fst fst_subst conf
         ) vars_to_check
       ) (csys_fa::csys_list)
 
