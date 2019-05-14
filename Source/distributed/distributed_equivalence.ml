@@ -117,13 +117,13 @@ struct
             | Equivalence_determinate.Not_Trace_Equivalent csys -> Not_Equivalent (ODeterminate (csys, data.init_conf1, data.init_conf2))
           end
       | DSession data ->
-        begin try
-          Equivalence_session.PartitionTree.explore_from data.node;
-          Equivalent
-        with
-        | Equivalence_session.Symbolic.Process.Attack_Witness csys ->
-          Not_Equivalent (OSession (csys, data.s_init_conf1, data.s_init_conf2))
-        end
+          begin try
+            Equivalence_session.PartitionTree.explore_from data.node;
+            Equivalent
+          with
+            | Equivalence_session.Symbolic.Process.Attack_Witness csys ->
+              Not_Equivalent (OSession (csys, data.s_init_conf1, data.s_init_conf2))
+          end
 
   let digest result = match result with
     | Equivalent -> Continue

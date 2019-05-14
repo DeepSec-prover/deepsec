@@ -82,6 +82,11 @@ exception Bot
 
 (******** Access functions ********)
 
+(* Should only be applied on solved constraint system. *)
+let get_associated_fst_ord_var csys v =
+  variable_of (DF.get_protocol_term csys.df v)
+
+
 let get_vars_Term = get_vars_with_list
 
 let get_names_Term = get_names_with_list
@@ -135,6 +140,9 @@ let get_axioms_with_list csys ax_list =
   !result
 
 (******** Scanning *****)
+
+let occurs_in_frame csys v = K.mem_fst_ord_variable v csys.sdf
+
 
 let is_solved csys = Tools.is_solved_DF csys.df
 

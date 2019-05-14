@@ -33,6 +33,10 @@ val get_names_with_list : 'a t ->  name list -> name list
 (** [get_axioms_with_list] {% $\C$ %} [l] adds the axiom in {% $\C$ %} in the list [l]. Note that it does not cover the potential axioms in the additional data. The addition of an axiom as the union of sets, i.e. there is no dupplicate in the resulting list..*)
 val get_axioms_with_list : 'a t -> axiom list -> axiom list
 
+val get_associated_fst_ord_var : 'a t -> snd_ord_variable -> fst_ord_variable
+
+val occurs_in_frame : 'a t -> fst_ord_variable -> bool
+
 (** {3 Generators} *)
 
 (** [create_from_free_names data] {% $[\ax_{-n};\ldots; \ax_0]$ returns the contraint system $\C = \ecsys{\emptyset}{\emptyset}{\top}{\top}{\Solved}{\emptyset}{\emptyset}$

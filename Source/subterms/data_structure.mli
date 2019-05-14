@@ -66,6 +66,8 @@ module K : sig
 
   (** {3 Testing} *)
 
+  val mem_fst_ord_variable : fst_ord_variable -> t -> bool
+
   (** [find] {% $\Solved$ %} [f] returns [f psi] where [psi] is a deduction fact of {% $\Solved$ %} such that [f psi] is
       different from [None], when such [psi] exists. Otherwise it returns [None]. *)
   val find_protocol_opt : t -> protocol_term -> recipe option

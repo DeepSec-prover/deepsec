@@ -398,6 +398,11 @@ module K = struct
 
   (******* Testing ********)
 
+  let mem_fst_ord_variable v k =
+    IntMap.exists (fun _ cell ->
+      var_occurs v (Fact.get_protocol_term cell.fact)
+    ) k.map
+
   let find_protocol_opt k t = match IntMap.search_opt (fun cell -> is_equal Protocol (Fact.get_protocol_term cell.fact) t) k.map with
     | None ->
         begin match IntMap.search_opt (fun cell -> is_equal Protocol (Fact.get_protocol_term cell.g_fact) t) k.map_ground with

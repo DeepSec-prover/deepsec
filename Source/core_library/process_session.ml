@@ -4,7 +4,6 @@ open Extensions
 open Term
 open Display
 
-
 (* a module for representing process labels *)
 (*module Label : sig
   type t = int list
@@ -119,9 +118,10 @@ end
 module Block : sig
   type t
   val create : Label.t -> t (* creation of a new empty block *)
+  val get_label : t -> Label.t
   val add_variable : snd_ord_variable -> t -> t (* adds a second order variable in a block *)
   val add_axiom : axiom -> t -> t (* adds an axiom in a block *)
-  val is_authorised : t list -> t -> (snd_ord, axiom) Subst.t -> bool (* checks whether a block is authorised after a list of blocks *)
+  val is_authorised : t list -> t -> (snd_ord, axiom) Subst.t -> bool * snd_ord_variable list (* checks whether a block is authorised after a list of blocks *)
   val print : t -> string (* converts a block into a string *)
   val match_labels : (Label.t list -> unit) -> t list -> t list -> unit
   val check_labels : Label.t list -> Label.t list -> bool
@@ -133,8 +133,14 @@ end = struct
     recipes : snd_ord_variable list; (* There should always be variables *)
     bounds_axiom : (int * int) option; (* lower and upper bound on the axiom index used *)
     maximal_var : int;
-    used_axioms : IntSet.t
+    used_axioms : IntSet.t;
+    used_variables : snd_ord_variable list
+      (* The [recipes] are the free variables whereas [used_variables] are the remaining
+         variables after instantiation of the solutions of the constraint system, i.e.,
+         they are variables in deduction facts of the constraint system. *)
   }
+
+  let get_label t = t.label
 
   let print b =
     let ax = match b.bounds_axiom with
@@ -151,7 +157,8 @@ end = struct
       recipes = [];
       bounds_axiom = None;
       maximal_var = 0;
-      used_axioms = IntSet.empty
+      used_axioms = IntSet.empty;
+      used_variables = []
   }
 
   let add_variable (snd_var:snd_ord_variable) (block:t) : t =
@@ -165,25 +172,31 @@ end = struct
     | Some (i,_) ->
       {block with bounds_axiom = Some (i,Axiom.index_of ax)}
 
-  let rec is_faulty_block (block:t) (block_list:t list) : bool =
+  let rec is_faulty_block (block:t) (block_list:t list) : bool * snd_ord_variable list =
     match block_list with
-    | [] -> false
+    | [] -> false, []
     | b_i::q ->
       let comp_lab = Label.independent block.label b_i.label in
       if comp_lab < 0 then
         match b_i.bounds_axiom with
-        | None -> true
+        | None -> true, []
         | Some (min_ax,max_ax) ->
-          block.maximal_var < min_ax &&
-          IntSet.for_all (fun ax -> ax < min_ax || ax > max_ax) block.used_axioms
+            if IntSet.for_all (fun ax -> ax < min_ax || ax > max_ax) block.used_axioms
+            then
+              (* If faulty then it is necessary due to variables *)
+              if block.maximal_var < min_ax
+              then true, []
+              else false, List.filter (fun v -> Variable.type_of v >= min_ax) block.used_variables
+            else false, [] (* A real non faulty since there are axioms from block_i used by block *)
       else if comp_lab > 0 then is_faulty_block block q
-      else false
+      else false, []
 
   (* applies a snd order substitution on a block list and computes the bound
   fields of the block type *)
   let apply_snd_subst_on_block (snd_subst:(snd_ord,axiom) Subst.t) (block_list:t list) : t list =
     Subst.apply snd_subst block_list (fun l f ->
       List.map (fun block ->
+        let used_variables = ref [] in
         let max_var = ref 0 in
         let used_axioms = ref IntSet.empty in
         List.iter (fun var ->
@@ -193,29 +206,49 @@ end = struct
             | Some ax, None ->
               used_axioms := IntSet.add (Axiom.index_of ax) !used_axioms
             | None, Some v ->
-              max_var := max !max_var (Variable.type_of v)
+              max_var := max !max_var (Variable.type_of v);
+              (* Should be changed with linked for faster results. *)
+              if not (List.memq v !used_variables)
+              then used_variables := v :: !used_variables
             | _, _ ->
               Config.internal_error "[process_session.ml >> apply_snd_subst_on_block] The function Term.iter_variables_and_axioms should return one filled option."
           ) r';
         ) block.recipes;
 
-        {block with used_axioms = !used_axioms; maximal_var = !max_var}
+        {block with used_axioms = !used_axioms; maximal_var = !max_var; used_variables = !used_variables }
       ) l
     )
 
-  let is_authorised (block_list:t list) (cur_block:t) (snd_subst:(snd_ord,axiom) Subst.t) : bool =
+  let is_authorised (block_list:t list) (cur_block:t) (snd_subst:(snd_ord,axiom) Subst.t) : bool * snd_ord_variable list =
     let block_list_upd =
       apply_snd_subst_on_block snd_subst (cur_block::block_list) in
     (* Printf.printf "AUTHORISATION CHECK:\n";
     List.iter (fun b -> Printf.printf "%s\n" (print b)) block_list_upd; *)
     match block_list with
-    | [] -> true
+    | [] -> true, []
     | _ ->
       let rec explore_block block_list =
         match block_list with
         | []
-        | [_] -> true
-        | block::q -> not (is_faulty_block block q) && explore_block q in
+        | [_] -> true, []
+        | block::q ->
+            let is_faulty, vars_to_check = is_faulty_block block q in
+            if is_faulty
+            then false, []
+            else
+              let r, vars_to_check2 = explore_block q in
+              if r
+              then
+                let vars_to_check3 =
+                  List.fold_left (fun acc v ->
+                    if List.memq v acc
+                    then acc
+                    else v::acc
+                  ) vars_to_check2 vars_to_check
+                in
+                true,vars_to_check3
+              else false, []
+      in
       explore_block block_list_upd
 
   let rec match_list f_next block_l1 block_l2 = match block_l1, block_l2 with
@@ -224,6 +257,7 @@ end = struct
     | b1::q1, b2::q2 ->
         match_list (fun () ->
           Label.match_label b1.label b2.label;
+          f_next ()
         ) q1 q2
 
   let match_labels f_next block_l1 block_l2 =
@@ -232,8 +266,7 @@ end = struct
 
     (* The two block list are in reverse order so we need to start matching from the end. *)
     Label.auto_cleanup (fun () ->
-      match_list (fun () -> ()) block_l1 block_l2;
-      f_next !Label.linked_labels
+      match_list (fun () -> f_next !Label.linked_labels) block_l1 block_l2
     )
 
   type subsume_result =
@@ -370,7 +403,7 @@ module Labelled_process : sig
   val labelling : Label.t -> t -> t (* assigns labels to the parallel processes at toplevel, with a given label prefix *)
   val get_label : t -> Label.t (* gets the label of a process, and returns an error message if it has not been assigned *)
   val get_proc : t -> plain
-
+  val occurs : fst_ord_variable -> t -> bool
   val apply_substitution : (fst_ord, name) Subst.t -> t -> t
 
   val get_improper_labels : (Label.t list -> t list -> t -> 'a) -> Label.t list -> t list -> t -> 'a
@@ -466,6 +499,18 @@ end = struct
     | Bang (_,[],[]) -> true
     | _ -> false
 
+  let rec occurs v proc = match proc.proc with
+    | Start(p,_)
+    | Input(_,_,p,_)
+    | New(_,p) -> occurs v p
+    | Output(_,t,p,_)
+    | OutputSure(_,t,p,_) -> var_occurs v t || occurs v p
+    | If(u1,u2,p1,p2) ->
+        var_occurs v u1 || var_occurs v u2 || occurs v p1 || occurs v p2
+    | Let(u1,u2,u3,p1,p2) ->
+        var_occurs v u1 || var_occurs v u2 || var_occurs v u3 || occurs v p1 || occurs v p2
+    | Par l -> List.exists (occurs v) l
+    | Bang(_,l1,l2) ->  List.exists (occurs v) l1 || List.exists (occurs v) l2
 
   let rec get_improper_labels f_next imp_labels imp_procs proc =  match proc.proc with
     | Start _
@@ -1784,60 +1829,6 @@ end = struct
 
       match_list_list_processes f_next !proc_list_list
 
-  (*   let match_processes proc_list1 proc_list2 bset1 bset2 =
-        let list_pairs2 = ref [] in
-        let list_pairs1 = ref [] in
-        let counter = ref 0 in
-        let list_index = ref [] in
-        List.iter (fun (set1,set2) ->
-          let id_set = { id = !counter; link = None } in
-          list_index := id_set :: !list_index;
-          incr counter;
-          let elts1 = Label.Set.elements set1 in
-          let elts2 = Label.Set.elements set2 in
-          List.iter2 (fun lbl1 lbl2 ->
-            let p = List.find (fun t -> (Labelled_process.get_label t) = lbl2) proc_list1 in
-            list_pairs1 := (lbl1, id_set, p) :: !list_pairs1
-          ) elts1 elts2
-        ) bset1;
-        List.iter (fun (set1,set2) ->
-          let id_set =  !counter in
-          incr counter;
-          let elts1 = Label.Set.elements set1 in
-          let elts2 = Label.Set.elements set2 in
-          List.iter2 (fun lbl1 lbl2 ->
-            let p = List.find (fun t -> (Labelled_process.get_label t) = lbl2) proc_list2 in
-            list_pairs2 := (lbl1, id_set, p) :: !list_pairs2
-          ) elts1 elts2
-        ) bset2;
-        list_pairs1 := List.sort (fun (lbl1,_,_) (lbl2,_,_) -> Label.independent lbl1 lbl2) !list_pairs1;
-        list_pairs2 := List.sort (fun (lbl1,_,_) (lbl2,_,_) -> Label.independent lbl1 lbl2) !list_pairs2;
-
-        let explore list1 list2 = match list1, list2 with
-          | [], [] -> ()
-          | _, [] | [],_ -> Config.internal_error "[process_session.ml >> BijectionSet.match_processes] The lists should be of same size."
-          | (_,match_index,p1)::q1, (_,id_set2,p2)::q2 ->
-              begin match match_index.link with
-                | None -> match_index.link <- Some (id_set2,[p1],[p2])
-                | Some (id_set1,p_list1,p_list2) ->
-                    if id_set1 <> id_set2
-                    then raise No_Match;
-                    match_index.link <- Some(id_set1,p1::p_list1,p2::p_list2)
-              end
-        in
-
-        explore !list_pairs1 !list_pairs2;
-
-        List.iter2 (fun (_,id_set1,p1) (_,id_set2,p2) ->
-          begin match !id_set1 with
-            | None -> id_set1 := Some id_set2
-            | Some id_set2' ->
-                if id_set2 != id_set2'
-                then raise No_Match
-          end;
-          Labelled_process.Optimisation.match_processes p1 p2
-        ) !list_pairs1 !list_pairs2*)
-
   let rec match_one_forall_process f_next p1 prev = function
     | [] -> raise No_Match
     | p2::q2 ->
@@ -1955,140 +1946,12 @@ end = struct
     else raise Not_found
 end
 
-module BijectionSet2 =
-struct
-
-  module LabelMap = Map.Make(Label)
-
-  type t =
-    {
-      action_counter : int;
-      map1 : int LabelMap.t;
-      map2 : int LabelMap.t
-    }
-
-  (* [proc_skel1] and [proc_skel2] are the two skeletons of processes that we are
-     trying to match.
-     The function [update proc_skel1 proc_skel2 bset] will check that:
-       1) The two skeletons are equals
-       2) Update the bijection set [bset] w.r.t. the skeletons [proc_skel1] and
-          [proc_skel2] if the matching are allowed.
-     When any of the two conditions fails then the function returns [None]. Otherwise
-     it returns [Some bset'] where [bset'] is the updated bijection set.
-
-     Recall that the skeletons are ordered by increasing channels. *)
-  let update (proc_skel1:Labelled_process.skeletons) (proc_skel2:Labelled_process.skeletons) (bset:t) : t option =
-
-    let action_counter = ref bset.action_counter in
-
-    let label_actions1 = ref []
-    and label_actions2 = ref [] in
-
-    (* The function check the equality of skeltons and associate fresh action
-       counter to the label. *)
-    let rec check_sub_skeletons skel_l1 skel_l2 = match skel_l1, skel_l2 with
-      | [], [] -> true
-      | (ch1,nb1,label_l1)::q1, (ch2,nb2,label_l2)::q2 when ch1 == ch2 && nb1 = nb2 ->
-          incr action_counter;
-          List.iter (fun lbl -> label_actions1 := (lbl,!action_counter) :: !label_actions1) label_l1;
-          List.iter (fun lbl -> label_actions2 := (lbl,!action_counter) :: !label_actions2) label_l2;
-          check_sub_skeletons q1 q2
-      | _,_ -> false
-    in
-
-    (* Here we do first the check of skeletons then the update of the bijection set. We could try
-      to start by checking if the two prefix are matching before checking the skeletons. I think
-      the check of skeletons is probably faster in practice but that*)
-
-    if (check_sub_skeletons proc_skel1.Labelled_process.input_skel proc_skel2.Labelled_process.input_skel)
-      && (check_sub_skeletons proc_skel1.Labelled_process.output_skel proc_skel2.Labelled_process.output_skel)
-    then
-      (* Skeletons are equals *)
-      match !label_actions1 with
-        | [] ->
-            (* When there is no more action, we need to remove the matching when it is allowed. *)
-            let map2_ref = ref bset.map2 in
-            begin try
-              let map1' =
-                LabelMap.remove2 (fun act1 ->
-                  map2_ref :=
-                    LabelMap.remove2 (fun act2 ->
-                      if act1 <> act2 then raise Not_found
-                    ) proc_skel2.Labelled_process.prefix bset.map2
-                ) proc_skel1.Labelled_process.prefix bset.map1
-              in
-              Some { bset with map1 = map1'; map2 = !map2_ref }
-            with Not_found -> None
-            end
-        | [(lbl,action)] ->
-            (* When there is a unique action, it means that the new label is the same as the prefix.
-               Morover, the action in [label_actions2] must be the same. *)
-            Config.debug (fun () ->
-              if lbl <> proc_skel1.Labelled_process.prefix
-              then Config.internal_error "[process_session.ml >> BijectionSet.update] The label should be the prefix. (1)";
-              match !label_actions2 with
-                | [lbl2,action2] ->
-                    if lbl2 <> proc_skel2.Labelled_process.prefix
-                    then Config.internal_error "[process_session.ml >> BijectionSet.update] The label should be the prefix. (2)";
-                    if action <> action2
-                    then Config.internal_error "[process_session.ml >> BijectionSet.update] The actions should be equal.";
-                | _ -> Config.internal_error "[process_session.ml >> BijectionSet.update] The label actions should be equivalent since they have same skeletons."
-            );
-            let map2_ref = ref bset.map2 in
-            begin try
-              let map1' =
-                LabelMap.replace proc_skel1.Labelled_process.prefix (fun act1 ->
-                  map2_ref :=
-                    LabelMap.replace proc_skel2.Labelled_process.prefix (fun act2 ->
-                      if act1 = act2 then action else raise Not_found
-                    ) bset.map2;
-                  action
-                ) bset.map1
-              in
-              Some { action_counter = action; map1 = map1'; map2 = !map2_ref }
-            with Not_found -> None
-            end
-        | _ ->
-            (* Several skeletons to add. We start by checking the matching. *)
-            let (lbl1,act1) = List.hd !label_actions1
-            and (lbl2,act2) = List.hd !label_actions2 in
-
-            let map2_ref = ref bset.map2 in
-            begin try
-              let map1' =
-                LabelMap.replace lbl1 (fun old_act1 ->
-                  map2_ref :=
-                    LabelMap.replace lbl2 (fun old_act2 ->
-                      if old_act1 = old_act2 then act2 else raise Not_found
-                    ) bset.map2;
-                  act1
-                ) bset.map1
-              in
-              (* We inserted the first elements for each map and checked at the same
-                 that the matching was allowed. So we can add the rest. *)
-              let map1'' =
-                List.fold_left (fun acc (lbl,act) ->
-                  LabelMap.add lbl act acc
-                ) map1' (List.tl !label_actions1)
-              in
-              let map2'' =
-                List.fold_left (fun acc (lbl,act) ->
-                  LabelMap.add lbl act acc
-                ) !map2_ref (List.tl !label_actions2)
-              in
-              Some { action_counter = !action_counter; map1 = map1''; map2 = map2'' }
-            with Not_found -> None
-            end
-    else None
-end
-
-
 (* type for representing internal states *)
 module Configuration : sig
   type t
   val print_trace : (fst_ord, name) Subst.t -> (snd_ord, axiom) Subst.t -> t -> string (* returns a string displaying the trace needed to reach this configuration *)
   val to_process : t -> Labelled_process.t (* conversion into a process, for interface purpose *)
-  val check_block : (snd_ord, axiom) Subst.t -> t -> bool (* verifies the blocks stored in the configuration are authorised *)
+  val check_block : (snd_ord, axiom) Subst.t -> t -> bool * snd_ord_variable list (* verifies the blocks stored in the configuration are authorised *)
   val inputs : t -> Labelled_process.t list (* returns the available inputs *)
   val outputs : t -> Labelled_process.t list (* returns the available outputs (in particular they are executable, i.e. they output a message). *)
   val elements : t -> Labelled_process.t list
@@ -2107,7 +1970,7 @@ module Configuration : sig
   val release_skeleton : t -> t option (* assuming all skeletons have been checked, marks them as not in standby anymore. *)
   val display_blocks : t -> string
   val get_block_list : t -> Block.t list
-
+  val occurs_in_process : fst_ord_variable -> t -> bool
   val get_improper_labels : (Label.t list -> t -> 'a) -> t -> 'a
 
   (* a module for operating on transitions *)
@@ -2147,6 +2010,20 @@ end = struct
     previous_blocks : Block.t list;
     improper_input_proc : Labelled_process.t list
   }
+
+  (* Function to only apply on configuration corresponding to a node of the
+     partition tree (i.e. normalised) *)
+  let occurs_in_process v conf =
+    List.exists (Labelled_process.occurs v) conf.input_proc ||
+    List.exists (Labelled_process.occurs v) conf.sure_output_proc ||
+    begin match conf.focused_proc with
+      | None -> false
+      | Some p -> Labelled_process.occurs v p
+    end ||
+    begin match conf.sure_unchecked_skeletons with
+      | None -> false
+      | Some (p,rebuild) -> Labelled_process.occurs v (rebuild p)
+    end
 
   let get_improper_labels f_next conf =
     Labelled_process.get_improper_labels_list (fun imp_labels imp_procs proc_list ->
@@ -2198,7 +2075,7 @@ end = struct
       ) (List.length conf.trace,"") conf.trace
     )
 
-  let check_block (snd_subst:(snd_ord,axiom) Subst.t) (c:t) : bool =
+  let check_block (snd_subst:(snd_ord,axiom) Subst.t) (c:t) : bool * snd_ord_variable list =
     Block.is_authorised c.previous_blocks c.ongoing_block snd_subst
 
   let inputs (conf:t) : Labelled_process.t list =
