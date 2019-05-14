@@ -87,103 +87,6 @@ let Tally(skE,vk1,vk2,vk3) =
   | !^7 SubTally(prv_ch,vk1,vk2,vk3)
   ).
 
-let VotingSystem11(vote1,vote2) =
-  new skE;
-  out(c,pk(skE));
-  new sk1;
-  new sk2;
-  new sk3;
-  out(c,sk3);
-  out(c,vk(sk1));
-  out(c,vk(sk2)); (
-    Voter(sk1,id1,vote1,pk(skE)) |
-    Voter(sk2,id2,vote2,pk(skE)) |
-    Tally(skE,vk(sk1),vk(sk2),vk(sk3))
-  ).
-
-let VotingSystem21(vote1,vote2) =
-  new skE;
-  out(c,pk(skE));
-  new sk1;
-  new sk2;
-  new sk3;
-  out(c,sk3);
-  out(c,vk(sk1));
-  out(c,vk(sk2)); (
-    !^2 Voter(sk1,id1,vote1,pk(skE)) |
-    Voter(sk2,id2,vote2,pk(skE)) |
-    Tally(skE,vk(sk1),vk(sk2),vk(sk3))
-  ).
-
-let VotingSystem22(vote1,vote2) =
-  new skE;
-  out(c,pk(skE));
-  new sk1;
-  new sk2;
-  new sk3;
-  out(c,sk3);
-  out(c,vk(sk1));
-  out(c,vk(sk2)); (
-    !^2 Voter(sk1,id1,vote1,pk(skE)) |
-    !^2 Voter(sk2,id2,vote2,pk(skE)) |
-    Tally(skE,vk(sk1),vk(sk2),vk(sk3))
-  ).
-
-let VotingSystem31(vote1,vote2) =
-  new skE;
-  out(c,pk(skE));
-  new sk1;
-  new sk2;
-  new sk3;
-  out(c,sk3);
-  out(c,vk(sk1));
-  out(c,vk(sk2)); (
-    !^3 Voter(sk1,id1,vote1,pk(skE)) |
-    !^1 Voter(sk2,id2,vote2,pk(skE)) |
-    Tally(skE,vk(sk1),vk(sk2),vk(sk3))
-  ).
-
-let VotingSystem32(vote1,vote2) =
-  new skE;
-  out(c,pk(skE));
-  new sk1;
-  new sk2;
-  new sk3;
-  out(c,sk3);
-  out(c,vk(sk1));
-  out(c,vk(sk2)); (
-    !^3 Voter(sk1,id1,vote1,pk(skE)) |
-    !^2 Voter(sk2,id2,vote2,pk(skE)) |
-    Tally(skE,vk(sk1),vk(sk2),vk(sk3))
-  ).
-
-let VotingSystem41(vote1,vote2) =
-  new skE;
-  out(c,pk(skE));
-  new sk1;
-  new sk2;
-  new sk3;
-  out(c,sk3);
-  out(c,vk(sk1));
-  out(c,vk(sk2)); (
-    !^4 Voter(sk1,id1,vote1,pk(skE)) |
-    !^1 Voter(sk2,id2,vote2,pk(skE)) |
-    Tally(skE,vk(sk1),vk(sk2),vk(sk3))
-  ).
-
-let VotingSystem33(vote1,vote2) =
-  new skE;
-  out(c,pk(skE));
-  new sk1;
-  new sk2;
-  new sk3;
-  out(c,sk3);
-  out(c,vk(sk1));
-  out(c,vk(sk2)); (
-    !^3 Voter(sk1,id1,vote1,pk(skE)) |
-    !^3 Voter(sk2,id2,vote2,pk(skE)) |
-    Tally(skE,vk(sk1),vk(sk2),vk(sk3))
-  ).
 
 let VotingSystem42(vote1,vote2) =
   new skE;
@@ -198,24 +101,6 @@ let VotingSystem42(vote1,vote2) =
     !^2 Voter(sk2,id2,vote2,pk(skE)) |
     Tally(skE,vk(sk1),vk(sk2),vk(sk3))
   ).
-
-let VotingSystem51(vote1,vote2) =
-  new skE;
-  out(c,pk(skE));
-  new sk1;
-  new sk2;
-  new sk3;
-  out(c,sk3);
-  out(c,vk(sk1));
-  out(c,vk(sk2)); (
-    !^5 Voter(sk1,id1,vote1,pk(skE)) |
-    !^1 Voter(sk2,id2,vote2,pk(skE)) |
-    Tally(skE,vk(sk1),vk(sk2),vk(sk3))
-  ).
-
-
-(* Should not find an attack. *)
-/* query session_equiv(VotingSystem(yes,no),VotingSystem(no,yes)). */
 
 (* Should not find an attack. *)
 query session_equiv(VotingSystem42(yes,no),VotingSystem42(no,yes)).

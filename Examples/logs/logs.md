@@ -78,7 +78,7 @@ Helios
     - DeepSec session: SINCE 5:30PM (1 core), 8min28 (20 cores)
   + revote (Alice x5, Bob x1) **[equivalence]**
     - DeepSec vanilla: >12h (1 core), >12h (20 cores)
-    - DeepSec session: ??? (1 core), ??? (20 cores)
+    - DeepSec session: ??? (1 core), 13min (20 cores)
   + revote (Alice x4, Bob x2) **[equivalence]**
     - DeepSec vanilla: >12h (1 core), >12h (20 cores)
     - DeepSec session: ??? (1 core), ??? (20 cores)

@@ -37,7 +37,7 @@ let mixer =
   /* receiving signature keys and signed votes */
   in(login_channel,pk_sign);
   in(c,x);
-  let (v,=pk_sign) = verify(x,pk_sign) in
+  let (v,lolo) = dec(verify(x,pk_sign),sk_enc) in
   out(c,v).
 
 /* bulletin board receiving and publishing the votes */
@@ -57,7 +57,7 @@ let board =
 
 /* the voting system */
 let system(v1,v2) =
-  out(c,pk(sk_enc)); (
+  out(c,sk_enc); (
     honnest_voter(v1) |
     honnest_voter(v2) |
     !^2 dishonnest_voter |
