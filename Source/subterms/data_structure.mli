@@ -314,6 +314,8 @@ module Eq : sig
 
   val map_variables_and_terms : (fst_ord_variable -> fst_ord_variable) -> (protocol_term -> protocol_term) -> (fst_ord, name) t -> (fst_ord, name) t
 
+  val occurs : fst_ord_variable -> (fst_ord, name) t -> bool
+
   (** {3 Display} *)
 
   val display : Display.output -> ?rho:display_renamings option -> ('a, 'b) atom -> ('a, 'b) t -> string

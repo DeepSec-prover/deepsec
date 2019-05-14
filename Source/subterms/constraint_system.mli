@@ -37,6 +37,8 @@ val get_associated_fst_ord_var : 'a t -> snd_ord_variable -> fst_ord_variable
 
 val occurs_in_frame : 'a t -> fst_ord_variable -> bool
 
+val occurs_in_frame_full : 'a t -> fst_ord_variable -> bool
+
 (** {3 Generators} *)
 
 (** [create_from_free_names data] {% $[\ax_{-n};\ldots; \ax_0]$ returns the contraint system $\C = \ecsys{\emptyset}{\emptyset}{\top}{\top}{\Solved}{\emptyset}{\emptyset}$

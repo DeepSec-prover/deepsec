@@ -1381,6 +1381,10 @@ module Eq = struct
         match_variables_and_names_elt_list f_next Diseq.match_variables_and_names diseq_l1 diseq_l2
     | _ -> raise No_Match
 
+  let occurs (v:fst_ord_variable) = function
+    | Conj diseq -> List.exists (Diseq.occurs v) diseq
+    | _ -> false
+
   module Mixed = struct
 
     type t =

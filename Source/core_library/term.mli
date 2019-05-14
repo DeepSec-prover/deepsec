@@ -751,6 +751,8 @@ module Diseq : sig
 
   (** {4 Tesing} *)
 
+  val occurs : fst_ord_variable -> (fst_ord, name) t -> bool
+
   (** [is_top diseq] returns [true] iff the disequation is {% $\top$ %}. Note that it is a syntactic condition meaning
       that an disequation that is semantically a tautology is not necessarily {% $\top$ %}.*)
   val is_top : ('a, 'b) t -> bool

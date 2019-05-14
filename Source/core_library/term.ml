@@ -2262,6 +2262,10 @@ module Diseq = struct
 
   (*** Access ***)
 
+  let occurs (v:fst_ord_variable) = function
+    | Diseq l -> List.exists (fun (t1,t2) -> var_occurs v t1 || var_occurs v t2) l
+    | _ -> false
+
   let get_vars_with_list_alias = get_vars_with_list
 
   let iter_variables_and_terms (_:fst_ord_variable -> unit) (f_term:protocol_term -> unit) = function

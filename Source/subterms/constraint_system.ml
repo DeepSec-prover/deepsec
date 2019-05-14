@@ -143,6 +143,11 @@ let get_axioms_with_list csys ax_list =
 
 let occurs_in_frame csys v = K.mem_fst_ord_variable v csys.sdf
 
+let occurs_in_frame_full csys v =
+  K.mem_fst_ord_variable v csys.sdf ||
+  Eq.occurs v csys.sub_cons
+
+
 let is_solved csys = Tools.is_solved_DF csys.df
 
 let match_variables_and_names_term f_next t1 t2 =

@@ -266,17 +266,25 @@ end = struct
       ) csys_set
 
     let are_variables_authorising_block csys_set vars_to_check csys_fa exist =
-      let csys_list = List.rev_map (fun (id_ex,_) -> find csys_set id_ex) exist in
+      if vars_to_check = []
+      then true
+      else
+        let csys_list = List.rev_map (fun (id_ex,_) -> find csys_set id_ex) exist in
 
-      List.for_all (fun csys ->
-        let conf = Process.get_conf csys in
-        List.for_all (fun vars_snd ->
-          let vars_fst = Constraint_system.get_associated_fst_ord_var csys vars_snd in
-          let fst_subst = Constraint_system.get_substitution_solution Protocol csys in
-          Constraint_system.occurs_in_frame csys vars_fst ||
-          Configuration.occurs_in_process vars_fst fst_subst conf
+        List.for_all (fun v ->
+          let conf_fa = Process.get_conf csys_fa in
+          let vars_fst_fa = Constraint_system.get_associated_fst_ord_var csys_fa v in
+          let fst_subst_fa = Constraint_system.get_substitution_solution Protocol csys_fa in
+          Constraint_system.occurs_in_frame csys_fa vars_fst_fa ||
+          Configuration.occurs_in_process vars_fst_fa fst_subst_fa conf_fa ||
+          List.exists (fun csys ->
+            let conf = Process.get_conf csys in
+            let vars_fst = Constraint_system.get_associated_fst_ord_var csys v in
+            let fst_subst = Constraint_system.get_substitution_solution Protocol csys in
+            Constraint_system.occurs_in_frame_full csys vars_fst ||
+            Configuration.occurs_in_process vars_fst fst_subst conf
+          ) csys_list
         ) vars_to_check
-      ) (csys_fa::csys_list)
 
     (* remove configurations with unauthorised blocks, and returns the updated
     matching *)
