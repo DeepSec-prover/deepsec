@@ -69,5 +69,5 @@ let system(v1,v2) =
 
 
 /* vote privacy for 4 honnest voters and 2 dishonnest voter */
-query session_equiv(system(yes,no),system(no,yes)). /* equivalence */
-query trace_equiv(system(yes,no),system(no,yes)). /* equivalence */
+query session_equiv(system(yes,no),system(no,yes)).
+/* query trace_equiv(system(yes,no),system(no,yes)).  */
