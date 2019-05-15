@@ -85,7 +85,7 @@ Helios
   + revote (Alice x3, Bob x3) **[equivalence]**
     - DeepSec vanilla: >12h (1 core), >12h (20 cores)
     - DeepSec session: ??? (1 core), 19min (20 cores)
-  + revoteMAX (Alice x7, Bob x4) **[equivalence]**
+  + revoteMAX (Alice x7, Bob x3) **[equivalence]**
     - DeepSec vanilla: >12h (1 core), >12h (20 cores)
     - DeepSec session: ??? (1 core), 7h24 (20 cores)
 
