@@ -118,7 +118,7 @@ Running example paper
 
 * 2 honnest voters, 3 dishonnest voters **[equivalence]**
   - DeepSec vanilla: >12h (1 core)
-  - DeepSec session: 1min8 (1 core)
+  - DeepSec session: 1min36 (1 core)
 
 
 
