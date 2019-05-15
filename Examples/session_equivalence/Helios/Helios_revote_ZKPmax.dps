@@ -87,7 +87,8 @@ let Tally(skE,vk1,vk2,vk3) =
   | !^7 SubTally(prv_ch,vk1,vk2,vk3)
   ).
 
-let VotingSystem22(vote1,vote2) =
+
+let VotingSystem74(vote1,vote2) =
   new skE;
   out(c,pk(skE));
   new sk1;
@@ -96,10 +97,10 @@ let VotingSystem22(vote1,vote2) =
   out(c,sk3);
   out(c,vk(sk1));
   out(c,vk(sk2)); (
-    !^2 Voter(sk1,id1,vote1,pk(skE)) |
-    !^2 Voter(sk2,id2,vote2,pk(skE)) |
+    !^7 Voter(sk1,id1,vote1,pk(skE)) |
+    !^4 Voter(sk2,id2,vote2,pk(skE)) |
     Tally(skE,vk(sk1),vk(sk2),vk(sk3))
   ).
 
-(* Should not find an attack. *)
-query session_equiv(VotingSystem22(yes,no),VotingSystem22(no,yes)).
+/* All scenarios are subsumed by this one */
+query session_equiv(VotingSystem74(yes,no),VotingSystem74(no,yes)).
