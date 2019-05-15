@@ -130,4 +130,4 @@ AKA
 * anonymity
   + 3 sessions **[equivalence]**
     - DeepSec vanilla: 30s (20 cores)
-    - Deepsec session: ??? (20 cores)
+    - Deepsec session: 3s (20 cores)
