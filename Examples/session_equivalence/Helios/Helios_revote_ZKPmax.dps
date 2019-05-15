@@ -88,7 +88,7 @@ let Tally(skE,vk1,vk2,vk3) =
   ).
 
 
-let VotingSystem74(vote1,vote2) =
+let VotingSystem73(vote1,vote2) =
   new skE;
   out(c,pk(skE));
   new sk1;
@@ -103,4 +103,4 @@ let VotingSystem74(vote1,vote2) =
   ).
 
 /* All scenarios are subsumed by this one */
-query session_equiv(VotingSystem74(yes,no),VotingSystem74(no,yes)).
+query session_equiv(VotingSystem73(yes,no),VotingSystem73(no,yes)).
