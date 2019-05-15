@@ -35,9 +35,9 @@ BAC
   + 3 identical passports + 2 fresh passports **[violated]**
     - DeepSec vanilla: >12h (1 core), >12h (20 cores)
     - DeepSec session: ??? (1 core), 9min24 (20 cores)
-  + 2 identical passports + 3 fresh passports **[???]**
+  + 2 identical passports + 3 fresh passports **[equivalence]**
     - DeepSec vanilla: >12h (1 core), >12h (20 cores)
-    - DeepSec session: ??? (1 core), ??? (20 cores)
+    - DeepSec session: ??? (1 core), 5h51 (20 cores)
 
 
 -------
@@ -87,7 +87,7 @@ Helios
     - DeepSec session: ??? (1 core), 19min (20 cores)
   + revoteMAX (Alice x7, Bob x3) **[equivalence]**
     - DeepSec vanilla: >12h (1 core), >12h (20 cores)
-    - DeepSec session: ??? (1 core), 7h24 (20 cores)
+    - DeepSec session: ??? (1 core), 3h56 (20 cores)
 
 -------
 
