@@ -1,0 +1,84 @@
+free c.
+fun qubit/2.
+fun bs/5.
+
+const two.
+const one.
+const zero.
+const bases.
+const bit.
+const d.
+const Alice.
+const Bob.
+const ok.
+const cheat.
+
+reduc bsEqu( bs(k1,bitstring1,position1,role1,value1),
+             bs(k1,bitstring1,position1,role2,value1))
+      -> ok.
+reduc measure((pos, qubit(bit, bs(s, bases,  pos2, role, val))), (pos, bs(s, bases, pos3, roleX, val)), pos) -> bit.
+
+
+let Bob_proc(val,cqRead,cqWrite,cqMeasure,cp,sampling) =
+  let b   = bs(sampling, bases,  one, Alice, zero) in (* bit revealed to the atatcker *)
+  let b_c = bs(sampling, bases,  one, Alice, one ) in (* cheat bit, revealed later *)
+  let b1_ = bs(sampling, bases,  one, Bob,   zero) in (* Bases used by Bob *)
+  let b2_ = bs(sampling, bases,  one, Bob,   one) in
+( out(c, b);
+(* Bob receives and measures qubits in <b1_,b2_> *)
+ (out(cqRead, (one, b1_))  |
+  out(cqRead, (two, b2_))) |
+(* Bob gets the measures bits *)
+( in(cqMeasure, x1);
+  let (=one, bit1) = x1 in
+  in(cqMeasure, x2);  (* would be better to have those two in parallel, can we do that? TODO*)
+  let (=two, bit2) = x2 in
+(* The attacker is given the base he was supposed to commit on in the first place *)
+  out(c, b_c);
+  let baseCommit = b_c in
+(* Bob receives the commit base and the verification bits from the network *)
+  in(c, x3);
+  let (=b_c, (bitV1, bitV2)) = x3 in
+  if val = cheat then
+  if bitV1 = bit1 then
+  out(c,cheat))).
+
+let quantumAttacker(cqRead,cqWrite,cqMeasure,cp,sampling) =
+(* attacker can send qubits *)
+( in(c,req);
+  let (xbit, base) = req in
+  out(cqWrite, qubit(xbit, base) )) |
+(* attacker can intercept and measure qubits *)
+( in(cqWrite, write); (* pos, qubit(bit, bs(s,   bases,  pos, role,   val))); *)
+  in(c, read);  (*  (=pos,     bs(=s, =bases, =pos, roleX, =val))); *)
+  let (pos, base) = read in
+  let bitm = measure(write,read,pos) in
+  out(c, bitm) ).
+
+let quantumChannel(cqRead,cqWrite,cqMeasure,cp,sampling) =
+(* Measure in appropriate base *)
+( in(cqWrite, write); (*    pos, qubit(bit, bs(s,   bases,  pos, role,   val)) *)
+  in(cqRead,  read); (* (=pos,     bs(=s, =bases, =pos, roleX, =val))*)
+  let (pos, base) = read in
+  let bitm = measure(write,read,pos) in
+  out(cqMeasure, (pos, bitm)) ) |
+(* Measure in inappropriate base *)
+( in(cqRead, read); (*  (=pos,     bs(=s, =bases, =pos, roleX, =val))); *)
+  let (pos, base) = read in
+  new n;
+  out(cqMeasure, (pos, n)) ).
+
+
+let process(val) =
+  new cqRead;
+  new cqWrite;
+  new cqMeasure;
+  new cp;
+  new sampling;
+  (
+    Bob_proc(val,cqRead,cqWrite,cqMeasure,cp,sampling) |
+    !^2 quantumChannel(cqRead,cqWrite,cqMeasure,cp,sampling) |
+    quantumAttacker(cqRead,cqWrite,cqMeasure,cp,sampling)
+  ).
+
+query session_equiv(process(cheat), process(ok)).

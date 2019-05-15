@@ -1,7 +1,30 @@
-free a,b.
+// helios protocol with identities and mixnet - no privacy because of ballot replay attack
+
+fun aenc/3.
+fun pk/1.
 
 
-let sys1 = out(a,a) | out(b,b).
-let sys2 = out(a,b) | out(b,a).
+reduc adec(aenc(x,r,pk(y)),y) -> x.
 
-query session_equiv(sys1,sys2).
+free ch.
+
+free a,b,c.
+free yes,no.
+
+let V(id, v, pkT, bb) =
+  out(bb, c).  // modelled by both sending on private and public channel
+  // NB: If the channels are anonymous, i.e. if we remove the identifier `id', then the attack does not work anymore.
+
+
+
+let system(va,vb) =
+  new skT;
+  let pkT = pk(skT) in
+  new bb;
+  out(ch,pk(skT)); (
+    V(a,va,pk(skT),bb)
+  ).
+
+query session_equiv(out(c,c);let x = c in out(c,x),out(c,c);let x = c in out(c,b)).
+
+// privacy cannot be proven because of vote replay attack

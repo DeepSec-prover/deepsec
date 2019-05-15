@@ -19,7 +19,8 @@ let reader(k_e,k_m) =
   new n_r;
   new k_r;
   let xm = senc((n_r,xn_t,k_r),k_e) in
-  out(c,(xm,mac(xm,k_m))).
+  out(c,(xm,mac(xm,k_m)));
+  in(c,y).
 
 // Description of the passport role
 

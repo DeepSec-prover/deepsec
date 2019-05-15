@@ -14,7 +14,7 @@ reduc sdec(senc(x,y),y) -> x.
 // Description of the reader role
 
 let reader(c,k_e,k_m) =
-  /* out(c,get_challenge); */
+  out(c,get_challenge);
   in(c,xn_t);
   new n_r;
   new k_r;
@@ -25,9 +25,9 @@ let reader(c,k_e,k_m) =
 // Description of the passport role
 
 let passport(c,k_e,k_m) =
-  /* in(c,x);
+  in(c,x);
   if x = get_challenge
-  then */
+  then
     new n_t;
     out(c,n_t);
     in(c,y);
@@ -63,4 +63,4 @@ let system_4 = // attack
   new k_e; new k_m; !^4 system(k_e,k_m).
 
 
-query session_incl(system_1111,system_31).
+query session_incl(system_31, system_1111).

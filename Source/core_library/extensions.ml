@@ -68,15 +68,28 @@ module List = struct
 
   (* a variant of the iterators where the remainder of the list can be taken
   as an argument of the iterated function *)
-  let fold_left_with_memo (f:'a->'b->'b list->'a) (x:'a) (l:'b list) : 'a =
+  let fold_left_with_memo (f:'a->'b->'b list->'b list->'a) (x:'a) (l:'b list) : 'a =
     let rec browse memo ac l =
       match l with
       | [] -> ac
-      | h :: t -> browse (h::memo) (f ac h (List.rev_append memo t)) t in
+      | h :: t -> browse (h::memo) (f ac h memo t) t in
     browse [] x l
 
-  let iter_with_memo (f:'a->'a list->unit) (l:'a list) : unit =
+  let iter_with_memo (f:'a->'a list->'a list->unit) (l:'a list) : unit =
     fold_left_with_memo (fun () -> f) () l
+
+  (* applies fold left while a given predicate is satisfied *)
+  let rec fold_left_while (pred:'b->bool) (f:'a->'b->'a) (accu:'a) (l:'b list) : 'a =
+    match l with
+    | [] -> accu
+    | h :: t ->
+      if pred h then fold_left_while pred f (f accu h) t
+      else accu
+
+  (* puts the elements of a list that verify a predicate in head *)
+  let filter_in_head (pred:'a->bool) (l:'a list) : 'a list =
+    let (yes,no) = partition_unordered pred l in
+    List.rev_append yes no
 end
 
 
@@ -1319,41 +1332,6 @@ module Set = struct
 end
 
 
-(* multisets represented as maps from elements to multiplicity *)
-module Multiset = struct
-  (* functions of the module *)
-  module type S = sig
-    type t
-    type elt
-    val empty : t (* an empty multiset *)
-    val add : elt -> t -> t (* increases the multiplicity of an element *)
-    val remove : elt -> t -> t (* decreases the multiplicity of an element (internal error if the element is not already present) *)
-    val mem : elt -> t -> bool (* checks membership *)
-  end
-
-  (* instanciation *)
-  module Make(O:sig type t val compare : t -> t -> int end) = struct
-    type elt = O.t
-
-    module MS = Map.Make(O)
-    type t = int MS.t
-
-    let empty = MS.empty
-    let add x set =
-      match MS.find_opt x set with
-      | None -> MS.add x 1 set
-      | Some n -> MS.add x (n+1) set
-    let remove x set =
-      match MS.find_opt x set with
-      | None -> Config.internal_error "[process_session.ml >> Multiset.remove] removing an absent channel."
-      | Some 1 -> MS.remove x set
-      | Some n -> MS.add x (n+1) set
-    let mem x set =
-      MS.find_opt x set <> None
-  end
-end
-
-
 (* sets modelled as maps with implicit integer keys. Useful on types where the comparison function is not available *)
 module IndexedSet = struct
   module type S = sig
@@ -1379,11 +1357,11 @@ module IndexedSet = struct
     type elt = O.elt
 
     module M = Map.Make(struct type t = index let compare = compare end)
-    type t = elt M.t * index ref
-    let empty : t = M.empty, ref (-1)
+    type t = elt M.t * index
+    let empty : t = M.empty, 0
     let is_empty (set,_) = M.is_empty set
     let choose (set,_) = snd (M.choose set)
-    let add_new_elt (set,ind) x = incr ind; (M.add !ind x set,ind),!ind
+    let add_new_elt (set,ind) x = (M.add ind x set,ind+1),ind
     let replace (set,im) i x =  (M.replace i (fun _ -> x) set,im)
     let find_opt (set,_) i = M.find_opt i set
     let find set i =

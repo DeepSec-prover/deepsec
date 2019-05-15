@@ -17,18 +17,19 @@ struct
       frame_size : int
     }
 
-  type data_determinate =
-    {
-      init_conf1 : Process_determinate.configuration;
-      init_conf2 : Process_determinate.configuration;
+  type data_determinate = {
+    init_conf1 : Process_determinate.configuration;
+    init_conf2 : Process_determinate.configuration;
 
-      equiv_problem : Equivalence_determinate.equivalence_problem
-    }
+    equiv_problem : Equivalence_determinate.equivalence_problem
+  }
 
   type data_session =
     {
       s_init_conf1 : Process_session.Configuration.t;
       s_init_conf2 : Process_session.Configuration.t;
+
+      optim_parameters : Equivalence_session.optimisation_parameters;
 
       node : Equivalence_session.PartitionTree.Node.t
     }
@@ -89,7 +90,7 @@ struct
     Data_structure.Tools.setup_stored_constructors job.stored_constructors;
 
     match job.data_equiv with
-      | DStandard data ->
+      | DStandard (data:data_standard) ->
           Config.display_trace := data.display_trace;
           let rec apply_rules csys_set frame_size f_next =
             Equivalence.apply_one_transition_and_rules_for_trace_equivalence data.chosen_semantics csys_set frame_size (fun csys_set size f_next ->
@@ -103,7 +104,7 @@ struct
           with
             | Equivalence.Not_Trace_Equivalent csys -> Not_Equivalent (OStandard (csys, data.init_proc1, data.init_proc2))
           end
-      | DDeterminate data ->
+      | DDeterminate (data:data_determinate) ->
           let rec apply_rules equiv_pbl f_next =
             Equivalence_determinate.apply_one_transition_and_rules equiv_pbl (fun eq_pbl_1 f_next_1 ->
               apply_rules eq_pbl_1 f_next_1
@@ -117,6 +118,7 @@ struct
             | Equivalence_determinate.Not_Trace_Equivalent csys -> Not_Equivalent (ODeterminate (csys, data.init_conf1, data.init_conf2))
           end
       | DSession data ->
+          Equivalence_session.set_up_optimisation_parameters data.optim_parameters;
           begin try
             Equivalence_session.PartitionTree.explore_from data.node;
             Equivalent
@@ -183,6 +185,7 @@ struct
             | Equivalence_determinate.Not_Trace_Equivalent csys -> Result (Not_Equivalent (ODeterminate (csys, data.init_conf1, data.init_conf2)))
           end
       | DSession data ->
+        Equivalence_session.set_up_optimisation_parameters data.optim_parameters;
         begin try
           let job_list = ref [] in
           Equivalence_session.PartitionTree.generate_successors data.node
@@ -385,6 +388,8 @@ let session (goal:Equivalence_session.goal) (conf1:Process_session.Configuration
       EquivJob.s_init_conf1 = conf1;
       EquivJob.s_init_conf2 = conf2;
       EquivJob.node = root;
+      EquivJob.optim_parameters = Equivalence_session.get_optimisation_parameters ()
+
     } in
   let job = {
     EquivJob.variable_counter = v_counter;

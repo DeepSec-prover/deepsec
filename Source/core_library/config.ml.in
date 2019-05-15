@@ -2,7 +2,18 @@ exception Internal_error of string
 
 let debug_activated = false
 
+let log_file =
+  if debug_activated
+  then open_out "debug_log.txt"
+  else stdout
+
 let internal_error msg =
+  if debug_activated
+  then
+    begin
+      Printf.fprintf log_file "Internal error : %s\nPlease report the bug to vincent.cheval@loria.fr with the input file and output\n" msg;
+      flush log_file
+    end;
   Printf.printf "Internal error : %s\nPlease report the bug to vincent.cheval@loria.fr with the input file and output\n" msg;
   exit 0
 
@@ -10,6 +21,10 @@ let debug =
   if debug_activated
   then fun f -> f ()
   else fun _ -> ()
+
+let print_in_log s =
+  Printf.fprintf log_file "%s" s;
+  flush log_file
 
 (**** Testing *****)
 

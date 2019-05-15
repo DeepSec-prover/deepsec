@@ -49,4 +49,4 @@ let system2 =
   | new k_e; new k_m; (passport(k_e,k_m) | reader(k_e,k_m)).
 
 
-query session_incl(system1,system2).
+query session_incl(system2,system1). /* inclusion holds */
