@@ -104,7 +104,9 @@ end = struct
       Set.add (add_position label i) acc
     ) Set.empty l
 
-  let match_label lbl1 lbl2 = match lbl1.link with
+  let match_label lbl1 lbl2 =
+    Config.debug (fun () -> Config.print_in_log (Printf.sprintf "Label.match_label : %s and %s\n" (to_string lbl1) (to_string lbl2)));
+    match lbl1.link with
     | None ->
         (* We first check the prefix: We assume that prefix are always matched before. *)
         begin match lbl1.prefix, lbl2.prefix with
@@ -2262,9 +2264,9 @@ end = struct
     (* syntactic transformation of a configuration at the start of the analysis *)
     let apply_start (conf:t) : t =
       match conf.focused_proc with
-      | Some (p,_) ->
+      | Some (p,l) ->
         begin match Labelled_process.get_proc p with
-        | Labelled_process.Start (pp,_) -> {conf with focused_proc = Some (pp,Label.initial)}
+        | Labelled_process.Start (pp,_) -> {conf with focused_proc = Some (pp,l)}
         | _ -> Config.internal_error "[process_session.ml Configuration.Transition.apply_start] Error during the initialisation of processes. (1)"
         end
       | _ ->

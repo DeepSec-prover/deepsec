@@ -11,10 +11,10 @@ let get_optimisation_parameters () = !optimisation_parameters
 let set_up_optimisation_parameters param = optimisation_parameters := param
 
 let initialise_optimisation_parameters conf1 conf2 =
-  optimisation_parameters := false
-    (*(Configuration.contain_only_public_channel conf1) &&
+  optimisation_parameters :=
+    (Configuration.contain_only_public_channel conf1) &&
     (Configuration.contain_only_public_channel conf2)
-*)
+
 (* a module for representing symbolic processes (process with symbolic variables and constraint systems). Sets of symbolic processes are represented as mutable tables with indexes *)
 module Symbolic : sig
   (* indexes to make simpler reference and comparison of constraint systems *)
