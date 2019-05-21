@@ -1,0 +1,31 @@
+free c, ok, error.
+free c_key [private].
+
+fun enc/3.
+reduc dec(enc(x,y,z),z) -> x.
+
+let passport(k) =
+  out(c_key,k);
+  new n;
+  out(c,n);
+  in(c,x);
+  if dec(x,k) = n then out(c,ok)
+  else out(c,error).
+
+let reader =
+  in(c_key,k);
+  in(c,n);
+  new r;
+  out(c,enc(n,r,k)).
+
+
+let process1111 =
+  !^4 new k; passport(k) |
+  !^4 reader.
+
+let process211 =
+  new k; !^2 passport(k) |
+  !^2 new k; passport(k) |
+  !^4 reader.
+
+query session_equiv(process211,process1111).
