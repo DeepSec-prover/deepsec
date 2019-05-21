@@ -73,11 +73,13 @@ let quantumChannelAndAttacker(isEPR) =
     let res = bsEqu(baseR,base2) in
     out(c, n). (* No attack without this line*)
 
+// attack
 query session_equiv(
   !^4 quantumChannelAndAttacker(true) | Bob_proc(cheat),
   !^4 quantumChannelAndAttacker(true) | Bob_proc(ok)
 ).
 
+// equivalence
 query session_equiv(
   !^4 quantumChannelAndAttacker(false) | Bob_proc(cheat),
   !^4 quantumChannelAndAttacker(false) | Bob_proc(ok)

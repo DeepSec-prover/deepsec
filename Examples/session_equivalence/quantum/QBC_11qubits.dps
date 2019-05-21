@@ -11,7 +11,6 @@ const bases.
 const bit.
 const Alice, Bob.
 const ok, cheat.
-const true,false.
 
 reduc bsEqu( bs(k1,bitstring1,position1,role1,value1),
              bs(k1,bitstring1,position1,role2,value1)) (* We could have used position2 here *)
@@ -54,7 +53,7 @@ let Bob_proc(val) =
     )
   ).
 
-let quantumChannelAndAttacker(isEPR) =
+let quantumChannelAndAttacker =
 (* Attacker can send qubits *)
   in(c, write); (* request to send a qubit *)
   let (pos, bitW, baseW) = write in
@@ -65,20 +64,10 @@ let quantumChannelAndAttacker(isEPR) =
     out(cqMeasure, (pos, bitW))
   else (* Non Matching base: Bob receives a random that can later be accessed by the attacker if he learnes the basis Bob used here*)
     new n;
-    out(cqMeasure, (pos, n));
-    if isEPR = true then
-    (* EPR-stateful effect: *)
-    in(c, reqEPR);
-    let (=pos,base2) = reqEPR in
-    let res = bsEqu(baseR,base2) in
-    out(c, n). (* No attack without this line*)
+    out(cqMeasure, (pos, n)).
+
 
 query session_equiv(
-  !^11 quantumChannelAndAttacker(true) | Bob_proc(cheat),
-  !^11 quantumChannelAndAttacker(true) | Bob_proc(ok)
-).
-
-query session_equiv(
-  !^11 quantumChannelAndAttacker(false) | Bob_proc(cheat),
-  !^11 quantumChannelAndAttacker(false) | Bob_proc(ok)
+  !^11 quantumChannelAndAttacker | Bob_proc(cheat),
+  !^11 quantumChannelAndAttacker | Bob_proc(ok)
 ).
