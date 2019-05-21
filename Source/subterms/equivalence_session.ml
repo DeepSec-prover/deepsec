@@ -1176,5 +1176,5 @@ let publish_result (goal:goal) (id:int) (conf1:Process_session.Configuration.t) 
   let res =
     string_of_result goal (Process_session.Configuration.to_process conf1) (Process_session.Configuration.to_process conf2) result in
   ignore (Sys.command (Printf.sprintf "printf \"%s\"" res));
-  print_endline (Printf.sprintf "\nRunning time: %ds" (int_of_float running_time));
+  print_endline (Printf.sprintf "\nRunning time: %s" (Display.mkRuntime running_time));
   ignore(Sys.command "rm -f index_old.html")
