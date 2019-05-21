@@ -1,3 +1,6 @@
+// other model of bac where the readers receive their key from the passports,
+// by private communication
+
 free c, ok, error.
 free auth [private].
 
