@@ -1,26 +1,17 @@
 free c.
-free cqRead [private].
-free cqWrite [private].
-free cqMeasure [private].
+free cqRead, cqWrite, cqMeasure [private].
 free cp [private].
 
 fun qubit/2.
 fun bs/5.
 const sampling[private].
 
-const three.
-const four.
-const two.
-const one.
-const zero.
+const zero, one, two, three, four.
 const bases.
 const bit.
-const d.
-const Alice.
-const Bob.
-const ok.
+const Alice, Bob.
+const ok, cheat.
 const true,false.
-const cheat.
 
 reduc bsEqu( bs(k1,bitstring1,position1,role1,value1),
              bs(k1,bitstring1,position1,role2,value1)) (* We could have used position2 here *)
