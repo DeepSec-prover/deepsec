@@ -19,11 +19,11 @@ let reader(k) =
 let system(k) =
   passport(k) | reader(k).
 
-let process1111 =
-  !^4 new k; system(k).
-
-let process211 =
-  new k; !^2 system(k) |
+let process11 =
   !^2 new k; system(k).
 
-query session_equiv(process211,process1111).
+let process2 =
+  new k; !^2 system(k).
+
+query session_equiv(process2,process11). // non-equivalent
+query session_incl(process2,process11). // included
