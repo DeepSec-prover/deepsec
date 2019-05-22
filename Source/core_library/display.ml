@@ -20,6 +20,7 @@ let display_list_i display_element connector = function
       ) q;
       !str
 
+(***** Tools *****)
 
 let rec internal_create_tab = function
   | 0 -> ""
@@ -87,25 +88,25 @@ let mkDate t =
 let neqi = function
   | Terminal | Testing -> "<>_R"
   | Pretty_Terminal -> "≠𝓡"
-  | HTML -> "&#8800;<sub>&#8475;</sub>"
+  | HTML -> "&#8800;<sup>?</sup><sub>&#8475;</sub>"
   | Latex -> "\\neq^?_{\\mathcal{R}}"
 
 let eqi = function
   | Terminal | Testing -> "=_R"
   | Pretty_Terminal -> "=𝓡"
-  | HTML -> "&#61;<sub>&#8475;</sub>"
+  | HTML -> "&#61;<sup>?</sup><sub>&#8475;</sub>"
   | Latex -> "=^?_{\\mathcal{R}}"
 
 let neqs = function
   | Terminal | Testing -> "<>"
   | Pretty_Terminal -> "≠"
-  | HTML -> "&#8800;"
+  | HTML -> "&#8800;<sup>?</sup>"
   | Latex -> "\\neq^?"
 
 let eqs = function
   | Terminal | Testing -> "="
   | Pretty_Terminal -> "="
-  | HTML -> "&#61;"
+  | HTML -> "&#61;<sup>?</sup>"
   | Latex -> "=^?"
 
 let eqf = function
@@ -141,7 +142,7 @@ let exists = function
 let vdash = function
   | Terminal | Testing -> "|-"
   | Pretty_Terminal -> "⊢"
-  | HTML -> "&#8866;"
+  | HTML -> "&#8866;<sup>?</sup>"
   | Latex -> "\\vdash^?"
 
 let vee = function

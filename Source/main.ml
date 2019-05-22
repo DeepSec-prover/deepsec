@@ -300,6 +300,10 @@ let _ =
       Arg.Int( fun i -> Config.distributed := true; Distributed_equivalence.DistribEquivalence.local_workers i),
       "<n> Activate the distributed computing with n local workers");
     (
+      "-test",
+      Arg.Int( fun i -> Equivalence_session.PartitionTree.test_starting_node := i),
+      "<n> Testing node from [i]-th node generated.");
+    (
       "-distant_workers",
       Arg.Tuple(
         [Arg.Set_string(dist_host);

@@ -81,7 +81,12 @@ val match_variables_and_names : 'a t -> 'a t -> unit
 
 (** {3 Display function} *)
 
-val display : Display.output -> ?rho: display_renamings option -> ?hidden:bool -> ?id:int -> 'a t -> string
+val display :
+  Display.output ->
+  ?out_ch: out_channel ->
+  ?rho: display_renamings option ->
+  ?tab:int -> ?hidden:bool ->
+  ?id_link:int -> ?id:int -> 'a t -> unit
 
 (** {2 Most general solustions} *)
 
@@ -175,7 +180,7 @@ module Set : sig
 
   (** Displays the set of constraint systems by index the constraint systems as {% $\C_k, \C_{k+1}, \ldots$ where $k$ is the integer given as argument.
       The default value of $k$ is 1. %} *)
-  val display: Display.output -> ?rho: display_renamings option -> ?id:int -> 'a t -> string
+  (*val display: Display.output -> ?rho: display_renamings option -> ?id:int -> 'a t -> string*)
 end
 
 (** {2 Normalisation and transformatin rules} *)

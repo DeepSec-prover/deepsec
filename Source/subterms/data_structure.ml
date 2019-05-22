@@ -577,25 +577,12 @@ module K = struct
         then emptyset Latex
         else
           begin
-            let str = ref "\\left\\{ \\begin{array}{l} " in
-            let current_number = ref 1 in
+            let str = ref "" in
             IntMap.iter (fun _ cell ->
-              if !current_number >= sdf.size
-              then str := Printf.sprintf "%s%s \\end{array}\\right\\}" !str (Fact.display_deduction_fact Latex ~rho:rho cell.fact)
-              else if (!current_number / per_line)*per_line = !current_number
-              then str := Printf.sprintf "%s%s,\\\\" !str (Fact.display_deduction_fact Latex ~rho:rho cell.fact)
-              else str := Printf.sprintf "%s%s, " !str (Fact.display_deduction_fact Latex ~rho:rho cell.fact);
-
-              incr current_number
+              str := Printf.sprintf "%s%s, " !str (Fact.display_deduction_fact Latex ~rho:rho cell.fact)
             ) sdf.map;
             IntMap.iter (fun _ cell ->
-              if !current_number >= sdf.size
-              then str := Printf.sprintf "%s%s \\end{array}\\right\\}" !str (Fact.display_deduction_fact Latex ~rho:rho cell.g_fact)
-              else if (!current_number / per_line)*per_line = !current_number
-              then str := Printf.sprintf "%s%s,\\\\" !str (Fact.display_deduction_fact Latex ~rho:rho cell.g_fact)
-              else str := Printf.sprintf "%s%s, " !str (Fact.display_deduction_fact Latex ~rho:rho cell.g_fact);
-
-              incr current_number
+              str := Printf.sprintf "%s%s, " !str (Fact.display_deduction_fact Latex ~rho:rho cell.g_fact)
             ) sdf.map_ground;
             !str
           end

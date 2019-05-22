@@ -186,20 +186,6 @@ ul li ul {
   text-align: center;
 }
 
-
-
-a:visited {
-  color: #f6513a;
-}
-
-a:link {
-  color: #f6513a;
-}
-
-a:hover {
-  color: #bb3c2a;
-}
-
 h1 {
 
 }
@@ -269,11 +255,6 @@ h3 {
     fill: #fff;
 }
 
-.dag .node rect {
-    stroke-width: 2px;
-    stroke: #333;
-    fill: none;
-}
 
 .dag .edge rect {
     fill: #fff;
@@ -336,13 +317,62 @@ sup {
     font-size: xx-small;
 }
 
+a:visited {
+  color: #f6513a;
+  text-decoration: none;
+}
+
+a:link {
+  color: #f6513a;
+  text-decoration: none;
+}
+
+a:hover {
+  color: #bb3c2a;
+  text-decoration: none;
+}
+
+
 .csys {
+  margin-top: 7px;
   margin-left: 15px;
-  margin-top: 15px;
 }
 
 .elt_csys {
   margin-top: 7px;
+  margin-left: 15px;
+}
+
+.symb_process {
+  margin-top: 7px;
+  margin-left: 30px;
+}
+
+.blocks {
+  margin-top: 7px;
+  margin-left: 15px;
+}
+
+.sub_process {
+  margin-left: 15px;
+}
+
+.process {
+  margin-top: 7px;
+  margin-left: 15px;
+}
+
+.matching {
+  margin-top: 7px;
+  margin-left: 30px;
+}
+
+.unfold {
+  margin-left: 15px;
+}
+
+.bijectionset {
+  margin-left: 15px;
 }
 
 
@@ -435,4 +465,32 @@ sup {
   margin-top:30px;
   font-weight: bold;
   font-size:16px;
+}
+
+
+.node:before {
+  content: "-- ";
+}
+
+.node {
+  margin-left:15px;
+  margin-top:7px;
+}
+
+.result_test {
+  margin-left: 15px;
+  margin-bottom: 15px;
+}
+
+.mathsf {
+  font-family: sans-serif;
+  font-size:14px;
+}
+
+.mathcal {
+  font-family: "Lucida Calligraphy", "Monotype Corsiva", "URW Chancery L", "Apple Chancery", "Tex Gyre Chorus", cursive, serif;
+}
+
+.mathit {
+  font-style: italic;
 }

@@ -16,110 +16,7 @@ let initialise_optimisation_parameters conf1 conf2 =
     (Configuration.contain_only_public_channel conf2)
 
 (* a module for representing symbolic processes (process with symbolic variables and constraint systems). Sets of symbolic processes are represented as mutable tables with indexes *)
-module Symbolic : sig
-  (* indexes to make simpler reference and comparison of constraint systems *)
-  module Index : sig
-    type t = int
-    val to_string : t -> string
-  end
-
-  (* a status of symbolic processes in equivalence proofs *)
-  module Status : sig
-    type t =
-      ForAll
-      | Exists
-      | Both
-    val init_for_equivalence : t (* the status of the initial processes for equivalence proofs *)
-    val init_for_inclusion_left : t (* the status of the initial left processes for inclusion proofs *)
-    val init_for_inclusion_right : t (* the status of the initial right processes for inclusion proofs *)
-    val downgrade_forall : t -> bool -> t (* given the status of a process, and a boolean telling whether a transition is useful to consider for ForAll processes, computes the status of the target of the transition *)
-    val print : t -> unit (* for debugging purposes *)
-  end
-
-  (* a datatype for representing transitions between symbolic processes *)
-  type transition_type =
-    | In
-    | Out
-    | Comm
-
-  type transition = {
-    target : Index.t;
-    skel_target : Labelled_process.Skeleton.t one_or_two;
-    label : Label.t one_or_two;
-    forall : bool;
-    type_of : transition_type;
-  }
-
-  (* a module for representing symbolic processes *)
-  module Process : sig
-
-    type process = {
-      origin : string;
-      conf : Configuration.t;
-      next_transitions : transition list;
-      status : Status.t;
-    }
-
-    type t = process Constraint_system.t
-
-    exception Attack_Witness of t
-
-    val get_status : t -> Status.t
-    val get_conf : t -> Configuration.t
-    val replace_conf : t -> Configuration.t -> t
-    val get_transitions : t -> transition list
-    val set_transitions : t -> transition list -> t
-    val get_origin_process : t -> string
-    val init : string -> Configuration.t -> Status.t -> t
-    val successor : t -> Configuration.t -> Status.t -> t
-    val solution : t -> (fst_ord, name) Subst.t * (snd_ord, axiom) Subst.t (* gets the solution of a symbolic process (in solved form) *)
-  end
-
-  (* a module for representing matchings between within sets of symbolic processes. A matching can be seen as a mapping from indexes (referring to a symbolic process P1) to their matchers, i.e. lists of indexes (referring to processes P2) with bijection sets (mapping the labels of P1 to the label of P2). *)
-  module Matching : sig
-    type matching_forall_exists = Index.t * (Index.t * BijectionSet.t) list
-    type t = matching_forall_exists list
-    val empty : t (* the empty matching *)
-    val add_match : Index.t -> (Index.t * BijectionSet.t) list -> t -> t
-    val fold : (Index.t -> (Index.t * BijectionSet.t) list -> 'a -> 'a) -> t -> 'a -> 'a (* computation over indexes and their matchers. *)
-    val iter : (Index.t -> (Index.t * BijectionSet.t) list -> unit) -> t -> unit (* iteration of an operation over indexes and their matchers. *)
-    val remove : t -> Index.t list -> t * Index.t option (* removes a list of indexes from a matching. In case an index ends up with no matchers because of this, an empty matching is returned along with this index. *)
-    val clean : t -> Index.t list -> t (* removes indexes that do not need to be matched anymore. In particular, matchers are not affected and this can not create attacks, by opposition to [remove] NB. Assumes that, if a index i is removed but used as a matcher for an other index j, then j also appears in the list of indexes to remove. *)
-    val print : t -> unit (* prints a matching *)
-    val check_and_remove_improper_labels : t -> (Index.t * Label.t list) list -> t
-  end
-
-  (* a module for representing sets of symbolic processes. As they often need to be compared by matchings, they are stored in a table and referred by indexes. *)
-  module Set : sig
-
-    (** instances of IndexedSet **)
-    type t
-    val empty : t
-    val is_empty : t -> bool
-    val choose : t -> Process.t
-    val find : t -> Index.t -> Process.t
-    val iter : (Index.t -> Process.t -> unit) -> t -> unit
-    val map : (Index.t -> Process.t -> Process.t) -> t -> t
-    val filter : (Index.t -> Process.t -> bool) -> t -> t
-    val map_filter : (Index.t -> Process.t -> Process.t option) -> t -> t
-    val add_new_elt : t -> Process.t -> t * Index.t
-
-
-    val cast : t -> Index.t Constraint_system.Set.t (* cast into a usual constraint system set *)
-    val decast : t -> Matching.t -> Index.t Constraint_system.Set.t -> t * Matching.t (* restrict a set and a matching based on the indexes remaining in a Constraint_system.Set.t after calling the constraint solver.
-    NB. Performs an attack check at the same time, and raises Attack_Witness if one is found *)
-    val clean : t -> Matching.t -> t (* removes the existential status of the processes of a set that are not used as matchers *)
-    val remove_unauthorised_blocks : bool -> t -> Matching.t -> (snd_ord, axiom) Subst.t -> t * Matching.t (* removes the processes of a set that start faulty traces, and removes their universal status in the matching *)
-
-    val get_improper_labels : t -> (Index.t * Label.t list) list * t
-  end
-
-  (* basic functions for computing the transitions from a symbolic process *)
-  module Transition : sig
-    val print : Index.t -> transition -> unit (* printing a transition, with the index of the source *)
-    val generate : vars -> Configuration.Transition.kind option -> Set.t ref -> Process.t -> transition list
-  end
-end = struct
+module Symbolic = struct
   (* abstraction of integer indexes *)
   module Index = struct
     type t = int
@@ -142,6 +39,11 @@ end = struct
         | Exists -> "E"
         | Both -> "AE"
       )
+
+    let display out s = match s with
+      | ForAll -> forall out
+      | Exists -> exists out
+      | Both -> (forall out)^(exists out)
   end
 
   type transition_type =
@@ -190,6 +92,47 @@ end = struct
       let s = Constraint_system.get_additional_data cs in
       Constraint_system.replace_additional_data cs {s with conf = conf; next_transitions = []; status = status}
     let solution = Constraint_system.instantiate_when_solved
+
+    let fresh_display_id =
+      let counter = ref 0 in
+      let f () =
+        incr counter;
+        !counter
+      in
+      f
+
+    let display out ?(out_ch=stdout) ?(tab=0) ?(id=1) ?(id_link=1) symb_proc = match out with
+      | HTML ->
+          let proc = Constraint_system.get_additional_data symb_proc in
+          let id_link_content = fresh_display_id () in
+
+          let link_block = Printf.sprintf "<a href=\"javascript:show_single('blocks%d');\">blocks<sub>%d</sub></a>" id_link_content id in
+          let link_process = Printf.sprintf "<a href=\"javascript:show_single('process%d');\"><span class=\"mathcal\">P</span><sub>%d</sub></a>" id_link_content id in
+          let link_csys = Printf.sprintf "<a href=\"javascript:show_single('csys%d');\"><span class=\"mathcal\">C</span><sub>%d</sub></a>" id_link_content id in
+
+          (* Beginning of div *)
+          Printf.fprintf out_ch "%s<div class=\"symb_process\" id=\"symb_process%d\" style=\"display:none;\"> <span class=\"mathcal\">SP</span><sub>%d</sub> = (%s,%s,%s,%s,%s)  with\n"
+            (create_tab tab)
+            id_link id
+            (Status.display HTML proc.status) proc.origin
+            link_block link_process link_csys;
+
+          (* Display blocks *)
+          let blocks = Configuration.get_block_list proc.conf in
+          Printf.fprintf out_ch "%s<div class=\"blocks\" id=\"blocks%d\">\n" (create_tab (tab+1)) id_link_content;
+          Printf.fprintf out_ch "%sblocks<sub>%d</sub> = %s\n" (create_tab (tab+2)) id (display_list (Block.display HTML) " " (List.rev blocks));
+          Printf.fprintf out_ch "%s</div>\n" (create_tab (tab+1));
+
+          (* Display constraint system *)
+          Constraint_system.display HTML ~out_ch:out_ch ~tab:(tab+1) ~hidden:false ~id_link:id_link_content ~id:id symb_proc;
+
+          (* Display process *)
+          let lbl_proc = Configuration.to_process proc.conf in
+          Labelled_process.display HTML ~tab:(tab+1) ~out_ch:out_ch ~label:true ~hidden:true ~start:true ~id:id ~id_link:id_link_content lbl_proc;
+
+          (* End of div *)
+          Printf.fprintf out_ch "%s</div>\n" (create_tab tab)
+      | _ -> Config.internal_error "[equivalence_session.ml >> Symbolic.Process.display] Unimplemented case."
   end
 
   module Matching = struct
@@ -247,6 +190,48 @@ end = struct
         in
         i_fa,exists'
       ) m
+
+    let fresh_display_id =
+      let counter = ref 0 in
+      let f () =
+        incr counter;
+        !counter
+      in
+      f
+
+    let display out ?(out_ch=stdout) ?(tab=0) ?(rho_id=[]) ?(id=0) ?(id_link=0) m = match out with
+      | HTML ->
+          let get_id_csys id = match List.assoc_opt id rho_id with
+            | None -> id
+            | Some id' -> id'
+          in
+
+          let list_bset = ref [] in
+
+          let display_exist id_fa (fex,bset) =
+            let id_ex = get_id_csys fex in
+            let id_link = fresh_display_id () in
+            let title = Printf.sprintf "Bijection Set %d &rarr; %d" id_fa id_ex in
+            list_bset := (title,id_link,bset) :: !list_bset;
+            Printf.sprintf "<a href=\"javascript:show_single('bijectionset%d');\">%d</a>" id_link id_ex
+          in
+
+          let display_forall (fa,exist) =
+            let id_fa = get_id_csys fa in
+
+            Printf.sprintf "%d &rarr; { %s }" id_fa (display_list (display_exist id_fa) ", " exist)
+          in
+
+          Printf.fprintf out_ch "%s<div class=\"matching\" id=\"matching%d\"><span class=\"mathcal\">M</span><sub>%d</sub> = [ %s ]"
+            (create_tab tab) id_link id (display_list display_forall ", " m);
+
+          List.iter (fun (title,id_link,bset) ->
+            BijectionSet.display HTML ~out_ch:out_ch ~tab:(tab+1) ~id_link:id_link ~title:title bset
+          ) (List.rev !list_bset);
+
+          Printf.fprintf out_ch "%s</div>" (create_tab tab)
+      | _ -> Config.internal_error "[equivalence_session.ml >> Matching.display] Unimplemented case."
+
   end
 
   module Set = struct
@@ -563,22 +548,11 @@ end = struct
         add_transition_input csys_set accu conf_exec eqn cs var_X idata next_status end;
       List.filter_in_head (fun tr -> tr.forall) !accu
   end
-
 end
 
 
 (* Graph structure and conversion from matching *)
-module Graph : sig
-  type t
-
-  module ConnectedComponent : sig
-    type t
-    val mem : Symbolic.Index.t -> t -> bool
-  end
-
-  val of_matching : Symbolic.Matching.t -> t
-  val connected_components : t -> ConnectedComponent.t list
-end = struct
+module Graph = struct
   (* types and functor instantiations *)
   type node = Symbolic.Index.t
   type edge = BijectionSet.t
@@ -634,32 +608,13 @@ end
 
 
 (* Exploration of the partition tree *)
-module PartitionTree : sig
-  (* functions operating on one node of the partition tree *)
-  module Node : sig
-    type t
-    val init : Symbolic.Set.t -> Symbolic.Matching.t -> t (* creates the root of the partition tree from an initial set and a matching *)
-    val print : t -> unit (* prints out the data of a node *)
-    val release_skeleton : t -> t (* marks the skeletons as checked and removes the proof obligations corresponding to improper blocks *)
-    val clean : t -> t (* application of Symbolic.Set.clean *)
-    val generate_next : t -> Configuration.Transition.kind option * t (* computes the transitions from a given node, and puts all the new processes into one new node *)
-    val split : t -> (t->(unit->unit)->unit) -> (unit->unit) -> unit (* splits a node into several subnode with independent matchings *)
-    val decast : t -> Symbolic.Index.t Constraint_system.Set.t -> t (* after the constraint solver removes constraints systems from a Constraint_system.Set.t, [decast] applies the same restriction to the Symbolic.Set.t and the corresponding matching *)
-    val remove_unauthorised_blocks : t -> Symbolic.Index.t Constraint_system.Set.t -> t (* removes unauthorised blocks from a node *)
-    val test_node : t -> unit
-
-  end
-
-  val generate_successors : Node.t -> (Node.t->(unit->unit)->unit) -> (unit->unit) -> unit (* generates the successor nodes of a given node in the partition tree, and applies a continuation to each of them. A final continuation is applied when all nodes have been explored.
-  NB. Raises Attack_Witness if an attack is found furing the exploration *)
-  val explore_from : Node.t -> unit (* recursive application of [generate_successors] to explore the whole tree rooted in at given node. *)
-end = struct
+module PartitionTree = struct
   module Node = struct
     type t = {
       csys_set : Symbolic.Set.t;
       matching : Symbolic.Matching.t;
       size_frame : int;
-      id : string; (* only for debugging purposes *)
+      id : int; (* only for debugging purposes *)
     }
 
     let total_node = ref 0
@@ -823,12 +778,13 @@ end = struct
 
     let fresh_id =
       let x = ref (-1) in
-      fun () -> incr x; Printf.sprintf "n%d" !x
+      fun () -> incr x; !x
+
     let print (n:t) : unit =
-      if n.id <> ""
+      if n.id <> 0
       then
       begin
-        Printf.printf ">> Data node (id=%s):\n" n.id;
+        Printf.printf ">> Data node (id=%d):\n" n.id;
         Printf.printf "indexes: ";
         Symbolic.Set.iter (fun id csys ->
           Printf.printf "%s [Status " (Symbolic.Index.to_string id);
@@ -846,7 +802,6 @@ end = struct
           let conf = Symbolic.Process.get_conf p in
           let p' = Configuration.to_process conf in
           let solution = Constraint_system.get_substitution_solution Protocol p in
-          Printf.printf "---Constraint_system %s : %s\n" (Symbolic.Index.to_string id) (Constraint_system.display HTML p);
           Printf.printf "---Process %s : %s\n" (Symbolic.Index.to_string id) (Labelled_process.print ~labels:true ~solution:solution p');
           print_string (Configuration.display_blocks conf)
         ) n.csys_set;
@@ -1023,6 +978,48 @@ end = struct
       let (new_set,matching_authorised) =
         Symbolic.Set.remove_unauthorised_blocks true node.csys_set node.matching subst in
       {node with csys_set = new_set; matching = matching_authorised}
+
+    (******* Display *******)
+
+    let fresh_display_id =
+      let counter = ref 0 in
+      let f () =
+        incr counter;
+        !counter
+      in
+      f
+
+    let display out ?(out_ch=stdout) ?(tab=0) ?(id=0) ?(id_link=0) node = match out with
+      | HTML ->
+          let rho_id_mapping = ref [] in
+          let counter = ref 0 in
+          let csys_list = ref [] in
+
+          Printf.fprintf out_ch "%s<div class=\"node\" id=\"node%d\" style=\"display:none;\">Node <span class=\"mathcal\">N</span><sub>%d</sub> = ( %s " (create_tab tab) id_link id (lcurlybracket HTML);
+
+          Symbolic.Set.iter (fun id_csys csys ->
+            incr counter;
+            rho_id_mapping := (id_csys,!counter) :: !rho_id_mapping;
+            let id_link_content = fresh_display_id () in
+            if !counter = 1
+            then Printf.fprintf out_ch "<a href=\"javascript:show_single('symb_process%d');\"><span class=\"mathcal\">SP</span><sub>1</sub></a>" id_link_content
+            else Printf.fprintf out_ch ", <a href=\"javascript:show_single('symb_process%d');\"><span class=\"mathcal\">SP</span><sub>%d</sub></a>" id_link_content !counter;
+            csys_list := (!counter,id_link_content,csys) :: !csys_list
+          ) node.csys_set;
+
+          let id_link_matching = fresh_display_id () in
+          Printf.fprintf out_ch " %s, <a href=\"javascript:show_single('matching%d');\"><span class=\"mathcal\">M</span><sub>%d</sub></a>) with\n" (rcurlybracket HTML) id_link_matching id;
+
+          List.iter (fun (id,id_link,csys) ->
+            Symbolic.Process.display HTML ~out_ch:out_ch ~tab:(tab+1) ~id:id ~id_link:id_link csys
+          ) (List.rev !csys_list);
+
+          Symbolic.Matching.display HTML ~out_ch:out_ch ~tab:(tab+1) ~rho_id:!rho_id_mapping ~id:id ~id_link:id_link_matching node.matching;
+
+
+          Printf.fprintf out_ch "%s</div>\n" (create_tab tab)
+      | _ -> Config.internal_error "[equivalence_session.ml >> Node.display] Unimplemented case"
+
   end
 
   (* construction of the successor nodes of a partition tree. This includes:
@@ -1093,9 +1090,125 @@ end = struct
 
   let explore_from (n:Node.t) : unit =
     explore n (fun () -> ())
+
+  let test_starting_node = ref 1
+
+  let explore_test n =
+    let path_scripts = Filename.concat !Config.path_deepsec "Scripts" in
+    let path_style = Filename.concat !Config.path_deepsec "Style" in
+    let path_template = Filename.concat !Config.path_html_template "test.html" in
+    let path_result = Filename.concat !Config.path_index "result_test.html" in
+
+    let out_result = open_out path_result in
+    let in_template = open_in path_template in
+
+    let template_stylesheet = "<!-- Stylesheet deepsec -->" in
+    let template_script = "<!-- Script deepsec -->" in
+    let template_line = "<!-- Content of the file -->" in
+
+    (* Parameters *)
+    let tab_test = 4 in
+    let counter_node_test = ref 0 in
+    let nb_node = 20 in
+
+    let close_files () =
+      try
+        while true do
+          let l = input_line in_template in
+          Printf.fprintf out_result "%s\n" l;
+        done
+      with
+      | End_of_file -> close_in in_template; close_out out_result
+    in
+
+    let rec explore_with_display n f_next =
+      incr counter_node_test;
+
+      if !counter_node_test > !test_starting_node + nb_node
+      then (close_files (); exit 0);
+
+      if !counter_node_test >= !test_starting_node
+      then
+        begin
+          let list_node = ref [] in
+
+          generate_successors n (fun n_sons f_next1 ->
+            list_node := (n_sons.Node.id, Node.fresh_display_id (), n_sons) :: !list_node;
+            f_next1 ()
+          ) (fun () -> ());
+
+          let id_link_input_node = Node.fresh_display_id () in
+          let id_link_input_optim_node = Node.fresh_display_id () in
+
+          let n_optim = Node.apply_optim n in
+
+          Printf.fprintf out_result "%s<div class=\"result_test\">Input node: <a href=\"javascript:show_single('node%d');\"><span class=\"mathcal\">N</span><sub>%d</sub></a>, "
+            (create_tab tab_test)
+            id_link_input_node
+            n.Node.id;
+
+          Printf.fprintf out_result "Optimised input node: <a href=\"javascript:show_single('node%d');\"><span class=\"mathcal\">N</span><sub>%d</sub></a>, Output nodes: "
+            id_link_input_optim_node
+            n_optim.Node.id;
+
+          let list_node' = List.rev !list_node in
+          let start = ref true in
+          List.iter (fun (id,id_link,_) ->
+            if !start
+            then
+              begin
+                Printf.fprintf out_result "<a href=\"javascript:show_single('node%d');\"><span class=\"mathcal\">N</span><sub>%d</sub></a>" id_link id;
+                start := false
+              end
+            else Printf.fprintf out_result ", <a href=\"javascript:show_single('node%d');\"><span class=\"mathcal\">N</span><sub>%d</sub></a>" id_link id
+          ) list_node';
+
+          Printf.fprintf out_result "\n";
+
+          Node.display HTML ~out_ch:out_result ~tab:(tab_test+1) ~id:n.Node.id ~id_link:id_link_input_node n;
+          Node.display HTML ~out_ch:out_result ~tab:(tab_test+1) ~id:n_optim.Node.id ~id_link:id_link_input_optim_node n_optim;
+          List.iter (fun (id,id_link,n_son) ->
+            Node.display HTML ~out_ch:out_result ~tab:(tab_test+1) ~id:id ~id_link:id_link n_son
+          ) list_node';
+          Printf.fprintf out_result "%s</div>\n" (create_tab (tab_test));
+
+          let rec browse f_next_1 = function
+            | [] -> f_next_1 ()
+            | (_,_,n')::q' ->
+                explore_with_display n' (fun () ->
+                  browse f_next_1 q'
+                )
+          in
+          browse f_next list_node'
+        end
+      else generate_successors n explore_with_display f_next
+    in
+
+    (* Display the beginning *)
+
+    let line = ref (input_line in_template) in
+    while !line <> template_stylesheet do
+      Printf.fprintf out_result "%s\n" !line;
+      line := input_line in_template
+    done;
+    Printf.fprintf out_result " <link rel=\"stylesheet\" type=\"text/css\" href=\"%s\">\n" (Filename.concat path_style "style.css");
+
+    while !line <> template_script do
+      Printf.fprintf out_result "%s\n" !line;
+      line := input_line in_template
+    done;
+    Printf.fprintf out_result " <script src=\"%s\"></script>\n" (Filename.concat path_scripts "scripts.js");
+
+    while !line <> template_line do
+      Printf.fprintf out_result "%s\n" !line;
+      line := input_line in_template
+    done;
+
+    try
+      explore_with_display n (fun () -> ())
+    with
+      Symbolic.Process.Attack_Witness _ -> close_files ()
 end
-
-
 
 (* mapping everything to a decision procedure *)
 type goal =
@@ -1164,6 +1277,9 @@ let analysis (goal:goal) (conf1:Configuration.t) (conf2:Configuration.t) : resul
   let root = compute_root goal conf1 conf2 in
   Config.debug (fun () -> Config.print_in_log "Compute root completed\n");
   try
+    Config.debug (fun () ->
+      PartitionTree.explore_test root
+    );
     PartitionTree.explore_from root;
     Equivalent
   with

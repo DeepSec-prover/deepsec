@@ -8,32 +8,7 @@ type 'a one_or_two =
   | Single of 'a
   | Double of ('a * 'a)
 
-module Label : sig
-  type t =
-    { label : int list;
-      mutable link : t option;
-      prefix : t option
-    }
-  val initial : t (* an initial, empty label *)
-  val add_position : t -> int -> t (* adds a position at the end of a label *)
-  val lexico : t -> t -> int
-  val independent : t -> t -> int (* returns 0 if one label is prefix of the other, and compares them lexicographically otherwise *)
-  val independent_list : t list -> t list -> int (* lifting the independence ordering to sets of labels. Two sets are dependent (returns: 0) when two of their labels are dependent, and otherwise (returns: -1 or 1) they are ordered w.r.t. their smallest label.
-  Assumes the lists are sorted by increasing index and are non-empty. *)
-  val compare : t -> t -> int (* Alias of independent *)
-  val to_string : t -> string (* conversion to printable *)
-  val auto_cleanup : (unit -> 'a) -> 'a
-  val match_label : t -> t -> unit
-  val linked_labels : t list ref
-  val check_prefix : t -> t -> int option (* prefix l1 l2 returns Some i if l2 = l1@[i] and None otherwise *)
-  val last_position : t -> int (* extracts the last added position of a label *)
-
-  (* operations on sets of labels *)
-  module Set : Set.S with type elt = t
-
-  val find_and_remove : t -> Set.t -> Set.t option
-  val of_position_list : t -> int list -> Set.t
-end = struct
+module Label = struct
   type t =
     { label : int list;
       mutable link : t option;
@@ -148,20 +123,13 @@ end = struct
     then 0
     else independent (List.hd lab_list1) (List.hd lab_list2)
 
-  end
+  (******* Display function ********)
+
+  let display lbl = display_list string_of_int "." lbl.label
+end
 
 (* a module for representing blocks *)
-module Block : sig
-  type t
-  val create : Label.t list -> t (* creation of a new empty block *)
-  val add_axiom : axiom -> t -> t (* adds an axiom in a block *)
-  val add_labels : Label.t list -> t -> t (* adds labels to a block *)
-  val add_variable : snd_ord_variable -> t -> t (* adds a second order variable in a block *)
-  val is_authorised : t list -> t -> (snd_ord, axiom) Subst.t -> bool * snd_ord_variable list (* checks whether a block is authorised after a list of blocks *)
-  val print : t -> string (* converts a block into a string *)
-  val match_labels : (Label.t list -> unit) -> t list -> t list -> unit
-  val check_labels : Label.t list -> Label.t list -> bool
-end = struct
+module Block = struct
   module IntSet = Set.Make(struct type t = int let compare = compare end)
 
   type t = {
@@ -385,26 +353,44 @@ end = struct
     check_block_labels labels_block;
 
     not (check_process_labels Both labels_block labels_process = Right)
+
+  (******* Display ********)
+
+  let display out block =
+    let str_label_list = match block.label with
+      | [] -> Config.internal_error "[process_session.ml >> Block.display] The block should contain at least one label."
+      | [lbl] -> Label.display lbl
+      | _ ->
+          Printf.sprintf "%s %s %s"
+            (lcurlybracket out)
+            (display_list Label.display "; " block.label)
+            (rcurlybracket out)
+    in
+    let str_bound_axioms = match out, block.bounds_axiom with
+      | _ , None -> ""
+      | Latex, Some(ax_min,ax_max) ->
+          Printf.sprintf ", \\mathsf{ax}_{%d \\rightarrow %d}" ax_min ax_max
+      | HTML, Some(ax_min,ax_max) ->
+          Printf.sprintf ", <span class=\"mathsf\">ax</span><sub>%d %s %d</sub>" ax_min (rightarrow HTML) ax_max
+      | _,Some(ax_min,ax_max) ->
+          Printf.sprintf ", ax_%d %s ax_%d" ax_min (rightarrow out) ax_max
+    in
+
+    let str_recipes =
+      if block.recipes = []
+      then ""
+      else
+        Printf.sprintf ", %s %s %s"
+          (lcurlybracket out)
+          (display_list (fun r -> Variable.display out Recipe r) "; " block.recipes)
+          (rcurlybracket out)
+    in
+
+    (lbrace out)^str_label_list^str_bound_axioms^str_recipes^(rbrace out)
 end
 
 (* multisets of unacessible private channels *)
-module Channel : sig
-  type t
-  val equal : t -> t -> bool
-  val compare : t -> t -> int
-  val is_public : t -> bool
-  val to_string : t -> string
-  val from_term : protocol_term -> t (* NB. prints an error message if the term is not a term or a symbol => should not be used after distributed computation starts *)
-
-  val apply_renaming : Name.Renaming.t -> t -> t
-
-  val match_channels : t -> t -> unit
-
-  module Set : sig
-    include Set.S with type elt = t
-    val apply_renaming : Name.Renaming.t -> t -> t
-  end
-end = struct
+module Channel = struct
   type t =
     | Symbol of symbol
     | Name of name
@@ -462,121 +448,16 @@ end = struct
     let apply_renaming rho set =
       map (apply_renaming rho) set
   end
+
+  (******* Display ********)
+
+  let display out = function
+    | Symbol f -> Symbol.display out f
+    | Name n -> Name.display out n
 end
 
 (* a module for labelled processes *)
-module Labelled_process : sig
-  type t
-  type id
-  type bang_status
-  type plain =
-    | Start of t * id
-    | Input of Channel.t * fst_ord_variable * t * Channel.Set.t * id
-    | Output of Channel.t * protocol_term * t * Channel.Set.t * id
-    | OutputSure of Channel.t * protocol_term * t * Channel.Set.t * id
-    | If of protocol_term * protocol_term * t * t
-    | Let of protocol_term * protocol_term * protocol_term * t * t
-    | New of name * t
-    | Par of t list
-    | Bang of bang_status * t list * t list
-
-  val get_label : t -> Label.t (* gets the label of a process, and returns an error message if it has not been assigned *)
-  val get_proc : t -> plain
-
-  val print : ?labels:bool -> ?solution:((fst_ord, name) Subst.t) -> ?highlight:(id list) -> t -> string (* converts a process into a string, while highlighting the instruction at the given identifier *)
-  val of_expansed_process : ?preprocessing:(t -> t) -> Process.expansed_process -> t (* converts an expansed process into a process starting with a Start constructor and label [initial]. Also attributes id to all observable instructions. *)
-  val of_process_list : t list -> t (* groups a list of processes together *)
-  val elements : ?init:(t list) -> t -> t list (* extracts the list of parallel subprocesses (Order not preserved)*)
-  val nil : t -> bool (* checks if this represents the null process *)
-  val empty : Label.t -> t (* a labelled process with empty data. For typing purposes (only way to construct a Labelled_process.t outside of this module) *)
-  val contains_public_output_toplevel : t -> bool (* checks whether a normalised process contains an executable output *)
-  val not_pure_io_toplevel : t -> bool (* checks whether a normalised process does not start right away by an input or an output *)
-
-  val contain_only_public_channel : t -> bool
-
-  (* comparison of process skeletons *)
-  module Skeleton : sig
-    type t
-    val empty : t (* skeleton of the nil process *)
-    val print : t -> string (* conversion to string *)
-    val add_action : bool -> Channel.t -> Label.t -> t -> t (* adds a labelled action into a skeleton. The first boolean is set to true if this action is an output. *)
-    val link : t -> t -> (int list * int list) list option (* tries to convert two skeletons into a bijection set and fails if they are incompatible *)
-  end
-
-  val labelling : Label.t -> t -> t * Skeleton.t  (* assigns labels to the parallel processes at toplevel, with a given label prefix *)
-  val occurs : fst_ord_variable -> t -> bool
-  val apply_substitution : (fst_ord, name) Subst.t -> t -> t
-
-  val get_improper_labels : (Label.t list -> t list -> t -> 'a) -> Label.t list -> t list -> t -> 'a
-
-  val get_improper_labels_list : (Label.t list -> t list -> t list -> 'a) -> Label.t list -> t list -> t list -> 'a
-
-
-  (* extraction of inputs from processes *)
-  module Input : sig
-    type data = {
-      channel : Channel.t; (* channel on which the input is performed *)
-      var : fst_ord_variable; (* variable bound by the input *)
-      optim : bool; (* whether this input is needed for forall processes *)
-      lab : Label.t; (* label of the executed input *)
-      leftovers : t list; (* what remains after the input is executed *)
-      id : id; (* the id of the executed instruction *)
-    }
-  end
-
-  (* extraction of outputs from processes *)
-  module Output : sig
-    type data = {
-      channel : Channel.t; (* channel on which the output is performed *)
-      term : protocol_term; (* output term *)
-      optim : bool; (* whether this output is needed for forall processes *)
-      lab : Label.t; (* label of the executed output *)
-      context : t -> t; (* suroundings of the executed output *)
-      id : id; (* the id of the executed instruction *)
-    }
-    val unfold : ?optim:bool -> t -> (t * data) list (* function computing all potential ways of unfolding one output from a process.
-    NB. Unfolding outputs break symmetries (just as symmetries), but they can be restaured at the end of negative phases (see function [restaure_sym]). *)
-    val restaure_sym : t -> t (* restaures symmetries that have been temporarily broken by unfolding outputs *)
-  end
-
-  (* extraction of private communications and public inputs (using the module Input) *)
-  module PrivateComm : sig
-    type data = {
-      channel : Channel.t; (* channel on which the output is performed *)
-      var : fst_ord_variable; (* variable bound by the input *)
-      term : protocol_term; (* output term *)
-      optim : bool; (* whether this input is needed for forall processes *)
-      labs : Label.t * Label.t; (* labels of the executed input *)
-
-      leftovers : t list; (* what remains after the input is executed *)
-      ids : id * id; (* the ids of the executed instructions *)
-      conflict_toplevel : bool; (* indicates if other internal communications are possible at toplevel with this channel *)
-      conflict_future : bool; (* indicates if other internal communications may be possible with this channel later in the trace, but are not available now. Overapproximation (i.e. is set to true more often that needed). *)
-    }
-    val unfold : ?optim:bool -> t list -> (t * Input.data) list * (t * t * data) list (* computes all potential unfolding of public inputs and private communications. For private communications, the substitution of the communicated term is performed. *)
-  end
-
-  (* operations on initial labelled process that do not affect the decision of equivalence but make it more efficient *)
-  module Optimisation : sig
-    val remove_non_observable : t -> t (* removes subprocesses that do not contain observable actions *)
-    val flatten : t -> t (* push new names as deep as possible to facilitate the detection of symmetries, and flatten unecessary nested constructs *)
-    val factor : t -> t (* factors structurally equivalent parallel processes *)
-    val factor_up_to_renaming : t -> t -> t * t (* factors at toplevel parallel processes that are structurally equivalent up to bijective channel renaming. This factorisation has to be common to the two processes under equivalence check, therefore the two arguments *)
-
-    val match_processes : t -> t -> unit
-  end
-
-  (* normalisation of processes (i.e. execution of instructions other than inputs and outputs) *)
-  module Normalise : sig
-    type constraints
-    val equations : constraints -> (fst_ord, name) Subst.t
-    val disequations : constraints -> (fst_ord, name) Diseq.t list
-    val constraints_of_equations : (fst_ord, name) Subst.t -> constraints
-    exception Bot_disequations
-    val normalise : t -> constraints -> (constraints->t->(unit->unit)->unit) -> (unit->unit) -> unit
-  end
-end = struct
-
+module Labelled_process = struct
   type t = {
     proc : plain;
     label : Label.t option; (* None if the label has not been attributed yet *)
@@ -1185,6 +1066,128 @@ end = struct
 
     unfold true accu leftovers p (fun accu -> accu)
 
+  (******* Display ********)
+
+  let retrieve_labels proc_list =
+
+    let rec browse accu proc =
+      let accu1 = match proc.label with
+        | None -> accu
+        | Some lbl -> lbl :: accu
+      in
+      match proc.proc with
+        | Start _
+        | Input _
+        | Output _
+        | OutputSure _
+        | If _
+        | Let _
+        | New _ -> accu1
+        | Par p_l -> List.fold_left browse accu1 p_l
+        | Bang(_,p_l1,p_l2) ->
+            let accu2 = List.fold_left browse accu1 p_l1 in
+            List.fold_left browse accu2 p_l2
+    in
+    List.fold_left browse [] proc_list
+
+  let fresh_display_id =
+    let counter = ref 0 in
+    let f () =
+      incr counter;
+      !counter
+    in
+    f
+
+  let display out ?(tab=0) ?(out_ch=stdout) ?(label=true) ?(start=true) ?(hidden=false) ?(highlight=[]) ?(id=1) ?(id_link=1) proc = match out with
+    | HTML ->
+        let do_highlight str pos =
+          if List.mem pos highlight
+          then Printf.sprintf "<span class=\"highlight\">%s</span>" str
+          else str
+        in
+
+        let display_subprocess tab str =
+          Printf.fprintf out_ch "%s<div class=\"sub_process\">%s</div>\n" (create_tab tab) str
+        in
+
+        let rec browse tab proc =
+          let str_label = match proc.label with
+            | Some lbl when label -> Printf.sprintf " <span class=\"label\">[%s]</span>" (Label.display lbl)
+            | _ -> ""
+          in
+          match proc.proc with
+            | Start(p,pos) ->
+                if start || label
+                then display_subprocess tab ((do_highlight "start;" pos)^str_label);
+
+                browse tab p
+            | Input(ch,x,p,_,pos) ->
+                let str = Printf.sprintf "in(%s,%s);" (Channel.display out ch) (Variable.display out Protocol x) in
+                display_subprocess tab ((do_highlight str pos)^str_label);
+                browse tab p
+            | Output(ch,t,p,_,pos)
+            | OutputSure(ch,t,p,_,pos) ->
+                let str = Printf.sprintf "out(%s,%s);" (Channel.display out ch) (Term.display out Protocol t) in
+                display_subprocess tab ((do_highlight str pos)^str_label);
+                browse tab p
+            | If(u,v,pthen,{ proc = Par []; _}) ->
+                let str = Printf.sprintf "if %s = %s then" (Term.display out Protocol u) (Term.display out Protocol v) in
+                display_subprocess tab str;
+                browse tab pthen
+            | If(u,v,pthen,pelse) ->
+                let str_then = Printf.sprintf "if %s = %s then" (Term.display out Protocol u) (Term.display out Protocol v) in
+                unfold tab str_then pthen;
+                unfold tab "else" pelse;
+            | Let(u,_,v,pthen,{ proc = Par []; _}) ->
+                let str = Printf.sprintf "let %s = %s in" (Term.display out Protocol u) (Term.display out Protocol v) in
+                display_subprocess tab str;
+                browse tab pthen
+            | Let(u,_,v,pthen,pelse) ->
+                let str_then = Printf.sprintf "let %s = %s in" (Term.display out Protocol u) (Term.display out Protocol v) in
+                unfold tab str_then pthen;
+                unfold tab "else" pelse;
+            | New(n,p) ->
+                let str = Printf.sprintf "new %s;" (Name.display out n) in
+                display_subprocess tab str;
+                browse tab p
+            | Par [] -> display_subprocess tab "0"
+            | Par [p] -> browse tab p
+            | Par (p::q_p) ->
+                unfold tab "(" p;
+                List.iter (unfold tab ") | (") q_p;
+                display_subprocess tab ")"
+            | Bang(Strong,[],[]) -> display_subprocess tab "0"
+            | Bang(Strong,[],[p]) -> browse tab p
+            | Bang(Strong,[],l_p) ->
+                let str_label =
+                  if label
+                  then
+                    let label_list = retrieve_labels l_p in
+                    Printf.sprintf " <span class=\"label\">%s</span>" (display_list (fun lbl -> "["^(Label.display lbl)^"]") ", " label_list)
+                  else ""
+                in
+                unfold tab (Printf.sprintf "!<sup>%d</sup> %s" (List.length l_p) str_label) (List.hd l_p)
+            | Bang(Partial,lp,lp') -> browse tab { proc with proc = Par (lp@lp') }
+            | Bang(Strong,lp,lp') -> browse tab { proc with proc = Par (lp@[{proc with proc = Bang(Strong,[],lp')}]) }
+
+        and unfold tab str proc =
+          let id_unfold = fresh_display_id () in
+          let str = Printf.sprintf "%s <a id=\"unfold_button%d\" href=\"javascript:unfold_one('%d');\">&#9663;</a>" str id_unfold id_unfold in
+          display_subprocess tab str;
+          Printf.fprintf out_ch "%s<div class=\"unfold\" id=\"unfold%d\">\n" (create_tab tab) id_unfold;
+          browse (tab+1) proc;
+          Printf.fprintf out_ch "%s</div>\n" (create_tab tab)
+        in
+        let style =
+          if hidden
+          then " style=\"display:none;\""
+          else ""
+        in
+        Printf.fprintf out_ch "%s<div class=\"process\" id=\"process%d\"%s><span class=\"mathcal\">P</span><sub>%d</sub> = \n" (create_tab tab) id_link style id;
+        browse (tab+1) proc;
+        Printf.fprintf out_ch "%s</div>\n" (create_tab tab)
+    | _ -> Config.internal_error "[process_session.ml >> Labelled_process.display] Only HTML display is implemented yet."
+
   module Output = struct
     type data = {
       channel : Channel.t;
@@ -1745,25 +1748,7 @@ end
 
 
 (* a module for representing and manipulating sets of process matchings *)
-module BijectionSet : sig
-  type t
-  val initial : t (* a singleton containing the unique matching between two processes of label Label.initial *)
-  val update : Label.t -> Label.t -> Labelled_process.Skeleton.t -> Labelled_process.Skeleton.t -> t -> t option (* [update l1 l2 p1 p2 bset] restricts the set [bset] to the bijections mapping [l1] to [l2]. In case [l1] is not in the domain of these bijections, the domain of [bset] is also extended to allow matchings of labels of p1 and p2 *)
-  val print : t -> unit
-  val match_processes : (unit -> unit) -> Labelled_process.t list -> Labelled_process.t list -> t -> t -> unit
-  val match_list_processes : (unit -> unit) -> Labelled_process.t list -> Labelled_process.t list -> unit
-  val match_forall_processes :
-    (bool -> unit) ->
-    Labelled_process.t list ->
-    Labelled_process.t list ->
-    Block.t list ->
-    Block.t list ->
-    (int * t) list ->
-    (int * t) list ->
-    unit
-
-  val check_and_remove_improper_labels : t -> Label.t list -> Label.t list -> t
-end = struct
+module BijectionSet = struct
   (* sets of bijections with the skeleton-compatibility requirement *)
   (* TODO. may ake the datastructure more efficient. Could be more practical when there are a lot of singletons to handle the operation "get all potential labels matching with a given label l". *)
   type t =
@@ -2012,54 +1997,37 @@ end = struct
     if imp_labels_ex1 = [] && imp_labels_fa1 = []
     then bset'
     else raise Not_found
+
+  (******* Display ********)
+
+  let display out ?(tab = 0) ?(out_ch=stdout) ?(id_link=0) ?(title="Bijection Set") bset =
+    let display_set set =
+      if Label.Set.is_empty set
+      then emptyset out
+      else
+        begin
+          let first = ref true in
+          let acc = ref "" in
+          Label.Set.iter (fun lbl ->
+            if !first
+            then ( acc := !acc ^ (Label.display lbl); first := false )
+            else acc := !acc ^ "; " ^ (Label.display lbl)
+          ) set;
+          Printf.sprintf "%s %s %s" (lcurlybracket out) !acc (rcurlybracket out)
+        end
+    in
+
+    Printf.fprintf out_ch "%s<div class=\"bijectionset\" id=\"bijectionset%d\" style=\"display:none;\">%s: %s</div>\n"
+      (create_tab tab)
+      id_link
+      title
+      (display_list (fun (set1,set2) ->
+        Printf.sprintf "%s %s %s" (display_set set1) (rightarrow out) (display_set set2)
+      ) ", " bset)
 end
 
 (* type for representing internal states *)
-module Configuration : sig
-  type t
-  val print_trace : (fst_ord, name) Subst.t -> (snd_ord, axiom) Subst.t -> t -> string (* returns a string displaying the trace needed to reach this configuration *)
-  val to_process : t -> Labelled_process.t (* conversion into a process, for interface purpose *)
-  val check_block : (snd_ord, axiom) Subst.t -> t -> bool * snd_ord_variable list (* verifies the blocks stored in the configuration are authorised *)
-  val inputs : t -> Labelled_process.t list (* returns the available inputs *)
-  val outputs : t -> Labelled_process.t list (* returns the available outputs (in particular they are executable, i.e. they output a message). *)
-  val elements : t -> Labelled_process.t list
-  val of_expansed_process : Process.expansed_process -> t (* converts a process as obtained from the parser into a configuration. This includes some cleaning procedure as well as factorisation. *)
-  val normalise :
-    ?context:(Labelled_process.t->Labelled_process.t) ->
-    t ->
-    (fst_ord, name) Subst.t ->
-    (Labelled_process.Normalise.constraints->t->Labelled_process.Skeleton.t list->unit)
-    -> unit (* normalises a configuration, labels the new process, and puts it in standby for skeleton checks. In case an output has just been executed, the optional ?context argument gives the process context of the execution in order to reconstruct the symmetries afterwards. *)
-
-    (* normalises a configuration, labels the new process, and puts it in standby for skeleton checks.
-       In case an output has just been executed, the optional ?context argument gives the process context
-       of the execution in order to reconstruct the symmetries afterwards. *)
-  val release_skeleton : t -> t option (* assuming all skeletons have been checked, marks them as not in standby anymore. *)
-  val display_blocks : t -> string
-  val get_block_list : t -> Block.t list
-  val occurs_in_process : fst_ord_variable -> (fst_ord, name) Subst.t -> t -> bool
-  val get_improper_labels : (Label.t list -> t -> 'a) -> t -> 'a
-
-  (* Only to apply on initial configurations. *)
-  val get_initial_label : t -> Label.t
-  val contain_only_public_channel : t -> bool
-
-  (* a module for operating on transitions *)
-  module Transition : sig
-    type kind =
-      | RFocus
-      | RPos
-      | RNeg
-      | RStart
-    val print_kind : kind option -> unit
-    val next : t -> kind option (* computes the next kind of transition to apply (None if the process has no transition possible). *)
-    val apply_neg : axiom -> Labelled_process.t -> Labelled_process.Output.data -> Labelled_process.t list -> t -> t (* executes an output in a configuration *)
-    val apply_pos : snd_ord_variable -> t -> Labelled_process.Input.data * t (* executes a focused input in a configuration *)
-    val apply_focus : snd_ord_variable -> (Labelled_process.t * Labelled_process.Input.data) -> t -> t (* focuses an input in a configuration *)
-    val apply_start : t -> t (* removes the start at the beginning of the process *)
-    val apply_comm : (Labelled_process.t * Labelled_process.t * Labelled_process.PrivateComm.data) -> t -> t (* applies an internal communication *)
-  end
-end = struct
+module Configuration = struct
   (* Change state for the current_proc. Too costly to do all these operations just for the trace reconstruction. Do it later when there is an attack. *)
 
   type state = {
@@ -2082,6 +2050,7 @@ end = struct
     previous_blocks : Block.t list;
     improper_input_proc : Labelled_process.t list
   }
+
 
   let contain_only_public_channel conf = match conf.focused_proc with
     | None -> Config.internal_error "[process_session.ml >> contain_only_public_channel] Should only be applied on initial configuration."
@@ -2214,7 +2183,6 @@ end = struct
 
     let eqn_cast = Labelled_process.Normalise.constraints_of_equations eqn in
     normalise_all conf [] eqn_cast f_cont
-
 
   let release_skeleton (c:t) : t option =
     match c.focused_proc with
