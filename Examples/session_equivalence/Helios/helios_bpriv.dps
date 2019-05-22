@@ -43,11 +43,13 @@ let SubTally =
   in(internal,z);
   let (vote1,vote2,vote3) = z in // gets internal state
 
-  in(c,id). // voting instructions from the attacker
+  in(c,id); // voting instructions from the attacker
   if id = attacker then
-    in(vote);
+    in(c,vote);
     let (blob,zk) = vote in
-    if checkzkp(zk,attacker,blob) = zkpok then out(internal,(vote1,vote2,blob))
+      if checkzkp(zk,attacker,blob) = zkpok then
+        out(internal,(vote1,vote2,blob))
+      else out(internal,(vote1,vote2,vote3))
     else out(internal,(vote1,vote2,vote3))
   else
     in(auth,vote); // receives honest vote
