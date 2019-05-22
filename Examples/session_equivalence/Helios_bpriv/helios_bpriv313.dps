@@ -74,8 +74,8 @@ let VotingSystemReal =
   out(c,pkE); (
     init |
     !^3 VoterReal(alice,pkE) |
-    !^2 VoterReal(bob,pkE) |
-    !^2 VoterDishonest |
+    !^1 VoterReal(bob,pkE) |
+    !^3 VoterDishonest |
     Mixnet
   ).
 
@@ -84,9 +84,9 @@ let VotingSystemFake =
   out(c,pkE); (
     init |
     !^3 VoterFake(alice,pkE) |
-    !^2 VoterFake(bob,pkE) |
-    !^2 VoterDishonest |
+    !^1 VoterFake(bob,pkE) |
+    !^3 VoterDishonest |
     Mixnet
   ).
 
-query trace_equiv(VotingSystemReal,VotingSystemFake).
+query session_equiv(VotingSystemReal,VotingSystemFake).

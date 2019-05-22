@@ -73,8 +73,8 @@ let VotingSystemReal =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^1 VoterReal(alice,pkE) |
-    !^6 VoterDishonest |
+    !^6 VoterReal(alice,pkE) |
+    !^1 VoterDishonest |
     Mixnet
   ).
 
@@ -82,9 +82,9 @@ let VotingSystemFake =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^1 VoterFake(alice,pkE) |
-    !^6 VoterDishonest |
+    !^6 VoterFake(alice,pkE) |
+    !^1 VoterDishonest |
     Mixnet
   ).
 
-query trace_equiv(VotingSystemReal,VotingSystemFake).
+query session_equiv(VotingSystemReal,VotingSystemFake).

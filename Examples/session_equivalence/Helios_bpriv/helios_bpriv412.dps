@@ -43,6 +43,18 @@ let VoterFake(id,pkE) =
   else out(internal,(vote1,b0,vote3)).
 
 
+
+// Tallying
+let VoterDishonest =
+  in(internal,state);
+  let (vote1,vote2,vote3) = state in // gets internal state
+  in(c,vote);
+  let (=attacker,(blob,zk)) = vote in
+    if checkzkp(zk,attacker,blob) = zkpok then out(internal,(vote1,vote2,blob))
+    else out(internal,state)
+  else out(internal,state).
+
+
 // getting the result of the subtallies and outputing in a mixnet
 let Mixnet =
   in(internal,state);
@@ -62,7 +74,8 @@ let VotingSystemReal =
   out(c,pkE); (
     init |
     !^4 VoterReal(alice,pkE) |
-    !^3 VoterReal(bob,pkE) |
+    !^1 VoterReal(bob,pkE) |
+    !^2 VoterDishonest |
     Mixnet
   ).
 
@@ -71,8 +84,9 @@ let VotingSystemFake =
   out(c,pkE); (
     init |
     !^4 VoterFake(alice,pkE) |
-    !^3 VoterFake(bob,pkE) |
+    !^1 VoterFake(bob,pkE) |
+    !^2 VoterDishonest |
     Mixnet
   ).
 
-query trace_equiv(VotingSystemReal,VotingSystemFake).
+query session_equiv(VotingSystemReal,VotingSystemFake).
