@@ -37,25 +37,27 @@ let VoterFake(id,pkE) =
   out(c, (id,(b1,zk1))); // gives the fake vote to the attacker
   out(auth, (id,(b0,zk0))). // cast their vote
 
-let VoterDishonest =
-  in(c,ballot);
-  out(auth,(attacker,ballot)).
-
 
 // Tallying
 let SubTally =
   in(internal,z);
   let (vote1,vote2,vote3) = z in // gets internal state
 
-  in(auth,vote); // receives vote
-  let (id,(blob,zk)) = vote in
-    if checkzkp(zk,id,blob) = zkpok then
-      if id = alice then out(internal,(blob,vote2,vote3))
-      else if id = bob then out(internal,(vote1,blob,vote3))
-      else if id = attacker then out(internal,(vote1,vote2,blob))
-      else out(internal,(vote1,vote2,vote3))
+  in(c,id). // voting instructions from the attacker
+  if id = attacker then
+    in(vote);
+    let (blob,zk) = vote in
+    if checkzkp(zk,attacker,blob) = zkpok then out(internal,(vote1,vote2,blob))
     else out(internal,(vote1,vote2,vote3))
-  else out(internal,(vote1,vote2,vote3)).
+  else
+    in(auth,vote); // receives honest vote
+    let (=id,(blob,zk)) = vote in
+      if checkzkp(zk,id,blob) = zkpok then
+        if id = alice then out(internal,(blob,vote2,vote3))
+        else if id = bob then out(internal,(vote1,blob,vote3))
+        else out(internal,(vote1,vote2,vote3))
+      else out(internal,(vote1,vote2,vote3))
+    else out(internal,(vote1,vote2,vote3)).
 
 
 // getting the result of the subtallies and outputing in a mixnet
@@ -81,7 +83,6 @@ let VotingSystemReal =
   out(c,pkE); (
     !^2 VoterReal(alice,pkE) |
     !^2 VoterReal(bob,pkE) |
-    !^3 VoterDishonest |
     Tally
   ).
 
@@ -90,7 +91,6 @@ let VotingSystemFake =
   out(c,pkE); (
     !^2 VoterFake(alice,pkE) |
     !^2 VoterFake(bob,pkE) |
-    !^3 VoterDishonest |
     Tally
   ).
 
