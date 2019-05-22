@@ -66,8 +66,8 @@ let quantumChannelAndAttacker =
     new n;
     out(cqMeasure, (pos, n)).
 
-// equivalence 
-query session_equiv(
+// equivalence
+query trace_equiv(
   !^6 quantumChannelAndAttacker | Bob_proc(cheat),
   !^6 quantumChannelAndAttacker | Bob_proc(ok)
 ).

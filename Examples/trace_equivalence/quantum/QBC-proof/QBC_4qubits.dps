@@ -75,7 +75,7 @@ let quantumChannelAndAttacker(isEPR) =
 
 
 // equivalence
-query session_equiv(
+query trace_equiv(
   !^4 quantumChannelAndAttacker(false) | Bob_proc(cheat),
   !^4 quantumChannelAndAttacker(false) | Bob_proc(ok)
 ).
