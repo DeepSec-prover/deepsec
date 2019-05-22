@@ -1,0 +1,4 @@
+#! /bin/bash
+
+# runs all the bpriv benchmark of helios, using a number of cores specified in command line
+./deepsec -deepsec_dir . -distributed $1 $(ls -d Examples/session_equivalence/Helios_bpriv/*)
