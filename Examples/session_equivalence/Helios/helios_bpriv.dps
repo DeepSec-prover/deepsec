@@ -23,43 +23,40 @@ let VoterReal(id,pkE) =
   new r0;
   let b0 = aenc(v0,r0,pkE) in
   let zk0 = zkp(r0,id,v0,b0) in
-  out(c, (id,(b0,zk0))); // gives the real vote to the attacker
-  out(auth, (id,(b0,zk0))). // cast their vote
+  in(internal,state);
+  let (vote1,vote2,vote3) = state in
+    out(c, (id,(b0,zk0))); // gives the real vote to the attacker
+    if id = alice then out(internal,(b0,vote2,vote3))
+    else out(internal,(vote1,b0,vote3))
+  else out(internal,state).
 
 let VoterFake(id,pkE) =
   in(c,v); // receives voting instructions from the attacker
   let (v0,v1) = v in
   new r0; new r1;
   let b0 = aenc(v0,r0,pkE) in
-  let zk0 = zkp(r0,id,v0,b0) in
   let b1 = aenc(v1,r1,pkE) in
   let zk1 = zkp(r1,id,v1,b1) in
-  out(c, (id,(b1,zk1))); // gives the fake vote to the attacker
-  out(auth, (id,(b0,zk0))). // cast their vote
+  in(internal,state);
+  let (vote1,vote2,vote3) = state in
+    out(c, (id,(b1,zk1))); // gives the fake vote to the attacker
+    if id = alice then out(internal,(b0,vote2,vote3))
+    else out(internal,(vote1,b0,vote3))
+  else out(internal,state).
+
 
 
 // Tallying
-let SubTally =
-  in(internal,z);
-  let (vote1,vote2,vote3) = z in // gets internal state
-
-  in(c,id); // voting instructions from the attacker
-  if id = attacker then
+let VoterDishonest =
+  in(internal,state);
+  let (vote1,vote2,vote3) = state in // gets internal state
     in(c,vote);
-    let (blob,zk) = vote in
+    let (=attacker,(blob,zk)) = vote in
       if checkzkp(zk,attacker,blob) = zkpok then
         out(internal,(vote1,vote2,blob))
-      else out(internal,(vote1,vote2,vote3))
-    else out(internal,(vote1,vote2,vote3))
-  else
-    in(auth,vote); // receives honest vote
-    let (=id,(blob,zk)) = vote in
-      if checkzkp(zk,id,blob) = zkpok then
-        if id = alice then out(internal,(blob,vote2,vote3))
-        else if id = bob then out(internal,(vote1,blob,vote3))
-        else out(internal,(vote1,vote2,vote3))
-      else out(internal,(vote1,vote2,vote3))
-    else out(internal,(vote1,vote2,vote3)).
+      else out(internal,state)
+    else out(internal,state)
+  else out(internal,state).
 
 
 // getting the result of the subtallies and outputing in a mixnet
@@ -72,28 +69,28 @@ let Mixnet =
   ).
 
 
-// overall tally
-let Tally =
-  out(internal,(zero,zero,zero)) |
-  !^7 SubTally |
-  Mixnet.
-
+let init =
+  out(internal,(zero,zero,zero)).
 
 // process under equivalence
 let VotingSystemReal =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
+    init |
     !^2 VoterReal(alice,pkE) |
     !^2 VoterReal(bob,pkE) |
-    Tally
+    !^7 VoterDishonest |
+    Mixnet
   ).
 
 let VotingSystemFake =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
+    init |
     !^2 VoterFake(alice,pkE) |
     !^2 VoterFake(bob,pkE) |
-    Tally
+    !^7 VoterDishonest |
+    Mixnet
   ).
 
 query session_equiv(VotingSystemReal,VotingSystemFake).
