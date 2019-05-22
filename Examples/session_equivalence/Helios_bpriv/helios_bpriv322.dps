@@ -25,10 +25,9 @@ let VoterReal(id,pkE) =
   let zk0 = zkp(r0,id,v0,b0) in
   in(internal,state);
   let (vote1,vote2,vote3) = state in
-    out(c, (id,(b0,zk0))); // gives the real vote to the attacker
-    if id = alice then out(internal,(b0,vote2,vote3))
-    else out(internal,(vote1,b0,vote3))
-  else out(internal,state).
+  out(c, (id,(b0,zk0))); // gives the real vote to the attacker
+  if id = alice then out(internal,(b0,vote2,vote3))
+  else out(internal,(vote1,b0,vote3)).
 
 let VoterFake(id,pkE) =
   in(c,v); // receives voting instructions from the attacker
@@ -39,10 +38,9 @@ let VoterFake(id,pkE) =
   let zk1 = zkp(r1,id,v1,b1) in
   in(internal,state);
   let (vote1,vote2,vote3) = state in
-    out(c, (id,(b1,zk1))); // gives the fake vote to the attacker
-    if id = alice then out(internal,(b0,vote2,vote3))
-    else out(internal,(vote1,b0,vote3))
-  else out(internal,state).
+  out(c, (id,(b1,zk1))); // gives the fake vote to the attacker
+  if id = alice then out(internal,(b0,vote2,vote3))
+  else out(internal,(vote1,b0,vote3)).
 
 
 
@@ -50,22 +48,20 @@ let VoterFake(id,pkE) =
 let VoterDishonest =
   in(internal,state);
   let (vote1,vote2,vote3) = state in // gets internal state
-    in(c,vote);
-    let (=attacker,(blob,zk)) = vote in
-      if checkzkp(zk,attacker,blob) = zkpok then
-        out(internal,(vote1,vote2,blob))
-      else out(internal,state)
+  in(c,vote);
+  let (=attacker,(blob,zk)) = vote in
+    if checkzkp(zk,attacker,blob) = zkpok then out(internal,(vote1,vote2,blob))
     else out(internal,state)
   else out(internal,state).
 
 
 // getting the result of the subtallies and outputing in a mixnet
 let Mixnet =
-  in(internal,z);
-  let (vote1,vote2,vote3) = z in (
+  in(internal,state);
+  let (vote1,vote2,vote3) = state in (
     out(c,adec(vote1,decryption_key)) |
     out(c,adec(vote2,decryption_key)) |
-    out(c,adec(vote3,decryption_key)) (* The decryption of the ballot of id3 is done at the lvl of the output allowing the attacker NOT to vote. *)
+    out(c,adec(vote3,decryption_key))
   ).
 
 
@@ -77,9 +73,9 @@ let VotingSystemReal =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^2 VoterReal(alice,pkE) |
+    !^3 VoterReal(alice,pkE) |
     !^2 VoterReal(bob,pkE) |
-    !^7 VoterDishonest |
+    !^2 VoterDishonest |
     Mixnet
   ).
 
@@ -87,9 +83,9 @@ let VotingSystemFake =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^2 VoterFake(alice,pkE) |
+    !^3 VoterFake(alice,pkE) |
     !^2 VoterFake(bob,pkE) |
-    !^7 VoterDishonest |
+    !^2 VoterDishonest |
     Mixnet
   ).
 
