@@ -1,3 +1,5 @@
+// helios without ZKP neither weeding
+
 free alice, bob, attacker. // identities
 
 free c. // public channel
@@ -9,11 +11,6 @@ fun pk/1.
 const decryption_key [private].
 reduc adec(aenc(x,r,pk(sk)),sk) -> x.
 
-// zero knowledge proofs
-fun zkp/4.
-fun zkpok/0.
-reduc checkzkp(zkp(xr, xid, xv, aenc(xv,xr,xpk)), xid, aenc(xv,xr,xpk)) -> zkpok.
-
 const zero. // blank vote
 
 // voting process
@@ -22,10 +19,10 @@ let VoterReal(id,pkE) =
   let (v0,v1) = v in
   new r0;
   let b0 = aenc(v0,r0,pkE) in
-  let zk0 = zkp(r0,id,v0,b0) in
+  /* let zk0 = zkp(r0,id,v0,b0) in */
   in(internal,state);
   let (vote1,vote2,vote3) = state in
-  out(c, (id,(b0,zk0))); // gives the real vote to the attacker
+  out(c, (id,b0)); // gives the real vote to the attacker
   if id = alice then out(internal,(b0,vote2,vote3))
   else out(internal,(vote1,b0,vote3)).
 
@@ -35,10 +32,10 @@ let VoterFake(id,pkE) =
   new r0; new r1;
   let b0 = aenc(v0,r0,pkE) in
   let b1 = aenc(v1,r1,pkE) in
-  let zk1 = zkp(r1,id,v1,b1) in
+  /* let zk1 = zkp(r1,id,v1,b1) in */
   in(internal,state);
   let (vote1,vote2,vote3) = state in
-  out(c, (id,(b1,zk1))); // gives the fake vote to the attacker
+  out(c, (id,b1)); // gives the fake vote to the attacker
   if id = alice then out(internal,(b0,vote2,vote3))
   else out(internal,(vote1,b0,vote3)).
 
@@ -49,9 +46,8 @@ let VoterDishonest =
   in(internal,state);
   let (vote1,vote2,vote3) = state in // gets internal state
   in(c,vote);
-  let (=attacker,(blob,zk)) = vote in
-    if checkzkp(zk,attacker,blob) = zkpok then out(internal,(vote1,vote2,blob))
-    else out(internal,state)
+  let (=attacker,blob) = vote in
+    out(internal,(vote1,vote2,blob))
   else out(internal,state).
 
 
@@ -73,7 +69,8 @@ let VotingSystemReal =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^6 VoterReal(alice,pkE) |
+    !^1 VoterReal(alice,pkE) |
+    !^1 VoterReal(bob,pkE) |
     !^1 VoterDishonest |
     Mixnet
   ).
@@ -82,9 +79,11 @@ let VotingSystemFake =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^6 VoterFake(alice,pkE) |
+    !^1 VoterFake(alice,pkE) |
+    !^1 VoterFake(bob,pkE) |
     !^1 VoterDishonest |
     Mixnet
   ).
 
+// ballot copyt attack
 query session_equiv(VotingSystemReal,VotingSystemFake).

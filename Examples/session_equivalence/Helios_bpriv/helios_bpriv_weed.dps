@@ -1,0 +1,140 @@
+// modelling of Helios B-priv, without ZKP but weeding
+
+free alice, bob, attacker. // identities
+
+free c. // public channel
+free auth,internal [private]. // private channels
+
+// encryption
+fun aenc/3.
+fun pk/1.
+const decryption_key [private].
+reduc adec(aenc(x,r,pk(sk)),sk) -> x.
+
+// weeding
+const reject.
+reduc
+  weed(x,(x,b2,b3)) -> reject;
+  weed(x,(b1,x,b3)) -> reject;
+  weed(x,(b1,b2,x)) -> reject.
+
+const zero. // blank vote
+
+// voting process
+let VoterReal(id,pkE) =
+  in(c,v); // receives voting instructions from the attacker
+  let (v0,v1) = v in
+  new r0; new r1;
+  let b0 = aenc(v0,r0,pkE) in
+  let b1 = aenc(v1,r1,pkE) in
+  /* let zk0 = zkp(r0,id,v0,b0) in */
+  in(internal,state);
+  let (state_real,state_fake) = state in
+  let (vote1,vote2,vote3) = state_real in
+  let (vote1f,vote2f,vote3f) = state_fake in
+  out(c, (id,b0)); // gives the real vote to the attacker
+  if weed(b0,state_real) = reject then out(internal,state) // weeding not necessary, technically
+  else if id = alice then out(internal,((b0,vote2,vote3),(b1,vote2f,vote3f)))
+  else out(internal,((vote1,b0,vote3),(vote1f,b1,vote3f))).
+
+let VoterFake(id,pkE) =
+  in(c,v); // receives voting instructions from the attacker
+  let (v0,v1) = v in
+  new r0; new r1;
+  let b0 = aenc(v0,r0,pkE) in
+  let b1 = aenc(v1,r1,pkE) in
+  /* let zk1 = zkp(r1,id,v1,b1) in */
+  in(internal,state);
+  let (state_real,state_fake) = state in
+  let (vote1,vote2,vote3) = state_real in
+  let (vote1f,vote2f,vote3f) = state_fake in
+  out(c, (id,b1)); // gives the fake vote to the attacker
+  if weed(b1,state_fake) = reject then out(internal,state) // weeding not necessary, technically
+  else if id = alice then out(internal,((b0,vote2,vote3),(b1,vote2f,vote3f)))
+  else out(internal,((vote1,b0,vote3),(vote1f,b1,vote3f))).
+
+
+let VoterDishonestReal =
+  in(internal,state);
+  let (state_real,state_fake) = state in
+  let (vote1,vote2,vote3) = state_real in
+  let (vote1f,vote2f,vote3f) = state_fake in
+  in(c,vote);
+  let (=attacker,blob) = vote in
+    if weed(blob,state_real) = reject then out(internal,state)
+    else out(internal,((vote1,vote2,blob),(vote1f,vote2f,blob)))
+  else out(internal,state).
+
+let VoterDishonestFake =
+  in(internal,state);
+  let (state_real,state_fake) = state in
+  let (vote1,vote2,vote3) = state_real in
+  let (vote1f,vote2f,vote3f) = state_fake in
+  in(c,vote);
+  let (=attacker,blob) = vote in
+    if weed(blob,state_fake) = reject then out(internal,state)
+    else out(internal,((vote1,vote2,blob),(vote1f,vote2f,blob)))
+  else out(internal,state).
+
+
+// getting the result of the subtallies and outputing in a mixnet
+let Mixnet =
+  in(internal,state);
+  let (state_real,state_fake) = state in
+  let (vote1,vote2,vote3) = state_real in (
+    out(c,adec(vote1,decryption_key)) |
+    out(c,adec(vote2,decryption_key)) |
+    out(c,adec(vote3,decryption_key))
+  ).
+
+
+let init =
+  out(internal,((zero,zero,zero),(zero,zero,zero))).
+
+// system without revote
+let VotingSystemReal_norevote =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^1 VoterReal(alice,pkE) |
+    !^1 VoterReal(bob,pkE) |
+    !^1 VoterDishonestReal |
+    Mixnet
+  ).
+
+let VotingSystemFake_norevote =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^1 VoterFake(alice,pkE) |
+    !^1 VoterFake(bob,pkE) |
+    !^1 VoterDishonestFake |
+    Mixnet
+  ).
+
+// system without revote
+let VotingSystemReal_onerevote =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^2 VoterReal(alice,pkE) |
+    !^1 VoterReal(bob,pkE) |
+    !^1 VoterDishonestReal |
+    Mixnet
+  ).
+
+let VotingSystemFake_onerevote =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^2 VoterFake(alice,pkE) |
+    !^1 VoterFake(bob,pkE) |
+    !^1 VoterDishonestFake |
+    Mixnet
+  ).
+
+// vote privacy without revote (holds)
+query session_equiv(VotingSystemReal_norevote,VotingSystemFake_norevote).
+
+// vote privacy with one honest revote (attack)
+query session_equiv(VotingSystemReal_onerevote,VotingSystemFake_onerevote).
