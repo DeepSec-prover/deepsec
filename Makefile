@@ -8,7 +8,10 @@ SOURCE = Source/
 #  make NATIVECODE="" <target>
 DEBUG=
 PROFIL=
-OCAMLOPT=$(if $(PROFIL),ocamloptp -p -P a,$(if $(DEBUG), ocamlc -g,ocamlopt))
+PACKAGES=-package porridge
+LINK_PACK=-linkpkg porridge.cmxa
+OCAMLOPT_=$(if $(PROFIL),ocamloptp -p -P a,$(if $(DEBUG), ocamlc -g,ocamlopt))
+OCAMLOPT=ocamlfind $(OCAMLOPT_) $(PACKAGES)
 OCAMLDEP=ocamldep $(if $(DEBUG), ,-native)
 OCAMLDOC=ocamldoc
 
@@ -18,7 +21,7 @@ CMOX= $(if $(DEBUG),cmo,cmx)
 CMXA= $(if $(DEBUG),cma,cmxa)
 
 ### Compiler options
-INCLUDES_MOD = str.$(CMXA) unix.$(CMXA)
+INCLUDES_MOD = str.$(CMXA) ## I had to remove the following: unix.$(CMXA)  (because already in Porridge?)
 INCLUDES = -I $(SOURCE)core_library -I $(SOURCE)subterms -I $(SOURCE)parser -I $(SOURCE)distributed
 # Compiler options specific to OCaml version >= 4
 V4OPTIONS=$(if $(shell $(OCAMLOPT) -version | grep '^4'),-bin-annot)
@@ -29,7 +32,7 @@ OCAMLFLAGS = $(INCLUDES) $(V4OPTIONS) -w +a-44-e $(INCLUDES_MOD)
 GENERATED_SOURCES_NAME = parser/grammar.ml parser/lexer.ml parser/grammar.mli
 GENERATED_SOURCES = $(GENERATED_SOURCES_NAME:%=$(SOURCE)%)
 
-CORE_ML_NAME = extensions.ml display.ml term.ml process.ml process_determinate.ml
+CORE_ML_NAME = extensions.ml display.ml term.ml process.ml process_determinate.ml por.ml
 CORE_ML = $(CORE_ML_NAME:%.ml=$(SOURCE)core_library/%.ml)
 
 SUBTERMS_ML_NAME = data_structure.ml constraint_system.ml equivalence.ml equivalence_determinate.ml
@@ -62,12 +65,12 @@ all: .display_obj $(ALL_OBJ)
 	@echo
 	@echo The main executable:
 	@echo
-	$(OCAMLOPT) -o $(EXECUTABLE) $(OCAMLFLAGS) $(EXE_MAIN_OBJ)
+	$(OCAMLOPT) -o $(EXECUTABLE) $(OCAMLFLAGS) $(LINK_PACK) $(EXE_MAIN_OBJ)
 	@echo
 	@echo The executables for distributed worker:
 	@echo
-	$(OCAMLOPT) -o worker_deepsec $(OCAMLFLAGS) $(EXE_WORKER_OBJ)
-	$(OCAMLOPT) -o manager_deepsec $(OCAMLFLAGS) $(EXE_MANAGER_OBJ)
+	$(OCAMLOPT) -o worker_deepsec $(OCAMLFLAGS) $(LINK_PACK) $(EXE_WORKER_OBJ)
+	$(OCAMLOPT) -o manager_deepsec $(OCAMLFLAGS) $(LINK_PACK) $(EXE_MANAGER_OBJ)
 	@echo
 	@grep -q "let debug_activated = false" Source/core_library/config.ml || echo WARNING : Debug mode is activated; echo
 	@grep -q "let test_activated = false" Source/core_library/config.ml || echo WARNING : Testing interface is activated; echo

@@ -1,0 +1,73 @@
+/*
+Private Authentication Protocol
+ 1. A -> B: {Na, pub(A)}pub(B)
+ 2. B -> A: {Na, Nb,pub(B)}pub(A) if B wants to communicate with A
+                  {Nb}pub(B) otherwise
+*/
+
+free c.
+free cA.
+free cB.
+
+fun aenc/2.
+fun pk/1.
+reduc adec(aenc(x,pk(y)),y) -> x.
+reduc proj1((x,y)) -> x.
+reduc proj2((x,y)) -> y.
+
+/*
+Description of role A played:
+- by the agent with private key ska
+- with the agent with public key pkb
+*/
+
+let processA(c,ska,pkb) =
+  new na;
+  out(c,aenc((na,pk(ska)),pkb));
+  in(c,z).
+
+
+/*
+Description of role B played:
+- by the agent with private key skb
+- with the agent with public key pka
+*/
+
+let processB(c,skb,pka) =
+  in(c,y);
+  new ne;
+  if proj2(y) = pka
+  then
+    new nb;
+    out(c,aenc((proj1(adec(y,skb)),nb,pk(skb)),pka))
+  else out(c,aenc(ne,pk(skb))).
+
+
+let I(ska,skb) =
+ processA(cA,ska,pk(skb)).
+
+let R(ska,skb) =
+ processB(cB,skb,pk(ska)).
+
+
+(**** PARAMETRIZED SYSTEMS *****)
+let Pair(ska,skb) = I(ska,skb) | R(ska,skb). 
+let fPair = new ska; new skb; out(c,pk(ska)); out(c,pk(skb));
+	    Pair(ska,skb).
+let fTag = new ska; new skb; out(c,pk(ska)); out(c,pk(skb));
+	    I(ska,skb).
+(* M2: something to link *)
+let M2 = new ska; new skb; out(c,pk(ska)); out(c,pk(skb));
+         ( Pair(ska,skb) | Pair(ska,skb) ).
+(* M2: nothing to link *)
+let S2 = new ska; new skb; out(c,pk(ska)); out(c,pk(skb));
+	 ( Pair(ska,skb) | Pair(ska,skb) ).
+
+(* Additional fresh pairs of tag-reader *)
+let More = 0.
+let M = M2 | fPair | fPair | fTag.
+let S = S2 | fPair | fPair | fTag.
+
+// UNLINKABILITY
+(* We check that M is trace equivalent to S. *)
+query trace_equiv(S,M).

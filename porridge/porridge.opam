@@ -1,0 +1,16 @@
+opam-version: "1.2"
+name: "porridge"
+version: "~unknown"
+maintainer: "David Baelde <david.baelde@gmail.com>"
+authors: "David Baelde, Stéphanie Delaune and Lucca Hirschi"
+dev-repo: "https://git.lsv.fr/baelde/por/"
+homepage: "https://git.lsv.fr/baelde/por/"
+bug-reports: "https://git.lsv.fr/baelde/por/"
+build: [make "lib"]
+test: [make "test"]
+install: [make "install"]
+remove: ["ocamlfind" "remove" "porridge"]
+depends: [
+  "ocamlfind" {build}
+  "alcotest"
+]

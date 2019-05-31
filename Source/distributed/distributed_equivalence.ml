@@ -9,6 +9,10 @@ struct
     {
       chosen_semantics : semantics;
       display_trace : bool;
+      no_por : bool;
+      por_gen : bool;
+      distributed : bool;
+      hash_channel : (string, int) Hashtbl.t;
 
       init_proc1 : Process.process;
       init_proc2 : Process.process;
@@ -21,6 +25,9 @@ struct
     {
       init_conf1 : Process_determinate.configuration;
       init_conf2 : Process_determinate.configuration;
+      no_por_d : bool;
+      por_gen_d : bool;
+      distributed_d : bool;
 
       equiv_problem : Equivalence_determinate.equivalence_problem
     }
@@ -46,8 +53,9 @@ struct
       number_of_symbols : int;
       stored_skeletons : Rewrite_rules.stored_skeleton list;
       stored_constructors : (symbol * Data_structure.Tools.stored_constructor) list;
+      trs : Por.trs;
 
-      data_equiv : data_equivalence
+      data_equiv : data_equivalence;
     }
 
   type result =
@@ -81,20 +89,23 @@ struct
     match job.data_equiv with
       | DStandard data ->
           Config.display_trace := data.display_trace;
-          let rec apply_rules csys_set frame_size f_next =
-            Equivalence.apply_one_transition_and_rules_for_trace_equivalence data.chosen_semantics csys_set frame_size (fun csys_set size f_next ->
-              apply_rules csys_set size f_next
-            ) f_next
+          Config.no_por := data.no_por ;
+          Config.por_gen := data.por_gen ;
+          Config.distributed := data.distributed ;
+          Por.hash_channel := data.hash_channel  ;
+          let rec apply_rules trs csys_set frame_size f_next =
+            Equivalence.apply_one_transition_and_rules_for_trace_equivalence data.chosen_semantics trs csys_set frame_size apply_rules f_next
           in
 
           begin try
-            apply_rules data.csys_set data.frame_size (fun () -> ());
+            apply_rules job.trs data.csys_set data.frame_size (fun () -> ());
             Equivalent
           with
             | Equivalence.Not_Trace_Equivalent csys -> Not_Equivalent (OStandard (csys, data.init_proc1, data.init_proc2))
           end
       | DDeterminate data ->
-          let rec apply_rules equiv_pbl f_next =
+         Config.distributed := data.distributed_d ;
+         let rec apply_rules equiv_pbl f_next =
             Equivalence_determinate.apply_one_transition_and_rules equiv_pbl (fun eq_pbl_1 f_next_1 ->
               apply_rules eq_pbl_1 f_next_1
             ) f_next
@@ -136,9 +147,9 @@ struct
           Config.display_trace := data.display_trace;
           begin try
             let job_list = ref [] in
-            Equivalence.apply_one_transition_and_rules_for_trace_equivalence data.chosen_semantics data.csys_set data.frame_size
-              (fun csys_set_1 frame_size_1 f_next_1 ->
-                job_list := { job with data_equiv = DStandard { data with csys_set = csys_set_1; frame_size = frame_size_1 }; variable_counter = Variable.get_counter (); name_counter = Name.get_counter () } :: !job_list;
+            Equivalence.apply_one_transition_and_rules_for_trace_equivalence data.chosen_semantics job.trs data.csys_set data.frame_size
+              (fun trs_new csys_set_1 frame_size_1 f_next_1 ->
+                job_list := { job with data_equiv = DStandard { data with csys_set = csys_set_1; frame_size = frame_size_1 }; variable_counter = Variable.get_counter (); name_counter = Name.get_counter (); trs = trs_new } :: !job_list;
                 f_next_1 ()
               )
               (fun () -> ());
@@ -169,7 +180,7 @@ end
 
 module DistribEquivalence = Distrib.Distrib(EquivJob)
 
-let trace_equivalence semantics proc1 proc2 =
+let trace_equivalence semantics proc1 proc2 trs =
 
   (*** Initialise skeletons ***)
 
@@ -208,6 +219,10 @@ let trace_equivalence semantics proc1 proc2 =
     {
       EquivJob.chosen_semantics = semantics;
       EquivJob.display_trace = !Config.display_trace;
+      EquivJob.no_por = !Config.no_por;
+      EquivJob.por_gen = !Config.por_gen;
+      EquivJob.distributed = !Config.distributed;
+      EquivJob.hash_channel = !Por.hash_channel;
 
       EquivJob.init_proc1 = proc1;
       EquivJob.init_proc2 = proc2;
@@ -230,8 +245,9 @@ let trace_equivalence semantics proc1 proc2 =
       EquivJob.number_of_symbols = setting.Term.Symbol.nb_symb;
       EquivJob.stored_skeletons = Rewrite_rules.retrieve_stored_skeletons ();
       EquivJob.stored_constructors = Data_structure.Tools.retrieve_stored_constructors ();
-
-      EquivJob.data_equiv = EquivJob.DStandard data_standard
+      EquivJob.trs = trs;
+      
+      EquivJob.data_equiv = EquivJob.DStandard data_standard;
     }
   in
 
@@ -297,7 +313,9 @@ let trace_equivalence_determinate conf1 conf2 =
     {
       EquivJob.init_conf1 = conf1;
       EquivJob.init_conf2 = conf2;
-
+      EquivJob.no_por_d = !Config.no_por;
+      EquivJob.por_gen_d = !Config.por_gen;
+      EquivJob.distributed_d = !Config.distributed;
       EquivJob.equiv_problem = equiv_pbl
     }
   in
@@ -315,8 +333,9 @@ let trace_equivalence_determinate conf1 conf2 =
       EquivJob.number_of_symbols = setting.Term.Symbol.nb_symb;
       EquivJob.stored_skeletons = Rewrite_rules.retrieve_stored_skeletons ();
       EquivJob.stored_constructors = Data_structure.Tools.retrieve_stored_constructors ();
+      EquivJob.trs = Por.emptySetTraces;
 
-      EquivJob.data_equiv = EquivJob.DDeterminate data
+      EquivJob.data_equiv = EquivJob.DDeterminate data ;
     }
   in
 

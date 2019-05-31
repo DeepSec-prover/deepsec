@@ -108,6 +108,7 @@ let parse_file path =
 
 let start_time = ref (Unix.time ())
 
+let print_debug_por_gen_showExplo = ref false
 let por_disable = ref false
 
 let rec excecute_queries id = function
@@ -117,7 +118,7 @@ let rec excecute_queries id = function
 
     let display_por_option () =
       if !por_disable
-      then Printf.printf "Warning: Input processes have been detected to be determinate but POR optimisation has been disactivated with option -without_por.\n";
+      then Printf.printf "Warning: Input processes have been detected to be determinate but POR optimisations have been disactivated with option -without_por.\n";
       not !por_disable
     in
 
@@ -125,7 +126,7 @@ let rec excecute_queries id = function
     flush_all ();
 
     let result =
-      if Process_determinate.is_action_determinate exproc1 && Process_determinate.is_action_determinate exproc2 && display_por_option ()
+      if not(!Config.por_gen) && not(!Config.no_por) && Process_determinate.is_action_determinate exproc1 && Process_determinate.is_action_determinate exproc2  && display_por_option ()
       then
         let conf1 = Process_determinate.configuration_of_expansed_process exproc1 in
         let conf2 = Process_determinate.configuration_of_expansed_process exproc2 in
@@ -152,18 +153,54 @@ let rec excecute_queries id = function
         let proc1 = Process.of_expansed_process exproc1 in
         let proc2 = Process.of_expansed_process exproc2 in
 
+        Printf.printf "Executing query %d...\n" id;
+        flush_all ();
+        
+        (* If generalized POR is enable, compute symbolic traces to be explored *)
+        let trs =
+          if !Config.por_gen
+          then begin
+	      Printf.printf "[G-POR] Applying Generalized POR optimisations and computing set of reduced, symbolic traces to be explored...\n%!";
+	      let t = Sys.time() in
+              let proc1,proc2 =
+                if not(!Config.inclusion_detect) then exproc1, exproc2
+                else match exproc1,exproc2 with
+                     | Process.Choice [p1_1;p1_2],p2_ when Process.same_structure p1_2 p2_
+                       -> let () = Porridge.Trace_equiv.inclusion := true in
+                          p1_1, p2_
+                     | Process.Choice [p1_2;p1_1],p2_ when Process.same_structure p1_2 p2_
+                       -> let () = Porridge.Trace_equiv.inclusion := true in
+                          p1_1, p2_
+                     | p1_,Process.Choice [p2_1;p2_2] when Process.same_structure p2_1 p1_
+                       -> let () = Porridge.Trace_equiv.inclusion := true in
+                          p1_, p2_2
+                     | p1_,Process.Choice [p2_2;p2_1] when Process.same_structure p2_1 p1_
+                       -> let () = Porridge.Trace_equiv.inclusion := true in
+                          p1_, p2_2
+                     | _ -> exproc1, exproc2 in
+              let p1 = Por.importProcess proc1
+              and p2 = Por.importProcess proc2 in
+	      Printf.printf "[G-POR] Symbolic processes living in the symbolic LTS have been computed in %fs.\n%!" (Sys.time() -. t);
+              if !Porridge.Trace_equiv.inclusion
+	      then Printf.printf "[G-POR] Since inputs correspond to an inclusion verification, Porridge is given P,Q instead of P+Q,Q.\n";
+	      let trs = Por.computeTraces p1 p2 in
+	      Printf.printf "[G-POR] A set of symbolic traces to be explored has been computed in %fs.\n%!" (Sys.time() -. t);
+	      if !print_debug_por_gen_showExplo then begin Printf.printf "[G-POR] Set of reduced traces: \n"; Por.displaySetTraces trs; end;
+	      trs
+            end
+          else Por.emptySetTraces in
         if !Config.distributed
         then
           begin
-            let result,init_proc1, init_proc2 = Distributed_equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 in
-  	        let running_time = ( Unix.time () -. !start_time ) in
+            let result,init_proc1, init_proc2 = Distributed_equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 trs in
+  	    let running_time = ( Unix.time () -. !start_time ) in
             if !Config.display_trace
             then Equivalence.publish_trace_equivalence_result id !Process.chosen_semantics init_proc1 init_proc2 result running_time;
             (Standard result,running_time)
           end
         else
           begin
-            let result = Equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 in
+            let result = Equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 trs in
   	        let running_time = ( Unix.time () -. !start_time ) in
             if !Config.display_trace
             then Equivalence.publish_trace_equivalence_result id !Process.chosen_semantics proc1 proc2 result running_time;
@@ -266,7 +303,7 @@ let _ =
     (
       "-without_por",
       Arg.Unit( fun () -> por_disable := true),
-      " Disable POR optimisation"
+      "Disable all POR optimisations"
     );
     (
       "-distributed",
@@ -304,6 +341,21 @@ let _ =
       "-no_display_attack_trace",
       Arg.Clear(Config.display_trace),
       " Do not display the attack trace and only indicate whether queries are true or false. This could be activated for efficiency purposes."
+    );
+    (
+      "-with_por_gen",
+      Arg.Set Config.por_gen,
+      " [!Experimental!] Uses generalized Partial Order Reductions (POR) techniques based on Porridge to significantly reduce the number of traces that need to be explored. Contrary to the built-in POR optimisations, the generalized POR techniques do not require protocols given as inputs to be action-determinate. However, the pre-computation that is required can be impractically long. Please look at the Deepsec output for more information on the different running times."
+    );
+    (
+      "-detection_inclusion",
+      Arg.Set Config.inclusion_detect,
+      " [!Experimental!] When used with '-with_por_gen', detects when given inputs correspond to an inclusion between processes and simplifies the pre-computation accordingly."
+    );
+    (
+      "-no_por",
+      Arg.Set Config.no_por,
+      " Deactivates all Partial Order Reduction (POR) techniques, including the built-in techniques for action-determinate processes."
     );
   ]
   in

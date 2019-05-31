@@ -2,6 +2,10 @@ open Term
 open Process
 open Display
 
+let print_debug_por_gen_showExplo = ref false
+let count_explo = ref 0
+let count_stop = ref 0
+
 type origin_process =
   | Left
   | Right
@@ -15,128 +19,172 @@ type symbolic_process =
 
 (*********************)
 
+let por_continue csys_set trs = 
+  (* if !print_debug_por_gen_showExplo
+   * then begin Printf.fprintf !Config.output "Current set of symbolic traces to explore: \n"; Por.displaySetTraces trs; Printf.fprintf !Config.output "\n\n%!"; end; *)
+  let csys = Constraint_system.Set.choose csys_set in
+  let trace = (Constraint_system.get_additional_data csys).trace in
+  match Por.isEnable trace trs with
+  | None ->
+     if !print_debug_por_gen_showExplo then
+       Printf.fprintf !Config.output "[G-POR] ---- Last visible action is not enabled in symbolic POR so this exploration is stopped.\n%!" ;
+     (* DEBUG: *)
+     (* Printf.fprintf !Config.output "Set of constraint systems:\n";
+      * List.iter (fun csys -> Printf.fprintf !Config.output "Proc(s)=<<<%s>>>\n\n" (Process.display_process_testing None (fun i -> i) csys))
+      *   (List.map (fun csys -> (Constraint_system.get_additional_data csys).current_process) (Constraint_system.Set.elements csys_set)) ; *)
+     (* begin Printf.fprintf !Config.output "Current set of symbolic traces to explore: \n"; Por.displaySetTraces trs; Printf.fprintf !Config.output "\n%!"; end; *)
+     incr(count_stop) ;
+     false, trs
+  | Some (act, trs_next) -> 
+     if !print_debug_por_gen_showExplo then
+       (match act with
+        | None -> Printf.fprintf !Config.output "[G-POR] ---- No last visible action so this exploration continues.\n%!" ;
+        | Some act -> Printf.fprintf !Config.output "[G-POR] ---- Last visible action %s is enabled in symbolic POR so this exploration continues.\n%!" (Por.displayActPor act)) ;
+     true, trs_next
+
 exception Not_Trace_Equivalent of symbolic_process Constraint_system.t
 
-let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_continuation f_next =
+let apply_one_transition_and_rules_for_trace_in_classic trs csys_set size_frame f_continuation f_next =
 
+  
   let opti_csys_set = Constraint_system.Set.optimise_snd_ord_recipes csys_set in
 
-  (*** Generate the set for the next input ***)
+  incr(count_explo) ; 
+  let continue, trs_next = 
+    (* ** [Generalized POR] stop exploration if trace explores so far is not in the reduced set of traces computed by Porridge *)
+    if !Config.por_gen
+    then por_continue opti_csys_set trs
+    else true, trs in
 
-  let csys_set_for_input = ref Constraint_system.Set.empty in
+  if not(continue) then f_next ()	(* [G-POR] Stop exploration *)
+  else
 
-  let var_X_ch = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
-  let var_X_var = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
+    (*** Generate the set for the next input ***)
 
-  Constraint_system.Set.iter (fun csys ->
-    let symb_proc = Constraint_system.get_additional_data csys in
-    let fst_subst = Constraint_system.get_substitution_solution Protocol csys in
+    let csys_set_for_input = ref Constraint_system.Set.empty in
 
-    next_input Classic Trace_Equivalence symb_proc.current_process fst_subst (fun proc in_gathering ->
-      let ded_fact_ch = BasicFact.create var_X_ch in_gathering.in_channel
-      and ded_fact_term = BasicFact.create var_X_var (of_variable in_gathering.in_variable) in
+    let var_X_ch = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
+    let var_X_var = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
 
-      try
-        let new_csys_1 = Constraint_system.apply_substitution csys in_gathering.in_equations in
-        let new_csys_2 = Constraint_system.add_basic_fact new_csys_1 ded_fact_ch in
-        let new_csys_3 = Constraint_system.add_basic_fact new_csys_2 ded_fact_term in
-        let new_csys_4 = Constraint_system.add_disequations new_csys_3 in_gathering.in_disequations in
-        let trace =
-          match in_gathering.in_action with
-            | None ->
-                Config.debug (fun () ->
-                  if not !Config.display_trace
-                  then Config.internal_error "[equivalence.ml >> apply_transition] There should be an action when display_trace is activated."
-                );
-                symb_proc.trace
-            | Some action -> Trace.add_input var_X_ch in_gathering.in_original_channel var_X_var (of_variable in_gathering.in_variable) action proc (Trace.combine symb_proc.trace in_gathering.in_tau_actions)
-        in
+    Constraint_system.Set.iter (fun csys ->
+        let symb_proc = Constraint_system.get_additional_data csys in
+        let fst_subst = Constraint_system.get_substitution_solution Protocol csys in
 
-        let new_csys_5 = Constraint_system.replace_additional_data new_csys_4
-          { symb_proc with
-            current_process = proc;
-            trace = trace
-          }
-        in
+        next_input Classic Trace_Equivalence symb_proc.current_process fst_subst (fun proc in_gathering ->
+            let ded_fact_ch = BasicFact.create var_X_ch in_gathering.in_channel
+            and ded_fact_term = BasicFact.create var_X_var (of_variable in_gathering.in_variable) in
 
-        csys_set_for_input := Constraint_system.Set.add new_csys_5 !csys_set_for_input
-      with
-        | Constraint_system.Bot -> ()
-    )
-  ) opti_csys_set;
+            try
+              let new_csys_1 = Constraint_system.apply_substitution csys in_gathering.in_equations in
+              let new_csys_2 = Constraint_system.add_basic_fact new_csys_1 ded_fact_ch in
+              let new_csys_3 = Constraint_system.add_basic_fact new_csys_2 ded_fact_term in
+              let new_csys_4 = Constraint_system.add_disequations new_csys_3 in_gathering.in_disequations in
+              let trace =
+                match in_gathering.in_action with
+                | None ->
+                   Config.debug (fun () ->
+                       if not !Config.display_trace
+                       then Config.internal_error "[equivalence.ml >> apply_transition] There should be an action when display_trace is activated."
+                     );
+                   symb_proc.trace
+                | Some action -> Trace.add_input var_X_ch in_gathering.in_original_channel var_X_var (of_variable in_gathering.in_variable) action proc (Trace.combine symb_proc.trace in_gathering.in_tau_actions)
+              in
 
-  (*** Application of the tranformation rules ***)
+              let new_csys_5 = Constraint_system.replace_additional_data new_csys_4
+                                 { symb_proc with
+                                   current_process = proc;
+                                   trace = trace
+                                 }
+              in
 
-  let in_apply_final_test csys_set f_next =
-    if Constraint_system.Set.is_empty csys_set
-    then f_next ()
-    else
-      let csys = Constraint_system.Set.choose csys_set in
-      let origin_process = (Constraint_system.get_additional_data csys).origin_process in
-      if Constraint_system.Set.for_all (fun csys -> (Constraint_system.get_additional_data csys).origin_process = origin_process) csys_set
-      then raise (Not_Trace_Equivalent csys)
-      else f_continuation csys_set size_frame f_next
-  in
+              csys_set_for_input := Constraint_system.Set.add new_csys_5 !csys_set_for_input
+            with
+            | Constraint_system.Bot -> ()
+          )
+      ) opti_csys_set;
 
-  (*** Generate the set for the next output ***)
+    (*** Application of the tranformation rules ***)
 
-  let csys_set_for_output = ref Constraint_system.Set.empty in
+    let in_apply_final_test csys_set f_next =
+      if Constraint_system.Set.is_empty csys_set
+      then f_next ()
+      else
+        let csys = Constraint_system.Set.choose csys_set in
+        let origin_process = (Constraint_system.get_additional_data csys).origin_process in
+        if Constraint_system.Set.for_all (fun csys -> (Constraint_system.get_additional_data csys).origin_process = origin_process) csys_set
+        then raise (Not_Trace_Equivalent csys)
+        else f_continuation trs_next csys_set size_frame f_next
+    in
 
-  let var_X_ch = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
-  let axiom = Axiom.create (size_frame + 1) in
+    (*** Generate the set for the next output ***)
 
-  Constraint_system.Set.iter (fun csys ->
-    let symb_proc = Constraint_system.get_additional_data csys in
-    let fst_subst = Constraint_system.get_substitution_solution Protocol csys in
+    let csys_set_for_output = ref Constraint_system.Set.empty in
 
-    next_output Classic Trace_Equivalence symb_proc.current_process fst_subst (fun proc out_gathering ->
-      let ded_fact_ch = BasicFact.create var_X_ch out_gathering.out_channel in
+    let var_X_ch = Variable.fresh Recipe Free (Variable.snd_ord_type size_frame) in
+    let axiom = Axiom.create (size_frame + 1) in
 
-      try
-        let new_csys_1 = Constraint_system.apply_substitution csys out_gathering.out_equations in
-        let new_csys_2 = Constraint_system.add_basic_fact new_csys_1 ded_fact_ch in
-        let new_csys_3 = Constraint_system.add_axiom new_csys_2 axiom (out_gathering.out_term) in
-        let new_csys_4 = Constraint_system.add_disequations new_csys_3 out_gathering.out_disequations in
-        let trace = match out_gathering.out_action with
-          | None ->
-              Config.debug (fun () ->
-                if not !Config.display_trace
-                then Config.internal_error "[equivalence.ml >> apply_transition] There should be an action when display_trace is activated. (2)"
-              );
-              symb_proc.trace
-          | Some action -> Trace.add_output var_X_ch out_gathering.out_original_channel axiom out_gathering.out_original_term action proc (Trace.combine symb_proc.trace out_gathering.out_tau_actions)
-        in
+    Constraint_system.Set.iter (fun csys ->
+        let symb_proc = Constraint_system.get_additional_data csys in
+        let fst_subst = Constraint_system.get_substitution_solution Protocol csys in
 
-        let new_csys_5 = Constraint_system.replace_additional_data new_csys_4
-          { symb_proc with
-            current_process = proc;
-            trace = trace
-          }
-        in
+        next_output Classic Trace_Equivalence symb_proc.current_process fst_subst (fun proc out_gathering ->
+            let ded_fact_ch = BasicFact.create var_X_ch out_gathering.out_channel in
 
-        csys_set_for_output := Constraint_system.Set.add new_csys_5 !csys_set_for_output
-      with
-        | Constraint_system.Bot -> ()
-    )
-  ) opti_csys_set;
+            try
+              let new_csys_1 = Constraint_system.apply_substitution csys out_gathering.out_equations in
+              let new_csys_2 = Constraint_system.add_basic_fact new_csys_1 ded_fact_ch in
+              let new_csys_3 = Constraint_system.add_axiom new_csys_2 axiom (out_gathering.out_term) in
+              let new_csys_4 = Constraint_system.add_disequations new_csys_3 out_gathering.out_disequations in
+              let trace = match out_gathering.out_action with
+                | None ->
+                   Config.debug (fun () ->
+                       if not !Config.display_trace
+                       then Config.internal_error "[equivalence.ml >> apply_transition] There should be an action when display_trace is activated. (2)"
+                     );
+                   symb_proc.trace
+                | Some action -> Trace.add_output var_X_ch out_gathering.out_original_channel axiom out_gathering.out_original_term action proc (Trace.combine symb_proc.trace out_gathering.out_tau_actions)
+              in
 
-  (*** Application of the tranformation rules ***)
+              let new_csys_5 = Constraint_system.replace_additional_data new_csys_4
+                                 { symb_proc with
+                                   current_process = proc;
+                                   trace = trace
+                                 }
+              in
 
-  let out_apply_final_test csys_set f_next =
-    if Constraint_system.Set.is_empty csys_set
-    then f_next ()
-    else
-      let csys = Constraint_system.Set.choose csys_set in
-      let origin_process = (Constraint_system.get_additional_data csys).origin_process in
-      if Constraint_system.Set.for_all (fun csys -> (Constraint_system.get_additional_data csys).origin_process = origin_process) csys_set
-      then raise (Not_Trace_Equivalent csys)
-      else f_continuation csys_set (size_frame + 1) f_next
-  in
+              csys_set_for_output := Constraint_system.Set.add new_csys_5 !csys_set_for_output
+            with
+            | Constraint_system.Bot -> ()
+          )
+      ) opti_csys_set;
 
-  Constraint_system.Rule.apply_rules_after_output false out_apply_final_test !csys_set_for_output
-    (fun () -> Constraint_system.Rule.apply_rules_after_input false in_apply_final_test !csys_set_for_input f_next)
+    (*** Application of the tranformation rules ***)
 
-let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_continuation f_next =
+    let out_apply_final_test csys_set f_next =
+      if Constraint_system.Set.is_empty csys_set
+      then f_next ()
+      else
+        let csys = Constraint_system.Set.choose csys_set in
+        let origin_process = (Constraint_system.get_additional_data csys).origin_process in
+        if Constraint_system.Set.for_all (fun csys -> (Constraint_system.get_additional_data csys).origin_process = origin_process) csys_set
+        then raise (Not_Trace_Equivalent csys)
+        else f_continuation trs_next csys_set (size_frame + 1) f_next
+    in
+
+    Constraint_system.Rule.apply_rules_after_output false out_apply_final_test !csys_set_for_output
+      (fun () -> Constraint_system.Rule.apply_rules_after_input false in_apply_final_test !csys_set_for_input f_next)
+
+let apply_one_transition_and_rules_for_trace_in_private trs csys_set size_frame f_continuation f_next =
+
+  incr(count_explo) ; 
+  let continue, trs_next = 
+    (* ** [Generalized POR] stop exploration if trace explores so far is not in the reduced set of traces computed by Porridge *)
+    if !Config.por_gen
+    then por_continue csys_set trs
+    else true, trs in
+
+  if not(continue) then f_next ()	(* [G-POR] Stop exploration *)
+  else
 
   (*** Generate the set for the next input ***)
 
@@ -200,7 +248,7 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
       then raise (Not_Trace_Equivalent csys)
       else
         let opti_csys_set = Constraint_system.Set.optimise_snd_ord_recipes csys_set in
-        f_continuation opti_csys_set size_frame f_next
+        f_continuation trs_next opti_csys_set size_frame f_next
   in
 
   (*** Generate the set for the next output ***)
@@ -263,7 +311,7 @@ let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_co
       then raise (Not_Trace_Equivalent csys)
       else
         let opti_csys_set = Constraint_system.Set.optimise_snd_ord_recipes csys_set in
-        f_continuation opti_csys_set (size_frame + 1) f_next
+        f_continuation trs_next opti_csys_set (size_frame + 1) f_next
   in
 
   Constraint_system.Rule.apply_rules_after_output !private_channels_output out_apply_final_test !csys_set_for_output (fun () ->
@@ -279,7 +327,7 @@ type result_trace_equivalence =
   | Equivalent
   | Not_Equivalent of symbolic_process Constraint_system.t
 
-let trace_equivalence_classic proc1 proc2 =
+let trace_equivalence_classic proc1 proc2 trs =
 
   (*** Initialise skeletons ***)
 
@@ -310,17 +358,17 @@ let trace_equivalence_classic proc1 proc2 =
   let csys_set_1 = Constraint_system.Set.add csys_1 Constraint_system.Set.empty in
   let csys_set_2 = Constraint_system.Set.add csys_2 csys_set_1 in
 
-  let rec apply_rules csys_set frame_size f_next =
-    apply_one_transition_and_rules_for_trace_in_classic csys_set frame_size apply_rules f_next
+  let rec apply_rules trs csys_set frame_size f_next =
+    apply_one_transition_and_rules_for_trace_in_classic trs csys_set frame_size apply_rules f_next
   in
 
   try
-    apply_rules csys_set_2 0 (fun () -> ());
+    apply_rules trs csys_set_2 0 (fun () -> ());
     Equivalent
   with
     | Not_Trace_Equivalent csys -> Not_Equivalent csys
 
-let trace_equivalence_private proc1 proc2 =
+let trace_equivalence_private proc1 proc2 trs =
 
   (*** Initialise skeletons ***)
 
@@ -351,19 +399,19 @@ let trace_equivalence_private proc1 proc2 =
   let csys_set_1 = Constraint_system.Set.add csys_1 Constraint_system.Set.empty in
   let csys_set_2 = Constraint_system.Set.add csys_2 csys_set_1 in
 
-  let rec apply_rules csys_set frame_size f_next =
-    apply_one_transition_and_rules_for_trace_in_private csys_set frame_size apply_rules f_next
+  let rec apply_rules trs csys_set frame_size f_next =
+    apply_one_transition_and_rules_for_trace_in_private trs csys_set frame_size apply_rules f_next
   in
 
   try
-    apply_rules csys_set_2 0 (fun () -> ());
+    apply_rules trs csys_set_2 0 (fun () -> ());
     Equivalent
   with
     | Not_Trace_Equivalent csys -> Not_Equivalent csys
 
-let trace_equivalence sem proc1 proc2 = match sem with
-  | Classic -> trace_equivalence_classic proc1 proc2
-  | Private -> trace_equivalence_private proc1 proc2
+let trace_equivalence sem proc1 proc2 trs = match sem with
+  | Classic -> trace_equivalence_classic proc1 proc2 trs
+  | Private -> trace_equivalence_private proc1 proc2 trs
   | _ -> Config.internal_error "[equivalence.ml >> trace_equivalence] Trace equivalence for this semantics is not yet implemented."
 
 (***** Display ******)
@@ -390,6 +438,11 @@ let publish_trace_equivalence_result id sem proc1 proc2 result runtime =
   let template_script = "<!-- Script deepsec -->" in
   let template_line = "<!-- Content of the file -->" in
 
+  if not(!Config.distributed)
+  then (if !Config.por_gen
+        then Printf.fprintf !Config.output "[G-POR] (Stats) ---- Number of explorations [%d], number of blocked explorations [%d].\n%!" !count_explo !count_stop
+        (* else Printf.fprintf !Config.output "        (Stats) ---- Number of explorations [%d].\n%!" !count_explo) ; *)
+       );
   let line = ref (input_line in_template) in
   while !line <> template_stylesheet do
     Printf.fprintf out_result "%s\n" !line;

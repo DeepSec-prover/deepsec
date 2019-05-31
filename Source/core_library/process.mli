@@ -118,8 +118,18 @@ module Trace : sig
 
   (** This module handle the gathering of information about the attack trace. *)
 
+    type trace_actions =
+    | TrComm of action_process * action_process * process
+    | TrNew of action_process * process
+    | TrChoice of action_process * process
+    | TrTest of action_process * process
+    | TrLet of action_process * process
+    | TrInput of snd_ord_variable * protocol_term * snd_ord_variable * protocol_term * action_process * process
+    | TrOutput of snd_ord_variable * protocol_term * axiom * protocol_term * action_process * process
+    | TrEavesdrop of snd_ord_variable * protocol_term * axiom * protocol_term * action_process * action_process * process
+
   (** The type of a trace *)
-  type t
+  type t = trace_actions list
 
   (** {3 Generatio} *)
 
@@ -283,3 +293,15 @@ val next_input :
 val update_test_next_output : (semantics -> equivalence -> process -> (fst_ord, name) Subst.t -> (process * output_gathering) list -> unit) -> unit
 
 val update_test_next_input : (semantics -> equivalence -> process -> (fst_ord, name) Subst.t -> (process * input_gathering) list -> unit) -> unit
+
+(** {4 Generalized POR} *)
+
+(** Simplified symbolic representation of actions (term denotes channel). Used by generalized POR. *)
+type visAct =
+  | InS of protocol_term
+  | OutS of protocol_term
+
+val displayVisAction : visAct -> string
+
+(** Returns true when the two processes are equal when omitting all terms (except channels that mush be constants). *)
+val same_structure : expansed_process -> expansed_process -> bool

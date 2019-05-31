@@ -1,4 +1,5 @@
 open Extensions
+let debug_worker = ref false
 
 (** This is the module type for a task that need to be computed *)
 module type TASK =
@@ -101,6 +102,11 @@ struct
     (****** The workers' main function ******)
 
     let worker_main () =
+      let number_worker = Config.file_name () in
+      if !debug_worker then begin
+          Config.output := open_out number_worker ;
+          Printf.fprintf !Config.output "Worker %s has started...\n%!" number_worker ;
+        end ;
       let shared = ((input_value stdin):Task.shareddata) in
       Task.initialise shared;
       output_value stdout (Unix.getpid ());

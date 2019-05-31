@@ -40,3 +40,17 @@ let display_trace = ref true
 
 let distributed = ref false
 let core_factor = ref 30
+
+(**** POR for determinate processes ****)
+let no_por = ref false
+
+(**** Generalized POR ****)
+let por_gen = ref false
+let inclusion_detect = ref false
+
+(**** Debugging for distributed computations ****)
+let file_name () =
+  Random.self_init() ;
+  Printf.sprintf "WORKER_%d" (Random.int 1000)
+
+let output = ref stdout

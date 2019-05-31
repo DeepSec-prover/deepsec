@@ -1,0 +1,71 @@
+/*
+Private Authentication Protocol
+ 1. A -> B: {Na, pub(A)}pub(B)
+ 2. B -> A: {Na, Nb,pub(B)}pub(A) if B wants to communicate with A
+                  {Nb}pub(B) otherwise
+*/
+
+free c.
+free cA.
+free cB.
+free cA2.
+free cB2.
+free cA3.
+free cB3.
+free cA4.
+free cB4.
+free cA5.
+free cB5.
+
+fun aenc/2.
+fun pk/1.
+reduc adec(aenc(x,pk(y)),y) -> x.
+reduc proj1((x,y)) -> x.
+reduc proj2((x,y)) -> y.
+
+/*
+Description of role A played:
+- by the agent with private key ska
+- with the agent with public key pkb
+*/
+
+let processA(c,ska,pkb) =
+  new na;
+  out(c,aenc((na,pk(ska)),pkb));
+  in(c,z).
+
+
+/*
+Description of role B played:
+- by the agent with private key skb
+- with the agent with public key pka
+*/
+
+let processB(c,skb,pka) =
+  in(c,y);
+  new ne;
+  if proj2(adec(y,skb)) = pka
+  then
+    new nb;
+    out(c,aenc((proj1(adec(y,skb)),nb,pk(skb)),pka))
+  else out(c,aenc(ne,pk(skb))).
+
+
+(**** PARAMETRIZED SYSTEMS *****)
+let ProcA(cA,ska,skb) =
+ processA(cA,ska,pk(skb)).
+let ProcB(cB,skb,ska) =
+ processB(cB,skb,pk(ska)).
+let Pair(cA,cB,ska,skb)= ProcA(cA,ska,skb) | ProcB(cB,skb,ska).
+let Tag(cA,ska,skb) = ProcA(cA,ska,skb).
+
+let ProcessAB =
+  new ska ; new skb ; new skc ; out(c,pk(ska)) ; out(c,pk(skb)) ; out(c,pk(skc));
+  (Pair(cA,cB,ska,skb) | Pair(cA2,cB2,ska,skb) | Pair(cA3,cB3,ska,skb) | Pair(cA4,cB4,ska,skb) | Pair(cA5,cB5,ska,skb)).
+
+let ProcessCB =
+  new ska ; new skb ; new skc ; out(c,pk(ska)) ; out(c,pk(skb)) ; out(c,pk(skc));
+  (Pair(cA,cB,skc,skb) | Pair(cA2,cB2,skc,skb) | Pair(cA3,cB3,skc,skb) | Pair(cA4,cB4,skc,skb) | Pair(cA5,cB5,skc,skb)).
+
+// ANONYMITY
+query trace_equiv(ProcessAB,ProcessCB).
