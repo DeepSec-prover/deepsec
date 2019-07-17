@@ -1,0 +1,223 @@
+(* Post-review: Unified ProVerif specification, version 11, for Scytl's Voting Protocol. All variants included. Tabulation size : 8 spaces. *)
+(* Reachability ............ : For Cast as Intended and Tallied as Cast properties; from study_v13.pve with the 'REA' option.               *)
+(* Observational Equivalence : For Ballot Provivacy; 2 honest + 1 or 0 dishonest in the challenge; [..] with the 'OBS' option w/ or w/o HH. *)
+(* Syntactical remark ...... : To avoid confusions, the Vote V of the voter is named here the Ballot B of the voter (it uses encryption).   *)
+
+(* 1. Objects and Types *)
+
+free c.             (* Public Channel for communications with the intruder   # public                 *)
+free svka, svkb.    (* Defines two SVK for two honest voters Alice and Bob   # public                 *)
+free ja1,jb1.       (* Voting choices for the Honest voters -- REA or OBS    # public                 *)
+free a1.            (* MODELING : an indexed set of nat atoms, for disquality tests  -- only in Test. *)
+const true.         (* The constant true *)
+
+(* 2. Intruder capabilities and functions extracted from the CryptoPaper. *)
+
+(* Encryption scheme  --  from CryptoPaper, page 4  --  expected to be ElGamal  --  Key pairs generated through Gen_e, which is implicit.   *)
+fun ske/1[private].   (* The private enc. key associated to an agent_id        # private                *)
+fun pube/1.           (* The function to rebuild a public key from the private # public , noninvertible *)
+fun Enc_c1/1.         (* The c1 part of the asymmetric encryption function with explicit random number. *)
+fun Enc_c2/3.         (* The c2 part of the asymmetric encryption function with explicit random number. *)
+reduc Dec(Sk,(Enc_c1(R),Enc_c2(pube(Sk),M,R))) = M.       (* Decryption *)
+reduc VerifE(Pk,(Enc_c1(R),Enc_c2(Pk,M,R))) = true.       (* Checks key *)
+reduc Get_Id(pube(ske(Id))) = Id.                         (* Extract Id *)
+
+(* Signature scheme  --  from CryptoPaper, page 4 & 5  --  expected to be the RSA Probabilistic Signature Scheme (PSS)  --  Gen_s implicit. *)
+fun sks/1 [private].    (* The private sig. key associated to an agent_id        # private                *)
+fun pubs/1.             (* The function to rebuild a public key from the private # public , noninvertible *)
+fun Sign/2.             (* The digital signature function with explicit random number. (Signature)        *)
+reduc Verify(pubs(Sk),M,Sign(Sk,M)) = true.       (* Verification *)
+reduc Checks(pubs(Sk),Sign(Sk,M)) = M.            (* More expressive than Verify. *)
+reduc Get_Message(Sign(Sk,M)) = M.                (* Worst case for modeling only *)
+
+(* Modeling of the Non-Interactive Zero-Knowledge Proofs of Knowledge  -- from CryptoPaper, pages 5 & 6  -- Names changed for abstractions. *)
+(* Both the 'Equality of discrete logarithms' (used in two variants) and the 'Knowledge of encryption exponent' are abstracted inside the   *)
+(* ZKP and VerifP operators. Consequently, the c1~ and c2~, which are intermediate values, are not needed anymore and thus abstracted away. *)
+(* Moreover, the 'Correct decryption' is not needed for this modeling w.r.t the expected security properties.                               *)
+fun pCC/2.   (* The built of partial Choice Codes (ski,vi) = vi^ski   # public , noninvertible *)
+fun tild/2.   (* The built of c1~ and c2~ abstracted from ZKP/VerifP   # public , noninvertible *)
+
+reduc Get_Vote1(pCC(Sk,V),Sk) = V.    (* Worst case for modeling only *)
+reduc Get_Vote2(tild(Sk,C),Sk) = C.   (* Worst case for modeling only *)
+fun ZKP/6.                            (* Modeling of the proof generation   *)
+reduc                                 (* Modeling of the proof verification *)
+    VerifP(EBpk, pube(VCidsk), (Enc_c1(R),Enc_c2(EBpk,v1,R)), pCC(VCidsk,v1), ZKP(EBpk, pube(VCidsk), (Enc_c1(R),Enc_c2(EBpk,v1,R)), pCC(VCidsk,v1), R,VCidsk)) = true.
+(* Consequently to abstracting c1~ and c2~ away from ZKP/VerifP, we do not need anymore the 4 variants of this reduction shown previously.  *)
+(* Remaining limitation : the agregation function phi(..) is commutative, but modeling it generates far too many cases for ProVerif.        *)
+
+
+(* Symmetric encryption scheme  --  from CryptoPaper Draft update, page 3  --  expected to be based on AES                                  *)
+fun Enc_s/2.                            (* Encryption (symmetric key) *)
+reduc Dec_s(SKey,Enc_s(SKey,M)) = M.    (* Decyption  (symmetric key) *)
+
+(* Key and IDs derivation scheme  --  from CryptoPaper Draft update, page 3  *)
+(* free   IDseed              : bitstring            . *)  (* A public seed for IDs   --  Not needed: value fixed  # public                 *)
+(* free   KEYseed             : bitstring            . *)  (* A public seed for KEYs  --  Not needed: value fixed  # public                 *)
+fun deltaId/1.            (* The delta function, for agents IDs                   # public                 *)
+fun deltaKey/1.           (* The delta function, for symmetric encryption keys    # public                 *)
+fun honest/1 [private].   (* MODELING : a function to separate honest and dishonest agents (only in Prop). *)
+
+
+(* Keyed Pseudo-Random and hash functions  --  from cryptoPaper, pages 7 & 8  --  Note: Not the same keys as for symmetric encryption       *)
+fun H/1.    (* The hash function  --  from CryptoPaper page 5        # public , noninvertible *)
+fun f/2.    (* The keyed pseudo-random function f  --  page 7        # public , noninvertible *)
+(* 3. Initialization sequence (done off-line in this modeling). *)
+
+(* Setup(...) i.e. the initialisation step from the Registrar  --  done off-line in this modeling  --  from CryptoPaper page 9              *)
+free election.        (* The election id - used to derive public/private keys  # public (sk is private) *)
+free signature.       (* The signature id - used to derive public/private keys # public (sk is private) *)
+free csk [private].   (* The Codes secret key 'Csk' (for f(...) function)      # private                *)
+
+(* Register(..,id,csk,sks(signature)) ie. the registration step for any new voter  --  done off-line through functions  --  from CryptoPaper page 9 *)
+fun bck/1 [private].  (* The Ballot Casting Key 'BCK^id'  of an agent id                 # private *)
+fun sCC/3 [private].  (* The short choice code 'sCC^id_i' of an agent id + voting option # private *)
+fun sVCC/2 [private]. (* The short vote cast code 'sVCC^id' of an agent id               # private *)
+
+(* For any voter id, generates VCidpk,VCidsk ........ : pke(id) and ske(id) and GetVCks(id)     --  distributed in encrypted private data.  *)
+(* For any voter id, chooses a ballot casting key ... : bck(id) as defined above;               --  distributed in AliceData and Mapping.   *)
+(* For any voter id, computes a list of Choice Codes CC(id,i) ........ : with f(..) and pCC(..) and v(i)     --  used to build the Mapping. *)
+(* for any voter id, computes the Vote Cast Code  VCC(id) ............ : with f(..) and pCC(..) and bck(id)  --  used to build the Mapping. *)
+(* for any voter id, chooses the short CC and short VCC .............. : with sCC(..) and sVCC(..) -- distributed in AliceData and Mapping. *)
+(* For any voter id, computes the signature of the Vote Cast Code .... : Sign(sks(signature),sVCC(id))               --  distributed in ServData.   *)
+(* For any voter id, stores a list of hashed choice codes {H(CC(id,i))}_i=1..inf ..... : through MakeRFList  --  distributed in ServData.   *)
+
+
+(* Registration data for any voter id  --  AliceData(svk,csk) produced by the Registrar for Alice   --  opened with a reduction             *)
+
+(* 5. Methods and Agents processes *)
+
+(* GetID(SVKid)  --  Computer generates the Voting Card ID  --  Directly replaced by deltaId(SVKid)  --  from CryptoPaper update page 4.    *)
+(* letfun GetID(SVKid:password) = deltaId(SVKid). *)
+
+
+(* Confirm(VCid,B,VCidsk,BCKid)  --  Computer generates a Confirmation Message  --  Done directly inside 'Cmp' and 'Alice_Cmp'.             *)
+
+(* AuditBallotProof((sCC_Received1),(sCCid1))  --  Alice checks if all expected CC were indeed received.                                    *)
+(* According to the CryptoPaper update, instead of a method, this is done directly inside the 'Alice' and 'Alice_Cmp' processes.            *)
+
+(* ProcessConfirm(bb,VCid,CMid,Csk,VCCssk,S_VCCid)  --  Server checks the retreived short Vote Cast Code.                                   *)
+(* Instead of a method, this is done directly inside the 'Serv' process.                                                                    *)
+
+
+(* Typing of the messages -- between Voter and his Computer only *)
+free mAC1, mAC2, mCA1, mCA2.
+
+(* MODELING  --  Alice plus her Computer together (if both honest, to avoid useless secure communications).                          *)
+let Alice_Cmp(svk,J1,Ch2,EBpk) =
+    (* Retrieves registration data obtained from the Registrar  --  Set of initial data given to Alice by the Registrar.             *)
+    let (SVKid, BCKid, sVCCid, sCCid1) = (honest(svk), bck(deltaId(honest(svk))), sVCC(csk,deltaId(honest(svk))), sCC(csk,deltaId(honest(svk)),J1)) in
+    (* Voting part -- The voting process followed by agent Alice *)
+    let VCid = deltaId(SVKid) in                                           (* The GetID method; CryptoPaperUpdate page 4.   *)
+    out(Ch2, VCid);                                                                 (* Send the Voting Card ID to the Bulletin Board *)
+
+    in( Ch2, VCksid);                                                     (* Receives the asso. Verification Card keystore *)
+    let VCidsk = Dec_s(deltaKey(SVKid),VCksid) in					    (* Recover the asso. the Voting Card private key *)
+
+    new R;
+    let C = (Enc_c1(R),Enc_c2(EBpk,J1,R)) in
+    let P = ZKP(EBpk,pube(VCidsk),C,pCC(VCidsk,J1), R,VCidsk) in
+
+    out(Ch2, (C, pCC(VCidsk,J1), tild(VCidsk,C), pube(VCidsk), P));		            (* Sends the ballot (ie. 'Vote') to the server.  *)
+
+    in(Ch2, sCC_Received1);				    (* Receives the short Choice Codes from server.  *)
+    if sCC_Received1 = sCCid1 then		                            (* Compares the short Choice Codes.              *)
+    out(Ch2, pCC(VCidsk,BCKid));						    (* The Confirm(VCid,_,VCidsk,BCK) voter's method *)
+    in( Ch2, x);							    (* Alice checks the Vote Cast Code's value.      *)
+    if x = sVCCid then
+    0
+.
+
+(* 6. Second Phase -- The Tally after all votes are collected. *)
+
+(* Runnability tests  --  Checks if we can reach a final Results(..) event.         *)
+(*free  jci : nat .*)              (* Voting options for one Dishonest voter.       *)
+(*query                            event(Results(ja1,jb1,jc1)) ==> event(NeverTrue).*)
+(*query J11:nat, J21:nat, J31:nat; event(Results(J11,J21,J31)) ==> event(NeverTrue).*)
+(*query SVK:password, Csk:symmetric_key, {J$i:nat,W$i:nat|$i=1..$k};                *)
+(*            event(HappyUser(AliceData(honest(SVK),Csk), J1)) ==> event(NeverTrue).*)
+
+(* Tally -- the election tally *)
+free mix [private].
+
+let Tally(CTally,EBsk,VCCspk,VCid1,VCid2) =
+    (* Only one variant, called HHD previously; Others HDH and DHH simply swap the reception order, and thus are clearly equivalent.  *)
+    in(CTally, x1);
+    let (=VCid1,B1,sVCC1,S_VCC1) = x1 in
+    in(CTally, x2);
+    let (=VCid2,B2,sVCC2,S_VCC2) = x2 in
+    in(CTally, x3);      (* use option HH to choose between HHD and HH *)
+    let (VCid3,B3,sVCC3,S_VCC3) = x3 in
+    (* Validation of the Ballots in the bulletin board. *)
+
+    let (C_1, W1_1, EC_1, =pube(ske(VCid1)), P_1) = B1 in
+    if VerifP(pube(EBsk),pube(ske(VCid1)),C_1,W1_1, P_1) = true then
+    if Verify(VCCspk,sVCC1,S_VCC1) = true then
+
+    let (C_2, W1_2, EC_2, =pube(ske(VCid2)), P_2) = B2 in
+    if VerifP(pube(EBsk),pube(ske(VCid2)),C_2,W1_2, P_2) = true then
+    if Verify(VCCspk,sVCC2,S_VCC2) = true then
+
+    let (C_3, W1_3, EC_3, =pube(ske(VCid3)), P_3) = B3 in
+    if VerifP(pube(EBsk),pube(ske(VCid3)),C_3,W1_3, P_3) = true then
+    if Verify(VCCspk,sVCC3,S_VCC3) = true then
+
+    if VCid1 = VCid2
+    then 0
+    else if VCid1 = VCid3
+    then 0
+    else if VCid2 = VCid3
+    then 0
+    else
+      (* MixNet Modeling -- The data to be mixed is sent concurrently on a specific channel *)
+      (
+        out(mix,C_1)
+      | out(mix,C_2)
+      |
+        (
+          in(mix, MC1);
+          in(mix, MC2);
+          (*       out(mix,        C1    ) | out(mix,        C2    ) | in(mix, MC1:bitstring); in(mix, MC2:bitstring);*) (* Only for Runnability. *)
+          (* Decrypting -- The mixed ciphers are opened and decrypted. *)
+          let J11 = Dec(EBsk,MC1) in
+          let J21 = Dec(EBsk,MC2) in
+          let J31 = Dec(EBsk,C_3) in
+          (* Publishing -- The intruder receices the election's result. *)
+          out(c,(J11,J21,J31))
+        )
+      )
+.
+
+
+(* 8. Main process  -- initiates the election *)
+
+let Main_process(vote1,vote2) =
+(* Public output from Setup(..)  --  Gives the election's parameters to the Intruder. *)
+  out(c, pube(ske(election))); out(c, pubs(sks(signature)));
+
+(* Gives the honest voter's public data to the Intruder *)
+  out(c, deltaId(honest(svka))); out(c,pube(ske(deltaId(honest(svka)))));
+  out(c, deltaId(honest(svkb))); out(c,pube(ske(deltaId(honest(svkb)))));
+
+  out(c, Enc_s(deltaKey(honest(svka)), ske(deltaId(honest(svka)))));
+  out(c, Enc_s(deltaKey(honest(svkb)), ske(deltaId(honest(svkb)))));
+  (* Dishonest voter(s) : As many as possible for Reachability, need only one for Obervational equivalence. *)
+  new svki; out(c,svki);
+  in(c,Ji);
+  out(c,(svki, bck(deltaId(svki)), sVCC(csk,deltaId(svki)), sCC(csk,deltaId(svki),Ji)));
+  (* Bulletin Board (ie. Server) : is Honest for Reachability, but Dishonest for Observational Equivalence. *)
+  out(c, (pube(ske(election)),csk,pubs(sks(signature)), Enc_s(deltaKey(honest(svka)),ske(deltaId(honest(svka)))), Sign(sks(signature),sVCC(csk,deltaId(honest(svka)))) ));
+  out(c, (pube(ske(election)),csk,pubs(sks(signature)), Enc_s(deltaKey(honest(svkb)),ske(deltaId(honest(svkb)))), Sign(sks(signature),sVCC(csk,deltaId(honest(svkb)))) ));
+  out(c, (pube(ske(election)),csk,pubs(sks(signature)), Enc_s(deltaKey(svki),ske(deltaId(svki))), Sign(sks(signature),sVCC(csk,deltaId(svki))) ));
+
+  (
+    (* Roles for honest voter(s)  --  one for Reachability, two for Observational Equivalence. *)
+    Alice_Cmp(svka,vote1,c,pube(ske(election)))
+  | Alice_Cmp(svkb,vote2,c,pube(ske(election)))
+
+    (* The Tally phase  --  only after the honest voters have voted. *)
+  | Tally(c,ske(election),pubs(sks(signature)),deltaId(honest(svka)),deltaId(honest(svkb)))
+  ).
+
+query trace_equiv(Main_process(ja1,jb1),Main_process(ja1,ja1)).
+
+query trace_equiv(Main_process(ja1,jb1),Main_process(jb1,ja1)).
