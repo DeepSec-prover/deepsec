@@ -1,0 +1,59 @@
+(* Denning Sacco Symmetric Key
+#
+# 1.  A	->	S:  	A, B
+# 2.  S	->	A:  	{B, Kab, {Kab, A}Kbs}Kas
+# 3.  A	->	B:  	{Kab,A}Kbs
+# Strong secrecy of Kab
+# 6.  B      ->     : {m}Kab versus {m}K with K fresh
+*)
+
+
+free a, b,  s1, s2.
+
+free c_out, c_in.
+
+free ok.
+
+fun senc/2.
+reduc sdec(senc(x,y),y) -> x.
+
+let processA(ca,a,kas,b) =
+  out(c_out,(a,b));
+  in(c_in,xa);
+  let (=b,xab,xmb) = sdec(xa,kas) in
+  out(c_out,xmb).
+
+let processB(cb,b,kbs,a) =
+  in(c_in,yb);
+  let (yab,=a)= sdec(yb,kbs) in
+  0.
+
+let processS(cs,a,kas,b,kbs) =
+	in(c_in,zs);
+	if zs = (a,b) then
+	new kab;
+	out(c_out,senc((b,kab,senc((kab,a),kbs)),kas)).
+
+let processSProp(cs,a,kas,b,kbs,s) =
+	in(c_in,zs);
+	if zs = (a,b) then
+	out(c_out,senc((b,s,senc((s,a),kbs)),kas)).
+
+// Main
+
+let Preal =
+  new kas; new kbs;
+  (
+    processA(c,a,kas,b) | processB(c,b,kbs,a) | processSProp(c,a,kas,b,kbs,s1) |
+    processA(c,a,kas,b) | processB(c,b,kbs,a) | processS(c,a,kas,b,kbs)
+  ).
+
+
+let Pideal =
+  new kas; new kbs;
+  (
+    processA(c,a,kas,b) | processB(c,b,kbs,a) | processSProp(c,a,kas,b,kbs,s2) |
+    processA(c,a,kas,b) | processB(c,b,kbs,a) | processS(c,a,kas,b,kbs)
+  ).
+
+query trace_equiv(Preal,Pideal).
