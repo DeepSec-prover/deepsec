@@ -45,7 +45,7 @@ Description of the Reader role:
 - it has the signature key KPrDS
 */
 
-let reader(KPrDS,ksenc,ksmac,ch) =
+let reader(KPrDS,ksenc,ksmac) =
   let menc = senc(read,ksenc) in
   let mmac = mac(menc,ksmac) in
   out(c_out, (menc, mmac));
@@ -82,7 +82,7 @@ let Process2 =
   (
     OneSessionPassport(KPrDS,dgB) |       // Passport of B
     OneSessionPassport(KPrDS,dgC) |       // Passport of C
-    OneSessionPassport(KPrDS,dgCs)         // Passport of C
+    OneSessionPassport(KPrDS,dgC)         // Passport of C
   ).
 
 query trace_equiv(Process1,Process2).

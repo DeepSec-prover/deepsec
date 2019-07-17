@@ -29,7 +29,7 @@ fun pub/1.
 fun aenc/3.
 reduc adec(k, aenc(pub(k), r, m))= m.
 
-let AKA_MS(ch,k,osqn,pbN,imsi) =
+let AKA_MS(k,osqn,pbN,imsi) =
   new r_ms;
   in(c_in, x);
   let (xrand, xautn) = x in
@@ -56,7 +56,7 @@ let AKA_MS(ch,k,osqn,pbN,imsi) =
     out(c_out, aenc(pbN, r_ms, (Fail, imsi, rand, senc(f0(k, rand), r, (Sqn, osqn))))).
 
 
-let AKA_SN(ch,osqn,k)=
+let AKA_SN(osqn,k)=
     new rand;
     new r_sn;
     new s;
@@ -74,17 +74,17 @@ let AKA_SN(ch,osqn,k)=
     then out(c_out, senc(ck, r, s))
     else out(c_out, reject).
 
-let single_session(chMS,chSN,pbN,k,imsi) =
+let single_session(pbN,k,imsi) =
   new osqn;
-  ( AKA_MS(chMS,k,osqn,pbN,imsi) | AKA_SN(chSN,osqn,k)).
+  ( AKA_MS(k,osqn,pbN,imsi) | AKA_SN(osqn,k)).
 
 let Process1 =
   new pvN;
   let pbN = pub(pvN) in
   out(c_out,pbN);
   (
-    (new k; single_session(c,c,pbN,k,imsi_wtn)) |
-    (new k; new imsi; single_session(c,c,pbN,k,imsi))
+    (new k; single_session(pbN,k,imsi_wtn)) |
+    (new k; new imsi; single_session(pbN,k,imsi))
   ).
 
 let Process2 =
@@ -93,7 +93,7 @@ let Process2 =
   out(c_out,pbN);
   new k;
   new imsi;
-  (single_session(c,c,pbN,k,imsi) | single_session(c,c,pbN,k,imsi)).
+  (single_session(pbN,k,imsi) | single_session(pbN,k,imsi)).
 
 
 query trace_equiv(Process1,Process2).
