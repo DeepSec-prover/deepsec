@@ -12,7 +12,7 @@
 
 //Channels :
 
-free c_out,c_in.
+free c1,c2,c3.
 
 //Public data :
 free a,b,s.
@@ -24,38 +24,38 @@ reduc sdec(senc(x,y),y) -> x.
 // Alice:
 let A(a,b,kas) =
   new na;
-  out(c_out,(a,na));
-  in(c_in,x0);
+  out(c1,(a,na));
+  in(c3,x0);
   let (=b,xkab,=na,xnb) = sdec(x0,kas) in
   0.
 
 // Bob :
 let B(b,a,kbs) =
-  in(c_in,y0);
+  in(c1,y0);
   let (=a,yna) = y0 in
   new nb;
-  out(c_out,senc((a,yna,nb),kbs));
-  in(c_in,y1);
+  out(c2,senc((a,yna,nb),kbs));
+  in(c3,y1);
   let (=a,ykab) = sdec(y1,kbs) in
   0.
 
 // Server (+ property):
 let S1(a,b,kas,kbs) =
-  in(c_in,z0);
+  in(c2,z0);
   let (=a,zna,znb) = sdec(z0,kbs) in
-  out(c_out,(senc((b,s1,zna,znb),kas),senc((a,s1),kbs))).
+  out(c3,(senc((b,s1,zna,znb),kas),senc((a,s1),kbs))).
 
 let S2(a,b,kas,kbs) =
-  in(c_in,z0);
+  in(c2,z0);
   let (=a,zna,znb) = sdec(z0,kbs) in
-  out(c_out,(senc((b,s2,zna,znb),kas),senc((a,s2),kbs))).
+  out(c3,(senc((b,s2,zna,znb),kas),senc((a,s2),kbs))).
 
 //Server:
 let S(a,b,kas,kbs) =
-  in(c_in,z0);
+  in(c2,z0);
   new kab;
   let (=a,zna,znb) = sdec(z0,kbs) in
-  out(c_out,(senc((b,kab,zna,znb),kas),senc((a,kab),kbs))).
+  out(c3,(senc((b,kab,zna,znb),kas),senc((a,kab),kbs))).
 
 
 // Protocols :

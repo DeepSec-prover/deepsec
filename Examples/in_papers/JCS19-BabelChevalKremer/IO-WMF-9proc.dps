@@ -8,29 +8,29 @@ free a,b,c.
 free s1,s2, kcs.
 free kas, kbs [private].
 
-free c_in,c_out.
+free c1,c2.
 
 fun senc/2.
 reduc sdec(senc(x,y),y) -> x.
 
 let A1(a,b,kas) =
-  out(c_out, (a, senc((b,s1),kas))).
+  out(c1, (a, senc((b,s1),kas))).
 
 let A2(a,b,kas) =
-  out(c_out, (a, senc((b,s2),kas))).
+  out(c1, (a, senc((b,s2),kas))).
 
 let A(a,b,kas) =
   new kab;
-  out(c_out, (a, senc((b,kab),kas))).
+  out(c1, (a, senc((b,kab),kas))).
 
 let S(a,b,kas,kbs) =
-  in(c_in, x);
+  in(c1, x);
   let (=a,xenc) = x in
   let (=b,xk) = sdec(xenc,kas) in
-  out(c_out, senc((a,xk),kbs)).
+  out(c2, senc((a,xk),kbs)).
 
 let B(b,a,kbs) =
-  in(c_in,y);
+  in(c2,y);
   let (ya,yk) = sdec(y,kbs) in 0.
 
 let P =

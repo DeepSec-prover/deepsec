@@ -10,7 +10,7 @@
 
 free a, b,  s1, s2.
 
-free c_out, c_in.
+free c1,c2,c3.
 
 free ok.
 
@@ -18,26 +18,26 @@ fun senc/2.
 reduc sdec(senc(x,y),y) -> x.
 
 let processA(a,kas,b) =
-  out(c_out,(a,b));
-  in(c_in,xa);
+  out(c1,(a,b));
+  in(c2,xa);
   let (=b,xab,xmb) = sdec(xa,kas) in
-  out(c_out,xmb).
+  out(c3,xmb).
 
 let processB(b,kbs,a) =
-  in(c_in,yb);
+  in(c1,yb);
   let (yab,=a)= sdec(yb,kbs) in
   0.
 
 let processS(a,kas,b,kbs) =
-	in(c_in,zs);
+	in(c1,zs);
 	if zs = (a,b) then
 	new kab;
-	out(c_out,senc((b,kab,senc((kab,a),kbs)),kas)).
+	out(c2,senc((b,kab,senc((kab,a),kbs)),kas)).
 
 let processSProp(a,kas,b,kbs,s) =
-	in(c_in,zs);
+	in(c1,zs);
 	if zs = (a,b) then
-	out(c_out,senc((b,s,senc((s,a),kbs)),kas)).
+	out(c2,senc((b,s,senc((s,a),kbs)),kas)).
 
 // Main
 

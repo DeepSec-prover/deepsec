@@ -1,6 +1,5 @@
 (* public communication channel *)
-free c_out.
-free c_in.
+free c0,c1,c2,c3.
 
 (* public identity of MS *)
 free imsi_wtn.
@@ -31,7 +30,7 @@ reduc adec(k, aenc(pub(k), r, m))= m.
 
 let AKA_MS(k,osqn,pbN,imsi) =
   new r_ms;
-  in(c_in, x);
+  in(c1, x);
   let (xrand, xautn) = x in
   let (msg, xmac) = xautn in
   let ak = f5(k, xrand) in
@@ -43,17 +42,17 @@ let AKA_MS(k,osqn,pbN,imsi) =
       let res = f2(k, xrand) in
       let ck = f3(k, xrand) in
       let ik = f4(k, xrand) in
-      out(c_out, res);
-      in(c_in, xmsg)
+      out(c2, res);
+      in(c3, xmsg)
     ) else
       new rand;
       new r;
-      out(c_out, aenc(pbN, r_ms, (Fail, imsi, rand, senc(f0(k, rand), r, (Sqn, osqn)))))
+      out(c2, aenc(pbN, r_ms, (Fail, imsi, rand, senc(f0(k, rand), r, (Sqn, osqn)))))
   )
   else
     new rand;
     new r;
-    out(c_out, aenc(pbN, r_ms, (Fail, imsi, rand, senc(f0(k, rand), r, (Sqn, osqn))))).
+    out(c2, aenc(pbN, r_ms, (Fail, imsi, rand, senc(f0(k, rand), r, (Sqn, osqn))))).
 
 
 let AKA_SN(osqn,k)=
@@ -68,11 +67,11 @@ let AKA_SN(osqn,k)=
     let ak = f5(k, rand) in
     let autn = (senc(ak, r_sn, osqn), mac) in
     let av = (rand, res, ck, ik, ak) in
-    out(c_out, (rand, autn));
-    in(c_in, xres);
+    out(c1, (rand, autn));
+    in(c2, xres);
     if xres = res
-    then out(c_out, senc(ck, r, s))
-    else out(c_out, reject).
+    then out(c3, senc(ck, r, s))
+    else out(c3, reject).
 
 let single_session(pbN,k,imsi) =
   new osqn;
@@ -81,7 +80,7 @@ let single_session(pbN,k,imsi) =
 let Process1 =
   new pvN;
   let pbN = pub(pvN) in
-  out(c_out,pbN);
+  out(c0,pbN);
   (
     (new k; single_session(pbN,k,imsi_wtn)) |
     (new k; new imsi; single_session(pbN,k,imsi))
@@ -90,7 +89,7 @@ let Process1 =
 let Process2 =
   new pvN;
   let pbN = pub(pvN) in
-  out(c_out,pbN);
+  out(c0,pbN);
   new k;
   new imsi;
   (single_session(pbN,k,imsi) | single_session(pbN,k,imsi)).

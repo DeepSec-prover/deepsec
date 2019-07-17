@@ -5,7 +5,7 @@
                   {Nb}pub(B) otherwise
 *)
 
-free c_in,c_out.
+free c0,c1,c2.
 
 free ska, skb, skc [private].
 
@@ -23,8 +23,8 @@ reduc adec(aenc(x,pk(y)),y) -> x.
 
 let processA(ska,pkb) =
   new na;
-  out(c_out,aenc((na,pk(ska)),pkb));
-  in(c_in,x).
+  out(c1,aenc((na,pk(ska)),pkb));
+  in(c2,x).
 
 
 /*
@@ -35,29 +35,29 @@ let processA(ska,pkb) =
 */
 
 let processB(skb,pka) =
-  in(c_in,yb);
+  in(c1,yb);
   new nb;
   let (yna,=pka) = adec(yb,skb) in
-    out(c_out,aenc((yna,nb,pk(skb)),pka))
-  else out(c_out,aenc(nb,pk(skb))).
+    out(c2,aenc((yna,nb,pk(skb)),pka))
+  else out(c2,aenc(nb,pk(skb))).
 
 /*
  Main
 */
 
 let ProcessAB =
-  out(c_out,pk(ska));
-  out(c_out,pk(skb));
-  out(c_out,pk(skc));
+  out(c0,pk(ska));
+  out(c0,pk(skb));
+  out(c0,pk(skc));
   (
     processA(ska,pk(skb)) | processB(skb,pk(ska)) | // B expect to talk to A
     processA(ska,pk(skb)) | processB(skb,pk(ska))   // B expect to talk to A
   ).
 
 let ProcessCB =
-  out(c_out,pk(ska));
-  out(c_out,pk(skb));
-  out(c_out,pk(skc));
+  out(c0,pk(ska));
+  out(c0,pk(skb));
+  out(c0,pk(skc));
   (
     processA(skc,pk(skb)) | processB(skb,pk(skc)) | // B expect to talk to C
     processA(ska,pk(skb)) | processB(skb,pk(ska))   // B expect to talk to A
