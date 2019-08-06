@@ -1,6 +1,7 @@
 .depend
 deepsec
 test_deepsec
+index_old.html
 
 *.js
 *.cmi
