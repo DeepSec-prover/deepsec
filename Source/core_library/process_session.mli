@@ -248,7 +248,7 @@ module Configuration : sig
     (Labelled_process.Normalise.constraints->t->Labelled_process.Skeleton.t list->unit)
     -> unit (* normalises a configuration, labels the new process, and puts it in standby for skeleton checks. In case an output has just been executed, the optional ?context argument gives the process context of the execution in order to reconstruct the symmetries afterwards. *)
 
-  val get_first_improper_label : t -> Label.t list option
+  val get_ongoing_improper_label : t -> Label.t list option
 
   val is_improper_phase : t -> bool
   val is_focused : t -> bool

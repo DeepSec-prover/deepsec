@@ -897,7 +897,7 @@ module PartitionTree = struct
         Symbolic.Set.map (fun _ csys ->
           let next_transitions =
             let conf = (Constraint_system.get_additional_data csys).Symbolic.Process.conf in
-            Symbolic.Transition.generate ~improper:(Configuration.get_first_improper_label conf) vars trans new_csys_set csys in
+            Symbolic.Transition.generate ~improper:(Configuration.get_ongoing_improper_label conf) vars trans new_csys_set csys in
           (* Printf.printf "Transitions generated from %s: \n" (Symbolic.Index.to_string i);
           List.iter (fun tr -> Symbolic.Transition.print i tr; print_endline "") next_transitions; *)
           Symbolic.Process.set_transitions csys next_transitions
@@ -1053,51 +1053,58 @@ module PartitionTree = struct
         (* We detect whether the ongoing block will be an improper block.
            Moreover, when node is flaged as improper, we clean the focus
            if it does not correspond to an input on a public channel. *)
-        let released_node = Node.release_skeleton node in
+        let released_node_op =
+          try
+            Some (Node.release_skeleton node)
+          with No_Match -> None
+        in
 
-        let csys_set = Symbolic.Set.cast released_node.Node.csys_set in
-        match transition_type with
-        | None ->
-          (* the end of the trace: one verifies that equivalence is not violated, which concludes the analysis of this branch. *)
-          let _ = Node.decast released_node in
-          f_next1 ()
-        | Some Configuration.Transition.RStart ->
-          (* very beginning of the analysis: only a skeleton check is needed before moving on to the constructing the successor nodes (no unauthorised blocks possible). *)
-          Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
-            let node_decast = Node.decast released_node csys_set in
-            let final_node = Node.clean node_decast in
-            Node.split final_node f_cont f_next2
-          ) csys_set f_next1
-        | Some Configuration.Transition.RFocus ->
-          (* focus and execution of an input. *)
-          Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
-            if Constraint_system.Set.is_empty csys_set then f_next2()
-            else
-              let node_decast = Node.decast released_node csys_set in
-              let node_autho = Node.remove_unauthorised_blocks node_decast csys_set in
-              let final_node = Node.clean node_autho in
-              Node.split final_node f_cont f_next2
-          ) csys_set f_next1
-        | Some Configuration.Transition.RPos ->
-          (* execution of a focused input. The skeleton check releases the focus if necessary, and unauthorised blocks may arise due to the constraint solving. *)
-          Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
-            if Constraint_system.Set.is_empty csys_set then f_next2()
-            else
-              let node_decast = Node.decast released_node csys_set in
-              let node_autho = Node.remove_unauthorised_blocks node_decast csys_set in
-              let final_node = Node.clean node_autho in
-              Node.split final_node f_cont f_next2
-          ) csys_set f_next1
-        | Some Configuration.Transition.RNeg ->
-          (* execution of outputs. Similar to the input case, except that the size of the frame is increased by one. *)
-          Constraint_system.Rule.apply_rules_after_output false (fun csys_set f_next2 ->
-            if Constraint_system.Set.is_empty csys_set then f_next2()
-            else
-              let node_decast = Node.decast released_node csys_set in
-              let node_autho = Node.remove_unauthorised_blocks node_decast csys_set in
-              let final_node = Node.clean node_autho in
-              Node.split {final_node with Node.size_frame = node.Node.size_frame+1} f_cont f_next2
-          ) csys_set f_next1
+        match released_node_op with
+          | None -> f_next1 ()
+          | Some released_node ->
+              let csys_set = Symbolic.Set.cast released_node.Node.csys_set in
+              match transition_type with
+              | None ->
+                (* the end of the trace: one verifies that equivalence is not violated, which concludes the analysis of this branch. *)
+                let _ = Node.decast released_node in
+                f_next1 ()
+              | Some Configuration.Transition.RStart ->
+                (* very beginning of the analysis: only a skeleton check is needed before moving on to the constructing the successor nodes (no unauthorised blocks possible). *)
+                Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
+                  let node_decast = Node.decast released_node csys_set in
+                  let final_node = Node.clean node_decast in
+                  Node.split final_node f_cont f_next2
+                ) csys_set f_next1
+              | Some Configuration.Transition.RFocus ->
+                (* focus and execution of an input. *)
+                Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
+                  if Constraint_system.Set.is_empty csys_set then f_next2()
+                  else
+                    let node_decast = Node.decast released_node csys_set in
+                    let node_autho = Node.remove_unauthorised_blocks node_decast csys_set in
+                    let final_node = Node.clean node_autho in
+                    Node.split final_node f_cont f_next2
+                ) csys_set f_next1
+              | Some Configuration.Transition.RPos ->
+                (* execution of a focused input. The skeleton check releases the focus if necessary, and unauthorised blocks may arise due to the constraint solving. *)
+                Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
+                  if Constraint_system.Set.is_empty csys_set then f_next2()
+                  else
+                    let node_decast = Node.decast released_node csys_set in
+                    let node_autho = Node.remove_unauthorised_blocks node_decast csys_set in
+                    let final_node = Node.clean node_autho in
+                    Node.split final_node f_cont f_next2
+                ) csys_set f_next1
+              | Some Configuration.Transition.RNeg ->
+                (* execution of outputs. Similar to the input case, except that the size of the frame is increased by one. *)
+                Constraint_system.Rule.apply_rules_after_output false (fun csys_set f_next2 ->
+                  if Constraint_system.Set.is_empty csys_set then f_next2()
+                  else
+                    let node_decast = Node.decast released_node csys_set in
+                    let node_autho = Node.remove_unauthorised_blocks node_decast csys_set in
+                    let final_node = Node.clean node_autho in
+                    Node.split {final_node with Node.size_frame = node.Node.size_frame+1} f_cont f_next2
+                ) csys_set f_next1
       ) f_next
     end
 

@@ -1457,7 +1457,7 @@ module Labelled_process = struct
       match improper with
         | None -> mark_forall optim pub_input internal_comm_sorted
         | Some lbl ->
-            let rec find_first_lbl = function
+            let rec find_bigger_lbl = function
               | [] ->
                   (* We haven't found a label bigger than the improper label.
                      Thus, all the input transition can only be used for an exist transition *)
@@ -1467,11 +1467,11 @@ module Labelled_process = struct
                   then
                     (* The selected input process is bigger than the improper label so
                        we select it for an forall transition. *)
-                    (pp,{ res with Input.optim = true })::q
+                    (pp,{ res with Input.optim = true })::(find_bigger_lbl q)
                   else
-                    (pp,res)::(find_first_lbl q)
+                    (pp,res)::(find_bigger_lbl q)
             in
-            (find_first_lbl pub_input,[])
+            (find_bigger_lbl pub_input,[])
   end
 
   module Optimisation = struct
@@ -2084,7 +2084,7 @@ module Configuration = struct
     ongoing_block : Block.t;
     previous_blocks : Block.t list;
     improper_collector : Labelled_process.t list;
-    first_improper_label : Label.t list option (* equal to None when we haven't found an improper block yet. *)
+    ongoing_improper_label : Label.t list option (* equal to None when we haven't found an improper block yet. *)
   }
 
 
@@ -2113,9 +2113,9 @@ module Configuration = struct
       f_next imp_labels { conf with input_proc = proc_list; improper_collector = List.rev_append imp_procs conf.improper_collector }
     ) [] [] conf.input_proc
 
-  let get_first_improper_label conf = conf.first_improper_label
+  let get_ongoing_improper_label conf = conf.ongoing_improper_label
 
-  let is_improper_phase conf = conf.first_improper_label <> None
+  let is_improper_phase conf = conf.ongoing_improper_label <> None
 
   let is_focused conf = match conf.focused_proc with
     | None -> false
@@ -2191,7 +2191,7 @@ module Configuration = struct
       ongoing_block = Block.create [Label.initial];
       previous_blocks = [];
       improper_collector = [];
-      first_improper_label = None
+      ongoing_improper_label = None
     }
 
   (* We assume that the configuration was create by [of_expansed_process]*)
@@ -2243,17 +2243,14 @@ module Configuration = struct
               conf
           | _ ->
               if Labelled_process.nil p
-              then
-                if conf.first_improper_label = None
-                then { conf with focused_proc = None; first_improper_label = Some (Block.get_label conf.ongoing_block) }
-                else { conf with focused_proc = None }
+              then { conf with focused_proc = None; ongoing_improper_label = Some (Block.get_label conf.ongoing_block) }
               else
-                if conf.first_improper_label = None
+                if conf.ongoing_improper_label = None
                 then
                   if Labelled_process.contains_public_output_toplevel p
                   then { conf with focused_proc = None; sure_output_proc = p::conf.sure_output_proc }
                   else { conf with focused_proc = None; input_proc = p::conf.input_proc }
-                else { conf with focused_proc = None; improper_collector = p::conf.improper_collector }
+                else raise No_Match
 
   module Transition = struct
     type kind =
