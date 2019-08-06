@@ -855,20 +855,23 @@ module PartitionTree = struct
 
     let apply_optim n =
       Config.debug (fun () -> Config.print_in_log "apply_optim\n");
-      let csys = Symbolic.Set.choose n.csys_set in
-      let trans = Configuration.Transition.next (Symbolic.Process.get_conf csys) in
-      match trans with
-      | Some Configuration.Transition.RFocus ->
-          Config.debug (fun () -> Config.print_in_log "remove_improper_labels\n");
-          let n1 = remove_improper_labels n in
-          Config.debug (fun () -> Config.print_in_log "delete_equal_modulo_universal\n");
-          let n2 =
-            if !optimisation_parameters
-            then delete_equal_modulo_universal n1
-            else n1 in
-          Config.debug (fun () -> Config.print_in_log "delete_equal_modulo_existential\n");
-          delete_equal_modulo_existential n2
-      | _ -> n
+      if n.improper
+      then n
+      else
+        let csys = Symbolic.Set.choose n.csys_set in
+        let trans = Configuration.Transition.next (Symbolic.Process.get_conf csys) in
+        match trans with
+        | Some Configuration.Transition.RFocus ->
+            Config.debug (fun () -> Config.print_in_log "remove_improper_labels\n");
+            let n1 = remove_improper_labels n in
+            Config.debug (fun () -> Config.print_in_log "delete_equal_modulo_universal\n");
+            let n2 =
+              if !optimisation_parameters
+              then delete_equal_modulo_universal n1
+              else n1 in
+            Config.debug (fun () -> Config.print_in_log "delete_equal_modulo_existential\n");
+            delete_equal_modulo_existential n2
+        | _ -> n
 
     let single_or_double_update l1 l2 s1 s2 bset =
       match l1, l2, s1, s2 with
