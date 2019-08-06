@@ -856,7 +856,14 @@ module PartitionTree = struct
     let apply_optim n =
       Config.debug (fun () -> Config.print_in_log "apply_optim\n");
       if n.improper
-      then n
+      then
+        let csys = Symbolic.Set.choose n.csys_set in
+        let trans = Configuration.Transition.next (Symbolic.Process.get_conf csys) in
+        match trans with
+          | Some Configuration.Transition.RFocus ->
+              Config.debug (fun () -> Config.print_in_log "remove_improper_labels\n");
+              remove_improper_labels n
+          | _ -> n
       else
         let csys = Symbolic.Set.choose n.csys_set in
         let trans = Configuration.Transition.next (Symbolic.Process.get_conf csys) in
