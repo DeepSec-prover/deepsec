@@ -118,7 +118,7 @@ let VotingSystemReal_onerevote =
   out(c,pkE); (
     init |
     !^2 VoterReal(alice,pkE) |
-    !^1 VoterReal(bob,pkE) |
+    /* !^1 VoterReal(bob,pkE) | */
     !^1 VoterDishonestReal |
     Mixnet
   ).
@@ -128,7 +128,7 @@ let VotingSystemFake_onerevote =
   out(c,pkE); (
     init |
     !^2 VoterFake(alice,pkE) |
-    !^1 VoterFake(bob,pkE) |
+    /* !^1 VoterFake(bob,pkE) | */
     !^1 VoterDishonestFake |
     Mixnet
   ).
