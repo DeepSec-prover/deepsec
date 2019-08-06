@@ -490,7 +490,7 @@ module Symbolic = struct
       )
 
 
-    let generate (v:vars) (type_of_transition:Configuration.Transition.kind option) (csys_set:Set.t ref) (cs:Process.t) : transition list =
+    let generate ?(improper=None) (v:vars) (type_of_transition:Configuration.Transition.kind option) (csys_set:Set.t ref) (cs:Process.t) : transition list =
       let status = Process.get_status cs in
       let symp = Constraint_system.get_additional_data cs in
       let accu : transition list ref = ref [] in
@@ -517,7 +517,7 @@ module Symbolic = struct
       | Some Configuration.Transition.RFocus ->
         let var_X = get_snd_ord v in
         let (potential_focuses,potential_comm) =
-          Labelled_process.PrivateComm.unfold ~optim:(status=Status.ForAll) (Configuration.inputs symp.Process.conf) in
+          Labelled_process.PrivateComm.unfold ~improper:improper ~optim:(status=Status.ForAll) (Configuration.inputs symp.Process.conf) in
         List.iter (fun focus ->
           let conf_exec =
             Configuration.Transition.apply_focus var_X focus symp.Process.conf in
@@ -615,6 +615,7 @@ module PartitionTree = struct
       matching : Symbolic.Matching.t;
       size_frame : int;
       id : int; (* only for debugging purposes *)
+      improper : bool
     }
 
     let total_node = ref 0
@@ -812,7 +813,8 @@ module PartitionTree = struct
       csys_set = set;
       matching = m;
       size_frame = 0;
-      id = fresh_id();
+      id = fresh_id ();
+      improper = false
     }
     (* determines the type of the next transitions of a constraint system set, and generates the corresponding second-order variable or axiom. *)
     let data_next_transition (n:t) : Configuration.Transition.kind option * vars =
@@ -836,19 +838,17 @@ module PartitionTree = struct
           trans, {snd_ord = None; axiom = Some (Axiom.create (n.size_frame+1))}
 
     let release_skeleton (n:t) : t =
-      let improper_indexes = ref [] in
+      let improper = ref n.improper in
       let new_set =
-        Symbolic.Set.map_filter (fun index csys ->
+        Symbolic.Set.map (fun _ csys ->
           let conf = Symbolic.Process.get_conf csys in
-          match Configuration.release_skeleton conf with
-          | None ->
-            improper_indexes := index :: !improper_indexes; None
-          | Some conf_rel ->
-            Some (Symbolic.Process.replace_conf csys conf_rel)
-        ) n.csys_set in
-      {n with
-        csys_set = new_set;
-        matching = Symbolic.Matching.clean n.matching !improper_indexes}
+          let conf' = Configuration.release_skeleton conf in
+          improper := Configuration.is_improper_phase conf';
+          Symbolic.Process.replace_conf csys conf'
+        ) n.csys_set
+      in
+
+      { n with csys_set = new_set ; improper = !improper }
 
     let clean (n:t) : t =
       {n with csys_set = Symbolic.Set.clean n.csys_set n.matching}
@@ -893,7 +893,8 @@ module PartitionTree = struct
       let csys_set_with_transitions =
         Symbolic.Set.map (fun _ csys ->
           let next_transitions =
-            Symbolic.Transition.generate vars trans new_csys_set csys in
+            let conf = (Constraint_system.get_additional_data csys).Symbolic.Process.conf in
+            Symbolic.Transition.generate ~improper:(Configuration.get_first_improper_label conf) vars trans new_csys_set csys in
           (* Printf.printf "Transitions generated from %s: \n" (Symbolic.Index.to_string i);
           List.iter (fun tr -> Symbolic.Transition.print i tr; print_endline "") next_transitions; *)
           Symbolic.Process.set_transitions csys next_transitions
@@ -971,13 +972,20 @@ module PartitionTree = struct
 
     (* removes (forall-quantified) constraint systems with unauthorised blocks *)
     let remove_unauthorised_blocks (node:t) (csys_set:Symbolic.Index.t Constraint_system.Set.t) : t =
-      let csys_set_opt =
-        Constraint_system.Set.optimise_snd_ord_recipes csys_set in
-      let csys = Constraint_system.Set.choose csys_set_opt in
-      let subst = Constraint_system.get_substitution_solution Recipe csys in
-      let (new_set,matching_authorised) =
-        Symbolic.Set.remove_unauthorised_blocks true node.csys_set node.matching subst in
-      {node with csys_set = new_set; matching = matching_authorised}
+      if node.improper
+      then node
+      else
+        let conf = Symbolic.Process.get_conf (Symbolic.Set.choose node.csys_set) in
+        if Configuration.is_focused conf
+        then node
+        else
+          let csys_set_opt =
+            Constraint_system.Set.optimise_snd_ord_recipes csys_set in
+          let csys = Constraint_system.Set.choose csys_set_opt in
+          let subst = Constraint_system.get_substitution_solution Recipe csys in
+          let (new_set,matching_authorised) =
+            Symbolic.Set.remove_unauthorised_blocks true node.csys_set node.matching subst in
+          {node with csys_set = new_set; matching = matching_authorised}
 
     (******* Display *******)
 
@@ -1029,26 +1037,32 @@ module PartitionTree = struct
   NB. The continuations f_cont indicates what to do with the generated nodes, and f_next what to do once all nodes have been explored. *)
   let generate_successors (n:Node.t) (f_cont:Node.t->(unit->unit)->unit) (f_next:unit->unit) : unit =
     Config.debug (fun () -> Config.print_in_log "Starting generate_successors\n");
-    let n = Node.clean n in
     if Symbolic.Set.is_empty n.Node.csys_set then f_next()
     else begin
       (* Printf.printf "\n==> EXPLORATION FROM %s\n" n.Node.id;
       Node.print n; *)
+      (* Invariant : When the node is flaged as improper, Node.generate_next
+         should always return a RFocus or RPos transition. *)
       let (transition_type,node_to_split) = Node.generate_next n in
       (* Printf.printf "--> new node to split:\n";
       Node.print node_to_split; *)
       Node.split node_to_split (fun node f_next1 ->
-        let csys_set = Symbolic.Set.cast node.Node.csys_set in
+        (* We detect whether the ongoing block will be an improper block.
+           Moreover, when node is flaged as improper, we clean the focus
+           if it does not correspond to an input on a public channel. *)
+        let released_node = Node.release_skeleton node in
+
+        let csys_set = Symbolic.Set.cast released_node.Node.csys_set in
         match transition_type with
         | None ->
           (* the end of the trace: one verifies that equivalence is not violated, which concludes the analysis of this branch. *)
-          let _ = Node.decast node in
+          let _ = Node.decast released_node in
           f_next1 ()
         | Some Configuration.Transition.RStart ->
           (* very beginning of the analysis: only a skeleton check is needed before moving on to the constructing the successor nodes (no unauthorised blocks possible). *)
           Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
-            let node_decast = Node.decast node csys_set in
-            let final_node = Node.release_skeleton node_decast in
+            let node_decast = Node.decast released_node csys_set in
+            let final_node = Node.clean node_decast in
             Node.split final_node f_cont f_next2
           ) csys_set f_next1
         | Some Configuration.Transition.RFocus ->
@@ -1056,10 +1070,9 @@ module PartitionTree = struct
           Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
             if Constraint_system.Set.is_empty csys_set then f_next2()
             else
-              let node_decast = Node.decast node csys_set in
-              let node_autho =
-                Node.remove_unauthorised_blocks node_decast csys_set in
-              let final_node = Node.release_skeleton node_autho in
+              let node_decast = Node.decast released_node csys_set in
+              let node_autho = Node.remove_unauthorised_blocks node_decast csys_set in
+              let final_node = Node.clean node_autho in
               Node.split final_node f_cont f_next2
           ) csys_set f_next1
         | Some Configuration.Transition.RPos ->
@@ -1067,9 +1080,9 @@ module PartitionTree = struct
           Constraint_system.Rule.apply_rules_after_input false (fun csys_set f_next2 ->
             if Constraint_system.Set.is_empty csys_set then f_next2()
             else
-              let node_decast = Node.decast node csys_set in
+              let node_decast = Node.decast released_node csys_set in
               let node_autho = Node.remove_unauthorised_blocks node_decast csys_set in
-              let final_node = Node.release_skeleton node_autho in
+              let final_node = Node.clean node_autho in
               Node.split final_node f_cont f_next2
           ) csys_set f_next1
         | Some Configuration.Transition.RNeg ->
@@ -1077,9 +1090,9 @@ module PartitionTree = struct
           Constraint_system.Rule.apply_rules_after_output false (fun csys_set f_next2 ->
             if Constraint_system.Set.is_empty csys_set then f_next2()
             else
-              let node_decast = Node.decast node csys_set in
+              let node_decast = Node.decast released_node csys_set in
               let node_autho = Node.remove_unauthorised_blocks node_decast csys_set in
-              let final_node = Node.release_skeleton node_autho in
+              let final_node = Node.clean node_autho in
               Node.split {final_node with Node.size_frame = node.Node.size_frame+1} f_cont f_next2
           ) csys_set f_next1
       ) f_next

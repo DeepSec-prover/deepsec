@@ -111,7 +111,7 @@ module Symbolic : sig
   (* basic functions for computing the transitions from a symbolic process *)
   module Transition : sig
     val print : Index.t -> transition -> unit (* printing a transition, with the index of the source *)
-    val generate : vars -> Configuration.Transition.kind option -> Set.t ref -> Process.t -> transition list
+    val generate : ?improper:(Label.t list option) -> vars -> Configuration.Transition.kind option -> Set.t ref -> Process.t -> transition list
   end
 end
 

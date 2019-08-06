@@ -138,13 +138,15 @@ module Block = struct
     bounds_axiom : (int * int) option; (* lower and upper bound on the axiom index used *)
     maximal_var : int;
     used_axioms : IntSet.t;
-    used_variables : snd_ord_variable list
+    used_variables : snd_ord_variable list;
       (* The [recipes] are the free variables whereas [used_variables] are the remaining
          variables after instantiation of the solutions of the constraint system, i.e.,
          they are variables in deduction facts of the constraint system. *)
+
+    proper : bool (* Indicates whether the block is proper or not *)
   }
 
-  (*let get_label t = t.label*)
+  let get_label t = t.label
 
   let print b =
     let ax = match b.bounds_axiom with
@@ -162,7 +164,8 @@ module Block = struct
       bounds_axiom = None;
       maximal_var = 0;
       used_axioms = IntSet.empty;
-      used_variables = []
+      used_variables = [];
+      proper = true
   }
 
   let add_variable (snd_var:snd_ord_variable) (block:t) : t =
@@ -1391,52 +1394,84 @@ module Labelled_process = struct
       browse p
 
     (* unfolds public inputs and internal communications *)
-    let unfold ?(optim=false) (l:t list) : (t * Input.data) list * (t * t * data) list =
+    let unfold ?(improper=None) ?(optim=false) (l:t list) : (t * Input.data) list * (t * t * data) list =
       let (pub_input,internal_comm,future_channels) =
         List.fold_left_with_memo (fun accu p leftovers_left leftovers_right ->
           unfold_with_leftovers optim accu (fun proc leftovers forall (ac_pub,ac_priv,ac_chan) ->
-            match proc.proc with
-            | Input(c,x,pp,chans_in,id) when Channel.is_public c ->
-              let res : Input.data = {
-                Input.channel = c;
-                Input.var = x;
-                Input.optim = forall;
-                Input.lab = get_label proc;
-                Input.leftovers = leftovers;
-                Input.id = id;
-              } in
-              let ac_chan' = Channel.Set.union chans_in ac_chan in
-              (pp,res)::ac_pub,ac_priv,ac_chan'
-            | Input(_,_,_,chans_in,_) ->
-              ac_pub,ac_priv,Channel.Set.union chans_in ac_chan
-            | OutputSure(c_out,t,pp_out,chans_out,id_out) when not (Channel.is_public c_out) ->
-              let ac_priv_upd =
-                List.fold_left_with_memo (fun ac_priv1 proc1 leftovers1_left leftovers1_right ->
-                  unfold_with_leftovers optim ac_priv1 (fun proc2 leftovers_proc2 forall_in ac_priv2 ->
-                    match proc2.proc with
-                    | Input(c_in,x,pp_in,_,id_in) when Channel.equal c_in c_out ->
-                      let res = {
-                        channel = c_in;
-                        var = x;
-                        term = t;
-                        optim = forall && forall_in;
-                        labs = get_label proc2, get_label proc;
-                        leftovers = leftovers_proc2;
-                        ids = id_in,id_out;
-                        conflict_toplevel = true;
-                        conflict_future = true;
-                      } in
-                      insert (substitute x t pp_in,pp_out,res) ac_priv2
-                    | _ -> ac_priv2
-                  ) proc1 (List.rev_append leftovers1_left leftovers1_right)
-                ) ac_priv leftovers in
-              ac_pub,ac_priv_upd,Channel.Set.union chans_out ac_chan
-            | _ -> Config.internal_error "[process_session.ml >> Labelled_process.PrivateComm.unfold] Non-atomic or non-normalised process unfolded."
+            if improper <> None
+            then
+              match proc.proc with
+                | Input(c,x,pp,_,id) when Channel.is_public c ->
+                  let res : Input.data = {
+                    Input.channel = c;
+                    Input.var = x;
+                    Input.optim = false;
+                    Input.lab = get_label proc;
+                    Input.leftovers = leftovers;
+                    Input.id = id;
+                  } in
+                  (pp,res)::ac_pub,ac_priv,ac_chan
+                | _ -> ac_pub,ac_priv,ac_chan
+            else
+              match proc.proc with
+              | Input(c,x,pp,chans_in,id) when Channel.is_public c ->
+                let res : Input.data = {
+                  Input.channel = c;
+                  Input.var = x;
+                  Input.optim = forall;
+                  Input.lab = get_label proc;
+                  Input.leftovers = leftovers;
+                  Input.id = id;
+                } in
+                let ac_chan' = Channel.Set.union chans_in ac_chan in
+                (pp,res)::ac_pub,ac_priv,ac_chan'
+              | Input(_,_,_,chans_in,_) ->
+                ac_pub,ac_priv,Channel.Set.union chans_in ac_chan
+              | OutputSure(c_out,t,pp_out,chans_out,id_out) when not (Channel.is_public c_out) ->
+                let ac_priv_upd =
+                  List.fold_left_with_memo (fun ac_priv1 proc1 leftovers1_left leftovers1_right ->
+                    unfold_with_leftovers optim ac_priv1 (fun proc2 leftovers_proc2 forall_in ac_priv2 ->
+                      match proc2.proc with
+                      | Input(c_in,x,pp_in,_,id_in) when Channel.equal c_in c_out ->
+                        let res = {
+                          channel = c_in;
+                          var = x;
+                          term = t;
+                          optim = forall && forall_in;
+                          labs = get_label proc2, get_label proc;
+                          leftovers = leftovers_proc2;
+                          ids = id_in,id_out;
+                          conflict_toplevel = true;
+                          conflict_future = true;
+                        } in
+                        insert (substitute x t pp_in,pp_out,res) ac_priv2
+                      | _ -> ac_priv2
+                    ) proc1 (List.rev_append leftovers1_left leftovers1_right)
+                  ) ac_priv leftovers in
+                ac_pub,ac_priv_upd,Channel.Set.union chans_out ac_chan
+              | _ -> Config.internal_error "[process_session.ml >> Labelled_process.PrivateComm.unfold] Non-atomic or non-normalised process unfolded."
           ) p (List.rev_append leftovers_left leftovers_right)
         ) ([],[],Channel.Set.empty) l in
       let internal_comm_refined = List.rev_map (refine_conflict_future future_channels) internal_comm in
       let internal_comm_sorted = List.fast_sort compare_comm internal_comm_refined in
-      mark_forall optim pub_input internal_comm_sorted
+      match improper with
+        | None -> mark_forall optim pub_input internal_comm_sorted
+        | Some lbl ->
+            let rec find_first_lbl = function
+              | [] ->
+                  (* We haven't found a label bigger than the improper label.
+                     Thus, all the input transition can only be used for an exist transition *)
+                  []
+              | (pp,res)::q ->
+                  if Label.independent_list lbl [res.Input.lab] < 0
+                  then
+                    (* The selected input process is bigger than the improper label so
+                       we select it for an forall transition. *)
+                    (pp,{ res with Input.optim = true })::q
+                  else
+                    (pp,res)::(find_first_lbl q)
+            in
+            (find_first_lbl pub_input,[])
   end
 
   module Optimisation = struct
@@ -2048,7 +2083,8 @@ module Configuration = struct
     trace : action list;
     ongoing_block : Block.t;
     previous_blocks : Block.t list;
-    improper_input_proc : Labelled_process.t list
+    improper_collector : Labelled_process.t list;
+    first_improper_label : Label.t list option (* equal to None when we haven't found an improper block yet. *)
   }
 
 
@@ -2074,8 +2110,16 @@ module Configuration = struct
 
   let get_improper_labels f_next conf =
     Labelled_process.get_improper_labels_list (fun imp_labels imp_procs proc_list ->
-      f_next imp_labels { conf with input_proc = proc_list; improper_input_proc = List.rev_append imp_procs conf.improper_input_proc }
+      f_next imp_labels { conf with input_proc = proc_list; improper_collector = List.rev_append imp_procs conf.improper_collector }
     ) [] [] conf.input_proc
+
+  let get_first_improper_label conf = conf.first_improper_label
+
+  let is_improper_phase conf = conf.first_improper_label <> None
+
+  let is_focused conf = match conf.focused_proc with
+    | None -> false
+    | _ -> true
 
   let get_block_list t = t.ongoing_block :: t.previous_blocks
 
@@ -2083,7 +2127,7 @@ module Configuration = struct
     Printf.sprintf "-- Previous Blocks =\n%s--Ongoing Block = %s" (Display.display_list (fun b -> Printf.sprintf "%s\n" (Block.print b)) ";" (List.rev conf.previous_blocks)) (Block.print conf.ongoing_block)
 
   let to_process (conf:t) : Labelled_process.t =
-    let l = conf.input_proc @ conf.sure_output_proc @ conf.improper_input_proc in
+    let l = conf.input_proc @ conf.sure_output_proc @ conf.improper_collector in
     match conf.focused_proc with
     | None -> Labelled_process.of_process_list l
     | Some (p,_) -> Labelled_process.of_process_list (p::l)
@@ -2146,7 +2190,8 @@ module Configuration = struct
 
       ongoing_block = Block.create [Label.initial];
       previous_blocks = [];
-      improper_input_proc = []
+      improper_collector = [];
+      first_improper_label = None
     }
 
   (* We assume that the configuration was create by [of_expansed_process]*)
@@ -2184,17 +2229,31 @@ module Configuration = struct
     let eqn_cast = Labelled_process.Normalise.constraints_of_equations eqn in
     normalise_all conf [] eqn_cast f_cont
 
-  let release_skeleton (c:t) : t option =
-    match c.focused_proc with
-    | None -> Some c
+  (* [release_skeleton conf] updates the configuration by releasing
+     the focus when needed. When [conf.first_improper_label <> None], it also
+     transfers the non-input on public channels processes inside the improper
+     collector of the configuration. When an impropoer block is detected, it
+     update first_improper_label with the label of process.  *)
+  let release_skeleton (conf:t) : t = match conf.focused_proc with
+    | None -> conf
     | Some (p,_) ->
-      match Labelled_process.get_proc p with
-      | Labelled_process.Input(ch,_,_,_,_) when Channel.is_public ch -> Some c
-      | _ ->
-        if Labelled_process.nil p then None
-        else if Labelled_process.contains_public_output_toplevel p then
-          Some {c with focused_proc = None; sure_output_proc = p::c.sure_output_proc}
-        else Some {c with focused_proc = None; input_proc = p::c.input_proc}
+        match Labelled_process.get_proc p with
+          | Labelled_process.Input(ch,_,_,_,_) when Channel.is_public ch ->
+              (* Next transition type will be positive *)
+              conf
+          | _ ->
+              if Labelled_process.nil p
+              then
+                if conf.first_improper_label = None
+                then { conf with focused_proc = None; first_improper_label = Some (Block.get_label conf.ongoing_block) }
+                else { conf with focused_proc = None }
+              else
+                if conf.first_improper_label = None
+                then
+                  if Labelled_process.contains_public_output_toplevel p
+                  then { conf with focused_proc = None; sure_output_proc = p::conf.sure_output_proc }
+                  else { conf with focused_proc = None; input_proc = p::conf.input_proc }
+                else { conf with focused_proc = None; improper_collector = p::conf.improper_collector }
 
   module Transition = struct
     type kind =

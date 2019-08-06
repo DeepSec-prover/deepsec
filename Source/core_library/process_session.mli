@@ -179,7 +179,7 @@ module Labelled_process : sig
       conflict_toplevel : bool; (* indicates if other internal communications are possible at toplevel with this channel *)
       conflict_future : bool; (* indicates if other internal communications may be possible with this channel later in the trace, but are not available now. Overapproximation (i.e. is set to true more often that needed). *)
     }
-    val unfold : ?optim:bool -> t list -> (t * Input.data) list * (t * t * data) list (* computes all potential unfolding of public inputs and private communications. For private communications, the substitution of the communicated term is performed. *)
+    val unfold : ?improper: Label.t list option -> ?optim:bool -> t list -> (t * Input.data) list * (t * t * data) list (* computes all potential unfolding of public inputs and private communications. For private communications, the substitution of the communicated term is performed. *)
   end
 
   (* operations on initial labelled process that do not affect the decision of equivalence but make it more efficient *)
@@ -248,10 +248,15 @@ module Configuration : sig
     (Labelled_process.Normalise.constraints->t->Labelled_process.Skeleton.t list->unit)
     -> unit (* normalises a configuration, labels the new process, and puts it in standby for skeleton checks. In case an output has just been executed, the optional ?context argument gives the process context of the execution in order to reconstruct the symmetries afterwards. *)
 
+  val get_first_improper_label : t -> Label.t list option
+
+  val is_improper_phase : t -> bool
+  val is_focused : t -> bool
+
     (* normalises a configuration, labels the new process, and puts it in standby for skeleton checks.
        In case an output has just been executed, the optional ?context argument gives the process context
        of the execution in order to reconstruct the symmetries afterwards. *)
-  val release_skeleton : t -> t option (* assuming all skeletons have been checked, marks them as not in standby anymore. *)
+  val release_skeleton : t ->  t (* assuming all skeletons have been checked, marks them as not in standby anymore. *)
   val display_blocks : t -> string
   val get_block_list : t -> Block.t list
   val occurs_in_process : fst_ord_variable -> (fst_ord, name) Subst.t -> t -> bool
