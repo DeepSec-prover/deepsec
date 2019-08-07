@@ -50,6 +50,7 @@ module Symbolic = struct
     | In
     | Out
     | Comm
+    
   type transition = {
     target : Index.t;
     skel_target : Labelled_process.Skeleton.t one_or_two;
