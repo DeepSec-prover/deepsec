@@ -56,17 +56,18 @@ let print_index path n res_list =
       let rec print_queries = function
         | (k, _) when k > n -> ()
         | (k, (res,rt)::tl) ->
-                Printf.fprintf out_html
-      	    "            <li>Query %d:</br>\n Result: the processes are %s</br>\n \nRunning time: %s (%s)</br>\n<a href=\"result/result_query_%d_%s.html\">Details</a></li>\n"
+            Printf.fprintf out_html
+      	    "            <li>Query %d:</br>\n Result: the processes are %s</br>\n \nRunning time: %s (%s)%s</li>\n"
       	    k
       	    (match res with
               | Standard Equivalence.Equivalent
-              | Determinate Equivalence_determinate.Equivalent -> "equivalent"
+              | Determinate Equivalence_determinate.Equivalent
+              | Session Equivalence_session.Equivalent -> "equivalent"
               | _ -> "not equivalent"
             )
       	    (Display.mkRuntime rt)
       	    (if !Config.distributed then "Workers: "^(Distributed_equivalence.DistribEquivalence.display_workers ())^" - nb_sets="^(string_of_int !Distributed_equivalence.DistribEquivalence.minimum_nb_of_jobs) else "Not distributed")
-      	    k !Config.tmp_file;
+            (match res with Session _ -> "" | _ -> Printf.sprintf "</br>\n<a href=\"result/result_query_%d_%s.html\">Details</a>" k !Config.tmp_file);
                 print_queries ((k+1), tl)
       	| (_ , _) -> Config.internal_error "Number of queries and number of results differ"
       in
@@ -118,15 +119,18 @@ let execute_query_session goal exproc1 exproc2 id =
   let conf1 = Process_session.Configuration.of_expansed_process exproc1 in
   let conf2 = Process_session.Configuration.of_expansed_process exproc2 in
   let (result,conf1,conf2,running_time) =
-    if !Config.distributed then begin
-      let (result,conf1,conf2) =
-        Distributed_equivalence.session goal conf1 conf2 in
-      (result,conf1,conf2,Unix.time() -. !start_time)
-    end
-    else begin
-      let result = Equivalence_session.analysis goal conf1 conf2 in
-      (result,conf1,conf2,Unix.time() -. !start_time)
-    end in
+    if !Config.distributed
+    then
+      begin
+        let (result,conf1,conf2) = Distributed_equivalence.session goal conf1 conf2 in
+        (result,conf1,conf2,Unix.time() -. !start_time)
+      end
+    else
+      begin
+        let result = Equivalence_session.analysis goal conf1 conf2 in
+        (result,conf1,conf2,Unix.time() -. !start_time)
+      end
+  in
   Equivalence_session.publish_result goal id conf1 conf2 result running_time;
   (Session result,running_time)
 
