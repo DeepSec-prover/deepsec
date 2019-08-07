@@ -54,5 +54,6 @@ manager_deepsec
 
 # other files
 *_build
+/Examples/session_equivalence/tests/scratch.dps
 /documentation/files/*
 !/documentation/files/.content
