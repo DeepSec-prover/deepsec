@@ -266,6 +266,9 @@ module Configuration : sig
   val get_initial_label : t -> Label.t
   val contain_only_public_channel : t -> bool
 
+  val simulation_data : (snd_ord, axiom) Subst.t -> t -> Labelled_process.t -> Labelled_process.t -> bool ->
+    (Process_simulator.trace -> Process_simulator.process -> Process_simulator.process -> 'a option) -> 'a option
+
   (* a module for operating on transitions *)
   module Transition : sig
     type kind =

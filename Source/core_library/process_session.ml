@@ -425,6 +425,14 @@ module Channel = struct
     if b then display
     else Printf.sprintf "<%s>" display
 
+  let term_of = function
+    | Symbol f -> apply_function f []
+    | Name n -> of_name n
+
+  let recipe_of = function
+    | Symbol f -> ((apply_function f []):recipe)
+    | _ -> Config.internal_error "[process_session.ml >> Channel.recipe_of] Should only be used on public channel."
+
   let from_term (t:protocol_term) : t =
     if Term.is_function t then Symbol (Term.root t)
     else if Term.is_name t then Name (Term.name_of t)
@@ -475,6 +483,7 @@ module Labelled_process = struct
     | New of name * t
     | Par of t list
     | Bang of bang_status * t list * t list (* The two lists model the replicated processes, the first one being reserved for processes where symmetries are temporarily broken due to the execution of outputs. *)
+
   and id = int
   and bang_status =
     | Strong (* symmetry up to structural equivalence *)
@@ -485,6 +494,56 @@ module Labelled_process = struct
     | Par []
     | Bang (_,[],[]) -> true
     | _ -> false
+
+  let fresh_position =
+    let acc = ref 0 in
+    let f () =
+      let r = !acc in
+      incr acc;
+      r
+    in
+    f
+
+  let rec simulation_process_of_labelled_process pos_assoc proc = match proc.proc with
+    | Start(p,_) -> simulation_process_of_labelled_process pos_assoc p
+    | Input(ch,x,p,_,id) ->
+        let pos = fresh_position () in
+        pos_assoc := (id,pos) :: !pos_assoc;
+        let p' = simulation_process_of_labelled_process pos_assoc p in
+        Process_simulator.Input(Channel.term_of ch,x,p',pos)
+    | Output(ch,t,p,_,id) ->
+        let pos = fresh_position () in
+        pos_assoc := (id,pos) :: !pos_assoc;
+        let p' = simulation_process_of_labelled_process pos_assoc p in
+        Process_simulator.Output(Channel.term_of ch,t,p',pos)
+    | If(t1,t2,p_then,p_else) ->
+        let pos = fresh_position () in
+        let p_then' = simulation_process_of_labelled_process pos_assoc p_then in
+        let p_else' = simulation_process_of_labelled_process pos_assoc p_else in
+        Process_simulator.IfThenElse(t1,t2,p_then',p_else',pos)
+    | Let(pat,_,t,p_then,p_else) ->
+        let pos = fresh_position () in
+        let p_then' = simulation_process_of_labelled_process pos_assoc p_then in
+        let p_else' = simulation_process_of_labelled_process pos_assoc p_else in
+        Process_simulator.Let(pat,t,p_then',p_else',pos)
+    | New(n,p) ->
+        let pos = fresh_position () in
+        let p' = simulation_process_of_labelled_process pos_assoc p in
+        Process_simulator.New(n,p',pos)
+    | Par p_list ->
+        let p_list' = List.map (simulation_process_of_labelled_process pos_assoc) p_list in
+        if p_list' = []
+        then Process_simulator.Nil
+        else Process_simulator.Par p_list'
+    | Bang(_,_,p_list) ->
+        let pos = fresh_position () in
+        let p_list' = List.map (simulation_process_of_labelled_process pos_assoc) p_list in
+        begin match p_list' with
+          | [] -> Process_simulator.Nil
+          | [p] -> p
+          | _ -> Process_simulator.Bang(p_list',pos)
+        end
+    | _ -> Config.internal_error "[process_session.ml >> simulation_process_of_labelled_process] Unexpected case."
 
   let rec occurs v proc = match proc.proc with
     | Start(p,_)
@@ -2087,6 +2146,303 @@ module Configuration = struct
     ongoing_improper_label : Label.t list option (* equal to None when we haven't found an improper block yet. *)
   }
 
+  exception No_action
+
+  type instanciated_action =
+    | IInAction of recipe * recipe * int * Label.t
+    | IOutAction of recipe * axiom * int * Label.t
+    | IComAction of int * int * Label.t * Label.t
+
+  let axiom_not_in_recipe ax_list r =
+    let res = ref None in
+    try
+      iter_variables_and_axioms (fun ax_op _ ->
+        match ax_op with
+          | None -> ()
+          | Some ax ->
+              if not (List.exists (Axiom.is_equal ax) ax_list)
+              then (res:= Some ax; raise Not_found)
+      ) r;
+      None
+    with Not_found -> !res
+
+  let replace_axioms ax_assoc r =
+    map_axioms (fun ax -> List.assoc ax ax_assoc) r
+
+  let rec search_pos pos trace = function
+    | Process_simulator.Nil -> raise No_action
+    | Process_simulator.Output(_,_,p,pos')
+    | Process_simulator.Input(_,_,p,pos') ->
+        if pos <> pos' then raise No_action;
+        trace, p
+    | Process_simulator.IfThenElse(_,_,p_then,p_else,pos')
+    | Process_simulator.Let(_,_,p_then,p_else,pos') ->
+        begin
+          let trace' = (Process_simulator.TrSilent pos')::trace in
+          try
+            search_pos pos trace' p_then
+          with No_action -> search_pos pos trace' p_else
+        end
+    | Process_simulator.New(_,p,pos') ->
+        search_pos pos ((Process_simulator.TrSilent pos')::trace) p
+    | Process_simulator.Par p_list ->
+        let rec explore prev = function
+          | [] -> raise No_action
+          | p::q ->
+              try
+                let (trace',p') = search_pos pos trace p in
+                let p_list' =
+                  if p' = Process_simulator.Nil
+                  then prev @ q
+                  else prev @ (p'::q)
+                in
+                begin match p_list' with
+                  | [] -> trace', Process_simulator.Nil
+                  | [p''] -> trace', p''
+                  | _ -> trace', Process_simulator.Par p_list'
+                end
+              with No_action ->
+                explore (prev@[p]) q
+        in
+        explore [] p_list
+    | Process_simulator.Bang(p_list,pos') ->
+        let explore trace prev = function
+          | [] -> raise No_action
+          | p::q ->
+              try
+                let (trace',p') = search_pos pos ((Process_simulator.TrSilent pos')::trace) p in
+                let prev' = if p' = Process_simulator.Nil then prev else prev@[p'] in
+                let p'' = match q,prev' with
+                  | [], [] -> Process_simulator.Nil
+                  | [], _ -> Process_simulator.Par(prev')
+                  | [p''], [] -> p''
+                  | [p''], _ -> Process_simulator.Par(prev'@[p''])
+                  | _, [] -> Process_simulator.Bang(q,pos')
+                  | _ -> Process_simulator.Par(prev'@[Process_simulator.Bang(q,pos')])
+                in
+                trace', p''
+              with No_action ->
+                (*explore ((Process_simulator.TrSilent pos')::trace) (prev@[p]) q*)
+                raise No_action
+        in
+        explore trace [] p_list
+    | _ -> Config.internal_error "[process_session.ml >> simulator_trace_of_session_trace] Should not be any choice."
+
+  let rec modify_recipe_in_trace assoc cur_ax trace = function
+    | [] -> List.rev trace
+    | IInAction(ch,t,pos,lbl)::q ->
+        modify_recipe_in_trace assoc cur_ax (IInAction(replace_axioms assoc ch,replace_axioms assoc t,pos,lbl)::trace) q
+    | IOutAction(ch,ax,pos,lbl)::q ->
+        let ax' = Axiom.create cur_ax in
+        modify_recipe_in_trace ((ax,ax')::assoc) (cur_ax+1) (IOutAction(replace_axioms assoc ch,ax',pos,lbl)::trace) q
+    | act::q -> modify_recipe_in_trace assoc cur_ax (act::trace) q
+
+  (*let generate_all_swaps_of_action_list iaction_list proc f_cont =
+
+    let rec put_first cur_ax proc prev f_cont = function
+      | [] -> ()
+      | IInAction(ch,t,pos,lbl)::q ->
+          put_first cur_ax proc (IInAction(ch,t,pos,lbl)::prev) f_cont q;
+          if axiom_in_recipe cur_ax ch && axiom_in_recipe cur_ax t
+          then
+            begin
+              try
+                let proc' = snd (search_pos pos [] proc) in
+                 f_cont cur_ax proc' (IInAction(ch,t,pos,lbl)) (List.rev_append prev q)
+              with No_action -> ()
+            end
+      | IOutAction(ch,ax,pos,lbl)::q ->
+          put_first cur_ax proc (IOutAction(ch,ax,pos,lbl)::prev) f_cont q;
+          if axiom_in_recipe cur_ax ch
+          then
+            begin
+              try
+                let proc' = snd (search_pos pos [] proc) in
+                 f_cont (ax::cur_ax) proc' (IOutAction(ch,ax,pos,lbl)) (List.rev_append prev q)
+              with No_action -> ()
+            end;
+      | IComAction(pos_in,pos_out,lbl_in,lbl_out)::q ->
+          put_first cur_ax proc (IComAction(pos_in,pos_out,lbl_in,lbl_out)::prev) f_cont q;
+          begin
+            try
+              let proc_1 = snd (search_pos pos_in [] proc) in
+              let proc_2 = snd (search_pos pos_out [] proc_1) in
+               f_cont cur_ax proc_2 (IComAction(pos_in,pos_out,lbl_in,lbl_out)) (List.rev_append prev q)
+            with No_action -> ()
+          end
+    in
+
+    let rec explore_all cur_ax proc trace = function
+      | [] -> f_cont (modify_recipe_in_trace [] 1 [] (List.rev trace))
+      | act_list ->
+          put_first cur_ax proc [] (fun cur_ax_1 proc_1 act act_list1 ->
+            explore_all cur_ax_1 proc_1 (act::trace) act_list1
+          ) act_list
+    in
+
+    explore_all [] proc [] iaction_list*)
+
+  type result_put_first =
+    | No_label
+    | Label_to_do of Label.t
+    | Applicable of axiom list * instanciated_action * instanciated_action list * Label.t list
+
+  let exists_label lbl = function
+    | IInAction(_,_,_,lbl')
+    | IOutAction(_,_,_,lbl') -> Label.independent lbl' lbl = 0
+    | IComAction(_,_,lbl_in,lbl_out) -> Label.independent lbl_in lbl = 0 || Label.independent lbl_out lbl = 0
+
+  let rec find_axiom ax = function
+    | [] -> Config.internal_error "Should not happend find_axiom"
+    | IOutAction(_,ax',_,lbl)::_ when Axiom.is_equal ax ax' -> lbl
+    | _::q -> find_axiom ax q
+
+
+  let swap_action_list_with_session_priority iaction_list (* Correct order *) =
+
+    let rec put_first cur_ax lbl_ref prev = function
+      | [] -> No_label
+      | IInAction(ch,t,pos,lbl)::q ->
+          if Label.independent lbl_ref lbl = 0
+          then
+            begin
+              match axiom_not_in_recipe cur_ax ch with
+                | Some ax' -> Label_to_do (find_axiom ax' prev)
+                | None ->
+                    match axiom_not_in_recipe cur_ax t with
+                      | Some ax' -> Label_to_do (find_axiom ax' prev)
+                      | None -> Applicable(cur_ax,IInAction(ch,t,pos,lbl),(List.rev_append prev q),[lbl])
+            end
+          else put_first cur_ax lbl_ref (IInAction(ch,t,pos,lbl)::prev) q
+      | IOutAction(ch,ax,pos,lbl)::q ->
+          if Label.independent lbl_ref lbl = 0
+          then
+            begin
+              match axiom_not_in_recipe cur_ax ch with
+                | Some ax' -> Label_to_do (find_axiom ax' prev)
+                | None -> Applicable(ax::cur_ax,IOutAction(ch,ax,pos,lbl),(List.rev_append prev q),[lbl])
+            end
+          else put_first cur_ax lbl_ref (IOutAction(ch,ax,pos,lbl)::prev) q
+      | IComAction(pos_in,pos_out,lbl_in,lbl_out)::q ->
+          if Label.independent lbl_ref lbl_in = 0
+          then
+            begin
+              if List.exists (exists_label lbl_out) (List.rev prev)
+              then Label_to_do lbl_out
+              else Applicable(cur_ax,IComAction(pos_in,pos_out,lbl_in,lbl_out),(List.rev_append prev q),[lbl_in;lbl_out])
+            end
+          else
+            if Label.independent lbl_ref lbl_out = 0
+            then
+              begin
+                if List.exists (exists_label lbl_in) (List.rev prev)
+                then Label_to_do lbl_in
+                else Applicable(cur_ax,IComAction(pos_in,pos_out,lbl_in,lbl_out),(List.rev_append prev q),[lbl_in;lbl_out])
+              end
+            else put_first cur_ax lbl_ref (IComAction(pos_in,pos_out,lbl_in,lbl_out)::prev) q
+    in
+
+    let rec explore_one_label cur_ax iact_l lbl = match put_first cur_ax lbl [] iact_l with
+      | Label_to_do lbl' -> explore_one_label cur_ax iact_l lbl'
+      | r -> r
+    in
+
+    let rec add_labels lbl = function
+      | [] -> [lbl]
+      | lbl'::q when Label.independent lbl' lbl = 0 -> lbl::q
+      | lbl'::q -> lbl'::(add_labels lbl q)
+    in
+
+    let rec explore_all_labels cur_ax prev_iact_l iact_l = function
+      | [] ->
+          (* No ongoing label *)
+          let new_ongoing_label = match iact_l with
+            | [] -> []
+            | IInAction(_,_,_,lbl)::_
+            | IOutAction(_,_,_,lbl)::_ -> [lbl]
+            | IComAction(_,_,lbl1,lbl2)::_ -> [lbl1;lbl2]
+          in
+          if new_ongoing_label = []
+          then (modify_recipe_in_trace [] 1 [] (List.rev prev_iact_l))
+          else explore_all_labels cur_ax prev_iact_l iact_l new_ongoing_label
+      | lbl::q ->
+          match explore_one_label cur_ax iact_l lbl with
+            | No_label -> explore_all_labels cur_ax prev_iact_l iact_l q
+            | Applicable(cur_ax',act,iact_l',lbl_list) ->
+                let new_ongoing_label = List.fold_left (fun acc lbl' -> add_labels lbl' acc) (lbl::q) lbl_list in
+                explore_all_labels cur_ax' (act::prev_iact_l) iact_l' new_ongoing_label
+            | _ -> Config.internal_error "There should have been label to do."
+    in
+
+    explore_all_labels [] [] iaction_list []
+
+  let simulator_trace_of_session_trace iaction_list proc =
+
+    let next_action trace proc = function
+      | IInAction(ch,t,pos,_) ->
+          let (trace', proc') = search_pos pos trace proc in
+          let trace'' = (Process_simulator.TrInput(ch,t,pos))::trace' in
+          trace'', proc'
+      | IOutAction(ch,_,pos,_) ->
+          let (trace', proc') = search_pos pos trace proc in
+          let trace'' = (Process_simulator.TrOutput(ch,pos))::trace' in
+          trace'', proc'
+      | IComAction(pos_in,pos_out,_,_) ->
+          let (trace_1,proc_1) = search_pos pos_out trace proc in
+          let (trace_2,proc_2) = search_pos pos_in trace_1 proc_1 in
+          let trace_3 = (Process_simulator.TrComm(pos_out,pos_in))::trace_2 in
+          trace_3, proc_2
+    in
+
+    let rec all_actions trace proc = function
+      | [] -> trace
+      | act::q ->
+          let (trace',proc') =
+            try
+              next_action trace proc act
+            with No_action -> Config.internal_error "[process_session.ml >> simulator_trace_of_session_trace] An action should have been found."
+          in
+          all_actions trace' proc' q
+    in
+
+    all_actions [] proc iaction_list
+
+  (*exception Stop_execution*)
+
+  let simulation_data snd_subst conf_attack_trace lbl_attack_p lbl_defence_p do_swap f_cont =
+    let pos_assoc = ref [] in
+    let attack_p = Labelled_process.simulation_process_of_labelled_process pos_assoc lbl_attack_p in
+
+    let dummy_assoc = ref [] in
+    let defence_p = Labelled_process.simulation_process_of_labelled_process dummy_assoc lbl_defence_p in
+
+    let iaction_list =
+      List.rev_map (function
+        | InAction(ch,x,_,st) ->
+            let pos = List.assoc st.id !pos_assoc in
+            let r_t = Subst.apply snd_subst (of_variable x) (fun x f -> f x) in
+            IInAction(Channel.recipe_of ch,r_t,pos,st.label)
+        | OutAction(ch,ax,_,st) ->
+            let pos = List.assoc st.id !pos_assoc in
+            IOutAction(Channel.recipe_of ch,ax,pos,st.label)
+        | ComAction(_,st_in,st_out) ->
+            let pos_in = List.assoc st_in.id !pos_assoc in
+            let pos_out = List.assoc st_out.id !pos_assoc in
+            IComAction(pos_in,pos_out,st_in.label,st_out.label)
+      ) conf_attack_trace.trace
+    in
+
+    let trace = simulator_trace_of_session_trace iaction_list attack_p in
+
+    match f_cont trace attack_p defence_p with
+      | None ->
+          if do_swap
+          then
+            let iaction_list' = swap_action_list_with_session_priority iaction_list in
+            let trace' = simulator_trace_of_session_trace iaction_list' attack_p in
+            f_cont trace' attack_p defence_p
+          else None
+      | Some a -> Some a
 
   let contain_only_public_channel conf = match conf.focused_proc with
     | None -> Config.internal_error "[process_session.ml >> contain_only_public_channel] Should only be applied on initial configuration."

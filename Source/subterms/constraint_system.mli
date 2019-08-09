@@ -167,6 +167,8 @@ module Set : sig
   (** [find f] {% $S$ %} returns a constraint system {% $\C \in S$, %} [f] {% $\C$ %} [= true], if any. *)
   val find : ('a csys -> bool) -> 'a t -> 'a csys option
 
+  val find_first : ('a csys -> bool) -> 'a t -> 'a csys * 'a t
+
   val size : 'a t -> int
 
   (** Returns true if the set is empty. *)
@@ -199,3 +201,7 @@ module Rule : sig
   val apply_rules_after_output_with_compression :
     bool -> ('a Set.t -> (unit -> unit) -> unit) -> 'a Set.t -> (unit -> unit) -> unit
 end
+
+(* For ground processes, i.e. : the constraint system only represent a frame.
+   We assume that the knowledge base of the constraint system have been saturated *)
+val is_term_deducible : 'a t -> protocol_term -> bool

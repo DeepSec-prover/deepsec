@@ -1379,6 +1379,16 @@ module Set = struct
 
   let find f csys_set = List.find_opt f csys_set
 
+  let find_first f csys_set =
+    let rec explore acc = function
+      | [] -> raise Not_found
+      | csys::q ->
+          if f csys
+          then csys, (List.rev_append acc q)
+          else explore (csys::acc) q
+    in
+    explore [] csys_set
+
   let elements csys_set = csys_set
 
   let find_representative csys_set predicate =
@@ -3489,7 +3499,7 @@ module Rule = struct
               normalisation_deduction_consequence (rewrite (equality_constructor (complete_equality_constructor_IK f_cont)))
             ))) csys f_next
         in
-(*
+        (*
         execute csys_set special_continuation (fun () -> ());
         execute compressed_csys_set special_continuation_compress (fun () -> ());
         assert(!nb_son = !nb_son_compress);*)
@@ -3499,3 +3509,15 @@ module Rule = struct
     else apply_rules_after_output exists_private f_continuation csys_set f_next
 
 end
+
+(* For ground processes, i.e. : the constraint system only represent a frame.
+   We assume that the knowledge base of the constraint system have been saturated *)
+let is_term_deducible csys t =
+  if is_function t && Symbol.get_arity (root t) = 0 && Symbol.is_public (root t)
+  then true
+  else
+    let simple_csys = simple_of_private csys t in
+
+    match one_mgs simple_csys with
+      | None -> false
+      | Some _ -> true

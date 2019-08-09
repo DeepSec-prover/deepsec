@@ -1613,6 +1613,11 @@ let rec iter_variables_and_axioms f recipe = match recipe.term with
   | Var v -> f None (Some v)
   | Func(_,args) -> List.iter (iter_variables_and_axioms f) args
 
+let rec map_axioms f_map r = match r.term with
+  | AxName ax -> { r with term = AxName (f_map ax) }
+  | Var _ -> r
+  | Func(f,args) -> { r with term = Func(f,List.map (map_axioms f_map) args) }
+
 let rec get_vars_and_names_term term = match term.term with
   | Func(_,args) -> List.iter get_vars_and_names_term args
   | AxName({ link_n = NNoLink; _} as n) -> Name.link_search n
@@ -3402,6 +3407,7 @@ module Rewrite_rules = struct
   (****** Normalisation ******)
 
   exception Found_normalise of protocol_term
+  exception Not_message
 
   let rec normalise t = match t.term with
     | Func(f1,args) ->
@@ -3448,6 +3454,60 @@ module Rewrite_rules = struct
               end
         end
     | _ -> t
+
+  let rec normalise_message t = match t.term with
+    | Func(f1,args) ->
+        begin match f1.cat with
+          | Constructor | Tuple ->
+              let (ground,args') =
+                List.fold_right (fun t (g,t_list) ->
+                  let t' = normalise_message t in
+                  (g&&t'.ground,t'::t_list)
+                ) args (true,[])
+              in
+              {term = Func(f1,args'); ground = ground}
+          | Destructor (rw_rules) ->
+              let args' = List.map normalise_message args in
+              begin try
+                List.iter (fun (lhs,rhs) ->
+                  (***[BEGIN DEBUG]***)
+                  Config.debug (fun () ->
+                    if !Variable.Renaming.linked_variables_fst <> []
+                    then Config.internal_error "[term.ml >> Rewrite_rules.normalise] The list of linked variables for renaming should be empty";
+
+                  );
+                  (***[END DEBUG]***)
+
+                  let lhs' = List.map (Variable.Renaming.rename_term Protocol Existential Variable.fst_ord_type) lhs in
+                  let rhs' = Variable.Renaming.rename_term Protocol Existential Variable.fst_ord_type rhs in
+
+                  Variable.Renaming.cleanup Protocol;
+
+                  try
+                    List.iter2 (Subst.match_term Protocol) lhs' args';
+                    let rhs'' = Subst.follow_link rhs' in
+                    Subst.cleanup Protocol;
+                    raise (Found_normalise rhs'')
+                  with Subst.Not_matchable ->  Subst.cleanup Protocol
+                ) rw_rules;
+                raise Not_message
+              with Found_normalise t' -> t'
+              end
+        end
+    | _ -> t
+
+  let apply_recipe_on_frame r phi =
+
+    let rec explore_recipe r = match r.term with
+      | Var _ -> Config.internal_error "[term.ml >> Rewrite_rules.apply_recipe_on_frame] The recipe should be ground."
+      | Func(f,args) -> { ground = true; term = Func(f,List.map explore_recipe args) }
+      | AxName i ->
+          try
+            List.nth phi (i-1)
+          with Failure _ -> Config.internal_error "[term.ml >> Rewrite_rules.apply_recipe_on_frame] The axioms of the recipe are not included in the domain of the frame."
+    in
+
+    normalise_message (explore_recipe r)
 
   let rewrite_rule_recipe (lhs,rhs) =
 

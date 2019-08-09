@@ -518,6 +518,8 @@ val get_vars_and_names : ((fst_ord_variable -> unit) -> (protocol_term -> unit) 
 
 val iter_variables_and_axioms : (axiom option -> snd_ord_variable option -> unit) -> recipe -> unit
 
+val map_axioms : (axiom -> axiom) -> recipe -> recipe
+
 (** {3 Scanning} *)
 
 (** [is_ground t] returns [true] iff {% $\varsun{t} \cup \varsdeux{t} = \emptyset$. %} *)
@@ -1065,6 +1067,17 @@ module Rewrite_rules : sig
 
   (** [normalise t] returns the protocol_term [t] in its normal form. *)
   val normalise : protocol_term -> protocol_term
+
+  exception Not_message
+
+  (** [normalise_message t] returns the protocol term [t] in its normal form.
+      Raise [Not_message] when [t] is not a message.. *)
+  val normalise_message : protocol_term -> protocol_term
+
+  (* [apply_recipe_on_frame r phi] returns the protocol terms obtained by applying
+     [r] on the [phi] after normalisation. we assume that both [r] and [phi] are ground.
+     Raise [Not_message] when the resulting term is not a message. *)
+  val apply_recipe_on_frame : recipe -> protocol_term list -> protocol_term
 
   type skeleton =
     {

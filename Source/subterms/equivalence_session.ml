@@ -50,7 +50,7 @@ module Symbolic = struct
     | In
     | Out
     | Comm
-    
+
   type transition = {
     target : Index.t;
     skel_target : Labelled_process.Skeleton.t one_or_two;
@@ -1246,20 +1246,53 @@ type result_analysis =
 let string_of_result (goal:goal) (p1:Labelled_process.t) (p2:Labelled_process.t) (res:result_analysis) : string =
   match res with
   | Equivalent ->
-    if goal = Equivalence then "Equivalent processes."
-    else "Process inclusion proved."
+    if goal = Equivalence then "The two processes are in session equivalence."
+    else "Session-Inclusion of processes proved."
   | Not_Equivalent csys ->
     let origin = Symbolic.Process.get_origin_process csys in
     let p = if origin = "LEFT" then p1 else p2 in
+    let (fst,snd) = Symbolic.Process.solution csys in
+
+    Printf.printf "Found an attack. Checking against trace %s...\n" (if goal = Equivalence then "equivalence" else "inclusion");
+    flush_all ();
+
+    (* Check whether this trace is also an attack trace for trace-equivalence *)
+    let str_trace_eq =
+      let (attack_p,defence_p) = if origin = "LEFT" then (p1,p2) else (p2,p1)
+      in
+      let is_first_trace = ref true in
+      let result_search =
+        Process_session.Configuration.simulation_data snd (Symbolic.Process.get_conf csys) attack_p defence_p true (fun t p q ->
+          match Simulator.find_equivalent_trace Process.Private t p q with
+            | None ->
+                let r = Some !is_first_trace in
+                is_first_trace := false;
+                r
+            | Some _ -> is_first_trace := false; None
+        )
+      in
+      match result_search with
+        | None ->
+            if goal = Equivalence
+            then "\nWe haven't found a similar attack trace against trace equivalence."
+            else "\nWe haven't found a similar attack trace against trace inclusion."
+        | Some true ->
+            if goal = Equivalence
+            then "\nThe two processes are also not in trace equivalence as witnessed by the same attack trace."
+            else "\nThe trace-inclusion also does not hold as witness by the same attack trace."
+        | Some false ->
+            if goal = Equivalence
+            then "\nThe two processes are also not in trace equivalence as witnessed by a similar attack trace."
+            else  "\nThe trace-inclusion also does not hold as witnessed by a similar attack trace."
+    in
+
     let sp = Labelled_process.print p in
-    let trace =
-      let (fst,snd) = Symbolic.Process.solution csys in
-      Configuration.print_trace fst snd (Symbolic.Process.get_conf csys) in
+    let trace = Configuration.print_trace fst snd (Symbolic.Process.get_conf csys) in
     let bold_blue s = Printf.sprintf "\\033[1;34m%s\\033[0m" s in
     if goal = Equivalence then
-      Printf.sprintf "Not Equivalent processes. Attack Trace:\n%s%s%s" (bold_blue (Printf.sprintf "\nOrigin (%s process):\n" origin)) sp trace
+      Printf.sprintf "The two processes are not in session equivalence as witnessed by the following attack trace.%s\n%s%s%s\n" str_trace_eq (bold_blue (Printf.sprintf "\nOrigin (%s process):\n" origin)) sp trace
     else
-      Printf.sprintf "Process Inclusion disproved. Attack Trace:\n%s%s%s" (bold_blue "\nOrigin:\n") sp trace
+      Printf.sprintf "Session-inclusion of processes disproved as witnessed by the following attack trace.%s\n%s%s%s\n" str_trace_eq (bold_blue "\nOrigin:\n") sp trace
 
 (* computes the root of the partition tree *)
 let compute_root (goal:goal) (conf1:Configuration.t) (conf2:Configuration.t) : PartitionTree.Node.t =
@@ -1311,10 +1344,9 @@ let analysis (goal:goal) (conf1:Configuration.t) (conf2:Configuration.t) : resul
 
 (* printing of the result *)
 let publish_result (goal:goal) (id:int) (conf1:Process_session.Configuration.t) (conf2:Process_session.Configuration.t) (result:result_analysis) (running_time:float) : unit =
+  let res = string_of_result goal (Process_session.Configuration.to_process conf1) (Process_session.Configuration.to_process conf2) result in
   Printf.printf "Result query %d: " id;
   flush stdout;
-  let res =
-    string_of_result goal (Process_session.Configuration.to_process conf1) (Process_session.Configuration.to_process conf2) result in
   ignore (Sys.command (Printf.sprintf "printf \"%s\"" res));
   print_endline (Printf.sprintf "\nRunning time: %s" (Display.mkRuntime running_time));
   ignore(Sys.command "rm -f index_old.html")
