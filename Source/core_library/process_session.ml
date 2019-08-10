@@ -2206,11 +2206,12 @@ module Configuration = struct
         in
         explore [] p_list
     | Process_simulator.Bang(p_list,pos') ->
-        let explore trace prev = function
+        let rec explore trace prev = function
           | [] -> raise No_action
           | p::q ->
               try
-                let (trace',p') = search_pos pos ((Process_simulator.TrSilent pos')::trace) p in
+                let trace_0 = if q = [] then trace else (Process_simulator.TrSilent pos')::trace in
+                let (trace',p') = search_pos pos trace_0 p in
                 let prev' = if p' = Process_simulator.Nil then prev else prev@[p'] in
                 let p'' = match q,prev' with
                   | [], [] -> Process_simulator.Nil
@@ -2222,8 +2223,7 @@ module Configuration = struct
                 in
                 trace', p''
               with No_action ->
-                (*explore ((Process_simulator.TrSilent pos')::trace) (prev@[p]) q*)
-                raise No_action
+                explore ((Process_simulator.TrSilent pos')::trace) (prev@[p]) q
         in
         explore trace [] p_list
     | _ -> Config.internal_error "[process_session.ml >> simulator_trace_of_session_trace] Should not be any choice."
