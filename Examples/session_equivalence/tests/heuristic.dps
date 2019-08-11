@@ -1,0 +1,29 @@
+free c, ok, error, get_challenge.
+
+fun enc/3.
+reduc dec(enc(x,y,z),z) -> x.
+
+let P(k) =
+  new n;
+  out(c,n);
+  in(c,x);
+  if dec(x,k) = n then out(c,ok)
+  else out(c,error).
+
+let R(k) =
+  in(c,n);
+  new r;
+  out(c,enc(n,r,k)).
+
+
+let S(k) =
+  R(k) | P(k).
+
+let X =
+  !^2 new k; S(k).
+
+let Y =
+  new k; !^2 S(k).
+
+query session_equiv(X,Y).
+query session_equiv(Y,X).
