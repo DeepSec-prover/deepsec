@@ -1,6 +1,6 @@
 EXECUTABLE = deepsec
 NAME_PROGRAMME = DeepSec
-VERSION = 1.01
+VERSION = 1.02
 SOURCE = Source/
 ### Compiler
 
