@@ -2298,7 +2298,7 @@ module Configuration = struct
     | _::q -> find_axiom ax q
 
 
-  let swap_action_list_with_session_priority iaction_list (* Correct order *) =
+  let swap_action_list_with_session_priority iaction_list (* Correct order *) f_cont =
 
     let rec put_first cur_ax lbl_ref prev = function
       | [] -> No_label
@@ -2353,18 +2353,28 @@ module Configuration = struct
       | lbl'::q -> lbl'::(add_labels lbl q)
     in
 
+    let rec find_new_ongoing_label prev f_cont = function
+      | [] -> ()
+      | IInAction(_,_,_,lbl)::q
+      | IOutAction(_,_,_,lbl)::q ->
+          if not (List.exists (fun lbl' -> Label.independent lbl' lbl = 0) prev)
+          then f_cont [lbl];
+          find_new_ongoing_label (lbl::prev) f_cont q
+      | IComAction(_,_,lbl1,lbl2)::q ->
+          if not (List.exists (fun lbl' -> Label.independent lbl' lbl1 = 0) prev) && not (List.exists (fun lbl' -> Label.independent lbl' lbl2 = 0) prev)
+          then f_cont [lbl1;lbl2];
+          find_new_ongoing_label (lbl1::lbl2::prev) f_cont q
+    in
+
     let rec explore_all_labels cur_ax prev_iact_l iact_l = function
       | [] ->
           (* No ongoing label *)
-          let new_ongoing_label = match iact_l with
-            | [] -> []
-            | IInAction(_,_,_,lbl)::_
-            | IOutAction(_,_,_,lbl)::_ -> [lbl]
-            | IComAction(_,_,lbl1,lbl2)::_ -> [lbl1;lbl2]
-          in
-          if new_ongoing_label = []
-          then (modify_recipe_in_trace [] 1 [] (List.rev prev_iact_l))
-          else explore_all_labels cur_ax prev_iact_l iact_l new_ongoing_label
+          if iact_l = []
+          then f_cont (modify_recipe_in_trace [] 1 [] (List.rev prev_iact_l))
+          else
+            find_new_ongoing_label [] (fun lbl_list ->
+              explore_all_labels cur_ax prev_iact_l iact_l lbl_list
+            ) iact_l
       | lbl::q ->
           match explore_one_label cur_ax iact_l lbl with
             | No_label -> explore_all_labels cur_ax prev_iact_l iact_l q
@@ -2407,7 +2417,7 @@ module Configuration = struct
 
     all_actions [] proc iaction_list
 
-  (*exception Stop_execution*)
+  exception Stop_execution
 
   let simulation_data snd_subst conf_attack_trace lbl_attack_p lbl_defence_p do_swap f_cont =
     let pos_assoc = ref [] in
@@ -2438,9 +2448,19 @@ module Configuration = struct
       | None ->
           if do_swap
           then
-            let iaction_list' = swap_action_list_with_session_priority iaction_list in
-            let trace' = simulator_trace_of_session_trace iaction_list' attack_p in
-            f_cont trace' attack_p defence_p
+            let result = ref None in
+            try
+              swap_action_list_with_session_priority iaction_list (fun iaction_list' ->
+                let trace' = simulator_trace_of_session_trace iaction_list' attack_p in
+                match f_cont trace' attack_p defence_p with
+                  | None -> ()
+                  | Some a ->
+                      result := Some a;
+                      raise Stop_execution
+              );
+              None
+            with Stop_execution ->
+              !result
           else None
       | Some a -> Some a
 
