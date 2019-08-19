@@ -1,6 +1,123 @@
-open Types
 open Display
 open Extensions
+
+(************************
+***       Types       ***
+*************************)
+
+type quantifier =
+  | Free
+  | Existential
+  | Universal
+
+type axiom = int
+
+type symbol_cat =
+  | Tuple
+  | Constructor
+  | Destructor of ((fst_ord, name) term list *  (fst_ord, name) term) list
+
+and symbol =
+  {
+    name : string;
+    index_s : int;
+    arity : int;
+    cat : symbol_cat;
+    public: bool;
+    represents : representation
+  }
+
+and ('a,'b) link =
+  | NoLink
+  | TLink of ('a, 'b) term
+  | VLink of ('a, 'b) variable
+  | FLink
+  | XLink of (snd_ord, axiom) variable
+
+and ('a,'b) variable =
+  {
+    label : string;
+    index : int;
+    mutable link : ('a, 'b) link;
+    mutable inj_link : bool;
+    quantifier : quantifier;
+    var_type : 'a
+  }
+
+and ('a,'b) generic_term =
+  | Func of symbol * ('a, 'b) term list
+  | Var of ('a, 'b) variable
+  | AxName of 'b
+
+and ('a,'b) term =
+  {
+    ground : bool;
+    term : ('a, 'b) generic_term
+  }
+
+type protocol_term = (fst_ord, name) term
+
+type recipe = (snd_ord, axiom) term
+
+type fst_ord_variable = (fst_ord, name) variable
+
+type snd_ord_variable = (snd_ord, axiom) variable
+
+type vars = {
+  snd_ord : snd_ord_variable option;
+  axiom : axiom option;
+}
+let get_snd_ord v =
+  match v.snd_ord with
+  | None -> Config.internal_error "[term.ml >> get_snd_ord] Unexpected case."
+  | Some x -> x
+
+let get_axiom v =
+  match v.axiom with
+  | None -> Config.internal_error "[term.ml >> get_axiom] Unexpected case."
+  | Some x -> x
+
+
+type display_renamings =
+  {
+    rho_name : (name * name) list;
+    rho_fst_var : (fst_ord_variable * fst_ord_variable) list;
+    rho_snd_var : (snd_ord_variable * snd_ord_variable) list
+  }
+
+let reg_latex_1 = Str.regexp "\\([a-zA-Z0-9_]+\\)_\\([0-9]+\\)"
+let reg_latex_2 = Str.regexp "_"
+
+let display_var_name_for_latex str index =
+  if index = 0
+  then
+    if Str.string_match reg_latex_1 str 0
+    then
+      let body = Str.matched_group 1 str in
+      let number = Str.matched_group 2 str in
+      let body' = Str.global_replace reg_latex_2 "\\_" body in
+      Printf.sprintf "%s_{%s}" body' number
+    else Str.global_replace reg_latex_2 "\\_" str
+  else
+    let str' = Str.global_replace reg_latex_2 "\\_" str in
+    Printf.sprintf "%s_{%d}" str' index
+
+let display_var_name_for_HTML str index =
+  if index = 0
+  then
+    if Str.string_match reg_latex_1 str 0
+    then
+      let body = Str.matched_group 1 str in
+      let number = Str.matched_group 2 str in
+      Printf.sprintf "%s<sub>%s</sub>" body number
+    else str
+  else
+    Printf.sprintf "%s<sub>%d</sub>" str index
+
+let rec is_ground_debug term = match term.term with
+  | Var _ -> false
+  | Func(_,args) -> List.for_all is_ground_debug args
+  | _ -> true
 
 module HashSymb = struct
   type t = symbol
@@ -18,401 +135,17 @@ module HashtblSymb = Hashtbl.Make(HashSymb)
 
 module Variable = struct
 
+  let is_linked v = not (v.link = NoLink)
+
   let accumulator = ref 0
 
   let set_up_counter n = accumulator := n
 
   let get_counter () = !accumulator
 
-  let fresh_with_label q s =
-    let var = { label = s; index = !accumulator; link = NoLink; quantifier = q } in
-    incr accumulator;
-    var
+  let fst_ord_type = NoType
 
-  let fresh q = fresh_with_label q "x"
-
-  let fresh_from var =
-    let var = { label = var.label; index = !accumulator; link = NoLink; quantifier = var.quantifier } in
-    accumulator := !accumulator + 1;
-    var
-
-  let fresh_list q n =
-    let rec tail_fresh acc = function
-      | 0 -> acc
-      | n -> tail_fresh ((fresh q)::acc) (n-1)
-    in
-    tail_fresh [] n
-
-  let fresh_term_list q n =
-    let rec tail_fresh acc = function
-      | 0 -> acc
-      | ar -> tail_fresh ((Var(fresh q))::acc) (ar-1)
-    in
-    tail_fresh [] n
-
-  let is_equal (v1:variable) (v2:variable) = v1 == v2
-
-  let quantifier_of v = v.quantifier
-
-  let order (v1:(a,b) variable) (v2:(a,b) variable) = match at with
-    | Protocol -> compare v1.index v2.index
-    | Recipe ->
-        begin match compare (type_of v1) (type_of v2) with
-          | 0 -> compare v1.index v2.index
-          | n -> n
-        end
-
-  let search_variable_in_display_renaming (type a) (type b) (at:(a,b) atom) display_op (var:(a,b) variable) = match display_op with
-    | None -> var
-    | Some rho ->
-        begin match at with
-          | Protocol ->
-              begin try
-                let _,var' = List.find (fun (var',_) -> var == var') rho.rho_fst_var in
-                (var':(a,b) variable)
-              with
-                | Not_found -> (var:(a,b) variable)
-              end
-          | Recipe ->
-              begin try
-                let _,var' = List.find (fun (var',_) -> var == var') rho.rho_snd_var in
-                var'
-              with
-                | Not_found -> (var:(a,b) variable)
-              end
-        end
-
-  let display (type a) (type b) out ?(rho=None) (at:(a,b) atom) ?(v_type=false) (var:(a,b) variable) =
-    let x = search_variable_in_display_renaming at rho var in
-
-    match out with
-      | Testing ->
-          begin match at,v_type with
-            | Recipe, true -> Printf.sprintf "_%s_%d:%d" x.label x.index x.var_type
-            | _ , _ -> Printf.sprintf "_%s_%d" x.label x.index
-          end
-      | Terminal | Pretty_Terminal ->
-          begin match at,v_type with
-            | Recipe, true ->
-                if x.index = 0
-                then Printf.sprintf "%s:%d" x.label x.var_type
-                else Printf.sprintf "%s_%d:%d" x.label x.index x.var_type
-            | _ , _ ->
-                if x.index = 0
-                then Printf.sprintf "%s" x.label
-                else Printf.sprintf "%s_%d" x.label x.index
-          end
-      | HTML ->
-          begin match at,v_type with
-            | Recipe, true -> Printf.sprintf "%s:%d" (display_var_name_for_HTML x.label x.index) x.var_type
-            | _ , _ -> display_var_name_for_HTML x.label x.index
-          end
-      | Latex ->
-          begin match at,v_type with
-            | Recipe, true -> Printf.sprintf "%s\\text{:}%d" (display_var_name_for_latex x.label x.index) x.var_type
-            | _ , _ -> display_var_name_for_latex x.label x.index
-          end
-
-  (******* Renaming *******)
-
-  module Renaming = struct
-
-    type ('a, 'b) t = (('a, 'b) variable * ('a, 'b) variable) list
-
-    type ('a, 'b) domain = ('a, 'b) variable list
-
-    (***** Link *****)
-
-    let linked_variables_fst = (ref []: fst_ord_variable list ref)
-
-    let linked_variables_snd = (ref []: snd_ord_variable list ref)
-
-    let link(type a) (type b) (at:(a,b) atom) (var:(a,b) variable) (var':(a,b) variable) = match at with
-      | Protocol ->
-          var.link <- (VLink var');
-          linked_variables_fst := var::(!linked_variables_fst)
-      | Recipe ->
-          var.link <- (VLink var');
-          linked_variables_snd := var::(!linked_variables_snd)
-
-    let cleanup (type a) (type b) (at:(a,b) atom) = match at with
-      | Protocol ->
-          List.iter (fun var -> var.link <- NoLink) !linked_variables_fst;
-          linked_variables_fst := []
-      | Recipe ->
-          List.iter (fun var -> var.link <- NoLink) !linked_variables_snd;
-          linked_variables_snd := []
-
-    let retrieve_and_clean () =
-      let l =
-        List.fold_left (fun acc v -> match v.link with
-          | VLink v' -> v.link <- NoLink; (v,v')::acc
-          | _ -> Config.internal_error "[Term.ml >> Variable.Renaming.retrieve_and_clean] Unexpected link."
-        ) [] !linked_variables_fst in
-      linked_variables_fst := [];
-      l
-
-    let retrieve (type a) (type b) (at:(a,b) atom) = match at with
-      | Protocol -> ((!linked_variables_fst): (a,b) variable list)
-      | Recipe -> ((!linked_variables_snd): (a,b) variable list)
-
-    let from_linked_vars (v_list:fst_ord_variable list) =
-      List.rev_map (fun v -> match v.link with
-        | NoLink -> Config.internal_error "[term.ml >> Variable.Renaming.from_linked_vars] variables should be linked"
-        | VLink v' -> (v,v')
-        | _ -> Config.internal_error "[term.ml >> Variable.Renaming.from_linked_vars] unexpected link"
-      ) v_list
-
-    let rec follow_link term =
-      Config.debug (fun () ->
-        if term.ground <> is_ground_debug term
-        then Config.internal_error "[term.ml >> Variable.follow_link] Conflict with ground."
-      );
-
-      if term.ground
-      then term
-      else
-        match term.term with
-          | Func(f,args) -> { term = Func(f,List.map follow_link args) ; ground = false }
-          | Var({link = VLink v;_}) -> { term = Var(v) ; ground = false }
-          | Var({link = NoLink; _}) -> term
-          | Var _ -> Config.internal_error "[Variable.Renaming >> follow_link] Unexpected link"
-          | _ -> term
-
-    (****** Generation *******)
-
-    let intersect_domain rho_1 rho_2 =
-      List.iter (fun (v,_) -> v.link <- FLink) rho_1;
-
-      let domain =
-        List.fold_left (fun acc (n,_) ->
-          if n.link = FLink
-          then n::acc
-          else acc
-        ) [] rho_2
-      in
-
-      List.iter (fun (v,_) -> v.link <- NoLink) rho_1;
-      domain
-
-    let variable_fresh_shortcut = fresh
-
-    let identity = []
-
-    let fresh at vars_list quanti =
-      List.rev_map (fun x -> (x, fresh at quanti x.var_type)) vars_list
-
-    let compose rho v1 v2 =
-      Config.debug (fun () ->
-        if List.exists (fun (x,y) -> is_equal x v1 || is_equal x v2 || is_equal y v1 || is_equal y v2) rho
-        then Config.internal_error "[term.ml >> Variable.compose] The variables should not be already in the renaming."
-      );
-      (v1,v2)::rho
-
-    let empty = []
-
-    let add dom v =
-      if List.exists (is_equal v) dom
-      then dom
-      else v::dom
-
-    let get_vars_with_list rho vlist =
-      List.iter (fun x -> x.link <- FLink) vlist;
-
-      let result = ref vlist in
-
-      List.iter (fun (x,y) ->
-        match x.link,y.link with
-          | NoLink , NoLink -> x.link <- FLink; y.link <- FLink; result := x::y:: !result
-          | FLink, NoLink -> y.link <- FLink ; result := y:: !result
-          | NoLink, FLink -> x.link <- FLink; result := x:: !result
-          | FLink, FLink -> ()
-          | _,_ -> Config.internal_error "[term.ml >> Variable.Renaming.get_vars_with_list] Unexpected link"
-      ) rho;
-
-      List.iter (fun x -> x.link <- NoLink) !result;
-      !result
-
-    (******* Testing *******)
-
-    let is_identity rho = rho = []
-
-    let is_equal at rho_1 rho_2 =
-
-      let rec link_and_size = function
-        | [],[] -> true
-        | [],_ | _,[] -> false
-        | (v,v')::q_1, _::q_2 ->
-            link at v v';
-            link_and_size (q_1,q_2)
-      in
-
-      if link_and_size (rho_1,rho_2)
-      then
-        begin
-          let result =
-            List.for_all (fun (v,v') ->
-              match v.link with
-                | VLink v'' when is_equal v' v'' -> true
-                | _ -> false
-            ) rho_2 in
-
-            cleanup at;
-            result
-        end
-      else
-        begin
-          cleanup at;
-          false
-        end
-
-    (******* Operators ********)
-
-    let not_in_domain rho v_list =
-      List.iter (fun (v,_) -> v.link <- FLink) rho;
-      let result = List.filter_unordered (fun v -> v.link = NoLink) v_list in
-      List.iter (fun (v,_) -> v.link <- NoLink) rho;
-      result
-
-    let of_list l = l
-
-    let restrict rho domain =
-      List.iter (fun v -> v.link <- FLink) domain;
-
-      let rho' =
-        List.fold_left (fun acc (v,v') ->
-          match v.link with
-            | FLink -> (v,v')::acc
-            | NoLink -> acc
-            | _ -> Config.internal_error "[term.ml >> Variable.Renaming.restrict] Unexpected link."
-        ) [] rho
-      in
-
-      List.iter (fun v -> v.link <- NoLink) domain;
-      rho'
-
-    let apply_variable v = match v.link with
-      | VLink v' -> v'
-      | NoLink -> v
-      | _ -> Config.internal_error "[term.ml >> Variable.Renaming.apply_variable] Unexpected link"
-
-    let rec apply_term term =
-      Config.debug (fun () ->
-        if term.ground <> is_ground_debug term
-        then Config.internal_error "[term.ml >> Variable.apply_term] Conflict with ground."
-      );
-      if term.ground
-      then term
-      else
-        match term.term with
-          | Var(v) ->
-              begin match v.link with
-                | VLink(v') -> { term = Var(v') ; ground = false }
-                | NoLink -> term
-                | _ -> Config.internal_error "[term.ml >> Variable.Renaming.apply_term] Unexpected link"
-              end
-          | Func(f,args) -> { term = Func(f, List.map apply_term args) ; ground = false }
-          | _ -> term
-
-    let apply rho elt f_map_elt =
-      if rho = []
-      then elt
-      else
-        begin
-          Config.debug (fun () ->
-            if List.exists (fun (v,_) -> v.link <> NoLink) rho
-            then Config.internal_error "[term.ml >> Variable.Renaming.apply] Variables in the domain should not be linked"
-          );
-
-          (* Link the variables of the renaming *)
-          let f_cleanup =
-            List.fold_left (fun f_acc (v,v') -> v.link <- (VLink v'); (fun () -> v.link <- NoLink; f_acc ())) (fun () -> ()) rho
-          in
-
-          (* Apply the renaming on the element *)
-          let new_elt = f_map_elt elt apply_variable in
-
-          (* Unlink the variables of the renaming *)
-          f_cleanup ();
-
-          new_elt
-        end
-
-    let apply_on_terms rho elt f_map_elt =
-      if rho = []
-      then elt
-      else
-        begin
-          Config.debug (fun () ->
-            if List.exists (fun (v,_) -> v.link <> NoLink) rho
-            then Config.internal_error "[term.ml >> Variable.Renaming.apply] Variables in the domain should not be linked"
-          );
-
-          (* Link the variables of the renaming *)
-          let f_cleanup =
-            List.fold_left (fun f_acc (v,v') -> v.link <- (VLink v'); (fun () -> v.link <- NoLink; f_acc ())) (fun () -> ()) rho
-          in
-
-          (* Apply the renaming on the element *)
-          let new_elt = f_map_elt elt apply_term in
-
-          (* Unlink the variables of the renaming *)
-          f_cleanup ();
-
-          new_elt
-        end
-
-    let rec rename_term : 'a 'b. ('a,'b) atom -> quantifier -> 'a -> ('a,'b) term -> ('a,'b) term = fun (type a) (type b) (at:(a,b) atom) quantifier (ord_type:a) (t:(a,b) term) ->
-      Config.debug (fun () ->
-        if t.ground <> is_ground_debug t
-        then Config.internal_error "[term.ml >> Variable.rename_term] Conflict with ground."
-      );
-      if t.ground
-      then t
-      else
-        match t.term with
-          | Var(v) ->
-              begin match v.link with
-                | VLink(v') -> { term = Var(v') ; ground = false }
-                | NoLink ->
-                    let v' = variable_fresh_shortcut at quantifier ord_type in
-                    link at v v';
-                    { term = Var(v'); ground = false }
-                | _ -> Config.internal_error "[term.ml >> Subst.Renaming.rename] Unexpected link"
-              end
-          | Func(f,args) -> { term = Func(f, List.map (rename_term at quantifier ord_type) args) ; ground = false }
-          | _ -> t
-
-    (******** Display *********)
-
-    let display_domain out ?(rho=None) at ?(v_type=false) domain =
-      if domain = []
-      then emptyset out
-      else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list (display out ~rho:rho at ~v_type:v_type) ", " domain) (rcurlybracket out)
-
-    let display out ?(rho=None) at ?(v_type=false) subst =
-      let display_element (x,t) =
-        Printf.sprintf "%s %s %s" (display out ~rho:rho at ~v_type:v_type x) (rightarrow out) (display out ~rho:rho at ~v_type:v_type t)
-      in
-
-      if subst = []
-      then emptyset out
-      else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list display_element "; " subst) (rcurlybracket out)
-
-  end
-end
-
-(************************************
-***         Recipe variable       ***
-*************************************)
-
-module Recipe_Variable = struct
-
-  let accumulator = ref 0
-
-  let set_up_counter n = accumulator := n
-
-  let get_counter () = !accumulator
+  let snd_ord_type n = n
 
   let infinite_snd_ord_type = max_int
 
