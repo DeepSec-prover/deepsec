@@ -55,6 +55,7 @@ let process21_no_challenge =
 // BAC 2 (equivalence by session)
 query session_equiv(process2,process11). // true attack
 query session_equiv(process2_no_challenge,process11_no_challenge). // false attack and heuristic fails to reconstruct true attack (August 2019)
+query trace_equiv(process2,process11). // not equivalent
 query trace_equiv(process2_no_challenge,process11_no_challenge). // not equivalent
 
 // BAC 3 (equivalence by session)
