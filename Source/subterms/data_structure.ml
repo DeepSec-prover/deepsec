@@ -1,26 +1,82 @@
+open Types
 open Term
 open Display
 open Extensions
 
+(***********************
+***       Facts      ***
+************************)
+
+type basic_fact =
+  {
+    bf_var : recipe_variable;
+    bf_term : term
+  }
+
+type deduction_formula =
+  {
+    df_recipe : recipe;
+    df_term : term;
+    df_equations : (variable * term) list
+  }
+
+type equality_formula =
+  {
+    ef_recipe1 : recipe;
+    ef_recipe2 : recipe;
+    ef_equations : (variable * term) list
+  }
+
+(*********************************
+***       Deduction facts      ***
+**********************************)
+
+module DF = struct
+
+  module Var_Comp = struct
+    type t = recipe_variable
+    let compare = Recipe_Variable.order
+  end
+
+  module VarMap = Map.Make(Var_Comp)
+
+  type t = term VarMap.t
+
+  (******* Generation *******)
+
+  let empty : term VarMap.t = VarMap.empty
+
+  let add (df:t) b_fct =
+    Config.debug (fun () ->
+      try
+        let _ = VarMap.find b_fct.bf_var df in
+        Config.internal_error "[data_structure.ml >> DF.add] A basic deduction fact with the same second-order variable already exists."
+      with
+        | Not_found-> ()
+    );
+
+    VarMap.add b_fct.bf_var b_fct.bf_term df
+
+  let remove (df:t) x_snd =
+    Config.debug (fun () ->
+      try
+        let _ = VarMap.find x_snd df in
+        ()
+      with
+        | Not_found -> Config.internal_error "[data_structure.ml >> DF.remove] No basic deduction fact has the variable given in argument."
+    );
+
+    VarMap.remove x_snd df
+
+  let get_term (df:t) (x:recipe_variable) = VarMap.find x df
+
+end
+
+
+
 (************************
 ***       SDF      ***
 *************************)
-
-type id_recipe_equivalent = int
-
-let accumulator_id_recipe_equivalent = ref 0
-
-let fresh_id_recipe_equivalent () =
-  accumulator_id_recipe_equivalent := !accumulator_id_recipe_equivalent + 1;
-  !accumulator_id_recipe_equivalent
-
-module Int_Comp =
-struct
-  type t = int
-  let compare = compare
-end
-
-module IntMap = Map.Make(Int_Comp)
 
 module IK = struct
 

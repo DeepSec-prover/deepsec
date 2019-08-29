@@ -17,7 +17,8 @@ type name =
   {
     label_n : string;
     index_n : int;
-    mutable link_n : link_n
+    mutable link_n : link_n;
+    mutable deducible_n : recipe option (* Indicate whether the name is deducible *)
   }
 
 and link_n =
@@ -26,21 +27,21 @@ and link_n =
   | NSLink (* When searching on names *)
 
 (** The type [representation] indicates how the symbol was defined. *)
-type representation =
+and representation =
   | AttackerPublicName
   | UserName
       (** Was originally a public name that has been transform into a
         public constant. *)
   | UserDefined (** User defined in the input file *)
 
-type symbol_cat =
+and symbol_cat =
   | Tuple
   | Constructor
   | Destructor of (term list *  term) list
 
 and symbol =
   {
-    name : string;
+    label_s : string;
     index_s : int;
     arity : int;
     cat : symbol_cat;
@@ -81,6 +82,7 @@ and recipe_variable =
 and recipe_link =
   | RNoLink
   | RLink of recipe (* Used for unification and substitution *)
+  | CRLink of context_recipe (* Used when calculating mgs of constraint systems. *)
   | RVLink of recipe_variable (* Used for renaming *)
   | RSLink (* Used for searching *)
 
@@ -88,3 +90,8 @@ and recipe =
   | RFunc of symbol * recipe list
   | RVar of recipe_variable
   | Axiom of int
+
+and context_recipe =
+  | CRFunc of symbol * context_recipe list
+  | CRVar of recipe_variable
+  | CKnowledgeBase of int * recipe

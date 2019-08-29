@@ -1,7 +1,5 @@
 type output =
-  | Testing
   | Terminal
-  | Pretty_Terminal
   | HTML
   | Latex
 
@@ -19,6 +17,27 @@ let display_list_i display_element connector = function
         str := Printf.sprintf "%s%s%s" !str connector (display_element (i+2) t);
       ) q;
       !str
+
+let reg_latex_1 = Str.regexp "\\([a-zA-Z0-9_]+\\)_\\([0-9]+\\)"
+let reg_latex_2 = Str.regexp "_"
+
+let display_identifier output str = match output with
+  | Terminal -> str
+  | HTML ->
+      if Str.string_match reg_latex_1 str 0
+      then
+        let body = Str.matched_group 1 str in
+        let number = Str.matched_group 2 str in
+        Printf.sprintf "%s<sub>%s</sub>" body number
+      else str
+  | Latex ->
+      if Str.string_match reg_latex_1 str 0
+      then
+        let body = Str.matched_group 1 str in
+        let number = Str.matched_group 2 str in
+        let body' = Str.global_replace reg_latex_2 "\\_" body in
+        Printf.sprintf "%s_{%s}" body' number
+      else Str.global_replace reg_latex_2 "\\_" str
 
 (***** Tools *****)
 
@@ -86,139 +105,116 @@ let mkDate t =
 (**** Special character ****)
 
 let neqi = function
-  | Terminal | Testing -> "<>_R"
-  | Pretty_Terminal -> "≠𝓡"
+  | Terminal -> "≠𝓡"
   | HTML -> "&#8800;<sup>?</sup><sub>&#8475;</sub>"
   | Latex -> "\\neq^?_{\\mathcal{R}}"
 
 let eqi = function
-  | Terminal | Testing -> "=_R"
-  | Pretty_Terminal -> "=𝓡"
+  | Terminal -> "=𝓡"
   | HTML -> "&#61;<sup>?</sup><sub>&#8475;</sub>"
   | Latex -> "=^?_{\\mathcal{R}}"
 
 let neqs = function
-  | Terminal | Testing -> "<>"
-  | Pretty_Terminal -> "≠"
+  | Terminal -> "≠"
   | HTML -> "&#8800;<sup>?</sup>"
   | Latex -> "\\neq^?"
 
 let eqs = function
-  | Terminal | Testing -> "="
-  | Pretty_Terminal -> "="
+  | Terminal -> "="
   | HTML -> "&#61;<sup>?</sup>"
   | Latex -> "=^?"
 
 let eqf = function
-  | Terminal | Testing -> "=_f"
-  | Pretty_Terminal -> "=ᵩ"
+  | Terminal -> "=ᵩ"
   | HTML -> "=<sub>& #936;</sub>"
   | Latex -> "\\mathrel{=_f}"
 
 let bot = function
-  | Terminal | Testing -> "bot"
-  | Pretty_Terminal -> "⊥"
+  | Terminal -> "⊥"
   | HTML -> "&#8869;"
   | Latex -> "\\bot"
 
 let top = function
-  | Terminal | Testing -> "top"
-  | Pretty_Terminal -> "⊤"
+  | Terminal -> "⊤"
   | HTML -> "&#8868;"
   | Latex -> "\\top"
 
 let forall = function
-  | Terminal | Testing -> "forall"
-  | Pretty_Terminal -> "∀"
+  | Terminal -> "∀"
   | HTML -> "&#8704;"
   | Latex -> "\\forall"
 
 let exists = function
-  | Terminal | Testing -> "exists"
-  | Pretty_Terminal -> "∃"
+  | Terminal -> "∃"
   | HTML -> "&#8707;"
   | Latex -> "\\exists"
 
 let vdash = function
-  | Terminal | Testing -> "|-"
-  | Pretty_Terminal -> "⊢"
+  | Terminal -> "⊢"
   | HTML -> "&#8866;<sup>?</sup>"
   | Latex -> "\\vdash^?"
 
 let vee = function
-  | Terminal | Testing -> "\\/"
-  | Pretty_Terminal -> "∨"
+  | Terminal -> "∨"
   | HTML -> "&#8744;"
   | Latex -> "\\vee"
 
 let wedge = function
-  | Terminal | Testing -> "/\\"
-  | Pretty_Terminal -> "∧"
+  | Terminal -> "∧"
   | HTML -> "&#8743;"
   | Latex -> "\\wedge"
 
 let lLeftarrow = function
-  | Terminal | Testing -> "<="
-  | Pretty_Terminal -> "<="
+  | Terminal -> "<="
   | HTML -> "&#10232;"
   | Latex -> "\\Leftarrow"
 
 let leftarrow = function
-  | Terminal | Testing -> "<-"
-  | Pretty_Terminal -> "<-"
+  | Terminal -> "<-"
   | HTML -> "&#10232;"
   | Latex -> "\\leftarrow"
 
 let rRightarrow = function
-  | Terminal | Testing -> "=>"
-  | Pretty_Terminal -> "=>"
+  | Terminal -> "=>"
   | HTML -> "&#8658;"
   | Latex -> "\\Rightarrow"
 
 let rightarrow = function
-  | Terminal | Testing -> "->"
-  | Pretty_Terminal -> "->"
+  | Terminal -> "->"
   | HTML -> "&#8594;"
   | Latex -> "\\rightarrow"
 
 let langle = function
-  | Terminal | Testing -> "("
-  | Pretty_Terminal -> "⟨"
+  | Terminal -> "⟨"
   | HTML -> "&#10216;"
   | Latex -> "\\langle "
 
 let rangle = function
-  | Terminal| Testing  -> ")"
-  | Pretty_Terminal -> "⟩"
+  | Terminal -> "⟩"
   | HTML -> "&#10217;"
   | Latex -> " \\rangle"
 
 let lcurlybracket = function
-  | Terminal | Testing -> "{"
-  | Pretty_Terminal -> "{"
+  | Terminal -> "{"
   | HTML -> "&#123;"
   | Latex -> "\\{"
 
 let rcurlybracket = function
-  | Terminal | Testing  -> "}"
-  | Pretty_Terminal -> "}"
+  | Terminal -> "}"
   | HTML -> "&#125;"
   | Latex -> "\\}"
 
 let lbrace = function
-  | Terminal | Testing -> "["
-  | Pretty_Terminal -> "["
+  | Terminal -> "["
   | HTML -> "["
   | Latex -> "["
 
 let rbrace = function
-  | Terminal | Testing -> "]"
-  | Pretty_Terminal -> "]"
+  | Terminal -> "]"
   | HTML -> "]"
   | Latex -> "]"
 
 let emptyset = function
-  | Terminal | Testing -> "{ }"
-  | Pretty_Terminal -> "∅"
+  | Terminal -> "∅"
   | HTML -> "&#8709;"
   | Latex -> "\\emptyset"

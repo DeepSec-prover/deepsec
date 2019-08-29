@@ -31,7 +31,7 @@ OCAMLFLAGS = $(INCLUDES) $(V4OPTIONS) -w +a-44-e $(INCLUDES_MOD)
 GENERATED_SOURCES_NAME = parser/grammar.ml parser/lexer.ml parser/grammar.mli
 GENERATED_SOURCES = $(GENERATED_SOURCES_NAME:%=$(SOURCE)%)
 
-CORE_ML_NAME = extensions.ml display.ml term.ml process_simulator.ml process.ml process_determinate.ml process_session.ml
+CORE_ML_NAME = extensions.ml display.ml term.ml formula.ml
 CORE_ML = $(CORE_ML_NAME:%.ml=$(SOURCE)core_library/%.ml)
 
 SUBTERMS_ML_NAME = data_structure.ml constraint_system.ml simulator.ml equivalence.ml equivalence_determinate.ml equivalence_session.ml
@@ -85,9 +85,9 @@ clean:
 	@echo ----- Clean $(NAME_PROGRAMME) -----
 	rm -f $(EXECUTABLE) worker_deepsec manager_deepsec
 	rm -f $(SOURCE)core_library/config.ml
-	rm -f *~ *.cm[ioxt] *.cmti *.o
-	rm -f */*~ */*.cm[ioxt] */*.cmti */*.o
-	rm -f */*/*~ */*/*.cm[ioxt] */*/*.cmti */*/*.o */*/*.output
+	rm -f *~ *.cm[ioxt] *.cmti *.o *.annot
+	rm -f */*~ */*.cm[ioxt] */*.cmti */*.o */*.annot
+	rm -f */*/*~ */*/*.cm[ioxt] */*/*.cmti */*/*.o */*/*.annot */*/*.output
 	rm -f $(GENERATED_SOURCES)
 	rm -f .depend .display .display_obj
 
