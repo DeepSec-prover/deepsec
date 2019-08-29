@@ -697,6 +697,90 @@ let display_configuration conf =
   display_option_det_process conf.focused_proc;
   Printf.printf "trace:<br>\n%s\n" (display_list display_trace "; " conf.trace)
 
+(*****************************
+***          JSON           ***
+******************************)
+
+type json_arg =
+  | Int of int
+  | Str of string
+  | Obj of string
+
+let display_json_obj l =
+  let display_args =
+    display_list (fun (lbl,arg) ->
+      match arg with
+        | Int i -> Printf.sprintf "\"%s\": %d" lbl i
+        | Str str -> Printf.sprintf "\"%s\": \"%s\"" lbl str
+        | Obj str -> Printf.sprintf "\"%s\": %s" lbl str
+    ) ", "
+  in
+  Printf.sprintf "{ %s }" (display_args l)
+
+let display_json_position pos =
+  display_json_obj [
+    "index", Int pos;
+    "args", Obj "[ ]"
+  ]
+
+let rec display_json assoc_ref = function
+  | Start p -> display_json assoc_ref p
+  | Nil -> display_json_obj [ "type", Str "Nil" ]
+  | Output(c,t,p,pos) ->
+      display_json_obj [
+        "type", Str "Output";
+        "channel", Obj (display_term_json assoc_ref (apply_function c []));
+        "term", Obj (display_term_json assoc_ref t);
+        "position", Obj (display_json_position pos);
+        "process", Obj (display_json assoc_ref p)
+      ]
+  | Input(c,x,p,pos) ->
+      display_json_obj [
+        "type", Str "Input";
+        "channel", Obj (display_term_json assoc_ref (apply_function c []));
+        "pattern", Obj (display_term_json assoc_ref (of_variable x));
+        "position", Obj (display_json_position pos);
+        "process", Obj (display_json assoc_ref p)
+      ]
+  | IfThenElse(t1,t2,p_then,p_else,pos) ->
+      display_json_obj [
+        "type", Str "IfThenElse";
+        "term1", Obj (display_term_json assoc_ref t1);
+        "term2", Obj (display_term_json assoc_ref t2);
+        "position", Obj (display_json_position pos);
+        "process_then", Obj (display_json assoc_ref p_then);
+        "process_else", Obj (display_json assoc_ref p_else)
+      ]
+  | Let(t1,_,t2,p_then,p_else,pos) ->
+      display_json_obj [
+        "type", Str "LetInElse";
+        "pattern", Obj (display_term_json assoc_ref t1);
+        "term", Obj (display_term_json assoc_ref t2);
+        "position", Obj (display_json_position pos);
+        "process_then", Obj (display_json assoc_ref p_then);
+        "process_else", Obj (display_json assoc_ref p_else)
+      ]
+  | New(n,p,pos) ->
+      display_json_obj [
+        "type", Str "New";
+        "name", Int (json_get_id_name assoc_ref n);
+        "position", Obj (display_json_position pos);
+        "process", Obj (display_json assoc_ref p)
+      ]
+  | Par p_list ->
+      let str_list =
+        Printf.sprintf "[ %s ]"
+          (display_list (display_json assoc_ref) ", " p_list)
+      in
+      display_json_obj [
+        "type", Str "Par";
+        "process_list", Obj str_list
+      ]
+  | _ -> Config.internal_error "Not yet implemented"
+
+let display_json_process_conf assoc_ref conf =
+  display_json assoc_ref (process_of_configuration conf)
+
 (**** Testing ****)
 
 let rec exists_channel_association c1 c2 = function

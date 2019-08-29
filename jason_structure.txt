@@ -1,0 +1,191 @@
+Definition of <variable> :
+
+{
+  "type": "variable",
+  "label" : <string>,
+  "index": <int>
+}
+
+Definition of <name>:
+
+{
+  "type": "name",
+  "label": <string>,
+  "index": <int>,
+  "is_public": <bool>
+}
+
+Definition of <symbol>:
+
+{
+  "type": "symbol",
+  "label": <string>,
+  "arity": <int>,
+  "category": "Tuple" | "Constructor" | "Destructor",
+  "is_public: <bool>
+}
+
+Main table:
+
+"atomic_data" : [
+  <variable> | <name> | <symbol>
+]
+
+==============
+
+Definition of <term>:
+
+{
+  "type": "atomic";
+  "id": <int>
+}
+
+|
+
+{
+  "type": "function",
+  "symbol": <int>,
+  "arguments": [
+    <term>,
+    ...,
+    <term>
+  ]
+}
+
+==============
+
+Definition of <pattern>:
+
+{
+  "type": "atomic";
+  "id": <int>
+}
+
+|
+
+{
+  "type": "function",
+  "symbol": <int>,
+  "arguments": [
+    <pattern>,
+    ...,
+    <pattern>
+  ]
+}
+
+|
+
+{
+  "type": "equality",
+  "term": <term>
+}
+
+A pattern pat with pat.type = "equality" should be displayed
+as '=t' where 't' is the display of pat.term
+
+==============
+
+Definition of <position_args>
+
+{
+  "replication_index": <int>,
+  "assignation": <int> // When assignation is 0, it means that it was not assigned yet.
+}
+
+Definition of <position>
+
+{
+  "index": <int>,
+  "args" : [
+    <position_args>,
+    ...,
+    <position_args>
+  ]
+}
+
+
+==============
+
+Definition of <process>
+
+{ "type": "Nil" }
+
+|
+
+{
+  "type": "Output",
+  "channel": <term>,
+  "term": <term>,
+  "position": <position>,
+  "process": <process>
+}
+
+|
+
+{
+  "type": "Input",
+  "channel": <term>,
+  "pattern": <pattern>,
+  "position": <position>,
+  "process": <process>
+}
+
+|
+
+{
+  "type": "IfThenElse",
+  "term1": <term>,
+  "term2": <term>,
+  "position": <position>,
+  "process_then": <process>,
+  "process_else": <process>
+}
+
+|
+
+{
+  "type": "LetInElse",
+  "pattern": <pattern>,
+  "term": <term>,
+  "position": <position>,
+  "process_then": <process>,
+  "process_else": <process>
+}
+
+|
+
+{
+  "type": "New",
+  "name": <int>,
+  "position": <position>,
+  "process": <process>
+}
+
+|
+
+{
+  "type": "Par",
+  "process_list": [
+    <process>,
+    ...,
+    <process>
+  ]
+}
+
+|
+
+{
+  "type": "Mult",
+  "multiplicity": <int>,
+  "position": <position>,
+  "process": <process>
+}
+
+|
+
+{
+  "type": "Choice",
+  "position": <position>,
+  "process1" : <process>,
+  "process2" : <process>
+}

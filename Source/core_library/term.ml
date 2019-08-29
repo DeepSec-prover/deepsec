@@ -138,6 +138,53 @@ end
 
 module HashtblSymb = Hashtbl.Make(HashSymb)
 
+let fresh_json_id =
+  let acc = ref 0 in
+  let f () =
+    let r = !acc in
+    incr acc;
+    r
+  in
+  f
+
+type json_atom =
+  | JSName of name
+  | JSVar of (fst_ord, name) variable
+  | JSSymb of symbol
+
+let json_get_id_var assoc_ref v =
+  let rec explore = function
+    | [] ->
+        let id = fresh_json_id () in
+        assoc_ref := (JSVar v, id) :: !assoc_ref;
+        id
+    | (JSVar v',id)::_ when v == v' -> id
+    | _::q -> explore q
+  in
+  explore !assoc_ref
+
+let json_get_id_name assoc_ref n =
+  let rec explore = function
+    | [] ->
+        let id = fresh_json_id () in
+        assoc_ref := (JSName n, id) :: !assoc_ref;
+        id
+    | (JSName n',id)::_ when n == n' -> id
+    | _::q -> explore q
+  in
+  explore !assoc_ref
+
+let json_get_id_symbol assoc_ref f =
+  let rec explore = function
+    | [] ->
+        let id = fresh_json_id () in
+        assoc_ref := (JSSymb f, id) :: !assoc_ref;
+        id
+    | (JSSymb f',id)::_ when f == f' -> id
+    | _::q -> explore q
+  in
+  explore !assoc_ref
+
 (************************************
 ***            Variables          ***
 *************************************)
@@ -252,6 +299,13 @@ module Variable = struct
             | Recipe, true -> Printf.sprintf "%s\\text{:}%d" (display_var_name_for_latex x.label x.index) x.var_type
             | _ , _ -> display_var_name_for_latex x.label x.index
           end
+
+  let display_json ?(full=false) assoc_ref v =
+    if full
+    then Printf.sprintf "{ \"type\": \"variable\", \"label\": \"%s\", \"index\": %d }" v.label v.index
+    else
+      let id = json_get_id_var assoc_ref v in
+      Printf.sprintf "{ \"type\": \"atomic\", \"id\": \"%d\" }" id
 
   (******* Renaming *******)
 
@@ -588,6 +642,13 @@ module Name = struct
           else Printf.sprintf "%s_%d" n'.label_n n'.index_n
       | HTML -> display_var_name_for_HTML n'.label_n n'.index_n
       | Latex -> display_var_name_for_latex n'.label_n n'.index_n
+
+  let display_json ?(full=false) assoc_ref n =
+    if full
+    then Printf.sprintf "{ \"type\": \"name\", \"label\": \"%s\", \"index\": %d, \"is_public\": false }" n.label_n n.index_n
+    else
+      let id = json_get_id_name assoc_ref n in
+      Printf.sprintf "{ \"type\": \"atomic\", \"id\": \"%d\" }" id
 
   (***** Renaming *****)
 
@@ -1010,6 +1071,20 @@ module Symbol = struct
     if names = []
     then emptyset out
     else Printf.sprintf "%s %s %s" (lcurlybracket out) (display_list (display out) ", " names) (rcurlybracket out)
+
+
+  let display_json ?(full=false) assoc_ref f =
+    if full
+    then
+      let display_cat = function
+        | Tuple -> "\"Tuple\""
+        | Constructor -> "\"Constructor\""
+        | Destructor _ -> "\"Destructor\""
+      in
+      Printf.sprintf "{ \"type\": \"symbol\", \"label\": \"%s\", \"arity\": %d, \"category\": %s, \"is_public\": %b }" f.name f.arity (display_cat f.cat) f.public
+    else
+      let id = json_get_id_symbol assoc_ref f in
+      Printf.sprintf "%d" id
 end
 
 (*************************************
@@ -1029,6 +1104,8 @@ module AxName = struct
   let display (type a) (type b) out ?(rho=None) (at:(a,b) atom) (axn:b) = match at with
     | Protocol -> Name.display out ~rho:rho axn
     | Recipe -> Axiom.display out axn
+
+  let display_json assoc_ref n = Name.display_json assoc_ref n
 end
 
 (********* Generate display renaming *********)
@@ -1454,6 +1531,25 @@ let rec display out ?(rho=None) at term = match term.term with
       Printf.sprintf "%s%s%s" (langle out) (display_list (display out ~rho:rho at) "," args) (rangle out)
   | Func(f_symb,args) ->
       Printf.sprintf "%s(%s)" (Symbol.display out f_symb) (display_list (display out ~rho:rho at) "," args)
+
+let rec display_term_json assoc_ref term = match term.term with
+  | Var v -> Variable.display_json assoc_ref v
+  | AxName ax -> AxName.display_json assoc_ref ax
+  | Func(f,args) ->
+      Printf.sprintf "{ \"type\": \"function\", \"symbol\": %s, \"arguments\": [ %s ]}"
+        (Symbol.display_json assoc_ref f)
+        (display_list (display_term_json assoc_ref) ", " args)
+
+let display_json_assoc assoc_ref =
+  let sort = List.sort (fun (_,i) (_,i') -> compare i i') !assoc_ref in
+
+  Printf.sprintf "\"atomic_data\": [ %s ]" (
+    display_list (function
+      | JSVar v, _ -> Variable.display_json ~full:true assoc_ref v
+      | JSName n, _ -> Name.display_json ~full:true assoc_ref n
+      | JSSymb f, _ -> Symbol.display_json ~full:true assoc_ref f
+    ) ", " sort
+  )
 
 (*************************************
 ***         Protocol terms         ***
@@ -3552,7 +3648,7 @@ module Rewrite_rules = struct
 
 
 
-        
+
   (****** Access function ******)
 
   let get_skeleton i = !storage_skeletons.(i).skeleton

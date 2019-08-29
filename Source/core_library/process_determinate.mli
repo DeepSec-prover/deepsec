@@ -24,6 +24,8 @@ val add_axiom_in_block : axiom -> block -> block
 
 val initial_label : label
 
+val display_json_process_conf : (json_atom * int) list ref  -> configuration -> string
+
 (** {3 Access} *)
 
 val get_vars_with_list : configuration -> fst_ord_variable list -> fst_ord_variable list

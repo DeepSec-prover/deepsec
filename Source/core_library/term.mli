@@ -57,6 +57,18 @@ type recipe = (snd_ord, axiom) term
     When display renamings are given to display functions, they will display the names and variables according to these renaming. *)
 type display_renamings
 
+(***** JSON *****)
+
+type json_atom =
+  | JSName of name
+  | JSVar of (fst_ord, name) variable
+  | JSSymb of symbol
+
+val display_term_json : (json_atom * int) list ref -> protocol_term -> string
+val json_get_id_name : (json_atom * int) list ref -> name -> int
+val display_json_assoc : (json_atom * int) list ref -> string
+
+
 (** [generate_display_renaming n_l fst_l snd_l] generates display renamings so that names and variables will be displayed with consecutive indices
     starting from 0. This is very useful for pretty printing. *)
 val generate_display_renaming : name list -> fst_ord_variable list -> snd_ord_variable list -> display_renamings

@@ -737,6 +737,16 @@ let publish_trace_equivalence_result id conf1 conf2 result runtime =
   let html_proc_1 = Process_determinate.display_process_HTML ~rho:rho ~id:"1" conf1 in
   let html_proc_2 = Process_determinate.display_process_HTML ~rho:rho ~id:"2" conf2 in
 
+  let assoc_ref = ref [] in
+  let json_proc1 = Process_determinate.display_json_process_conf assoc_ref conf1 in
+  let json_proc2 = Process_determinate.display_json_process_conf assoc_ref conf2 in
+  let json_assoc = display_json_assoc assoc_ref in
+
+  Printf.printf "{ %s,\n\n\"process1\": %s,\n\n\"process2\": %s\n\n}" json_assoc json_proc1 json_proc2;
+
+
+
+
   begin match attack_op with
     | None ->
       Printf.fprintf out_result "        <div class=\"result\">Result : The processes are equivalent</div>\n";

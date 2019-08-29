@@ -903,6 +903,24 @@ let display_expansed_process_HTML ?(rho=None) ?(margin_px=15) ?(hidden=false) ?(
       id
       (sub_display_process highlight 1 false process)
 
+(*
+let display_expansed_process_JSON ?(rho=None) ?(subst=Subst.identity) process =
+  Printf.printf "\n\n\n---- JSON ----\n\n\n";
+
+  let apply =
+    if Subst.is_identity subst
+    then (fun t -> Rewrite_rules.normalise t)
+    else (fun t -> Rewrite_rules.normalise (Subst.apply subst t (fun x f -> f x)))
+  in
+
+  let rec sub_display_process margin =
+
+*)
+
+
+
+
+
 (*******************************************************
 ***        Transition in the classic semantics       ***
 ********************************************************)
