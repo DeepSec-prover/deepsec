@@ -178,6 +178,8 @@ module Recipe_Variable : sig
   (** {3 Links} *)
 
   val currently_linked : recipe_variable list ref
+
+  val link_context : recipe_variable -> context_recipe -> unit
 end
 
 (** {3 Axioms} *)

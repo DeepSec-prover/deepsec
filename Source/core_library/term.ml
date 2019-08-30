@@ -225,6 +225,15 @@ module Recipe_Variable = struct
     v.link_r <- RVLink v';
     currently_linked := v :: !currently_linked
 
+  let link_context v cr =
+    Config.debug (fun () ->
+      if v.link_r <> RNoLink
+      then Config.internal_error "[term.ml >> Recipe_Variable.link_context] The first variable should not be already linked."
+    );
+
+    v.link_r <- CRLink cr;
+    currently_linked := v :: !currently_linked
+
   let cleanup () =
     Config.debug (fun () ->
       if List.exists (fun v -> v.link_r = RNoLink) !currently_linked
