@@ -742,7 +742,7 @@ let publish_trace_equivalence_result id conf1 conf2 result runtime =
   let json_proc2 = Process_determinate.display_json_process_conf assoc_ref conf2 in
   let json_assoc = display_json_assoc assoc_ref in
 
-  Printf.printf "{ %s,\n\n\"process1\": %s,\n\n\"process2\": %s\n\n}" json_assoc json_proc1 json_proc2;
+  Printf.printf "{%s,\"process1\":%s,\"process2\":%s}" json_assoc json_proc1 json_proc2;
 
 
 

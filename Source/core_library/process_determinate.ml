@@ -710,22 +710,22 @@ let display_json_obj l =
   let display_args =
     display_list (fun (lbl,arg) ->
       match arg with
-        | Int i -> Printf.sprintf "\"%s\": %d" lbl i
-        | Str str -> Printf.sprintf "\"%s\": \"%s\"" lbl str
-        | Obj str -> Printf.sprintf "\"%s\": %s" lbl str
-    ) ", "
+        | Int i -> Printf.sprintf "\"%s\":%d" lbl i
+        | Str str -> Printf.sprintf "\"%s\":\"%s\"" lbl str
+        | Obj str -> Printf.sprintf "\"%s\":%s" lbl str
+    ) ","
   in
-  Printf.sprintf "{ %s }" (display_args l)
+  Printf.sprintf "{%s}" (display_args l)
 
 let display_json_position pos =
   display_json_obj [
     "index", Int pos;
-    "args", Obj "[ ]"
+    "args", Obj "[]"
   ]
 
 let rec display_json assoc_ref = function
   | Start p -> display_json assoc_ref p
-  | Nil -> display_json_obj [ "type", Str "Nil" ]
+  | Nil -> display_json_obj [ "type", Obj "null" ]
   | Output(c,t,p,pos) ->
       display_json_obj [
         "type", Str "Output";
@@ -769,8 +769,8 @@ let rec display_json assoc_ref = function
       ]
   | Par p_list ->
       let str_list =
-        Printf.sprintf "[ %s ]"
-          (display_list (display_json assoc_ref) ", " p_list)
+        Printf.sprintf "[%s]"
+          (display_list (display_json assoc_ref) "," p_list)
       in
       display_json_obj [
         "type", Str "Par";

@@ -302,10 +302,10 @@ module Variable = struct
 
   let display_json ?(full=false) assoc_ref v =
     if full
-    then Printf.sprintf "{ \"type\": \"variable\", \"label\": \"%s\", \"index\": %d }" v.label v.index
+    then Printf.sprintf "{\"type\":\"Variable\",\"label\":\"%s\",\"index\":%d}" v.label v.index
     else
       let id = json_get_id_var assoc_ref v in
-      Printf.sprintf "{ \"type\": \"atomic\", \"id\": \"%d\" }" id
+      Printf.sprintf "{\"type\":\"Atomic\",\"id\":%d}" id
 
   (******* Renaming *******)
 
@@ -645,10 +645,10 @@ module Name = struct
 
   let display_json ?(full=false) assoc_ref n =
     if full
-    then Printf.sprintf "{ \"type\": \"name\", \"label\": \"%s\", \"index\": %d, \"is_public\": false }" n.label_n n.index_n
+    then Printf.sprintf "{\"type\":\"Name\",\"label\":\"%s\",\"index\":%d,\"is_public\":false}" n.label_n n.index_n
     else
       let id = json_get_id_name assoc_ref n in
-      Printf.sprintf "{ \"type\": \"atomic\", \"id\": \"%d\" }" id
+      Printf.sprintf "{\"type\":\"Atomic\",\"id\":%d}" id
 
   (***** Renaming *****)
 
@@ -1081,7 +1081,7 @@ module Symbol = struct
         | Constructor -> "\"Constructor\""
         | Destructor _ -> "\"Destructor\""
       in
-      Printf.sprintf "{ \"type\": \"symbol\", \"label\": \"%s\", \"arity\": %d, \"category\": %s, \"is_public\": %b }" f.name f.arity (display_cat f.cat) f.public
+      Printf.sprintf "{\"type\":\"Symbol\",\"label\":\"%s\",\"arity\":%d,\"category\":%s,\"is_public\":%b}" f.name f.arity (display_cat f.cat) f.public
     else
       let id = json_get_id_symbol assoc_ref f in
       Printf.sprintf "%d" id
@@ -1536,19 +1536,19 @@ let rec display_term_json assoc_ref term = match term.term with
   | Var v -> Variable.display_json assoc_ref v
   | AxName ax -> AxName.display_json assoc_ref ax
   | Func(f,args) ->
-      Printf.sprintf "{ \"type\": \"function\", \"symbol\": %s, \"arguments\": [ %s ]}"
+      Printf.sprintf "{\"type\":\"Function\",\"symbol\":%s,\"args\":[%s]}"
         (Symbol.display_json assoc_ref f)
-        (display_list (display_term_json assoc_ref) ", " args)
+        (display_list (display_term_json assoc_ref) "," args)
 
 let display_json_assoc assoc_ref =
   let sort = List.sort (fun (_,i) (_,i') -> compare i i') !assoc_ref in
 
-  Printf.sprintf "\"atomic_data\": [ %s ]" (
+  Printf.sprintf "\"atomic_data\":[%s]" (
     display_list (function
       | JSVar v, _ -> Variable.display_json ~full:true assoc_ref v
       | JSName n, _ -> Name.display_json ~full:true assoc_ref n
       | JSSymb f, _ -> Symbol.display_json ~full:true assoc_ref f
-    ) ", " sort
+    ) "," sort
   )
 
 (*************************************
