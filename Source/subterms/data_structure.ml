@@ -290,6 +290,49 @@ module K = struct
   let dummy_entry = { type_r = 0; recipe = Axiom 0; term = Name { label_n = ""; index_n = 0; link_n = NNoLink; deducible_n = None} }
 
   let empty = { size = 0; data = Array.make 0 dummy_entry }
+
+  let find_unifier_with_recipe kb t type_r f_continuation (f_next:unit->unit) =
+
+    let rec explore = function
+      | i when i = kb.size -> f_next ()
+      | i ->
+          if kb.data.(i).type_r > type_r
+          then f_next ()
+          else
+            begin
+              let tmp = !Variable.currently_linked in
+              Variable.currently_linked := [];
+
+              let is_unifiable =
+                try
+                  Term.unify kb.data.(i).term t;
+                  true
+                with Term.Not_unifiable -> false
+              in
+              if is_unifiable
+              then
+                if !Variable.currently_linked = []
+                then
+                  (* Identity substitution *)
+                  f_continuation true (fun () ->
+                    Variable.currently_linked := tmp;
+                    f_next ()
+                  )
+                else
+                  f_continuation false (fun () ->
+                    List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
+                    Variable.currently_linked := tmp;
+                    explore (i+1)
+                  )
+              else
+                begin
+                  List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
+                  Variable.currently_linked := tmp;
+                  explore(i+1)
+                end
+            end
+    in
+    explore 0
 end
 
 (* Incremented knowledge base *)

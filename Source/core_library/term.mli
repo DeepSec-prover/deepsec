@@ -138,6 +138,8 @@ module Variable : sig
   (** {3 Links} *)
 
   val currently_linked : variable list ref
+
+  val auto_cleanup_with_reset : ((unit -> unit) -> unit) -> (unit -> unit) -> unit
 end
 
 (** {2 Recipe Variables} *)

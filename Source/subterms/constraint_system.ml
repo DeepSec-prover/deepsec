@@ -204,11 +204,14 @@ module MGS = struct
                 | _ ->
                     (* Compute_all is only used for the rule [sat],
                        in which case incremented knowledge is empty. *)
-                    K.find_unifier_with_recipe csys.knowledge t x.type_r (fun r f_next_2 ->
-                      
+
+                    let acc_disequality = ref eq_uni in
+
+                    (*K.find_unifier_with_recipe csys.knowledge t x.type_r (fun r f_next_2 ->
+
                     ) (fun () ->
 
-                    )
+                    )*)
 
       ) f_next_0
 

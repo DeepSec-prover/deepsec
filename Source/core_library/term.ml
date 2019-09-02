@@ -90,14 +90,15 @@ module Variable = struct
     v.link <- VLink v';
     currently_linked := v :: !currently_linked
 
-  let cleanup () =
-    Config.debug (fun () ->
-      if List.exists (fun v -> v.link = NoLink) !currently_linked
-      then Config.internal_error "[term.ml >> Variable.cleanup] The variables should all be linked."
-    );
+  let auto_cleanup_with_reset (f_cont:(unit -> unit) -> unit) (f_next:unit -> unit) =
+    let tmp = !currently_linked in
+    currently_linked := [];
 
-    List.iter (fun v -> v.link <- NoLink) !currently_linked;
-    currently_linked := []
+    f_cont (fun () ->
+      List.iter (fun v -> v.link <- NoLink) !currently_linked;
+      currently_linked := tmp;
+      f_next ()
+    )
 
   (******* Renaming *******)
 
@@ -758,25 +759,6 @@ module Term = struct
     | Name n1, Name n2 when n1 == n2 -> ()
     | Func(f1,args1), Func(f2,args2) when f1 == f2 -> List.iter2 unify args1 args2
     | _ -> raise Not_unifiable
-
-  (** We assume that now variable have been linked *)
-  let is_unifiable eq_list =
-    Config.debug (fun () ->
-      if !Variable.currently_linked <> []
-      then Config.internal_error "[term.ml >> Term.is_unifiable] No variable should have been linked."
-    );
-
-    try
-      List.iter (fun (t1,t2) -> unify t1 t2) eq_list;
-
-      List.iter (fun var -> var.link <- NoLink) !Variable.currently_linked;
-      Variable.currently_linked := [];
-
-      true
-    with Not_unifiable ->
-      List.iter (fun var -> var.link <- NoLink) !Variable.currently_linked;
-      Variable.currently_linked := [];
-      false
 
   (******* Matching *******)
 
