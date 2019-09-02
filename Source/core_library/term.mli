@@ -179,7 +179,13 @@ module Recipe_Variable : sig
 
   val currently_linked : recipe_variable list ref
 
-  val link_context : recipe_variable -> context_recipe -> unit
+  val link : recipe_variable -> recipe_variable -> unit
+
+  val link_recipe : recipe_variable -> recipe -> unit
+
+  val auto_cleanup : ((unit -> unit) -> unit) -> (unit -> unit) -> unit
+
+  val auto_cleanup_with_reset : ((unit -> unit) -> unit) -> (unit -> unit) -> unit
 end
 
 (** {3 Axioms} *)
@@ -323,12 +329,8 @@ module Recipe : sig
   (** {3 Main functions} *)
 
   (** [instantiate r] returns the recipe [r] in which the variables linked with [RLink] are replaced
-      by the value of their links. *)
+      by the value of their links. Note that instantiating replace the CRFunc by normal recipe. *)
   val instantiate : recipe -> recipe
-
-  (** [instantiate cr] returns the recipe obtained from the context [cr] in which the variables linked
-      with [RLink] are replaced by the value of their links. *)
-  val instantiate_context : context_recipe -> recipe
 
   exception Not_unifiable
 

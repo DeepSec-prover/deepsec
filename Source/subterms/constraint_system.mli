@@ -30,9 +30,9 @@ val get_additional_data : 'a t -> 'a
     @raise Internal_error if the names {% $k_0, \ldots, k_n$ are not all public. \highdebug %} *)
 val empty : 'a -> 'a t
 
-(** [add_basic_fact] {% $\C$~$\dedfact{\quanti{X}{i}}{t}$ returns the constraint system $\C[ \Df \mapsto \Df \cup \dedfact{\quanti{X}{i}}{t}; \InitInput \mapsto \InitInput \cup \{X\}]$. %}
-    @raise Internal_error if {% $t\mguset{\equality{\Equn(\C)}} \neq t$ or $X \in \varsdeux{\C}$. %} *)
-val add_basic_fact : 'a t -> basic_fact -> 'a t
+(** [add_basic_facts csys l] adds the list of basic facts [l] in [csys].
+    We assume that the basic facts in [l] have maximal type. *)
+val add_basic_facts : 'a t -> basic_fact list -> 'a t
 
 (** [add_axiom] {% $\C$~$\ax_n$~$t$~$id$ returns the constraint system $\C'$ obtained from $\C$ and such that
     $\Phi(\C') = \Phi(\C) \cup \{ \ax_n \rightarrow t\}$ and $\USolved(\C') = \USolved(\C) \cup \\{ \dedfact{\ax_n}{t}\\}$.%}
@@ -41,12 +41,10 @@ val add_basic_fact : 'a t -> basic_fact -> 'a t
 val add_axiom : 'a t -> int -> term -> 'a t
 
 (** [add_disequations at] {% $\C$ %} [l] where the list [l] is {% $\phi_1$;\ldots; $\phi_n$ %} returns the constraint system
-    {% $\C[\Equn \mapsto \Equn \wedge \bigwedge_{i=1}^n \phi_i]\Vnorm$ when %} [at = Protocol] and returns
-    {% $\C[\Equn \mapsto \Equn \wedge \bigwedge_{i=1}^n \phi_i]\Vnorm$ when %} [at = Recipe].
-    @raise Bot when the resulting constraint system is unsatisfiable. *)
+    {% $\C[\Equn \mapsto \Equn \wedge \bigwedge_{i=1}^n \phi_i]\Vnorm$ %} *)
 val add_disequations : 'a t -> Diseq.Term.t list -> 'a t
 
-val add_private_channels : 'a t -> term list -> 'a t
+val add_non_deducible_terms : 'a t -> term list -> 'a t
 
 (** Replace the additional data in the constraint system by the one given as argument. *)
 val replace_additional_data : 'a t -> 'b -> 'b t

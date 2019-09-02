@@ -63,6 +63,8 @@ module Formula : sig
     (* We assume that [diseq] is neither top or bot. *)
     val wedge : Diseq.Term.t -> t -> t
 
+    val wedge_conjunction : Diseq.Term.t list -> t -> t
+
     val extract_one_diseq : t -> Diseq.Term.t * t
 
     val instantiate_and_normalise : t -> t
@@ -75,6 +77,11 @@ module Formula : sig
       | Bot
       | Conj of Diseq.Recipe.t list
 
+    val instantiate_and_normalise : t -> t
+
+    val instantiate_and_normalise_constructor : recipe_variable -> recipe -> t -> t
+
+    val instantiate_and_normalise_knowledge : recipe_variable -> recipe -> t -> t
   end
 
   module Mixed : sig

@@ -99,33 +99,6 @@ module Variable = struct
     List.iter (fun v -> v.link <- NoLink) !currently_linked;
     currently_linked := []
 
-  let auto_cleanup_with_reset (f:unit -> unit) =
-    let tmp = !currently_linked in
-    currently_linked := [];
-    f ();
-    List.iter (fun v -> v.link <- NoLink) !currently_linked;
-    currently_linked := tmp
-
-  let rec remove_until (head:variable) = function
-    | [] -> Config.internal_error "[term.ml >> Term.remove_until] The variable head should appear in the list."
-    | (t::_) as l when t == head -> l
-    | _::q -> remove_until head q
-
-  let auto_cleanup_with_record (f:unit->unit) =
-    if !currently_linked == []
-    then
-      begin
-        f ();
-        List.iter (fun v -> v.link <- NoLink) !currently_linked;
-        currently_linked := []
-      end
-    else
-      begin
-        let head = List.hd !currently_linked in
-        f ();
-        currently_linked := remove_until head !currently_linked
-      end
-
   (******* Renaming *******)
 
   (** [rename_term q t] renames the variables in [t] by fresh variables with quantifier [q].
@@ -225,23 +198,48 @@ module Recipe_Variable = struct
     v.link_r <- RVLink v';
     currently_linked := v :: !currently_linked
 
-  let link_context v cr =
+  let link_recipe v r =
     Config.debug (fun () ->
       if v.link_r <> RNoLink
-      then Config.internal_error "[term.ml >> Recipe_Variable.link_context] The first variable should not be already linked."
+      then Config.internal_error "[term.ml >> Recipe_Variable.link] The first variable should not be already linked."
     );
 
-    v.link_r <- CRLink cr;
+    v.link_r <- RLink r;
     currently_linked := v :: !currently_linked
 
-  let cleanup () =
-    Config.debug (fun () ->
-      if List.exists (fun v -> v.link_r = RNoLink) !currently_linked
-      then Config.internal_error "[term.ml >> Recipe_Variable.cleanup] The variables should all be linked."
-    );
+  let rec unlink_until (head:recipe_variable) = function
+    | [] -> Config.internal_error "[term.ml >> Recipe_Variable.remove_until] The variable head should appear in the list."
+    | t::_ when t == head -> ()
+    | t::q ->
+        t.link_r <- RNoLink;
+        unlink_until head q
 
-    List.iter (fun v -> v.link_r <- RNoLink) !currently_linked;
-    currently_linked := []
+  let auto_cleanup_with_reset (f_cont:(unit -> unit) -> unit) (f_next:unit -> unit) =
+    let tmp = !currently_linked in
+    currently_linked := [];
+
+    f_cont (fun () ->
+      List.iter (fun v -> v.link_r <- RNoLink) !currently_linked;
+      currently_linked := tmp;
+      f_next ()
+    )
+
+  let auto_cleanup (f_cont:(unit -> unit) -> unit) (f_next:unit -> unit) =
+    if !currently_linked == []
+    then
+      f_cont (fun () ->
+        List.iter (fun v -> v.link_r <- RNoLink) !currently_linked;
+        currently_linked := [];
+        f_next ()
+      )
+    else
+      let tmp = !currently_linked in
+      let head = List.hd !currently_linked in
+      f_cont (fun () ->
+        unlink_until head !currently_linked;
+        currently_linked := tmp;
+        f_next ()
+      )
 
   (******* Renaming *******)
 
@@ -840,6 +838,7 @@ module Recipe = struct
     | _ -> Config.internal_error "[terms.ml >> Recipe.get_args] The recipe is not a function application."
 
   let rec get_type = function
+    | CRFunc(_,r) -> get_type r
     | RFunc(_,args) -> List.fold_left (fun k r -> max k (get_type r)) 0 args
     | RVar v ->  v.type_r
     | Axiom ax -> ax
@@ -896,8 +895,8 @@ module Recipe = struct
 
   let rec unify r1 r2 = match r1, r2 with
     | RVar v1, RVar v2 when v1 == v2 -> ()
-    | RVar {link_r = RLink r ; _}, _ -> unify r r2
-    | _, RVar {link_r = RLink r; _} -> unify r1 r
+    | (RVar {link_r = RLink r ; _} | CRFunc(_,r)), r'
+    | r', (RVar {link_r = RLink r; _} | CRFunc(_,r)) -> unify r r'
     | RVar v1, RVar v2 ->
         if v1.type_r < v2.type_r
         then (v2.link_r <- RLink r1; Recipe_Variable.currently_linked := v2 :: !Recipe_Variable.currently_linked)
@@ -928,20 +927,15 @@ module Recipe = struct
   (********** Instantiation ***********)
 
   let rec instantiate = function
-    | RVar { link_r = RLink r; _} -> instantiate r
+    | RVar { link_r = RLink r; _}
+    | CRFunc(_,r) -> instantiate r
     | RFunc(f,args) -> RFunc(f,List.map instantiate args)
     | r -> r
-
-  let rec instantiate_context = function
-    | CRVar { link_r = RLink r; _ } -> instantiate r
-    | CRVar { link_r = CRLink cr; _ } -> instantiate_context cr
-    | CRVar v -> RVar v
-    | CRFunc(f,args) -> RFunc(f,List.map instantiate_context args)
-    | CKnowledgeBase(_,r) -> instantiate r
 
   (********** Display **********)
 
   let rec display out = function
+    | CRFunc(_,r) -> display out r
     | RVar v -> Recipe_Variable.display out v
     | Axiom ax -> Axiom.display out ax
     | RFunc(f_symb,_) when f_symb.arity = 0 ->

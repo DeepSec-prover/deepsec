@@ -82,16 +82,11 @@ and recipe_variable =
 and recipe_link =
   | RNoLink
   | RLink of recipe (* Used for unification and substitution *)
-  | CRLink of context_recipe (* Used when calculating mgs of constraint systems. *)
   | RVLink of recipe_variable (* Used for renaming *)
   | RSLink (* Used for searching *)
 
 and recipe =
+  | CRFunc of int * recipe
   | RFunc of symbol * recipe list
   | RVar of recipe_variable
   | Axiom of int
-
-and context_recipe =
-  | CRFunc of symbol * context_recipe list
-  | CRVar of recipe_variable
-  | CKnowledgeBase of int * recipe

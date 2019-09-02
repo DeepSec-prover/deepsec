@@ -44,9 +44,17 @@ module DF : sig
   (** The empty set {% $\Df$ %} *)
   val empty : t
 
-  (** [add] {% $\Df$~$\psi$ adds the basic deduction fact $\psi$ into $\Df$. %}
-      @raise Internal_error if a basic deduction fact with the same second-order variable already exists in {% $\Df$. \highdebug %} *)
+  (** [add df bfact] adds the basic fact [bfact] into [df]. *)
   val add : t -> basic_fact -> t
+
+  (** [add df l] adds the basic facts in [l] into [df].
+      We assume that the recipe variables in [l] have the same type. *)
+  val add_multiple : t -> basic_fact list -> t
+
+  (** [add df l] adds the basic facts in [l] into [df].
+      We assume that the recipe variables in [l] have the same type
+      and that this type is maximal w.r.t. other variables in [df] *)
+  val add_multiple_max_type : t -> basic_fact list -> t
 
   (** [remove] {% $\Df$~$X$ remove the basic deduction having $X$ as second-order variable from $\Df$. %}
       @raise Internal_error if no basic deduction in {% $\Df$ has $X$ as variable. \highdebug %} *)

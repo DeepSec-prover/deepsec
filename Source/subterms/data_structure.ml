@@ -66,6 +66,10 @@ module DF = struct
 
     VarMap.add b_fct.bf_var b_fct.bf_term df
 
+  let add_multiple (df:t) bfact_l = List.fold_left add df bfact_l
+
+  let add_multiple_max_type = add_multiple
+
   let remove (df:t) x_snd =
     Config.debug (fun () ->
       try
@@ -98,7 +102,7 @@ module DF = struct
           linked_vars := x :: !linked_vars
       | Var { link = XLink v'; _ } ->
           (* We link v to v' *)
-          Recipe_Variable.link_context v (CRVar v');
+          Recipe_Variable.link_recipe v (RVar v');
           vars_to_remove := v :: !vars_to_remove
       | Var { link = TLink t ; _ } -> explore v t
       | Var _ -> Config.internal_error "[data_structure.ml >> DF.compute_mgs_applicability] Unexpected link."
@@ -120,7 +124,6 @@ module DF = struct
         UnsolvedFact(bfact,new_df,true)
 end
 
-(*
 module DF2 = struct
 
   type t = (int * basic_fact list) list
@@ -135,9 +138,35 @@ module DF2 = struct
       | [] -> [type_r, [bfact]]
       | ((i,_) as head)::q when i < type_r -> head :: (explore q)
       | (i,bfact_list)::q when i = type_r -> (i,bfact::bfact_list)::q
-      | _ -> (bfact.bf_var.type_r, [bfact])::df
+      | _ -> (type_r, [bfact])::df
     in
     explore df
+
+  let add_mutliple (df:t) bfact_list =
+    if bfact_list = []
+    then df
+    else
+      let type_r = (List.hd bfact_list).bf_var.type_r in
+      let rec explore = function
+        | [] -> [type_r,bfact_list]
+        | ((i,_) as head)::q when i < type_r -> head :: (explore q)
+        | (i,bfact_list')::q when i = type_r -> (i,List.rev_append bfact_list bfact_list')::q
+        | _ -> (type_r, bfact_list)::df
+      in
+      explore df
+
+  let add_multiple_max_type (df:t) bfact_list =
+    if bfact_list = []
+    then df
+    else
+      let type_r = (List.hd bfact_list).bf_var.type_r in
+      let rec explore = function
+        | [] -> [type_r,bfact_list]
+        | [(i,bfact_list')] when i = type_r -> [(i,List.rev_append bfact_list bfact_list')]
+        | [head] -> [head;(type_r,bfact_list)]
+        | head::q -> head :: (explore q)
+      in
+      explore df
 
   let remove (df:t) x_snd =
     let type_r = x_snd.type_r in
@@ -197,7 +226,7 @@ module DF2 = struct
           false, None
       | Var { link = XLink v'; _ } ->
           (* We link v to v' *)
-          Recipe_Variable.link_context v (CRVar v');
+          Recipe_Variable.link_recipe v (RVar v');
           vars_removed := true;
           true, None
       | Var { link = TLink t ; _ } -> explore_term v t
@@ -238,7 +267,6 @@ module DF2 = struct
           List.iter (fun v -> v.link <- NoLink) !linked_vars;
           UnsolvedFact(bfact,df',!vars_removed)
 end
-*)
 
 (*********************************
 ***       Knowledge base       ***
