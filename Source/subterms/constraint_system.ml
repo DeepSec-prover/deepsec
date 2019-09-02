@@ -495,11 +495,15 @@ let mgs csys =
         else
           let var_type_x_snd = Variable.type_of x_snd in
           let acc_sub_cons = ref csys.simp_Sub_Cons in
-
+          let test_identity = ref 0 in
           K.find_unifier_with_recipe csys.simp_SDF t var_type_x_snd (fun r subst_fst f_next_1 ->
+
             if Subst.is_identity subst_fst
             then
               begin
+                if !test_identity <> 0
+                then (Printf.printf "Identity found %d\n" !test_identity; flush_all ());
+
                 let subst_snd = Subst.create Recipe x_snd r in
                 let new_eq_snd = Eq.apply Recipe csys.simp_EqSnd subst_snd in
                 if Eq.is_bot new_eq_snd
@@ -518,37 +522,40 @@ let mgs csys =
                   apply_rules csys' mgs' snd_ord_vars' f_next
               end
             else
-              let diseq = Diseq.of_substitution_protocol subst_fst in
-              let subst_snd = Subst.create Recipe x_snd r in
-              let new_eq_fst = Eq.apply Protocol csys.simp_EqFst subst_fst in
-              if Eq.is_bot new_eq_fst
-              then f_next_1 ()
-              else
-                let new_sub_cons = Eq.apply Protocol csys.simp_Sub_Cons subst_fst in
-                if Eq.is_bot new_sub_cons
+              begin
+                incr test_identity;
+                let diseq = Diseq.of_substitution_protocol subst_fst in
+                let subst_snd = Subst.create Recipe x_snd r in
+                let new_eq_fst = Eq.apply Protocol csys.simp_EqFst subst_fst in
+                if Eq.is_bot new_eq_fst
                 then f_next_1 ()
                 else
-                  begin
-                    acc_sub_cons := Eq.wedge !acc_sub_cons diseq;
-                    let new_eq_snd = Eq.apply Recipe csys.simp_EqSnd subst_snd in
-                    if Eq.is_bot new_eq_snd
-                    then f_next_1 ()
-                    else
-                      let df_1 = DF.remove csys.simp_DF x_snd in
-                      let df_2 = DF.apply df_1 subst_fst in
-                      let csys' =
-                        { csys with
-                          simp_DF = df_2;
-                          simp_EqFst = new_eq_fst;
-                          simp_EqSnd = new_eq_snd;
-                          simp_SDF = K.apply csys.simp_SDF subst_snd subst_fst;
-                          simp_Sub_Cons = new_sub_cons
-                        }
-                      in
-                      let mgs' = Subst.apply subst_snd mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
-                      and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_snd snd_ord_vars in
-                      apply_rules csys' mgs' snd_ord_vars' f_next_1
-                  end
+                  let new_sub_cons = Eq.apply Protocol csys.simp_Sub_Cons subst_fst in
+                  if Eq.is_bot new_sub_cons
+                  then f_next_1 ()
+                  else
+                    begin
+                      acc_sub_cons := Eq.wedge !acc_sub_cons diseq;
+                      let new_eq_snd = Eq.apply Recipe csys.simp_EqSnd subst_snd in
+                      if Eq.is_bot new_eq_snd
+                      then f_next_1 ()
+                      else
+                        let df_1 = DF.remove csys.simp_DF x_snd in
+                        let df_2 = DF.apply df_1 subst_fst in
+                        let csys' =
+                          { csys with
+                            simp_DF = df_2;
+                            simp_EqFst = new_eq_fst;
+                            simp_EqSnd = new_eq_snd;
+                            simp_SDF = K.apply csys.simp_SDF subst_snd subst_fst;
+                            simp_Sub_Cons = new_sub_cons
+                          }
+                        in
+                        let mgs' = Subst.apply subst_snd mgs (fun mgs f -> List.fold_left (fun acc (x,r) -> (x,f r)::acc) [] mgs)
+                        and snd_ord_vars' = Set_Snd_Ord_Variable.remove x_snd snd_ord_vars in
+                        apply_rules csys' mgs' snd_ord_vars' f_next_1
+                    end
+              end
           ) (fun () ->
             if is_name t
             then f_next ()
