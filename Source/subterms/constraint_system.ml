@@ -2135,6 +2135,8 @@ module Rule = struct
           if Subst.is_identity mgs
           then
             begin
+              Printf.printf "Identity mgs\n";
+              flush_all ();
               Config.debug (fun () ->
                 if l_vars <> []
                 then Config.internal_error "[Constraint_system.ml >> internal_equality] An identity substitution should imply an empty list of created variables"
@@ -2222,6 +2224,8 @@ module Rule = struct
             end
           else
             begin
+              Printf.printf "Non identity mgs\n";
+              flush_all ();
               let one_csys = List.hd to_check_csys_1 in
               let new_eqsnd = Eq.apply Recipe one_csys.eqsnd mgs in
               let new_i_subst_snd = Subst.compose_restricted_generic one_csys.i_subst_snd mgs (fun x -> Variable.quantifier_of x = Free) in
@@ -2814,6 +2818,8 @@ module Rule = struct
             end
           else
             begin
+              Printf.printf "Eq_constructor\n";
+              flush_all ();
               let new_eqsnd = Eq.apply Recipe csys.eqsnd mgs_csys in
               let new_i_subst_snd = Subst.compose_restricted_generic csys.i_subst_snd mgs_csys (fun x -> Variable.quantifier_of x = Free) in
               let data_shared =
@@ -3043,6 +3049,8 @@ module Rule = struct
             end
           else
             begin
+              Printf.printf "Eq_constructor IK\n";
+              flush_all ();
               let new_eqsnd = Eq.apply Recipe csys.eqsnd mgs_csys in
               let new_i_subst_snd = Subst.compose_restricted_generic csys.i_subst_snd mgs_csys (fun x -> Variable.quantifier_of x = Free) in
               let data_shared =
