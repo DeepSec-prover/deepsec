@@ -86,6 +86,9 @@ module Symbol : sig
   (** [is_destructor f] returns true iff [f] is a destructor. *)
   val is_destructor : symbol -> bool
 
+  (** [is_destructor f] returns true iff [f] is a constructor. *)
+  val is_constructor : symbol -> bool
+
   val order : symbol -> symbol -> int
 
   (** {3 Symbol Access} *)
@@ -139,6 +142,9 @@ module Variable : sig
 
   val currently_linked : variable list ref
 
+  val link : variable -> variable -> unit
+  val link_term : variable -> term -> unit
+
   val auto_cleanup_with_reset : ((unit -> unit) -> unit) -> (unit -> unit) -> unit
 end
 
@@ -154,7 +160,7 @@ module Recipe_Variable : sig
   (** [fresh_from_var x] creates a fresh variable with the same quantifier as the variable [x].*)
   val fresh_from : recipe_variable -> recipe_variable
 
-  (** [fresh_listq ty n] creates a list of [n] fresh variables all quantified as [q] with type [ty].*)
+  (** [fresh_list q ty n] creates a list of [n] fresh variables all quantified as [q] with type [ty].*)
   val fresh_list : quantifier -> int -> int -> recipe_variable list
 
   (** [quantifier_of x] returns the quantification of the variable [x]. *)

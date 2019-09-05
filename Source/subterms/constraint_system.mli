@@ -42,7 +42,7 @@ val add_axiom : 'a t -> int -> term -> 'a t
 
 (** [add_disequations at] {% $\C$ %} [l] where the list [l] is {% $\phi_1$;\ldots; $\phi_n$ %} returns the constraint system
     {% $\C[\Equn \mapsto \Equn \wedge \bigwedge_{i=1}^n \phi_i]\Vnorm$ %} *)
-val add_disequations : 'a t -> Diseq.Term.t list -> 'a t
+val add_disequations : 'a t -> Diseq.T.t list -> 'a t
 
 val add_non_deducible_terms : 'a t -> term list -> 'a t
 

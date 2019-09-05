@@ -90,6 +90,15 @@ module Variable = struct
     v.link <- VLink v';
     currently_linked := v :: !currently_linked
 
+  let link_term v t =
+    Config.debug (fun () ->
+      if v.link <> NoLink
+      then Config.internal_error "[term.ml >> Variable.link_term] The variable should not be already linked."
+    );
+
+    v.link <- TLink t;
+    currently_linked := v :: !currently_linked
+
   let auto_cleanup_with_reset (f_cont:(unit -> unit) -> unit) (f_next:unit -> unit) =
     let tmp = !currently_linked in
     currently_linked := [];
@@ -421,6 +430,10 @@ module Symbol = struct
 
   let is_destructor sym = match sym.cat with
     | Destructor _ -> true
+    | _ -> false
+
+  let is_constructor sym = match sym.cat with
+    | Constructor | Tuple -> true
     | _ -> false
 
   let get_arity sym = sym.arity

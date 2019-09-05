@@ -1,5 +1,6 @@
 open Types
 open Term
+open Formula
 open Extensions
 
 (***********************
@@ -40,7 +41,7 @@ type equality_formula =
 ***       Deduction facts      ***
 **********************************)
 
-module DF = struct
+(*module DF2 = struct
 
   module Var_Comp = struct
     type t = recipe_variable
@@ -123,8 +124,9 @@ module DF = struct
         let new_df = List.fold_left remove df (bfact.bf_var :: !vars_to_remove) in
         UnsolvedFact(bfact,new_df,true)
 end
+*)
 
-module DF2 = struct
+module DF = struct
 
   type t = (int * basic_fact list) list
 
@@ -142,7 +144,7 @@ module DF2 = struct
     in
     explore df
 
-  let add_mutliple (df:t) bfact_list =
+  let add_multiple (df:t) bfact_list =
     if bfact_list = []
     then df
     else
@@ -187,7 +189,9 @@ module DF2 = struct
       | _ -> Config.internal_error "[data_structure.ml >> DF.remove] No basic deduction fact has the variable given in argument (2)."
     in
 
-    explore df
+    (explore df:t)
+
+  (******* Access *******)
 
   let get_term (df:t) (x:recipe_variable) =
     let type_r = x.type_r in
@@ -206,14 +210,49 @@ module DF2 = struct
 
     explore df
 
+  let get_recipe_variables (df:t) =
+    List.fold_left (fun acc (_,bfact_list) ->
+      List.fold_left (fun acc' bfact ->
+        bfact.bf_var :: acc'
+      ) acc bfact_list
+    ) [] df
+
+  (******* Testing *******)
+
+  let is_solved (df:t) =
+    let linked_vars = ref [] in
+
+    let rec explore_term t = match t with
+      | Var ({ link = NoLink ; _ } as x) ->
+          x.link <- SLink;
+          linked_vars := x :: !linked_vars;
+          true
+      | Var { link = SLink; _ } -> false
+      | Var { link = TLink t ; _ } -> explore_term t
+      | Var _ -> Config.internal_error "[data_structure.ml >> DF.compute_mgs_applicability] Unexpected link."
+      | _ -> false
+    in
+
+    let rec explore_bfact_list = function
+      | [] -> true
+      | bfact::q -> explore_term bfact.bf_term && explore_bfact_list q
+    in
+
+    let rec explore = function
+      | [] -> true
+      | (_,bfact_list)::q -> explore_bfact_list bfact_list && explore q
+    in
+
+    let result = explore df in
+    List.iter (fun v -> v.link <- NoLink) !linked_vars;
+    result
+
   (******* Function for MGS *********)
 
   type mgs_applicability =
     | Solved
     | UnifyVariables of t
     | UnsolvedFact of basic_fact * t * bool (* [true] when there were also unification of variables *)
-
-  exception Found of basic_fact
 
   let compute_mgs_applicability df =
     let linked_vars = ref [] in
@@ -266,6 +305,34 @@ module DF2 = struct
       | df', Some bfact ->
           List.iter (fun v -> v.link <- NoLink) !linked_vars;
           UnsolvedFact(bfact,df',!vars_removed)
+
+  let remove_linked_variables (df:t) =
+    let removed_bfact = ref [] in
+    let newly_linked = ref [] in
+
+    let rec explore_bfact_list = function
+      | [] -> []
+      | bfact::q when bfact.bf_var.link_r = RNoLink ->
+          bfact.bf_var.link_r <- RXLink bfact.bf_term;
+          newly_linked := bfact.bf_var :: !newly_linked;
+          bfact::(explore_bfact_list q)
+      | bfact::q ->
+          removed_bfact := bfact :: !removed_bfact;
+          explore_bfact_list q
+    in
+
+    let rec explore = function
+      | [] -> []
+      | (i,bfact_list)::q ->
+          let bfact_list' = explore_bfact_list bfact_list in
+          if bfact_list' = []
+          then q
+          else (i,bfact_list')::(explore q)
+    in
+
+    let (result:t) = explore df in
+    result, !removed_bfact, !newly_linked
+
 end
 
 (*********************************
@@ -276,27 +343,30 @@ module K = struct
 
   type entry =
     {
-      type_r : int;
+      type_rec : int;
       recipe : recipe;
       term : term
     }
 
   type t =
     {
+      max_type_r : int;
       size : int;
       data : entry Array.t
     }
 
-  let dummy_entry = { type_r = 0; recipe = Axiom 0; term = Name { label_n = ""; index_n = 0; link_n = NNoLink; deducible_n = None} }
+  let dummy_entry = { type_rec = 0; recipe = Axiom 0; term = Name { label_n = ""; index_n = 0; link_n = NNoLink; deducible_n = None} }
 
-  let empty = { size = 0; data = Array.make 0 dummy_entry }
+  let empty = { max_type_r = 0; size = 0; data = Array.make 0 dummy_entry }
 
-  let find_unifier_with_recipe kb t type_r f_continuation (f_next:unit->unit) =
+  (* Iteration on the knowledge base *)
+
+  let find_unifier_with_recipe_with_type kb t type_r f_continuation (f_next:unit->unit) =
 
     let rec explore = function
       | i when i = kb.size -> f_next ()
       | i ->
-          if kb.data.(i).type_r > type_r
+          if kb.data.(i).type_rec > type_r
           then f_next ()
           else
             begin
@@ -314,12 +384,12 @@ module K = struct
                 if !Variable.currently_linked = []
                 then
                   (* Identity substitution *)
-                  f_continuation true (fun () ->
+                  f_continuation true (CRFunc(i,kb.data.(i).recipe)) (fun () ->
                     Variable.currently_linked := tmp;
                     f_next ()
                   )
                 else
-                  f_continuation false (fun () ->
+                  f_continuation false (CRFunc(i,kb.data.(i).recipe)) (fun () ->
                     List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
                     Variable.currently_linked := tmp;
                     explore (i+1)
@@ -333,22 +403,246 @@ module K = struct
             end
     in
     explore 0
+
+  let find_unifier_with_recipe_no_type kb t f_continuation (f_next:unit->unit) =
+
+    let rec explore = function
+      | i when i = kb.size -> f_next ()
+      | i ->
+          let tmp = !Variable.currently_linked in
+          Variable.currently_linked := [];
+
+          let is_unifiable =
+            try
+              Term.unify kb.data.(i).term t;
+              true
+            with Term.Not_unifiable -> false
+          in
+          if is_unifiable
+          then
+            if !Variable.currently_linked = []
+            then
+              (* Identity substitution *)
+              f_continuation true (CRFunc(i,kb.data.(i).recipe)) (fun () ->
+                Variable.currently_linked := tmp;
+                f_next ()
+              )
+            else
+              f_continuation false (CRFunc(i,kb.data.(i).recipe)) (fun () ->
+                List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
+                Variable.currently_linked := tmp;
+                explore (i+1)
+              )
+          else
+            begin
+              List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
+              Variable.currently_linked := tmp;
+              explore(i+1)
+            end
+    in
+    explore 0
+
+  let find_unifier_with_recipe kb t type_r f_continuation f_next =
+    if type_r >= kb.max_type_r
+    then find_unifier_with_recipe_no_type kb t f_continuation f_next
+    else find_unifier_with_recipe_with_type kb t type_r f_continuation f_next
+
+  let find_unifier_with_recipe_with_stop_with_type kb t type_r stop_ref f_continuation (f_next:unit->unit) =
+
+    let rec explore = function
+      | i when i = kb.size -> f_next ()
+      | i ->
+          if kb.data.(i).type_rec > type_r
+          then f_next ()
+          else
+            begin
+              let tmp = !Variable.currently_linked in
+              Variable.currently_linked := [];
+
+              let is_unifiable =
+                try
+                  Term.unify kb.data.(i).term t;
+                  true
+                with Term.Not_unifiable -> false
+              in
+              if is_unifiable
+              then
+                if !Variable.currently_linked = []
+                then
+                  (* Identity substitution *)
+                  f_continuation true (CRFunc(i,kb.data.(i).recipe)) (fun () ->
+                    Variable.currently_linked := tmp;
+                    f_next ()
+                  )
+                else
+                  f_continuation false (CRFunc(i,kb.data.(i).recipe)) (fun () ->
+                    List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
+                    Variable.currently_linked := tmp;
+                    if !stop_ref then f_next () else explore (i+1)
+                  )
+              else
+                begin
+                  List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
+                  Variable.currently_linked := tmp;
+                  explore(i+1)
+                end
+            end
+    in
+    explore 0
+
+  let find_unifier_with_recipe_with_stop_no_type kb t stop_ref f_continuation (f_next:unit->unit) =
+
+    let rec explore = function
+      | i when i = kb.size -> f_next ()
+      | i ->
+          let tmp = !Variable.currently_linked in
+          Variable.currently_linked := [];
+
+          let is_unifiable =
+            try
+              Term.unify kb.data.(i).term t;
+              true
+            with Term.Not_unifiable -> false
+          in
+          if is_unifiable
+          then
+            if !Variable.currently_linked = []
+            then
+              (* Identity substitution *)
+              f_continuation true (CRFunc(i,kb.data.(i).recipe)) (fun () ->
+                Variable.currently_linked := tmp;
+                f_next ()
+              )
+            else
+              f_continuation false (CRFunc(i,kb.data.(i).recipe)) (fun () ->
+                List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
+                Variable.currently_linked := tmp;
+                if !stop_ref then f_next () else explore (i+1)
+              )
+          else
+            begin
+              List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
+              Variable.currently_linked := tmp;
+              explore(i+1)
+            end
+    in
+    explore 0
+
+  let find_unifier_with_recipe_with_stop kb t type_r stop_ref f_continuation (f_next:unit->unit) =
+    if type_r >= kb.max_type_r
+    then find_unifier_with_recipe_with_stop_no_type kb t stop_ref f_continuation f_next
+    else find_unifier_with_recipe_with_stop_with_type kb t type_r stop_ref f_continuation f_next
+
+  (* Consequence *)
+
+  exception Uniformity_falsified
+
+  let consequence_uniform_recipe kb eq_uni r =
+
+    let rec consequence eq_uni = function
+      | CRFunc(i,_) -> eq_uni, kb.data.(i).term, kb.data.(i).type_rec
+      | RFunc(f,args_r) ->
+          Config.debug (fun () ->
+            if Symbol.is_constructor f
+            then Config.internal_error "[data_structure.ml >> K.consequence_uniform_recipe] The symbol should be constructor"
+          );
+          if f.arity = 0
+          then eq_uni, Func(f,[]), 0
+          else
+            begin
+              let (eq_uni_1, args_t, type_r) = consequence_list eq_uni args_r in
+              let t = Func(f,args_t) in
+              let acc_eq_uni_ref = ref eq_uni_1 in
+              let result = ref None in
+              find_unifier_with_recipe kb t type_r (fun is_identity _ f_next ->
+                if is_identity
+                then acc_eq_uni_ref := Formula.T.Bot
+                else acc_eq_uni_ref := Formula.T.wedge (Diseq.T.of_linked_variables !Variable.currently_linked) !acc_eq_uni_ref;
+                f_next ()
+              ) (fun () ->
+                if !acc_eq_uni_ref <> Formula.T.Bot
+                then result := Some !acc_eq_uni_ref
+              );
+              match !result with
+                | None -> raise Uniformity_falsified
+                | Some eq_uni_2 -> eq_uni_2, t, type_r
+            end
+      | RVar ({ link_r = RXLink t; _ } as x) -> eq_uni, t, x.type_r
+      | _ -> Config.internal_error "[data_structure.ml >> K.consequence_uniform_recipe] Axioms should have been captured with context or variables should be linked."
+
+    and consequence_list eq_uni = function
+      | [] -> eq_uni, [], 0
+      | r::q_r ->
+          let (eq_uni_1, t,type_r) = consequence eq_uni r in
+          let (eq_uni_2, q_t,type_r') = consequence_list eq_uni_1 q_r in
+          (eq_uni_2,t::q_t, max type_r type_r')
+    in
+
+    consequence eq_uni r
+
 end
 
 (* Incremented knowledge base *)
 module IK = struct
 
-  (* We do not need to know about the type of the recipe as they are always
-     of maximum type (i.e. type of the last axiom) *)
   type entry =
     {
       recipe : recipe;
       term : term
     }
 
-  type t = entry list (* To be always kept ordered *)
+  type t =
+    {
+      type_rec : int;
+      data : entry list (* To be always kept ordered *)
+    }
 
-  let empty = []
+  let empty = { type_rec = 0; data = [] }
+
+  let find_unifier_with_recipe_with_stop kb ikb t type_r stop_ref f_continuation (f_next:unit->unit) = match compare type_r kb.K.max_type_r with
+    | -1 -> K.find_unifier_with_recipe_with_stop_with_type kb t type_r stop_ref f_continuation f_next
+    | 0 -> K.find_unifier_with_recipe_with_stop_no_type kb t stop_ref f_continuation f_next
+    | _ ->
+        let rec explore i = function
+          | [] -> f_next ()
+          | entry :: q ->
+              let tmp = !Variable.currently_linked in
+              Variable.currently_linked := [];
+
+              let is_unifiable =
+                try
+                  Term.unify entry.term t;
+                  true
+                with Term.Not_unifiable -> false
+              in
+              if is_unifiable
+              then
+                if !Variable.currently_linked = []
+                then
+                  (* Identity substitution *)
+                  f_continuation true (CRFunc(i,entry.recipe)) (fun () ->
+                    Variable.currently_linked := tmp;
+                    f_next ()
+                  )
+                else
+                  f_continuation false (CRFunc(i,entry.recipe)) (fun () ->
+                    List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
+                    Variable.currently_linked := tmp;
+                    if !stop_ref then f_next () else explore (i+1) q
+                  )
+              else
+                begin
+                  List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
+                  Variable.currently_linked := tmp;
+                  explore(i+1) q
+                end
+        in
+
+        K.find_unifier_with_recipe_with_stop_no_type kb t stop_ref f_continuation (fun () ->
+          if !stop_ref || type_r < ikb.type_rec
+          then f_next ()
+          else explore kb.K.size ikb.data
+        )
 end
 
 (************************

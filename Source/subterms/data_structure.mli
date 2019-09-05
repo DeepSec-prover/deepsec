@@ -1,6 +1,7 @@
 (** The data structures building constraint systems *)
 
 open Types
+open Formula
 
 type basic_fact =
   {
@@ -65,7 +66,14 @@ module DF : sig
   (** [get] {% $\Df$~$X$ %} returns [Some] {% $\dedfact{X}{u}$ if $\dedfact{X}{u} \in \Df$, %} and returns [None] otherwise.  *)
   val get_term : t -> recipe_variable -> term
 
-  (** {3 Function for MGS generation} *)
+  val get_recipe_variables : t -> recipe_variable list
+
+  (** {3 Testing} *)
+
+  (** [is_solved df] verifies that [df] contains distinct variables has right hand side. *)
+  val is_solved : t -> bool
+
+  (** {3 Function for MGS generation and application} *)
 
   type mgs_applicability =
     | Solved
@@ -79,6 +87,8 @@ module DF : sig
       basic fact have been found, the function also returns the set of basic facts
       in which we already removed the basic facts that were unified. *)
   val compute_mgs_applicability : t -> mgs_applicability
+
+  val remove_linked_variables : t -> t * basic_fact list * recipe_variable list
 end
 
 (** {2 {% The set of deduction facts \texorpdfstring{$\Solved$}{SDF} %}}*)
@@ -95,6 +105,26 @@ module K : sig
 
   (** The empty set *)
   val empty : t
+
+  (** [find_unifier_with_recipe kb t ty f_continuation f_next] tries to unify [t] with
+      every term of the knowledge base [kb]. When the unification is successul,
+      the function [f_continuation is_identity r f_next'] is applied where [is_identity]
+      is true when the unification did not instantied any variable. [r] is the corresponding
+      recipe of the knowledge base [kb]. Note that when an indentity is found, the function
+      [find_unifier_with_recipe] does not try any more unification. *)
+  val find_unifier_with_recipe : t -> term -> int ->
+    (bool -> recipe -> (unit -> unit) -> unit) ->
+    (unit -> unit) ->
+    unit
+
+  val find_unifier_with_recipe_with_stop : t -> term -> int -> bool ref ->
+    (bool -> recipe -> (unit -> unit) -> unit) ->
+    (unit -> unit) ->
+    unit
+
+  exception Uniformity_falsified
+
+  val consequence_uniform_recipe : t -> Formula.T.t -> recipe -> Formula.T.t * term * int
 end
 
 module IK : sig
@@ -104,6 +134,11 @@ module IK : sig
 
   (** The empty set *)
   val empty : t
+
+  val find_unifier_with_recipe_with_stop : K.t -> t -> term -> int -> bool ref ->
+    (bool -> recipe -> (unit -> unit) -> unit) ->
+    (unit -> unit) ->
+    unit
 end
 
 (** {2 {% The set of unsolved formulas \texorpdfstring{$\USolved$}{UF} %}}*)

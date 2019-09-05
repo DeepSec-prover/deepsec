@@ -83,6 +83,7 @@ and recipe_link =
   | RNoLink
   | RLink of recipe (* Used for unification and substitution *)
   | RVLink of recipe_variable (* Used for renaming *)
+  | RXLink of term (* Used for applying mgs *)
   | RSLink (* Used for searching *)
 
 and recipe =
