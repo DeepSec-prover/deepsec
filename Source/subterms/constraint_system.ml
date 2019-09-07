@@ -1165,9 +1165,8 @@ module Rule = struct
                 )
               in
               match result with
-                | None ->
-                    let csys' = { csys with }
-                | Some
+                | None -> ()
+                | Some _ -> ()
 
 
 
