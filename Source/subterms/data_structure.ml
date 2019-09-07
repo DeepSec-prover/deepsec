@@ -346,7 +346,6 @@ module DF = struct
 
     let (result:t) = explore df in
     result, !removed_bfact, !newly_linked
-
 end
 
 (*********************************
@@ -730,6 +729,25 @@ module UF = struct
 
     { uf with ded_formula = DedUnsolved form_list }
 
+  let replace_deduction_formula uf form_list =
+    Config.debug (fun () ->
+      if form_list = []
+      then Config.internal_error "[data_structure.ml >> UF.replace_deduction_formula] The list given as argument should not be empty.";
+
+      match uf.ded_formula, uf.eq_formula with
+        | DedUnsolved _, EqNone -> ()
+        | _ -> Config.internal_error "[Data_structure.ml >> UF.replace_deduction_formula] There should be deduction formula and no equality."
+    );
+    { ded_formula = DedUnsolved form_list; eq_formula = EqNone }
+
+  let set_no_deduction uf =
+    Config.debug (fun () ->
+      match uf.ded_formula, uf.eq_formula with
+        | DedUnsolved _, EqNone -> ()
+        | _ -> Config.internal_error "[Data_structure.ml >> UF.set_no_deduction] There should be deduction formula."
+    );
+    { ded_formula = DedNone; eq_formula = EqNone }
+
   let replace_deduction_facts uf fact_list =
     Config.debug (fun () ->
       match uf.ded_formula, uf.eq_formula with
@@ -751,7 +769,7 @@ module UF = struct
     );
     { uf with eq_formula = EqNone }
 
-  let remove_one_unsolved_equality_formula uf =
+  let remove_unsolved_equality_formula uf =
     Config.debug (fun () ->
       match uf.eq_formula with
         | EqUnsolved _ -> ()
@@ -759,9 +777,6 @@ module UF = struct
     );
     { uf with eq_formula = EqNone }
 
-  let remove_one_unsolved_deduction_formula uf = match uf.ded_formula with
-    | DedUnsolved (_::q) -> { uf with ded_formula = DedUnsolved q }
-    | _ -> Config.internal_error "[data_structure.ml >> UF.remove_usolved] UF should contain an unsolved deduction formula."
 
   let filter_unsolved uf f = match uf.ded_formula with
     | DedUnsolved form_list ->
@@ -799,15 +814,21 @@ module UF = struct
     | EqSolved t -> Some t
     | _ -> None
 
-  let pop_deduction_formula_option uf = match uf.ded_formula with
-    | DedUnsolved (t::_) -> Some t
+  let get_deduction_formula_option uf = match uf.ded_formula with
+    | DedUnsolved l -> Some l
     | _ -> None
 
-  let pop_equality_formula_option uf = match uf.eq_formula with
+  let get_equality_formula_option uf = match uf.eq_formula with
     | EqUnsolved t -> Some t
     | _ -> None
 
   let number_of_deduction_facts uf = match uf.ded_formula with
     | DedSolved l -> List.length l
     | _ -> 0
+
+  (******** Instantiation ********)
+
+  let instantiate_and_replace_dedformula uf form =
+
+    List
 end

@@ -173,10 +173,35 @@ module MGS = struct
       simp_eq_skeleton = Formula.M.Top
     }, x
 
-  let simple_of_formula csys eq_recipe form =
+  let simple_of_equality_formula csys eq_recipe form =
 
     try
       List.iter (fun (v,t) -> Term.unify (Var v) t) form.ef_equations;
+
+      let eq_term = Formula.T.instantiate_and_normalise csys.eq_term in
+      if Formula.T.Bot = eq_term
+      then None
+      else
+        let eq_uni = Formula.T.instantiate_and_normalise csys.eq_uniformity in
+        if Formula.T.Bot = eq_uni
+        then None
+        else
+          Some {
+            simp_size_frame = csys.size_frame;
+            simp_deduction_facts = csys.deduction_facts;
+            simp_knowledge = csys.knowledge;
+            simp_incremented_knowledge = csys.incremented_knowledge;
+            simp_eq_term = eq_term;
+            simp_eq_recipe = eq_recipe;
+            simp_eq_uniformity = eq_uni;
+            simp_eq_skeleton = Formula.M.Top
+          }
+    with Term.Not_unifiable -> None
+
+  let simple_of_deduction_formula csys eq_recipe form =
+
+    try
+      List.iter (fun (v,t) -> Term.unify (Var v) t) form.df_equations;
 
       let eq_term = Formula.T.instantiate_and_normalise csys.eq_term in
       if Formula.T.Bot = eq_term
@@ -1079,11 +1104,11 @@ module Rule = struct
   let rec exploration_sat_equality_formula eq_recipe vars_df_ref no_eq_csys = function
     | [] -> None, no_eq_csys
     | csys::q ->
-        match UF.pop_equality_formula_option csys.unsolved_facts with
+        match UF.get_equality_formula_option csys.unsolved_facts with
           | None -> Config.internal_error "[constraint_system.ml >> Rule.exploration_sat_equality_formula] There should be an equality formula."
           | Some form ->
               let result =
-                Variable.auto_cleanup_with_reset_notail (fun () -> match MGS.simple_of_formula csys eq_recipe form with
+                Variable.auto_cleanup_with_reset_notail (fun () -> match MGS.simple_of_equality_formula csys eq_recipe form with
                   | None -> None
                   | Some simple_csys ->
                       let ded_fact_vars = { MGS.std_vars = vars_df_ref; MGS.infinite_vars = [] } in
@@ -1094,7 +1119,7 @@ module Rule = struct
               in
               match result with
                 | None ->
-                    let csys' = { csys with unsolved_facts = UF.remove_one_unsolved_equality_formula csys.unsolved_facts } in
+                    let csys' = { csys with unsolved_facts = UF.remove_unsolved_equality_formula csys.unsolved_facts } in
                     exploration_sat_equality_formula eq_recipe vars_df_ref (csys'::no_eq_csys)  q
                 | Some mgs_data -> Some(csys,mgs_data,q), no_eq_csys
 
@@ -1136,7 +1161,7 @@ module Rule = struct
                 ) []
               in
               let new_no_eq_csys = f_apply no_eq_csys_1 in
-              let csys' = { csys with unsolved_facts = UF.remove_one_unsolved_equality_formula csys.unsolved_facts } in
+              let csys' = { csys with unsolved_facts = UF.remove_unsolved_equality_formula csys.unsolved_facts } in
               let new_eq_fact_csys = f_apply (csys'::eq_fact_csys) in
               let new_eq_form_csys = f_apply eq_form_csys_1 in
               internal new_no_eq_csys new_eq_fact_csys new_eq_form_csys mgs_data.MGS.one_mgs_eq_recipe (ref None) f_next_3
@@ -1148,27 +1173,77 @@ module Rule = struct
 
   (**** The rule Sat for deduction formula ****)
 
-  let rec explorationn_sat_deduction_formula eq_recipe vars_df_ref no_ded_csys = function
+  let rec exploration_sat_deduction_formula eq_recipe vars_df_ref no_ded_csys = function
     | [] -> None, no_ded_csys
     | csys::q ->
-        match UF.pop_deduction_formula_option with
+        match UF.get_deduction_formula_option csys.unsolved_facts with
           | None -> Config.internal_error "[constraint_system.ml >> Rule.exploration_sat_deduction_formula] There should be a deduction formula."
-          | Some form ->
-              let result =
-                Variable.auto_cleanup_with_reset_notail (fun () -> match MGS.simple_of_formula csys eq_recipe form with
-                  | None -> None
-                  | Some simple_csys ->
-                      let ded_fact_vars = { MGS.std_vars = vars_df_ref; MGS.infinite_vars = [] } in
-                      match MGS.compute_one simple_csys ded_fact_vars with
+          | Some form_list ->
+              let rec explore_form_list = function
+                | [] ->
+                    let csys' = { csys with unsolved_facts = UF.set_no_deduction csys.unsolved_facts } in
+                    exploration_sat_deduction_formula eq_recipe vars_df_ref (csys'::no_ded_csys) q
+                | form::q_form ->
+                    let result =
+                      Variable.auto_cleanup_with_reset_notail (fun () -> match MGS.simple_of_deduction_formula csys eq_recipe form with
                         | None -> None
-                        | Some mgs_data -> Some mgs_data
-                )
+                        | Some simple_csys ->
+                            let ded_fact_vars = { MGS.std_vars = vars_df_ref; MGS.infinite_vars = [] } in
+                            match MGS.compute_one simple_csys ded_fact_vars with
+                              | None -> None
+                              | Some mgs_data -> Some mgs_data
+                      )
+                    in
+                    match result with
+                      | None -> explore_form_list q_form
+                      | Some mgs_data -> Some(csys,form,q_form,mgs_data,q), no_ded_csys
               in
-              match result with
-                | None -> ()
-                | Some _ -> ()
+              explore_form_list form_list
 
+  let sat_deduction_formula (f_continuation_pos:'a Set.t -> (unit -> unit) -> unit) f_continuation_neg csys_set f_next =
 
+    let rec internal no_ded_csys ded_fact_csys ded_form_csys eq_rec vars_df_ref f_next_1 = match exploration_sat_deduction_formula eq_rec vars_df_ref no_ded_csys ded_form_csys with
+      | None, no_ded_csys_1 ->
+          f_continuation_pos  {
+            Set.eq_recipe = eq_rec;
+            Set.set = ded_fact_csys
+          } (fun () ->
+            f_continuation_neg {
+              Set.eq_recipe = eq_rec;
+              Set.set = no_ded_csys_1
+            } f_next_1
+          )
+      | Some(csys,ded_form,ded_form_list,mgs_data,ded_form_csys_1), no_ded_csys_1 ->
+          Config.debug (fun () ->
+            if mgs_data.MGS.one_mgs_fresh_existential_infinite_vars <> [] || mgs_data.MGS.one_mgs_infinite_subst <> []
+            then Config.internal_error "[constraint_system.ml >> Rule.sat_deduction_formula] There should not be any infinite variables."
+          );
+          let new_eq_rec_ref = ref eq_rec in
+
+          Recipe_Variable.auto_cleanup_with_reset (fun f_next_2 ->
+            (* We link the variables of the mgs *)
+            List.iter (fun (v,r) -> Recipe_Variable.link_recipe v r) mgs_data.MGS.one_mgs_std_subst;
+            let vars_df = match !vars_df_ref with
+              | Some vlist -> vlist
+              | None -> Config.internal_error "[constraint_system.ml >> Rule.sat_deduction_formula] The variables of DF should have been computed during the computation of one_mgs."
+            in
+
+            new_eq_rec_ref := Formula.R.wedge (Diseq.R.of_maybe_linked_variables vars_df mgs_data.MGS.one_mgs_fresh_existential_vars) !new_eq_rec_ref;
+
+            Variable.auto_cleanup_with_reset (fun f_next_3 ->
+              let f_apply =
+                List.fold_left (fun set csys -> match MGS.apply_mgs_on_different_solved_csys csys [] with
+                  | None -> set
+                  | Some csys' -> csys' :: set
+                ) []
+              in
+              let new_no_eq_csys = f_apply no_eq_csys_1 in
+              let csys' = { csys with unsolved_facts = UF.remove_unsolved_equality_formula csys.unsolved_facts } in
+              let new_eq_fact_csys = f_apply (csys'::eq_fact_csys) in
+              let new_eq_form_csys = f_apply eq_form_csys_1 in
+              internal new_no_eq_csys new_eq_fact_csys new_eq_form_csys mgs_data.MGS.one_mgs_eq_recipe (ref None) f_next_3
+            ) f_next_2
+          ) (fun () -> internal no_eq_csys_1 eq_fact_csys (csys::eq_form_csys_1) !new_eq_rec_ref vars_df_ref f_next_1)
 
 
   (** Purpose : Apply the projection on tuples on the axiom
