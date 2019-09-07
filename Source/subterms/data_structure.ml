@@ -907,6 +907,7 @@ module UF = struct
 
   let pop_deduction_fact_option uf = match uf.ded_formula with
     | DedSolved (t::_) -> Some t
+    | DedUnsolved _ -> Config.internal_error "Should not find any unsolved deduction formula."
     | _ -> None
 
   let pop_equality_fact_option uf = match uf.eq_formula with
