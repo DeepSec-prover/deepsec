@@ -2795,7 +2795,11 @@ module Fact = struct
 
   let get_head form = form.head
 
-  let get_mgu_hypothesis form = form.equation_subst
+  let get_mgu_hypothesis form =
+    if List.exists (fun (_,t) -> quantified_var_occurs Universal t) form.equation_subst
+    then Config.internal_error "[Presence of universal variables]";
+
+    form.equation_subst
 
   let get_vars_with_list (type a) (type b) (type c) (at: (a,b) atom) (fct: c t) (form: c formula) f_quanti (v_list: (a,b) variable list) = match at with
     | Protocol ->
