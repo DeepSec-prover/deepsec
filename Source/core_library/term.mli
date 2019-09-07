@@ -146,6 +146,8 @@ module Variable : sig
   val link_term : variable -> term -> unit
 
   val auto_cleanup_with_reset : ((unit -> unit) -> unit) -> (unit -> unit) -> unit
+
+  val auto_cleanup_with_reset_notail : (unit -> 'a) -> 'a
 end
 
 (** {2 Recipe Variables} *)
@@ -339,6 +341,8 @@ module Recipe : sig
   (** [instantiate r] returns the recipe [r] in which the variables linked with [RLink] are replaced
       by the value of their links. Note that instantiating replace the CRFunc by normal recipe. *)
   val instantiate : recipe -> recipe
+
+  val instantiate_preserve_context : recipe -> recipe
 
   exception Not_unifiable
 

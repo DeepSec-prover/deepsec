@@ -109,6 +109,17 @@ module Variable = struct
       f_next ()
     )
 
+  let auto_cleanup_with_reset_notail (f_cont:unit -> 'a) =
+    let tmp = !currently_linked in
+    currently_linked := [];
+
+    let r = f_cont () in
+
+    List.iter (fun v -> v.link <- NoLink) !currently_linked;
+    currently_linked := tmp;
+
+    r
+
   (******* Renaming *******)
 
   (** [rename_term q t] renames the variables in [t] by fresh variables with quantifier [q].
@@ -925,6 +936,11 @@ module Recipe = struct
     | RVar { link_r = RLink r; _}
     | CRFunc(_,r) -> instantiate r
     | RFunc(f,args) -> RFunc(f,List.map instantiate args)
+    | r -> r
+
+  let rec instantiate_preserve_context = function
+    | RVar { link_r = RLink r'; _} -> instantiate_preserve_context r'
+    | RFunc(f,args) -> RFunc(f,List.map instantiate_preserve_context args)
     | r -> r
 
   (********** Display **********)

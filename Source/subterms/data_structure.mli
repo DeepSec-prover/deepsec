@@ -68,6 +68,8 @@ module DF : sig
 
   val get_recipe_variables : t -> recipe_variable list
 
+  val get_standard_recipe_variables : t -> recipe_variable list
+
   (** {3 Testing} *)
 
   (** [is_solved df] verifies that [df] contains distinct variables has right hand side. *)

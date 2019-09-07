@@ -217,6 +217,20 @@ module DF = struct
       ) acc bfact_list
     ) [] df
 
+  let get_standard_recipe_variables (df:t) =
+
+    let rec explore acc = function
+      | [] -> acc
+      | [(i,_)] when i = Recipe_Variable.infinite_type -> acc
+      | (_,bfact_list)::q ->
+          explore (
+            List.fold_left (fun acc' bfact ->
+              bfact.bf_var :: acc'
+            ) acc bfact_list
+          ) q
+    in
+    explore [] df
+
   (******* Testing *******)
 
   let is_solved (df:t) =

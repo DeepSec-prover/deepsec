@@ -171,7 +171,7 @@ module Diseq = struct
        the negation represented by the links in [v_list]. The variables in [to_be_univ_vars]
        should be transformed as universal variables.
        All variables in [v_list] can be linked and should not be in [to_be_univ_vars].
-       Variables in [to_be_univ_vars] can be linked. Only the unlinked variables are transformed
+       Variables in [to_be_univ_vars] should not be linked. Only the unlinked variables are transformed
        in universal variables. *)
     let of_maybe_linked_variables v_list to_be_univ_vars =
       if v_list = []
@@ -191,12 +191,15 @@ module Diseq = struct
         begin
           let renamed_vars = ref [] in
 
-          List.iter (fun v -> match v.link_r with
-            | RNoLink ->
-                let v' = Recipe_Variable.fresh Universal v.type_r in
-                v.link_r <- RLink (RVar v');
-                renamed_vars := v :: !renamed_vars
-            | _ -> ()
+          Config.debug (fun () ->
+            if List.exists (function { link_r = l; _} when l <> RNoLink -> true | _ -> false) to_be_univ_vars
+            then Config.internal_error "[formula.ml >> Diseq.of_maybe_linked_variables] Variables should not be linked."
+          );
+
+          List.iter (fun v ->
+            let v' = Recipe_Variable.fresh Universal v.type_r in
+            v.link_r <- RLink (RVar v');
+            renamed_vars := v :: !renamed_vars
           ) to_be_univ_vars;
 
           let original_link = ref [] in
@@ -514,6 +517,11 @@ module Formula = struct
       | Top -> Conj diseq_list
       | Bot -> Bot
       | Conj diseq_l -> Conj (List.rev_append diseq_list diseq_l)
+
+    let wedge diseq = function
+      | Top -> Conj [diseq]
+      | Bot -> Bot
+      | Conj diseq_l -> Conj (diseq::diseq_l)
 
     let intern_instantiate_and_normalise f_norm = function
       | Top -> Top

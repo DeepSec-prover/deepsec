@@ -81,6 +81,8 @@ module Formula : sig
       | Bot
       | Conj of Diseq.R.t list
 
+    val wedge : Diseq.R.t -> t -> t
+
     val wedge_conjunction : Diseq.R.t list -> t -> t
 
     val instantiate_and_normalise : t -> t
