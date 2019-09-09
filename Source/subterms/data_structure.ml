@@ -852,4 +852,7 @@ module UF = struct
     | DedSolved l -> List.length l
     | _ -> 0
 
+  (******* Instantiation *******)
+
+  let normalise_deductions uf = match uf.ded_formula with 
 end
