@@ -33,6 +33,10 @@ type equality_formula =
     ef_equations : (variable * term) list
   }
 
+(** {2 {% Function on deduction and equality formulas %}}*)
+
+val instantiate_deduction_formula_to_fact : deduction_formula -> deduction_fact
+
 (** {2 {% The set of basic deduction facts formulas \texorpdfstring{$\Df$}{DF} %}}*)
 
 module DF : sig
@@ -183,6 +187,8 @@ module UF : sig
   (* [replace_deduction_formula uf dform_l] replaces the deduction formulas in [uf] by [dform_l].
      [uf] should already contain deduction formulas and no equality formulas and [dform_l] should not be empty. *)
   val replace_deduction_formula : t -> deduction_formula list -> t
+
+  val replace_deduction_formula_by_fact : t -> deduction_fact -> t
 
   (* [set_no_deduction uf] removes the unsolved formulas from [uf].
      [uf] should already contain deduction formulas and no equality formulas. *)

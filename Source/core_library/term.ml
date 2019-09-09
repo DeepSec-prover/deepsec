@@ -645,6 +645,16 @@ module Term = struct
     | Func(_,args) -> List.exists (var_occurs v) args
     | _ -> false
 
+  let rec var_occurs_and_replace_universal_to_existential v = function
+    | Var v' when v == v' -> true
+    | Var {link = TLink t; _} -> var_occurs_and_replace_universal_to_existential v t
+    | Var ({ quantifier = Universal; _} as v') ->
+        let v'' = Variable.fresh_with_label Existential v'.label in
+        Variable.link_term v' (Var v'');
+        false
+    | Func(_,args) -> List.exists (var_occurs_and_replace_universal_to_existential v) args
+    | _ -> false
+
   (* We follow the links TLink. *)
   let rec quantified_var_occurs q = function
     | Var v when v.quantifier == q -> true
@@ -782,6 +792,25 @@ module Term = struct
     | _, Var v2 when not (var_occurs v2 t1) -> v2.link <- TLink t1; Variable.currently_linked := v2 :: !Variable.currently_linked
     | Name n1, Name n2 when n1 == n2 -> ()
     | Func(f1,args1), Func(f2,args2) when f1 == f2 -> List.iter2 unify args1 args2
+    | _ -> raise Not_unifiable
+
+  let rec unify_and_replace_universal_to_existential t1 t2 = match t1, t2 with
+    | Var {link = TLink t ; _}, _ -> unify_and_replace_universal_to_existential t t2
+    | _, Var {link = TLink t; _} -> unify_and_replace_universal_to_existential t1 t
+    | Var ({ quantifier = Universal; _} as v), t
+    | t, Var ({ quantifier = Universal; _} as v) ->
+        let v' = Variable.fresh_with_label Existential v.label in
+        Variable.link_term v (Var v');
+        unify_and_replace_universal_to_existential (Var v') t
+    | Var v1, Var v2 when v1 == v2 -> ()
+    | Var v1, Var v2 ->
+        if v1.quantifier = Universal || (v1.quantifier = Existential && v2.quantifier = Free) || (v1.quantifier = v2.quantifier && v1.index < v2.index)
+        then (v1.link <- TLink t2; Variable.currently_linked := v1 :: !Variable.currently_linked)
+        else (v2.link <- TLink t1; Variable.currently_linked := v2 :: !Variable.currently_linked)
+    | Var v1, _ when not (var_occurs_and_replace_universal_to_existential v1 t2) -> v1.link <- TLink t2; Variable.currently_linked := v1 :: !Variable.currently_linked
+    | _, Var v2 when not (var_occurs_and_replace_universal_to_existential v2 t1) -> v2.link <- TLink t1; Variable.currently_linked := v2 :: !Variable.currently_linked
+    | Name n1, Name n2 when n1 == n2 -> ()
+    | Func(f1,args1), Func(f2,args2) when f1 == f2 -> List.iter2 unify_and_replace_universal_to_existential args1 args2
     | _ -> raise Not_unifiable
 
   (******* Matching *******)

@@ -307,6 +307,8 @@ module Term : sig
   (** [unify t1 t2] unifies the terms [t1] and [t2]. The function likes the variables with [TLink].
       @raise Not_unifiable when [t1] and [t2] are not unifiable. *)
   val unify : term -> term -> unit
+  
+  val unify_and_replace_universal_to_existential : term -> term -> unit
 
   (** {3 Display} *)
 

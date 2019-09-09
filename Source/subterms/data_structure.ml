@@ -37,6 +37,23 @@ type equality_formula =
     ef_equations : (variable * term) list
   }
 
+(************************)
+
+let instantiate_deduction_formula_to_fact form =
+  let tmp = !Variable.currently_linked in
+  Variable.currently_linked := [];
+
+  List.iter (fun (x,t) -> Term.unify (Var x) t) form.df_equations;
+
+  let fact = { df_recipe = form.df_head.df_recipe; df_term = Term.instantiate form.df_head.df_term } in
+
+  List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
+  Variable.currently_linked := tmp;
+
+  fact
+
+
+
 (*********************************
 ***       Deduction facts      ***
 **********************************)
@@ -740,6 +757,15 @@ module UF = struct
     );
     { ded_formula = DedUnsolved form_list; eq_formula = EqNone }
 
+  let replace_deduction_formula_by_fact uf fact =
+    Config.debug (fun () ->
+      match uf.ded_formula, uf.eq_formula with
+        | DedUnsolved _, EqNone -> ()
+        | _ -> Config.internal_error "[Data_structure.ml >> UF.replace_deduction_formula_by_fact] There should be deduction formula and no equality."
+    );
+    { ded_formula = DedSolved [fact]; eq_formula = EqNone }
+
+
   let set_no_deduction uf =
     Config.debug (fun () ->
       match uf.ded_formula, uf.eq_formula with
@@ -826,9 +852,4 @@ module UF = struct
     | DedSolved l -> List.length l
     | _ -> 0
 
-  (******** Instantiation ********)
-
-  let instantiate_and_replace_dedformula uf form =
-
-    List
 end

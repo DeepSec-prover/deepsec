@@ -173,34 +173,54 @@ module MGS = struct
       simp_eq_skeleton = Formula.M.Top
     }, x
 
+  type result_simple_of_formula =
+    | SFNone
+    | SFSolved
+    | SFSome of simplified_constraint_system
+
   let simple_of_equality_formula csys eq_recipe form =
-
+  let tmp = !Variable.currently_linked in
+  Variable.currently_linked := [];
     try
-      List.iter (fun (v,t) -> Term.unify (Var v) t) form.ef_equations;
+      List.iter (fun (v,t) -> Term.unify_and_replace_universal_to_existential (Var v) t) form.ef_equations;
 
-      let eq_term = Formula.T.instantiate_and_normalise csys.eq_term in
-      if Formula.T.Bot = eq_term
-      then None
-      else
-        let eq_uni = Formula.T.instantiate_and_normalise csys.eq_uniformity in
-        if Formula.T.Bot = eq_uni
-        then None
+      let result =
+        if List.for_all (fun v -> v.quantifier = Universal) !Variable.currently_linked
+        then SFSolved
         else
-          Some {
-            simp_size_frame = csys.size_frame;
-            simp_deduction_facts = csys.deduction_facts;
-            simp_knowledge = csys.knowledge;
-            simp_incremented_knowledge = csys.incremented_knowledge;
-            simp_eq_term = eq_term;
-            simp_eq_recipe = eq_recipe;
-            simp_eq_uniformity = eq_uni;
-            simp_eq_skeleton = Formula.M.Top
-          }
-    with Term.Not_unifiable -> None
+          let eq_term = Formula.T.instantiate_and_normalise csys.eq_term in
+          if Formula.T.Bot = eq_term
+          then SFNone
+          else
+            let eq_uni = Formula.T.instantiate_and_normalise csys.eq_uniformity in
+            if Formula.T.Bot = eq_uni
+            then SFNone
+            else
+              SFSome {
+                simp_size_frame = csys.size_frame;
+                simp_deduction_facts = csys.deduction_facts;
+                simp_knowledge = csys.knowledge;
+                simp_incremented_knowledge = csys.incremented_knowledge;
+                simp_eq_term = eq_term;
+                simp_eq_recipe = eq_recipe;
+                simp_eq_uniformity = eq_uni;
+                simp_eq_skeleton = Formula.M.Top
+              }
+      in
+      List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
+      Variable.currently_linked := tmp;
+      result
+    with Term.Not_unifiable ->
+      List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
+      Variable.currently_linked := tmp;
+      SFNone
 
   let simple_of_deduction_formula csys eq_recipe form =
 
     try
+
+      (** TODO : check when unification is identity. *)
+
       List.iter (fun (v,t) -> Term.unify (Var v) t) form.df_equations;
 
       let eq_term = Formula.T.instantiate_and_normalise csys.eq_term in
@@ -961,13 +981,13 @@ module Rule = struct
 
             let new_csys = MGS.apply_mgs_on_same_csys csys mgs_data in
             let new_checked_csys =
-              List.fold_left (fun set csys -> match MGS.apply_mgs_on_different_solved_csys csys mgs_data.mgs_fresh_existential_vars with
+              List.fold_left (fun set csys -> match MGS.apply_mgs_on_different_solved_csys csys mgs_data.MGS.mgs_fresh_existential_vars with
                 | None -> set
                 | Some csys' -> csys' :: set
               ) [new_csys] checked_csys_1
             in
             let new_to_check_csys =
-              List.fold_left (fun set csys -> match MGS.apply_mgs_on_different_csys csys mgs_data.mgs_fresh_existential_vars with
+              List.fold_left (fun set csys -> match MGS.apply_mgs_on_different_csys csys mgs_data.MGS.mgs_fresh_existential_vars with
                 | None -> set
                 | Some csys' -> csys' :: set
               ) [] to_check_csys_1
@@ -1018,13 +1038,13 @@ module Rule = struct
                   accu_neg_eq_recipe := diseq_rec :: !accu_neg_eq_recipe;
 
                   let new_checked_csys =
-                    List.fold_left (fun set csys -> match MGS.apply_mgs_on_different_solved_csys csys mgs_data.mgs_fresh_existential_vars with
+                    List.fold_left (fun set csys -> match MGS.apply_mgs_on_different_solved_csys csys mgs_data.MGS.mgs_fresh_existential_vars with
                       | None -> set
                       | Some csys' -> csys' :: set
                     ) [] checked_csys_1
                   in
                   let new_to_check_csys =
-                    List.fold_left (fun set csys -> match MGS.apply_mgs_on_different_solved_csys csys mgs_data.mgs_fresh_existential_vars with
+                    List.fold_left (fun set csys -> match MGS.apply_mgs_on_different_solved_csys csys mgs_data.MGS.mgs_fresh_existential_vars with
                       | None -> set
                       | Some csys' -> csys' :: set
                     ) [] to_check_csys_1
@@ -1237,14 +1257,19 @@ module Rule = struct
                   | Some csys' -> csys' :: set
                 ) []
               in
-              let new_no_eq_csys = f_apply no_eq_csys_1 in
-              let csys' = { csys with unsolved_facts = UF.remove_unsolved_equality_formula csys.unsolved_facts } in
-              let new_eq_fact_csys = f_apply (csys'::eq_fact_csys) in
-              let new_eq_form_csys = f_apply eq_form_csys_1 in
-              internal new_no_eq_csys new_eq_fact_csys new_eq_form_csys mgs_data.MGS.one_mgs_eq_recipe (ref None) f_next_3
+              let new_no_ded_csys = f_apply no_ded_csys_1 in
+              let csys' = match MGS.apply_mgs_on_different_solved_csys csys [] with
+                | None -> Config.internal_error "[constraint_system.ml >> sat_deduction_formula] The mgs should be applicable."
+                | Some csys'' -> { csys'' with unsolved_facts = UF.replace_deduction_formula_by_fact csys''.unsolved_facts (instantiate_deduction_formula_to_fact ded_form) }
+              in
+              let new_ded_fact_csys = csys'::(f_apply ded_fact_csys) in
+              let new_ded_form_csys = f_apply ded_form_csys_1 in
+              internal new_no_ded_csys new_ded_fact_csys new_ded_form_csys mgs_data.MGS.one_mgs_eq_recipe (ref None) f_next_3
             ) f_next_2
           ) (fun () -> internal no_eq_csys_1 eq_fact_csys (csys::eq_form_csys_1) !new_eq_rec_ref vars_df_ref f_next_1)
 
+    in
+    ()
 
   (** Purpose : Apply the projection on tuples on the axiom
     Input : Only have 1 deduction fact.
