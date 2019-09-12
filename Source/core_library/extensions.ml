@@ -15,6 +15,15 @@ module List = struct
     | x :: l -> if p x then find (x :: accu) l else find accu l in
     find []
 
+  let map_tail f =
+    let rec explore f_cont = function
+      | [] -> f_cont []
+      | t::q ->
+          let t' = f t in
+          explore (fun q' -> t'::q') q
+    in
+    explore (fun x -> x)
+
   (* overwriting some functions with tail-recursive versions *)
   let rec fold_right ?f_cont:(k=fun x->x) f l a =
     match l with

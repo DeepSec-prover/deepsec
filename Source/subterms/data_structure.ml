@@ -19,23 +19,13 @@ type deduction_fact =
     df_term : term;
   }
 
-type equality_fact =
-  {
-    ef_recipe1 : recipe;
-    ef_recipe2 : recipe;
-  }
-
 type deduction_formula =
   {
     df_head : deduction_fact;
     df_equations : (variable * term) list
   }
 
-type equality_formula =
-  {
-    ef_head : equality_fact;
-    ef_equations : (variable * term) list
-  }
+type equality_formula = (variable * term) list
 
 (************************)
 
@@ -51,8 +41,6 @@ let instantiate_deduction_formula_to_fact form =
   Variable.currently_linked := tmp;
 
   fact
-
-
 
 (*********************************
 ***       Deduction facts      ***
@@ -248,6 +236,28 @@ module DF = struct
     in
     explore [] df
 
+  exception Found of recipe_variable
+
+  let find_term df t =
+
+    let rec find_bfact = function
+      | [] -> ()
+      | { bf_var = x; bf_term = t'}::_ when Term.is_equal t t' -> raise (Found x)
+      | _::q -> find_bfact q
+    in
+
+    let rec find_all = function
+      | [] -> ()
+      | (_,bfact_list)::q ->
+          find_bfact bfact_list;
+          find_all q
+    in
+
+    try
+      find_all df;
+      raise Not_found
+    with Found x -> x
+
   (******* Testing *******)
 
   let is_solved (df:t) =
@@ -363,6 +373,55 @@ module DF = struct
 
     let (result:t) = explore df in
     result, !removed_bfact, !newly_linked
+
+  let link_term_variables linked_vars (df:t) =
+
+    let rec explore_term v = function
+      | Var { link = TLink t; _ } -> explore_term v t
+      | Var ({ link = NoLink ; _ } as x) ->
+          x.link <- XLink v;
+          linked_vars := x :: !linked_vars
+      | _ -> Config.internal_error "[data_structure.ml >> DF.link_term_variables] The deduction facts should be solved hence distinct variables"
+    in
+
+    let rec explore_bfact_list = function
+      | [] -> ()
+      | bfact::q ->
+          explore_term bfact.bf_var bfact.bf_term;
+          explore_bfact_list q
+    in
+
+    let rec explore = function
+      | [] -> ()
+      | (_,bfact_list)::q ->
+          explore_bfact_list bfact_list;
+          explore q
+    in
+
+    explore df
+
+  let link_recipe_variables linked_vars (df:t) =
+
+    let rec explore_bfact_list = function
+      | [] -> ()
+      | bfact::q ->
+          Config.debug (fun () ->
+            if bfact.bf_var.link_r <> RNoLink
+            then Config.internal_error "[data_structure.ml >> DF.link_recipe_variables] The variables of deduction facts DF should not be linked."
+          );
+          bfact.bf_var.link_r <- RXLink bfact.bf_term;
+          linked_vars := bfact.bf_var :: !linked_vars;
+          explore_bfact_list q
+    in
+
+    let rec explore = function
+      | [] -> ()
+      | (_,bfact_list)::q ->
+          explore_bfact_list bfact_list;
+          explore q
+    in
+
+    explore df
 end
 
 (*********************************
@@ -623,11 +682,35 @@ module IK = struct
 
   type t =
     {
+      size : int;
       type_rec : int;
-      data : entry list (* To be always kept ordered *)
+      data : entry list (* To be always kept ordered. The first element is the last added. *)
     }
 
-  let empty = { type_rec = 0; data = [] }
+  let empty = { type_rec = 0; data = []; size = 0 }
+
+  let add ikb dfact =
+    { ikb with
+      size = ikb.size + 1;
+      data = { recipe = dfact.df_recipe; term = dfact.df_term } :: ikb.data
+    }
+
+  let get_last_term ikb = (List.hd ikb.data).term
+
+  let remove_last_entry ikb = { ikb with size = ikb.size - 1; data = List.tl ikb.data }
+
+  let get_nb_element_knowledge_base kb ikb = kb.K.size + ikb.size
+
+  let get_term kb ikb index =
+    if index < kb.K.size
+    then kb.K.data.(index).K.term
+    else
+      let rec explore i = function
+        | [] -> Config.internal_error "[data_structure.ml >> IK.get_deduction_fact] Invalid index."
+        | elt::_ when i = 0 -> elt.term
+        | _::q -> explore (i-1) q
+      in
+      explore (kb.K.size + ikb.size - 1 - index) ikb.data
 
   let find_unifier_with_recipe_with_stop kb ikb t type_r stop_ref f_continuation (f_next:unit->unit) = match compare type_r kb.K.max_type_r with
     | -1 -> K.find_unifier_with_recipe_with_stop_with_type kb t type_r stop_ref f_continuation f_next
@@ -658,21 +741,118 @@ module IK = struct
                   f_continuation false (CRFunc(i,entry.recipe)) (fun () ->
                     List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
                     Variable.currently_linked := tmp;
-                    if !stop_ref then f_next () else explore (i+1) q
+                    if !stop_ref then f_next () else explore (i-1) q
                   )
               else
                 begin
                   List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
                   Variable.currently_linked := tmp;
-                  explore(i+1) q
+                  explore (i-1) q
                 end
         in
 
         K.find_unifier_with_recipe_with_stop_no_type kb t stop_ref f_continuation (fun () ->
           if !stop_ref || type_r < ikb.type_rec
           then f_next ()
-          else explore kb.K.size ikb.data
+          else explore (kb.K.size + ikb.size - 1) ikb.data
         )
+
+  (* Consequence *)
+
+  let find f_cont kb ikb =
+
+    let rec explore_ikb i = function
+      | [] -> raise Not_found
+      | entry::q ->
+          try
+            f_cont (CRFunc(i,entry.recipe)) entry.term
+          with Not_found -> explore_ikb (i-1) q
+    in
+
+    let rec explore_k = function
+      | i when i = kb.K.size -> raise Not_found
+      | i ->
+          try
+            f_cont (CRFunc(i,kb.K.data.(i).K.recipe)) kb.K.data.(i).K.term
+          with Not_found -> explore_k (i+1)
+    in
+
+    try
+      explore_k 0
+    with Not_found ->
+      explore_ikb (kb.K.size + ikb.size - 1) ikb.data
+
+  let consequence_term kb kbi df term =
+
+    let accu_variables = ref [] in
+
+    let rec explore f_next = function
+      | Var v ->
+          begin match v.link with
+            | TLink t -> explore f_next t
+            | XLink r -> f_next (RVar r)
+            | NoLink ->
+                DF.link_term_variables accu_variables df;
+                explore f_next (Var v)
+            | _ -> Config.internal_error "[data_structure.ml >> IK.consequence_term] Unexpected link."
+          end
+      | Name { deducible_n = Some r } -> f_next r
+      | Name _ -> raise Not_found
+      | Func(f,_) when f.arity = 0 && f.public -> f_next (RFunc(f,[]))
+      | (Func(f,args_t)) as t ->
+          try
+            explore_list (fun args_r ->
+              f_next (RFunc(f,args_r))
+            ) args_t
+          with Not_found ->
+            find (fun recipe term ->
+              if Term.is_equal t term
+              then f_next recipe
+              else raise Not_found
+            ) kb kbi
+
+    and explore_list f_next = function
+      | [] -> f_next []
+      | t::q ->
+          explore (fun r ->
+            explore_list (fun q_r ->
+              f_next (r::q_r)
+            ) q
+          ) t
+    in
+
+    try
+      explore (fun r ->
+        List.iter (fun v -> v.link <- NoLink) !accu_variables;
+        Some r
+      ) term
+    with Not_found -> None
+
+  let consequence_recipe kb ikb df recipe =
+
+    let accu_variables = ref [] in
+
+    let rec explore = function
+      | (RVar v) as r ->
+          begin match v.link_r with
+            | RXLink t -> t
+            | RNoLink ->
+                DF.link_recipe_variables accu_variables df;
+                explore r
+            | _ -> Config.internal_error "[data_structure.ml >> IK.consequence_recipe] Unexpected link."
+          end
+      | RFunc(f,args) -> Func(f,List.map explore args)
+      | CRFunc(i,_) -> get_term kb ikb i
+      | Axiom _ -> Config.internal_error "[data_structure.ml >> IK.consequence_recipe] The recipe given as input should be a context."
+
+    in
+
+    let t = explore recipe in
+
+    List.iter (fun v -> v.link_r <- RNoLink) !accu_variables;
+
+    t
+
 end
 
 (************************
@@ -682,12 +862,12 @@ end
 module UF = struct
 
   type state_ded_form =
+    | DedPattern of deduction_fact list * deduction_fact list
     | DedSolved of deduction_fact list
     | DedUnsolved of deduction_formula list
     | DedNone
 
   type state_eq_form =
-    | EqSolved of equality_fact
     | EqUnsolved of equality_formula
     | EqNone
 
@@ -705,21 +885,10 @@ module UF = struct
       eq_formula = EqNone
     }
 
-  let add_equality_fact uf fact =
-    Config.debug (fun () ->
-      if uf.eq_formula <> EqNone
-      then Config.internal_error "[Data_structure.ml >> add_equality_fact] There is already an equality formula or fact in UF."
-    );
-
-    { uf with eq_formula = EqSolved fact }
-
   let add_equality_formula uf form =
     Config.debug (fun () ->
       if uf.eq_formula <> EqNone
       then Config.internal_error "[Data_structure.ml >> add_equality_formula] There is already an equality formula in UF.";
-
-      if form.ef_equations = []
-      then Config.internal_error "[Data_structure.ml >> add_equality_formula] The formula should not be solved."
     );
 
     { uf with eq_formula = EqUnsolved form }
@@ -730,21 +899,7 @@ module UF = struct
       then Config.internal_error "[Data_structure.ml >> add_deduction_fact] There is already a deduction formula or fact in UF."
       );
 
-    { uf with ded_formula = DedSolved [fact] }
-
-  let add_deduction_formulas uf form_list =
-    Config.debug (fun () ->
-      if uf.ded_formula <> DedNone
-      then Config.internal_error "[Data_structure.ml >> UF.add_deduction_formulas] There is already a deduction formula in UF.";
-
-      if form_list = []
-      then Config.internal_error "[Data_structure.ml >> UF.add_deduction_formulas] The list of deduction formulas given as argument should not be empty.";
-
-      if List.exists (fun df -> df.df_equations = []) form_list
-      then Config.internal_error "[Data_structure.ml >> UF.add_deduction_formulas] The list should only contain unsolved deduction formulas."
-      );
-
-    { uf with ded_formula = DedUnsolved form_list }
+    { uf with ded_formula = DedPattern ([],[fact]) }
 
   let replace_deduction_formula uf form_list =
     Config.debug (fun () ->
@@ -757,15 +912,6 @@ module UF = struct
     );
     { ded_formula = DedUnsolved form_list; eq_formula = EqNone }
 
-  let replace_deduction_formula_by_fact uf fact =
-    Config.debug (fun () ->
-      match uf.ded_formula, uf.eq_formula with
-        | DedUnsolved _, EqNone -> ()
-        | _ -> Config.internal_error "[Data_structure.ml >> UF.replace_deduction_formula_by_fact] There should be deduction formula and no equality."
-    );
-    { ded_formula = DedSolved [fact]; eq_formula = EqNone }
-
-
   let set_no_deduction uf =
     Config.debug (fun () ->
       match uf.ded_formula, uf.eq_formula with
@@ -773,27 +919,6 @@ module UF = struct
         | _ -> Config.internal_error "[Data_structure.ml >> UF.set_no_deduction] There should be deduction formula."
     );
     { ded_formula = DedNone; eq_formula = EqNone }
-
-  let replace_deduction_facts uf fact_list =
-    Config.debug (fun () ->
-      match uf.ded_formula, uf.eq_formula with
-        | DedSolved [_], EqNone -> ()
-        | _ -> Config.internal_error "[Data_structure.ml >> UF.replace_deduction_facts] There should be only one deduction fact and no equality fact."
-    );
-    { ded_formula = DedSolved fact_list; eq_formula = EqNone}
-
-  let remove_one_deduction_fact uf = match uf.ded_formula with
-    | DedSolved [_] -> { uf with ded_formula = DedNone }
-    | DedSolved (_::q) -> { uf with ded_formula = DedSolved q }
-    | _ -> Config.internal_error "[data_structure.ml >> UF.remove_one_deduction_facts] There should be at least one deduction fact."
-
-  let remove_equality_fact uf =
-    Config.debug (fun () ->
-      match uf.eq_formula with
-        | EqSolved _ -> ()
-        | _ -> Config.internal_error "[data_structure.ml >> UF.remove_equality_fact] There should be an equality fact."
-    );
-    { uf with eq_formula = EqNone }
 
   let remove_unsolved_equality_formula uf =
     Config.debug (fun () ->
@@ -803,56 +928,121 @@ module UF = struct
     );
     { uf with eq_formula = EqNone }
 
+  let remove_head_deduction_fact uf = match uf.ded_formula with
+    | DedSolved [dfact] -> { uf with ded_formula = DedNone }
+    | DedSolved (dfact::q) -> { uf with ded_formula = DedSolved q }
+    | _ -> Config.internal_error "[data_structure.ml >> remove_head_deduction_fact] Unexpected case."
 
-  let filter_unsolved uf f = match uf.ded_formula with
-    | DedUnsolved form_list ->
-        let result = List.filter_unordered f form_list in
-        if result = []
-        then { uf with ded_formula = DedNone }
-        else { uf with ded_formula = DedUnsolved result }
-    | _ -> Config.internal_error "[data_structure.ml >> UF.filter_unsolved] There should be unsolved formula."
+  let validate_head_deduction_facts_for_pattern uf = match uf.ded_formula with
+    | DedPattern(checked,dfact::q_dfact) ->
+        let rec generate_dfact_list = function
+          | Var { link = TLink t; _ } -> generate_dfact_list t
+          | Func(f,args) when f.cat = Tuple && f.arity <> 0 ->
+              let projections = Symbol.get_projections f in
+              { uf with ded_formula = DedPattern(checked,List.fold_left2 (fun acc f_proj t -> { df_recipe = RFunc(f_proj,[dfact.df_recipe]); df_term = t}::acc) q_dfact projections args) }
+          | _ ->
+              { uf with ded_formula = if q_dfact = [] then DedSolved(dfact::checked) else DedPattern(dfact::checked,q_dfact) }
+        in
+        generate_dfact_list dfact.df_term
+    | _ -> Config.internal_error "[data_structure.ml >> UF.validate_head_deduction_facts_for_pattern] There should be at least one deduction fact to check for pattern."
 
-  (******** Testing ********)
+  let remove_head_unchecked_deduction_fact_for_pattern uf = match uf.ded_formula with
+    | DedPattern(checked,[_]) -> { uf with ded_formula = DedSolved checked }
+    | DedPattern(checked,_::q) -> { uf with ded_formula = DedPattern(checked,q) }
+    | _ -> Config.internal_error "[data_structure.ml >> UF.remove_head_unchecked_deduction_fact_for_pattern] Unexpected case."
 
-  let exists_equality_fact uf = match uf.eq_formula with
-    | EqSolved _ -> true
-    | _ -> false
-
-  let exists_deduction_fact uf = match uf.ded_formula with
-    | DedSolved _ -> true
-    | _ -> false
-
-  let exists_unsolved_equality_formula uf = match uf.eq_formula with
-    | EqUnsolved _ -> true
-    | _ -> false
 
   (******** Access ********)
 
-  let pop_deduction_fact uf = match uf.ded_formula with
-    | DedSolved (t::_) -> t
-    | _ -> Config.internal_error "[data_structure.ml >> UF.pop_deduction_fact] There should be at least one deduction fact."
-
-  let pop_deduction_fact_option uf = match uf.ded_formula with
-    | DedSolved (t::_) -> Some t
-    | _ -> None
-
-  let pop_equality_fact_option uf = match uf.eq_formula with
-    | EqSolved t -> Some t
-    | _ -> None
-
   let get_deduction_formula_option uf = match uf.ded_formula with
-    | DedUnsolved l -> Some l
-    | _ -> None
+    | DedUnsolved l -> Some l, false
+    | DedPattern _ -> None, true
+    | DedNone -> None, false
+    | _ -> Config.internal_error "[data_structure.ml >> UF.get_deduction_formula_option] The solved fact should be in the pattern to be checked"
 
   let get_equality_formula_option uf = match uf.eq_formula with
     | EqUnsolved t -> Some t
     | _ -> None
 
-  let number_of_deduction_facts uf = match uf.ded_formula with
-    | DedSolved l -> List.length l
-    | _ -> 0
+  let pop_deduction_fact_to_check_for_pattern uf = match uf.ded_formula with
+    | DedPattern(_,dfact::_) -> Some dfact
+    | _ -> None
+
+  let pop_and_remove_deduction_fact uf = match uf.ded_formula with
+    | DedSolved [dfact] -> dfact, { uf with ded_formula = DedNone }
+    | DedSolved (dfact::q) -> dfact, { uf with ded_formula = DedSolved q }
+    | _ -> Config.internal_error "[data_structure.ml >> pop_and_remove_deduction_fact] Unexpected case."
+
+  let pop_deduction_fact uf = match uf.ded_formula with
+    | DedSolved (dfact::_) -> dfact
+    | _ -> Config.internal_error "[data_structure.ml >> pop_deduction_fact] There should be at least one deduction fact."
+
+  (****** Testing ******)
+
+  let exists_deduction_fact uf = match uf.ded_formula with
+    | DedSolved _ -> true
+    | _ -> false
 
   (******* Instantiation *******)
 
-  let normalise_deductions uf = match uf.ded_formula with 
+  exception NFound of deduction_fact
+
+  let normalise_deduction_formula_to_fact uf form =
+    let tmp = !Variable.currently_linked in
+    Variable.currently_linked := [];
+
+    List.iter (fun (v,t) -> Term.unify (Var v) t) form.df_equations;
+
+    let dfact = { form.df_head with df_term = Term.instantiate form.df_head.df_term } in
+
+    List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
+    Variable.currently_linked := tmp;
+
+    { uf with ded_formula = DedPattern ([],[dfact]) }
+
+  let normalise_deductions uf = match uf.ded_formula with
+    | DedUnsolved form_list ->
+        begin
+          try
+            let form_list' =
+              List.fold_left (fun acc form ->
+                let tmp = !Variable.currently_linked in
+                Variable.currently_linked := [];
+
+                try
+                  List.iter (fun (v,t) -> Term.unify (Var v) t) form.df_equations;
+
+                  let new_equations =
+                    List.fold_left (fun acc v -> match v.link with
+                      | TLink t when v.quantifier <> Universal -> (v,Term.instantiate t)::acc
+                      | _ -> acc
+                    ) [] !Variable.currently_linked
+                  in
+                  if new_equations = []
+                  then
+                    begin
+                      let dfact = { form.df_head with df_term = Term.instantiate form.df_head.df_term } in
+                      List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
+                      Variable.currently_linked := tmp;
+                      raise (NFound dfact)
+                    end
+                  else
+                    begin
+                      let head = { form.df_head with df_term = Term.instantiate form.df_head.df_term } in
+                      List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
+                      Variable.currently_linked := tmp;
+                      { df_head = head; df_equations = new_equations } :: acc
+                    end
+                with Term.Not_unifiable ->
+                  List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
+                  Variable.currently_linked := tmp;
+                  acc
+              ) [] form_list
+            in
+            if form_list' = []
+            then { uf with ded_formula = DedNone }
+            else { uf with ded_formula = DedUnsolved form_list' }
+          with NFound dfact -> { uf with ded_formula = DedPattern([],[dfact]) }
+        end
+    | _ -> uf
 end

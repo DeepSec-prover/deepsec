@@ -15,23 +15,13 @@ type deduction_fact =
     df_term : term;
   }
 
-type equality_fact =
-  {
-    ef_recipe1 : recipe;
-    ef_recipe2 : recipe;
-  }
-
 type deduction_formula =
   {
     df_head : deduction_fact;
     df_equations : (variable * term) list
   }
 
-type equality_formula =
-  {
-    ef_head : equality_fact;
-    ef_equations : (variable * term) list
-  }
+type equality_formula = (variable * term) list
 
 (** {2 {% Function on deduction and equality formulas %}}*)
 
@@ -73,6 +63,8 @@ module DF : sig
   val get_recipe_variables : t -> recipe_variable list
 
   val get_standard_recipe_variables : t -> recipe_variable list
+
+  val find_term : t -> term -> recipe_variable
 
   (** {3 Testing} *)
 
@@ -141,10 +133,24 @@ module IK : sig
   (** The empty set *)
   val empty : t
 
+  val add : t -> deduction_fact -> t
+
+  val get_last_term : t -> term
+
+  val get_term : K.t -> t -> int -> term
+
+  val get_nb_element_knowledge_base : K.t -> t -> int
+
+  val remove_last_entry : t -> t
+
   val find_unifier_with_recipe_with_stop : K.t -> t -> term -> int -> bool ref ->
     (bool -> recipe -> (unit -> unit) -> unit) ->
     (unit -> unit) ->
     unit
+
+  val consequence_term : K.t -> t -> DF.t -> term -> recipe option
+
+  val consequence_recipe : K.t -> t -> DF.t -> recipe -> term
 end
 
 (** {2 {% The set of unsolved formulas \texorpdfstring{$\USolved$}{UF} %}}*)
@@ -158,64 +164,49 @@ module UF : sig
   (** The empty set {% $\USolved$ %} *)
   val empty : t
 
-  (*(** [add_equality] {% $\USolved$~$\psi$%} [id] returns the set {% $\USolved \cup \{ \psi\}$. Note that we associate to $\psi$ the recipe equivalent id%} [id]. *)
-  val add_equality_formula : t -> equality_formula -> t
-
-  val add_equality_fact : t -> equality_fact -> t
-
-  (** [add_deduction] {% $\USolved$~$[\psi_1;\ldots;\psi_n]$ %} [id] returns the set {% $\USolved \cup \{ \psi_1,\ldots, \psi_n\}$. Note that we associate to $\psi_1,\ldots, \psi_n$ the same recipe equivalent id%} [id]. *)
-  val add_deduction_formulas : t -> deduction_formula list -> t
-  *)
-
   (** [add_deduction_fact uf dfact] adds the deduction fact [dfact] to [uf].
       There should not be any deduction fact in [uf]. *)
   val add_deduction_fact : t -> deduction_fact -> t
 
-  (*)
-  (** [filter fct UF p] returns the set with all the [fct] formulas in [UF] that satisfy predicate [p]. *)
-  val filter_unsolved : t -> (deduction_formula -> bool) -> t
-
-  val remove_one_deduction_fact : t -> t
-
-  val remove_equality_fact : t -> t
-  *)
+  val add_equality_formula : t -> equality_formula -> t
 
   (* [remove_unsolved_equality_formula uf] repmove the unsolved formula from [uf].
      [uf] should contain unsolved equality formula. *)
   val remove_unsolved_equality_formula : t -> t
 
+  val remove_head_deduction_fact : t -> t
+
   (* [replace_deduction_formula uf dform_l] replaces the deduction formulas in [uf] by [dform_l].
      [uf] should already contain deduction formulas and no equality formulas and [dform_l] should not be empty. *)
   val replace_deduction_formula : t -> deduction_formula list -> t
-
-  val replace_deduction_formula_by_fact : t -> deduction_fact -> t
 
   (* [set_no_deduction uf] removes the unsolved formulas from [uf].
      [uf] should already contain deduction formulas and no equality formulas. *)
   val set_no_deduction : t -> t
 
+  val validate_head_deduction_facts_for_pattern : t -> t
+
+  val remove_head_unchecked_deduction_fact_for_pattern : t -> t
+
   (** {3 Access} *)
 
-  (*val pop_deduction_fact :  t -> deduction_fact
-
-  val pop_deduction_fact_option :  t -> deduction_fact option
-
-  val pop_equality_fact_option : t -> equality_fact option
-  *)
-
-  val get_deduction_formula_option :  t -> deduction_formula list option
+  val get_deduction_formula_option :  t -> deduction_formula list option * bool
 
   val get_equality_formula_option : t -> equality_formula option
 
-  (*val number_of_deduction_facts : t -> int
+  val pop_deduction_fact_to_check_for_pattern : t -> deduction_fact option
+
+  val pop_and_remove_deduction_fact : t -> deduction_fact * t
+
+  val pop_deduction_fact : t -> deduction_fact
 
   (** {3 Testing} *)
 
-  val exists_equality_fact : t -> bool
-
   val exists_deduction_fact : t -> bool
 
-  (** [solved_solved fct UF] checks if at least one unsolved [fct] formula in [UF] occurs. *)
-  val exists_unsolved_equality_formula : t -> bool
-  *)
+  (** {3 Instantiation} *)
+
+  val normalise_deduction_formula_to_fact : t -> deduction_formula -> t
+
+  val normalise_deductions : t -> t
 end

@@ -143,6 +143,7 @@ module Variable : sig
   val currently_linked : variable list ref
 
   val link : variable -> variable -> unit
+
   val link_term : variable -> term -> unit
 
   val auto_cleanup_with_reset : ((unit -> unit) -> unit) -> (unit -> unit) -> unit
@@ -193,9 +194,9 @@ module Recipe_Variable : sig
 
   val link_recipe : recipe_variable -> recipe -> unit
 
-  val auto_cleanup : ((unit -> unit) -> unit) -> (unit -> unit) -> unit
-
   val auto_cleanup_with_reset : ((unit -> unit) -> unit) -> (unit -> unit) -> unit
+
+  val auto_cleanup_with_reset_notail : (unit -> 'a) -> 'a
 end
 
 (** {3 Axioms} *)
@@ -235,6 +236,10 @@ module Name :  sig
   val set_up_counter : int -> unit
 
   val get_counter : unit -> int
+
+  val auto_deducible_cleanup_with_reset : ((unit -> unit) -> unit) -> (unit -> unit) -> unit
+
+  val set_deducible : name -> recipe -> unit
 end
 
 (** {2 Terms} *)
@@ -302,13 +307,13 @@ module Term : sig
       by the value of their links. *)
   val instantiate : term -> term
 
+  val replace_universal_to_existential : term -> unit
+
   exception Not_unifiable
 
   (** [unify t1 t2] unifies the terms [t1] and [t2]. The function likes the variables with [TLink].
       @raise Not_unifiable when [t1] and [t2] are not unifiable. *)
   val unify : term -> term -> unit
-  
-  val unify_and_replace_universal_to_existential : term -> term -> unit
 
   (** {3 Display} *)
 

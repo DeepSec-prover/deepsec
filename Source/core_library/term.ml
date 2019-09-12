@@ -245,22 +245,16 @@ module Recipe_Variable = struct
       f_next ()
     )
 
-  let auto_cleanup (f_cont:(unit -> unit) -> unit) (f_next:unit -> unit) =
-    if !currently_linked == []
-    then
-      f_cont (fun () ->
-        List.iter (fun v -> v.link_r <- RNoLink) !currently_linked;
-        currently_linked := [];
-        f_next ()
-      )
-    else
-      let tmp = !currently_linked in
-      let head = List.hd !currently_linked in
-      f_cont (fun () ->
-        unlink_until head !currently_linked;
-        currently_linked := tmp;
-        f_next ()
-      )
+  let auto_cleanup_with_reset_notail (f_cont:unit -> 'a) =
+    let tmp = !currently_linked in
+    currently_linked := [];
+
+    let r = f_cont () in
+
+    List.iter (fun v -> v.link_r <- RNoLink) !currently_linked;
+    currently_linked := tmp;
+
+    r
 
   (******* Renaming *******)
 
@@ -345,6 +339,35 @@ module Name = struct
 
     List.iter (fun n -> n.link_n <- NNoLink) !currently_linked;
     currently_linked := []
+
+  let auto_cleanup_with_reset (f_cont:(unit -> unit) -> unit) (f_next:unit -> unit) =
+    let tmp = !currently_linked in
+    currently_linked := [];
+
+    f_cont (fun () ->
+      List.iter (fun n -> n.link_n <- NNoLink) !currently_linked;
+      currently_linked := tmp;
+      f_next ()
+    )
+
+  let currently_deducible : name list ref = ref []
+
+  let auto_deducible_cleanup_with_reset (f_cont:(unit -> unit) -> unit) (f_next:unit -> unit) =
+    let tmp = !currently_deducible in
+    currently_deducible := [];
+
+    f_cont (fun () ->
+      List.iter (fun n -> n.deducible_n <- None) !currently_deducible;
+      currently_deducible := tmp;
+      f_next ()
+    )
+
+  let set_deducible n recipe =
+    Config.debug (fun () ->
+      if n.deducible_n <> None
+      then Config.internal_error "[term.ml >> set_deducible] Name is already deducible."
+    );
+    n.deducible_n <- Some recipe
 end
 
 (*************************************
@@ -645,16 +668,6 @@ module Term = struct
     | Func(_,args) -> List.exists (var_occurs v) args
     | _ -> false
 
-  let rec var_occurs_and_replace_universal_to_existential v = function
-    | Var v' when v == v' -> true
-    | Var {link = TLink t; _} -> var_occurs_and_replace_universal_to_existential v t
-    | Var ({ quantifier = Universal; _} as v') ->
-        let v'' = Variable.fresh_with_label Existential v'.label in
-        Variable.link_term v' (Var v'');
-        false
-    | Func(_,args) -> List.exists (var_occurs_and_replace_universal_to_existential v) args
-    | _ -> false
-
   (* We follow the links TLink. *)
   let rec quantified_var_occurs q = function
     | Var v when v.quantifier == q -> true
@@ -794,25 +807,6 @@ module Term = struct
     | Func(f1,args1), Func(f2,args2) when f1 == f2 -> List.iter2 unify args1 args2
     | _ -> raise Not_unifiable
 
-  let rec unify_and_replace_universal_to_existential t1 t2 = match t1, t2 with
-    | Var {link = TLink t ; _}, _ -> unify_and_replace_universal_to_existential t t2
-    | _, Var {link = TLink t; _} -> unify_and_replace_universal_to_existential t1 t
-    | Var ({ quantifier = Universal; _} as v), t
-    | t, Var ({ quantifier = Universal; _} as v) ->
-        let v' = Variable.fresh_with_label Existential v.label in
-        Variable.link_term v (Var v');
-        unify_and_replace_universal_to_existential (Var v') t
-    | Var v1, Var v2 when v1 == v2 -> ()
-    | Var v1, Var v2 ->
-        if v1.quantifier = Universal || (v1.quantifier = Existential && v2.quantifier = Free) || (v1.quantifier = v2.quantifier && v1.index < v2.index)
-        then (v1.link <- TLink t2; Variable.currently_linked := v1 :: !Variable.currently_linked)
-        else (v2.link <- TLink t1; Variable.currently_linked := v2 :: !Variable.currently_linked)
-    | Var v1, _ when not (var_occurs_and_replace_universal_to_existential v1 t2) -> v1.link <- TLink t2; Variable.currently_linked := v1 :: !Variable.currently_linked
-    | _, Var v2 when not (var_occurs_and_replace_universal_to_existential v2 t1) -> v2.link <- TLink t1; Variable.currently_linked := v2 :: !Variable.currently_linked
-    | Name n1, Name n2 when n1 == n2 -> ()
-    | Func(f1,args1), Func(f2,args2) when f1 == f2 -> List.iter2 unify_and_replace_universal_to_existential args1 args2
-    | _ -> raise Not_unifiable
-
   (******* Matching *******)
 
   exception No_match
@@ -833,6 +827,13 @@ module Term = struct
     | Func(f,args) -> Func(f,List.map instantiate args)
     | t -> t
 
+  let rec replace_universal_to_existential = function
+    | Var { link = TLink t; _} -> replace_universal_to_existential t
+    | Var v when v.quantifier = Universal ->
+        let v' = Variable.fresh Existential in
+        Variable.link_term v (Var v')
+    | Func(_,args) -> List.iter replace_universal_to_existential args
+    | _ -> ()
   (********** Display **********)
 
   let rec display out = function
