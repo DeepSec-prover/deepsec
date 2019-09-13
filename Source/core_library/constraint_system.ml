@@ -269,7 +269,7 @@ module MGS = struct
     with Term.Not_unifiable -> None
 
   let simple_of_rewrite csys eq_recipe index_kb index_skel =
-    let (recipe,term) = IK.get csys.knowledge csys.incremented_knowledge index_skel in
+    let (recipe,term) = IK.get csys.knowledge csys.incremented_knowledge index_kb in
     let skel = Rewrite_rules.get_skeleton index_skel in
     let symb = Recipe.root skel.Rewrite_rules.recipe in
 
@@ -284,7 +284,32 @@ module MGS = struct
         if Formula.T.Bot = eq_uni
         then None
         else
+          begin
+            Recipe_Variable.link_recipe skel.Rewrite_rules.pos_vars (CRFunc(index_kb,recipe));
 
+            let hist = List.find (fun hist -> hist.destructor == symb) csys.history_skeleton in
+            List.iter2 (fun x t -> Variable.link_term x t) hist.fst_vars skel.Rewrite_rules.lhs;
+            List.iter2 (fun x r -> Variable_Recipe.link_recipe x r) hist.snd_vars (Recipe.get_args recipe);
+
+            let eq_skeleton = Formula.M.instantiate_and_normalise hist.disequation_formula in
+
+            if Formula.M.Bot = eq_skeleton
+            then None
+            else
+              let simple_csys =
+                {
+                  simp_size_frame = csys.size_frame;
+                  simp_deduction_facts = csys.deduction_facts;
+                  simp_eq_term = eq_term;
+                  simp_eq_uniformity = eq_uni;
+                  simp_eq_recipe = eq_recipe;
+                  simp_knowledge = csys.knowledge;
+                  simp_incremented_knowledge = csys.incremented_knowledge;
+                  simp_eq_skeleton = eq_skeleton
+                }
+              in
+              Some(recipe,simple_csys,skel.Rewrite_rules.basic_deduction_facts)
+          end
     with Term.Not_unifiable -> None
 
 
