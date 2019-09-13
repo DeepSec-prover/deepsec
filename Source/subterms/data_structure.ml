@@ -1290,6 +1290,8 @@ module Eq = struct
       | MTop -> MTop
       | MBot -> MBot
       | MConj diseq_l ->
+          if List.length diseq_l > 5
+          then Printf.printf "Size History = %d\n" (List.length diseq_l);
           try
             let diseq_l' =
               List.fold_left (fun acc diseq ->
