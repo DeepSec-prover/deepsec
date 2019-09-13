@@ -139,6 +139,8 @@ module IK : sig
 
   val get_term : K.t -> t -> int -> term
 
+  val get : K.t -> t -> int -> recipe * term
+
   val get_nb_element_knowledge_base : K.t -> t -> int
 
   val remove_last_entry : t -> t

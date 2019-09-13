@@ -12,3 +12,9 @@ type skeleton =
     lhs : term list;
     rhs : term
   }
+
+(** {2 Access} *)
+
+val get_skeleton : int -> skeleton
+
+val get_compatible_rewrite_rules : int -> (term list * term) list

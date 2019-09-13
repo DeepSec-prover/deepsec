@@ -268,7 +268,7 @@ module MGS = struct
           }
     with Term.Not_unifiable -> None
 
-  let simple_of_rewrite csys eq_recipe index_kb index_skel =
+  let simple_of_skeleton csys eq_recipe index_kb index_skel =
     let (recipe,term) = IK.get csys.knowledge csys.incremented_knowledge index_kb in
     let skel = Rewrite_rules.get_skeleton index_skel in
     let symb = Recipe.root skel.Rewrite_rules.recipe in
@@ -287,11 +287,11 @@ module MGS = struct
           begin
             Recipe_Variable.link_recipe skel.Rewrite_rules.pos_vars (CRFunc(index_kb,recipe));
 
-            let hist = List.find (fun hist -> hist.destructor == symb) csys.history_skeleton in
+            let hist = List.find (fun hist -> hist.destructor == symb) csys.rule_data.history_skeleton in
             List.iter2 (fun x t -> Variable.link_term x t) hist.fst_vars skel.Rewrite_rules.lhs;
-            List.iter2 (fun x r -> Variable_Recipe.link_recipe x r) hist.snd_vars (Recipe.get_args recipe);
+            List.iter2 (fun x r -> Recipe_Variable.link_recipe x r) hist.snd_vars (Recipe.get_args recipe);
 
-            let eq_skeleton = Formula.M.instantiate_and_normalise hist.disequation_formula in
+            let eq_skeleton = Formula.M.instantiate_and_normalise hist.diseq in
 
             if Formula.M.Bot = eq_skeleton
             then None
@@ -308,10 +308,9 @@ module MGS = struct
                   simp_eq_skeleton = eq_skeleton
                 }
               in
-              Some(recipe,simple_csys,skel.Rewrite_rules.basic_deduction_facts)
+              Some(Recipe.instantiate_preserve_context recipe,simple_csys,skel.Rewrite_rules.basic_deduction_facts,skel.Rewrite_rules.snd_vars)
           end
     with Term.Not_unifiable -> None
-
 
   (***** Compute MGS *****)
 
@@ -643,16 +642,51 @@ module MGS = struct
 
   (* Invariant : Variables with the same type as the last axiom does not occur
      in sim_eq_recipe. *)
-  let compute_one_with_IK csys f_found_mgs f_bot =
+  let compute_one_with_IK csys infinite_basic_facts df_vars =
     let mgs_found = ref false in
+    let result_mgs = ref None in
+
+    let std_vars = match !(df_vars.std_vars) with
+      | None ->
+          let vars = DF.get_standard_recipe_variables csys.simp_deduction_facts in
+          df_vars.std_vars := Some vars;
+          vars
+      | Some vlist -> vlist
+    in
+
+    let df = DF.add_multiple_max_type csys.simp_deduction_facts infinite_basic_facts in
+
+    let generate_result eq_recipe exist_vars =
+      let subst_std = List.fold_left (fun acc v -> match v.link_r with RLink r -> (v,Recipe.instantiate_preserve_context r)::acc | _ -> acc) [] std_vars in
+      let subst_infinite = List.fold_left (fun acc v -> match v.link_r with RLink r -> (v,Recipe.instantiate_preserve_context r)::acc | _ -> acc) [] df_vars.infinite_vars in
+      let (exists_vars_std, exists_vars_infinite) =
+        List.fold_left (fun (acc_std,acc_infinite) v -> match v.link_r with
+          | RNoLink ->
+              if v.type_r = Recipe_Variable.infinite_type
+              then (acc_std, v::acc_infinite)
+              else (v::acc_std,acc_infinite)
+          | _ -> (acc_std,acc_infinite)
+        ) ([],[]) exist_vars
+      in
+      mgs_found := true;
+      result_mgs :=
+        Some
+          {
+            one_mgs_std_subst = subst_std;
+            one_mgs_infinite_subst = subst_infinite;
+            one_mgs_fresh_existential_vars = exists_vars_std;
+            one_mgs_fresh_existential_infinite_vars = exists_vars_infinite;
+            one_mgs_eq_recipe = eq_recipe
+          }
+    in
 
     let rec apply_rules df eq_term eq_rec eq_uni eq_skel exist_vars f_next_0 =
       Recipe_Variable.auto_cleanup_with_reset (fun f_next_1 ->
         match DF.compute_mgs_applicability df with
           | DF.Solved ->
-              mgs_found := true;
-              f_found_mgs { mgs_deduction_facts = df; mgs_eq_term = eq_term; mgs_eq_recipe = eq_rec; mgs_eq_uniformity =  eq_uni; mgs_eq_skeleton = eq_skel; mgs_fresh_existential_vars = exist_vars } f_next_1
-          | DF.UnifyVariables df ->
+              generate_result eq_rec exist_vars;
+              f_next_1 ()
+          | DF.UnifyVariables _ ->
               let eq_rec' = Formula.R.instantiate_and_normalise eq_rec in
               if eq_rec' = Formula.R.Bot
               then f_next_1 ()
@@ -662,8 +696,8 @@ module MGS = struct
                 then f_next_1 ()
                 else
                   begin
-                    mgs_found := true;
-                    f_found_mgs { mgs_deduction_facts = df; mgs_eq_term = eq_term; mgs_eq_recipe = eq_rec'; mgs_eq_uniformity =  eq_uni; mgs_eq_skeleton = eq_skel'; mgs_fresh_existential_vars = exist_vars } f_next_1
+                    generate_result eq_rec' exist_vars;
+                    f_next_1 ()
                   end
           | DF.UnsolvedFact(bfact,df',unif) ->
               let x = bfact.bf_var
@@ -671,7 +705,7 @@ module MGS = struct
 
               Config.debug (fun () ->
                 if x.type_r = Recipe_Variable.infinite_type
-                then Config.internal_error "[constraint_system.ml >> MGS.compute_one_with_IK] There should not be variable with infinite type when computing all mgs."
+                then Config.internal_error "[constraint_system.ml >> MGS.compute_one] There should not be variable with infinite type when computing all mgs."
               );
 
               match t with
@@ -682,7 +716,7 @@ module MGS = struct
                       if unif
                       then Formula.R.instantiate_and_normalise eq_rec
                       else
-                        if x.type_r = csys.simp_size_frame
+                        if x.type_r = Recipe_Variable.infinite_type
                         then eq_rec
                         else Formula.R.instantiate_and_normalise_one_variable_constructor x r eq_rec
                     in
@@ -706,7 +740,7 @@ module MGS = struct
                       if unif
                       then Formula.R.instantiate_and_normalise eq_rec
                       else
-                        if x.type_r = csys.simp_size_frame
+                        if x.type_r = Recipe_Variable.infinite_type
                         then eq_rec
                         else Formula.R.instantiate_and_normalise_one_variable_constructor x r eq_rec
                     in
@@ -740,7 +774,7 @@ module MGS = struct
                             if unif
                             then Formula.R.instantiate_and_normalise eq_rec
                             else
-                              if x.type_r = csys.simp_size_frame
+                              if x.type_r = Recipe_Variable.infinite_type
                               then eq_rec
                               else Formula.R.instantiate_and_normalise_one_variable x r eq_rec
                           in
@@ -753,7 +787,7 @@ module MGS = struct
                               else Formula.M.instantiate_and_normalise_one_variable x r eq_skel
                             in
                             if eq_skel' = Formula.M.Bot
-                            then f_next_1 ()
+                            then f_next_2 ()
                             else apply_rules df' eq_term eq_rec' eq_uni eq_skel' exist_vars f_next_2
                         end
                       else
@@ -768,13 +802,15 @@ module MGS = struct
                             begin
                               let diseq = Diseq.T.of_linked_variables !Variable.currently_linked in
                               acc_eq_uni := Formula.T.wedge diseq !acc_eq_uni;
+
+
                               Recipe_Variable.auto_cleanup_with_reset (fun f_next_3 ->
                                 Recipe_Variable.link_recipe x r;
                                 let eq_rec' =
                                   if unif
                                   then Formula.R.instantiate_and_normalise eq_rec
                                   else
-                                    if x.type_r = csys.simp_size_frame
+                                    if x.type_r = Recipe_Variable.infinite_type
                                     then eq_rec
                                     else Formula.R.instantiate_and_normalise_one_variable x r eq_rec
                                 in
@@ -806,7 +842,7 @@ module MGS = struct
                             if unif
                             then Formula.R.instantiate_and_normalise eq_rec
                             else
-                              if x.type_r = csys.simp_size_frame
+                              if x.type_r = Recipe_Variable.infinite_type
                               then eq_rec
                               else Formula.R.instantiate_and_normalise_one_variable_constructor x r eq_rec
                           in
@@ -823,17 +859,437 @@ module MGS = struct
                             else
                               let ded_fact_list = List.map2 (fun x' t' -> { bf_var = x'; bf_term = t' }) fresh_vars args in
                               let df'' = DF.add_multiple df' ded_fact_list in
-                              apply_rules df'' eq_term eq_rec' !acc_eq_uni  eq_skel' exists_vars' f_next_1
+                              apply_rules df'' eq_term eq_rec' !acc_eq_uni eq_skel' exists_vars' f_next_1
                         end
                     )
-                | _ -> Config.internal_error "[constraint_system.ml >> MGS.compute_one_with_IK] Cannot be a variable."
+                | _ -> Config.internal_error "[constraint_system.ml >> MGS.compute_one] Cannot be a variable."
       ) f_next_0
     in
 
-    apply_rules csys.simp_deduction_facts csys.simp_eq_term csys.simp_eq_recipe csys.simp_eq_uniformity csys.simp_eq_skeleton [] (fun () ->
-      if not !mgs_found
-      then f_bot ()
-    )
+    apply_rules df csys.simp_eq_term csys.simp_eq_recipe csys.simp_eq_uniformity csys.simp_eq_skeleton [] (fun () -> ());
+
+    !result_mgs
+
+  let compute_one_with_forced_recipe_on_IK ?(added_vars=true) csys infinite_basic_facts df_vars =
+
+    let mgs_found = ref false in
+    let result_mgs = ref None in
+
+    let std_vars = match !(df_vars.std_vars) with
+      | None ->
+          let vars = DF.get_standard_recipe_variables csys.simp_deduction_facts in
+          df_vars.std_vars := Some vars;
+          vars
+      | Some vlist -> vlist
+    in
+
+    let generate_result eq_recipe exist_vars =
+      let subst_std = List.fold_left (fun acc v -> match v.link_r with RLink r -> (v,Recipe.instantiate_preserve_context r)::acc | _ -> acc) [] std_vars in
+      let subst_infinite = List.fold_left (fun acc v -> match v.link_r with RLink r -> (v,Recipe.instantiate_preserve_context r)::acc | _ -> acc) [] df_vars.infinite_vars in
+      let (exists_vars_std, exists_vars_infinite) =
+        List.fold_left (fun (acc_std,acc_infinite) v -> match v.link_r with
+          | RNoLink ->
+              if v.type_r = Recipe_Variable.infinite_type
+              then (acc_std, v::acc_infinite)
+              else (v::acc_std,acc_infinite)
+          | _ -> (acc_std,acc_infinite)
+        ) ([],[]) exist_vars
+      in
+      mgs_found := true;
+      result_mgs :=
+        Some
+          {
+            one_mgs_std_subst = subst_std;
+            one_mgs_infinite_subst = subst_infinite;
+            one_mgs_fresh_existential_vars = exists_vars_std;
+            one_mgs_fresh_existential_infinite_vars = exists_vars_infinite;
+            one_mgs_eq_recipe = eq_recipe
+          }
+    in
+
+    let rec second_apply_rules df eq_term eq_rec eq_uni eq_skel exist_vars f_next_0 =
+      Recipe_Variable.auto_cleanup_with_reset (fun f_next_1 ->
+        match DF.compute_mgs_applicability df with
+          | DF.Solved ->
+              generate_result eq_rec exist_vars;
+              f_next_1 ()
+          | DF.UnifyVariables _ ->
+              let eq_rec' = Formula.R.instantiate_and_normalise eq_rec in
+              if eq_rec' = Formula.R.Bot
+              then f_next_1 ()
+              else
+                let eq_skel' = Formula.M.instantiate_and_normalise eq_skel in
+                if eq_skel' = Formula.M.Bot
+                then f_next_1 ()
+                else
+                  begin
+                    generate_result eq_rec' exist_vars;
+                    f_next_1 ()
+                  end
+          | DF.UnsolvedFact(bfact,df',unif) ->
+              let x = bfact.bf_var
+              and t = bfact.bf_term in
+
+              Config.debug (fun () ->
+                if x.type_r = Recipe_Variable.infinite_type
+                then Config.internal_error "[constraint_system.ml >> MGS.compute_one] There should not be variable with infinite type when computing all mgs."
+              );
+
+              match t with
+                | Func(f,[]) when f.public ->
+                    let r = RFunc(f,[]) in
+                    Recipe_Variable.link_recipe x r;
+                    let eq_rec' =
+                      if unif
+                      then Formula.R.instantiate_and_normalise eq_rec
+                      else
+                        if x.type_r = Recipe_Variable.infinite_type
+                        then eq_rec
+                        else Formula.R.instantiate_and_normalise_one_variable_constructor x r eq_rec
+                    in
+                    if eq_rec' = Formula.R.Bot
+                    then f_next_1 ()
+                    else
+                      let eq_skel' =
+                        if unif
+                        then Formula.M.instantiate_and_normalise eq_skel
+                        else Formula.M.instantiate_and_normalise_one_variable_constructor x r eq_skel
+                      in
+                      if eq_skel' = Formula.M.Bot
+                      then f_next_1 ()
+                      else second_apply_rules df' eq_term eq_rec' eq_uni eq_skel' exist_vars f_next_1
+                | Name { deducible_n = None ; _ } -> f_next_1 ()
+                | Name { deducible_n = Some r; _ } ->
+                    (* It indicates that the name occurs directly in the knowledge base or
+                       the incremented knowledge base. *)
+                    Recipe_Variable.link_recipe x r;
+                    let eq_rec' =
+                      if unif
+                      then Formula.R.instantiate_and_normalise eq_rec
+                      else
+                        if x.type_r = Recipe_Variable.infinite_type
+                        then eq_rec
+                        else Formula.R.instantiate_and_normalise_one_variable_constructor x r eq_rec
+                    in
+                    if eq_rec' = Formula.R.Bot
+                    then f_next_1 ()
+                    else
+                      let eq_skel' =
+                        if unif
+                        then Formula.M.instantiate_and_normalise eq_skel
+                        else Formula.M.instantiate_and_normalise_one_variable_constructor x r eq_skel
+                      in
+                      if eq_skel' = Formula.M.Bot
+                      then f_next_1 ()
+                      else second_apply_rules df' eq_term eq_rec' eq_uni eq_skel' exist_vars f_next_1
+                | Func(f,args) ->
+                    (* Compute_all is only used for the rule [sat],
+                       in which case incremented knowledge is empty. *)
+                    let acc_eq_uni = ref eq_uni in
+                    let found_identity = ref false in
+
+                    IK.find_unifier_with_recipe_with_stop csys.simp_knowledge csys.simp_incremented_knowledge t x.type_r mgs_found (fun is_identity r f_next_2 ->
+                      if is_identity
+                      then
+                        begin
+                          found_identity := true;
+                          (* We do not need to auto_clean the recipe variable cause this is the last
+                          case that will be applied. Hence, the cleanup will be handled by f_next_2 which
+                          will call f_next_1. *)
+                          Recipe_Variable.link_recipe x r;
+                          let eq_rec' =
+                            if unif
+                            then Formula.R.instantiate_and_normalise eq_rec
+                            else
+                              if x.type_r = Recipe_Variable.infinite_type
+                              then eq_rec
+                              else Formula.R.instantiate_and_normalise_one_variable x r eq_rec
+                          in
+                          if eq_rec' = Formula.R.Bot
+                          then f_next_2 ()
+                          else
+                            let eq_skel' =
+                              if unif
+                              then Formula.M.instantiate_and_normalise eq_skel
+                              else Formula.M.instantiate_and_normalise_one_variable x r eq_skel
+                            in
+                            if eq_skel' = Formula.M.Bot
+                            then f_next_2 ()
+                            else second_apply_rules df' eq_term eq_rec' eq_uni eq_skel' exist_vars f_next_2
+                        end
+                      else
+                        let eq_term' = Formula.T.instantiate_and_normalise eq_term in
+                        if eq_term' = Formula.T.Bot
+                        then f_next_2 ()
+                        else
+                          let eq_uni' = Formula.T.instantiate_and_normalise eq_uni in
+                          if eq_uni' = Formula.T.Bot
+                          then f_next_2 ()
+                          else
+                            begin
+                              let diseq = Diseq.T.of_linked_variables !Variable.currently_linked in
+                              acc_eq_uni := Formula.T.wedge diseq !acc_eq_uni;
+
+
+                              Recipe_Variable.auto_cleanup_with_reset (fun f_next_3 ->
+                                Recipe_Variable.link_recipe x r;
+                                let eq_rec' =
+                                  if unif
+                                  then Formula.R.instantiate_and_normalise eq_rec
+                                  else
+                                    if x.type_r = Recipe_Variable.infinite_type
+                                    then eq_rec
+                                    else Formula.R.instantiate_and_normalise_one_variable x r eq_rec
+                                in
+                                if eq_rec' = Formula.R.Bot
+                                then f_next_3 ()
+                                else
+                                  let eq_skel' =
+                                    if unif
+                                    then Formula.M.instantiate_and_normalise eq_skel
+                                    else Formula.M.instantiate_and_normalise_one_variable x r eq_skel
+                                  in
+                                  if eq_skel' = Formula.M.Bot
+                                  then f_next_3 ()
+                                  else second_apply_rules df' eq_term' eq_rec' eq_uni' eq_skel' exist_vars f_next_3
+                              ) f_next_2
+                            end
+                    ) (fun () ->
+                      if !mgs_found || !found_identity || not f.public
+                      then f_next_1 ()
+                      else
+                        begin
+                          let fresh_vars = Recipe_Variable.fresh_list Existential x.type_r f.arity in
+                          let exists_vars' = List.rev_append fresh_vars exist_vars in
+                          let r = RFunc(f,List.map (fun y -> RVar y) fresh_vars) in
+
+                          (* No need to auto cleanup the recipe variables as it will be done by f_next_1 *)
+                          Recipe_Variable.link_recipe x r;
+                          let eq_rec' =
+                            if unif
+                            then Formula.R.instantiate_and_normalise eq_rec
+                            else
+                              if x.type_r = Recipe_Variable.infinite_type
+                              then eq_rec
+                              else Formula.R.instantiate_and_normalise_one_variable_constructor x r eq_rec
+                          in
+                          if eq_rec' = Formula.R.Bot
+                          then f_next_1 ()
+                          else
+                            let eq_skel' =
+                              if unif
+                              then Formula.M.instantiate_and_normalise eq_skel
+                              else Formula.M.instantiate_and_normalise_one_variable_constructor x r eq_skel
+                            in
+                            if eq_skel' = Formula.M.Bot
+                            then f_next_1 ()
+                            else
+                              let ded_fact_list = List.map2 (fun x' t' -> { bf_var = x'; bf_term = t' }) fresh_vars args in
+                              let df'' = DF.add_multiple df' ded_fact_list in
+                              second_apply_rules df'' eq_term eq_rec' !acc_eq_uni eq_skel' exists_vars' f_next_1
+                        end
+                    )
+                | _ -> Config.internal_error "[constraint_system.ml >> MGS.compute_one] Cannot be a variable."
+      ) f_next_0
+    in
+
+    let rec forced_apply_rules eq_rec eq_skel exist_vars checked_infinite_bf to_check_infinite_bf f_next_0 = match to_check_infinite_bf with
+      | [] -> f_next_0
+      | bfact::q_bfact ->
+          match explore_term bfact.bf_term with
+            | Var v ->
+                if added_vars
+                then 
+
+            | Func(f,args) ->
+            | Name n ->
+    in
+
+    let rec first_apply_rules df eq_term eq_rec eq_uni eq_skel exist_vars f_next_0 =
+      Recipe_Variable.auto_cleanup_with_reset (fun f_next_1 ->
+        match DF.compute_mgs_applicability df with
+          | DF.Solved ->
+              generate_result eq_rec exist_vars;
+              f_next_1 ()
+          | DF.UnifyVariables _ ->
+              let eq_rec' = Formula.R.instantiate_and_normalise eq_rec in
+              if eq_rec' = Formula.R.Bot
+              then f_next_1 ()
+              else
+                let eq_skel' = Formula.M.instantiate_and_normalise eq_skel in
+                if eq_skel' = Formula.M.Bot
+                then f_next_1 ()
+                else
+                  begin
+                    generate_result eq_rec' exist_vars;
+                    f_next_1 ()
+                  end
+          | DF.UnsolvedFact(bfact,df',unif) ->
+              let x = bfact.bf_var
+              and t = bfact.bf_term in
+
+              Config.debug (fun () ->
+                if x.type_r = Recipe_Variable.infinite_type
+                then Config.internal_error "[constraint_system.ml >> MGS.compute_one] There should not be variable with infinite type when computing all mgs."
+              );
+
+              match t with
+                | Func(f,[]) when f.public ->
+                    let r = RFunc(f,[]) in
+                    Recipe_Variable.link_recipe x r;
+                    let eq_rec' =
+                      if unif
+                      then Formula.R.instantiate_and_normalise eq_rec
+                      else
+                        if x.type_r = Recipe_Variable.infinite_type
+                        then eq_rec
+                        else Formula.R.instantiate_and_normalise_one_variable_constructor x r eq_rec
+                    in
+                    if eq_rec' = Formula.R.Bot
+                    then f_next_1 ()
+                    else
+                      let eq_skel' =
+                        if unif
+                        then Formula.M.instantiate_and_normalise eq_skel
+                        else Formula.M.instantiate_and_normalise_one_variable_constructor x r eq_skel
+                      in
+                      if eq_skel' = Formula.M.Bot
+                      then f_next_1 ()
+                      else first_apply_rules df' eq_term eq_rec' eq_uni eq_skel' exist_vars f_next_1
+                | Name { deducible_n = None ; _ } -> f_next_1 ()
+                | Name { deducible_n = Some r; _ } ->
+                    (* It indicates that the name occurs directly in the knowledge base or
+                       the incremented knowledge base. *)
+                    Recipe_Variable.link_recipe x r;
+                    let eq_rec' =
+                      if unif
+                      then Formula.R.instantiate_and_normalise eq_rec
+                      else
+                        if x.type_r = Recipe_Variable.infinite_type
+                        then eq_rec
+                        else Formula.R.instantiate_and_normalise_one_variable_constructor x r eq_rec
+                    in
+                    if eq_rec' = Formula.R.Bot
+                    then f_next_1 ()
+                    else
+                      let eq_skel' =
+                        if unif
+                        then Formula.M.instantiate_and_normalise eq_skel
+                        else Formula.M.instantiate_and_normalise_one_variable_constructor x r eq_skel
+                      in
+                      if eq_skel' = Formula.M.Bot
+                      then f_next_1 ()
+                      else first_apply_rules df' eq_term eq_rec' eq_uni eq_skel' exist_vars f_next_1
+                | Func(f,args) ->
+                    (* Compute_all is only used for the rule [sat],
+                       in which case incremented knowledge is empty. *)
+                    let acc_eq_uni = ref eq_uni in
+                    let found_identity = ref false in
+
+                    IK.find_unifier_with_recipe_with_stop csys.simp_knowledge csys.simp_incremented_knowledge t x.type_r mgs_found (fun is_identity r f_next_2 ->
+                      if is_identity
+                      then
+                        begin
+                          found_identity := true;
+                          (* We do not need to auto_clean the recipe variable cause this is the last
+                          case that will be applied. Hence, the cleanup will be handled by f_next_2 which
+                          will call f_next_1. *)
+                          Recipe_Variable.link_recipe x r;
+                          let eq_rec' =
+                            if unif
+                            then Formula.R.instantiate_and_normalise eq_rec
+                            else
+                              if x.type_r = Recipe_Variable.infinite_type
+                              then eq_rec
+                              else Formula.R.instantiate_and_normalise_one_variable x r eq_rec
+                          in
+                          if eq_rec' = Formula.R.Bot
+                          then f_next_2 ()
+                          else
+                            let eq_skel' =
+                              if unif
+                              then Formula.M.instantiate_and_normalise eq_skel
+                              else Formula.M.instantiate_and_normalise_one_variable x r eq_skel
+                            in
+                            if eq_skel' = Formula.M.Bot
+                            then f_next_2 ()
+                            else first_apply_rules df' eq_term eq_rec' eq_uni eq_skel' exist_vars f_next_2
+                        end
+                      else
+                        let eq_term' = Formula.T.instantiate_and_normalise eq_term in
+                        if eq_term' = Formula.T.Bot
+                        then f_next_2 ()
+                        else
+                          let eq_uni' = Formula.T.instantiate_and_normalise eq_uni in
+                          if eq_uni' = Formula.T.Bot
+                          then f_next_2 ()
+                          else
+                            begin
+                              let diseq = Diseq.T.of_linked_variables !Variable.currently_linked in
+                              acc_eq_uni := Formula.T.wedge diseq !acc_eq_uni;
+
+
+                              Recipe_Variable.auto_cleanup_with_reset (fun f_next_3 ->
+                                Recipe_Variable.link_recipe x r;
+                                let eq_rec' =
+                                  if unif
+                                  then Formula.R.instantiate_and_normalise eq_rec
+                                  else
+                                    if x.type_r = Recipe_Variable.infinite_type
+                                    then eq_rec
+                                    else Formula.R.instantiate_and_normalise_one_variable x r eq_rec
+                                in
+                                if eq_rec' = Formula.R.Bot
+                                then f_next_3 ()
+                                else
+                                  let eq_skel' =
+                                    if unif
+                                    then Formula.M.instantiate_and_normalise eq_skel
+                                    else Formula.M.instantiate_and_normalise_one_variable x r eq_skel
+                                  in
+                                  if eq_skel' = Formula.M.Bot
+                                  then f_next_3 ()
+                                  else first_apply_rules df' eq_term' eq_rec' eq_uni' eq_skel' exist_vars f_next_3
+                              ) f_next_2
+                            end
+                    ) (fun () ->
+                      if !mgs_found || !found_identity || not f.public
+                      then f_next_1 ()
+                      else
+                        begin
+                          let fresh_vars = Recipe_Variable.fresh_list Existential x.type_r f.arity in
+                          let exists_vars' = List.rev_append fresh_vars exist_vars in
+                          let r = RFunc(f,List.map (fun y -> RVar y) fresh_vars) in
+
+                          (* No need to auto cleanup the recipe variables as it will be done by f_next_1 *)
+                          Recipe_Variable.link_recipe x r;
+                          let eq_rec' =
+                            if unif
+                            then Formula.R.instantiate_and_normalise eq_rec
+                            else
+                              if x.type_r = Recipe_Variable.infinite_type
+                              then eq_rec
+                              else Formula.R.instantiate_and_normalise_one_variable_constructor x r eq_rec
+                          in
+                          if eq_rec' = Formula.R.Bot
+                          then f_next_1 ()
+                          else
+                            let eq_skel' =
+                              if unif
+                              then Formula.M.instantiate_and_normalise eq_skel
+                              else Formula.M.instantiate_and_normalise_one_variable_constructor x r eq_skel
+                            in
+                            if eq_skel' = Formula.M.Bot
+                            then f_next_1 ()
+                            else
+                              let ded_fact_list = List.map2 (fun x' t' -> { bf_var = x'; bf_term = t' }) fresh_vars args in
+                              let df'' = DF.add_multiple df' ded_fact_list in
+                              first_apply_rules df'' eq_term eq_rec' !acc_eq_uni eq_skel' exists_vars' f_next_1
+                        end
+                    )
+                | _ -> Config.internal_error "[constraint_system.ml >> MGS.compute_one] Cannot be a variable."
+      ) f_next_0
+    in
 
   (**** Application of MGS ****)
 
@@ -1677,11 +2133,11 @@ module Rule = struct
     | RFunc(f,args) -> RFunc(f,List.map (instantiate_infinite_variables i_ref) args)
     | r -> r
 
-  let rec exploration_rewrite vars_df_ref prev_set = function
+  let rec exploration_rewrite eq_recipe vars_df_ref prev_set = function
     | [] -> None, prev_set
     | csys::q ->
         if csys.rule_data.skeletons_to_check = []
-        then exploration_rewrite vars_df_ref (csys::prev_set) q
+        then exploration_rewrite eq_recipe vars_df_ref (csys::prev_set) q
         else
           let rec explore skeletons_checked = function
             | [] ->
@@ -1691,24 +2147,44 @@ module Rule = struct
                     skeletons_checked = skeletons_checked
                   }
                 in
-                exploration_rewrite vars_df_ref ({ csys with rule_data = rule_data }::prev_set) q
+                exploration_rewrite eq_recipe vars_df_ref ({ csys with rule_data = rule_data }::prev_set) q
             | ((index_kb,index_skel)::q_skel) as all_skel ->
-                match MGS.simple_of_skeleton csys index_kb index_skel with
-                  | None -> explore skeletons_checked q_skel
-                  | Some(recipe,infinite_vars,simple_csys) ->
-                      let df_vars = { MGS.std_vars = vars_df_ref; MGS.infinite_vars = infinite_vars } in
-                      match compute_one_with_forced_recipe_on_IK simple_csys df_vars with
-                        | None -> explore ((index_kb,index_skel)::skeletons_checked) q_skel
-                        | Some mgs_data ->
-                            let new_recipe =
-                              Recipe_Variable.auto_cleanup_with_reset_notail (fun () ->
-                                List.iter (fun (v,r) -> Recipe_Variable.link_recipe v r) mgs_data.MGS.one_mgs_infinite_subst;
-                                let i_ref = ref 0 in
-                                instantiate_infinite_variables recipe
-                              )
+                let found_simple = ref false in
+                let result =
+                  Variable.auto_cleanup_with_reset_notail (fun () ->
+                    Recipe_Variable.auto_cleanup_with_reset_notail (fun () ->
+                      match MGS.simple_of_skeleton csys eq_recipe index_kb index_skel with
+                        | None -> None
+                        | Some(recipe,simple_csys,infinite_basic_facts,infinite_vars) ->
+                            let df_vars = { MGS.std_vars = vars_df_ref; MGS.infinite_vars = infinite_vars } in
+                            let result_compute_one =
+                              if K.belongs_to_knowledge index_kb
+                              then MGS.compute_one_with_forced_recipe_on_IK simple_csys infinite_basic_facts df_vars
+                              else MGS.compute_one_with_IK simple_csys infinite_basic_facts df_vars
                             in
-                            let rule_data = { csys.rule_data with skeletons_checked = skeletons_checked; skeletons_to_check = all_skel } in
-                            Some(index_skel,mgs_data,new_recipe,{ csys with rule_data = rule_data },q), prev_set
+                            match result_compute_one with
+                              | None ->
+                                  found_simple := true;
+                                  None
+                              | Some mgs_data -> Some(recipe,mgs_data)
+                    )
+                  )
+                in
+                match result with
+                  | None ->
+                      if !found_simple
+                      then explore ((index_kb,index_skel)::skeletons_checked) q_skel
+                      else explore skeletons_checked q_skel
+                  | Some(recipe,mgs_data) ->
+                      let new_recipe =
+                        Recipe_Variable.auto_cleanup_with_reset_notail (fun () ->
+                          List.iter (fun (v,r) -> Recipe_Variable.link_recipe v r) mgs_data.MGS.one_mgs_infinite_subst;
+                          let i_ref = ref 0 in
+                          instantiate_infinite_variables i_ref recipe
+                        )
+                      in
+                      let rule_data = { csys.rule_data with skeletons_checked = skeletons_checked; skeletons_to_check = all_skel } in
+                      Some(index_skel,mgs_data,new_recipe,{ csys with rule_data = rule_data },q), prev_set
           in
           explore csys.rule_data.skeletons_checked csys.rule_data.skeletons_to_check
 end

@@ -668,7 +668,6 @@ module K = struct
     in
 
     consequence eq_uni r
-
 end
 
 (* Incremented knowledge base *)
@@ -708,6 +707,17 @@ module IK = struct
       let rec explore i = function
         | [] -> Config.internal_error "[data_structure.ml >> IK.get_deduction_fact] Invalid index."
         | elt::_ when i = 0 -> elt.term
+        | _::q -> explore (i-1) q
+      in
+      explore (kb.K.size + ikb.size - 1 - index) ikb.data
+
+  let get kb ikb index =
+    if index < kb.K.size
+    then kb.K.data.(index).K.recipe, kb.K.data.(index).K.term
+    else
+      let rec explore i = function
+        | [] -> Config.internal_error "[data_structure.ml >> IK.get_deduction_fact] Invalid index."
+        | elt::_ when i = 0 -> elt.recipe, elt.term
         | _::q -> explore (i-1) q
       in
       explore (kb.K.size + ikb.size - 1 - index) ikb.data
@@ -852,7 +862,6 @@ module IK = struct
     List.iter (fun v -> v.link_r <- RNoLink) !accu_variables;
 
     t
-
 end
 
 (************************
