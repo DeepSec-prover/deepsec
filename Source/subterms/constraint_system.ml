@@ -871,56 +871,113 @@ let simple_of_private csys ch =
     simp_Mixed_Eq = Eq.Mixed.top
   }
 
+let nb_positive = ref 0
+let nb_negative = ref 0
+
+type result_of_equality_constructor =
+  | NoEq
+  | NoIK
+  | Yes of recipe * simple
+
 let simple_of_equality_constructor csys symb term stored_cons =
   let args = get_args term in
+
+  let rec explore_IK t =
+    if is_variable t
+    then false
+    else if is_name t
+    then
+      try
+        IK.iter csys.ik (fun dfact ->
+          if Subst.is_unifiable [t,Fact.get_protocol_term dfact]
+          then raise Not_found;
+        );
+        false
+      with Not_found -> true
+    else
+      if Symbol.get_arity (root t) = 0
+      then false
+      else
+        let test_on_ik =
+          try
+            IK.iter csys.ik (fun dfact ->
+              if Subst.is_unifiable [t,Fact.get_protocol_term dfact]
+              then raise Not_found;
+            );
+            false
+          with Not_found -> true
+        in
+        if test_on_ik
+        then true
+        else
+          let args' = get_args t in
+          List.exists explore_IK args'
+  in
+
   if Eq.Mixed.is_top stored_cons.Tools.mixed_diseq
   then
-    let vars_snd = stored_cons.Tools.snd_vars in
-    let simple_recipe = apply_function symb (List.map of_variable vars_snd) in
+    if List.exists explore_IK args
+    then
+      begin
+        incr nb_positive;
+        let vars_snd = stored_cons.Tools.snd_vars in
+        let simple_recipe = apply_function symb (List.map of_variable vars_snd) in
 
-    let b_fct_list = List.map2 (fun x t -> BasicFact.create x t) vars_snd args in
+        let b_fct_list = List.map2 (fun x t -> BasicFact.create x t) vars_snd args in
 
-    let df_1 = List.fold_left DF.add csys.df b_fct_list in
+        let df_1 = List.fold_left DF.add csys.df b_fct_list in
 
-    let simple_csys =
-      {
-        simp_DF = df_1;
-        simp_EqFst = csys.eqfst;
-        simp_EqSnd = csys.eqsnd;
-        simp_SDF = csys.sdf;
-        simp_IK = csys.ik;
-        simp_Sub_Cons = csys.sub_cons;
-        simp_Mixed_Eq = Eq.Mixed.top
-      }
-    in
+        let simple_csys =
+          {
+            simp_DF = df_1;
+            simp_EqFst = csys.eqfst;
+            simp_EqSnd = csys.eqsnd;
+            simp_SDF = csys.sdf;
+            simp_IK = csys.ik;
+            simp_Sub_Cons = csys.sub_cons;
+            simp_Mixed_Eq = Eq.Mixed.top
+          }
+        in
 
-    Some(simple_recipe, simple_csys)
+        Yes(simple_recipe, simple_csys)
+      end
+    else (incr nb_negative;NoIK)
   else
     let fst_subst = Subst.create_multiple Protocol (List.map2 (fun x t -> x,t) stored_cons.Tools.fst_vars args) in
     let new_diseq = Eq.Mixed.apply stored_cons.Tools.mixed_diseq fst_subst Subst.identity in
     if Eq.Mixed.is_bot new_diseq
-    then None
+    then NoEq
     else
-      let vars_snd = stored_cons.Tools.snd_vars in
-      let simple_recipe = apply_function symb (List.map of_variable vars_snd) in
+      if List.exists explore_IK args
+      then
+        begin
+          incr nb_positive;
+          let vars_snd = stored_cons.Tools.snd_vars in
+          let simple_recipe = apply_function symb (List.map of_variable vars_snd) in
 
-      let b_fct_list = List.map2 (fun x t -> BasicFact.create x t) vars_snd args in
+          let b_fct_list = List.map2 (fun x t -> BasicFact.create x t) vars_snd args in
 
-      let df_1 = List.fold_left DF.add csys.df b_fct_list in
+          let df_1 = List.fold_left DF.add csys.df b_fct_list in
 
-      let simple_csys =
-        {
-          simp_DF = df_1;
-          simp_EqFst = csys.eqfst;
-          simp_EqSnd = csys.eqsnd;
-          simp_SDF = csys.sdf;
-          simp_IK = csys.ik;
-          simp_Sub_Cons = csys.sub_cons;
-          simp_Mixed_Eq = new_diseq
-        }
-      in
+          let simple_csys =
+            {
+              simp_DF = df_1;
+              simp_EqFst = csys.eqfst;
+              simp_EqSnd = csys.eqsnd;
+              simp_SDF = csys.sdf;
+              simp_IK = csys.ik;
+              simp_Sub_Cons = csys.sub_cons;
+              simp_Mixed_Eq = new_diseq
+            }
+          in
 
-      Some(simple_recipe, simple_csys)
+          if List.exists explore_IK args
+          then incr nb_positive
+          else incr nb_negative;
+
+          Yes(simple_recipe, simple_csys)
+        end
+      else (incr nb_negative;NoIK)
 
 let simple_of_equality_constructor_IK csys symb term =
   let args = get_args term in
@@ -2713,6 +2770,7 @@ module Rule = struct
           let rec sub_explore equality_constructor_checked = function
             | [] -> exploration_equality_constructor ({ csys with equality_constructor_checked = equality_constructor_checked; equality_constructor_to_checked = [] }::prev_set) q
             | id_sdf::q_id ->
+
                 let fact = K.get csys.sdf id_sdf in
                 let term = Fact.get_protocol_term fact in
 
@@ -2726,8 +2784,9 @@ module Rule = struct
                     then sub_explore equality_constructor_checked q_id
                     else
                       begin match simple_of_equality_constructor csys symb term stored_constructor with
-                        | None -> sub_explore equality_constructor_checked q_id
-                        | Some (simple_recipe,simple_csys) ->
+                        | NoEq -> sub_explore equality_constructor_checked q_id
+                        | NoIK -> sub_explore (id_sdf::equality_constructor_checked) q_id
+                        | Yes (simple_recipe,simple_csys) ->
                             match one_mgs simple_csys with
                               | None -> sub_explore (id_sdf::equality_constructor_checked) q_id
                               | Some (mgs,l_vars) ->
@@ -3203,7 +3262,7 @@ module Rule = struct
                 (id',id_skel)::acc
               ) csys.skeletons_checked csys.skeletons_checked_IK
             in
-            let equality_constructor_checked =
+            let equality_constructor_to_checked =
               List.fold_left (fun acc id ->
                 (List.assoc id assoc_list)::acc
               ) csys.equality_constructor_checked csys.equality_constructor_checked_IK
@@ -3216,7 +3275,7 @@ module Rule = struct
 
             { csys with
               skeletons_checked = skeletons_checked;
-              equality_constructor_checked = equality_constructor_checked;
+              equality_constructor_to_checked = equality_constructor_to_checked;
               skeletons_checked_IK = [];
               equality_constructor_checked_IK = [];
               ik = IK.empty;

@@ -92,6 +92,10 @@ type mgs
     set of most general unifier. The type%} [simple_constraint_system] represent the constraint systems that satisfiy these conditions. *)
 type simple
 
+val nb_positive : int ref
+
+val nb_negative : int ref
+
 (** [mgs] {% $\C$ returns a list of elements $(\Sigma,\sigma,\C')$ such that $\Sigma \in \mgs{\C}$, $\C' = \CApply{\Sigma}{\C}$
     and $\mguset{\C'} = \mguset{\C}\sigma$.%} *)
 val mgs : simple -> mgs list

@@ -171,6 +171,8 @@ let rec excecute_queries id = function
           end
     in
 
+    Printf.printf "\n\nNB Positive = %d; NB Negative = %d\n\n" !Constraint_system.nb_positive !Constraint_system.nb_negative;
+
     begin match result with
       | Standard Equivalence.Equivalent, running_time
       | Determinate Equivalence_determinate.Equivalent, running_time ->
