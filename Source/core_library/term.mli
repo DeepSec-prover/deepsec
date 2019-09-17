@@ -237,7 +237,11 @@ module Name :  sig
 
   val get_counter : unit -> int
 
+  val link : name -> name -> unit
+
   val auto_deducible_cleanup_with_reset : ((unit -> unit) -> unit) -> (unit -> unit) -> unit
+
+  val auto_cleanup_with_reset_notail : (unit -> 'a) -> 'a
 
   val set_deducible : name -> recipe -> unit
 end
@@ -314,6 +318,10 @@ module Term : sig
   (** [unify t1 t2] unifies the terms [t1] and [t2]. The function likes the variables with [TLink].
       @raise Not_unifiable when [t1] and [t2] are not unifiable. *)
   val unify : term -> term -> unit
+
+  (** [apply_renamings t] replaces the variables and names linked respectively with a VLink and NLink.
+      Warning: If there are variables linked with a TLink, the function does not go through. *)
+  val apply_renamings : term -> term
 
   (** {3 Display} *)
 

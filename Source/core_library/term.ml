@@ -362,6 +362,17 @@ module Name = struct
       f_next ()
     )
 
+  let auto_cleanup_with_reset_notail (f_cont:unit -> 'a) =
+    let tmp = !currently_linked in
+    currently_linked := [];
+
+    let r = f_cont () in
+
+    List.iter (fun n -> n.link_n <- NNoLink) !currently_linked;
+    currently_linked := tmp;
+
+    r
+
   let set_deducible n recipe =
     Config.debug (fun () ->
       if n.deducible_n <> None
@@ -710,6 +721,13 @@ module Term = struct
 
   (********* Renaming *********)
 
+  let rec apply_renamings = function
+    | Var { link = VLink v; _ } -> Var v
+    | Var v -> Var v
+    | Name { link_n = NLink n; _ } -> Name n
+    | Name n -> Name n
+    | Func(f,args) -> Func(f,List.map apply_renamings args)
+
   exception No_renaming
 
   (** In the following function, we assume that all variables are not linked
@@ -834,6 +852,8 @@ module Term = struct
         Variable.link_term v (Var v')
     | Func(_,args) -> List.iter replace_universal_to_existential args
     | _ -> ()
+
+
   (********** Display **********)
 
   let rec display out = function

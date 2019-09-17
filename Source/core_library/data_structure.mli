@@ -87,6 +87,8 @@ module DF : sig
   val compute_mgs_applicability : t -> mgs_applicability
 
   val remove_linked_variables : t -> t * basic_fact list * recipe_variable list
+
+  val link_recipe_variables : recipe_variable list ref -> t -> unit
 end
 
 (** {2 {% The set of deduction facts \texorpdfstring{$\Solved$}{SDF} %}}*)
@@ -103,6 +105,10 @@ module K : sig
 
   (** The empty set *)
   val empty : t
+
+  val size : t -> int
+
+  val get_term : t -> int -> term
 
   (** [find_unifier_with_recipe kb t ty f_continuation f_next] tries to unify [t] with
       every term of the knowledge base [kb]. When the unification is successul,
@@ -135,13 +141,21 @@ module IK : sig
 
   val add : t -> deduction_fact -> t
 
+  val get_next_index : t -> int
+
+  val get_previous_index_in_knowledge_base : K.t -> t -> int -> int option
+
+  val get_last_index : t -> int
+
+  val get_all_index : t -> int list
+
   val get_last_term : t -> term
 
   val get_term : K.t -> t -> int -> term
 
   val get : K.t -> t -> int -> recipe * term
 
-  val get_nb_element_knowledge_base : K.t -> t -> int
+  val remove : t -> int -> t
 
   val remove_last_entry : t -> t
 
@@ -149,6 +163,8 @@ module IK : sig
     (bool -> recipe -> (unit -> unit) -> unit) ->
     (unit -> unit) ->
     unit
+
+  val for_all_term : (term -> bool) -> t -> bool
 
   val consequence_term : K.t -> t -> DF.t -> term -> recipe option
 
@@ -169,6 +185,8 @@ module UF : sig
   (** [add_deduction_fact uf dfact] adds the deduction fact [dfact] to [uf].
       There should not be any deduction fact in [uf]. *)
   val add_deduction_fact : t -> deduction_fact -> t
+
+  val add_deduction_formulas : t -> deduction_formula list -> t
 
   val add_equality_formula : t -> equality_formula -> t
 
@@ -193,6 +211,8 @@ module UF : sig
   (** {3 Access} *)
 
   val get_deduction_formula_option :  t -> deduction_formula list option * bool
+
+  val get_unique_unchecked_deduction_fact :  t -> deduction_fact
 
   val get_equality_formula_option : t -> equality_formula option
 

@@ -91,3 +91,24 @@ and recipe =
   | RFunc of symbol * recipe list
   | RVar of recipe_variable
   | Axiom of int
+
+
+(**** Processes ****)
+
+type position = int
+
+type pattern =
+  | PatVar of variable
+  | PatEquality of term
+  | PatTuple of symbol * pattern list
+
+type process =
+  | Nil
+  | Output of term * term * process * position
+  | Input of term * pattern * process * position
+  | IfThenElse of term * term * process * process * position
+  | Let of pattern * term * process * process * position
+  | New of name * process * position
+  | Par of process list
+  | Bang of process list * position
+  | Choice of process * process * position

@@ -10,18 +10,50 @@ open Data_structure
 
 (** {2 Constraint systems} *)
 
+type rule_data
+
 (** {% Corresponds to the extended constraint system defined in~\citepaper{Definition}{def:extended constraint system}. Note that the constraint systems
     may contain some additional data of type ['a]. %}*)
-type 'a t
+type 'a t =
+  {
+    additional_data : 'a;
+
+    size_frame : int;
+
+    (* Deduction requirement *)
+
+    deduction_facts : DF.t;
+    non_deducible_terms : term list; (* List of terms that should not be deducible. *)
+
+    (* Knowledge base *)
+
+    knowledge : K.t;
+    incremented_knowledge : IK.t;
+
+    unsolved_facts : UF.t;
+
+    (* The formulae *)
+
+    eq_term : Formula.T.t;
+    eq_uniformity : Formula.T.t;
+
+    (* Original variables and names *)
+
+    original_substitution : (variable * term) list;
+
+    (* Data for rules *)
+    rule_data : rule_data
+  }
+
+type 'a set =
+  {
+    eq_recipe : Formula.R.t;
+    set : 'a t list
+  }
 
 (** The type [constraint_system] does not represents the unsatisfiable constraint system. Thus, when a function is able to detect an unsatisfiable
     constraint system, it raises the exception [Bot]. *)
 exception Bot
-
-(** {3 Access functions} *)
-
-(** Retreive the additional data contained in the contraint system. *)
-val get_additional_data : 'a t -> 'a
 
 (** {3 Generators} *)
 
@@ -48,3 +80,15 @@ val add_non_deducible_terms : 'a t -> term list -> 'a t
 
 (** Replace the additional data in the constraint system by the one given as argument. *)
 val replace_additional_data : 'a t -> 'b -> 'b t
+
+module Set : sig
+
+  val empty : 'a set
+end
+
+module Rule : sig
+
+  val apply_rules_after_input : bool -> ('a set -> (unit -> unit) -> unit) -> 'a set -> (unit -> unit) -> unit
+
+  val apply_rules_after_output : bool -> ('a set -> (unit -> unit) -> unit) -> 'a set -> (unit -> unit) -> unit
+end

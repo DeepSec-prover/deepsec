@@ -46,91 +46,6 @@ let instantiate_deduction_formula_to_fact form =
 ***       Deduction facts      ***
 **********************************)
 
-(*module DF2 = struct
-
-  module Var_Comp = struct
-    type t = recipe_variable
-    let compare = Recipe_Variable.order
-  end
-
-  module VarMap = Map.Make(Var_Comp)
-
-  type t = term VarMap.t
-
-  (******* Generation *******)
-
-  let empty : term VarMap.t = VarMap.empty
-
-  let add (df:t) b_fct =
-    Config.debug (fun () ->
-      try
-        let _ = VarMap.find b_fct.bf_var df in
-        Config.internal_error "[data_structure.ml >> DF.add] A basic deduction fact with the same second-order variable already exists."
-      with
-        | Not_found-> ()
-    );
-
-    VarMap.add b_fct.bf_var b_fct.bf_term df
-
-  let add_multiple (df:t) bfact_l = List.fold_left add df bfact_l
-
-  let add_multiple_max_type = add_multiple
-
-  let remove (df:t) x_snd =
-    Config.debug (fun () ->
-      try
-        let _ = VarMap.find x_snd df in
-        ()
-      with
-        | Not_found -> Config.internal_error "[data_structure.ml >> DF.remove] No basic deduction fact has the variable given in argument."
-    );
-
-    VarMap.remove x_snd df
-
-  let get_term (df:t) (x:recipe_variable) = VarMap.find x df
-
-  (******* Function for MGS *********)
-
-  type mgs_applicability =
-    | Solved
-    | UnifyVariables of t
-    | UnsolvedFact of basic_fact * t * bool (* [true] when there were also unification of variables *)
-
-  exception Found of basic_fact
-
-  let compute_mgs_applicability df =
-    let linked_vars = ref [] in
-    let vars_to_remove = ref [] in
-
-    let rec explore v t = match t with
-      | Var ({ link = NoLink ; _ } as x) ->
-          x.link <- XLink v;
-          linked_vars := x :: !linked_vars
-      | Var { link = XLink v'; _ } ->
-          (* We link v to v' *)
-          Recipe_Variable.link_recipe v (RVar v');
-          vars_to_remove := v :: !vars_to_remove
-      | Var { link = TLink t ; _ } -> explore v t
-      | Var _ -> Config.internal_error "[data_structure.ml >> DF.compute_mgs_applicability] Unexpected link."
-      | _ -> raise (Found { bf_var = v ; bf_term = t })
-    in
-
-    try
-      VarMap.iter explore df;
-      List.iter (fun v -> v.link <- NoLink) !linked_vars;
-      if !vars_to_remove = []
-      then Solved
-      else UnifyVariables(List.fold_left remove df !vars_to_remove)
-    with Found bfact ->
-      List.iter (fun v -> v.link <- NoLink) !linked_vars;
-      if !vars_to_remove = []
-      then UnsolvedFact(bfact,remove df bfact.bf_var,false)
-      else
-        let new_df = List.fold_left remove df (bfact.bf_var :: !vars_to_remove) in
-        UnsolvedFact(bfact,new_df,true)
-end
-*)
-
 module DF = struct
 
   type t = (int * basic_fact list) list
@@ -448,6 +363,10 @@ module K = struct
 
   let empty = { max_type_r = 0; size = 0; data = Array.make 0 dummy_entry }
 
+  let size kb = kb.size
+
+  let get_term kb index = kb.data.(index).term
+
   (* Iteration on the knowledge base *)
 
   let find_unifier_with_recipe_with_type kb t type_r f_continuation (f_next:unit->unit) =
@@ -675,58 +594,96 @@ module IK = struct
 
   type entry =
     {
+      id : int;
       recipe : recipe;
       term : term
     }
 
   type t =
     {
-      size : int;
+      index_counter : int;
       type_rec : int;
       data : entry list (* To be always kept ordered. The first element is the last added. *)
     }
 
-  let empty = { type_rec = 0; data = []; size = 0 }
+  let empty = { index_counter = 0; type_rec = 1; data = []}
+
+  let empty_after_merging_IK_and_K kb ikb =
+    { index_counter = kb.K.size; type_rec = ikb.type_rec + 1; data = [] }
 
   let add ikb dfact =
+    let index = ikb.index_counter in
     { ikb with
-      size = ikb.size + 1;
-      data = { recipe = dfact.df_recipe; term = dfact.df_term } :: ikb.data
+      index_counter = ikb.index_counter + 1;
+      data = { id = index; recipe = dfact.df_recipe; term = dfact.df_term } :: ikb.data
     }
+
+  let remove ikb index =
+    let rec explore = function
+      | [] -> Config.internal_error "[data_structure.ml >> IK.get_deduction_fact] Invalid index."
+      | elt::q when elt.id = index -> q
+      | elt::q -> elt::(explore q)
+    in
+
+    { ikb with data = explore ikb.data }
+
+  let remove_last_entry ikb = { ikb with data = List.tl ikb.data }
+
+  let get_next_index ikb = ikb.index_counter
 
   let get_last_term ikb = (List.hd ikb.data).term
 
-  let remove_last_entry ikb = { ikb with size = ikb.size - 1; data = List.tl ikb.data }
+  let get_last_index ikb = (List.hd ikb.data).id
 
-  let get_nb_element_knowledge_base kb ikb = kb.K.size + ikb.size
+  let get_all_index ikb = List.map (fun elt -> elt.id) ikb.data
+
+  let get_previous_index_in_knowledge_base kb ikb index =
+    if index = 0
+    then None
+    else
+      if index < kb.K.size
+      then Some(index - 1)
+      else
+        let rec explore = function
+          | [] -> Config.internal_error "[data_structure.ml >> get_previous_index_in_knowledge_base] The index should be part of IK at that point."
+          | [elt] ->
+              Config.debug (fun () ->
+                if elt.id <> index
+                then Config.internal_error "[data_structure.ml >> get_previous_index_in_knowledge_base] The index should be part of IK at that point (2)."
+              );
+              if kb.K.size = 0 then None else Some (kb.K.size - 1)
+          | elt1::elt2::_ when elt1.id = index -> Some(elt2.id)
+          | _::q -> explore q
+        in
+        explore ikb.data
 
   let get_term kb ikb index =
     if index < kb.K.size
     then kb.K.data.(index).K.term
     else
-      let rec explore i = function
+      let rec explore = function
         | [] -> Config.internal_error "[data_structure.ml >> IK.get_deduction_fact] Invalid index."
-        | elt::_ when i = 0 -> elt.term
-        | _::q -> explore (i-1) q
+        | elt::_ when elt.id = index -> elt.term
+        | _::q -> explore q
       in
-      explore (kb.K.size + ikb.size - 1 - index) ikb.data
+      explore ikb.data
 
   let get kb ikb index =
     if index < kb.K.size
     then kb.K.data.(index).K.recipe, kb.K.data.(index).K.term
     else
-      let rec explore i = function
+      let rec explore = function
         | [] -> Config.internal_error "[data_structure.ml >> IK.get_deduction_fact] Invalid index."
-        | elt::_ when i = 0 -> elt.recipe, elt.term
-        | _::q -> explore (i-1) q
+        | elt::_ when elt.id = index -> elt.recipe, elt.term
+        | _::q -> explore q
       in
-      explore (kb.K.size + ikb.size - 1 - index) ikb.data
+      explore ikb.data
 
   let find_unifier_with_recipe_with_stop kb ikb t type_r stop_ref f_continuation (f_next:unit->unit) = match compare type_r kb.K.max_type_r with
     | -1 -> K.find_unifier_with_recipe_with_stop_with_type kb t type_r stop_ref f_continuation f_next
     | 0 -> K.find_unifier_with_recipe_with_stop_no_type kb t stop_ref f_continuation f_next
     | _ ->
-        let rec explore i = function
+        let rec explore = function
           | [] -> f_next ()
           | entry :: q ->
               let tmp = !Variable.currently_linked in
@@ -743,40 +700,44 @@ module IK = struct
                 if !Variable.currently_linked = []
                 then
                   (* Identity substitution *)
-                  f_continuation true (CRFunc(i,entry.recipe)) (fun () ->
+                  f_continuation true (CRFunc(entry.id,entry.recipe)) (fun () ->
                     Variable.currently_linked := tmp;
                     f_next ()
                   )
                 else
-                  f_continuation false (CRFunc(i,entry.recipe)) (fun () ->
+                  f_continuation false (CRFunc(entry.id,entry.recipe)) (fun () ->
                     List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
                     Variable.currently_linked := tmp;
-                    if !stop_ref then f_next () else explore (i-1) q
+                    if !stop_ref then f_next () else explore q
                   )
               else
                 begin
                   List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
                   Variable.currently_linked := tmp;
-                  explore (i-1) q
+                  explore q
                 end
         in
 
         K.find_unifier_with_recipe_with_stop_no_type kb t stop_ref f_continuation (fun () ->
           if !stop_ref || type_r < ikb.type_rec
           then f_next ()
-          else explore (kb.K.size + ikb.size - 1) ikb.data
+          else explore ikb.data
         )
+
+  (* Testing *)
+
+  let for_all_term f_test ikb = List.for_all (fun e -> f_test e.term) ikb.data
 
   (* Consequence *)
 
   let find f_cont kb ikb =
 
-    let rec explore_ikb i = function
+    let rec explore_ikb = function
       | [] -> raise Not_found
       | entry::q ->
           try
-            f_cont (CRFunc(i,entry.recipe)) entry.term
-          with Not_found -> explore_ikb (i-1) q
+            f_cont (CRFunc(entry.id,entry.recipe)) entry.term
+          with Not_found -> explore_ikb q
     in
 
     let rec explore_k = function
@@ -790,7 +751,7 @@ module IK = struct
     try
       explore_k 0
     with Not_found ->
-      explore_ikb (kb.K.size + ikb.size - 1) ikb.data
+      explore_ikb ikb.data
 
   let consequence_term kb kbi df term =
 
@@ -806,7 +767,7 @@ module IK = struct
                 explore f_next (Var v)
             | _ -> Config.internal_error "[data_structure.ml >> IK.consequence_term] Unexpected link."
           end
-      | Name { deducible_n = Some r } -> f_next r
+      | Name { deducible_n = Some r; _ } -> f_next r
       | Name _ -> raise Not_found
       | Func(f,_) when f.arity = 0 && f.public -> f_next (RFunc(f,[]))
       | (Func(f,args_t)) as t ->
@@ -851,7 +812,12 @@ module IK = struct
                 explore r
             | _ -> Config.internal_error "[data_structure.ml >> IK.consequence_recipe] Unexpected link."
           end
-      | RFunc(f,args) -> Func(f,List.map explore args)
+      | RFunc(f,args) ->
+          Config.debug (fun () ->
+            if not (Symbol.is_constructor f)
+            then Config.internal_error "[data_structure.ml >> IK.consequence_recipe] Consequence should only be applied on context."
+          );
+          Func(f,List.map explore args)
       | CRFunc(i,_) -> get_term kb ikb i
       | Axiom _ -> Config.internal_error "[data_structure.ml >> IK.consequence_recipe] The recipe given as input should be a context."
 
@@ -902,6 +868,17 @@ module UF = struct
 
     { uf with eq_formula = EqUnsolved form }
 
+  let add_deduction_formulas uf form_list =
+    Config.debug (fun () ->
+      if uf.eq_formula <> EqNone
+      then Config.internal_error "[Data_structure.ml >> add_deduction_formulas] There is already a deduction formula or fact in UF.";
+
+      if form_list = []
+      then Config.internal_error "[Data_structure.ml >> add_deduction_formulas] The list should not be empty.";
+    );
+
+    { uf with ded_formula = DedUnsolved form_list }
+
   let add_deduction_fact uf fact =
     Config.debug (fun () ->
       if uf.ded_formula <> DedNone
@@ -938,8 +915,8 @@ module UF = struct
     { uf with eq_formula = EqNone }
 
   let remove_head_deduction_fact uf = match uf.ded_formula with
-    | DedSolved [dfact] -> { uf with ded_formula = DedNone }
-    | DedSolved (dfact::q) -> { uf with ded_formula = DedSolved q }
+    | DedSolved [_] -> { uf with ded_formula = DedNone }
+    | DedSolved (_::q) -> { uf with ded_formula = DedSolved q }
     | _ -> Config.internal_error "[data_structure.ml >> remove_head_deduction_fact] Unexpected case."
 
   let validate_head_deduction_facts_for_pattern uf = match uf.ded_formula with
@@ -968,6 +945,10 @@ module UF = struct
     | DedPattern _ -> None, true
     | DedNone -> None, false
     | _ -> Config.internal_error "[data_structure.ml >> UF.get_deduction_formula_option] The solved fact should be in the pattern to be checked"
+
+  let get_unique_unchecked_deduction_fact uf = match uf.ded_formula with
+    | DedPattern([],[dfact]) -> dfact
+    | _ -> Config.internal_error "[data_structure.ml >> UF.get_unique_unchecked_deduction_fact] There should be only one fact in the pattern to be checked"
 
   let get_equality_formula_option uf = match uf.eq_formula with
     | EqUnsolved t -> Some t

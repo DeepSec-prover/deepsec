@@ -441,6 +441,13 @@ module Formula = struct
       | Bot -> Bot
       | Conj diseq_l -> Conj (diseq::diseq_l)
 
+    let wedge_formula form1 form2 = match form1, form2 with
+      | Top, form'
+      | form', Top -> form'
+      | Bot, _
+      | _, Bot -> Bot
+      | Conj conj1, Conj conj2 -> Conj (List.rev_append conj1 conj2)
+
     let wedge_conjunction diseq_list = function
       | Top -> Conj diseq_list
       | Bot -> Bot
@@ -626,5 +633,11 @@ module Formula = struct
             then Top
             else Conj diseq_l'
           with Is_Bot -> Bot
+
+    let wedge diseq = function
+      | Top -> Conj [diseq]
+      | Bot -> Bot
+      | Conj diseq_l -> Conj (diseq::diseq_l)
+
   end
 end
