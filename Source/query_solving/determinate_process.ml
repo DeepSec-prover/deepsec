@@ -1307,7 +1307,8 @@ let apply_start_in snd_var a_conf_list f_apply f_continuation f_next =
       let acc_1 = explore a conf [] [] conf.sure_input_proc in
       let acc_2 = explore_mult_list a conf acc_1 [] conf.sure_input_mult_proc in
       acc_2::acc_list
-    ) [] a_conf_list in
+    ) [] a_conf_list
+  in
 
   let rec join_list a_list_list f_next_1 =
     Config.debug (fun () ->
@@ -1344,8 +1345,11 @@ let apply_start_in snd_var a_conf_list f_apply f_continuation f_next =
       match !label,!is_nil_input with
         | None, _ -> Config.internal_error "[process_determinate.ml >> apply_start_in] There should be some label."
         | Some l,false ->
-            f_continuation !a_list l (fun () -> join_list !prev_list_list f_next_1)
-        | _, true -> join_list !prev_list_list f_next_1
+            f_continuation !a_list l (fun () ->
+              join_list !prev_list_list f_next_1
+            )
+        | _, true ->
+              join_list !prev_list_list f_next_1
   in
 
   join_list a_list_list_to_join f_next
