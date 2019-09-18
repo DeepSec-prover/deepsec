@@ -69,6 +69,24 @@ exception Bot
 
 (********* Generators *********)
 
+let generate_history f =
+  let rec generate_vars fst_vars snd_vars = function
+    | 0 -> fst_vars, snd_vars
+    | n ->
+        let x_fst = Variable.fresh Existential in
+        let x_snd = Recipe_Variable.fresh Existential Recipe_Variable.infinite_type in
+        generate_vars (x_fst::fst_vars) (x_snd::snd_vars) (n-1)
+  in
+
+  let (fst_vars, snd_vars) = generate_vars [] [] (Symbol.get_arity f) in
+
+  {
+    destructor = f;
+    fst_vars = fst_vars;
+    snd_vars = snd_vars;
+    diseq = Formula.M.Top
+  }
+
 let empty data =
   {
     additional_data = data;
@@ -84,7 +102,7 @@ let empty data =
 
     rule_data =
       {
-        history_skeleton = [];
+        history_skeleton = List.fold_left (fun acc f -> if f.public then (generate_history f)::acc else acc) [] !Symbol.all_destructors;
         skeletons_K = ([],[]);
         skeletons_IK = ([],[]);
         equality_constructor_K = ([],[]);
@@ -384,7 +402,6 @@ module MGS = struct
     let (recipe,term) = IK.get csys.knowledge csys.incremented_knowledge index_kb in
     let skel = Rewrite_rules.get_skeleton index_skel in
     let symb = Recipe.root skel.Rewrite_rules.recipe in
-
     try
       Term.unify term skel.Rewrite_rules.pos_term;
 
@@ -401,8 +418,7 @@ module MGS = struct
 
             let hist = List.find (fun hist -> hist.destructor == symb) csys.rule_data.history_skeleton in
             List.iter2 (fun x t -> Variable.link_term x t) hist.fst_vars skel.Rewrite_rules.lhs;
-            List.iter2 (fun x r -> Recipe_Variable.link_recipe x r) hist.snd_vars (Recipe.get_args recipe);
-
+            List.iter2 (fun x r -> Recipe_Variable.link_recipe x r) hist.snd_vars (Recipe.get_args skel.Rewrite_rules.recipe);
             let eq_skeleton = Formula.M.instantiate_and_normalise_full hist.diseq in
 
             if Formula.M.Bot = eq_skeleton
@@ -423,7 +439,7 @@ module MGS = struct
                     simp_eq_skeleton = eq_skeleton
                   }
                 in
-                RSSSimple(Recipe.instantiate_preserve_context recipe,simple_csys,skel.Rewrite_rules.basic_deduction_facts,skel.Rewrite_rules.snd_vars)
+                RSSSimple(Recipe.instantiate_preserve_context skel.Rewrite_rules.recipe,simple_csys,skel.Rewrite_rules.basic_deduction_facts,skel.Rewrite_rules.snd_vars)
           end
     with Term.Not_unifiable -> RSSNone
 
@@ -1690,6 +1706,7 @@ module Rule = struct
                   last_term_list_ref := Some t_list;
                   t_list
             in
+            
             let csys_list =
               List.rev_map2 (fun csys last_term ->
                 let new_skeletons = List.map (fun index_skel -> (last_index,index_skel)) (Rewrite_rules.get_possible_skeletons_for_terms last_term) in
@@ -1886,6 +1903,7 @@ module Rule = struct
     | Unsolved of deduction_formula list
 
   let create_generic_skeleton_formula csys index_skel recipe =
+    print_string "create_generic_skeleton_formula\n";
     let lhs_recipe = Recipe.get_args recipe in
     let lhs_term = List.map (IK.consequence_recipe csys.knowledge csys.incremented_knowledge csys.deduction_facts) lhs_recipe in
 
@@ -2230,7 +2248,7 @@ module Rule = struct
                 let rule_data = { !rule_data_ref with equality_constructor_IK = (equality_constructor_checked,[]) } in
                 exploration_equality_constructor eq_recipe vars_df_ref ({csys with rule_data = rule_data}::checked_csys) q
           | index_kb::q_id ->
-              match K.get_term csys.knowledge index_kb with
+              match IK.get_term csys.knowledge csys.incremented_knowledge index_kb with
                 | Func(f,args) when f.public ->
                     let skeleton_cons = Rewrite_rules.get_skeleton_constructor f in
                     if Formula.M.Bot = skeleton_cons.Rewrite_rules.formula

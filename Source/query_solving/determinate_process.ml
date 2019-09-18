@@ -210,7 +210,7 @@ let clean_intermediate_process = function
         else INil
       in
 
-      explore p
+      IStart(explore p)
   | _ -> Config.internal_error "[Process_determinate.ml >> clean_simple_process] Unexpected case (2)."
 
 let rec do_else_branches_lead_to_improper_block after_in = function

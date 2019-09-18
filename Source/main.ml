@@ -4,7 +4,7 @@ open Types
 
 type result =
   (*| Standard of Equivalence.result_trace_equivalence*)
-  | Determinate of Equivalence_determinate.result_trace_equivalence
+  | Determinate of Determinate_equivalence.result_trace_equivalence
   (*| Session of Equivalence_session.result_analysis*)
 
 (******* Parsing *****)
@@ -73,7 +73,7 @@ let rec excecute_queries id = function
     flush_all ();
 
     let result =
-      if Determinate_process.is_strongly_action_determinate exproc1 && Determinate_process.is_strongly_action_determinate exproc2 && display_por_option ()
+      if Determinate_process.is_strongly_action_determinate proc1 && Determinate_process.is_strongly_action_determinate proc2 && display_por_option ()
       then
         begin
           (*if !Config.distributed
@@ -220,7 +220,8 @@ let process_file path =
     print_string "Executing the queries...\n";
     let l = excecute_queries 1 !Parser_functions.query_list in
     let nb_queries = List.length !Parser_functions.query_list in
-    print_index path nb_queries l
+    print_string "Verification completed!\n"
+    (*print_index path nb_queries l*)
   end;
   Parser_functions.reset_parser ()
 
@@ -252,10 +253,10 @@ let _ =
       "-distributed",
       Arg.Int( fun i -> Config.distributed := true; Distributed_equivalence.DistribEquivalence.local_workers i),
       "<n> Activate the distributed computing with n local workers");*)
-    (
+    (*(
       "-test",
       Arg.Int( fun i -> Equivalence_session.PartitionTree.test_starting_node := i),
-      "<n> Testing node from [i]-th node generated.");
+      "<n> Testing node from [i]-th node generated.");*)
     (*(
       "-distant_workers",
       Arg.Tuple(

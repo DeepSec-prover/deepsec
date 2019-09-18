@@ -410,7 +410,7 @@ let parse_rewrite_rule line env (lhs,rhs) = match lhs with
       then error_message line (Printf.sprintf "The identifier %s is already defined." s);
 
       let rhs' = parse_term env rhs in
-      if Term.Term.no_name rhs' && Term.Term.is_constructor rhs'
+      if Term.Term.does_not_contain_name rhs' && Term.Term.is_constructor rhs'
       then (s,[],rhs')
       else error_message line "The right-hand side of a rewrite rule should be a name-free constructor term."
   | FuncApp((s,line),args) ->
@@ -419,7 +419,7 @@ let parse_rewrite_rule line env (lhs,rhs) = match lhs with
 
       let (args',env') = parse_rewrite_rule_term_list env args in
       let rhs' = parse_term env' rhs in
-      if Term.no_axname rhs' && Term.is_constructor rhs'
+      if Term.Term.does_not_contain_name rhs' && Term.Term.is_constructor rhs'
       then (s,args',rhs')
       else error_message line "The right-hand side of a rewrite rule should be a name-free constructor term."
   | _ -> error_message line "The left-hand side of a rewrite rule cannot be a tuple."
@@ -448,7 +448,8 @@ let parse_functions env = function
         ) [lhs,rhs] (List.tl rw_rules)
       in
       let f = Term.Symbol.new_destructor ar public symb rw_rules' in
-      Term.Rewrite_rules.is_subterm_convergent_symbol line f;
+      (** TODO : Add again the testing of subterm convergence later *)
+      (*Term.Rewrite_rules.is_subterm_convergent_symbol line f;*)
       Env.add symb (Func f) env
 
 (****** Parse setting *******)
@@ -471,9 +472,9 @@ let parse_setting line sem =
 let query_list = ref []
 
 let parse_query env line = function
-  | Trace_Eq(proc_1,proc_2) -> query_list := (Types.Trace_Equivalence,parse_extended_process env proc_1, parse_extended_process env proc_2)::!query_list
-  | Sess_Eq(proc_1,proc_2) -> query_list := (Types.Session_Equivalence,parse_extended_process env proc_1, parse_extended_process env proc_2)::!query_list
-  | Sess_Incl(proc_1,proc_2) -> query_list := (Types.Session_Inclusion,parse_extended_process env proc_1, parse_extended_process env proc_2)::!query_list
+  | Trace_Eq(proc_1,proc_2) -> query_list := (Types.Trace_Equivalence,intermediate_process_of_process (parse_intermediate_process env proc_1), intermediate_process_of_process (parse_intermediate_process env proc_2))::!query_list
+  | Sess_Eq(proc_1,proc_2) -> query_list := (Types.Session_Equivalence,intermediate_process_of_process (parse_intermediate_process env proc_1), intermediate_process_of_process (parse_intermediate_process env proc_2))::!query_list
+  | Sess_Incl(proc_1,proc_2) -> query_list := (Types.Session_Inclusion,intermediate_process_of_process (parse_intermediate_process env proc_1), intermediate_process_of_process (parse_intermediate_process env proc_2))::!query_list
   | Obs_Eq(_,_) -> error_message line "Observational equivalence not implemented yet"
 
 (****** Parse declaration *******)

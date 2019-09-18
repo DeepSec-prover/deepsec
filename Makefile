@@ -43,11 +43,12 @@ DISTRIBUTED_ML = $(DISTRIBUTED_ML_NAME:%.ml=$(SOURCE)distributed/%.ml)
 PARSER_ML_NAME = parser_functions.ml grammar.ml lexer.ml
 PARSER_ML = $(PARSER_ML_NAME:%.ml=$(SOURCE)parser/%.ml)
 
-ALL_ML = $(SOURCE)core_library/config.ml $(SOURCE)core_library/types.mli $(CORE_ML) $(QUERY_SOLVING_ML) $(PARSER_ML) $(SOURCE)main.ml 
+ALL_ML = $(SOURCE)core_library/config.ml $(SOURCE)core_library/types.mli $(CORE_ML) $(QUERY_SOLVING_ML) $(PARSER_ML) $(SOURCE)main.ml
 
  #$(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)main.ml $(SOURCE)distributed/worker.ml $(SOURCE)distributed/manager.ml
 
-EXE_MAIN_ML = $(SOURCE)core_library/config.ml $(CORE_ML) $(QUERY_SOLVING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)main.ml
+#EXE_MAIN_ML = $(SOURCE)core_library/config.ml $(CORE_ML) $(QUERY_SOLVING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)main.ml
+EXE_MAIN_ML = $(SOURCE)core_library/config.ml $(CORE_ML) $(QUERY_SOLVING_ML) $(PARSER_ML) $(SOURCE)main.ml
 EXE_WORKER_ML = $(SOURCE)core_library/config.ml $(CORE_ML) $(QUERY_SOLVING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)distributed/worker.ml
 EXE_MANAGER_ML = $(SOURCE)core_library/config.ml $(CORE_ML) $(QUERY_SOLVING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)distributed/manager.ml
 
@@ -70,8 +71,8 @@ all: .display_obj $(ALL_OBJ)
 	@echo
 	@echo The executables for distributed worker:
 	@echo
-	$(OCAMLOPT) -o worker_deepsec $(OCAMLFLAGS) $(EXE_WORKER_OBJ)
-	$(OCAMLOPT) -o manager_deepsec $(OCAMLFLAGS) $(EXE_MANAGER_OBJ)
+	#$(OCAMLOPT) -o worker_deepsec $(OCAMLFLAGS) $(EXE_WORKER_OBJ)
+	#$(OCAMLOPT) -o manager_deepsec $(OCAMLFLAGS) $(EXE_MANAGER_OBJ)
 	@echo
 	@grep -q "let debug_activated = false" Source/core_library/config.ml || echo WARNING : Debug mode is activated; echo
 	@grep -q "let test_activated = false" Source/core_library/config.ml || echo WARNING : Testing interface is activated; echo

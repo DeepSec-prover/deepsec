@@ -56,6 +56,6 @@ val error_message : int -> string -> 'a
 
 val parse_one_declaration : declaration -> unit
 
-val query_list : (Process.equivalence * Process.expansed_process * Process.expansed_process) list ref
+val query_list : (Types.equivalence * Types.process * Types.process) list ref
 
 val reset_parser : unit -> unit

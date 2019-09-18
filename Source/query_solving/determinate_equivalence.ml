@@ -70,6 +70,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
   match search_next_rule symb_proc.configuration with
     | RStart ->
+        print_string "apply start\n";
         let csys_list_for_start = ref [] in
 
         let else_branch =
@@ -167,6 +168,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
         Constraint_system.Rule.apply_rules_after_input false in_apply_final_test csys_set_for_start f_next
     | RStartIn ->
+        print_string "apply start-in\n";
         let var_X = Recipe_Variable.fresh Free equiv_pbl.size_frame in
 
         let apply_conf csys conf =
@@ -295,6 +297,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           Constraint_system.Rule.apply_rules_after_input false in_apply_final_test csys_set_for_input f_next_1
         ) f_next
     | RPosIn ->
+        print_string "apply pos_in\n";
         let var_X = Recipe_Variable.fresh Free equiv_pbl.size_frame in
 
         let csys_list_for_input = ref [] in
@@ -406,6 +409,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
         Constraint_system.Rule.apply_rules_after_input false in_apply_final_test csys_set_for_input f_next
     | RNegOut ->
+        print_string "apply neg_out\n";
         let axiom = equiv_pbl.size_frame + 1 in
 
         let csys_list_for_output = ref [] in
@@ -517,6 +521,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
         Constraint_system.Rule.apply_rules_after_output false out_apply_final_test csys_set_for_output f_next
     | RNothing ->
+        print_string "apply nothing\n";
         let csys_list = equiv_pbl.csys_set.Constraint_system.set in
         if csys_list = []
         then f_next ()

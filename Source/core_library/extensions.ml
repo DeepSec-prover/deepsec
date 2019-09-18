@@ -20,7 +20,7 @@ module List = struct
       | [] -> f_cont []
       | t::q ->
           let t' = f t in
-          explore (fun q' -> t'::q') q
+          explore (fun q' -> f_cont (t'::q')) q
     in
     explore (fun x -> x)
 

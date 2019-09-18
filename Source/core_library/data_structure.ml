@@ -555,6 +555,7 @@ module K = struct
   let consequence_uniform_recipe kb eq_uni r =
 
     let rec consequence eq_uni = function
+      | RVar { link_r = RLink r; _ } -> consequence eq_uni r
       | CRFunc(i,_) -> eq_uni, kb.data.(i).term, kb.data.(i).type_rec
       | RFunc(f,args_r) ->
           Config.debug (fun () ->
@@ -583,7 +584,7 @@ module K = struct
                 | Some eq_uni_2 -> eq_uni_2, t, type_r
             end
       | RVar ({ link_r = RXLink t; _ } as x) -> eq_uni, t, x.type_r
-      | _ -> Config.internal_error "[data_structure.ml >> K.consequence_uniform_recipe] Axioms should have been captured with context or variables should be linked."
+      | _ -> Config.internal_error "[data_structure.ml >> K.consequence_uniform_recipe] Axioms should have been captured with context."
 
     and consequence_list eq_uni = function
       | [] -> eq_uni, [], 0
@@ -613,7 +614,7 @@ module IK = struct
       data : entry list (* To be always kept ordered. The first element is the last added. *)
     }
 
-  let empty = { index_counter = 0; type_rec = 0w; data = []}
+  let empty = { index_counter = 0; type_rec = 0; data = []}
 
   let rec prepare_names_for_transfer index = function
     | [] -> ()
@@ -867,6 +868,7 @@ module IK = struct
     let rec explore = function
       | (RVar v) as r ->
           begin match v.link_r with
+            | RLink r' -> explore r'
             | RXLink t -> t
             | RNoLink ->
                 DF.link_recipe_variables accu_variables df;
