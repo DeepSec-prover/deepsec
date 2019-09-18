@@ -359,9 +359,15 @@ module Recipe : sig
 
   val instantiate_preserve_context : recipe -> recipe
 
+  val is_equal : recipe -> recipe -> bool
+
   exception Not_unifiable
 
   (** [unify r1 r2] unifies the recipes [r1] and [r2]. The function likes the variables with [RLink].
       @raise Not_unifiable when [r1] and [r2] are not unifiable. *)
   val unify : recipe -> recipe -> unit
+
+  exception No_match
+
+  val matching : recipe -> recipe -> unit
 end

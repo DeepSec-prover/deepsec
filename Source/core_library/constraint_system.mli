@@ -78,12 +78,15 @@ val add_disequations : 'a t -> Diseq.T.t list -> 'a t
 
 val add_non_deducible_terms : 'a t -> term list -> 'a t
 
-(** Replace the additional data in the constraint system by the one given as argument. *)
-val replace_additional_data : 'a t -> 'b -> 'b t
+val prepare_for_solving_procedure : 'a t -> 'a t
+
+val instantiate : 'a t -> 'a t
 
 module Set : sig
 
   val empty : 'a set
+
+  val find_representative : 'a set -> ('a t -> bool) -> 'a t * 'a t
 end
 
 module Rule : sig

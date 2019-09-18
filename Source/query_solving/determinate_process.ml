@@ -1,6 +1,5 @@
 open Types
 open Term
-open Display
 open Extensions
 open Formula
 
@@ -93,7 +92,7 @@ let is_strongly_action_determinate proc =
     | Output(Func(ch,[]),_,p,_) when ch.public ->
         let act_set = explore p in
         ActionSet.add (true,ch) act_set
-    | Input(Func(ch,[]),PatVar x,p,_) when ch.public ->
+    | Input(Func(ch,[]),PatVar _,p,_) when ch.public ->
         let act_set = explore p in
         ActionSet.add (false,ch) act_set
     | IfThenElse(_,_,p1,p2,_)
@@ -171,23 +170,6 @@ let intermediate_process_of_process proc =
 
   explore_process proc
 
-(*let configuration_of_process p =
-  let sdet_p = simple_process_of_process p in
-  let det_p = { label_p = [0]; proc = Start sdet_p } in
-
-  {
-    sure_input_proc = [det_p];
-    sure_output_proc = [];
-
-    sure_input_mult_proc = [];
-
-    sure_uncheked_skeletons = None;
-    unsure_proc = None;
-    focused_proc = None;
-    trace = []
-  }
-*)
-
 let rec exists_input_or_output = function
   | IStart _ -> Config.internal_error "[Process_determinate.ml >> exists_input_or_output] Unexpected case."
   | INil -> false
@@ -231,28 +213,34 @@ let clean_intermediate_process = function
       explore p
   | _ -> Config.internal_error "[Process_determinate.ml >> clean_simple_process] Unexpected case (2)."
 
-(*let clean_inital_configuration conf = match conf.sure_input_proc with
-  | [p] -> { conf with sure_input_proc = [{ p with proc = clean_simple_process p.proc}] }
-  | _ -> Config.internal_error "[Process_determinate.ml >> clean_inital_configuration] Unexpected case."*)
+let rec do_else_branches_lead_to_improper_block after_in = function
+  | SStart p ->  do_else_branches_lead_to_improper_block true p
+  | SNil -> true
+  | SOutput(_,_,p,_) -> do_else_branches_lead_to_improper_block false p
+  | SInput(_,_,p,_) -> do_else_branches_lead_to_improper_block true p
+  | SCondition(_,_,_,pthen,SNil,_) ->
+      if after_in
+      then do_else_branches_lead_to_improper_block true pthen
+      else false
+  | SCondition _ -> false
+  | SPar p_list -> List.for_all (do_else_branches_lead_to_improper_block false) p_list
+  | SNew(_,_,p,_) -> do_else_branches_lead_to_improper_block after_in p
+  | SParMult p_list -> List.for_all (fun (_,p) -> do_else_branches_lead_to_improper_block false p) p_list
 
-let rec exists_else_branch_intermediate_process after_in = function
-  | IStart p -> exists_else_branch_intermediate_process after_in p
-  | INil -> false
-  | IOutput(_,_,p,_) -> exists_else_branch_intermediate_process after_in p
-  | IInput(_,_,p,_) -> exists_else_branch_intermediate_process true p
-  | IIfThenElse(_,_,p1,INil,_) -> exists_else_branch_intermediate_process after_in p1
-  | IIfThenElse _ -> true
-  | ILet(_,_,_,p1,INil,_) -> exists_else_branch_intermediate_process after_in p1
-  | ILet _ -> true
-  | INew(_,p,_) -> exists_else_branch_intermediate_process after_in p
-  | IPar p_list ->
-      if after_in
-      then true
-      else List.exists (exists_else_branch_intermediate_process after_in) p_list
-  | IParMult p_list ->
-      if after_in
-      then true
-      else List.exists (fun (_,p) -> exists_else_branch_intermediate_process after_in p) p_list
+let rec no_else_branch_and_par = function
+  | SStart _
+  | SNil
+  | SInput _
+  | SOutput _ -> true
+  | SCondition(_,_,_,pthen,SNil,_) -> no_else_branch_and_par pthen
+  | SNew(_,_,p,_) -> no_else_branch_and_par p
+  | _ -> false
+
+let do_else_branches_lead_to_improper_block_conf conf = match conf.unsure_proc, conf.focused_proc with
+  | None, None -> true
+  | None, Some p -> no_else_branch_and_par p.proc
+  | Some _, None -> false
+  | _, _ -> Config.internal_error "[process_determinate.ml >> have_else_branch_or_par_conf] A configuration cannot be released and focused at the same time."
 
 (*let exists_else_branch_initial_configuration conf = match conf.sure_input_proc with
   | [p] -> exists_else_branch_simple_process false p.proc
@@ -679,8 +667,6 @@ let generate_initial_configurations proc1 proc2 =
   let p1 = clean_intermediate_process (IStart(intermediate_process_of_process proc1)) in
   let p2 = clean_intermediate_process (IStart(intermediate_process_of_process proc2)) in
 
-  let exists_else_branchs = exists_else_branch_intermediate_process false p1 || exists_else_branch_intermediate_process false p2 in
-
   let comp_p1,_ = compress_process SymbolSet.empty p1
   and comp_p2,_ = compress_process SymbolSet.empty p2 in
 
@@ -696,6 +682,8 @@ let generate_initial_configurations proc1 proc2 =
 
   let sp1 = simple_process_of_intermediate_process comp_p1' in
   let sp2 = simple_process_of_intermediate_process comp_p2' in
+
+  let execute_else_branchs = not (do_else_branches_lead_to_improper_block true sp1 && do_else_branches_lead_to_improper_block true sp2) in
 
   let det1 = { label_p = [0]; proc = sp1 } in
   let det2 = { label_p = [0]; proc = sp2 } in
@@ -726,7 +714,7 @@ let generate_initial_configurations proc1 proc2 =
     }
   in
 
-  conf1, conf2,exists_else_branchs
+  conf1, conf2,execute_else_branchs
 
 (**** Utilities ****)
 
@@ -1044,7 +1032,7 @@ let rec update_recipe_for_block max_var used_axioms = function
   | RFunc(_,args) -> List.iter (update_recipe_for_block max_var used_axioms) args
   | Axiom i -> used_axioms := add_axioms i !used_axioms
 
-let is_block_list_authorized b_list cur_block snd_subst = match b_list with
+let is_block_list_authorized b_list cur_block = match b_list with
   | [] -> true
   | _ ->
 
@@ -1090,37 +1078,30 @@ let create_block label =
 
 type gathering_normalise =
   {
-    original_substitution : (variable * term) list;
+    original_subst : (variable * term) list;
     disequations : Formula.T.t
   }
-
-let rec have_else_branch_or_par_simple_det = function
-  | SStart _
-  | SNil
-  | SOutput _
-  | SInput _-> false
-  | SCondition(_,_,_,p,SNil,_) -> have_else_branch_or_par_simple_det p
-  | SNew(_,_,p,_) -> have_else_branch_or_par_simple_det p
-  | _ -> true
-
-let have_else_branch_or_par_conf conf = match conf.unsure_proc, conf.focused_proc with
-  | None,None -> false
-  | None, Some p
-  | Some p, None -> have_else_branch_or_par_simple_det p.proc
-  | _, _ -> Config.internal_error "[process_determinate.ml >> have_else_branch_or_par_conf] A configuration cannot be released and focused at the same time."
 
 let rec normalise_simple_det_process proc else_branch orig_subst disequations f_continuation f_next = match proc with
   | SStart _
   | SNil
   | SOutput _
   | SInput _ ->
-      let gather = { original_substitution = orig_subst; disequations = disequations } in
+      let gather = { original_subst = orig_subst; disequations = disequations } in
       f_continuation gather proc f_next
   | SCondition(equation_list,diseq_form,fresh_vars,pthen,pelse,_) ->
       let rec apply_positive f_next_1 = function
         | [] -> f_next_1 ()
         | equation::q ->
             Variable.auto_cleanup_with_reset (fun f_next_2 ->
+              let orig_subst_1 =
+                List.fold_left (fun acc v ->
+                  let v' = Variable.fresh Existential in
+                  Variable.link_term v (Var v');
+                  (v,Var v') :: acc
+                ) orig_subst fresh_vars
+              in
+
               let is_unifiable =
                 try
                   List.iter (fun (v,t) -> Term.unify (Var v) t) equation;
@@ -1133,9 +1114,7 @@ let rec normalise_simple_det_process proc else_branch orig_subst disequations f_
                 let disequations_1 = Formula.T.instantiate_and_normalise disequations in
                 if Formula.T.Bot = disequations_1
                 then f_next_2 ()
-                else
-                  let orig_subst_1 = List.fold_left (fun acc v -> (v,Var v)::acc) orig_subst fresh_vars in
-                  normalise_simple_det_process pthen else_branch orig_subst_1 disequations_1 f_continuation f_next_2
+                else normalise_simple_det_process pthen else_branch orig_subst_1 disequations_1 f_continuation f_next_2
               else f_next_2 ()
             ) (fun () ->
               apply_positive f_next_1 q
@@ -1170,6 +1149,10 @@ let rec normalise_simple_det_process proc else_branch orig_subst disequations f_
         normalise_simple_det_process p else_branch ((x,Name n)::orig_subst) disequations f_continuation f_next_1
       ) f_next
   | SPar(p_list) ->
+      Config.debug (fun () ->
+        if not else_branch
+        then Config.internal_error "[determinate_process.ml >> normalise_simple_det_process] Process cannot have parallel with the parameter else_branch off."
+      );
       normalise_simple_det_process_list p_list else_branch orig_subst disequations (fun gather p_list_1 f_next_1 ->
         match p_list_1 with
           | [] -> f_continuation gather SNil f_next_1
@@ -1179,7 +1162,10 @@ let rec normalise_simple_det_process proc else_branch orig_subst disequations f_
   | SParMult p_list ->
       Config.debug (fun () ->
         if p_list = []
-        then Config.internal_error "[normalise_simple_det_process] The list should not be empty (1)."
+        then Config.internal_error "[normalise_simple_det_process] The list should not be empty (1).";
+
+        if not else_branch
+        then Config.internal_error "[determinate_process.ml >> normalise_simple_det_process] Process cannot have parallel with the parameter else_branch off (2)."
       );
       normalise_simple_det_channel_process_list p_list else_branch orig_subst disequations (fun gather p_list_1 f_next_1 ->
         Config.debug (fun () ->
@@ -1191,10 +1177,10 @@ let rec normalise_simple_det_process proc else_branch orig_subst disequations f_
       ) f_next
 
 and normalise_simple_det_process_list p_list else_branch orig_subst disequations f_continuation f_next = match p_list with
-  | [] -> f_continuation { original_substitution = orig_subst; disequations = disequations } [] f_next
+  | [] -> f_continuation { original_subst = orig_subst; disequations = disequations } [] f_next
   | p::q ->
       normalise_simple_det_process_list q else_branch orig_subst disequations (fun gather_1 q_1 f_next_1 ->
-        normalise_simple_det_process p else_branch gather_1.original_substitution gather_1.disequations (fun gather_2 proc f_next_2 ->
+        normalise_simple_det_process p else_branch gather_1.original_subst gather_1.disequations (fun gather_2 proc f_next_2 ->
           match proc with
             | SNil -> f_continuation gather_2 q_1 f_next_2
             | SPar p_list_1 -> f_continuation gather_2 (List.rev_append p_list_1 q_1) f_next_2
@@ -1203,10 +1189,10 @@ and normalise_simple_det_process_list p_list else_branch orig_subst disequations
       ) f_next
 
 and normalise_simple_det_channel_process_list p_list else_branch orig_subst disequations f_continuation f_next = match p_list with
-  | [] -> f_continuation { original_substitution = orig_subst; disequations = disequations } [] f_next
+  | [] -> f_continuation { original_subst = orig_subst; disequations = disequations } [] f_next
   | (ch,p)::q ->
       normalise_simple_det_channel_process_list q else_branch orig_subst disequations (fun gather_1 q_1 f_next_1 ->
-        normalise_simple_det_process p else_branch gather_1.original_substitution gather_1.disequations (fun gather_2 proc f_next_2 ->
+        normalise_simple_det_process p else_branch gather_1.original_subst gather_1.disequations (fun gather_2 proc f_next_2 ->
           f_continuation gather_2 ((ch,proc)::q_1) f_next_2
         ) f_next_1
       ) f_next
@@ -1223,7 +1209,7 @@ let normalise_configuration conf else_branch orig_subst f_continuation =
   );
 
   match conf.unsure_proc, conf.focused_proc with
-    | None, None -> f_continuation { original_substitution = orig_subst; disequations = Formula.T.Top } conf
+    | None, None -> f_continuation { original_subst = orig_subst; disequations = Formula.T.Top } conf
     | None, Some p ->
         normalise_det_process p else_branch orig_subst Formula.T.Top (fun gather p_1 f_next ->
           f_continuation gather { conf with focused_proc = Some p_1 };
@@ -1401,7 +1387,7 @@ let rec search_output_channel_process_list = function
         | Some(c,t,pos,rest_q) -> Some(c,t,pos,ch_p::rest_q)
       end
 
-let apply_neg_out ax conf =
+let apply_neg_out conf =
   let p = List.hd conf.sure_output_proc in
 
   match p.proc with

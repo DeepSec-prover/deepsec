@@ -20,7 +20,9 @@ val initial_label : label
 
 (** {3 Testing} *)
 
-val have_else_branch_or_par_conf : configuration -> bool
+val is_strongly_action_determinate : process -> bool
+
+val do_else_branches_lead_to_improper_block_conf : configuration -> bool
 
 val is_block_list_authorized : block list -> block -> bool
 
@@ -38,8 +40,8 @@ val is_equal_skeleton_conf : int -> configuration -> configuration -> configurat
 
 type gathering_normalise =
   {
-    original_substitution : (variable * term) list;
-    disequations : Formula.Diseq.T.t list
+    original_subst : (variable * term) list;
+    disequations : Formula.Formula.T.t
   }
 
 val normalise_configuration :
@@ -70,4 +72,4 @@ val apply_start_in :
 
 val apply_pos_in : recipe_variable -> configuration -> configuration * variable
 
-val apply_neg_out : int -> configuration -> configuration * term
+val apply_neg_out: configuration -> configuration * term

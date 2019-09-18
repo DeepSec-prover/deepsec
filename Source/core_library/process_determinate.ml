@@ -1511,7 +1511,7 @@ let rec have_else_branch_or_par_simple_det = function
   | _ -> true
 
 let have_else_branch_or_par_conf conf = match conf.unsure_proc, conf.focused_proc with
-  | None,None -> false
+  | None, None -> false
   | None, Some p
   | Some p, None -> have_else_branch_or_par_simple_det p.proc
   | _, _ -> Config.internal_error "[process_determinate.ml >> have_else_branch_or_par_conf] A configuration cannot be released and focused at the same time."

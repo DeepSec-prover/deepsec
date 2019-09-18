@@ -4,6 +4,8 @@ open Extensions
 open Term
 open Formula
 
+(****** Destructor skeletons *******)
+
 type skeleton =
   {
     pos_vars : recipe_variable;
@@ -42,15 +44,17 @@ let dummy_skeleton =
     no_history = false
   }
 
+(* Storage *)
+
 let storage_skeletons = ref (Array.make 0 { skeleton = dummy_skeleton; compatible_rewrite_rules = []})
 
-(****** Access *****)
+let skeletons_index_by_symbol = ref (Array.make 0 ([]:int list))
+
+(* Access *)
 
 let get_skeleton index = !storage_skeletons.(index).skeleton
 
 let get_compatible_rewrite_rules index = !storage_skeletons.(index).compatible_rewrite_rules
-
-(****** Tools *****)
 
 let generate_mixed_formulas_for_skeletons kb ikb df term_vars recipe_vars recipe =
   let accu_variables = ref [] in
@@ -128,6 +132,395 @@ let generate_mixed_formulas_for_skeletons kb ikb df term_vars recipe_vars recipe
   else
     Diseq.M.Disj(List.map2 (fun x t -> (x,t)) term_vars term_l, [])
 
+let rec get_possible_skeletons_for_terms = function
+  | Var { link = TLink t; _ } -> get_possible_skeletons_for_terms t
+  | Name _ -> []
+  | Func(f,_) -> (!skeletons_index_by_symbol).(f.index_s)
+  | Var _ -> Config.internal_error "[rewrite_rules.ml >> get_possible_skeletons_for_terms] The term should not be a variable."
+
+(* Generation of skeletons *)
+
+exception Found_normalise_recipe of recipe
+
+let rewrite_rule_recipe (lhs,rhs) =
+
+  let assoc_list = ref [] in
+
+  let rec explore_term = function
+    | Var v ->
+        let v_recipe =
+          try
+            List.assq v !assoc_list
+          with
+            | Not_found ->
+                let v_r = Recipe_Variable.fresh Existential Recipe_Variable.infinite_type in
+                assoc_list := (v,v_r) :: !assoc_list;
+                v_r
+        in
+        RVar v_recipe
+    | Func(f,args) -> RFunc(f,List.map explore_term args)
+    | _ -> Config.internal_error "[term.ml >> Rewrite_rules.rewrite_rule_recipe] A rewrite rule should not contain any name."
+  in
+
+  (List.map explore_term lhs, explore_term rhs)
+
+let rec normalise_recipe = function
+  | RFunc(f1,args) ->
+      begin match f1.cat with
+        | Constructor | Tuple ->
+            let args' =
+              List.fold_right (fun r r_list ->
+                let r' = normalise_recipe r in
+                r'::r_list
+              ) args []
+            in
+            RFunc(f1,args')
+        | Destructor (rw_rules) ->
+            let args' =
+              List.fold_right (fun r r_list ->
+                let r' = normalise_recipe r in
+                r'::r_list
+              ) args []
+            in
+            begin try
+              List.iter (fun (lhs,rhs) ->
+                let (lhs',rhs') = rewrite_rule_recipe (lhs,rhs) in
+
+                try
+                  List.iter2 Recipe.matching lhs' args';
+                  let rhs'' = Recipe.instantiate rhs' in
+                  List.iter (fun v -> v.link_r <- RNoLink) !Recipe_Variable.currently_linked;
+                  Recipe_Variable.currently_linked := [];
+                  raise (Found_normalise_recipe rhs'')
+                with Recipe.No_match ->
+                  List.iter (fun v -> v.link_r <- RNoLink) !Recipe_Variable.currently_linked;
+                  Recipe_Variable.currently_linked := [];
+              ) rw_rules;
+              RFunc(f1, args')
+            with Found_normalise_recipe r' -> r'
+            end
+      end
+  | r -> r
+
+let rec explore_skel_term (f_continuation:recipe_variable -> term -> recipe -> basic_fact list -> unit) explore_left term = match term with
+  | Var _ -> ()
+  | Func(f,_) when f.arity = 0 ->
+      if not f.public
+      then
+        begin
+          let x_snd = Recipe_Variable.fresh Existential Recipe_Variable.infinite_type in
+          let b_fct = { bf_var = x_snd; bf_term = term } in
+          f_continuation x_snd term (RVar x_snd) [b_fct]
+        end
+  | Func(f,args) ->
+      if f.public
+      then
+        explore_skel_term_list (fun x_snd x_term recipe_l b_fct_l ->
+          f_continuation x_snd x_term (RFunc(f,recipe_l)) b_fct_l
+        ) explore_left args
+      else ();
+
+      let x_snd = Recipe_Variable.fresh Existential Recipe_Variable.infinite_type in
+      let b_fct = { bf_var = x_snd; bf_term = term } in
+      f_continuation x_snd term (RVar x_snd) [b_fct]
+  | _ -> Config.internal_error "[term.ml >> Rewrite_rules.explore_skel_term] There should not be any names in the rewrite rules."
+
+and explore_skel_term_list f_continuation explore_left args =
+
+  let (r_list,fct_list) =
+    List.fold_right (fun t (acc_r,acc_fct) ->
+      let x_snd = Recipe_Variable.fresh Existential Recipe_Variable.infinite_type in
+      let b_fct = { bf_var = x_snd; bf_term = t } in
+      ((RVar x_snd)::acc_r, b_fct::acc_fct)
+    ) args ([],[])
+  in
+
+  let rec generate_from_term term = match term with
+    | Var _ ->
+        let x_snd = Recipe_Variable.fresh Existential Recipe_Variable.infinite_type in
+        let b_fct = { bf_var = x_snd; bf_term = term } in
+        RVar x_snd, [b_fct]
+    | Func(f,_) when not f.public ->
+        let x_snd = Recipe_Variable.fresh Existential Recipe_Variable.infinite_type in
+        let b_fct = { bf_var = x_snd; bf_term = term } in
+        RVar x_snd, [b_fct]
+    | Func(f,_) when f.arity = 0 -> RFunc(f,[]), []
+    | Func(f,args) ->
+        let args',bfact_list =
+          List.fold_right (fun t (acc,acc_bfct) ->
+            let (r,bfact_l) = generate_from_term t in
+            (r::acc,bfact_l@acc_bfct)
+          ) args ([],[])
+        in
+        RFunc(f,args'), bfact_list
+    | _ -> Config.internal_error "[term.ml >> Rewrite_rules.explore_skel_term_list] There should not be any names in the rewrite rules."
+  in
+
+  let rec go_through_left prev_r prev_bfct next_r next_bfct = function
+    | [] -> ()
+    | t::q ->
+        explore_skel_term (fun x_snd x_term recipe b_bfct_list ->
+          f_continuation x_snd x_term (prev_r @ (recipe :: List.tl next_r)) (prev_bfct @ b_bfct_list @ (List.tl next_bfct))
+        ) true t;
+
+        let (t_r,t_bfct) = generate_from_term t in
+        go_through_left (prev_r @ [t_r]) (t_bfct @ prev_bfct) (List.tl next_r) (List.tl next_bfct) q
+  in
+
+  let rec go_through_right prev_r prev_bfct next_r next_bfct = function
+    | [] -> ()
+    | t::q ->
+        explore_skel_term (fun x_snd x_term recipe b_bfct_list ->
+          f_continuation x_snd x_term (List.rev (prev_r @ (recipe :: List.tl next_r))) (prev_bfct @ b_bfct_list @ (List.tl next_bfct))
+        ) false t;
+
+        (* In the original code, we would not generate the full recipe but just a variable. *)
+        let (t_r,t_bfct) = generate_from_term t in
+        go_through_right (prev_r @ [t_r]) (t_bfct @ prev_bfct) (List.tl next_r) (List.tl next_bfct) q
+  in
+
+  if explore_left
+  then go_through_left [] [] r_list fct_list args
+  else go_through_right [] [] (List.rev r_list) (List.rev fct_list) (List.rev args)
+
+let check_inclusion_of_variables t t_list =
+
+  let rec set_vars = function
+    | Var { link = SLink; _ }  -> ()
+    | Var v ->
+        Variable.currently_linked := v :: !Variable.currently_linked;
+        v.link <- SLink
+    | Func(_,args) -> List.iter set_vars args
+    | _ -> Config.internal_error "[rewrite_rules.ml >> check_inclusion_of_variables] There should not be any name."
+  in
+
+  let rec explore_term = function
+    | Var { link = NoLink; _ } -> false
+    | Func(_,args) -> List.for_all explore_term args
+    | _ -> true
+  in
+
+  Variable.auto_cleanup_with_reset_notail (fun () ->
+    set_vars t;
+    List.for_all explore_term t_list
+  )
+
+let consequence_protocol_term (b_fct_list:basic_fact list) (term:term) =
+
+  let rec mem_list = function
+    | [] -> Config.internal_error "[term.ml >> Rewrite_rules.consequence_protocol_term] The list should not be empty"
+    | [t] ->
+        begin match mem_term t with
+          | None -> None
+          | Some r -> Some [r]
+        end
+    | t::q_t ->
+        begin match mem_term t with
+          | None -> None
+          | Some r ->
+            begin match mem_list q_t with
+              | None -> None
+              | Some l_r -> Some(r::l_r)
+            end
+        end
+
+  and mem_term pterm = match pterm with
+    | Func(f,_) when f.arity = 0 && f.public -> Some (RFunc(f,[]))
+    | Func(f,args_t) when f.public ->
+        begin match mem_list args_t with
+          | None ->
+              begin try
+                let b_fct = List.find (fun b_fct -> Term.is_equal pterm b_fct.bf_term) b_fct_list in
+                Some (RVar b_fct.bf_var)
+              with
+                | Not_found -> None
+              end
+          | Some t_r -> Some (RFunc(f,t_r))
+        end
+    | _ ->
+        begin try
+          let b_fct = List.find (fun b_fct -> Term.is_equal pterm b_fct.bf_term) b_fct_list in
+          Some (RVar b_fct.bf_var)
+        with
+          | Not_found -> None
+        end
+
+  in
+
+  mem_term term
+
+let rename_recipe_in_protocol_term (recipe:recipe) =
+  let assoc_list = ref [] in
+
+  let rec explore_term = function
+    | RVar v ->
+        let v_term =
+          try
+            List.assq v !assoc_list
+          with
+            | Not_found ->
+                let v_t = Variable.fresh Existential in
+                assoc_list := (v,v_t) :: !assoc_list;
+                v_t
+        in
+        Var v_term
+    | RFunc(f,args) -> Func(f,List.map explore_term args)
+    | _ -> Config.internal_error "[term.ml >> Rewrite_rules.rename_recipe_in_protocol_term] A rewrite rule should not contain any name."
+  in
+
+  explore_term recipe
+
+let initialise_skeletons () =
+  let accumulator = ref [] in
+
+  let rec optimise_skeletons skel prev_fct_list = function
+    | [] ->
+        let r_norm = normalise_recipe skel.recipe in
+        if Recipe.is_equal r_norm skel.recipe
+        then Some skel
+        else None
+    | fct :: q_fct ->
+        let reduced_b_fact_list = List.rev_append q_fct prev_fct_list in
+        begin match consequence_protocol_term reduced_b_fact_list fct.bf_term with
+          | Some r ->
+              if fct.bf_var == skel.pos_vars
+              then None
+              else
+                begin
+                  fct.bf_var.link_r <- RLink r;
+                  let new_recipe = Recipe.instantiate skel.recipe in
+                  fct.bf_var.link_r <- RNoLink;
+                  let new_skel = { skel with recipe = new_recipe; basic_deduction_facts = reduced_b_fact_list } in
+                  optimise_skeletons new_skel [] reduced_b_fact_list
+                end
+          | None -> optimise_skeletons skel (fct::prev_fct_list) q_fct
+        end
+  in
+
+  (* Generate optimised skeletons *)
+
+  let dest_without_proj = !Symbol.all_destructors in
+
+  List.iter (fun f ->
+    if f.public
+    then
+      match f.cat with
+        | Destructor rw_rules->
+            let accumulator_for_f = ref [] in
+            List.iter (fun (args,r) ->
+              let accu_left = ref [] in
+              let accu_right = ref [] in
+
+              let generate_skels explore_left accu =
+                explore_skel_term_list (fun x_snd x_term recipe_l b_fct_list ->
+                  let skel =
+                    {
+                      pos_vars = x_snd;
+                      pos_term = x_term;
+                      snd_vars = [];
+                      recipe = RFunc(f,recipe_l);
+                      basic_deduction_facts = b_fct_list;
+
+                      lhs = args;
+                      rhs = r;
+                      removal_allowed = false;
+                      no_history = false
+                    }
+                  in
+                  match optimise_skeletons skel [] b_fct_list with
+                    | None -> ()
+                    | Some skel' ->
+                        let (snd_vars, bfct_list) =
+                          List.fold_left (fun (acc_vars,acc_bfct) bfct ->
+                            if bfct.bf_var == skel'.pos_vars
+                            then (acc_vars,acc_bfct)
+                            else (bfct.bf_var::acc_vars,bfct::acc_bfct)
+                          ) ([],[]) skel'.basic_deduction_facts
+                        in
+                        accu := { skel' with snd_vars = snd_vars; basic_deduction_facts = bfct_list } :: !accu
+                ) explore_left args
+              in
+
+              generate_skels true accu_left;
+              generate_skels false accu_right;
+
+              if List.length !accu_left > List.length !accu_right
+              then accumulator_for_f := !accu_right @ !accumulator_for_f
+              else accumulator_for_f := !accu_left @ !accumulator_for_f
+            ) rw_rules;
+
+            begin match !accumulator_for_f with
+              | [skel] when check_inclusion_of_variables skel.pos_term skel.lhs ->
+                  accumulator := { skel with no_history = true } :: !accumulator
+              | _ -> accumulator := !accumulator_for_f @ !accumulator
+            end
+        | _ -> Config.internal_error "[term.ml >> Tools_Subterm.initialise_skeletons] There should not be any constructor function symbols in this list."
+    ) dest_without_proj;
+
+  (* Generate the array *)
+
+  let nb_skeletons = List.length !accumulator in
+
+  let skeleton_storage = Array.make nb_skeletons { skeleton = dummy_skeleton; compatible_rewrite_rules = [] } in
+
+  List.iteri (fun i skel ->
+    let p_term = rename_recipe_in_protocol_term skel.recipe in
+    let arg_term = Term.get_args p_term in
+    let f = Term.root p_term in
+    let compa_rw_rules = match f.cat with
+      | Destructor rw_rules ->
+          List.fold_left (fun acc (lhs,rhs) ->
+            Config.debug (fun () ->
+              if !Variable.currently_linked <> []
+              then Config.internal_error "[term.ml >> Rewrite_rules.initialise_skeletons] The list of linked variables for renaming should be empty";
+
+            );
+            let (lhs', rhs') =
+              Variable.auto_cleanup_with_reset_notail (fun () ->
+                let lhs' = List.map (Variable.rename_term Universal) lhs in
+                let rhs' = Variable.rename_term Universal rhs in
+                lhs',rhs'
+              )
+            in
+            Variable.auto_cleanup_with_reset_notail (fun () ->
+              try
+                List.iter2 Term.unify lhs' arg_term;
+                (lhs',rhs')::acc
+              with Term.Not_unifiable -> acc
+            )
+          ) [] rw_rules
+      | _ -> Config.internal_error "[term.ml >> Rewrite_rules.initialise_skeletons] There should not be any constructor function symbolc in this list (2)."
+    in
+    let stored_skel = { skeleton = skel; compatible_rewrite_rules = compa_rw_rules } in
+    skeleton_storage.(i) <- stored_skel
+  ) !accumulator;
+
+  storage_skeletons := skeleton_storage;
+
+  (* Generate the index *)
+
+  let rec retrieve_max_constructor_index acc = function
+    | [] -> acc
+    | f::q -> retrieve_max_constructor_index (max acc f.index_s)  q
+  in
+
+  let max_index = retrieve_max_constructor_index 0 !Symbol.all_constructors in
+
+  let new_skeletons_index_by_symbol = Array.make (max_index+1) [] in
+
+  List.iter (fun f ->
+    let acc = ref [] in
+    for i = 0 to nb_skeletons - 1 do
+      let skel = skeleton_storage.(i) in
+      match skel.skeleton.pos_term with
+        | Func(f',_) when f == f' -> acc := i :: !acc
+        | _ -> ()
+    done;
+    new_skeletons_index_by_symbol.(f.index_s) <- !acc
+  ) !Symbol.all_constructors;
+
+  skeletons_index_by_symbol := new_skeletons_index_by_symbol
+
 (****** Equality constructor *******)
 
 type skeleton_constructor =
@@ -147,6 +540,88 @@ let dummy_skeleton =
 let storage_skeletons_constructor = ref (Array.make 0 dummy_skeleton)
 
 let get_skeleton_constructor f = (!storage_skeletons_constructor).(f.index_s)
+
+let initialise_skeletons_constructor () =
+  let list_constructor =
+    List.filter_unordered (fun f ->
+      f.cat = Constructor && f.public && f.arity > 0
+    ) !Symbol.all_constructors
+  in
+
+  let list_single_skeletons =
+    let list_storage = Array.to_list !storage_skeletons in
+    List.filter (fun stored_skel ->
+      if List.length stored_skel.compatible_rewrite_rules = 1
+      then
+        let f = Recipe.root stored_skel.skeleton.recipe in
+        let f_c = Term.root stored_skel.skeleton.pos_term in
+        if f.public && f_c.cat = Constructor && f_c.public && f_c.arity > 0
+        then
+          let list_same_dest = List.filter (fun stored_skel' -> (Recipe.root stored_skel'.skeleton.recipe) == f) list_storage in
+          List.length list_same_dest = 1
+        else false
+      else false
+    ) list_storage
+  in
+
+  let rec explore_term f_next t = match t with
+    | Var _ ->
+        let x_snd = Recipe_Variable.fresh Universal Recipe_Variable.infinite_type in
+        f_next (RVar x_snd) [{ bf_var = x_snd; bf_term = t}]
+    | Func(f,args) ->
+        let x_snd = Recipe_Variable.fresh Universal Recipe_Variable.infinite_type in
+        f_next (RVar x_snd) [{ bf_var = x_snd; bf_term = t}];
+        if f.public && f.arity > 0
+        then
+          explore_term_list (fun recipe_list bfct_list ->
+            f_next (RFunc(f,recipe_list)) bfct_list
+          ) args
+    | _ -> Config.internal_error "[term.ml >> Rewrtie_rules.initialise_constructor] Rewrite rules should not contain names."
+
+  and explore_term_list f_next = function
+    | [] -> f_next [] []
+    | t::q ->
+        explore_term_list (fun recipe_q bfct_list_q ->
+          explore_term (fun recipe bfct_list ->
+            f_next (recipe::recipe_q) (List.rev_append bfct_list bfct_list_q)
+          ) t
+        ) q
+  in
+
+  let check_conditions skel args bfct_r bfct_list =
+    let test_1 =
+      List.for_all (fun bfct ->
+        match consequence_protocol_term bfct_list bfct.bf_term with
+          | None -> false
+          | Some _ -> true
+      ) skel.basic_deduction_facts
+    in
+    if test_1
+    then
+      List.for_all (fun t ->
+        match consequence_protocol_term (bfct_r::skel.basic_deduction_facts) t with
+          | None -> false
+          | Some _ -> true
+      ) args
+    else false
+  in
+
+  let list_found_symb = ref [] in
+
+  List.iter (fun stored_skel ->
+    let f_c = Term.root stored_skel.skeleton.pos_term in
+    let args = Term.get_args stored_skel.skeleton.pos_term in
+    let bfct_r = { bf_var = Recipe_Variable.fresh Universal Recipe_Variable.infinite_type; bf_term = stored_skel.skeleton.rhs } in
+    explore_term_list (fun recipe_list bfct_list ->
+      if check_conditions stored_skel.Rewrite_rules.skeleton args bfct_r bfct_list
+      then
+        begin
+          let pterm_uni = Variable.Renaming.rename_term Protocol Universal NoType stored_skel.Rewrite_rules.skeleton.Rewrite_rules.pos_term in
+          Variable.Renaming.cleanup Protocol;
+          list_found_symb := (f_c,get_args pterm_uni,recipe_list) :: !list_found_symb
+        end
+    ) args
+  ) list_single_skeletons;
 
 (****** Equality module rewrite rules ******)
 

@@ -117,8 +117,15 @@ let add_non_deducible_terms csys l =
   );
   { csys with non_deducible_terms = l }
 
-let replace_additional_data csys data =
-  { csys with additional_data = data }
+(*** Completion of solving procedure ***)
+
+let prepare_for_solving_procedure csys =
+    (** TODO : Need to implement this function *)
+    csys
+
+let instantiate csys =
+    (** TODO : Need to implement this function *)
+    csys
 
 (****************************************
 ***       Most general solutions      ***
@@ -1100,6 +1107,25 @@ module Set = struct
   (** The type of set of constraint systems. *)
 
   let empty = { eq_recipe = Formula.R.Top; set = [] }
+
+  let find_representative csys_set predicate =
+    let true_csys = ref None
+    and false_csys = ref None in
+
+    let rec explore = function
+      | [] -> raise Not_found
+      | csys :: q ->
+          begin match predicate csys, !true_csys, !false_csys with
+            | true, None, Some c -> csys, c
+            | false, Some c, None -> c, csys
+            | true, None, None -> true_csys := Some csys; explore q
+            | false, None, None -> false_csys := Some csys; explore q
+            | true, Some _, None
+            | false, None, Some _ -> explore q
+            | _,_,_ -> Config.internal_error "[constraint_system.ml >> Set.find_representative] Unexpected case."
+          end
+    in
+    explore csys_set.set
 end
 
 (****************************************
@@ -2292,12 +2318,6 @@ module Rule = struct
       f_continuation { csys_set with set = csys_list } f_next
 
   let equality_constructor f_continuation = initialise_equality_constructor (internal_equality_constructor f_continuation)
-
-  (*** Completion of solving procedure ***)
-
-  let complete_solving_rule f_continuation csys_set f_next =
-    (** TODO : Need to implement this function *)
-    csys_set
 
   (*** Main functions ***)
 
