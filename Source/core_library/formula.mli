@@ -74,6 +74,8 @@ module Formula : sig
     val instantiate_and_normalise : t -> t
 
     val instantiate_and_normalise_full : t -> t
+
+    val rename_and_instantiate : t -> t
   end
 
   module R : sig
@@ -110,6 +112,8 @@ module Formula : sig
     val instantiate_and_normalise_full : t -> t
 
     val wedge : Diseq.M.t -> t -> t
+
+    val rename_and_instantiate : t -> t
 
   end
 end

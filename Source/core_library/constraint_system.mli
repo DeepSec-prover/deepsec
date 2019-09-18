@@ -78,7 +78,7 @@ val add_disequations : 'a t -> Diseq.T.t list -> 'a t
 
 val add_non_deducible_terms : 'a t -> term list -> 'a t
 
-val prepare_for_solving_procedure : 'a t -> 'a t
+val prepare_for_solving_procedure : bool -> 'a t -> 'a t
 
 val instantiate : 'a t -> 'a t
 

@@ -129,6 +129,11 @@ module Diseq = struct
           Variable.currently_linked := [x];
           result
 
+    let rename_and_instantiate = function
+      | Top -> Top
+      | Bot -> Bot
+      | Disj disj -> Disj(List.map (fun (v,t) -> Variable.rename v, Term.rename_and_instantiate t) disj)
+
     (* Display *)
 
     let display out = function
@@ -422,6 +427,11 @@ module Diseq = struct
                   | R.Disj disj_r' -> Disj(disj_t',disj_r')
                 end
           end
+
+    let rename_and_instantiate = function
+      | Top -> Top
+      | Bot -> Bot
+      | Disj(disj_t,disj_r) -> Disj(List.map (fun (v,t) -> Variable.rename v, Term.rename_and_instantiate t) disj_t, disj_r)
   end
 end
 
@@ -508,6 +518,11 @@ module Formula = struct
             then Top
             else Conj diseq_l_1
           with Is_Bot -> Bot
+
+    let rename_and_instantiate = function
+      | Top -> Top
+      | Bot -> Bot
+      | Conj conj -> Conj (List.map Diseq.T.rename_and_instantiate conj)
   end
 
 
@@ -638,6 +653,11 @@ module Formula = struct
       | Top -> Conj [diseq]
       | Bot -> Bot
       | Conj diseq_l -> Conj (diseq::diseq_l)
+
+    let rename_and_instantiate = function
+      | Top -> Top
+      | Bot -> Bot
+      | Conj conj -> Conj (List.map Diseq.M.rename_and_instantiate conj)
 
   end
 end

@@ -337,6 +337,13 @@ module DF = struct
     in
 
     explore df
+
+  (******* Function for preparing the solving procedure *******)
+
+  let rename_and_instantiate (df:t) =
+    List.map (fun (i,bfact_list) ->
+      (i,List.map (fun bfact -> { bfact with bf_term = Term.rename_and_instantiate bfact.bf_term }) bfact_list)
+    ) df
 end
 
 (*********************************
@@ -606,10 +613,64 @@ module IK = struct
       data : entry list (* To be always kept ordered. The first element is the last added. *)
     }
 
-  let empty = { index_counter = 0; type_rec = 1; data = []}
+  let empty = { index_counter = 0; type_rec = 0w; data = []}
 
-  let empty_after_merging_IK_and_K kb ikb =
-    { index_counter = kb.K.size; type_rec = ikb.type_rec + 1; data = [] }
+  let rec prepare_names_for_transfer index = function
+    | [] -> ()
+    | elt::q ->
+        match elt.term with
+          | Name n ->
+              begin match n.deducible_n with
+                | None -> Config.internal_error "[data_structure.ml >> IK.prepare_names_for_transfer] A name in incremented_knowledge is deducible."
+                | Some (CRFunc(i,r)) ->
+                    Config.debug (fun () ->
+                      if i <> elt.id
+                      then Config.internal_error "[data_structure.ml >> IK.prepare_names_for_transfer] Incorrect index"
+                    );
+                    n.deducible_n <- Some(CRFunc(index,r));
+                    prepare_names_for_transfer (index-1) q
+                | _ -> Config.internal_error "[data_structure.ml >> IK.prepare_names_for_transfer] A name in incremented_knowledge is deducible from a context."
+              end
+          | _ -> prepare_names_for_transfer (index-1) q
+
+  let transfer_incremented_knowledge_into_knowledge after_output kb ikb =
+    let size_ikb = List.length ikb.data in
+    let new_size = size_ikb + kb.K.size in
+
+    prepare_names_for_transfer (new_size-1) ikb.data;
+
+    let data = Array.make new_size K.dummy_entry in
+
+    (* Copy data of K *)
+    for i = 0 to kb.K.size - 1 do
+      let entry = { kb.K.data.(i) with K.term = Term.rename_and_instantiate kb.K.data.(i).K.term } in
+      data.(i) <- entry
+    done;
+
+    (* Copy data of IK *)
+    let rec copy index acc = function
+      | [] -> acc
+      | elt::q ->
+          data.(index) <- { K.type_rec = ikb.type_rec; K.recipe = elt.recipe; K.term = Term.rename_and_instantiate elt.term };
+          copy (index-1) ((elt.id,index)::acc) q
+    in
+    let id_assoc = copy (new_size-1) [] ikb.data in
+
+    let kb' =
+      {
+        K.max_type_r = if size_ikb = 0 then kb.K.max_type_r else ikb.type_rec;
+        K.size = new_size;
+        K.data = data
+      }
+    in
+    let ikb' =
+      {
+        index_counter = new_size;
+        type_rec = if after_output then ikb.type_rec + 1 else ikb.type_rec;
+        data = []
+      }
+    in
+    kb',ikb',id_assoc
 
   let add ikb dfact =
     let index = ikb.index_counter in
@@ -1035,4 +1096,19 @@ module UF = struct
           with NFound dfact -> { uf with ded_formula = DedPattern([],[dfact]) }
         end
     | _ -> uf
+
+  let rename_and_instantiate uf =
+    Config.debug (fun () ->
+      if uf.eq_formula <> EqNone
+      then Config.internal_error "[data_structure.ml >> UF.rename_and_instantiate] Should not be any equality formula.";
+    );
+
+    match uf.ded_formula with
+      | DedPattern([],[dfact]) ->
+          {
+            eq_formula = EqNone;
+            ded_formula = DedPattern([],[{ dfact with df_term = Term.rename_and_instantiate dfact.df_term}])
+          }
+      | DedNone -> uf
+      | _ -> Config.internal_error "[data_structure.ml >> UF.rename_and_instantiate] Unexpected case."
 end

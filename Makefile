@@ -43,7 +43,9 @@ DISTRIBUTED_ML = $(DISTRIBUTED_ML_NAME:%.ml=$(SOURCE)distributed/%.ml)
 PARSER_ML_NAME = parser_functions.ml grammar.ml lexer.ml
 PARSER_ML = $(PARSER_ML_NAME:%.ml=$(SOURCE)parser/%.ml)
 
-ALL_ML = $(SOURCE)core_library/config.ml $(SOURCE)core_library/types.mli $(CORE_ML) $(QUERY_SOLVING_ML) #$(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)main.ml $(SOURCE)distributed/worker.ml $(SOURCE)distributed/manager.ml
+ALL_ML = $(SOURCE)core_library/config.ml $(SOURCE)core_library/types.mli $(CORE_ML) $(QUERY_SOLVING_ML) $(PARSER_ML) $(SOURCE)main.ml 
+
+ #$(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)main.ml $(SOURCE)distributed/worker.ml $(SOURCE)distributed/manager.ml
 
 EXE_MAIN_ML = $(SOURCE)core_library/config.ml $(CORE_ML) $(QUERY_SOLVING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)main.ml
 EXE_WORKER_ML = $(SOURCE)core_library/config.ml $(CORE_ML) $(QUERY_SOLVING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)distributed/worker.ml

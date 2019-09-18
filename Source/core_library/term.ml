@@ -122,6 +122,14 @@ module Variable = struct
 
   (******* Renaming *******)
 
+  let rename v = match v.link with
+    | VLink v' -> v'
+    | NoLink ->
+        let v' = fresh_with_label v.quantifier v.label in
+        link v v';
+        v'
+    | _ -> Config.internal_error "[term.ml >> Variable.rename_term] Unexpected link"
+
   (** [rename_term q t] renames the variables in [t] by fresh variables with quantifier [q].
       We assume that the variables can only be linked with VLink. *)
   let rec rename_term q t = match t with
@@ -853,6 +861,29 @@ module Term = struct
     | Func(_,args) -> List.iter replace_universal_to_existential args
     | _ -> ()
 
+  (********** Renaming function for preparing the solving procedure *********)
+
+  let rec rename_and_instantiate = function
+    | Var v ->
+        begin match v.link with
+          | TLink t -> rename_and_instantiate t
+          | VLink v' -> Var v' (* v' is the fresh replacement of v *)
+          | NoLink ->
+              let v' = Variable.fresh_with_label v.quantifier v.label in
+              Variable.link v v';
+              Var v'
+          | _ -> Config.internal_error "[term.ml >> rename_and_instantiate_term] Unexpected link of variable."
+        end
+    | Func(f,args) -> Func(f,List.map rename_and_instantiate args)
+    | Name n ->
+        match n.link_n with
+          | NLink n' -> Name n' (* n' is the fresh replacement of n *)
+          | NNoLink ->
+              let n' = { label_n = n.label_n; index_n = n.index_n; link_n = NNoLink; deducible_n = n.deducible_n } in
+              Config.debug (fun () -> if n == n' then Config.internal_error "[constraint_system.ml >> rename_and_instantiate_term] Should not be physically equal.");
+              Name.link n n';
+              Name n'
+          | _ -> Config.internal_error "[term.ml >> rename_and_instantiate_term] Unexpected link of name."
 
   (********** Display **********)
 

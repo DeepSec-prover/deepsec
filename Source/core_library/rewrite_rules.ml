@@ -3,6 +3,7 @@ open Data_structure
 open Extensions
 open Term
 open Formula
+open Display
 
 (****** Destructor skeletons *******)
 
@@ -370,7 +371,7 @@ let rename_recipe_in_protocol_term (recipe:recipe) =
 
   explore_term recipe
 
-let initialise_skeletons () =
+let initialise_skeletons_destructor () =
   let accumulator = ref [] in
 
   let rec optimise_skeletons skel prev_fct_list = function
@@ -491,8 +492,29 @@ let initialise_skeletons () =
           ) [] rw_rules
       | _ -> Config.internal_error "[term.ml >> Rewrite_rules.initialise_skeletons] There should not be any constructor function symbolc in this list (2)."
     in
-    let stored_skel = { skeleton = skel; compatible_rewrite_rules = compa_rw_rules } in
-    skeleton_storage.(i) <- stored_skel
+    (* testing the removal of skeletons *)
+    if List.length compa_rw_rules = 1
+    then
+      let bfct_r = { bf_var = Recipe_Variable.fresh Universal Recipe_Variable.infinite_type; bf_term = skel.rhs } in
+      if
+        List.for_all (fun t ->
+          match consequence_protocol_term (bfct_r::skel.basic_deduction_facts) t with
+            | None -> false
+            | Some _ -> true
+        ) arg_term
+      then
+        let stored_skel =
+          Config.debug (fun () ->
+            Printf.printf "Function symbol with a skeleton that has removal allowed: %s\n" (Symbol.display Latex f)
+          );
+          { skeleton = { skel with removal_allowed = true }; compatible_rewrite_rules = compa_rw_rules } in
+        skeleton_storage.(i) <- stored_skel
+      else
+        let stored_skel = { skeleton = skel; compatible_rewrite_rules = compa_rw_rules } in
+        skeleton_storage.(i) <- stored_skel
+    else
+      let stored_skel = { skeleton = skel; compatible_rewrite_rules = compa_rw_rules } in
+      skeleton_storage.(i) <- stored_skel
   ) !accumulator;
 
   storage_skeletons := skeleton_storage;
@@ -542,6 +564,15 @@ let storage_skeletons_constructor = ref (Array.make 0 dummy_skeleton)
 let get_skeleton_constructor f = (!storage_skeletons_constructor).(f.index_s)
 
 let initialise_skeletons_constructor () =
+  let rec retrieve_max_constructor_index acc = function
+    | [] -> acc
+    | f::q -> retrieve_max_constructor_index (max acc f.index_s)  q
+  in
+
+  let max_index = retrieve_max_constructor_index 0 !Symbol.all_constructors in
+
+  let new_storage_skeletons_constructor = Array.make (max_index+1) dummy_skeleton in
+
   let list_constructor =
     List.filter_unordered (fun f ->
       f.cat = Constructor && f.public && f.arity > 0
@@ -613,16 +644,72 @@ let initialise_skeletons_constructor () =
     let args = Term.get_args stored_skel.skeleton.pos_term in
     let bfct_r = { bf_var = Recipe_Variable.fresh Universal Recipe_Variable.infinite_type; bf_term = stored_skel.skeleton.rhs } in
     explore_term_list (fun recipe_list bfct_list ->
-      if check_conditions stored_skel.Rewrite_rules.skeleton args bfct_r bfct_list
+      if check_conditions stored_skel.skeleton args bfct_r bfct_list
       then
         begin
-          let pterm_uni = Variable.Renaming.rename_term Protocol Universal NoType stored_skel.Rewrite_rules.skeleton.Rewrite_rules.pos_term in
-          Variable.Renaming.cleanup Protocol;
-          list_found_symb := (f_c,get_args pterm_uni,recipe_list) :: !list_found_symb
+          let pterm_uni =
+            Variable.auto_cleanup_with_reset_notail (fun () ->
+              Variable.rename_term Universal stored_skel.skeleton.pos_term
+            )
+          in
+          list_found_symb := (f_c,Term.get_args pterm_uni,recipe_list) :: !list_found_symb
         end
     ) args
   ) list_single_skeletons;
 
+  List.iter (fun f ->
+    let snd_vars = Recipe_Variable.fresh_list Existential Recipe_Variable.infinite_type f.arity in
+    let fst_vars = Variable.fresh_list Existential f.arity in
+
+    let diseq_form =
+      List.fold_left (fun acc (f_c,term_list,recipe_list) ->
+        if Formula.M.Bot = acc || not (f == f_c)
+        then acc
+        else
+          Variable.auto_cleanup_with_reset_notail (fun () ->
+            Recipe_Variable.auto_cleanup_with_reset_notail (fun () ->
+              List.iter2 (fun x t -> Term.unify (Var x) t) fst_vars term_list;
+              List.iter2 (fun x t -> Recipe.unify (RVar x) t) snd_vars recipe_list;
+
+              let fst_diseq =
+                List.fold_left (fun acc v ->
+                  if v.quantifier = Universal
+                  then acc
+                  else (v, Term.instantiate (Var v))::acc
+                ) [] !Variable.currently_linked
+              in
+              let snd_diseq =
+                List.fold_left (fun acc v ->
+                  if v.quantifier_r = Universal
+                  then acc
+                  else (v, Recipe.instantiate (RVar v))::acc
+                ) [] !Recipe_Variable.currently_linked
+              in
+              if fst_diseq = [] && snd_diseq = []
+              then Formula.M.Bot
+              else Formula.M.wedge (Diseq.M.Disj (fst_diseq,snd_diseq)) acc
+            )
+          )
+      ) Formula.M.Top !list_found_symb
+    in
+
+    Config.debug (fun () ->
+      if Formula.M.Bot = diseq_form
+      then Printf.printf "Function symbol on which we do not apply equality constructor : %s\n" (Symbol.display Latex f);
+
+      if not (Formula.M.Bot = diseq_form) && not (Formula.M.Top = diseq_form)
+      then Printf.printf "Function symbol with special mixed formula for the application of equality constructor : %s\n" (Symbol.display Latex f);
+    );
+
+    new_storage_skeletons_constructor.(f.index_s) <- { recipe_vars = snd_vars; term_vars = fst_vars ; formula = diseq_form }
+  ) list_constructor;
+
+  storage_skeletons_constructor := new_storage_skeletons_constructor
+
+let initialise_all_skeletons () =
+  initialise_skeletons_destructor ();
+  initialise_skeletons_constructor ()
+  
 (****** Equality module rewrite rules ******)
 
 let rec rewrite_term_list quantifier next_f = function

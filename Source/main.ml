@@ -1,89 +1,11 @@
 (******* Display index page *******)
 
+open Types
+
 type result =
-  | Standard of Equivalence.result_trace_equivalence
+  (*| Standard of Equivalence.result_trace_equivalence*)
   | Determinate of Equivalence_determinate.result_trace_equivalence
-  | Session of Equivalence_session.result_analysis
-
-let print_index path n res_list =
-
-  let path_index = Filename.concat !Config.path_index "index.html" in
-  let path_index_old = Filename.concat !Config.path_index "index_old.html" in
-
-  let initial_index = not (Sys.file_exists path_index) in
-  let path_template =
-    if initial_index then
-      Filename.concat !Config.path_html_template "index.html"
-    else
-      begin
-	Sys.rename path_index path_index_old;
-	path_index_old
-      end
-  in
-
-  let out_html = open_out path_index in
-  let in_template = open_in path_template in
-
-  let template_result = "<!-- Results deepsec -->" in
-  let template_stylesheet = "<!-- Stylesheet deepsec -->" in
-
-  let line = ref (input_line in_template) in
-  if initial_index then
-    begin
-      while !line <> template_stylesheet do
-	Printf.fprintf out_html "%s\n" !line;
-	line := input_line in_template
-      done;
-      line := input_line in_template;
-
-      Printf.fprintf out_html " <link rel=\"stylesheet\" type=\"text/css\" href=\"%s\">\n" (Filename.concat (Filename.concat !Config.path_deepsec "Style") "style.css");
-    end;
-
-  while !line <> template_result do
-    Printf.fprintf out_html "%s\n" !line;
-    line := input_line in_template
-  done;
-  Printf.fprintf out_html "%s\n" !line; (* print template_stylesheet *)
-  Printf.fprintf out_html "        <p>File run with DeepSec, version %s, git hash %s:</p>\n" !Config.version !Config.git_commit;
-  Printf.fprintf out_html "        <p style=\"padding-left:2em\">%s</p>\n" path;
-  let time = Unix.localtime (Unix.time ()) in
-  Printf.fprintf out_html "        <p> on %s </p>\n\n" (Display.mkDate time);
-  Printf.fprintf out_html "        <p>This file contained %d quer%s:\n" n (if n > 1 then "ies" else "y ");
-  if n <> 0
-  then
-    begin
-      Printf.fprintf out_html "          <ul>\n";
-      let rec print_queries = function
-        | (k, _) when k > n -> ()
-        | (k, (res,rt)::tl) ->
-            Printf.fprintf out_html
-      	    "            <li>Query %d:</br>\n Result: the processes are %s</br>\n \nRunning time: %s (%s)%s</li>\n"
-      	    k
-      	    (match res with
-              | Standard Equivalence.Equivalent
-              | Determinate Equivalence_determinate.Equivalent
-              | Session Equivalence_session.Equivalent -> "equivalent"
-              | _ -> "not equivalent"
-            )
-      	    (Display.mkRuntime rt)
-      	    (if !Config.distributed then "Workers: "^(Distributed_equivalence.DistribEquivalence.display_workers ())^" - nb_sets="^(string_of_int !Distributed_equivalence.DistribEquivalence.minimum_nb_of_jobs) else "Not distributed")
-            (match res with Session _ -> "" | _ -> Printf.sprintf "</br>\n<a href=\"result/result_query_%d_%s.html\">Details</a>" k !Config.tmp_file);
-                print_queries ((k+1), tl)
-      	| (_ , _) -> Config.internal_error "Number of queries and number of results differ"
-      in
-      print_queries (1, res_list);
-      Printf.fprintf out_html "          </ul>\n";
-    end;
-  if not initial_index then Printf.fprintf out_html "        <hr class=\"small-separation\"></br>\n";
-
-  try
-    while true do
-      let l = input_line in_template in
-      Printf.fprintf out_html "%s\n" l;
-    done
-  with
-  | End_of_file ->
-    close_in in_template; close_out out_html; if not initial_index then Sys.remove path_index_old
+  (*| Session of Equivalence_session.result_analysis*)
 
 (******* Parsing *****)
 
@@ -112,6 +34,7 @@ let start_time = ref (Unix.time ())
 
 let por_disable = ref false
 
+(*
 let execute_query_session goal exproc1 exproc2 id =
   start_time := Unix.time ();
   Printf.printf "\nExecuting query %d...\n" id;
@@ -133,11 +56,11 @@ let execute_query_session goal exproc1 exproc2 id =
   in
   Equivalence_session.publish_result goal id conf1 conf2 result running_time;
   (Session result,running_time)
-
+*)
 
 let rec excecute_queries id = function
   | [] -> []
-  | (Process.Trace_Equivalence,exproc1,exproc2)::q ->
+  | (Trace_Equivalence,proc1,proc2)::q ->
     start_time :=  (Unix.time ());
 
     let display_por_option () =
@@ -150,6 +73,48 @@ let rec excecute_queries id = function
     flush_all ();
 
     let result =
+      if Determinate_process.is_strongly_action_determinate exproc1 && Determinate_process.is_strongly_action_determinate exproc2 && display_por_option ()
+      then
+        begin
+          (*if !Config.distributed
+          then
+            begin
+              let result,init_proc1, init_proc2 = Distributed_equivalence.trace_equivalence_determinate conf1 conf2 in
+              let running_time = ( Unix.time () -. !start_time ) in
+              Equivalence_determinate.publish_trace_equivalence_result id init_proc1 init_proc2 result running_time;
+              (Determinate result,running_time)
+            end
+          else*)
+            begin
+              let result = Determinate_equivalence.trace_equivalence proc1 proc2 in
+              let running_time = ( Unix.time () -. !start_time ) in
+              (Determinate result,running_time)
+            end
+        end
+      else Config.internal_error "[NOT ImPLeMENTED]"
+        (*let proc1 = Process.of_expansed_process exproc1 in
+        let proc2 = Process.of_expansed_process exproc2 in
+
+        if !Config.distributed
+        then
+          begin
+            let result,init_proc1, init_proc2 = Distributed_equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 in
+  	        let running_time = ( Unix.time () -. !start_time ) in
+            if !Config.display_trace
+            then Equivalence.publish_trace_equivalence_result id !Process.chosen_semantics init_proc1 init_proc2 result running_time;
+            (Standard result,running_time)
+          end
+        else
+          begin
+            let result = Equivalence.trace_equivalence !Process.chosen_semantics proc1 proc2 in
+  	        let running_time = ( Unix.time () -. !start_time ) in
+            if !Config.display_trace
+            then Equivalence.publish_trace_equivalence_result id !Process.chosen_semantics proc1 proc2 result running_time;
+            (Standard result,running_time)
+          end*)
+    in
+
+    (*let result =
       if Process_determinate.is_action_determinate exproc1 && Process_determinate.is_action_determinate exproc2 && display_por_option ()
       then
         let conf1 = Process_determinate.configuration_of_expansed_process exproc1 in
@@ -194,11 +159,10 @@ let rec excecute_queries id = function
             then Equivalence.publish_trace_equivalence_result id !Process.chosen_semantics proc1 proc2 result running_time;
             (Standard result,running_time)
           end
-    in
+    in*)
 
     begin match result with
-      | Standard Equivalence.Equivalent, running_time
-      | Determinate Equivalence_determinate.Equivalent, running_time ->
+      | Determinate Determinate_equivalence.Equivalent, running_time ->
           if !Config.display_trace
           then Printf.printf "Query %d: Equivalent processes.\nRunning time: %s.\nAdditional informations on the HTML interface.\n" id (Display.mkRuntime running_time)
           else Printf.printf "Query %d: Equivalent processes.\nRunning time: %s.\nAdditional informations on the HTML interface.\n" id (Display.mkRuntime running_time)
@@ -210,19 +174,9 @@ let rec excecute_queries id = function
 
     flush_all ();
     result::(excecute_queries (id+1) q)
-  | (Process.Session_Equivalence,exproc1,exproc2)::q ->
-    let res = execute_query_session Equivalence_session.Equivalence exproc1 exproc2 id in
-    res :: excecute_queries (id+1) q
-  | (Process.Session_Inclusion,exproc1,exproc2)::q ->
-    let res = execute_query_session Equivalence_session.Inclusion exproc1 exproc2 id in
-    res :: excecute_queries (id+1) q
   | _ -> Config.internal_error "Observational_equivalence not implemented"
 
 let process_file path =
-  if !Distributed_equivalence.DistribEquivalence.minimum_nb_of_jobs = 0 then
-    begin
-      Distributed_equivalence.DistribEquivalence.minimum_nb_of_jobs := !Distributed_equivalence.DistribEquivalence.nb_workers * !Config.core_factor
-    end;
 
   if !Config.path_deepsec = "" then
     begin
@@ -272,12 +226,7 @@ let process_file path =
 
 let _ =
 
-  let set_semantics sem =
-    match sem with
-    | "Classic" -> Process.chosen_semantics := Process.Classic
-    | "Private" -> Process.chosen_semantics := Process.Private
-    | "Eavesddrop" -> Process.chosen_semantics := Process.Eavesdrop
-    | _ -> raise (Arg.Bad("Undefined semantics"))
+  let set_semantics sem = ()
   in
 
   let dist_host = ref "" in
@@ -299,15 +248,15 @@ let _ =
       Arg.Unit( fun () -> por_disable := true),
       " Disable POR optimisation"
     );
-    (
+    (*(
       "-distributed",
       Arg.Int( fun i -> Config.distributed := true; Distributed_equivalence.DistribEquivalence.local_workers i),
-      "<n> Activate the distributed computing with n local workers");
+      "<n> Activate the distributed computing with n local workers");*)
     (
       "-test",
       Arg.Int( fun i -> Equivalence_session.PartitionTree.test_starting_node := i),
       "<n> Testing node from [i]-th node generated.");
-    (
+    (*(
       "-distant_workers",
       Arg.Tuple(
         [Arg.Set_string(dist_host);
@@ -319,17 +268,17 @@ let _ =
         )]
       ),
       "<host><path><n> Activate n workers on <host> with <path> specifying the directory of deepsec.\nExample: -distant_workers my_login@my_host deepsec_path_on_my_host 25"
-    );
-    (
+    );*)
+    (*(
       "-nb_sets",
       Arg.Set_int(Distributed_equivalence.DistribEquivalence.minimum_nb_of_jobs),
       "<n> Set the number of sets of constraint systems generated by deepsec and that will be distributed to the workers."
-    );
-    (
+    );*)
+    (*(
       "-round_timer",
       Arg.Set_float(Distributed_equivalence.DistribEquivalence.time_between_round),
       "<n> Set the time limit in seconds for the end of a round in distributed settings (default is 120s)"
-    );
+    );*)
     (
       "-semantics",
       Arg.Symbol(["Classic";"Private"],set_semantics),

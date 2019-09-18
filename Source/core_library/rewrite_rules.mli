@@ -27,6 +27,7 @@ val get_compatible_rewrite_rules : int -> (term list * term) list
 
 val generate_mixed_formulas_for_skeletons : K.t -> IK.t -> DF.t -> variable list -> recipe_variable list -> recipe -> Diseq.M.t
 
+val get_possible_skeletons_for_terms : term -> int list
 
 (** {2 Skeleton constructor} *)
 
@@ -39,6 +40,7 @@ type skeleton_constructor =
 
 val get_skeleton_constructor : symbol -> skeleton_constructor
 
+val initialise_all_skeletons : unit -> unit
 
 (** {2 Unification modulo} *)
 

@@ -96,7 +96,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                      Constraint_system.eq_term = gathering.disequations
                    }
                  in
-                 let csys_2 = Constraint_system.prepare_for_solving_procedure csys_1 in
+                 let csys_2 = Constraint_system.prepare_for_solving_procedure false csys_1 in
                  csys_list_for_start := csys_2 :: !csys_list_for_start
                with
                  | Constraint_system.Bot -> ()
@@ -211,7 +211,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                       Constraint_system.original_substitution = gathering.original_subst
                     }
                   in
-                  let csys_2 = Constraint_system.prepare_for_solving_procedure csys_1 in
+                  let csys_2 = Constraint_system.prepare_for_solving_procedure false csys_1 in
 
                   csys_list_for_input := csys_2 :: !csys_list_for_input
                 with Constraint_system.Bot -> ()
@@ -327,7 +327,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                     Constraint_system.original_substitution = gathering.original_subst
                   }
                 in
-                let csys_2 = Constraint_system.prepare_for_solving_procedure csys_1 in
+                let csys_2 = Constraint_system.prepare_for_solving_procedure false csys_1 in
 
                 csys_list_for_input := csys_2 :: !csys_list_for_input
               with Constraint_system.Bot -> ()
@@ -435,7 +435,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                     Constraint_system.original_substitution = gathering.original_subst
                   }
                 in
-                let csys_3 = Constraint_system.prepare_for_solving_procedure csys_2 in
+                let csys_3 = Constraint_system.prepare_for_solving_procedure true csys_2 in
 
                 csys_list_for_output := csys_3 :: !csys_list_for_output
               with Constraint_system.Bot -> ()
@@ -535,8 +535,7 @@ let trace_equivalence proc1 proc2 =
 
   (*** Initialise skeletons ***)
 
-  Rewrite_rules.initialise_skeletons ();
-  Data_structure.Tools.initialise_constructor ();
+  Rewrite_rules.initialise_all_skeletons ();
 
   (*** Generate the initial constraint systems ***)
 
@@ -559,12 +558,11 @@ let trace_equivalence proc1 proc2 =
 
   (**** Generate the initial set ****)
 
-  let csys_set_1 = Constraint_system.Set.add csys_1 Constraint_system.Set.empty in
-  let csys_set_2 = Constraint_system.Set.add csys_2 csys_set_1 in
+  let csys_set = { Constraint_system.eq_recipe = Formula.R.Top; Constraint_system.set = [csys_1; csys_2] } in
 
   let equiv_pbl =
     {
-      csys_set = csys_set_2;
+      csys_set = csys_set;
       complete_blocks = [];
       ongoing_block = None;
       size_frame = 0;

@@ -138,6 +138,8 @@ module Variable : sig
       We assume that the variables can only be linked with VLink. *)
   val rename_term : quantifier -> term -> term
 
+  val rename : variable -> variable
+
   (** {3 Links} *)
 
   val currently_linked : variable list ref
@@ -244,6 +246,8 @@ module Name :  sig
   val auto_cleanup_with_reset_notail : (unit -> 'a) -> 'a
 
   val set_deducible : name -> recipe -> unit
+
+  val currently_deducible : name list ref
 end
 
 (** {2 Terms} *)
@@ -322,6 +326,8 @@ module Term : sig
   (** [apply_renamings t] replaces the variables and names linked respectively with a VLink and NLink.
       Warning: If there are variables linked with a TLink, the function does not go through. *)
   val apply_renamings : term -> term
+
+  val rename_and_instantiate : term -> term
 
   (** {3 Display} *)
 

@@ -22,6 +22,16 @@ type pattern =
   | PTuple of pattern list
   | PTest of term
 
+type intermediate_process =
+  | INil
+  | IOutput of Types.term * Types.term * intermediate_process
+  | IInput of Types.term * Types.pattern * intermediate_process
+  | IIfThenElse of Types.term * Types.term * intermediate_process * intermediate_process
+  | ILet of Types.pattern * Types.term * intermediate_process * intermediate_process
+  | INew of Types.name * intermediate_process
+  | IPar of (intermediate_process * int) list
+  | IChoice of intermediate_process * intermediate_process
+
 type plain_process =
   | Nil
   | Call of ident * term list
@@ -54,12 +64,12 @@ type declaration =
 (**** Environement ****)
 
 type env_elt =
-  | Var of (Term.fst_ord, Term.name) Term.variable
-  | Name of Term.name
-  | PublicName of Term.symbol
-  | Func of Term.symbol
-  | Proc of int * ((Term.fst_ord, Term.name) Term.term list -> Process.expansed_process)
-  | ArgVar of (Term.fst_ord, Term.name) Term.term
+  | Var of Types.variable
+  | Name of Types.name
+  | PublicName of Types.symbol
+  | Func of Types.symbol
+  | Proc of int * (Types.term list -> intermediate_process)
+  | ArgVar of Types.term
 
 module StringComp =
 struct
@@ -106,10 +116,10 @@ let rec parse_term env = function
   | Id (s,line) ->
       begin try
         match Env.find s env with
-          | Var(v) -> Term.of_variable v
-          | Name(n) -> Term.of_name n
-          | PublicName(n) -> Term.apply_function n []
-          | Func(f) when Term.Symbol.get_arity f = 0 -> Term.apply_function f []
+          | Var(v) -> Types.Var(v)
+          | Name(n) -> Types.Name(n)
+          | PublicName(n) -> Types.Func(n,[])
+          | Func(f) when f.Types.arity = 0 -> Types.Func(f,[])
           | ArgVar(t) -> t
           | env_elt -> error_message line (Printf.sprintf "The identifiant %s is declared as %s (expected a name, a variable or a constant)." s (display_env_elt_type env_elt))
       with
@@ -119,10 +129,10 @@ let rec parse_term env = function
       begin try
         match Env.find s env with
           | Func(f) ->
-              if (Term.Symbol.get_arity f) <> List.length args
+              if f.Types.arity <> List.length args
               then error_message line (Printf.sprintf "The function %s is given %d arguments but is expecting %d arguments" s (List.length args) (Term.Symbol.get_arity f));
 
-              Term.apply_function f (List.map (parse_term env) args)
+              Types.Func(f,List.map (parse_term env) args)
           | env_elt -> error_message line (Printf.sprintf "The identifiant %s is declared as %s but a name or a function is expected." s (display_env_elt_type env_elt))
       with
         Not_found -> error_message line (Printf.sprintf "The function %s is not declared" s)
@@ -133,7 +143,7 @@ let rec parse_term env = function
         then Config.internal_error "[parser_functions.ml >> parse_term] The number of arguments of a tuple should be at least 2."
       );
       let f = Term.Symbol.get_tuple (List.length args) in
-      Term.apply_function f (List.map (parse_term env) args)
+      Types.Func(f,(List.map (parse_term env) args))
 
 (******** Parse pattern ********)
 
@@ -142,17 +152,17 @@ let rec parse_pattern env prev_env = function
       if Env.mem s env
       then warning_message line (Printf.sprintf "The identifier %s is already defined." s);
 
-      let v = Term.Variable.fresh_with_label Term.Free Term.Variable.fst_ord_type s in
+      let v = Term.Variable.fresh_with_label Types.Free s in
 
-      Term.of_variable v, Env.add s (Var v) env
+      Types.PatVar(v), Env.add s (Var v) env
   | PTuple(args) ->
       let args',env' = parse_pattern_list env prev_env args in
       let f = Term.Symbol.get_tuple (List.length args) in
 
-      Term.apply_function f args', env'
+      Types.PatTuple(f,args'), env'
   | PTest term ->
       let term' = parse_term prev_env term in
-      term', env
+      Types.PatEquality(term'), env
 
 and parse_pattern_list env prev_env = function
   | [] -> [], env
@@ -162,6 +172,15 @@ and parse_pattern_list env prev_env = function
       pat'::pat_l, env''
 
 (******** Process **********)
+
+let fresh_position =
+  let acc = ref 0 in
+  let f () =
+    let r = !acc in
+    incr acc;
+    r
+  in
+  f
 
 let rec parse_plain_process env = function
   | Call((s,line),term_list) ->
@@ -178,29 +197,23 @@ let rec parse_plain_process env = function
       with
         Not_found -> error_message line (Printf.sprintf "The identifiant %s is not declared" s)
       end
-  | Nil -> Process.Nil
-  | Choice(p1,p2) ->
-      begin match parse_plain_process env p1, parse_plain_process env p2 with
-        | Process.Choice l_1, Process.Choice l_2 -> Process.Choice (l_1@l_2)
-        | Process.Choice l_1, proc2 -> Process.Choice (proc2::l_1)
-        | proc1, Process.Choice l_2 -> Process.Choice (proc1::l_2)
-        | proc1, proc2 -> Process.Choice [proc1;proc2]
-      end
+  | Nil -> INil
+  | Choice(p1,p2) -> IChoice(parse_plain_process env p1,parse_plain_process env p2)
   | Seq(_,_)-> error_message 0 "Sequence is not yet implemented."
   | Par(p1,p2) ->
       begin match parse_plain_process env p1, parse_plain_process env p2 with
-        | Process.Par l_1, Process.Par l_2 -> Process.Par (l_1@l_2)
-        | Process.Par l_1, proc2 -> Process.Par ((proc2,1)::l_1)
-        | proc1, Process.Par l_2 -> Process.Par ((proc1,1)::l_2)
-        | proc1, proc2 -> Process.Par [(proc1,1);(proc2,1)]
+        | IPar l_1, IPar l_2 -> IPar (l_1@l_2)
+        | IPar l_1, proc2 -> IPar ((proc2,1)::l_1)
+        | proc1, IPar l_2 -> IPar ((proc1,1)::l_2)
+        | proc1, proc2 -> IPar [(proc1,1);(proc2,1)]
       end
   | Bang(n,proc,line) ->
       if n < 1
       then error_message line "The integer should be at least 1.";
 
       begin match parse_plain_process env proc with
-        | Process.Par l -> Process.Par (List.map (fun (p,i) -> (p,i*n)) l)
-        | proc -> Process.Par [(proc,n)]
+        | IPar l -> IPar (List.map (fun (p,i) -> (p,i*n)) l)
+        | proc -> IPar [(proc,n)]
       end
   | New((s,line),proc) ->
       if Env.mem s env
@@ -209,46 +222,110 @@ let rec parse_plain_process env = function
       let n = Term.Name.fresh_with_label s in
       let env' = Env.add s (Name n) env in
 
-      Process.New(n,parse_plain_process env' proc)
+      INew(n,parse_plain_process env' proc)
   | In(ch,(s,line),proc) ->
       if Env.mem s env
       then warning_message line (Printf.sprintf "The identifier %s is already defined." s);
 
       let ch' = parse_term env ch in
-      let x = Term.Variable.fresh_with_label Term.Free Term.Variable.fst_ord_type s in
+      let x = Term.Variable.fresh_with_label Types.Free s in
       let env' = Env.add s (Var x) env in
 
-      Process.Input(ch',x, parse_plain_process env' proc)
+      IInput(ch',Types.PatVar(x), parse_plain_process env' proc)
   | Out(ch,t,proc) ->
       let ch' = parse_term env ch
       and t' = parse_term env t
       and proc' = parse_plain_process env proc in
 
-      Process.Output(ch',t',proc')
+      IOutput(ch',t',proc')
   | Let(pat,t,proc_then,proc_else) ->
       let t' = parse_term env t in
       let pat',env' = parse_pattern env env pat in
       let proc_then' = parse_plain_process env' proc_then in
       let proc_else' = parse_plain_process env proc_else in
 
-      Process.Let(pat',t',proc_then',proc_else')
+      ILet(pat',t',proc_then',proc_else')
   | IfThenElse(t1,t2,proc1,proc2) ->
       let t1' = parse_term env t1
       and t2' = parse_term env t2
       and proc1' = parse_plain_process env proc1
       and proc2' = parse_plain_process env proc2 in
 
-      Process.IfThenElse(t1',t2',proc1',proc2')
+      IIfThenElse(t1',t2',proc1',proc2')
 
-let parse_extended_process env = function
+let rec apply_renaming = function
+  | Types.Var v ->
+      begin match v.Types.link with
+        | Types.VLink v' -> Types.Var v'
+        | _ -> Config.internal_error "[parser_functions.ml >> apply_renaming] Unexpected link"
+      end
+  | Types.Name n ->
+      begin match n.Types.link_n with
+        | Types.NLink n' -> Types.Name n'
+        | _ -> Config.internal_error "[parser_functions.ml >> apply_renaming] Unexpected link (2)"
+      end
+  | Types.Func(f,args) -> Types.Func(f,List.map apply_renaming args)
+
+let rec apply_renaming_pat = function
+  | Types.PatVar v ->
+      let v' = Term.Variable.fresh_from v in
+      Term.Variable.link v v';
+      Types.PatVar v'
+  | Types.PatEquality t -> Types.PatEquality (apply_renaming t)
+  | Types.PatTuple(f,args) -> Types.PatTuple(f,List.map apply_renaming_pat args)
+
+let rec intermediate_process_of_process = function
+  | INil -> Types.Nil
+  | IOutput(t1,t2,p) -> Types.Output(apply_renaming t1, apply_renaming t2, intermediate_process_of_process p, fresh_position ())
+  | IInput(ch,pat,p) ->
+      let ch' = apply_renaming ch in
+      Term.Variable.auto_cleanup_with_reset_notail (fun () ->
+        let pat' = apply_renaming_pat pat in
+        Types.Input(ch',pat',intermediate_process_of_process p,fresh_position ())
+      )
+  | IIfThenElse(t1,t2,p1,p2) ->
+      Types.IfThenElse(apply_renaming t1,apply_renaming t2, intermediate_process_of_process p1, intermediate_process_of_process p2,fresh_position ())
+  | ILet(pat,t,p1,p2) ->
+      let t' = apply_renaming t in
+      let p2' = intermediate_process_of_process p2 in
+      Term.Variable.auto_cleanup_with_reset_notail (fun () ->
+        let pat' = apply_renaming_pat pat in
+        let p1' = intermediate_process_of_process p1 in
+        Types.Let(pat',t',p1',p2',fresh_position ())
+      )
+  | INew(n,p) ->
+      Term.Name.auto_cleanup_with_reset_notail (fun () ->
+        let n' = Term.Name.fresh_from n in
+        Term.Name.link n n';
+        Types.New(n',intermediate_process_of_process p,fresh_position ())
+      )
+  | IPar p_list ->
+      let rec transform_bang p acc = function
+        | 0 -> Types.Bang(acc,fresh_position ())
+        | n -> transform_bang p ((intermediate_process_of_process p)::acc) (n-1)
+      in
+      let rec explore = function
+        | [] -> []
+        | (p,1)::q -> (intermediate_process_of_process p)::(explore q)
+        | (p,n)::q -> (transform_bang p [] n)::(explore q)
+      in
+      begin match explore p_list with
+        | [] -> Config.internal_error "[parser_functions.ml >> intermediate_process_of_process] There should be parallel processes"
+        | [p] -> p
+        | l -> Types.Par l
+      end
+  | IChoice(p1,p2) -> Types.Choice(intermediate_process_of_process p1,intermediate_process_of_process p2, fresh_position ())
+
+let parse_intermediate_process env = function
   | EPlain proc -> parse_plain_process env proc
+
 
 (****** Process declaration ********)
 
 let rec parse_list_argument proc env = function
   | [] ->
       let generate_proc = function
-        | [] -> parse_extended_process env proc
+        | [] -> parse_intermediate_process env proc
         | _ -> Config.internal_error "[parser_functions.ml >> parse_list_argument] This case should have been caught at the call (1)."
       in
       generate_proc
@@ -271,7 +348,7 @@ let rec parse_list_argument proc env = function
       in
       generate_proc
 
-let dummy_term = Term.of_name (Term.Name.fresh ())
+let dummy_term = Types.Name(Term.Name.fresh ())
 
 let parse_process_declaration env (s,line) var_list proc =
   if Env.mem s env
@@ -288,14 +365,14 @@ let rec parse_rewrite_rule_term env = function
   | Id (s,line) ->
       begin try
         match Env.find s env with
-          | Var(v) -> Term.of_variable v, env
-          | Func(f) when Term.Symbol.get_arity f = 0 && Term.Symbol.is_constructor f -> Term.apply_function f [], env
+          | Var(v) -> Types.Var(v), env
+          | Func(f) when Term.Symbol.get_arity f = 0 && Term.Symbol.is_constructor f -> Types.Func(f,[]), env
           | env_elt -> error_message line (Printf.sprintf "The identifiant %s is declared as %s (expected a variable or a constant)." s (display_env_elt_type env_elt))
       with
         | _ ->
-            let x = Term.Variable.fresh Term.Protocol Term.Existential Term.Variable.fst_ord_type in
+            let x = Term.Variable.fresh Types.Existential in
             let env' = Env.add s (Var x) env in
-            Term.of_variable x, env'
+            Types.Var(x), env'
       end
   | FuncApp((s,line),args) ->
       begin try
@@ -306,7 +383,7 @@ let rec parse_rewrite_rule_term env = function
 
               let args', env' = parse_rewrite_rule_term_list env args in
 
-              Term.apply_function f args', env'
+              Types.Func(f,args'), env'
           | env_elt -> error_message line (Printf.sprintf "The identifiant %s is declared as %s (expected a constructor function)." s (display_env_elt_type env_elt))
       with
         Not_found -> error_message line (Printf.sprintf "The function %s is not declared" s)
@@ -318,7 +395,7 @@ let rec parse_rewrite_rule_term env = function
       );
       let f = Term.Symbol.get_tuple (List.length args) in
       let args',env' = parse_rewrite_rule_term_list env args in
-      Term.apply_function f args', env'
+      Types.Func(f,args'), env'
 
 and parse_rewrite_rule_term_list env = function
   | [] -> ([],env)
@@ -333,7 +410,7 @@ let parse_rewrite_rule line env (lhs,rhs) = match lhs with
       then error_message line (Printf.sprintf "The identifier %s is already defined." s);
 
       let rhs' = parse_term env rhs in
-      if Term.no_axname rhs' && Term.is_constructor rhs'
+      if Term.Term.no_name rhs' && Term.Term.is_constructor rhs'
       then (s,[],rhs')
       else error_message line "The right-hand side of a rewrite rule should be a name-free constructor term."
   | FuncApp((s,line),args) ->
@@ -380,21 +457,23 @@ let already_chosen_semantics = ref false
 
 let parse_setting line sem =
   if !already_chosen_semantics
-  then warning_message line "A setting for the semantics has already been chosen. This new setting erases the previous one.";
+  then warning_message line "A setting for the semantics has already been chosen. This new setting erases the previous one."
 
-  match sem with
+  (** TODO : Update that part of the code *)
+
+  (*match sem with
     | Classic -> Process.chosen_semantics := Process.Classic; already_chosen_semantics := true
     | Private -> Process.chosen_semantics := Process.Private; already_chosen_semantics := true
-    | Eavesdrop -> Process.chosen_semantics := Process.Eavesdrop; already_chosen_semantics := true
+    | Eavesdrop -> Process.chosen_semantics := Process.Eavesdrop; already_chosen_semantics := true*)
 
 (****** Parse query *******)
 
 let query_list = ref []
 
 let parse_query env line = function
-  | Trace_Eq(proc_1,proc_2) -> query_list := (Process.Trace_Equivalence,parse_extended_process env proc_1, parse_extended_process env proc_2)::!query_list
-  | Sess_Eq(proc_1,proc_2) -> query_list := (Process.Session_Equivalence,parse_extended_process env proc_1, parse_extended_process env proc_2)::!query_list
-  | Sess_Incl(proc_1,proc_2) -> query_list := (Process.Session_Inclusion,parse_extended_process env proc_1, parse_extended_process env proc_2)::!query_list
+  | Trace_Eq(proc_1,proc_2) -> query_list := (Types.Trace_Equivalence,parse_extended_process env proc_1, parse_extended_process env proc_2)::!query_list
+  | Sess_Eq(proc_1,proc_2) -> query_list := (Types.Session_Equivalence,parse_extended_process env proc_1, parse_extended_process env proc_2)::!query_list
+  | Sess_Incl(proc_1,proc_2) -> query_list := (Types.Session_Inclusion,parse_extended_process env proc_1, parse_extended_process env proc_2)::!query_list
   | Obs_Eq(_,_) -> error_message line "Observational equivalence not implemented yet"
 
 (****** Parse declaration *******)

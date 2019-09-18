@@ -89,6 +89,8 @@ module DF : sig
   val remove_linked_variables : t -> t * basic_fact list * recipe_variable list
 
   val link_recipe_variables : recipe_variable list ref -> t -> unit
+
+  val rename_and_instantiate : t -> t
 end
 
 (** {2 {% The set of deduction facts \texorpdfstring{$\Solved$}{SDF} %}}*)
@@ -169,6 +171,8 @@ module IK : sig
   val consequence_term : K.t -> t -> DF.t -> term -> recipe option
 
   val consequence_recipe : K.t -> t -> DF.t -> recipe -> term
+
+  val transfer_incremented_knowledge_into_knowledge : bool -> K.t -> t -> K.t * t * (int * int) list
 end
 
 (** {2 {% The set of unsolved formulas \texorpdfstring{$\USolved$}{UF} %}}*)
@@ -231,4 +235,6 @@ module UF : sig
   val normalise_deduction_formula_to_fact : t -> deduction_formula -> t
 
   val normalise_deductions : t -> t
+
+  val rename_and_instantiate : t -> t
 end

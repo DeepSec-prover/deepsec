@@ -112,3 +112,14 @@ type process =
   | Par of process list
   | Bang of process list * position
   | Choice of process * process * position
+
+type semantics =
+  | Classic
+  | Private
+  | Eavesdrop
+
+type equivalence =
+  | Trace_Equivalence
+  | Observational_Equivalence
+  | Session_Equivalence
+  | Session_Inclusion

@@ -1,5 +1,6 @@
 (** Deciding equivalence *)
 
+open Types
 open Determinate_process
 
 type origin_process =
@@ -28,6 +29,4 @@ type result_trace_equivalence =
   | Equivalent
   | Not_Equivalent of symbolic_process Constraint_system.t
 
-val trace_equivalence : configuration -> configuration -> result_trace_equivalence
-
-val publish_trace_equivalence_result : int -> configuration -> configuration -> result_trace_equivalence -> float -> unit
+val trace_equivalence : process -> process -> result_trace_equivalence

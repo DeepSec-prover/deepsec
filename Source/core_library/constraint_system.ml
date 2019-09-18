@@ -119,9 +119,88 @@ let add_non_deducible_terms csys l =
 
 (*** Completion of solving procedure ***)
 
-let prepare_for_solving_procedure csys =
-    (** TODO : Need to implement this function *)
-    csys
+(* In this function, we rename all variables and names by fresh ones. Moreover, we
+   instantiate the terms. Note that only the variales in the original substitution
+   will not be renames (They are all free variables.
+   We also transfer the incremented knowledge base inside the knowledge base.
+   Skeletons are updated accordingly.
+   Finally, the knowledge base being mutable, we also do a copy of it. *)
+
+(** For now we do not instantiate the recipe. Need to check if it's working with
+    distributed computation. *)
+
+let prepare_for_solving_procedure after_output csys =
+  Variable.auto_cleanup_with_reset_notail (fun () ->
+    let tmp_deducible_name_link =  List.rev_map (fun n -> (n,n.deducible_n)) !Name.currently_deducible in
+
+    let (kb,ikb,id_assoc) = IK.transfer_incremented_knowledge_into_knowledge after_output csys.knowledge csys.incremented_knowledge in
+    let df = DF.rename_and_instantiate csys.deduction_facts in
+    let non_deducible_terms = List.rev_map Term.rename_and_instantiate csys.non_deducible_terms in
+    let uf = UF.rename_and_instantiate csys.unsolved_facts in
+    let eq_term = Formula.T.rename_and_instantiate csys.eq_term in
+    let eq_uni = Formula.T.rename_and_instantiate csys.eq_uniformity in
+    let orig_subst = List.rev_map (fun (v,t) -> (v,Term.rename_and_instantiate t)) csys.original_substitution in
+
+    let history_skeleton =
+      List.map (fun hist ->
+        { hist with
+            fst_vars = List.map Variable.rename hist.fst_vars;
+            diseq = Formula.M.rename_and_instantiate hist.diseq
+        }
+      ) csys.rule_data.history_skeleton
+    in
+
+    let skeletons_checked_K = match csys.rule_data.skeletons_K, csys.rule_data.skeletons_IK with
+      | (checked_K,[]), (checked_IK,[]) ->
+          List.fold_left (fun acc (index_ikb,index_skel) ->
+            Config.debug (fun () ->
+              if List.assoc_opt index_ikb id_assoc = None
+              then Config.internal_error "[constraint_system.ml >> prepare_for_solving_procedure] Index not found."
+            );
+            (List.assoc index_ikb id_assoc,index_skel)::acc
+          ) checked_K checked_IK
+      | _ -> Config.internal_error "[constraint_system.ml >> prepare_for_solving_procedure] All skeletons should have been checked."
+    in
+
+    let equality_constructor_to_check_K = match csys.rule_data.equality_constructor_K, csys.rule_data.equality_constructor_IK with
+      | (checked_K,[]), (checked_IK,[]) ->
+          List.fold_left (fun acc index_ikb ->
+            Config.debug (fun () ->
+              if List.assoc_opt index_ikb id_assoc = None
+              then Config.internal_error "[constraint_system.ml >> prepare_for_solving_procedure] Index not found (2)."
+            );
+            (List.assoc index_ikb id_assoc)::acc
+          ) checked_K checked_IK
+      | _ -> Config.internal_error "[constraint_system.ml >> prepare_for_solving_procedure] All constructor skeletons should have been checked."
+    in
+
+    let rule_data =
+      {
+        history_skeleton = history_skeleton;
+        skeletons_K = (skeletons_checked_K,[]);
+        skeletons_IK = ([],[]);
+        equality_constructor_K = ([],equality_constructor_to_check_K);
+        equality_constructor_IK = ([],[]);
+        normalisation_deduction_checked = csys.rule_data.normalisation_deduction_checked
+      }
+    in
+
+    let csys' =
+      { csys with
+        deduction_facts = df;
+        non_deducible_terms = non_deducible_terms;
+        knowledge = kb;
+        incremented_knowledge = ikb;
+        unsolved_facts = uf;
+        eq_term = eq_term;
+        eq_uniformity = eq_uni;
+        original_substitution = orig_subst;
+        rule_data = rule_data
+      }
+    in
+    List.iter (fun (n,ded) -> n.deducible_n <- ded) tmp_deducible_name_link;
+    csys'
+  )
 
 let instantiate csys =
     (** TODO : Need to implement this function *)
@@ -1600,11 +1679,39 @@ module Rule = struct
   let equality_knowledge_base f_continuation csys_set f_next = match csys_set.set with
     | [] -> f_next ()
     | csys::_ ->
+        let last_index = IK.get_last_index csys.incremented_knowledge in
+
         let rec internal last_term_list_ref last_index_checked csys_set_1 f_next_1 = match IK.get_previous_index_in_knowledge_base csys.knowledge csys.incremented_knowledge last_index_checked with
           | None ->
-            (** TODO : Add the skeleton of the element that will be kept in the incremental knowledge *)
+            let last_term_list = match !last_term_list_ref with
+              | Some t_list -> t_list
+              | None ->
+                  let t_list = List.map_tail (fun csys -> IK.get_last_term csys.incremented_knowledge) csys_set_1.set in
+                  last_term_list_ref := Some t_list;
+                  t_list
+            in
+            let csys_list =
+              List.rev_map2 (fun csys last_term ->
+                let new_skeletons = List.map (fun index_skel -> (last_index,index_skel)) (Rewrite_rules.get_possible_skeletons_for_terms last_term) in
 
-            f_continuation csys_set_1 f_next_1
+                let (skeletons_checked_IK,skeletons_to_check_IK) = csys.rule_data.skeletons_IK in
+                let (skeletons_checked_K,skeletons_to_check_K) = csys.rule_data.skeletons_K in
+
+                let new_skeletons_to_check_K = List.rev_append skeletons_to_check_K skeletons_checked_K in
+                let new_skeletons_to_check_IK = List.rev_append new_skeletons (List.rev_append skeletons_to_check_IK skeletons_checked_IK) in
+
+                let rule_data =
+                  { csys.rule_data with
+                    skeletons_K = ([],new_skeletons_to_check_K);
+                    skeletons_IK = ([],new_skeletons_to_check_IK)
+                  }
+                in
+
+                { csys with rule_data = rule_data }
+              ) csys_set_1.set last_term_list
+            in
+
+            f_continuation { csys_set_1 with set = csys_list } f_next_1
           | Some index_to_check ->
               let last_term_list = match !last_term_list_ref with
                 | Some t_list -> t_list
@@ -1659,7 +1766,7 @@ module Rule = struct
                 sat_equality_formula ~universal:false f_continuation_pos (internal (ref None) index_to_check) { satf_eq_recipe = csys_set_1.eq_recipe; satf_no_formula = !no_eq_csys; satf_solved = !eq_solved_csys; satf_unsolved = !eq_form_csys } f_next_1
         in
 
-        internal (ref None) (IK.get_last_index csys.incremented_knowledge) csys_set f_next
+        internal (ref None) last_index csys_set f_next
 
   (**** The rule for adding element in the knowledge base ****)
 
