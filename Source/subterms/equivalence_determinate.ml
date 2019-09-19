@@ -37,8 +37,11 @@ type result_skeleton =
   | Faulty of bool * configuration * action
   | FocusNil
 
+let nb_apply_one_transition_and_rules = ref 0
+
 let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
   Config.debug (fun () ->
+    incr nb_apply_one_transition_and_rules;
     match Constraint_system.Set.elements equiv_pbl.csys_set with
       | [csys_1; csys_2] when
           ((Constraint_system.get_additional_data csys_1).origin_process = Left && (Constraint_system.get_additional_data csys_2).origin_process = Right) ||
@@ -598,6 +601,7 @@ let trace_equivalence conf1 conf2 =
 
   try
     apply_rules equiv_pbl (fun () -> ());
+    Config.debug (fun () -> Config.print_in_log (Printf.sprintf "Nb of application of apply_one_transition_and_rules = %d" !nb_apply_one_transition_and_rules));
     Equivalent
   with
     | Not_Trace_Equivalent csys -> Not_Equivalent csys
