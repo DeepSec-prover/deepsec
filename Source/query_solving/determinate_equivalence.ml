@@ -589,7 +589,8 @@ let trace_equivalence proc1 proc2 =
 
   try
     apply_rules equiv_pbl (fun () -> ());
-    Config.debug (fun () -> Config.print_in_log (Printf.sprintf "Nb of application of apply_one_transition_and_rules = %d\n" !nb_apply_one_transition_and_rules));
+    Config.debug (fun () -> Config.print_in_log (Printf.sprintf "Result = Equivalent (Nb of application of apply_one_transition_and_rules = %d)" !nb_apply_one_transition_and_rules));
     Equivalent
-  with
-    | Not_Trace_Equivalent csys -> Not_Equivalent csys
+  with Not_Trace_Equivalent csys ->
+    Config.debug (fun () -> Config.print_in_log (Printf.sprintf "Result = Not Equivalent (Nb of application of apply_one_transition_and_rules = %d)" !nb_apply_one_transition_and_rules));
+    Not_Equivalent csys
