@@ -559,7 +559,7 @@ module K = struct
       | CRFunc(i,_) -> eq_uni, kb.data.(i).term, kb.data.(i).type_rec
       | RFunc(f,args_r) ->
           Config.debug (fun () ->
-            if Symbol.is_constructor f
+            if not (Symbol.is_constructor f)
             then Config.internal_error "[data_structure.ml >> K.consequence_uniform_recipe] The symbol should be constructor"
           );
           if f.arity = 0
@@ -614,9 +614,25 @@ module IK = struct
       data : entry list (* To be always kept ordered. The first element is the last added. *)
     }
 
+  let display kb ikb =
+    let acc = ref "KB : " in
+
+    for i = 0 to kb.K.size - 1 do
+      acc := !acc ^ (Printf.sprintf "%s,%d |-%d %s, " (Recipe.display Display.Terminal kb.K.data.(i).K.recipe) kb.K.data.(i).K.type_rec i (Term.display Display.Terminal kb.K.data.(i).K.term))
+    done;
+
+    acc := !acc ^ "\nIK: ";
+
+    List.iter (fun elt ->
+      acc := !acc ^ (Printf.sprintf "%s,%d |-%d %s, " (Recipe.display Display.Terminal elt.recipe) ikb.type_rec elt.id (Term.display Display.Terminal elt.term))
+    ) ikb.data;
+
+    !acc ^ "\n"
+
+
   let empty = { index_counter = 0; type_rec = 0; data = []}
 
-  let rec prepare_names_for_transfer index = function
+  let rec prepare_names_for_transfer cleanup_name index = function
     | [] -> ()
     | elt::q ->
         match elt.term with
@@ -624,21 +640,37 @@ module IK = struct
               begin match n.deducible_n with
                 | None -> Config.internal_error "[data_structure.ml >> IK.prepare_names_for_transfer] A name in incremented_knowledge is deducible."
                 | Some (CRFunc(i,r)) ->
+                    cleanup_name := (n,n.deducible_n)::!cleanup_name;
                     Config.debug (fun () ->
                       if i <> elt.id
                       then Config.internal_error "[data_structure.ml >> IK.prepare_names_for_transfer] Incorrect index"
                     );
                     n.deducible_n <- Some(CRFunc(index,r));
-                    prepare_names_for_transfer (index-1) q
+
+                    prepare_names_for_transfer cleanup_name (index-1) q
                 | _ -> Config.internal_error "[data_structure.ml >> IK.prepare_names_for_transfer] A name in incremented_knowledge is deducible from a context."
               end
-          | _ -> prepare_names_for_transfer (index-1) q
+          | Var _ -> Config.internal_error "[data_structure.ml >> IK.prepare_names_for_transfer] Unexpected variable."
+          | _ -> prepare_names_for_transfer cleanup_name (index-1) q
 
   let transfer_incremented_knowledge_into_knowledge after_output kb ikb =
+    Config.debug (fun () ->
+      for i = 0 to kb.K.size - 1 do
+        match kb.K.data.(i).K.term with
+          | Name { deducible_n = Some (CRFunc(i',_)); _ } ->
+              if i <> i'
+              then Config.internal_error "[data_structure.ml >> transfer_incremented_knowledge_into_knowledge] Name indices have not been properly transfered"
+          | Name { deducible_n = Some _ ; _ } -> Config.internal_error "[data_structure.ml >> transfer_incremented_knowledge_into_knowledge] Name should have been set to deducible with a context."
+          | Name { deducible_n = None; _ } -> Config.internal_error "[data_structure.ml >> transfer_incremented_knowledge_into_knowledge] Name should have been set to deducible."
+          | _ -> ()
+      done
+    );
     let size_ikb = List.length ikb.data in
     let new_size = size_ikb + kb.K.size in
 
-    prepare_names_for_transfer (new_size-1) ikb.data;
+    let cleanup_name = ref [] in
+
+    prepare_names_for_transfer cleanup_name (new_size-1) ikb.data;
 
     let data = Array.make new_size K.dummy_entry in
 
@@ -671,7 +703,19 @@ module IK = struct
         data = []
       }
     in
-    kb',ikb',id_assoc
+    Config.debug (fun () ->
+      for i = 0 to kb'.K.size - 1 do
+        match kb'.K.data.(i).K.term with
+          | Name { deducible_n = Some (CRFunc(i',_)); _ } ->
+              if i <> i'
+              then Config.internal_error "[data_structure.ml >> transfer_incremented_knowledge_into_knowledge] Name indices have not been properly transfered(2)"
+          | Name { deducible_n = Some _ ; _ } -> Config.internal_error "[data_structure.ml >> transfer_incremented_knowledge_into_knowledge] Name should have been set to deducible with a context(2)."
+          | Name { deducible_n = None; _ } -> Config.internal_error "[data_structure.ml >> transfer_incremented_knowledge_into_knowledge] Name should have been set to deducible(2)."
+          | _ -> ()
+      done
+    );
+    let cleanup_f () =  List.iter (fun (n,l) -> n.deducible_n <- l) !cleanup_name in
+    kb',ikb',id_assoc, cleanup_f
 
   let add ikb dfact =
     let index = ikb.index_counter in
@@ -682,7 +726,7 @@ module IK = struct
 
   let remove ikb index =
     let rec explore = function
-      | [] -> Config.internal_error "[data_structure.ml >> IK.get_deduction_fact] Invalid index."
+      | [] -> Config.internal_error "[data_structure.ml >> IK.remove] Invalid index."
       | elt::q when elt.id = index -> q
       | elt::q -> elt::(explore q)
     in
@@ -724,7 +768,7 @@ module IK = struct
     then kb.K.data.(index).K.term
     else
       let rec explore = function
-        | [] -> Config.internal_error "[data_structure.ml >> IK.get_deduction_fact] Invalid index."
+        | [] -> Config.internal_error "[data_structure.ml >> IK.get_term] Invalid index."
         | elt::_ when elt.id = index -> elt.term
         | _::q -> explore q
       in
@@ -735,7 +779,7 @@ module IK = struct
     then kb.K.data.(index).K.recipe, kb.K.data.(index).K.term
     else
       let rec explore = function
-        | [] -> Config.internal_error "[data_structure.ml >> IK.get_deduction_fact] Invalid index."
+        | [] -> Config.internal_error "[data_structure.ml >> IK.get] Invalid index."
         | elt::_ when elt.id = index -> elt.recipe, elt.term
         | _::q -> explore q
       in
@@ -829,7 +873,35 @@ module IK = struct
                 explore f_next (Var v)
             | _ -> Config.internal_error "[data_structure.ml >> IK.consequence_term] Unexpected link."
           end
-      | Name { deducible_n = Some r; _ } -> f_next r
+      | Name ({ deducible_n = Some r; _ } as n) ->
+          Config.debug (fun () ->
+            let found = ref false in
+            for i = 0 to kb.K.size - 1 do
+              match kb.K.data.(i).K.term with
+                | Name n' when n == n' ->
+                    begin match r with
+                      | CRFunc(i',_) when i = i' -> found := true
+                      | CRFunc _ -> Config.internal_error "[data_structure.ml >> IK.consequence_term] Incoherent index for name."
+                      | _ -> Config.internal_error "[data_structure.ml >> IK.consequence_term] Incoherent recipe for name."
+                    end
+                | Var _ -> Config.internal_error "[data_structure.ml >> IK.consequence_term] Unexpected variable."
+                | _ -> ()
+            done;
+            List.iter (fun elt ->
+              match elt.term with
+                | Name n' when n == n' ->
+                    begin match r with
+                      | CRFunc(i',_) when elt.id = i' -> found := true
+                      | CRFunc _ -> Config.internal_error "[data_structure.ml >> IK.consequence_term] Incoherent index for name (2)."
+                      | _ -> Config.internal_error "[data_structure.ml >> IK.consequence_term] Incoherent recipe for name (2)."
+                    end
+                | Var _ -> Config.internal_error "[data_structure.ml >> IK.consequence_term] Unexpected variable (2)."
+                | _ -> ()
+            ) kbi.data;
+            if not !found
+            then Config.internal_error "[data_structure.ml >> IK.consequence_term] A name is linked as deducible but is not within the knowledge bases."
+          );
+          f_next r
       | Name _ -> raise Not_found
       | Func(f,_) when f.arity = 0 && f.public -> f_next (RFunc(f,[]))
       | (Func(f,args_t)) as t ->
@@ -862,7 +934,6 @@ module IK = struct
     with Not_found -> None
 
   let consequence_recipe kb ikb df recipe =
-
     let accu_variables = ref [] in
 
     let rec explore = function

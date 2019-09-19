@@ -88,8 +88,8 @@ module Diseq = struct
       | Bot -> Bot
       | Disj diseq_list ->
           Config.debug (fun () ->
-            if x.link <> NoLink
-            then Config.internal_error "[formula.ml >> Diseq.T.instantiate_and_normalise_one_variable] The variable x should not be linked to the term.";
+            if x.link = NoLink
+            then Config.internal_error "[formula.ml >> Diseq.T.instantiate_and_normalise_one_variable] The variable x should be linked to the term.";
           );
 
           (* We link the variables of the disequality *)
@@ -246,8 +246,8 @@ module Diseq = struct
       | Bot -> Bot
       | Disj diseq_list ->
           Config.debug (fun () ->
-            if x.link_r <> RNoLink
-            then Config.internal_error "[formula.ml >> Diseq.R.instantiate_and_normalise_one_variable_constructor] The variable x should not be linked to the term.";
+            if x.link_r = RNoLink
+            then Config.internal_error "[formula.ml >> Diseq.R.instantiate_and_normalise_one_variable_constructor] The variable x should be linked to the term.";
           );
 
           (* We link the variables of the disequality *)
@@ -296,7 +296,7 @@ module Diseq = struct
                 Recipe_Variable.currently_linked := [x];
 
                 result
-            | _ -> Config.internal_error "[formula.ml >> Diseq.Recipe.instantiate_and_normalise_constructor] Unexpected link."
+            | _ -> Config.internal_error "[formula.ml >> Diseq.R.instantiate_and_normalise_constructor] Unexpected link."
           end
 
     let instantiate_and_normalise_one_variable x r = function
@@ -304,7 +304,7 @@ module Diseq = struct
       | Bot -> Bot
       | Disj diseq_list ->
           Config.debug (fun () ->
-            if x.link_r <> RNoLink
+            if x.link_r = RNoLink
             then Config.internal_error "[formula.ml >> Diseq.R.instantiate_and_normalise_one_variable_constructor] The variable x should not be linked to the term.";
           );
 

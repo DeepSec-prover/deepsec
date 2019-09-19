@@ -138,6 +138,8 @@ module IK : sig
   (** The type represents the set of solved deduction formulas that will be used in constraint systems, {% i.e. $\Solved$. %} *)
   type t
 
+  val display : K.t -> t -> string
+
   (** The empty set *)
   val empty : t
 
@@ -172,7 +174,7 @@ module IK : sig
 
   val consequence_recipe : K.t -> t -> DF.t -> recipe -> term
 
-  val transfer_incremented_knowledge_into_knowledge : bool -> K.t -> t -> K.t * t * (int * int) list
+  val transfer_incremented_knowledge_into_knowledge : bool -> K.t -> t -> K.t * t * (int * int) list * (unit -> unit)
 end
 
 (** {2 {% The set of unsolved formulas \texorpdfstring{$\USolved$}{UF} %}}*)

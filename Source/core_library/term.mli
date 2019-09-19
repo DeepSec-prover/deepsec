@@ -376,4 +376,6 @@ module Recipe : sig
   exception No_match
 
   val matching : recipe -> recipe -> unit
+
+  val display : Display.output -> recipe -> string
 end

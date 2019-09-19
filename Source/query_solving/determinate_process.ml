@@ -1149,10 +1149,6 @@ let rec normalise_simple_det_process proc else_branch orig_subst disequations f_
         normalise_simple_det_process p else_branch ((x,Name n)::orig_subst) disequations f_continuation f_next_1
       ) f_next
   | SPar(p_list) ->
-      Config.debug (fun () ->
-        if not else_branch
-        then Config.internal_error "[determinate_process.ml >> normalise_simple_det_process] Process cannot have parallel with the parameter else_branch off."
-      );
       normalise_simple_det_process_list p_list else_branch orig_subst disequations (fun gather p_list_1 f_next_1 ->
         match p_list_1 with
           | [] -> f_continuation gather SNil f_next_1
@@ -1162,10 +1158,7 @@ let rec normalise_simple_det_process proc else_branch orig_subst disequations f_
   | SParMult p_list ->
       Config.debug (fun () ->
         if p_list = []
-        then Config.internal_error "[normalise_simple_det_process] The list should not be empty (1).";
-
-        if not else_branch
-        then Config.internal_error "[determinate_process.ml >> normalise_simple_det_process] Process cannot have parallel with the parameter else_branch off (2)."
+        then Config.internal_error "[normalise_simple_det_process] The list should not be empty (1)."
       );
       normalise_simple_det_channel_process_list p_list else_branch orig_subst disequations (fun gather p_list_1 f_next_1 ->
         Config.debug (fun () ->

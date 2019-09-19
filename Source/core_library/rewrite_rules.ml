@@ -695,10 +695,10 @@ let initialise_skeletons_constructor () =
 
     Config.debug (fun () ->
       if Formula.M.Bot = diseq_form
-      then Printf.printf "Function symbol on which we do not apply equality constructor : %s\n" (Symbol.display Latex f);
+      then Config.print_in_log (Printf.sprintf "Function symbol on which we do not apply equality constructor : %s\n" (Symbol.display Latex f));
 
       if not (Formula.M.Bot = diseq_form) && not (Formula.M.Top = diseq_form)
-      then Printf.printf "Function symbol with special mixed formula for the application of equality constructor : %s\n" (Symbol.display Latex f);
+      then Config.print_in_log (Printf.sprintf "Function symbol with special mixed formula for the application of equality constructor : %s\n" (Symbol.display Latex f));
     );
 
     new_storage_skeletons_constructor.(f.index_s) <- { recipe_vars = snd_vars; term_vars = fst_vars ; formula = diseq_form }
@@ -709,7 +709,7 @@ let initialise_skeletons_constructor () =
 let initialise_all_skeletons () =
   initialise_skeletons_destructor ();
   initialise_skeletons_constructor ()
-  
+
 (****** Equality module rewrite rules ******)
 
 let rec rewrite_term_list quantifier next_f = function

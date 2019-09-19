@@ -51,8 +51,11 @@ let apply_faulty (csys_left,symb_left) (csys_right,symb_right) is_left f_conf f_
         let wit_csys_2 = { wit_csys_1 with Constraint_system.additional_data = { symb_proc with configuration = f_conf } } in
         raise (Not_Trace_Equivalent (Constraint_system.instantiate wit_csys_2))
 
+let nb_apply_one_transition_and_rules = ref 0
+
 let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
   Config.debug (fun () ->
+    incr nb_apply_one_transition_and_rules;
     match equiv_pbl.csys_set.Constraint_system.set with
       | [csys_1; csys_2] when
           (csys_1.Constraint_system.additional_data.origin_process = Left && csys_2.Constraint_system.additional_data.origin_process = Right) ||
@@ -70,7 +73,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
   match search_next_rule symb_proc.configuration with
     | RStart ->
-        print_string "apply start\n";
+        Config.debug (fun () -> Config.print_in_log "Apply Start\n");
         let csys_list_for_start = ref [] in
 
         let else_branch =
@@ -168,7 +171,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
         Constraint_system.Rule.apply_rules_after_input false in_apply_final_test csys_set_for_start f_next
     | RStartIn ->
-        print_string "apply start-in\n";
+        Config.debug (fun () -> Config.print_in_log "apply Start In\n");
         let var_X = Recipe_Variable.fresh Free equiv_pbl.size_frame in
 
         let apply_conf csys conf =
@@ -184,6 +187,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
         ) equiv_pbl.csys_set.Constraint_system.set;
 
         apply_start_in var_X !csys_conf_list apply_conf (fun csys_var_list label f_next_1 ->
+          Config.debug (fun () -> Config.print_in_log "Execute one start in\n");
           let csys_list_for_input = ref [] in
 
           let else_branch =
@@ -202,7 +206,9 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
               let original_subst = (x,Var x_fresh)::csys.Constraint_system.original_substitution in
               List.iter (fun (x,t) -> Variable.link_term x t) original_subst;
 
+              Config.debug (fun () -> Config.print_in_log "Normalisation configuration\n");
               normalise_configuration symb_proc.configuration else_branch original_subst (fun gathering conf_1 ->
+                Config.debug (fun () -> Config.print_in_log "One gathering\n");
                 try
                   let dfact = { Data_structure.bf_var = var_X; Data_structure.bf_term = Var x_fresh } in
                   let csys_1 =
@@ -213,8 +219,10 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                       Constraint_system.original_substitution = gathering.original_subst
                     }
                   in
+                  Config.debug (fun () -> Config.print_in_log "Prepare for solving\n");
                   let csys_2 = Constraint_system.prepare_for_solving_procedure false csys_1 in
 
+                  Config.debug (fun () -> Config.print_in_log "Add the constraint system\n");
                   csys_list_for_input := csys_2 :: !csys_list_for_input
                 with Constraint_system.Bot -> ()
               )
@@ -297,7 +305,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           Constraint_system.Rule.apply_rules_after_input false in_apply_final_test csys_set_for_input f_next_1
         ) f_next
     | RPosIn ->
-        print_string "apply pos_in\n";
+        Config.debug (fun () -> Config.print_in_log "apply PosIn\n");
         let var_X = Recipe_Variable.fresh Free equiv_pbl.size_frame in
 
         let csys_list_for_input = ref [] in
@@ -409,7 +417,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
         Constraint_system.Rule.apply_rules_after_input false in_apply_final_test csys_set_for_input f_next
     | RNegOut ->
-        print_string "apply neg_out\n";
+        Config.debug (fun () -> Config.print_in_log "apply neg out\n");
         let axiom = equiv_pbl.size_frame + 1 in
 
         let csys_list_for_output = ref [] in
@@ -521,7 +529,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
         Constraint_system.Rule.apply_rules_after_output false out_apply_final_test csys_set_for_output f_next
     | RNothing ->
-        print_string "apply nothing\n";
+        Config.debug (fun () -> Config.print_in_log "apply RNothing\n");
         let csys_list = equiv_pbl.csys_set.Constraint_system.set in
         if csys_list = []
         then f_next ()
@@ -581,6 +589,7 @@ let trace_equivalence proc1 proc2 =
 
   try
     apply_rules equiv_pbl (fun () -> ());
+    Config.debug (fun () -> Config.print_in_log (Printf.sprintf "Nb of application of apply_one_transition_and_rules = %d\n" !nb_apply_one_transition_and_rules));
     Equivalent
   with
     | Not_Trace_Equivalent csys -> Not_Equivalent csys

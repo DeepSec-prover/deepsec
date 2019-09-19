@@ -386,6 +386,7 @@ module Name = struct
       if n.deducible_n <> None
       then Config.internal_error "[term.ml >> set_deducible] Name is already deducible."
     );
+    currently_deducible := n :: !currently_deducible;
     n.deducible_n <- Some recipe
 end
 
@@ -888,6 +889,7 @@ module Term = struct
   (********** Display **********)
 
   let rec display out = function
+    | Var { link = TLink t; _ } -> display out t
     | Var v -> Variable.display out v
     | Name n -> Name.display out n
     | Func(f_symb,_) when f_symb.arity = 0 ->
@@ -1027,7 +1029,8 @@ module Recipe = struct
   (********** Display **********)
 
   let rec display out = function
-    | CRFunc(_,r) -> display out r
+    | RVar { link_r = RLink r; _ } -> display out r
+    | CRFunc(i,r) -> Printf.sprintf "CR[%d,%s]" i (display out r)
     | RVar v -> Recipe_Variable.display out v
     | Axiom ax -> Axiom.display out ax
     | RFunc(f_symb,_) when f_symb.arity = 0 ->
