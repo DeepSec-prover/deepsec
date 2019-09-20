@@ -22,9 +22,15 @@ let debug =
   then fun f -> f ()
   else fun _ -> ()
 
-let print_in_log s =
-  Printf.fprintf log_file "%s" s;
-  flush log_file
+let display_in_log = false
+
+let print_in_log ?(always=false) s =
+  if display_in_log || always
+  then
+    begin
+      Printf.fprintf log_file "%s" s;
+      flush log_file
+    end
 
 (**** Testing *****)
 

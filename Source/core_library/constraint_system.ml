@@ -493,7 +493,6 @@ module MGS = struct
             simp_eq_skeleton = new_formula
           }
         in
-
         RSSSimple(RFunc(symb,List.map (fun x -> RVar x) skeleton_cons.Rewrite_rules.recipe_vars), simple_csys,additional_basic_facts,skeleton_cons.Rewrite_rules.recipe_vars)
 
   (***** Compute MGS *****)
@@ -510,22 +509,10 @@ module MGS = struct
 
   let compute_all csys f_found_mgs f_next =
     let rec apply_rules df eq_term eq_rec eq_uni exist_vars f_next_0 =
-      Config.debug (fun () ->
-        DF.debug "[compute_all >> apply_rules]" df;
-        Config.print_in_log ("[Apply_rules] "^(DF.display df));
-        Config.print_in_log (
-          "[Apply_rules] Exist_vars :"^
-          (Display.display_list
-            (fun v -> (Recipe_Variable.display Display.Terminal v) ^ "->"^(Recipe.display Display.Terminal (RVar v)))
-            ", "
-            exist_vars
-          )^"\n"
-        )
-      );
+      Config.debug (fun () -> DF.debug "[compute_all >> apply_rules]" df);
       Recipe_Variable.auto_cleanup_with_reset (fun f_next_1 ->
         match DF.compute_mgs_applicability df with
           | DF.Solved ->
-              Config.debug (fun () -> Config.print_in_log "[MGS.compute_all] Solved\n");
               let exist_vars' =
                 List.fold_left (fun acc v -> match v.link_r with
                   | RNoLink -> v::acc
@@ -534,7 +521,6 @@ module MGS = struct
               in
               f_found_mgs { mgs_deduction_facts = df; mgs_eq_term = eq_term; mgs_eq_recipe = eq_rec; mgs_eq_uniformity =  eq_uni; mgs_eq_skeleton = Formula.M.Top; mgs_fresh_existential_vars = exist_vars' } f_next_1
           | DF.UnifyVariables df' ->
-              Config.debug (fun () -> Config.print_in_log "[MGS.compute_all] Unif variables.\n");
               let eq_rec' = Formula.R.instantiate_and_normalise eq_rec in
               if eq_rec' = Formula.R.Bot
               then f_next_1 ()
@@ -547,25 +533,10 @@ module MGS = struct
                 in
                 f_found_mgs { mgs_deduction_facts = df'; mgs_eq_term = eq_term; mgs_eq_recipe = eq_rec'; mgs_eq_uniformity =  eq_uni; mgs_eq_skeleton = Formula.M.Top; mgs_fresh_existential_vars = exist_vars' } f_next_1
           | DF.UnsolvedFact(bfact,df',unif) ->
-              Config.debug (fun () ->
-                Config.print_in_log (
-                  "[After Unsolved Fact] Exist_vars :"^
-                  (Display.display_list
-                    (fun v -> (Recipe_Variable.display Display.Terminal v) ^ "->"^(Recipe.display Display.Terminal (RVar v)))
-                    ", "
-                    exist_vars
-                  )^"\n"
-                )
-              );
               let x = bfact.bf_var
               and t = bfact.bf_term in
 
               Config.debug (fun () ->
-                Config.print_in_log (Printf.sprintf "[MGS.compute_all] Deduction fact unsolved, %s |- %s (unif = %b)\n" (Recipe_Variable.display Display.Terminal ~display_type:true x) (Term.display Display.Terminal t) unif)
-              );
-              Config.debug (fun () ->
-
-
                 if x.type_r = Recipe_Variable.infinite_type
                 then Config.internal_error "[constraint_system.ml >> MGS.compute_all] There should not be variable with infinite type when computing all mgs."
               );
@@ -608,21 +579,9 @@ module MGS = struct
 
 
                     K.find_unifier_with_recipe csys.simp_knowledge t x.type_r (fun is_identity r f_next_2 ->
-                      Config.debug (fun () ->
-                        Config.print_in_log "[MGS.compute_all] Found unifier with K.\n";
-                        Config.print_in_log (
-                          "[After Find Unifier] Exist_vars :"^
-                          (Display.display_list
-                            (fun v -> (Recipe_Variable.display Display.Terminal v) ^ "->"^(Recipe.display Display.Terminal (RVar v)))
-                            ", "
-                            exist_vars
-                          )^"\n"
-                        )
-                      );
                       if is_identity
                       then
                         begin
-                          Config.debug (fun () -> Config.print_in_log "Idendity\n");
                           found_identity := true;
                           (* We do not need to auto_clean the recipe variable cause this is the last
                           case that will be applied. Hence, the cleanup will be handled by f_next_2 which
@@ -634,20 +593,19 @@ module MGS = struct
                             else Formula.R.instantiate_and_normalise_one_variable x r eq_rec
                           in
                           if eq_rec' = Formula.R.Bot
-                          then (Config.debug (fun () -> Config.print_in_log "Eq rec BOT\n"); f_next_2 ())
+                          then f_next_2 ()
                           else apply_rules df' eq_term eq_rec' eq_uni exist_vars f_next_2
                         end
                       else
                         let eq_term' = Formula.T.instantiate_and_normalise eq_term in
                         if eq_term' = Formula.T.Bot
-                        then (Config.debug (fun () -> Config.print_in_log "Eq term' BOT\n"); f_next_2 ())
+                        then f_next_2 ()
                         else
                           let eq_uni' = Formula.T.instantiate_and_normalise eq_uni in
                           if eq_uni' = Formula.T.Bot
-                          then (Config.debug (fun () -> Config.print_in_log "Eq uni' BOT\n"); f_next_2 ())
+                          then f_next_2 ()
                           else
                             begin
-                              Config.debug (fun () -> Config.print_in_log ("Eq rec = "^(Formula.R.display Display.Terminal eq_rec)^"\n"));
                               let diseq = Diseq.T.of_linked_variables !Variable.currently_linked in
                               acc_eq_uni := Formula.T.wedge diseq !acc_eq_uni;
 
@@ -658,45 +616,23 @@ module MGS = struct
                                   then Formula.R.instantiate_and_normalise eq_rec
                                   else Formula.R.instantiate_and_normalise_one_variable x r eq_rec
                                 in
-                                Config.debug (fun () ->
-                                  Config.print_in_log (
-                                    "[After Instantiation of eq_rec'] Exist_vars :"^
-                                    (Display.display_list
-                                      (fun v -> (Recipe_Variable.display Display.Terminal v) ^ "->"^(Recipe.display Display.Terminal (RVar v)))
-                                      ", "
-                                      exist_vars
-                                    )^"\n"
-                                  );
-                                );
                                 Config.debug (fun () -> if x.link_r = RNoLink then Config.internal_error "[MGS.compute_all] Variable should be linked.");
                                 if eq_rec' = Formula.R.Bot
-                                then (Config.debug (fun () -> Config.print_in_log "Eq rec BOT 2\n"); f_next_3 ())
+                                then f_next_3 ()
                                 else apply_rules df' eq_term' eq_rec' eq_uni' exist_vars f_next_3
                               ) f_next_2
                             end
                     ) (fun () ->
-                      Config.debug (fun () -> Config.print_in_log "[MGS.compute_all] Applying constructor K.\n");
                       if !found_identity || not f.public
-                      then
-                        begin
-                          Config.debug (fun () -> Config.print_in_log "[MGS.compute_all] Not public or identity found\n");
-                          f_next_1 ()
-                        end
+                      then f_next_1 ()
                       else
                         begin
                           let fresh_vars = Recipe_Variable.fresh_list Existential x.type_r f.arity in
                           let exists_vars' = List.rev_append fresh_vars exist_vars in
                           let r = RFunc(f,List.map (fun y -> RVar y) fresh_vars) in
 
-                          Config.debug (fun () ->
-                            DF.debug "[compute_all >> apply_rules >> Negation]" df'
-                          );
                           (* No need to auto cleanup the recipe variables as it will be done by f_next_1 *)
                           Recipe_Variable.link_recipe x r;
-
-                          Config.debug (fun () ->
-                            DF.debug "[compute_all >> apply_rules >> Negation2]" df'
-                          );
 
                           let eq_rec' =
                             if unif
@@ -704,19 +640,11 @@ module MGS = struct
                             else Formula.R.instantiate_and_normalise_one_variable_constructor x r eq_rec
                           in
                           if eq_rec' = Formula.R.Bot
-                          then
-                            begin
-                              Config.debug (fun () -> Config.print_in_log "[MGS.compute_all] Recipe formula BOT");
-                              f_next_1 ()
-                            end
+                          then f_next_1 ()
                           else
                             begin
-                              Config.debug (fun () -> Config.print_in_log "[MGS.compute_all] Applying the constructor");
                               let ded_fact_list = List.map2 (fun x' t' -> { bf_var = x'; bf_term = t' }) fresh_vars args in
                               let df'' = DF.add_multiple df' ded_fact_list in
-                              Config.debug (fun () ->
-                                DF.debug "[compute_all >> apply_rules >> Negation3]" df''
-                              );
                               apply_rules df'' eq_term eq_rec' !acc_eq_uni exists_vars' f_next_1
                             end
                         end
@@ -1169,9 +1097,6 @@ module MGS = struct
       try
         Some (List.fold_left (fun (acc_eq,eq_uni) bfact -> match bfact.bf_var.link_r with
           | RLink r ->
-              Config.debug (fun () ->
-                Config.print_in_log (Printf.sprintf "Apply_mgs_on_different_csys = %s\n" (Recipe.display Display.Terminal r))
-              );
               let (eq_uni',t,_) = K.consequence_uniform_recipe csys.knowledge eq_uni r in
               (bfact.bf_term,t)::acc_eq , eq_uni'
           | _ -> Config.internal_error "[constraint_system.ml >> MGS.apply_mgs_on_different_csys] The variables should be linked with a recipe."
@@ -1244,9 +1169,6 @@ module MGS = struct
       try
         Some (List.fold_left (fun (acc_eq,eq_uni) bfact -> match bfact.bf_var.link_r with
           | RLink r ->
-              Config.debug (fun () ->
-                Config.print_in_log (Printf.sprintf "Apply_mgs_on_different_solved_csys = %s\n" (Recipe.display Display.Terminal r))
-              );
               let (eq_uni',t,_) = K.consequence_uniform_recipe csys.knowledge eq_uni r in
               let x_bfact = match bfact.bf_term with
                 | Var x -> x
@@ -1349,7 +1271,6 @@ module Rule = struct
       Set.debug_check_structure "[Sat]" csys_set;
       List.iter (fun csys ->
         debug_on_constraint_system "[Rule Sat]" csys;
-        Config.print_in_log (display_constraint_system csys);
         if not (Formula.T.debug_no_linked_variables csys.eq_term)
         then Config.internal_error "[constraint_system.ml >> sat] Variables in eq_term should not be linked.";
         if not (Formula.T.debug_no_linked_variables csys.eq_uniformity)
@@ -1379,44 +1300,25 @@ module Rule = struct
             debug_on_constraint_system "[Rule Sat >> internal >> Found unsolved csys]" csys;
             List.iter (fun csys' -> debug_on_constraint_system "[Rule Sat >> internal >> Found unsolved csys]" csys') checked_csys_1;
             List.iter (fun csys' -> debug_on_constraint_system "[Rule Sat >> internal >> Found unsolved csys]" csys') to_check_csys_1;
-            Config.print_in_log "Compute all\n"
           );
 
           MGS.compute_all simple_csys (fun mgs_data f_next_2 ->
-            Config.debug (fun () -> Config.print_in_log "Application of one MGS\n");
             Variable.auto_cleanup_with_reset (fun f_next_3 ->
               let diseq_rec = Diseq.R.of_maybe_linked_variables vars_df mgs_data.MGS.mgs_fresh_existential_vars in
               accu_neg_eq_recipe := diseq_rec :: !accu_neg_eq_recipe;
 
-              Config.debug (fun () ->
-                Config.print_in_log ("Vars DF : "^(Display.display_list (fun x -> Recipe.display Display.Terminal (RVar x)) ", " vars_df)^"\n")
-              );
-
               let new_csys = MGS.apply_mgs_on_same_csys csys mgs_data in
-              Config.debug (fun () ->
-                debug_on_constraint_system "[Rule Sat >> internal >> After compute all >> apply on same]" new_csys;
-                Config.print_in_log (Printf.sprintf "DF of same csys : %s" (DF.display new_csys.deduction_facts))
-              );
+
               let new_checked_csys =
                 List.fold_left (fun set csys -> match MGS.apply_mgs_on_different_solved_csys csys mgs_data.MGS.mgs_fresh_existential_vars with
                   | None -> set
-                  | Some csys' ->
-                      Config.debug (fun () ->
-                        debug_on_constraint_system "[Rule Sat >> internal >> After compute all >> apply on different solved]" csys';
-                        Config.print_in_log (Printf.sprintf "DF of different solved csys : %s" (DF.display csys'.deduction_facts))
-                      );
-                      csys' :: set
+                  | Some csys' -> csys' :: set
                 ) [new_csys] checked_csys_1
               in
               let new_to_check_csys =
                 List.fold_left (fun set csys -> match MGS.apply_mgs_on_different_csys csys mgs_data.MGS.mgs_fresh_existential_vars with
                   | None -> set
-                  | Some csys' ->
-                      Config.debug (fun () ->
-                        debug_on_constraint_system "[Rule Sat >> internal >> After compute all >> apply on different]" csys';
-                        Config.print_in_log (Printf.sprintf "DF of different csys : %s" (DF.display csys'.deduction_facts))
-                      );
-                      csys' :: set
+                  | Some csys' -> csys' :: set
                 ) [] to_check_csys_1
               in
 
@@ -1424,7 +1326,6 @@ module Rule = struct
             ) f_next_2
           ) (fun () ->
             Config.debug (fun () ->
-              Config.print_in_log "Negation\n";
               List.iter (fun csys' -> debug_on_constraint_system "[Rule Sat >> internal >> After compute all >> Negation Checked]" csys') checked_csys_1;
               List.iter (fun csys' -> debug_on_constraint_system "[Rule Sat >> internal >> After compute all >> Negation To Check]" csys') to_check_csys_1
             );
@@ -1450,7 +1351,6 @@ module Rule = struct
 
   let sat_disequation f_continuation csys_set f_next =
     Config.debug (fun () ->
-      Config.print_in_log (Printf.sprintf "- Rule Sat Disequation (%d): Nb csys = %d\n" !debug_sat_index (List.length csys_set.set));
       Set.debug_check_structure "[Sat disequation]" csys_set;
 
       List.iter (fun csys ->
@@ -2096,6 +1996,11 @@ module Rule = struct
 
   (**** The rule Rewrite ****)
 
+  let nb_RSSNone_rewrite = ref 0
+  let nb_RSSNo_IK_solution_rewrite = ref 0
+  let nb_RSSSimple_pos_rewrite = ref 0
+  let nb_RSSSimple_neg_rewrite = ref 0
+
   exception NFound of deduction_fact
 
   type deduction_formula_generated =
@@ -2207,13 +2112,23 @@ module Rule = struct
                 Variable.auto_cleanup_with_reset_notail (fun () ->
                   Recipe_Variable.auto_cleanup_with_reset_notail (fun () ->
                     match MGS.simple_of_skeleton csys eq_recipe index_kb index_skel with
-                      | MGS.RSSNone -> None
-                      | MGS.RSSNo_IK_solution -> found_simple := true; None
+                      | MGS.RSSNone ->
+                          Config.debug (fun () -> incr nb_RSSNone_rewrite);
+                          None
+                      | MGS.RSSNo_IK_solution ->
+                          Config.debug (fun () -> incr nb_RSSNo_IK_solution_rewrite);
+                          found_simple := true;
+                          None
                       | MGS.RSSSimple(recipe,simple_csys,infinite_basic_facts,infinite_vars) ->
                           let df_vars = { MGS.std_vars = vars_df_ref; MGS.infinite_vars = infinite_vars } in
                           match MGS.compute_one_with_IK simple_csys infinite_basic_facts df_vars with
-                            | None -> found_simple := true; None
-                            | Some mgs_data -> Some(recipe,mgs_data)
+                            | None ->
+                                Config.debug (fun () -> incr nb_RSSSimple_neg_rewrite);
+                                found_simple := true;
+                                None
+                            | Some mgs_data ->
+                                Config.debug (fun () -> incr nb_RSSSimple_pos_rewrite);
+                                Some(recipe,mgs_data)
                   )
                 )
               in
@@ -2395,6 +2310,11 @@ module Rule = struct
 
   (*** The rule consequence ***)
 
+  let nb_RSSNone_constructor = ref 0
+  let nb_RSSNo_IK_solution_constructor = ref 0
+  let nb_RSSSimple_pos_constructor = ref 0
+  let nb_RSSSimple_neg_constructor = ref 0
+
   type equality_formula_generated =
     | NoEq
     | SolvedEq
@@ -2458,13 +2378,20 @@ module Rule = struct
                     then sub_explore check_on_K equality_constructor_checked q_id
                     else
                       begin match MGS.simple_of_equality_constructor csys eq_recipe index_kb f args skeleton_cons with
-                        | MGS.RSSNone -> sub_explore check_on_K equality_constructor_checked q_id
-                        | MGS.RSSNo_IK_solution -> sub_explore check_on_K (index_kb::equality_constructor_checked) q_id
+                        | MGS.RSSNone ->
+                            Config.debug (fun () -> incr nb_RSSNone_constructor);
+                            sub_explore check_on_K equality_constructor_checked q_id
+                        | MGS.RSSNo_IK_solution ->
+                            Config.debug (fun () -> incr nb_RSSNo_IK_solution_constructor);
+                            sub_explore check_on_K (index_kb::equality_constructor_checked) q_id
                         | MGS.RSSSimple(recipe,simple_csys,infinite_bfacts,infinite_vars) ->
                             let df_vars = { MGS.std_vars = vars_df_ref; MGS.infinite_vars = infinite_vars } in
                             match MGS.compute_one_with_IK simple_csys infinite_bfacts df_vars with
-                              | None -> sub_explore check_on_K (index_kb::equality_constructor_checked) q_id
+                              | None ->
+                                  Config.debug (fun () -> incr nb_RSSSimple_neg_constructor);
+                                  sub_explore check_on_K (index_kb::equality_constructor_checked) q_id
                               | Some mgs_data ->
+                                  Config.debug (fun () -> incr nb_RSSSimple_pos_constructor);
                                   let new_recipe =
                                     Recipe_Variable.auto_cleanup_with_reset_notail (fun () ->
                                       List.iter (fun (v,r) -> Recipe_Variable.link_recipe v r) mgs_data.MGS.one_mgs_infinite_subst;
@@ -2663,5 +2590,11 @@ module Rule = struct
     if exists_private
     then sat (sat_non_deducible_terms (split_data_constructor (normalisation_deduction_consequence (rewrite (equality_constructor f_continuation)))))
     else sat (sat_disequation (split_data_constructor (normalisation_deduction_consequence (rewrite (equality_constructor f_continuation)))))
+
+  (*** Debug function ***)
+
+  let debug_display_data () =
+    Config.print_in_log ~always:true (Printf.sprintf "Skeleton data : None = %d, No_IK_solution = %d, Simple positive = %d, Simple negative = %d\n" !nb_RSSNone_rewrite !nb_RSSNo_IK_solution_rewrite !nb_RSSSimple_pos_rewrite !nb_RSSSimple_neg_rewrite);
+    Config.print_in_log ~always:true (Printf.sprintf "Skeleton constructor data : None = %d, No_IK_solution = %d, Simple positive = %d, Simple negative = %d\n" !nb_RSSNone_constructor !nb_RSSNo_IK_solution_constructor !nb_RSSSimple_pos_constructor !nb_RSSSimple_neg_constructor)
 
 end

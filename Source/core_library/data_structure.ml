@@ -1120,6 +1120,7 @@ module UF = struct
     | _ -> Config.internal_error "[data_structure.ml >> UF.validate_head_deduction_facts_for_pattern] There should be at least one deduction fact to check for pattern."
 
   let remove_head_unchecked_deduction_fact_for_pattern uf = match uf.ded_formula with
+    | DedPattern([],[_]) -> { uf with ded_formula = DedNone }
     | DedPattern(checked,[_]) -> { uf with ded_formula = DedSolved checked }
     | DedPattern(checked,_::q) -> { uf with ded_formula = DedPattern(checked,q) }
     | _ -> Config.internal_error "[data_structure.ml >> UF.remove_head_unchecked_deduction_fact_for_pattern] Unexpected case."
@@ -1152,6 +1153,9 @@ module UF = struct
 
   let pop_deduction_fact uf = match uf.ded_formula with
     | DedSolved (dfact::_) -> dfact
+    | DedSolved [] -> Config.internal_error "[data_structure.ml >> pop_deduction_fact] Incorrect structure."
+    | DedPattern _ -> Config.internal_error "[data_structure.ml >> pop_deduction_fact] The deduction facts should have been checked for pattern already."
+    | DedNone -> Config.internal_error "[data_structure.ml >> pop_deduction_fact] The deduction facts should not be empty."
     | _ -> Config.internal_error "[data_structure.ml >> pop_deduction_fact] There should be at least one deduction fact."
 
   (****** Testing ******)

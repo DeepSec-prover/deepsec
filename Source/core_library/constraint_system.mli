@@ -98,4 +98,6 @@ module Rule : sig
   val apply_rules_after_input : bool -> ('a set -> (unit -> unit) -> unit) -> 'a set -> (unit -> unit) -> unit
 
   val apply_rules_after_output : bool -> ('a set -> (unit -> unit) -> unit) -> 'a set -> (unit -> unit) -> unit
+
+  val debug_display_data : unit -> unit
 end

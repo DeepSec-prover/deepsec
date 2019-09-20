@@ -106,19 +106,20 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
              List.iter (fun (x,t) -> Variable.link_term x t) original_subst;
 
              normalise_configuration conf else_branch original_subst (fun gathering conf_1 ->
-              (** TODO : Add test for uniformity *)
-               try
+               let eq_uniformity = Formula.T.instantiate_and_normalise_full csys.Constraint_system.eq_uniformity in
+               if eq_uniformity = Formula.T.Bot
+               then ()
+               else
                  let csys_1 =
                    { csys with
                      Constraint_system.original_substitution = gathering.Determinate_process.original_subst;
                      Constraint_system.additional_data = { symb_proc with configuration = conf_1 };
-                     Constraint_system.eq_term = gathering.disequations
+                     Constraint_system.eq_term = gathering.disequations;
+                     Constraint_system.eq_uniformity = eq_uniformity
                    }
                  in
                  let csys_2 = Constraint_system.prepare_for_solving_procedure false csys_1 in
                  csys_list_for_start := csys_2 :: !csys_list_for_start
-               with
-                 | Constraint_system.Bot -> ()
              )
            )
         ) equiv_pbl.csys_set.Constraint_system.set;
@@ -229,20 +230,23 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
               List.iter (fun (x,t) -> Variable.link_term x t) original_subst;
 
               normalise_configuration symb_proc.configuration else_branch original_subst (fun gathering conf_1 ->
-                try
+                let eq_uniformity = Formula.T.instantiate_and_normalise_full csys.Constraint_system.eq_uniformity in
+                if eq_uniformity = Formula.T.Bot
+                then ()
+                else
                   let dfact = { Data_structure.bf_var = var_X; Data_structure.bf_term = Var x_fresh } in
                   let csys_1 =
                     { csys with
                       Constraint_system.deduction_facts = Data_structure.DF.add_multiple_max_type csys.Constraint_system.deduction_facts [dfact];
                       Constraint_system.eq_term = gathering.disequations;
                       Constraint_system.additional_data = { symb_proc with configuration = conf_1 };
-                      Constraint_system.original_substitution = gathering.original_subst
+                      Constraint_system.original_substitution = gathering.original_subst;
+                      Constraint_system.eq_uniformity = eq_uniformity
                     }
                   in
                   let csys_2 = Constraint_system.prepare_for_solving_procedure false csys_1 in
 
                   csys_list_for_input := csys_2 :: !csys_list_for_input
-                with Constraint_system.Bot -> ()
               )
             )
           ) csys_var_list;
@@ -349,20 +353,23 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
             List.iter (fun (x,t) -> Variable.link_term x t) original_subst;
 
             normalise_configuration conf else_branch original_subst (fun gathering conf_1 ->
-              try
+              let eq_uniformity = Formula.T.instantiate_and_normalise_full csys.Constraint_system.eq_uniformity in
+              if eq_uniformity = Formula.T.Bot
+              then ()
+              else
                 let dfact = { Data_structure.bf_var = var_X; Data_structure.bf_term = Var x_fresh } in
                 let csys_1 =
                   { csys with
                     Constraint_system.deduction_facts = Data_structure.DF.add_multiple_max_type csys.Constraint_system.deduction_facts [dfact];
                     Constraint_system.eq_term = gathering.disequations;
                     Constraint_system.additional_data = { symb_proc with configuration = conf_1 };
-                    Constraint_system.original_substitution = gathering.original_subst
+                    Constraint_system.original_substitution = gathering.original_subst;
+                    Constraint_system.eq_uniformity = eq_uniformity
                   }
                 in
                 let csys_2 = Constraint_system.prepare_for_solving_procedure false csys_1 in
 
                 csys_list_for_input := csys_2 :: !csys_list_for_input
-              with Constraint_system.Bot -> ()
             )
           )
         ) equiv_pbl.csys_set.Constraint_system.set;
@@ -462,19 +469,22 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
             List.iter (fun (x,t) -> Variable.link_term x t) original_subst;
 
             normalise_configuration conf else_branch original_subst (fun gathering conf_1 ->
-              try
+              let eq_uniformity = Formula.T.instantiate_and_normalise_full csys.Constraint_system.eq_uniformity in
+              if eq_uniformity = Formula.T.Bot
+              then ()
+              else
                 let csys_1 = Constraint_system.add_axiom csys axiom term in
                 let csys_2 =
                   { csys_1 with
                     Constraint_system.eq_term = gathering.disequations;
                     Constraint_system.additional_data = { symb_proc with configuration = conf_1 };
-                    Constraint_system.original_substitution = gathering.original_subst
+                    Constraint_system.original_substitution = gathering.original_subst;
+                    Constraint_system.eq_uniformity = eq_uniformity
                   }
                 in
                 let csys_3 = Constraint_system.prepare_for_solving_procedure true csys_2 in
 
                 csys_list_for_output := csys_3 :: !csys_list_for_output
-              with Constraint_system.Bot -> ()
             )
           )
         ) equiv_pbl.csys_set.Constraint_system.set;
@@ -616,8 +626,14 @@ let trace_equivalence proc1 proc2 =
 
   try
     apply_rules equiv_pbl (fun () -> ());
-    Config.debug (fun () -> Config.print_in_log (Printf.sprintf "Result = Equivalent (Nb of application of apply_one_transition_and_rules = %d)" !nb_apply_one_transition_and_rules));
+    Config.debug (fun () ->
+      Config.print_in_log ~always:true (Printf.sprintf "Result = Equivalent (Nb of application of apply_one_transition_and_rules = %d)\n" !nb_apply_one_transition_and_rules);
+      Constraint_system.Rule.debug_display_data ()
+    );
     Equivalent
   with Not_Trace_Equivalent csys ->
-    Config.debug (fun () -> Config.print_in_log (Printf.sprintf "Result = Not Equivalent (Nb of application of apply_one_transition_and_rules = %d)" !nb_apply_one_transition_and_rules));
+    Config.debug (fun () ->
+      Config.print_in_log ~always:true (Printf.sprintf "Result = Not Equivalent (Nb of application of apply_one_transition_and_rules = %d)\n" !nb_apply_one_transition_and_rules);
+      Constraint_system.Rule.debug_display_data ()
+    );
     Not_Equivalent csys
