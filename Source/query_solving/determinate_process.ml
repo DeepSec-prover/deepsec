@@ -2,6 +2,7 @@ open Types
 open Term
 open Extensions
 open Formula
+open Display
 
 (*** Types ***)
 
@@ -72,6 +73,92 @@ struct
 end
 
 module SymbolSet = Set.Make(SymbolComp)
+
+(*** Display function ***)
+
+let display_with_tab n str =
+  let rec print_tab = function
+    | 0 -> ""
+    | n -> "  "^(print_tab (n-1))
+  in
+  (print_tab n) ^ str ^"\n"
+
+let display_equations = function
+  | [] -> Display.bot Terminal
+  | [v,t] -> (Variable.display Terminal v) ^ "=" ^ (Term.display Terminal t)
+  | eq_list ->
+      let left = display_list (fun (v,_) -> Variable.display Terminal v) "," eq_list in
+      let right = display_list (fun (_,t) -> Term.display Terminal t) "," eq_list in
+      Printf.sprintf "(%s) = (%s)" left right
+
+let display_trace = function
+  | TrInput(ch,x,pos) -> Printf.sprintf "in(%s,%s,%d)" (Symbol.display Terminal ch) (Recipe.display Terminal (RVar x)) pos
+  | TrOutput(ch,pos) -> Printf.sprintf "out(%s,%d)" (Symbol.display Terminal ch) pos
+
+let rec display_simple_process tab = function
+  | SStart p -> (display_with_tab tab "Start") ^ (display_simple_process tab p)
+  | SNil -> (display_with_tab tab "Nil")
+  | SOutput(ch,t,p,pos) ->
+      let str = Printf.sprintf "{%d} out(%s,%s);" pos (Symbol.display Terminal ch) (Term.display Terminal t) in
+      (display_with_tab tab str) ^ (display_simple_process tab p)
+  | SInput(ch,x,p,pos) ->
+      let str = Printf.sprintf "{%d} in(%s,%s);" pos (Symbol.display Terminal ch) (Variable.display Terminal x) in
+      (display_with_tab tab str) ^ (display_simple_process tab p)
+  | SCondition(eq_list,Formula.T.Bot,fresh_vars,pthen,SNil,pos) ->
+      let str_eq = display_list display_equations (vee Terminal) eq_list in
+      let str = Printf.sprintf "{%d} condition [%s]" pos str_eq in
+      let str_then = display_simple_process tab pthen in
+      (display_with_tab tab str) ^ str_then
+  | SCondition(eq_list,neg_formula,fresh_vars,pthen,pelse,pos) ->
+      let str_eq = display_list display_equations (vee Terminal) eq_list in
+      let str = Printf.sprintf "{%d} condition [%s]" pos str_eq in
+      let str_then = display_simple_process (tab+1) pthen in
+      let str_else = display_simple_process (tab+1) pelse in
+      let str_neg = "Else "^(Formula.T.display Terminal neg_formula) in
+      (display_with_tab tab str) ^ str_then ^ (display_with_tab tab str_neg) ^ str_else
+  | SNew(x,n,p,pos) ->
+      let str = Printf.sprintf "{%d} new %s -> %s;" pos (Variable.display Terminal x) (Name.display Terminal n) in
+      (display_with_tab tab str) ^ (display_simple_process tab p)
+  | SPar(p_list) ->
+      (display_with_tab tab "(") ^
+      (display_list (display_simple_process (tab+1)) (display_with_tab tab ") | (") p_list) ^
+      (display_with_tab tab ")")
+  | SParMult(p_list) ->
+      (display_with_tab tab "(") ^
+      (display_list (fun (ch_l,p) ->
+          let str_ch = Printf.sprintf "Channels = %s" (display_list (Symbol.display Terminal) ", " ch_l) in
+          (display_with_tab (tab+1) str_ch) ^
+          (display_simple_process (tab+1) p)
+        ) (display_with_tab tab ") | (") p_list
+      ) ^
+      (display_with_tab tab ")")
+
+let display_label label =
+  Display.display_list string_of_int "." label
+
+let display_determinate_process p =
+  Printf.sprintf "Label = %s\nProcess =\n%s" (display_label p.label_p) (display_simple_process 0 p.proc)
+
+let display_configuration conf =
+  let acc = ref "----- Configuration\n" in
+  acc := !acc ^ (Printf.sprintf "Sure_input_proc:\n%s" (display_list display_determinate_process "*****\n" conf.sure_input_proc));
+  acc := !acc ^ (Printf.sprintf "Sure_output_proc:\n%s" (display_list display_determinate_process "*****\n" conf.sure_output_proc));
+
+  let display_determinate_process_list l =
+    display_list display_determinate_process "1---\n" l
+  in
+  let display_determinate_process_list_list l =
+    display_list display_determinate_process_list "2---\n" l
+  in
+  acc := !acc ^ (Printf.sprintf "Sure_input_mult_proc:<br>\n%s" (display_list display_determinate_process_list_list "*****\n" conf.sure_input_mult_proc));
+  let display_option_det_process title op = match op with
+    | None -> title ^ ": None\n"
+    | Some p -> Printf.sprintf "%s:\n%s" title (display_determinate_process p)
+  in
+  acc := !acc ^ (display_option_det_process "Sure_uncheked_skeletons" conf.sure_uncheked_skeletons);
+  acc := !acc ^ (display_option_det_process "Unsure_proc:" conf.unsure_proc);
+  acc := !acc ^ (display_option_det_process "Focused_proc:" conf.focused_proc);
+  !acc ^ (Printf.sprintf "Trace: %s\n" (display_list display_trace "; " conf.trace))
 
 (*** Transformation from processes to determinate processes ***)
 
@@ -606,10 +693,16 @@ let decompress_process channels_list p =
 
 let simple_process_of_intermediate_process proc =
 
-  let rec replace_name_by_variables assoc = function
+  let rec replace_name_by_variables assoc t = match t with
     | Name n -> Var(List.assq n assoc)
     | Func(f,args) -> Func(f,List.map (replace_name_by_variables assoc) args)
-    | t -> t
+    | _ ->
+        Config.debug (fun () ->
+          match t with
+            | Var v when v.link <> NoLink -> Config.internal_error "[determinate_process.ml >> simple_process_of_intermediate_process] Variables should not be linked."
+            | _ -> ()
+        );
+        t
   in
 
   let replace_name_by_variables_formula assoc = function
@@ -619,12 +712,28 @@ let simple_process_of_intermediate_process proc =
         Formula.T.Conj (
           List.map (function
             | Diseq.T.Bot | Diseq.T.Top -> Config.internal_error "[determinate_process.ml >> simple_process_of_intermediate_process] Unexpected case"
-            | Diseq.T.Disj disj_l -> Diseq.T.Disj (List.map (fun (v,t) -> (v,replace_name_by_variables assoc t)) disj_l)
+            | Diseq.T.Disj disj_l ->
+                Diseq.T.Disj (
+                  List.map (fun (v,t) ->
+                    Config.debug (fun () ->
+                      if v.link <> NoLink
+                      then Config.internal_error "[determinate_process.ml >> simple_process_of_intermediate_process] Variables should not be linked (2)."
+                    );
+                    (v,replace_name_by_variables assoc t)
+                  ) disj_l
+                )
           ) conj_l
         )
   in
 
-  let replace_name_by_variables_equations assoc = List.map (fun (v,t) -> (v,replace_name_by_variables assoc t)) in
+  let replace_name_by_variables_equations assoc =
+      List.map (fun (v,t) ->
+        Config.debug (fun () ->
+          if v.link <> NoLink
+          then Config.internal_error "[determinate_process.ml >> simple_process_of_intermediate_process] Variables should not be linked (3)."
+        );
+        (v,replace_name_by_variables assoc t)
+      ) in
 
   let replace_fresh_vars_by_universal fresh_vars disequations =
     Variable.auto_cleanup_with_reset_notail (fun () ->
@@ -633,7 +742,7 @@ let simple_process_of_intermediate_process proc =
         Variable.link_term x (Var x')
       ) fresh_vars ;
 
-      Formula.T.instantiate_and_normalise disequations
+      Formula.T.instantiate_and_normalise_full disequations
     )
   in
 
@@ -641,13 +750,26 @@ let simple_process_of_intermediate_process proc =
     | IStart p -> SStart (explore assoc p)
     | INil -> SNil
     | IOutput(ch,t,p,pos) -> SOutput(ch,replace_name_by_variables assoc t,explore assoc p,pos)
-    | IInput(ch,v,p,pos) -> SInput(ch,v,explore assoc p,pos)
+    | IInput(ch,v,p,pos) ->
+        Config.debug (fun () ->
+          if v.link <> NoLink
+          then Config.internal_error "[determinate_process.ml >> simple_process_of_intermediate_process] Variables should not be linked (4)."
+        );
+        SInput(ch,v,explore assoc p,pos)
     | IIfThenElse(t1,t2,pthen,pelse,pos) ->
+        Config.debug (fun () ->
+          if !Variable.currently_linked <> []
+          then Config.internal_error "[determinate_process.ml >> simple_process_of_intermediate_process] No variables should be linked."
+        );
         let (equations_1,disequations_1) = Rewrite_rules.compute_equality_modulo_and_rewrite [] [(t1,t2)] in
         let equations_2 = List.map (fun (_,eqs) -> replace_name_by_variables_equations assoc eqs) equations_1 in
         let disequations_2 = replace_name_by_variables_formula assoc disequations_1 in
         SCondition(equations_2,disequations_2,[],explore assoc pthen,explore assoc pelse,pos)
     | ILet(t,cond,fresh_vars,pthen,pelse,pos) ->
+        Config.debug (fun () ->
+          if !Variable.currently_linked <> []
+          then Config.internal_error "[determinate_process.ml >> simple_process_of_intermediate_process] No variables should be linked."
+        );
         let (equations_1,disequations_1) = Rewrite_rules.compute_equality_modulo_and_rewrite [] [(t,cond)] in
         let disequations_2 = replace_fresh_vars_by_universal fresh_vars disequations_1 in
         let disequations_3 = replace_name_by_variables_formula assoc disequations_2 in
@@ -683,7 +805,19 @@ let generate_initial_configurations proc1 proc2 =
   let sp1 = simple_process_of_intermediate_process comp_p1' in
   let sp2 = simple_process_of_intermediate_process comp_p2' in
 
+  Config.debug (fun () ->
+    Config.print_in_log "Initial simple processes:\n";
+    Config.print_in_log "--Process 1:\n";
+    Config.print_in_log (display_simple_process 0 sp1);
+    Config.print_in_log "--Process 2:\n";
+    Config.print_in_log (display_simple_process 0 sp2)
+  );
+
   let execute_else_branchs = not (do_else_branches_lead_to_improper_block true sp1 && do_else_branches_lead_to_improper_block true sp2) in
+
+  Config.debug (fun () ->
+    Config.print_in_log (Printf.sprintf "Else branch executed = %b" execute_else_branchs)
+  );
 
   let det1 = { label_p = [0]; proc = sp1 } in
   let det2 = { label_p = [0]; proc = sp2 } in

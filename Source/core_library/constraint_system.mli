@@ -82,11 +82,15 @@ val prepare_for_solving_procedure : bool -> 'a t -> 'a t
 
 val instantiate : 'a t -> 'a t
 
+val debug_on_constraint_system : string -> 'a t -> unit
+
 module Set : sig
 
   val empty : 'a set
 
   val find_representative : 'a set -> ('a t -> bool) -> 'a t * 'a t
+
+  val debug_check_structure : string -> 'a set -> unit
 end
 
 module Rule : sig

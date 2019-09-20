@@ -91,6 +91,12 @@ module DF : sig
   val link_recipe_variables : recipe_variable list ref -> t -> unit
 
   val rename_and_instantiate : t -> t
+
+  val display : t -> string
+
+  val debug : string -> t -> unit
+
+  val debug_same_structure : string -> t -> t -> unit
 end
 
 (** {2 {% The set of deduction facts \texorpdfstring{$\Solved$}{SDF} %}}*)

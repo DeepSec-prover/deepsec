@@ -103,7 +103,7 @@ module Diseq = struct
               Term.unify (Var x) t;
               let diseq_list_1 =
                 List.fold_left (fun acc var ->
-                  if var.quantifier = Universal
+                  if var.quantifier = Universal || var == x
                   then acc
                   else (var,Term.instantiate (Var var))::acc
                 ) [] !Variable.currently_linked
@@ -143,12 +143,17 @@ module Diseq = struct
           let univ_vars = ref [] in
 
           let rec find_univ_var = function
-            | Var v when v.link = SLink -> ()
-            | Var v when v.quantifier = Universal && v.link = NoLink ->
-                v.link <- SLink;
-                univ_vars := v :: !univ_vars
+            | Var v ->
+                begin match v.link with
+                  | SLink -> ()
+                  | NoLink when v.quantifier = Universal ->
+                      v.link <- SLink;
+                      univ_vars := v :: !univ_vars
+                  | NoLink -> ()
+                  | _ ->Config.internal_error "[formula.ml >> Diseq.T.display] The variables in the disequality should not be linked."
+                end
             | Func(_,args) -> List.iter find_univ_var args
-            | _ -> Config.internal_error "[formula.ml >> Diseq.T.display] The variables in the disequality should not be linked."
+            | Name _ -> ()
           in
 
           let display_single (v,t) = Printf.sprintf "%s %s %s" (Variable.display out v) (neqs out) (Term.display out t) in
@@ -162,6 +167,34 @@ module Diseq = struct
               List.iter (fun v -> v.link <- NoLink) !univ_vars;
               Printf.sprintf "%s %s.%s" (forall out) (display_list (Variable.display out) "," !univ_vars) (display_list display_single (Printf.sprintf " %s " (vee out)) diseq_list)
             end
+
+    (* Debug function *)
+
+    let rec debug_no_linked_variables_term = function
+      | Var v ->
+          begin match v.link with
+            | NoLink -> true
+            | TLink _ -> Config.print_in_log "[debug_no_linked_variables_term] TLink in term"; false
+            | VLink _ -> Config.print_in_log "[debug_no_linked_variables_term] VLink in term"; false
+            | SLink -> Config.print_in_log "[debug_no_linked_variables_term] SLink in term"; false
+            | XLink _ -> Config.print_in_log "[debug_no_linked_variables_term] XLink in term"; false
+          end
+      | Func(_,args) -> List.for_all debug_no_linked_variables_term args
+      | _ -> true
+
+    let debug_no_linked_variables = function
+      | Top
+      | Bot -> true
+      | Disj vlist -> List.for_all (fun (v,t) ->
+          begin match v.link with
+            | NoLink ->  debug_no_linked_variables_term t
+            | TLink _ -> Config.print_in_log "[debug_no_linked_variables_term] TLink in variable"; false
+            | VLink _ -> Config.print_in_log "[debug_no_linked_variables_term] VLink in variable"; false
+            | SLink -> Config.print_in_log "[debug_no_linked_variables_term] SLink in variable"; false
+            | XLink _ -> Config.print_in_log "[debug_no_linked_variables_term] XLink in variable"; false
+          end
+          ) vlist
+
   end
 
   module R = struct
@@ -208,12 +241,14 @@ module Diseq = struct
           ) to_be_univ_vars;
 
           let original_link = ref [] in
+          let changed_vars = ref [] in
 
           List.iter (fun v ->
             let rec explore = function
               | RVar { link_r = RLink r; _ } -> explore r
               | RVar v' when v'.quantifier_r = Universal && v'.type_r = v.type_r ->
                   original_link := (v,v.link_r) :: !original_link;
+                  changed_vars := v' :: !changed_vars;
                   v'.link_r <- RLink (RVar v);
                   v.link_r <- RNoLink
               | _ -> ()
@@ -232,6 +267,7 @@ module Diseq = struct
 
           List.iter (fun (v,link) -> v.link_r <- link) !original_link;
           List.iter (fun v -> v.link_r <- RNoLink) !renamed_vars;
+          List.iter (fun v -> v.link_r <- RNoLink) !changed_vars;
 
           if diseq = []
           then Bot
@@ -261,6 +297,7 @@ module Diseq = struct
                    applying [Recipe.unify] since [x_1,...,x_n] are fresh or [r] is ground *)
 
                 let diseq = Disj (List.rev_map (fun (y,r') -> y, Recipe.instantiate r') diseq_list) in
+                List.iter (fun (y,_) -> y.link_r <- RNoLink) diseq_list;
                 x.link_r <- RLink r;
                 diseq
             | RLink r' ->
@@ -320,7 +357,7 @@ module Diseq = struct
               Recipe.unify (RVar x) r;
               let diseq_list_1 =
                 List.fold_left (fun acc var ->
-                  if var.quantifier_r = Universal
+                  if var.quantifier_r = Universal || var == x
                   then acc
                   else (var,Recipe.instantiate (RVar var))::acc
                 ) [] !Recipe_Variable.currently_linked
@@ -377,6 +414,41 @@ module Diseq = struct
             List.iter (fun v -> v.link_r <- RNoLink) !Recipe_Variable.currently_linked;
             Recipe_Variable.currently_linked := tmp;
             Top
+
+    (* Display *)
+
+    let display out = function
+      | Top -> top out
+      | Bot -> bot out
+      | Disj diseq_list ->
+          let univ_vars = ref [] in
+
+          let rec find_univ_var = function
+            | RVar v ->
+                begin match v.link_r with
+                  | RSLink -> ()
+                  | RNoLink when v.quantifier_r = Universal ->
+                      v.link_r <- RSLink;
+                      univ_vars := v :: !univ_vars
+                  | RNoLink -> ()
+                  | _ -> Config.internal_error "[formula.ml >> Diseq.R.display] The variables in the disequality should not be linked."
+                end
+            | RFunc(_,args) -> List.iter find_univ_var args
+            | CRFunc(_,r) -> find_univ_var r
+            | Axiom _ -> ()
+          in
+
+          let display_single (v,t) = Printf.sprintf "%s %s %s" (Recipe_Variable.display out v) (neqs out) (Recipe.display out t) in
+
+          List.iter (fun (_,t2) -> find_univ_var t2) diseq_list;
+
+          if !univ_vars = []
+          then Printf.sprintf "%s" (display_list display_single (Printf.sprintf " %s " (vee out)) diseq_list)
+          else
+            begin
+              List.iter (fun v -> v.link_r <- RNoLink) !univ_vars;
+              Printf.sprintf "%s %s.%s" (forall out) (display_list (Recipe_Variable.display out) "," !univ_vars) (display_list display_single (Printf.sprintf " %s " (vee out)) diseq_list)
+            end
   end
 
   module M = struct
@@ -523,6 +595,18 @@ module Formula = struct
       | Top -> Top
       | Bot -> Bot
       | Conj conj -> Conj (List.map Diseq.T.rename_and_instantiate conj)
+
+    let debug_no_linked_variables = function
+      | Top
+      | Bot -> true
+      | Conj conj -> List.for_all Diseq.T.debug_no_linked_variables conj
+
+    let display out = function
+      | Top -> top out
+      | Bot -> bot out
+      | Conj conj ->
+          display_list (Diseq.T.display out) (Display.wedge out) conj
+
   end
 
 
@@ -581,6 +665,12 @@ module Formula = struct
         | _ -> Config.internal_error "[formula.ml >> Formula.R.instantiate_and_normalise_one_variable] The list Recipe_Variable.currently_linked should only contain the element [x]"
       );
       intern_instantiate_and_normalise (Diseq.R.instantiate_and_normalise_one_variable x r)
+
+    let display out = function
+      | Top -> top out
+      | Bot -> bot out
+      | Conj conj ->
+          display_list (Diseq.R.display out) (Display.wedge out) conj
   end
 
   module M = struct

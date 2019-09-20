@@ -76,6 +76,10 @@ module Formula : sig
     val instantiate_and_normalise_full : t -> t
 
     val rename_and_instantiate : t -> t
+
+    val debug_no_linked_variables : t -> bool
+
+    val display : output -> t -> string
   end
 
   module R : sig
@@ -94,6 +98,8 @@ module Formula : sig
     val instantiate_and_normalise_one_variable_constructor : recipe_variable -> recipe -> t -> t
 
     val instantiate_and_normalise_one_variable : recipe_variable -> recipe -> t -> t
+
+    val display : output -> t -> string
   end
 
   module M : sig

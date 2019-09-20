@@ -22,6 +22,14 @@ type equivalence_problem =
     else_branch : bool
   }
 
+let display_symbolic_process symb =
+  let str_origin =
+    if symb.origin_process = Left
+    then "Origin = Left\n"
+    else "Origin = Right\n"
+  in
+  (display_configuration symb.configuration) ^ str_origin
+
 let initialise_equivalence_problem else_branch csys_set =
   {
     csys_set = csys_set;
@@ -44,11 +52,13 @@ let apply_faulty (csys_left,symb_left) (csys_right,symb_right) is_left f_conf f_
     | FOutput(ax,t) ->
         let wit_csys_1 = Constraint_system.add_axiom wit_csys ax t in
         let wit_csys_2 = { wit_csys_1 with Constraint_system.additional_data = { symb_proc with configuration = f_conf } } in
+        Config.print_in_log "Not equivalent : Skelet output\n";
         raise (Not_Trace_Equivalent (Constraint_system.instantiate wit_csys_2))
     | FInput(var_X,t) ->
         let ded_fact_term = { Data_structure.bf_var = var_X; Data_structure.bf_term = t } in
         let wit_csys_1 = Constraint_system.add_basic_facts wit_csys [ded_fact_term] in
         let wit_csys_2 = { wit_csys_1 with Constraint_system.additional_data = { symb_proc with configuration = f_conf } } in
+        Config.print_in_log "Not equivalent : Skelet input\n";
         raise (Not_Trace_Equivalent (Constraint_system.instantiate wit_csys_2))
 
 let nb_apply_one_transition_and_rules = ref 0
@@ -56,11 +66,15 @@ let nb_apply_one_transition_and_rules = ref 0
 let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
   Config.debug (fun () ->
     incr nb_apply_one_transition_and_rules;
+    Constraint_system.Set.debug_check_structure "[Determinate_process >> apply_one_transition_and_rules]" equiv_pbl.csys_set;
     match equiv_pbl.csys_set.Constraint_system.set with
       | [csys_1; csys_2] when
           (csys_1.Constraint_system.additional_data.origin_process = Left && csys_2.Constraint_system.additional_data.origin_process = Right) ||
           (csys_1.Constraint_system.additional_data.origin_process = Right && csys_2.Constraint_system.additional_data.origin_process = Left)
           ->
+            Config.print_in_log (Printf.sprintf "\n\n====Application of one transtion rule (%d)=======\n" !nb_apply_one_transition_and_rules);
+            Config.print_in_log (display_symbolic_process csys_1.Constraint_system.additional_data);
+            Config.print_in_log (display_symbolic_process csys_2.Constraint_system.additional_data);
             if csys_1.Constraint_system.eq_term <> Formula.T.Top || csys_2.Constraint_system.eq_term <> Formula.T.Top
             then Config.internal_error "[determinate_equivalence.ml >> apply_one_transition_and_rules] The disequations in the constraint systems should have been solved."
       | _ -> Config.internal_error "[determinate_equivalence >> apply_one_transition_and_rules] There should be only two constraint systems: one left, one right."
@@ -92,6 +106,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
              List.iter (fun (x,t) -> Variable.link_term x t) original_subst;
 
              normalise_configuration conf else_branch original_subst (fun gathering conf_1 ->
+              (** TODO : Add test for uniformity *)
                try
                  let csys_1 =
                    { csys with
@@ -113,6 +128,10 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
         (*** Application of the transformation rules for inputs ***)
 
         let in_apply_final_test csys_set f_next =
+          Config.debug (fun () ->
+            Constraint_system.Set.debug_check_structure "[Determinate_process >> apply_one_transition_and_rules >> RStart >> final_test]" csys_set
+          );
+
           let csys_list = csys_set.Constraint_system.set in
           if csys_list = []
           then f_next ()
@@ -187,7 +206,6 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
         ) equiv_pbl.csys_set.Constraint_system.set;
 
         apply_start_in var_X !csys_conf_list apply_conf (fun csys_var_list label f_next_1 ->
-          Config.debug (fun () -> Config.print_in_log "Execute one start in\n");
           let csys_list_for_input = ref [] in
 
           let else_branch =
@@ -199,6 +217,10 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           List.iter (fun (csys,x) ->
             let symb_proc = csys.Constraint_system.additional_data in
 
+            Config.debug (fun () ->
+              Constraint_system.debug_on_constraint_system "[determinate_equivalence >> StartIn]" csys
+            );
+
             Variable.auto_cleanup_with_reset_notail (fun () ->
               let x_fresh = Variable.fresh Existential in
 
@@ -206,9 +228,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
               let original_subst = (x,Var x_fresh)::csys.Constraint_system.original_substitution in
               List.iter (fun (x,t) -> Variable.link_term x t) original_subst;
 
-              Config.debug (fun () -> Config.print_in_log "Normalisation configuration\n");
               normalise_configuration symb_proc.configuration else_branch original_subst (fun gathering conf_1 ->
-                Config.debug (fun () -> Config.print_in_log "One gathering\n");
                 try
                   let dfact = { Data_structure.bf_var = var_X; Data_structure.bf_term = Var x_fresh } in
                   let csys_1 =
@@ -219,10 +239,8 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                       Constraint_system.original_substitution = gathering.original_subst
                     }
                   in
-                  Config.debug (fun () -> Config.print_in_log "Prepare for solving\n");
                   let csys_2 = Constraint_system.prepare_for_solving_procedure false csys_1 in
 
-                  Config.debug (fun () -> Config.print_in_log "Add the constraint system\n");
                   csys_list_for_input := csys_2 :: !csys_list_for_input
                 with Constraint_system.Bot -> ()
               )
@@ -232,6 +250,9 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           let csys_set_for_input = { equiv_pbl.csys_set with Constraint_system.set = !csys_list_for_input } in
 
           let in_apply_final_test csys_set f_next =
+            Config.debug (fun () ->
+              Constraint_system.Set.debug_check_structure "[Determinate_process >> apply_one_transition_and_rules >> RStartIn >> final_test]" csys_set
+            );
             let csys_list = csys_set.Constraint_system.set in
             if csys_list = []
             then f_next ()
@@ -349,6 +370,9 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
         let csys_set_for_input = { equiv_pbl.csys_set with Constraint_system.set = !csys_list_for_input } in
 
         let in_apply_final_test csys_set f_next =
+          Config.debug (fun () ->
+            Constraint_system.Set.debug_check_structure "[Determinate_process >> apply_one_transition_and_rules >> RPosIn >> final_test]" csys_set
+          );
           let csys_list = csys_set.Constraint_system.set in
           if csys_list = []
           then f_next ()
@@ -458,6 +482,9 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
         let csys_set_for_output = { equiv_pbl.csys_set with Constraint_system.set = !csys_list_for_output } in
 
         let out_apply_final_test csys_set f_next =
+          Config.debug (fun () ->
+            Constraint_system.Set.debug_check_structure "[Determinate_process >> apply_one_transition_and_rules >> RPosNeg >> final_test]" csys_set
+          );
           let csys_list = csys_set.Constraint_system.set in
           if csys_list = []
           then f_next ()
@@ -465,7 +492,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
             let csys = List.hd csys_list in
             let origin_process = csys.Constraint_system.additional_data.origin_process in
             if List.for_all (fun csys -> csys.Constraint_system.additional_data.origin_process = origin_process) csys_list
-            then raise (Not_Trace_Equivalent (Constraint_system.instantiate csys))
+            then (Config.print_in_log "Not equivalent : origin issue\n"; raise (Not_Trace_Equivalent (Constraint_system.instantiate csys)))
             else
               let csys_left, csys_right =
                 Config.debug (fun () ->
@@ -537,7 +564,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           let csys = List.hd csys_list in
           let origin_process = csys.Constraint_system.additional_data.origin_process in
           if List.for_all (fun csys -> csys.Constraint_system.additional_data.origin_process = origin_process) csys_list
-          then raise (Not_Trace_Equivalent (Constraint_system.instantiate csys))
+          then (Config.print_in_log "Not equivalent : origin issue\n"; raise (Not_Trace_Equivalent (Constraint_system.instantiate csys)))
           else f_next ()
 
 type result_trace_equivalence =

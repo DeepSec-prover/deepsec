@@ -54,6 +54,17 @@ module DF = struct
 
   let empty : t = []
 
+  let display df =
+    let acc = ref "\nDF: " in
+
+    List.iter (fun (_,bfact_l) ->
+      List.iter (fun bfact ->
+        acc := !acc ^ (Printf.sprintf "%s |- %s, " (Recipe_Variable.display Display.Terminal ~display_type:true bfact.bf_var) (Term.display Display.Terminal bfact.bf_term))
+      ) bfact_l
+    ) df;
+
+    !acc ^ "\n"
+
   let add (df:t) bfact =
     let type_r = bfact.bf_var.type_r in
     let rec explore = function
@@ -344,6 +355,45 @@ module DF = struct
     List.map (fun (i,bfact_list) ->
       (i,List.map (fun bfact -> { bfact with bf_term = Term.rename_and_instantiate bfact.bf_term }) bfact_list)
     ) df
+
+  (******* Function for debuging ******)
+
+  let debug str (df:t) =
+    List.iter (fun (i,bfact_l) ->
+      List.iter (fun bfact ->
+        if bfact.bf_var.type_r <> i
+        then Config.internal_error (str^" The type of variable in the basic fact does not correspond to its placement.");
+
+        if bfact.bf_var.link_r <> RNoLink
+        then Config.internal_error (str^" The second order variables in the basic fact should not be linked.");
+
+      ) bfact_l
+    ) df
+
+  let debug_same_structure str (df1:t) (df2:t) =
+
+    let explore_bfact_list bf_l1 bf_l2 =
+      List.iter (fun bfact1 ->
+        if not (List.exists (fun bfact2 -> bfact1.bf_var == bfact2.bf_var) bf_l2)
+        then Config.internal_error (str^" One deduction fact is missing from the other deduction facts.");
+      ) bf_l1;
+
+      List.iter (fun bfact2 ->
+        if not (List.exists (fun bfact1 -> bfact1.bf_var == bfact2.bf_var) bf_l1)
+        then Config.internal_error (str^" One deduction fact is missing from the other deduction facts.");
+      ) bf_l2
+    in
+
+    let rec explore df1 df2 = match df1, df2 with
+      | [], [] -> ()
+      | [], _
+      | _, [] -> Config.internal_error (str^" The deduction facts do not have the basic facts of same type.")
+      | (i,_)::_ , (j,_)::_ when i <> j -> Config.internal_error (str^" The deduction facts do not have the basic facts of same type (2).")
+      | (_,bf_l1)::q1, (_,bf_l2)::q2 ->
+          explore_bfact_list bf_l1 bf_l2;
+          explore q1 q2
+    in
+    explore df1 df2
 end
 
 (*********************************
@@ -584,6 +634,7 @@ module K = struct
                 | Some eq_uni_2 -> eq_uni_2, t, type_r
             end
       | RVar ({ link_r = RXLink t; _ } as x) -> eq_uni, t, x.type_r
+      | RVar _ -> Config.internal_error "[data_structure.ml >> K.consequence_uniform_recipe] Unexpected variable."
       | _ -> Config.internal_error "[data_structure.ml >> K.consequence_uniform_recipe] Axioms should have been captured with context."
 
     and consequence_list eq_uni = function
@@ -931,7 +982,9 @@ module IK = struct
         List.iter (fun v -> v.link <- NoLink) !accu_variables;
         Some r
       ) term
-    with Not_found -> None
+    with Not_found ->
+        List.iter (fun v -> v.link <- NoLink) !accu_variables;
+        None
 
   let consequence_recipe kb ikb df recipe =
     let accu_variables = ref [] in

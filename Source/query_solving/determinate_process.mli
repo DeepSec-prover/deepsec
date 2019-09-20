@@ -36,6 +36,8 @@ exception Faulty_skeleton of bool * configuration * action
 
 val is_equal_skeleton_conf : int -> configuration -> configuration -> configuration * configuration * bool
 
+val display_configuration : configuration -> string
+
 (** {3 Transformation} *)
 
 type gathering_normalise =
