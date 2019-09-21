@@ -466,8 +466,7 @@ module MGS = struct
       else
         Variable.auto_cleanup_with_reset_notail (fun () ->
           List.iter2 (fun x t -> Variable.link_term x t) skeleton_cons.Rewrite_rules.term_vars args;
-
-          Formula.M.instantiate_and_normalise skeleton_cons.Rewrite_rules.formula
+          Formula.M.instantiate_and_normalise_full skeleton_cons.Rewrite_rules.formula
         )
     in
 
@@ -1270,6 +1269,7 @@ module Rule = struct
       Config.print_in_log (Printf.sprintf "- Rule Sat (%d): Nb csys = %d\n" !debug_sat_index (List.length csys_set.set));
       Set.debug_check_structure "[Sat]" csys_set;
       List.iter (fun csys ->
+        Config.print_in_log (display_constraint_system csys);
         debug_on_constraint_system "[Rule Sat]" csys;
         if not (Formula.T.debug_no_linked_variables csys.eq_term)
         then Config.internal_error "[constraint_system.ml >> sat] Variables in eq_term should not be linked.";
@@ -1351,9 +1351,10 @@ module Rule = struct
 
   let sat_disequation f_continuation csys_set f_next =
     Config.debug (fun () ->
+    Config.print_in_log (Printf.sprintf "- Rule Sat disequation (%d): Nb csys = %d\n" !debug_sat_index (List.length csys_set.set));
       Set.debug_check_structure "[Sat disequation]" csys_set;
-
       List.iter (fun csys ->
+        Config.print_in_log (display_constraint_system csys);
         if not (Formula.T.debug_no_linked_variables csys.eq_term)
         then Config.internal_error "[constraint_system.ml >> sat_disequation] Variables in eq_term should not be linked.";
         if not (Formula.T.debug_no_linked_variables csys.eq_uniformity)
@@ -1926,6 +1927,7 @@ module Rule = struct
       then
         match exploration_normalisation_deduction_consequence [] csys_set.set with
           | None, checked_csys ->
+              Config.debug (fun () -> Config.print_in_log "[normalisation_deduction_consequence] No recipe consequence");
               (* We add in the incremented knowledge base *)
               let index_new_elt = IK.get_next_index csys.incremented_knowledge in
               Name.auto_deducible_cleanup_with_reset (fun f_next_1 ->
@@ -1944,6 +1946,7 @@ module Rule = struct
                 equality_knowledge_base (normalisation_deduction_consequence f_continuation) { csys_set with set = new_csys_list } f_next_1
               ) f_next
           | Some (recipe,csys,to_check_csys),checked_csys ->
+              Config.debug (fun () -> Config.print_in_log "[normalisation_deduction_consequence] Found recipe consequence");
               let no_eq_form_csys = ref [] in
               let solved_eq_csys = ref [csys] in
               let eq_form_csys = ref [] in
