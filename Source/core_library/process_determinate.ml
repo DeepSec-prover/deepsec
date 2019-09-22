@@ -1141,13 +1141,6 @@ let compress_initial_configuration conf1 conf2 =
   let comp_p1,_ = compress_process SymbolSet.empty p1
   and comp_p2,_ = compress_process SymbolSet.empty p2 in
 
-  Config.debug (fun () ->
-    Printf.printf "Compress Configuration 1:\n%s" (display_simple_det_process_HTML comp_p1);
-    Printf.printf "Compress Configuration 2:\n%s" (display_simple_det_process_HTML comp_p2);
-
-    flush_all ();
-  );
-
   let extracted_ch1 = retrieve_par_mult_channels comp_p1
   and extracted_ch2 = retrieve_par_mult_channels comp_p2 in
 
@@ -1155,13 +1148,6 @@ let compress_initial_configuration conf1 conf2 =
 
   let comp_p1' = decompress_process inter_channel comp_p1
   and comp_p2' = decompress_process inter_channel comp_p2 in
-
-  Config.debug (fun () ->
-    Printf.printf "Configuration 1:\n%s" (display_simple_det_process_HTML comp_p1');
-    Printf.printf "Configuration 2:\n%s" (display_simple_det_process_HTML comp_p2');
-
-    flush_all ();
-  );
 
   let conf1' = { conf1 with sure_input_proc = [ { det1 with proc = comp_p1'} ] }
   and conf2' = { conf2 with sure_input_proc = [ { det2 with proc = comp_p2'} ] } in

@@ -260,36 +260,20 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                 match result_skel_test with
                   | FocusNil -> f_next ()
                   | OK (conf_left, conf_right) ->
-                      Config.debug (fun () ->
-                        Printf.printf "<br>After Skel Test<br>\n";
-                        Printf.printf "<p>Configuration 1\n";
-                        Process_determinate.display_configuration conf_left;
-                        Printf.printf "</p><p>Configuration 2\n";
-                        Process_determinate.display_configuration conf_right;
-                        Printf.printf "</p></p>\n";
-                      );
+
                       let block = create_block label in
                       let block_1 = add_variable_in_block var_X block in
                       let snd_subst = Constraint_system.get_substitution_solution Recipe csys in
-                      Config.debug (fun () ->
-                        Printf.printf "<br>Arguments to is_block_list_authorized:<br>";
-                        Printf.printf "<br>complete_blocks_1<br>";
-                        Printf.printf "%s" (Process_determinate.display_block complete_blocks_1 snd_subst);
-                        Printf.printf "<br><br><br>block_1<br>";
-                        Printf.printf "%s" (Process_determinate.display_block [block_1] snd_subst)
-                      );
+
                       if is_block_list_authorized complete_blocks_1 block_1 snd_subst
                       then
-                        let _ = Config.debug (fun () -> Printf.printf "<br>Is_block_list_authorized result = true<br>") in
                         let csys_left = Constraint_system.replace_additional_data csys_left { symb_left with configuration = conf_left } in
                         let csys_right = Constraint_system.replace_additional_data csys_right { symb_right with configuration = conf_right } in
                         let csys_set_2 = Constraint_system.Set.add csys_left (Constraint_system.Set.add csys_right Constraint_system.Set.empty) in
 
                         let equiv_pbl_1 = { equiv_pbl with complete_blocks = complete_blocks_1; ongoing_block = Some block_1; csys_set = csys_set_2 } in
                         f_continuation equiv_pbl_1 f_next
-                      else
-                        let _ = Config.debug (fun () -> Printf.printf "<br>Is_block_list_authorized result = false<br>") in
-                        f_next ()
+                      else f_next ()
                   | Faulty (is_left,f_conf,f_action) ->
                       let wit_csys, symb_proc = if is_left then csys_left, symb_left else csys_right, symb_right in
                       begin match f_action with
