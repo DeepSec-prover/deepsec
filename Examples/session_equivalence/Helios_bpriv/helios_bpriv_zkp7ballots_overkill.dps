@@ -17,7 +17,7 @@ reduc checkzkp(zkp(xr, xid, xv, aenc(xv,xr,xpk)), xid, aenc(xv,xr,xpk)) -> zkpok
 const zero. // blank vote
 
 // voting process
-let VoterReal(id,pkE) =
+let HonestReal(id,pkE) =
   in(c,v); // receives voting instructions from the attacker
   let (v0,v1) = v in
   new r0;
@@ -29,7 +29,7 @@ let VoterReal(id,pkE) =
   if id = alice then out(internal,(b0,vote2,vote3))
   else out(internal,(vote1,b0,vote3)).
 
-let VoterFake(id,pkE) =
+let HonestFake(id,pkE) =
   in(c,v); // receives voting instructions from the attacker
   let (v0,v1) = v in
   new r0; new r1;
@@ -45,12 +45,12 @@ let VoterFake(id,pkE) =
 
 
 // Tallying
-let VoterDishonest =
+let Dishonest(id) =
   in(internal,state);
   let (vote1,vote2,vote3) = state in // gets internal state
   in(c,vote);
-  let (=attacker,(blob,zk)) = vote in
-    if checkzkp(zk,attacker,blob) = zkpok then out(internal,(vote1,vote2,blob))
+  let (=id,(blob,zk)) = vote in
+    if checkzkp(zk,id,blob) = zkpok then out(internal,(vote1,vote2,blob))
     else out(internal,state)
   else out(internal,state).
 
@@ -73,9 +73,9 @@ let VotingSystemReal =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^1 VoterReal(alice,pkE) |
-    !^1 VoterReal(bob,pkE) |
-    !^5 VoterDishonest |
+    !^7 HonestReal(alice,pkE) |
+    !^3 HonestReal(bob,pkE) |
+    !^7 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -83,9 +83,9 @@ let VotingSystemFake =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^1 VoterFake(alice,pkE) |
-    !^1 VoterFake(bob,pkE) |
-    !^5 VoterDishonest |
+    !^7 HonestFake(alice,pkE) |
+    !^3 HonestFake(bob,pkE) |
+    !^7 Dishonest(attacker) |
     Mixnet
   ).
 

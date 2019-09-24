@@ -17,7 +17,7 @@ reduc checkzkp(zkp(xr, xid, xv, aenc(xv,xr,xpk)), xid, aenc(xv,xr,xpk)) -> zkpok
 const zero. // blank vote
 
 // voting process
-let VoterReal(id,pkE) =
+let HonestReal(id,pkE) =
   in(c,v); // receives voting instructions from the attacker
   let (v0,v1) = v in
   new r0;
@@ -29,7 +29,7 @@ let VoterReal(id,pkE) =
   if id = alice then out(internal,(b0,vote2,vote3))
   else out(internal,(vote1,b0,vote3)).
 
-let VoterFake(id,pkE) =
+let HonestFake(id,pkE) =
   in(c,v); // receives voting instructions from the attacker
   let (v0,v1) = v in
   new r0; new r1;
@@ -45,12 +45,12 @@ let VoterFake(id,pkE) =
 
 
 // Tallying
-let VoterDishonest =
+let Dishonest(id) =
   in(internal,state);
   let (vote1,vote2,vote3) = state in // gets internal state
   in(c,vote);
-  let (=attacker,(blob,zk)) = vote in
-    if checkzkp(zk,attacker,blob) = zkpok then out(internal,(vote1,vote2,blob))
+  let (=id,(blob,zk)) = vote in
+    if checkzkp(zk,id,blob) = zkpok then out(internal,(vote1,vote2,blob))
     else out(internal,state)
   else out(internal,state).
 
@@ -68,13 +68,15 @@ let Mixnet =
 let init =
   out(internal,(zero,zero,zero)).
 
+
+
 // process under equivalence (19 scenarios for 7 total revotes)
 let VotingSystemReal106 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^1 VoterReal(alice,pkE) |
-    !^6 VoterDishonest |
+    !^1 HonestReal(alice,pkE) |
+    !^6 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -82,8 +84,8 @@ let VotingSystemFake106 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^1 VoterFake(alice,pkE) |
-    !^6 VoterDishonest |
+    !^1 HonestFake(alice,pkE) |
+    !^6 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -91,9 +93,9 @@ let VotingSystemReal115 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^1 VoterReal(alice,pkE) |
-    !^1 VoterReal(bob,pkE) |
-    !^5 VoterDishonest |
+    !^1 HonestReal(alice,pkE) |
+    !^1 HonestReal(bob,pkE) |
+    !^5 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -101,9 +103,9 @@ let VotingSystemFake115 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^1 VoterFake(alice,pkE) |
-    !^1 VoterFake(bob,pkE) |
-    !^5 VoterDishonest |
+    !^1 HonestFake(alice,pkE) |
+    !^1 HonestFake(bob,pkE) |
+    !^5 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -111,8 +113,8 @@ let VotingSystemReal205 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^2 VoterReal(alice,pkE) |
-    !^5 VoterDishonest |
+    !^2 HonestReal(alice,pkE) |
+    !^5 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -120,8 +122,8 @@ let VotingSystemFake205 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^2 VoterFake(alice,pkE) |
-    !^5 VoterDishonest |
+    !^2 HonestFake(alice,pkE) |
+    !^5 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -129,9 +131,9 @@ let VotingSystemReal214 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^2 VoterReal(alice,pkE) |
-    !^1 VoterReal(bob,pkE) |
-    !^4 VoterDishonest |
+    !^2 HonestReal(alice,pkE) |
+    !^1 HonestReal(bob,pkE) |
+    !^4 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -139,9 +141,9 @@ let VotingSystemFake214 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^2 VoterFake(alice,pkE) |
-    !^1 VoterFake(bob,pkE) |
-    !^4 VoterDishonest |
+    !^2 HonestFake(alice,pkE) |
+    !^1 HonestFake(bob,pkE) |
+    !^4 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -149,9 +151,9 @@ let VotingSystemReal223 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^2 VoterReal(alice,pkE) |
-    !^2 VoterReal(bob,pkE) |
-    !^3 VoterDishonest |
+    !^2 HonestReal(alice,pkE) |
+    !^2 HonestReal(bob,pkE) |
+    !^3 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -159,9 +161,9 @@ let VotingSystemFake223 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^2 VoterFake(alice,pkE) |
-    !^2 VoterFake(bob,pkE) |
-    !^3 VoterDishonest |
+    !^2 HonestFake(alice,pkE) |
+    !^2 HonestFake(bob,pkE) |
+    !^3 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -169,8 +171,8 @@ let VotingSystemReal304 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^3 VoterReal(alice,pkE) |
-    !^4 VoterDishonest |
+    !^3 HonestReal(alice,pkE) |
+    !^4 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -178,8 +180,8 @@ let VotingSystemFake304 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^3 VoterFake(alice,pkE) |
-    !^4 VoterDishonest |
+    !^3 HonestFake(alice,pkE) |
+    !^4 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -187,9 +189,9 @@ let VotingSystemReal313 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^3 VoterReal(alice,pkE) |
-    !^1 VoterReal(bob,pkE) |
-    !^3 VoterDishonest |
+    !^3 HonestReal(alice,pkE) |
+    !^1 HonestReal(bob,pkE) |
+    !^3 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -197,9 +199,9 @@ let VotingSystemFake313 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^3 VoterFake(alice,pkE) |
-    !^1 VoterFake(bob,pkE) |
-    !^3 VoterDishonest |
+    !^3 HonestFake(alice,pkE) |
+    !^1 HonestFake(bob,pkE) |
+    !^3 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -207,9 +209,9 @@ let VotingSystemReal322 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^3 VoterReal(alice,pkE) |
-    !^2 VoterReal(bob,pkE) |
-    !^2 VoterDishonest |
+    !^3 HonestReal(alice,pkE) |
+    !^2 HonestReal(bob,pkE) |
+    !^2 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -217,9 +219,9 @@ let VotingSystemFake322 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^3 VoterFake(alice,pkE) |
-    !^2 VoterFake(bob,pkE) |
-    !^2 VoterDishonest |
+    !^3 HonestFake(alice,pkE) |
+    !^2 HonestFake(bob,pkE) |
+    !^2 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -227,9 +229,9 @@ let VotingSystemReal331 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^3 VoterReal(alice,pkE) |
-    !^3 VoterReal(bob,pkE) |
-    !^1 VoterDishonest |
+    !^3 HonestReal(alice,pkE) |
+    !^3 HonestReal(bob,pkE) |
+    !^1 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -237,9 +239,9 @@ let VotingSystemFake331 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^3 VoterFake(alice,pkE) |
-    !^3 VoterFake(bob,pkE) |
-    !^1 VoterDishonest |
+    !^3 HonestFake(alice,pkE) |
+    !^3 HonestFake(bob,pkE) |
+    !^1 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -247,8 +249,8 @@ let VotingSystemReal403 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^4 VoterReal(alice,pkE) |
-    !^3 VoterDishonest |
+    !^4 HonestReal(alice,pkE) |
+    !^3 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -256,8 +258,8 @@ let VotingSystemFake403 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^4 VoterFake(alice,pkE) |
-    !^3 VoterDishonest |
+    !^4 HonestFake(alice,pkE) |
+    !^3 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -265,9 +267,9 @@ let VotingSystemReal412 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^4 VoterReal(alice,pkE) |
-    !^1 VoterReal(bob,pkE) |
-    !^2 VoterDishonest |
+    !^4 HonestReal(alice,pkE) |
+    !^1 HonestReal(bob,pkE) |
+    !^2 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -275,9 +277,9 @@ let VotingSystemFake412 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^4 VoterFake(alice,pkE) |
-    !^1 VoterFake(bob,pkE) |
-    !^2 VoterDishonest |
+    !^4 HonestFake(alice,pkE) |
+    !^1 HonestFake(bob,pkE) |
+    !^2 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -285,9 +287,9 @@ let VotingSystemReal421 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^4 VoterReal(alice,pkE) |
-    !^2 VoterReal(bob,pkE) |
-    !^1 VoterDishonest |
+    !^4 HonestReal(alice,pkE) |
+    !^2 HonestReal(bob,pkE) |
+    !^1 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -295,9 +297,9 @@ let VotingSystemFake421 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^4 VoterFake(alice,pkE) |
-    !^2 VoterFake(bob,pkE) |
-    !^1 VoterDishonest |
+    !^4 HonestFake(alice,pkE) |
+    !^2 HonestFake(bob,pkE) |
+    !^1 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -305,8 +307,8 @@ let VotingSystemReal430 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^4 VoterReal(alice,pkE) |
-    !^3 VoterReal(bob,pkE) |
+    !^4 HonestReal(alice,pkE) |
+    !^3 HonestReal(bob,pkE) |
     Mixnet
   ).
 
@@ -314,8 +316,8 @@ let VotingSystemFake430 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^4 VoterFake(alice,pkE) |
-    !^3 VoterFake(bob,pkE) |
+    !^4 HonestFake(alice,pkE) |
+    !^3 HonestFake(bob,pkE) |
     Mixnet
   ).
 
@@ -323,8 +325,8 @@ let VotingSystemReal502 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^5 VoterReal(alice,pkE) |
-    !^2 VoterDishonest |
+    !^5 HonestReal(alice,pkE) |
+    !^2 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -332,8 +334,8 @@ let VotingSystemFake502 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^5 VoterFake(alice,pkE) |
-    !^2 VoterDishonest |
+    !^5 HonestFake(alice,pkE) |
+    !^2 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -341,9 +343,9 @@ let VotingSystemReal511 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^5 VoterReal(alice,pkE) |
-    !^1 VoterReal(bob,pkE) |
-    !^1 VoterDishonest |
+    !^5 HonestReal(alice,pkE) |
+    !^1 HonestReal(bob,pkE) |
+    !^1 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -351,9 +353,9 @@ let VotingSystemFake511 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^5 VoterFake(alice,pkE) |
-    !^1 VoterFake(bob,pkE) |
-    !^1 VoterDishonest |
+    !^5 HonestFake(alice,pkE) |
+    !^1 HonestFake(bob,pkE) |
+    !^1 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -361,8 +363,8 @@ let VotingSystemReal520 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^5 VoterReal(alice,pkE) |
-    !^2 VoterReal(bob,pkE) |
+    !^5 HonestReal(alice,pkE) |
+    !^2 HonestReal(bob,pkE) |
     Mixnet
   ).
 
@@ -370,8 +372,8 @@ let VotingSystemFake520 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^5 VoterFake(alice,pkE) |
-    !^2 VoterFake(bob,pkE) |
+    !^5 HonestFake(alice,pkE) |
+    !^2 HonestFake(bob,pkE) |
     Mixnet
   ).
 
@@ -379,8 +381,8 @@ let VotingSystemReal601 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^6 VoterReal(alice,pkE) |
-    !^1 VoterDishonest |
+    !^6 HonestReal(alice,pkE) |
+    !^1 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -388,8 +390,8 @@ let VotingSystemFake601 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^6 VoterFake(alice,pkE) |
-    !^1 VoterDishonest |
+    !^6 HonestFake(alice,pkE) |
+    !^1 Dishonest(attacker) |
     Mixnet
   ).
 
@@ -397,8 +399,8 @@ let VotingSystemReal610 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^6 VoterReal(alice,pkE) |
-    !^1 VoterReal(bob,pkE) |
+    !^6 HonestReal(alice,pkE) |
+    !^1 HonestReal(bob,pkE) |
     Mixnet
   ).
 
@@ -406,8 +408,8 @@ let VotingSystemFake610 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^6 VoterFake(alice,pkE) |
-    !^1 VoterFake(bob,pkE) |
+    !^6 HonestFake(alice,pkE) |
+    !^1 HonestFake(bob,pkE) |
     Mixnet
   ).
 
@@ -415,7 +417,7 @@ let VotingSystemReal700 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^7 VoterReal(alice,pkE) |
+    !^7 HonestReal(alice,pkE) |
     Mixnet
   ).
 
@@ -423,7 +425,7 @@ let VotingSystemFake700 =
   let pkE = pk(decryption_key) in
   out(c,pkE); (
     init |
-    !^7 VoterFake(alice,pkE) |
+    !^7 HonestFake(alice,pkE) |
     Mixnet
   ).
 
