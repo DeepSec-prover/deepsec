@@ -95,7 +95,7 @@ struct
           end
       | DDeterminate data ->
           let rec apply_rules equiv_pbl f_next =
-            Equivalence_determinate.apply_one_transition_and_rules equiv_pbl (fun eq_pbl_1 f_next_1 ->
+            Equivalence_determinate.apply_one_transition_and_rules 0 0 equiv_pbl (fun eq_pbl_1 f_next_1 ->
               apply_rules eq_pbl_1 f_next_1
             ) f_next
           in
@@ -151,7 +151,7 @@ struct
       | DDeterminate data ->
           begin try
             let job_list = ref [] in
-            Equivalence_determinate.apply_one_transition_and_rules data.equiv_problem
+            Equivalence_determinate.apply_one_transition_and_rules 0 0 data.equiv_problem
               (fun equiv_pbl_1 f_next_1 ->
                 job_list := { job with data_equiv = DDeterminate { data with equiv_problem = equiv_pbl_1 }; variable_counter = Variable.get_counter (); name_counter = Name.get_counter () } :: !job_list;
                 f_next_1 ()

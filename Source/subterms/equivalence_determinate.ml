@@ -39,7 +39,7 @@ type result_skeleton =
 
 let nb_apply_one_transition_and_rules = ref 0
 
-let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
+let apply_one_transition_and_rules previous_node current_node equiv_pbl f_continuation f_next =
   Config.debug (fun () ->
     incr nb_apply_one_transition_and_rules;
     match Constraint_system.Set.elements equiv_pbl.csys_set with
@@ -47,12 +47,15 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           ((Constraint_system.get_additional_data csys_1).origin_process = Left && (Constraint_system.get_additional_data csys_2).origin_process = Right) ||
           ((Constraint_system.get_additional_data csys_1).origin_process = Right && (Constraint_system.get_additional_data csys_2).origin_process = Left)
           ->
-            Printf.printf "<p>Application of one transition <br><br>";
+            Printf.printf "<p>Application of one transition (%d -> %d) <br><br>" previous_node current_node;
             Printf.printf "<p>Configuration 1\n";
             Process_determinate.display_configuration (Constraint_system.get_additional_data csys_1).configuration;
             Printf.printf "</p><p>Configuration 2\n";
             Process_determinate.display_configuration (Constraint_system.get_additional_data csys_2).configuration;
+            Printf.printf "</p><p>Constraint_system 1\n%s" (Constraint_system.display HTML csys_1);
+            Printf.printf "</p><p>Constraint_system 2\n%s" (Constraint_system.display HTML csys_2);
             Printf.printf "</p></p>\n";
+
       | _ -> Config.internal_error "[equivalence_determinate >> apply_one_transition_and_rules] There should be only two constraint systems: one left, one right."
   );
 
@@ -265,15 +268,21 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                       let block_1 = add_variable_in_block var_X block in
                       let snd_subst = Constraint_system.get_substitution_solution Recipe csys in
 
+                      Printf.printf "** Block authorisation (transition %d -> %d): \n" previous_node current_node;
+                      Printf.printf "- Complete block = %s\n" (Process_determinate.display_block complete_blocks_1 snd_subst);
+                      Printf.printf "- Current block = %s\n" (Process_determinate.display_block [block_1] snd_subst);
                       if is_block_list_authorized complete_blocks_1 block_1 snd_subst
                       then
+                        let _ = Printf.printf "- Result : Block authorised\n" in
                         let csys_left = Constraint_system.replace_additional_data csys_left { symb_left with configuration = conf_left } in
                         let csys_right = Constraint_system.replace_additional_data csys_right { symb_right with configuration = conf_right } in
                         let csys_set_2 = Constraint_system.Set.add csys_left (Constraint_system.Set.add csys_right Constraint_system.Set.empty) in
 
                         let equiv_pbl_1 = { equiv_pbl with complete_blocks = complete_blocks_1; ongoing_block = Some block_1; csys_set = csys_set_2 } in
                         f_continuation equiv_pbl_1 f_next
-                      else f_next ()
+                      else
+                        let _ = Printf.printf "- Result : Block not authorised\n" in
+                        f_next ()
                   | Faulty (is_left,f_conf,f_action) ->
                       let wit_csys, symb_proc = if is_left then csys_left, symb_left else csys_right, symb_right in
                       begin match f_action with
@@ -532,6 +541,15 @@ type result_trace_equivalence =
   | Equivalent
   | Not_Equivalent of symbolic_process Constraint_system.t
 
+let fresh_id =
+  let acc = ref 0 in
+  let f () =
+    let r = !acc in
+    incr acc;
+    r
+  in
+  f
+
 let trace_equivalence conf1 conf2 =
 
   (*** Initialise skeletons ***)
@@ -579,12 +597,13 @@ let trace_equivalence conf1 conf2 =
     }
   in
 
-  let rec apply_rules equiv_pbl f_next =
-    apply_one_transition_and_rules equiv_pbl apply_rules f_next
+  let rec apply_rules previous_node equiv_pbl f_next =
+    let current = fresh_id () in
+    apply_one_transition_and_rules previous_node current equiv_pbl (apply_rules current) f_next
   in
 
   try
-    apply_rules equiv_pbl (fun () -> ());
+    apply_rules (fresh_id ()) equiv_pbl (fun () -> ());
     Config.debug (fun () -> Config.print_in_log (Printf.sprintf "Result = Equivalent (Nb of application of apply_one_transition_and_rules = %d)" !nb_apply_one_transition_and_rules));
     Equivalent
   with
