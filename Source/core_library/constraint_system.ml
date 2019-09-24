@@ -1269,7 +1269,6 @@ module Rule = struct
       Config.print_in_log (Printf.sprintf "- Rule Sat (%d): Nb csys = %d\n" !debug_sat_index (List.length csys_set.set));
       Set.debug_check_structure "[Sat]" csys_set;
       List.iter (fun csys ->
-        Config.print_in_log (display_constraint_system csys);
         debug_on_constraint_system "[Rule Sat]" csys;
         if not (Formula.T.debug_no_linked_variables csys.eq_term)
         then Config.internal_error "[constraint_system.ml >> sat] Variables in eq_term should not be linked.";
@@ -1354,7 +1353,6 @@ module Rule = struct
     Config.print_in_log (Printf.sprintf "- Rule Sat disequation (%d): Nb csys = %d\n" !debug_sat_index (List.length csys_set.set));
       Set.debug_check_structure "[Sat disequation]" csys_set;
       List.iter (fun csys ->
-        Config.print_in_log (display_constraint_system csys);
         if not (Formula.T.debug_no_linked_variables csys.eq_term)
         then Config.internal_error "[constraint_system.ml >> sat_disequation] Variables in eq_term should not be linked.";
         if not (Formula.T.debug_no_linked_variables csys.eq_uniformity)
@@ -1778,7 +1776,6 @@ module Rule = struct
 
                     sat_equality_formula ~universal:false f_continuation_pos f_continuation_neg { satf_eq_recipe = csys_set.eq_recipe; satf_no_formula = !acc_no_formula; satf_solved = !acc_solved; satf_unsolved = !acc_unsolved } f_next
                 | ADC_Split(same_pattern_csys_list,diff_pattern_csys_list) ->
-
                     split_data_constructor f_continuation { csys_set with set = same_pattern_csys_list } (fun () ->
                       split_data_constructor f_continuation { csys_set with set = diff_pattern_csys_list } f_next
                     )

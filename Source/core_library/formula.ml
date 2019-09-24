@@ -447,7 +447,7 @@ module Diseq = struct
           else
             begin
               List.iter (fun v -> v.link_r <- RNoLink) !univ_vars;
-              Printf.sprintf "%s %s.%s" (forall out) (display_list (Recipe_Variable.display out) "," !univ_vars) (display_list display_single (Printf.sprintf " %s " (vee out)) diseq_list)
+              Printf.sprintf "%s %s.%s" (forall out) (display_list (fun v -> Recipe_Variable.display out v) "," !univ_vars) (display_list display_single (Printf.sprintf " %s " (vee out)) diseq_list)
             end
   end
 

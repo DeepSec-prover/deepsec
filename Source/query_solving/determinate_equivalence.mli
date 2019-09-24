@@ -18,6 +18,7 @@ type equivalence_problem
 exception Not_Trace_Equivalent of symbolic_process Constraint_system.t
 
 val apply_one_transition_and_rules :
+  int -> int ->
   equivalence_problem ->
   (equivalence_problem -> (unit -> unit) -> unit) ->
   (unit -> unit) ->
