@@ -236,13 +236,6 @@ module Recipe_Variable = struct
     v.link_r <- RLink r;
     currently_linked := v :: !currently_linked
 
-  let rec unlink_until (head:recipe_variable) = function
-    | [] -> Config.internal_error "[term.ml >> Recipe_Variable.remove_until] The variable head should appear in the list."
-    | t::_ when t == head -> ()
-    | t::q ->
-        t.link_r <- RNoLink;
-        unlink_until head q
-
   let auto_cleanup_with_reset (f_cont:(unit -> unit) -> unit) (f_next:unit -> unit) =
     let tmp = !currently_linked in
     currently_linked := [];
@@ -343,25 +336,6 @@ module Name = struct
 
     n.link_n <- NLink n';
     currently_linked := n :: !currently_linked
-
-  let cleanup () =
-    Config.debug (fun () ->
-      if List.exists (fun n -> n.link_n = NNoLink) !currently_linked
-      then Config.internal_error "[term.ml >> Name.cleanup] The names should all be linked."
-    );
-
-    List.iter (fun n -> n.link_n <- NNoLink) !currently_linked;
-    currently_linked := []
-
-  let auto_cleanup_with_reset (f_cont:(unit -> unit) -> unit) (f_next:unit -> unit) =
-    let tmp = !currently_linked in
-    currently_linked := [];
-
-    f_cont (fun () ->
-      List.iter (fun n -> n.link_n <- NNoLink) !currently_linked;
-      currently_linked := tmp;
-      f_next ()
-    )
 
   let currently_deducible : name list ref = ref []
 

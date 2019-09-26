@@ -1809,16 +1809,9 @@ module Rule = struct
                 | Some t_list -> t_list
                 | None ->
                     let t_list = List.map (fun csys -> IK.get_last_term csys.incremented_knowledge) csys_set_1.set in
-                    Config.debug (fun () ->
-                      Config.print_in_log (Printf.sprintf "Internal Size last_term_list = %d; Size csys_list = %d\n" (List.length t_list) (List.length csys_set_1.set))
-                    );
                     last_term_list_ref := Some t_list;
                     t_list
               in
-
-              Config.debug (fun () ->
-                Config.print_in_log (Printf.sprintf "Size last_term_list = %d; Size csys_list = %d\n" (List.length last_term_list) (List.length csys_set_1.set))
-              );
 
               let csys_list =
                 List.rev_map2 (fun csys last_term ->
@@ -1847,18 +1840,9 @@ module Rule = struct
                 | Some t_list -> t_list
                 | None ->
                     let t_list = List.map (fun csys -> IK.get_last_term csys.incremented_knowledge) csys_set_1.set in
-                    Config.debug (fun () ->
-                      Config.print_in_log (Printf.sprintf "Internal 2 Size last_term_list = %d; Size csys_list = %d\n" (List.length t_list) (List.length csys_set_1.set))
-                    );
                     last_term_list_ref := Some t_list;
                     t_list
               in
-
-              Printf.printf "Size 2 last_term_list = %d; Size csys_list = %d\n" (List.length last_term_list) (List.length csys_set_1.set);
-
-              Config.debug (fun () ->
-                Config.print_in_log (Printf.sprintf "Size 2 last_term_list = %d; Size csys_list = %d\n" (List.length last_term_list) (List.length csys_set_1.set))
-              );
 
               let eq_solved_csys = ref [] in
               let eq_form_csys = ref [] in
@@ -1901,8 +1885,11 @@ module Rule = struct
                   in
                   f_continuation csys_set_3 f_next_2
                 in
+                let f_continuation_neg csys_set_2 f_next_2 =
+                  internal (ref None) index_to_check csys_set_2 f_next_2
+                in
 
-                sat_equality_formula ~universal:false f_continuation_pos (internal (ref None) index_to_check) { satf_eq_recipe = csys_set_1.eq_recipe; satf_no_formula = !no_eq_csys; satf_solved = !eq_solved_csys; satf_unsolved = !eq_form_csys } f_next_1
+                sat_equality_formula ~universal:false f_continuation_pos f_continuation_neg { satf_eq_recipe = csys_set_1.eq_recipe; satf_no_formula = !no_eq_csys; satf_solved = !eq_solved_csys; satf_unsolved = !eq_form_csys } f_next_1
         in
 
         internal (ref None) last_index csys_set f_next
@@ -1962,7 +1949,7 @@ module Rule = struct
       let csys = List.hd csys_set.set in
       if UF.exists_deduction_fact csys.unsolved_facts
       then
-        match exploration_normalisation_deduction_consequence true [] csys_set.set with
+        begin match exploration_normalisation_deduction_consequence true [] csys_set.set with
           | Remove ->
               (* We detected that the terms of the deduction facts are only pure fresh names
                  so we can remove them. *)
@@ -2039,6 +2026,7 @@ module Rule = struct
               in
 
               sat_equality_formula f_continuation_pos (normalisation_deduction_consequence f_continuation) { satf_solved = !solved_eq_csys; satf_unsolved = !eq_form_csys; satf_no_formula = !no_eq_form_csys; satf_eq_recipe = csys_set.eq_recipe } f_next
+        end
       else f_continuation csys_set f_next
 
   (**** The rule Rewrite ****)

@@ -598,12 +598,12 @@ let trace_equivalence proc1 proc2 =
 
   (*** Generate the initial constraint systems ***)
 
-  (*let proc1' = Process.detect_and_replace_pure_fresh_name proc1 in
+  let proc1' = Process.detect_and_replace_pure_fresh_name proc1 in
   let proc2' = Process.detect_and_replace_pure_fresh_name proc2 in
-  *)
-  let proc1' = proc1 in
-  let proc2' = proc2 in
 
+  (*let proc1' = proc1 in
+  let proc2' = proc2 in
+*)
   let (conf1,conf2,else_branch) = Determinate_process.generate_initial_configurations proc1' proc2' in
 
   let symb_proc_1 =
