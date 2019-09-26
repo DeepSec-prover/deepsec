@@ -479,11 +479,9 @@ module MGS = struct
       else
         let additional_basic_facts = List.map2 (fun x t -> { bf_var = x; bf_term = t}) skeleton_cons.Rewrite_rules.recipe_vars args in
 
-        let df = DF.add_multiple_max_type csys.deduction_facts additional_basic_facts in
-
         let simple_csys =
           {
-            simp_deduction_facts = df;
+            simp_deduction_facts = csys.deduction_facts;
             simp_eq_term = csys.eq_term;
             simp_eq_uniformity = csys.eq_uniformity;
             simp_eq_recipe = eq_recipe;
@@ -850,6 +848,13 @@ module MGS = struct
 
     let df = DF.add_multiple_max_type csys.simp_deduction_facts infinite_basic_facts in
 
+    Config.debug (fun () ->
+      if List.exists (fun bfact -> bfact.bf_var.link_r <> RNoLink) infinite_basic_facts
+      then Config.internal_error "[constraint_system.ml >> MGS.compute_one_with_IK] Variables in infinite basic facts should not be linked.";
+
+      DF.debug "[constraint_system.ml >> MGS.compute_one_with_IK]" df;
+    );
+
     let generate_result eq_recipe exist_vars =
       let subst_std = List.fold_left (fun acc v -> match v.link_r with RLink r -> (v,Recipe.instantiate_preserve_context r)::acc | _ -> acc) [] std_vars in
       let subst_infinite = List.fold_left (fun acc v -> match v.link_r with RLink r -> (v,Recipe.instantiate_preserve_context r)::acc | _ -> acc) [] df_vars.infinite_vars in
@@ -877,6 +882,7 @@ module MGS = struct
     let size_kb = K.size csys.simp_knowledge in
 
     let rec apply_rules df eq_term eq_rec eq_uni eq_skel exist_vars f_next_0 =
+      Config.debug (fun () -> DF.debug "[constraint_system.ml >> MGS.compute_one_with_IK]" df);
       Recipe_Variable.auto_cleanup_with_reset (fun f_next_1 ->
         match DF.compute_mgs_applicability df with
           | DF.Solved ->
@@ -898,6 +904,11 @@ module MGS = struct
           | DF.UnsolvedFact(bfact,df',unif) ->
               let x = bfact.bf_var
               and t = bfact.bf_term in
+
+              Config.debug (fun () ->
+                if x.link_r <> RNoLink
+                then Config.internal_error "[constraint_system.ml >> compute_one_with_IK] Variable should not be linked."
+              );
 
               match t with
                 | Func(f,[]) when f.public ->
@@ -1794,44 +1805,60 @@ module Rule = struct
 
         let rec internal last_term_list_ref last_index_checked csys_set_1 f_next_1 = match IK.get_previous_index_in_knowledge_base csys.knowledge csys.incremented_knowledge last_index_checked with
           | None ->
-            let last_term_list = match !last_term_list_ref with
-              | Some t_list -> t_list
-              | None ->
-                  let t_list = List.map_tail (fun csys -> IK.get_last_term csys.incremented_knowledge) csys_set_1.set in
-                  last_term_list_ref := Some t_list;
-                  t_list
-            in
+              let last_term_list = match !last_term_list_ref with
+                | Some t_list -> t_list
+                | None ->
+                    let t_list = List.map (fun csys -> IK.get_last_term csys.incremented_knowledge) csys_set_1.set in
+                    Config.debug (fun () ->
+                      Config.print_in_log (Printf.sprintf "Internal Size last_term_list = %d; Size csys_list = %d\n" (List.length t_list) (List.length csys_set_1.set))
+                    );
+                    last_term_list_ref := Some t_list;
+                    t_list
+              in
 
-            let csys_list =
-              List.rev_map2 (fun csys last_term ->
-                let new_skeletons = List.map (fun index_skel -> (last_index,index_skel)) (Rewrite_rules.get_possible_skeletons_for_terms last_term) in
+              Config.debug (fun () ->
+                Config.print_in_log (Printf.sprintf "Size last_term_list = %d; Size csys_list = %d\n" (List.length last_term_list) (List.length csys_set_1.set))
+              );
 
-                let (skeletons_checked_IK,skeletons_to_check_IK) = csys.rule_data.skeletons_IK in
-                let (skeletons_checked_K,skeletons_to_check_K) = csys.rule_data.skeletons_K in
+              let csys_list =
+                List.rev_map2 (fun csys last_term ->
+                  let new_skeletons = List.map (fun index_skel -> (last_index,index_skel)) (Rewrite_rules.get_possible_skeletons_for_terms last_term) in
 
-                let new_skeletons_to_check_K = List.rev_append skeletons_to_check_K skeletons_checked_K in
-                let new_skeletons_to_check_IK = List.rev_append new_skeletons (List.rev_append skeletons_to_check_IK skeletons_checked_IK) in
+                  let (skeletons_checked_IK,skeletons_to_check_IK) = csys.rule_data.skeletons_IK in
+                  let (skeletons_checked_K,skeletons_to_check_K) = csys.rule_data.skeletons_K in
 
-                let rule_data =
-                  { csys.rule_data with
-                    skeletons_K = ([],new_skeletons_to_check_K);
-                    skeletons_IK = ([],new_skeletons_to_check_IK)
-                  }
-                in
+                  let new_skeletons_to_check_K = List.rev_append skeletons_to_check_K skeletons_checked_K in
+                  let new_skeletons_to_check_IK = List.rev_append new_skeletons (List.rev_append skeletons_to_check_IK skeletons_checked_IK) in
 
-                { csys with rule_data = rule_data }
-              ) csys_set_1.set last_term_list
-            in
+                  let rule_data =
+                    { csys.rule_data with
+                      skeletons_K = ([],new_skeletons_to_check_K);
+                      skeletons_IK = ([],new_skeletons_to_check_IK)
+                    }
+                  in
 
-            f_continuation { csys_set_1 with set = csys_list } f_next_1
+                  { csys with rule_data = rule_data }
+                ) csys_set_1.set last_term_list
+              in
+
+              f_continuation { csys_set_1 with set = csys_list } f_next_1
           | Some index_to_check ->
               let last_term_list = match !last_term_list_ref with
                 | Some t_list -> t_list
                 | None ->
-                    let t_list = List.map_tail (fun csys -> IK.get_last_term csys.incremented_knowledge) csys_set_1.set in
+                    let t_list = List.map (fun csys -> IK.get_last_term csys.incremented_knowledge) csys_set_1.set in
+                    Config.debug (fun () ->
+                      Config.print_in_log (Printf.sprintf "Internal 2 Size last_term_list = %d; Size csys_list = %d\n" (List.length t_list) (List.length csys_set_1.set))
+                    );
                     last_term_list_ref := Some t_list;
                     t_list
               in
+
+              Printf.printf "Size 2 last_term_list = %d; Size csys_list = %d\n" (List.length last_term_list) (List.length csys_set_1.set);
+
+              Config.debug (fun () ->
+                Config.print_in_log (Printf.sprintf "Size 2 last_term_list = %d; Size csys_list = %d\n" (List.length last_term_list) (List.length csys_set_1.set))
+              );
 
               let eq_solved_csys = ref [] in
               let eq_form_csys = ref [] in
@@ -1882,6 +1909,11 @@ module Rule = struct
 
   (**** The rule for adding element in the knowledge base ****)
 
+  type 'a result_exploration_normalisation_deduction_consequence =
+    | Add of 'a t list
+    | Remove
+    | Consequence of recipe * 'a t * 'a t list * 'a t list
+
   let rec link_name_with_recipe recipe = function
     | Var { link = TLink t; _} -> link_name_with_recipe recipe t
     | Name n ->
@@ -1892,18 +1924,26 @@ module Rule = struct
         Name.set_deducible n recipe
     | _ -> ()
 
-  let rec exploration_normalisation_deduction_consequence prev_csys = function
-    | [] -> None, prev_csys
+  let rec exploration_normalisation_deduction_consequence only_pure prev_csys = function
+    | [] ->
+        if only_pure
+        then Remove
+        else Add prev_csys
     | csys::q ->
-        if csys.rule_data.normalisation_deduction_checked
-        then exploration_normalisation_deduction_consequence (csys::prev_csys) q
-        else
-          let t = (UF.pop_deduction_fact csys.unsolved_facts).df_term in
-          match IK.consequence_term csys.knowledge csys.incremented_knowledge csys.deduction_facts t with
-            | None ->
-                let csys' = { csys with rule_data = { csys.rule_data with normalisation_deduction_checked = true } } in
-                exploration_normalisation_deduction_consequence (csys'::prev_csys) q
-            | Some r -> Some (r,csys,q), prev_csys
+        let t = (UF.pop_deduction_fact csys.unsolved_facts).df_term in
+        match t with
+          | Name { pure_fresh_n = true; _ } ->
+              exploration_normalisation_deduction_consequence only_pure (csys::prev_csys) q
+          | _ ->
+              if csys.rule_data.normalisation_deduction_checked
+              then exploration_normalisation_deduction_consequence false (csys::prev_csys) q
+              else
+                let t = (UF.pop_deduction_fact csys.unsolved_facts).df_term in
+                match IK.consequence_term csys.knowledge csys.incremented_knowledge csys.deduction_facts t with
+                  | None ->
+                      let csys' = { csys with rule_data = { csys.rule_data with normalisation_deduction_checked = true } } in
+                      exploration_normalisation_deduction_consequence false (csys'::prev_csys) q
+                  | Some r -> Consequence(r,csys,q, prev_csys)
 
   (** Purpose : Check whether a deduction fact is consequence or not of the knowledge base and incremented knowledge base.
      Input : Only deductions facts (no formula nor equality) and same amount. (Can we have several ?)
@@ -1922,9 +1962,17 @@ module Rule = struct
       let csys = List.hd csys_set.set in
       if UF.exists_deduction_fact csys.unsolved_facts
       then
-        match exploration_normalisation_deduction_consequence [] csys_set.set with
-          | None, checked_csys ->
-              Config.debug (fun () -> Config.print_in_log "[normalisation_deduction_consequence] No recipe consequence");
+        match exploration_normalisation_deduction_consequence true [] csys_set.set with
+          | Remove ->
+              (* We detected that the terms of the deduction facts are only pure fresh names
+                 so we can remove them. *)
+              let new_csys_list =
+                List.rev_map (fun csys' ->
+                  { csys' with unsolved_facts = UF.remove_head_deduction_fact csys'.unsolved_facts}
+                ) csys_set.set
+              in
+              normalisation_deduction_consequence f_continuation { csys_set with set = new_csys_list } f_next
+          | Add checked_csys ->
               (* We add in the incremented knowledge base *)
               let index_new_elt = IK.get_next_index csys.incremented_knowledge in
               Name.auto_deducible_cleanup_with_reset (fun f_next_1 ->
@@ -1942,8 +1990,7 @@ module Rule = struct
 
                 equality_knowledge_base (normalisation_deduction_consequence f_continuation) { csys_set with set = new_csys_list } f_next_1
               ) f_next
-          | Some (recipe,csys,to_check_csys),checked_csys ->
-              Config.debug (fun () -> Config.print_in_log "[normalisation_deduction_consequence] Found recipe consequence");
+          | Consequence(recipe,csys,to_check_csys,checked_csys) ->
               let no_eq_form_csys = ref [] in
               let solved_eq_csys = ref [csys] in
               let eq_form_csys = ref [] in
@@ -2385,6 +2432,12 @@ module Rule = struct
                             Config.debug (fun () -> incr nb_RSSNo_IK_solution_constructor);
                             sub_explore check_on_K (index_kb::equality_constructor_checked) q_id
                         | MGS.RSSSimple(recipe,simple_csys,infinite_bfacts,infinite_vars) ->
+                            Config.debug (fun () ->
+                              if List.exists (fun bfact -> bfact.bf_var.link_r <> RNoLink) infinite_bfacts
+                              then Config.internal_error "[constraint_system.ml >> exploration_equality_constructor] Variables in infinite basic facts should not be linked.";
+
+                              DF.debug "[constraint_system.ml >> exploration_equality_constructor]" simple_csys.MGS.simp_deduction_facts
+                            );
                             let df_vars = { MGS.std_vars = vars_df_ref; MGS.infinite_vars = infinite_vars } in
                             match MGS.compute_one_with_IK simple_csys infinite_bfacts df_vars with
                               | None ->
@@ -2429,7 +2482,7 @@ module Rule = struct
           then
             begin
               (* Implies that no substitution was applied on the standard recipe variables. *)
-
+              Config.debug (fun () -> Config.print_in_log "[internal_equality_constructor] Found mgs identity\n");
               let no_eq_form_csys = ref []
               and solved_eq_form_csys = ref []
               and eq_form_csys = ref [] in
@@ -2482,7 +2535,7 @@ module Rule = struct
           else
             begin
               let new_eq_rec_ref = ref eq_recipe in
-
+              Config.debug (fun () -> Config.print_in_log "[internal_equality_constructor] Found mgs but not identity\n");
               Recipe_Variable.auto_cleanup_with_reset (fun f_next_2 ->
                 (* We link the variables of the mgs *)
                 List.iter (fun (v,r) -> Recipe_Variable.link_recipe v r) mgs_data.MGS.one_mgs_std_subst;

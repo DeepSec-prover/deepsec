@@ -416,7 +416,7 @@ module K = struct
       data : entry Array.t
     }
 
-  let dummy_entry = { type_rec = 0; recipe = Axiom 0; term = Name { label_n = ""; index_n = 0; link_n = NNoLink; deducible_n = None} }
+  let dummy_entry = { type_rec = 0; recipe = Axiom 0; term = Name { label_n = ""; index_n = 0; pure_fresh_n = false; link_n = NNoLink; deducible_n = None} }
 
   let empty = { max_type_r = 0; size = 0; data = Array.make 0 dummy_entry }
 
@@ -835,6 +835,11 @@ module IK = struct
         | _::q -> explore q
       in
       explore ikb.data
+
+  let get_max_type_recipe kb ikb =
+    if ikb.data = []
+    then kb.K.max_type_r
+    else ikb.type_rec
 
   let find_unifier_with_recipe_with_stop kb ikb t type_r stop_ref f_continuation (f_next:unit->unit) = match compare type_r kb.K.max_type_r with
     | -1 -> K.find_unifier_with_recipe_with_stop_with_type kb t type_r stop_ref f_continuation f_next

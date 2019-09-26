@@ -501,11 +501,11 @@ let initialise_skeletons_destructor () =
           match consequence_protocol_term (bfct_r::skel.basic_deduction_facts) t with
             | None -> false
             | Some _ -> true
-        ) arg_term
+        ) skel.lhs
       then
         let stored_skel =
           Config.debug (fun () ->
-            Printf.printf "Function symbol with a skeleton that has removal allowed: %s\n" (Symbol.display Latex f)
+            Config.print_in_log (Printf.sprintf "Function symbol with a skeleton that has removal allowed: %s\n" (Symbol.display Latex f))
           );
           { skeleton = { skel with removal_allowed = true }; compatible_rewrite_rules = compa_rw_rules } in
         skeleton_storage.(i) <- stored_skel

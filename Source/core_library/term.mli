@@ -227,6 +227,8 @@ module Name :  sig
   (** [fresh_from n] creates a fresh name with the same label and same boundedness as [n].*)
   val fresh_from : name -> name
 
+  val pure_fresh_from : name -> name
+
   (** A total ordering function over names. This is a two-argument function [order] such that  [order n1 n2] is zero if
       the [n1] and [n2] are equal, [order n1 n2] is strictly negative if [n1] is smaller than [n2], and
       strictly strictly positive if [n1] is greater than [n2]. *)

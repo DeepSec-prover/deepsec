@@ -165,6 +165,8 @@ module IK : sig
 
   val get : K.t -> t -> int -> recipe * term
 
+  val get_max_type_recipe : K.t -> t -> int
+
   val remove : t -> int -> t
 
   val remove_last_entry : t -> t

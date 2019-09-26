@@ -56,7 +56,6 @@ let AKA_MS(ch,k,osqn,pbN,imsi) =
     new r;
     out(ch, aenc(pbN, r_ms, (Fail, imsi, rand, senc(f0(k, rand), r, (Sqn, osqn))))).
 
-
 let AKA_SN(ch,osqn,k)=
     new rand;
     new r_sn;
@@ -95,6 +94,5 @@ let Process2 =
   new k;
   new imsi;
   (single_session(chMS1,chSN1,pbN,k,imsi) | single_session(chMS2,chSN2,pbN,k,imsi)).
-
 
 query trace_equiv(Process1,Process2).

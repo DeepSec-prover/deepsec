@@ -230,7 +230,7 @@ module Recipe_Variable = struct
   let link_recipe v r =
     Config.debug (fun () ->
       if v.link_r <> RNoLink
-      then Config.internal_error "[term.ml >> Recipe_Variable.link] The first variable should not be already linked."
+      then Config.internal_error "[term.ml >> Recipe_Variable.link_recipe] The first variable should not be already linked."
     );
 
     v.link_r <- RLink r;
@@ -297,13 +297,18 @@ module Name = struct
   (******* Generation *******)
 
   let fresh_with_label n =
-    let name = { label_n = n; index_n = !accumulator; link_n = NNoLink; deducible_n = None } in
+    let name = { label_n = n; index_n = !accumulator; pure_fresh_n = false; link_n = NNoLink; deducible_n = None } in
     accumulator := !accumulator + 1;
     name
 
   let fresh () = fresh_with_label "n"
 
   let fresh_from name = fresh_with_label name.label_n
+
+  let pure_fresh_from name =
+    let name' = { label_n = name.label_n; index_n = !accumulator; pure_fresh_n = true; link_n = NNoLink; deducible_n = None } in
+    accumulator := !accumulator + 1;
+    name'
 
   (******* Testing *******)
 
@@ -880,7 +885,7 @@ module Term = struct
         match n.link_n with
           | NLink n' -> Name n' (* n' is the fresh replacement of n *)
           | NNoLink ->
-              let n' = { label_n = n.label_n; index_n = n.index_n; link_n = NNoLink; deducible_n = n.deducible_n } in
+              let n' = { label_n = n.label_n; index_n = n.index_n; pure_fresh_n = n.pure_fresh_n; link_n = NNoLink; deducible_n = n.deducible_n } in
               Config.debug (fun () -> if n == n' then Config.internal_error "[constraint_system.ml >> rename_and_instantiate_term] Should not be physically equal.");
               Name.link n n';
               Name n'

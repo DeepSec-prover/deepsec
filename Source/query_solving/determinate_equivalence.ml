@@ -204,7 +204,7 @@ let apply_one_transition_and_rules previous_node current_node equiv_pbl f_contin
         Constraint_system.Rule.apply_rules_after_input false in_apply_final_test csys_set_for_start f_next
     | RStartIn ->
         Config.debug (fun () -> Config.print_in_log "apply Start In\n");
-        let var_X = Recipe_Variable.fresh Free equiv_pbl.size_frame in
+        let var_X = Recipe_Variable.fresh Free (Data_structure.IK.get_max_type_recipe csys.knowledge csys.incremented_knowledge) in
 
         let apply_conf csys conf =
           { csys with
@@ -226,6 +226,8 @@ let apply_one_transition_and_rules previous_node current_node equiv_pbl f_contin
             then not (List.for_all (fun (csys,_) -> do_else_branches_lead_to_improper_block_conf csys.Constraint_system.additional_data.configuration) csys_var_list)
             else false
           in
+
+          Config.debug (fun () -> Config.print_in_log (Printf.sprintf "Local value else_branh = %b\n" else_branch));
 
           List.iter (fun (csys,x) ->
             let symb_proc = csys.Constraint_system.additional_data in
@@ -343,19 +345,20 @@ let apply_one_transition_and_rules previous_node current_node equiv_pbl f_contin
         ) f_next
     | RPosIn ->
         Config.debug (fun () -> Config.print_in_log "apply PosIn\n");
-        let var_X = Recipe_Variable.fresh Free equiv_pbl.size_frame in
+        let var_X = Recipe_Variable.fresh Free (Data_structure.IK.get_max_type_recipe csys.knowledge csys.incremented_knowledge) in
 
         let csys_list_for_input = ref [] in
 
-        let else_branch =
-          if equiv_pbl.else_branch
-          then not (List.for_all (fun csys -> do_else_branches_lead_to_improper_block_conf csys.Constraint_system.additional_data.configuration) equiv_pbl.csys_set.Constraint_system.set)
-          else false
+        let (else_branch, conf_var_list) =
+          List.fold_left (fun (acc_else,acc_conf) csys ->
+            let (conf,x) = apply_pos_in var_X (csys.Constraint_system.additional_data).configuration in
+            (acc_else || not (do_else_branches_lead_to_improper_block_conf conf), (conf,x)::acc_conf)
+          ) (false,[]) equiv_pbl.csys_set.Constraint_system.set
         in
 
-        List.iter (fun csys ->
-          let symb_proc = csys.Constraint_system.additional_data in
-          let conf,x = apply_pos_in var_X symb_proc.configuration in
+        Config.debug (fun () -> Config.print_in_log (Printf.sprintf "Local value else_branh = %b\n" else_branch));
+
+        List.iter (fun (conf,x) ->
 
           Variable.auto_cleanup_with_reset_notail (fun () ->
             let x_fresh = Variable.fresh Existential in
@@ -384,7 +387,7 @@ let apply_one_transition_and_rules previous_node current_node equiv_pbl f_contin
                 csys_list_for_input := csys_2 :: !csys_list_for_input
             )
           )
-        ) equiv_pbl.csys_set.Constraint_system.set;
+        ) conf_var_list;
 
         let csys_set_for_input = { equiv_pbl.csys_set with Constraint_system.set = !csys_list_for_input } in
 
@@ -465,12 +468,6 @@ let apply_one_transition_and_rules previous_node current_node equiv_pbl f_contin
 
         let csys_list_for_output = ref [] in
 
-        let else_branch =
-          if equiv_pbl.else_branch
-          then not (List.for_all (fun csys -> do_else_branches_lead_to_improper_block_conf csys.Constraint_system.additional_data.configuration) equiv_pbl.csys_set.Constraint_system.set)
-          else false
-        in
-
         List.iter (fun csys ->
           let symb_proc = csys.Constraint_system.additional_data in
           let conf, term = apply_neg_out symb_proc.configuration in
@@ -480,7 +477,7 @@ let apply_one_transition_and_rules previous_node current_node equiv_pbl f_contin
             let original_subst = csys.Constraint_system.original_substitution in
             List.iter (fun (x,t) -> Variable.link_term x t) original_subst;
 
-            normalise_configuration conf else_branch original_subst (fun gathering conf_1 ->
+            normalise_configuration conf equiv_pbl.else_branch original_subst (fun gathering conf_1 ->
               let eq_uniformity = Formula.T.instantiate_and_normalise_full csys.Constraint_system.eq_uniformity in
               if eq_uniformity = Formula.T.Bot
               then ()
@@ -601,7 +598,13 @@ let trace_equivalence proc1 proc2 =
 
   (*** Generate the initial constraint systems ***)
 
-  let (conf1,conf2,else_branch) = Determinate_process.generate_initial_configurations proc1 proc2 in
+  (*let proc1' = Process.detect_and_replace_pure_fresh_name proc1 in
+  let proc2' = Process.detect_and_replace_pure_fresh_name proc2 in
+  *)
+  let proc1' = proc1 in
+  let proc2' = proc2 in
+
+  let (conf1,conf2,else_branch) = Determinate_process.generate_initial_configurations proc1' proc2' in
 
   let symb_proc_1 =
     {
