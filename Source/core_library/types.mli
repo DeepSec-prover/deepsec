@@ -96,7 +96,7 @@ and recipe =
 
 (**** Processes ****)
 
-type position = int
+type position = int * int list
 
 type pattern =
   | PatVar of variable

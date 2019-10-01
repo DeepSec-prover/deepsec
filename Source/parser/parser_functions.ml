@@ -24,13 +24,14 @@ type pattern =
 
 type intermediate_process =
   | INil
-  | IOutput of Types.term * Types.term * intermediate_process
-  | IInput of Types.term * Types.pattern * intermediate_process
-  | IIfThenElse of Types.term * Types.term * intermediate_process * intermediate_process
-  | ILet of Types.pattern * Types.term * intermediate_process * intermediate_process
-  | INew of Types.name * intermediate_process
-  | IPar of (intermediate_process * int) list
-  | IChoice of intermediate_process * intermediate_process
+  | IOutput of Types.term * Types.term * intermediate_process * int
+  | IInput of Types.term * Types.pattern * intermediate_process * int
+  | IIfThenElse of Types.term * Types.term * intermediate_process * intermediate_process * int
+  | ILet of Types.pattern * Types.term * intermediate_process * intermediate_process * int
+  | INew of Types.name * intermediate_process * int
+  | IPar of intermediate_process list
+  | IBang of int * intermediate_process * int
+  | IChoice of intermediate_process * intermediate_process * int
 
 type plain_process =
   | Nil
@@ -198,22 +199,28 @@ let rec parse_plain_process env = function
         Not_found -> error_message line (Printf.sprintf "The identifiant %s is not declared" s)
       end
   | Nil -> INil
-  | Choice(p1,p2) -> IChoice(parse_plain_process env p1,parse_plain_process env p2)
+  | Choice(p1,p2) -> IChoice(parse_plain_process env p1,parse_plain_process env p2,fresh_position ())
   | Seq(_,_)-> error_message 0 "Sequence is not yet implemented."
   | Par(p1,p2) ->
       begin match parse_plain_process env p1, parse_plain_process env p2 with
         | IPar l_1, IPar l_2 -> IPar (l_1@l_2)
-        | IPar l_1, proc2 -> IPar ((proc2,1)::l_1)
-        | proc1, IPar l_2 -> IPar ((proc1,1)::l_2)
-        | proc1, proc2 -> IPar [(proc1,1);(proc2,1)]
+        | IPar l_1, proc2 -> IPar (proc2::l_1)
+        | proc1, IPar l_2 -> IPar (proc1::l_2)
+        | proc1, proc2 -> IPar [proc1;proc2]
       end
   | Bang(n,proc,line) ->
       if n < 1
       then error_message line "The integer should be at least 1.";
 
       begin match parse_plain_process env proc with
-        | IPar l -> IPar (List.map (fun (p,i) -> (p,i*n)) l)
-        | proc -> IPar [(proc,n)]
+        | IPar l ->
+            IPar (
+              List.map (function
+                | IBang(i,p,pos) -> IBang(i*n,p,pos)
+                | p -> IBang(n,p,fresh_position ())
+              ) l
+            )
+        | proc -> IBang(n,proc,fresh_position ())
       end
   | New((s,line),proc) ->
       if Env.mem s env
@@ -222,7 +229,7 @@ let rec parse_plain_process env = function
       let n = Term.Name.fresh_with_label s in
       let env' = Env.add s (Name n) env in
 
-      INew(n,parse_plain_process env' proc)
+      INew(n,parse_plain_process env' proc,fresh_position ())
   | In(ch,(s,line),proc) ->
       if Env.mem s env
       then warning_message line (Printf.sprintf "The identifier %s is already defined." s);
@@ -231,27 +238,27 @@ let rec parse_plain_process env = function
       let x = Term.Variable.fresh_with_label Types.Free s in
       let env' = Env.add s (Var x) env in
 
-      IInput(ch',Types.PatVar(x), parse_plain_process env' proc)
+      IInput(ch',Types.PatVar(x), parse_plain_process env' proc,fresh_position ())
   | Out(ch,t,proc) ->
       let ch' = parse_term env ch
       and t' = parse_term env t
       and proc' = parse_plain_process env proc in
 
-      IOutput(ch',t',proc')
+      IOutput(ch',t',proc',fresh_position ())
   | Let(pat,t,proc_then,proc_else) ->
       let t' = parse_term env t in
       let pat',env' = parse_pattern env env pat in
       let proc_then' = parse_plain_process env' proc_then in
       let proc_else' = parse_plain_process env proc_else in
 
-      ILet(pat',t',proc_then',proc_else')
+      ILet(pat',t',proc_then',proc_else',fresh_position ())
   | IfThenElse(t1,t2,proc1,proc2) ->
       let t1' = parse_term env t1
       and t2' = parse_term env t2
       and proc1' = parse_plain_process env proc1
       and proc2' = parse_plain_process env proc2 in
 
-      IIfThenElse(t1',t2',proc1',proc2')
+      IIfThenElse(t1',t2',proc1',proc2',fresh_position ())
 
 let rec apply_renaming = function
   | Types.Var v ->
@@ -274,47 +281,40 @@ let rec apply_renaming_pat = function
   | Types.PatEquality t -> Types.PatEquality (apply_renaming t)
   | Types.PatTuple(f,args) -> Types.PatTuple(f,List.map apply_renaming_pat args)
 
-let rec intermediate_process_of_process = function
+let rec intermediate_process_of_process occurence_list = function
   | INil -> Types.Nil
-  | IOutput(t1,t2,p) -> Types.Output(apply_renaming t1, apply_renaming t2, intermediate_process_of_process p, fresh_position ())
-  | IInput(ch,pat,p) ->
+  | IOutput(t1,t2,p,pos) -> Types.Output(apply_renaming t1, apply_renaming t2, intermediate_process_of_process occurence_list p, (pos,occurence_list))
+  | IInput(ch,pat,p,pos) ->
       let ch' = apply_renaming ch in
       Term.Variable.auto_cleanup_with_reset_notail (fun () ->
         let pat' = apply_renaming_pat pat in
-        Types.Input(ch',pat',intermediate_process_of_process p,fresh_position ())
+        Types.Input(ch',pat',intermediate_process_of_process occurence_list p,(pos,occurence_list))
       )
-  | IIfThenElse(t1,t2,p1,p2) ->
-      Types.IfThenElse(apply_renaming t1,apply_renaming t2, intermediate_process_of_process p1, intermediate_process_of_process p2,fresh_position ())
-  | ILet(pat,t,p1,p2) ->
+  | IIfThenElse(t1,t2,p1,p2,pos) ->
+      Types.IfThenElse(apply_renaming t1,apply_renaming t2, intermediate_process_of_process occurence_list p1, intermediate_process_of_process occurence_list p2,(pos,occurence_list))
+  | ILet(pat,t,p1,p2,pos) ->
       let t' = apply_renaming t in
-      let p2' = intermediate_process_of_process p2 in
+      let p2' = intermediate_process_of_process occurence_list p2 in
       Term.Variable.auto_cleanup_with_reset_notail (fun () ->
         let pat' = apply_renaming_pat pat in
-        let p1' = intermediate_process_of_process p1 in
-        Types.Let(pat',t',p1',p2',fresh_position ())
+        let p1' = intermediate_process_of_process occurence_list p1 in
+        Types.Let(pat',t',p1',p2',(pos,occurence_list))
       )
-  | INew(n,p) ->
+  | INew(n,p,pos) ->
       Term.Name.auto_cleanup_with_reset_notail (fun () ->
         let n' = Term.Name.fresh_from n in
         Term.Name.link n n';
-        Types.New(n',intermediate_process_of_process p,fresh_position ())
+        Types.New(n',intermediate_process_of_process occurence_list p,(pos,occurence_list))
       )
   | IPar p_list ->
-      let rec transform_bang p acc = function
-        | 0 -> Types.Bang(acc,fresh_position ())
-        | n -> transform_bang p ((intermediate_process_of_process p)::acc) (n-1)
-      in
+      Types.Par (List.map (intermediate_process_of_process occurence_list) p_list)
+  | IBang(n,p,pos) ->
       let rec explore = function
-        | [] -> []
-        | (p,1)::q -> (intermediate_process_of_process p)::(explore q)
-        | (p,n)::q -> (transform_bang p [] n)::(explore q)
+        | 0 -> []
+        | n -> (intermediate_process_of_process (occurence_list @ [n]) p)::(explore (n-1))
       in
-      begin match explore p_list with
-        | [] -> Config.internal_error "[parser_functions.ml >> intermediate_process_of_process] There should be parallel processes"
-        | [p] -> p
-        | l -> Types.Par l
-      end
-  | IChoice(p1,p2) -> Types.Choice(intermediate_process_of_process p1,intermediate_process_of_process p2, fresh_position ())
+      Types.Bang(explore n,(pos,occurence_list))
+  | IChoice(p1,p2,pos) -> Types.Choice(intermediate_process_of_process occurence_list p1,intermediate_process_of_process occurence_list p2, (pos,occurence_list))
 
 let parse_intermediate_process env = function
   | EPlain proc -> parse_plain_process env proc
@@ -472,9 +472,9 @@ let parse_setting line sem =
 let query_list = ref []
 
 let parse_query env line = function
-  | Trace_Eq(proc_1,proc_2) -> query_list := (Types.Trace_Equivalence,intermediate_process_of_process (parse_intermediate_process env proc_1), intermediate_process_of_process (parse_intermediate_process env proc_2))::!query_list
-  | Sess_Eq(proc_1,proc_2) -> query_list := (Types.Session_Equivalence,intermediate_process_of_process (parse_intermediate_process env proc_1), intermediate_process_of_process (parse_intermediate_process env proc_2))::!query_list
-  | Sess_Incl(proc_1,proc_2) -> query_list := (Types.Session_Inclusion,intermediate_process_of_process (parse_intermediate_process env proc_1), intermediate_process_of_process (parse_intermediate_process env proc_2))::!query_list
+  | Trace_Eq(proc_1,proc_2) -> query_list := (Types.Trace_Equivalence,intermediate_process_of_process [] (parse_intermediate_process env proc_1), intermediate_process_of_process [] (parse_intermediate_process env proc_2))::!query_list
+  | Sess_Eq(proc_1,proc_2) -> query_list := (Types.Session_Equivalence,intermediate_process_of_process [] (parse_intermediate_process env proc_1), intermediate_process_of_process [] (parse_intermediate_process env proc_2))::!query_list
+  | Sess_Incl(proc_1,proc_2) -> query_list := (Types.Session_Inclusion,intermediate_process_of_process [] (parse_intermediate_process env proc_1), intermediate_process_of_process [] (parse_intermediate_process env proc_2))::!query_list
   | Obs_Eq(_,_) -> error_message line "Observational equivalence not implemented yet"
 
 (****** Parse declaration *******)

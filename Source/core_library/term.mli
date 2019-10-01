@@ -151,6 +151,8 @@ module Variable : sig
   val auto_cleanup_with_reset : ((unit -> unit) -> unit) -> (unit -> unit) -> unit
 
   val auto_cleanup_with_reset_notail : (unit -> 'a) -> 'a
+
+  val auto_cleanup_with_exception : (unit -> 'a) -> 'a
 end
 
 (** {2 Recipe Variables} *)
@@ -245,6 +247,8 @@ module Name :  sig
 
   val auto_deducible_cleanup_with_reset : ((unit -> unit) -> unit) -> (unit -> unit) -> unit
 
+  val auto_deducible_cleanup_with_reset_notail : (unit -> 'a) -> 'a
+
   val auto_cleanup_with_reset_notail : (unit -> 'a) -> 'a
 
   val set_deducible : name -> recipe -> unit
@@ -330,6 +334,10 @@ module Term : sig
   val apply_renamings : term -> term
 
   val rename_and_instantiate : term -> term
+
+  exception No_match
+
+  val matching : term -> term -> unit
 
   (** {3 Display} *)
 

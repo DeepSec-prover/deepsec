@@ -220,6 +220,56 @@ let prepare_for_solving_procedure after_output csys =
     )
   )
 
+let prepare_for_solving_procedure_closed csys =
+  Variable.auto_cleanup_with_reset_notail (fun () ->
+    Name.auto_cleanup_with_reset_notail (fun () ->
+      let (kb,ikb,id_assoc,cleanup_deducible_name) = IK.transfer_incremented_knowledge_into_knowledge_no_rename csys.knowledge csys.incremented_knowledge in
+
+      let skeletons_checked_K = match csys.rule_data.skeletons_K, csys.rule_data.skeletons_IK with
+        | (checked_K,[]), (checked_IK,[]) ->
+            List.fold_left (fun acc (index_ikb,index_skel) ->
+              Config.debug (fun () ->
+                if List.assoc_opt index_ikb id_assoc = None
+                then Config.internal_error "[constraint_system.ml >> prepare_for_solving_procedure] Index not found."
+              );
+              (List.assoc index_ikb id_assoc,index_skel)::acc
+            ) checked_K checked_IK
+        | _ -> Config.internal_error "[constraint_system.ml >> prepare_for_solving_procedure] All skeletons should have been checked."
+      in
+
+      let equality_constructor_checked_K = match csys.rule_data.equality_constructor_K, csys.rule_data.equality_constructor_IK with
+        | (checked_K,[]), (checked_IK,[]) ->
+            List.fold_left (fun acc index_ikb ->
+              Config.debug (fun () ->
+                if List.assoc_opt index_ikb id_assoc = None
+                then Config.internal_error "[constraint_system.ml >> prepare_for_solving_procedure] Index not found (2)."
+              );
+              (List.assoc index_ikb id_assoc)::acc
+            ) checked_K checked_IK
+        | _ -> Config.internal_error "[constraint_system.ml >> prepare_for_solving_procedure] All constructor skeletons should have been checked."
+      in
+
+      let rule_data =
+        { csys.rule_data with
+          skeletons_K = (skeletons_checked_K,[]);
+          skeletons_IK = ([],[]);
+          equality_constructor_K = (equality_constructor_checked_K,[]);
+          equality_constructor_IK = ([],[])
+        }
+      in
+
+      let csys' =
+        { csys with
+          knowledge = kb;
+          incremented_knowledge = ikb;
+          rule_data = rule_data
+        }
+      in
+      cleanup_deducible_name ();
+      csys'
+    )
+  )
+
 let instantiate csys =
     (** TODO : Need to implement this function *)
     csys
@@ -2632,10 +2682,56 @@ module Rule = struct
     then sat (sat_non_deducible_terms (split_data_constructor (normalisation_deduction_consequence (rewrite (equality_constructor f_continuation)))))
     else sat (sat_disequation (split_data_constructor (normalisation_deduction_consequence (rewrite (equality_constructor f_continuation)))))
 
+  (*** Main functions for closed constraint system ***)
+
+  let solve csys =
+    Name.auto_deducible_cleanup_with_reset_notail (fun () ->
+      K.iteri (fun i recipe term -> match term with
+        | Name n -> Name.set_deducible n (CRFunc(i,recipe))
+        | _ -> ()
+      ) csys.knowledge;
+      let csys_set = { set = [csys]; eq_recipe = Formula.R.Top } in
+      let csys_ref = ref None in
+      apply_rules_after_output false (fun csys_set' f_next ->
+        Config.debug (fun () ->
+          if csys_set'.set <> [] && !csys_ref <> None
+          then Config.internal_error "[constraint_system.ml >> Rule.solve] Since the constraint system is closed, there should only be one branch with the constraint system."
+        );
+        (* We need to add merge the incremented knowledge with the knowledge base *)
+        if csys_set'.set <> []
+        then csys_ref := Some (prepare_for_solving_procedure_closed (List.hd (csys_set'.set)));
+
+        f_next ()
+      ) csys_set (fun () -> ());
+      match !csys_ref with
+        | None -> Config.internal_error "[constraint_system.ml >> Rule.solve] There should be a solved constraint system."
+        | Some csys' -> csys'
+    )
+
+  let is_term_deducible csys t =
+    (** TODO : We need to link the deducible names and unlink them afterward. Do not
+        consider pure fresh names. *)
+    match t with
+      | Func(f,[]) when f.public -> true
+      | _ ->
+          Name.auto_deducible_cleanup_with_reset_notail (fun () ->
+            K.iteri (fun i recipe term -> match term with
+              | Name n -> Name.set_deducible n (CRFunc(i,recipe))
+              | _ -> ()
+            ) csys.knowledge;
+
+            let (simple_csys,x_var) = MGS.simple_of_non_deducible_term csys Formula.R.Top t in
+
+            let df_vars =  { MGS.std_vars = ref None; MGS.infinite_vars = [x_var] } in
+
+            match MGS.compute_one simple_csys df_vars with
+              | None -> false
+              | Some _ -> true
+          )
+
   (*** Debug function ***)
 
   let debug_display_data () =
     Config.print_in_log ~always:true (Printf.sprintf "Skeleton data : None = %d, No_IK_solution = %d, Simple positive = %d, Simple negative = %d\n" !nb_RSSNone_rewrite !nb_RSSNo_IK_solution_rewrite !nb_RSSSimple_pos_rewrite !nb_RSSSimple_neg_rewrite);
     Config.print_in_log ~always:true (Printf.sprintf "Skeleton constructor data : None = %d, No_IK_solution = %d, Simple positive = %d, Simple negative = %d\n" !nb_RSSNone_constructor !nb_RSSNo_IK_solution_constructor !nb_RSSSimple_pos_constructor !nb_RSSSimple_neg_constructor)
-
 end

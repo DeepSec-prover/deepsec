@@ -598,6 +598,11 @@ module K = struct
     then find_unifier_with_recipe_with_stop_no_type kb t stop_ref f_continuation f_next
     else find_unifier_with_recipe_with_stop_with_type kb t type_r stop_ref f_continuation f_next
 
+  let iteri f kb =
+    for i = 0 to kb.size - 1 do
+      f i kb.data.(i).recipe kb.data.(i).term
+    done
+
   (* Consequence *)
 
   exception Uniformity_falsified
@@ -767,6 +772,70 @@ module IK = struct
     );
     let cleanup_f () =  List.iter (fun (n,l) -> n.deducible_n <- l) !cleanup_name in
     kb',ikb',id_assoc, cleanup_f
+
+  let transfer_incremented_knowledge_into_knowledge_no_rename kb ikb =
+    Config.debug (fun () ->
+      for i = 0 to kb.K.size - 1 do
+        match kb.K.data.(i).K.term with
+          | Name { deducible_n = Some (CRFunc(i',_)); _ } ->
+              if i <> i'
+              then Config.internal_error "[data_structure.ml >> transfer_incremented_knowledge_into_knowledge_no_rename] Name indices have not been properly transfered"
+          | Name { deducible_n = Some _ ; _ } -> Config.internal_error "[data_structure.ml >> transfer_incremented_knowledge_into_knowledge_no_rename] Name should have been set to deducible with a context."
+          | Name { deducible_n = None; _ } -> Config.internal_error "[data_structure.ml >> transfer_incremented_knowledge_into_knowledge_no_rename] Name should have been set to deducible."
+          | _ -> ()
+      done
+    );
+    let size_ikb = List.length ikb.data in
+    let new_size = size_ikb + kb.K.size in
+
+    let cleanup_name = ref [] in
+
+    prepare_names_for_transfer cleanup_name (new_size-1) ikb.data;
+
+    let data = Array.make new_size K.dummy_entry in
+
+    (* Copy data of K *)
+    for i = 0 to kb.K.size - 1 do
+      data.(i) <- kb.K.data.(i)
+    done;
+
+    (* Copy data of IK *)
+    let rec copy index acc = function
+      | [] -> acc
+      | elt::q ->
+          data.(index) <- { K.type_rec = ikb.type_rec; K.recipe = elt.recipe; K.term = elt.term };
+          copy (index-1) ((elt.id,index)::acc) q
+    in
+    let id_assoc = copy (new_size-1) [] ikb.data in
+
+    let kb' =
+      {
+        K.max_type_r = if size_ikb = 0 then kb.K.max_type_r else ikb.type_rec;
+        K.size = new_size;
+        K.data = data
+      }
+    in
+    let ikb' =
+      {
+        index_counter = new_size;
+        type_rec = ikb.type_rec + 1;
+        data = []
+      }
+    in
+    Config.debug (fun () ->
+      for i = 0 to kb'.K.size - 1 do
+        match kb'.K.data.(i).K.term with
+          | Name { deducible_n = Some (CRFunc(i',_)); _ } ->
+              if i <> i'
+              then Config.internal_error "[data_structure.ml >> transfer_incremented_knowledge_into_knowledge_no_rename] Name indices have not been properly transfered(2)"
+          | Name { deducible_n = Some _ ; _ } -> Config.internal_error "[data_structure.ml >> transfer_incremented_knowledge_into_knowledge_no_rename] Name should have been set to deducible with a context(2)."
+          | Name { deducible_n = None; _ } -> Config.internal_error "[data_structure.ml >> transfer_incremented_knowledge_into_knowledge_no_rename] Name should have been set to deducible(2)."
+          | _ -> ()
+      done
+    );
+    let cleanup_f () =  List.iter (fun (n,l) -> n.deducible_n <- l) !cleanup_name in
+    kb',ikb',id_assoc, cleanup_f
+
 
   let add ikb dfact =
     let index = ikb.index_counter in

@@ -91,33 +91,38 @@ let display_equations = function
       let right = display_list (fun (_,t) -> Term.display Terminal t) "," eq_list in
       Printf.sprintf "(%s) = (%s)" left right
 
+let display_position (i,args) =
+  if args = []
+  then string_of_int i
+  else Printf.sprintf "%d[%s]" i (display_list string_of_int "," args)
+
 let display_trace = function
-  | TrInput(ch,x,pos) -> Printf.sprintf "in(%s,%s,%d)" (Symbol.display Terminal ch) (Recipe.display Terminal (RVar x)) pos
-  | TrOutput(ch,pos) -> Printf.sprintf "out(%s,%d)" (Symbol.display Terminal ch) pos
+  | TrInput(ch,x,pos) -> Printf.sprintf "in(%s,%s,%s)" (Symbol.display Terminal ch) (Recipe.display Terminal (RVar x)) (display_position pos)
+  | TrOutput(ch,pos) -> Printf.sprintf "out(%s,%s)" (Symbol.display Terminal ch) (display_position pos)
 
 let rec display_simple_process tab = function
   | SStart p -> (display_with_tab tab "Start") ^ (display_simple_process tab p)
   | SNil -> (display_with_tab tab "Nil")
   | SOutput(ch,t,p,pos) ->
-      let str = Printf.sprintf "{%d} out(%s,%s);" pos (Symbol.display Terminal ch) (Term.display Terminal t) in
+      let str = Printf.sprintf "{%s} out(%s,%s);" (display_position pos) (Symbol.display Terminal ch) (Term.display Terminal t) in
       (display_with_tab tab str) ^ (display_simple_process tab p)
   | SInput(ch,x,p,pos) ->
-      let str = Printf.sprintf "{%d} in(%s,%s);" pos (Symbol.display Terminal ch) (Variable.display Terminal x) in
+      let str = Printf.sprintf "{%s} in(%s,%s);" (display_position pos) (Symbol.display Terminal ch) (Variable.display Terminal x) in
       (display_with_tab tab str) ^ (display_simple_process tab p)
   | SCondition(eq_list,Formula.T.Bot,fresh_vars,pthen,SNil,pos) ->
       let str_eq = display_list display_equations (vee Terminal) eq_list in
-      let str = Printf.sprintf "{%d} condition [%s]" pos str_eq in
+      let str = Printf.sprintf "{%s} condition [%s]" (display_position pos) str_eq in
       let str_then = display_simple_process tab pthen in
       (display_with_tab tab str) ^ str_then
   | SCondition(eq_list,neg_formula,fresh_vars,pthen,pelse,pos) ->
       let str_eq = display_list display_equations (vee Terminal) eq_list in
-      let str = Printf.sprintf "{%d} condition [%s]" pos str_eq in
+      let str = Printf.sprintf "{%s} condition [%s]" (display_position pos) str_eq in
       let str_then = display_simple_process (tab+1) pthen in
       let str_else = display_simple_process (tab+1) pelse in
       let str_neg = "Else "^(Formula.T.display Terminal neg_formula) in
       (display_with_tab tab str) ^ str_then ^ (display_with_tab tab str_neg) ^ str_else
   | SNew(x,n,p,pos) ->
-      let str = Printf.sprintf "{%d} new %s -> %s;" pos (Variable.display Terminal x) (Name.display Terminal n) in
+      let str = Printf.sprintf "{%s} new %s -> %s;" (display_position pos) (Variable.display Terminal x) (Name.display Terminal n) in
       (display_with_tab tab str) ^ (display_simple_process tab p)
   | SPar(p_list) ->
       (display_with_tab tab "(") ^
@@ -229,7 +234,7 @@ let intermediate_process_of_process proc =
         then
           let x = Variable.fresh Free in
           let out_proc = Output(Func(ch,[]),Var x,p,pos) in
-          explore_process (Let(PatVar x,t,out_proc,Nil,-1))
+          explore_process (Let(PatVar x,t,out_proc,Nil,(-1,[])))
         else
           let det_p = explore_process p in
           IOutput(ch,t,det_p,pos)

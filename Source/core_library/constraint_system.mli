@@ -102,4 +102,8 @@ module Rule : sig
   val apply_rules_after_output : bool -> ('a set -> (unit -> unit) -> unit) -> 'a set -> (unit -> unit) -> unit
 
   val debug_display_data : unit -> unit
+
+  val solve : 'a t -> 'a t
+
+  val is_term_deducible : 'a t -> term -> bool
 end

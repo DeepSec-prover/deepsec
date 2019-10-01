@@ -134,6 +134,8 @@ module K : sig
     (unit -> unit) ->
     unit
 
+  val iteri : (int -> recipe -> term -> unit) -> t -> unit
+
   exception Uniformity_falsified
 
   val consequence_uniform_recipe : t -> Formula.T.t -> recipe -> Formula.T.t * term * int
@@ -183,6 +185,8 @@ module IK : sig
   val consequence_recipe : K.t -> t -> DF.t -> recipe -> term
 
   val transfer_incremented_knowledge_into_knowledge : bool -> K.t -> t -> K.t * t * (int * int) list * (unit -> unit)
+
+  val transfer_incremented_knowledge_into_knowledge_no_rename : K.t -> t -> K.t * t * (int * int) list * (unit -> unit)
 end
 
 (** {2 {% The set of unsolved formulas \texorpdfstring{$\USolved$}{UF} %}}*)

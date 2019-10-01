@@ -120,6 +120,21 @@ module Variable = struct
 
     r
 
+  let auto_cleanup_with_exception (f_cont:unit -> 'a) =
+    let tmp = !currently_linked in
+    currently_linked := [];
+
+    try
+      let r = f_cont () in
+      List.iter (fun v -> v.link <- NoLink) !currently_linked;
+      currently_linked := tmp;
+      r
+    with e ->
+      List.iter (fun v -> v.link <- NoLink) !currently_linked;
+      currently_linked := tmp;
+      raise e
+
+
   (******* Renaming *******)
 
   let rename v = match v.link with
@@ -348,6 +363,16 @@ module Name = struct
       currently_deducible := tmp;
       f_next ()
     )
+
+  let auto_deducible_cleanup_with_reset_notail (f_cont:unit -> 'a) =
+    let tmp = !currently_deducible in
+    currently_deducible := [];
+
+    let r = f_cont () in
+
+    List.iter (fun n -> n.deducible_n <- None) !currently_deducible;
+    currently_deducible := tmp;
+    r
 
   let auto_cleanup_with_reset_notail (f_cont:unit -> 'a) =
     let tmp = !currently_linked in

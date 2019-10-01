@@ -204,7 +204,7 @@ let apply_one_transition_and_rules previous_node current_node equiv_pbl f_contin
         Constraint_system.Rule.apply_rules_after_input false in_apply_final_test csys_set_for_start f_next
     | RStartIn ->
         Config.debug (fun () -> Config.print_in_log "apply Start In\n");
-        let var_X = Recipe_Variable.fresh Free (Data_structure.IK.get_max_type_recipe csys.knowledge csys.incremented_knowledge) in
+        let var_X = Recipe_Variable.fresh Free (Data_structure.IK.get_max_type_recipe csys.Constraint_system.knowledge csys.Constraint_system.incremented_knowledge) in
 
         let apply_conf csys conf =
           { csys with
@@ -345,7 +345,7 @@ let apply_one_transition_and_rules previous_node current_node equiv_pbl f_contin
         ) f_next
     | RPosIn ->
         Config.debug (fun () -> Config.print_in_log "apply PosIn\n");
-        let var_X = Recipe_Variable.fresh Free (Data_structure.IK.get_max_type_recipe csys.knowledge csys.incremented_knowledge) in
+        let var_X = Recipe_Variable.fresh Free (Data_structure.IK.get_max_type_recipe csys.Constraint_system.knowledge csys.Constraint_system.incremented_knowledge) in
 
         let csys_list_for_input = ref [] in
 
@@ -601,9 +601,6 @@ let trace_equivalence proc1 proc2 =
   let proc1' = Process.detect_and_replace_pure_fresh_name proc1 in
   let proc2' = Process.detect_and_replace_pure_fresh_name proc2 in
 
-  (*let proc1' = proc1 in
-  let proc2' = proc2 in
-*)
   let (conf1,conf2,else_branch) = Determinate_process.generate_initial_configurations proc1' proc2' in
 
   let symb_proc_1 =

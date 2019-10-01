@@ -1,6 +1,10 @@
 open Types
 open Term
 
+(*****************************************
+    Transformation and simplifications
+******************************************)
+
 (*** Transform process with pure fresh name ***)
 
 exception Occur_More_Than_Once
