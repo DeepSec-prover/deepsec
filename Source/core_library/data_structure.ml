@@ -413,7 +413,7 @@ module K = struct
     {
       max_type_r : int;
       size : int;
-      data : entry Array.t
+      data : entry array
     }
 
   let dummy_entry = { type_rec = 0; recipe = Axiom 0; term = Name { label_n = ""; index_n = 0; pure_fresh_n = false; link_n = NNoLink; deducible_n = None} }
