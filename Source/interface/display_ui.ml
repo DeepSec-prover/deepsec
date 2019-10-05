@@ -304,6 +304,13 @@ let of_semantics = function
   | Eavesdrop -> JString "eavesdrop"
   | Classic -> JString "classic"
 
+let of_equivalence_type = function
+  | Trace_Equivalence -> JString "trace_equiv"
+  | Trace_Inclusion -> JString "trace_incl"
+  | Observational_Equivalence -> JString "obs_equiv"
+  | Session_Equivalence -> JString "session_equiv"
+  | Session_Inclusion -> JString "session_incl"
+
 (* We assume here that the association within [query_res]
    contains at least the function symbols of the signature. *)
 let of_query_result query_res =
@@ -315,6 +322,7 @@ let of_query_result query_res =
     "run_file", JString query_res.q_run_file;
     "semantics", of_semantics query_res.semantics;
     "processes", JList (List.map (of_process assoc) query_res.processes);
+    "type", of_equivalence_type query_res.query_type
     ]
   in
   let jlist2 = of_option jlist1 of_int "start_time" query_res.q_start_time in
@@ -325,7 +333,6 @@ let of_query_result query_res =
         of_option (("status",JString "completed")::jlist3) (of_attack_trace assoc) "attack_trace" att_trace_op
     | QOngoing -> ("status",JString "in_progress")::jlist3
     | QCanceled -> ("status",JString "canceled")::jlist3
-    | QError err -> ("status",JString "internal_error")::("error_msg",JString err)::jlist3
   in
 
   let jlist5 = ("atomic_data", of_atomic_association assoc) :: jlist4 in
@@ -383,3 +390,8 @@ let of_batch_result batch_res =
   let jlist4 = of_option jlist3 of_int "import_date" batch_res.import_date in
 
   JObject jlist4
+
+(* Output commands *)
+
+let of_output_command = function
+  | Batch_started str -> JObject [ "command", JString "batch_started"; "result_file", JString str ]

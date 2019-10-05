@@ -2,12 +2,15 @@
 
 open Types_ui
 
+  let error_message line str =
+    Printf.printf "Error! Line %d : %s\n" line str;
+    exit 0
+
 %}
 
 %token <string> STRING
 %token <int> INT
 
-%token EQ
 %token DOUBLEDOT COMMA
 %token LBRACE RBRACE
 %token LBRACK RBRACK
@@ -27,6 +30,8 @@ main:
       { $1 }
   | EOF
       { raise End_of_file }
+  | error
+      { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
 
 json:
   | INT

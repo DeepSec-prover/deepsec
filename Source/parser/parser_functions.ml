@@ -458,14 +458,12 @@ let already_chosen_semantics = ref false
 
 let parse_setting line sem =
   if !already_chosen_semantics
-  then warning_message line "A setting for the semantics has already been chosen. This new setting erases the previous one."
+  then warning_message line "A setting for the semantics has already been chosen. This new setting erases the previous one.";
 
-  (** TODO : Update that part of the code *)
-
-  (*match sem with
-    | Classic -> Process.chosen_semantics := Process.Classic; already_chosen_semantics := true
-    | Private -> Process.chosen_semantics := Process.Private; already_chosen_semantics := true
-    | Eavesdrop -> Process.chosen_semantics := Process.Eavesdrop; already_chosen_semantics := true*)
+  match sem with
+    | Classic -> Config.local_semantics := Some Types.Classic; already_chosen_semantics := true
+    | Private -> Config.local_semantics := Some Types.Private; already_chosen_semantics := true
+    | Eavesdrop -> Config.local_semantics := Some Types.Eavesdrop; already_chosen_semantics := true
 
 (****** Parse query *******)
 
@@ -488,4 +486,5 @@ let parse_one_declaration = function
 
 let reset_parser () =
   environment := (Env.empty:env_elt Env.t);
+  Config.local_semantics := None;
   query_list := [];

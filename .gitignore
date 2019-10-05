@@ -1,5 +1,6 @@
 .depend
 deepsec
+deepsec_api
 test_deepsec
 index_old.html
 
@@ -20,6 +21,12 @@ index_old.html
 *.DS_Store
 *.native
 
+database
+
+Source/interface/grammar_ui.ml
+Source/interface/grammar_ui.mli
+Source/interface/grammar_ui.output
+Source/interface/lexer_ui.ml
 Source/parser/grammar.ml
 Source/parser/grammar.mli
 Source/parser/grammar.output

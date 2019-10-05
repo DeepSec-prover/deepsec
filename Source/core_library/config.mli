@@ -34,6 +34,8 @@ val path_index : string ref
 (** The path of the deepsec repository. *)
 val path_deepsec : string ref
 
+val path_database : string ref
+
 (** Common part of result file names of current run. *)
 val tmp_file : string ref
 
@@ -41,6 +43,24 @@ val tmp_file : string ref
     disabled. *)
 val display_trace : bool ref
 
+(*** Parameters for distributed computation ***)
+
 val distributed : bool ref
 
+val local_workers : int ref
+
+val distant_workers : (string * string * int) list ref
+
+val number_of_jobs : int ref
+
+val round_timer : int ref
+
+val without_POR : bool ref
+
 val core_factor : int ref
+
+(*** Semantics parameters ***)
+
+val default_semantics : Types.semantics ref
+
+val local_semantics : Types.semantics option ref

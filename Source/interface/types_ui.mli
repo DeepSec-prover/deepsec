@@ -74,7 +74,6 @@ type query_status =
   | QCompleted of json_attack_trace option
   | QOngoing
   | QCanceled
-  | QError of string
 
 type query_result =
   {
@@ -86,6 +85,7 @@ type query_result =
     q_end_time : int option;
     association : association;
     semantics : semantics;
+    query_type : equivalence;
     processes : json_process list
   }
 
@@ -140,3 +140,6 @@ type input_command =
   | Cancel_query of string
   | Get_config
   | Set_config of string
+
+type output_command =
+  | Batch_started of string

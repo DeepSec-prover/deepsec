@@ -434,13 +434,18 @@ let query_result_of file_name json =
   let status = match string_of (member "status" json) with
     | "in_progress" -> QOngoing
     | "canceled" -> QCanceled
-    | "internal_error" ->
-        let err = string_of (member "error_msg" json) in
-        QError err
     | "completed" ->
         let res = member_option (attack_trace_of assoc) "attack_trace" json in
         QCompleted res
     | _ -> Config.internal_error "[parsing_functions_ui.ml >> query_result_of] Unexpected status."
+  in
+  let equiv_type = match string_of (member "type" json) with
+    | "trace_equiv" -> Trace_Equivalence
+    | "trace_incl" -> Trace_Inclusion
+    | "obs_equiv" -> Observational_Equivalence
+    | "session_equiv" -> Session_Equivalence
+    | "session_incl" -> Session_Inclusion
+    | _ -> Config.internal_error "[parsing_functions_ui.ml >> query_result_of] Unexpected equivalence type."
   in
   let association =
     let symbols = ref [] in
@@ -470,6 +475,7 @@ let query_result_of file_name json =
     q_run_file = run_file;
     q_start_time = start_time;
     q_end_time = end_time;
+    query_type = equiv_type;
     association = association;
     semantics = sem;
     processes = proc_l

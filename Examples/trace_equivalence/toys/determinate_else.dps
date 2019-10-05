@@ -1,0 +1,16 @@
+free c.
+free c1,c2,ok,ko,ok1,ko1.
+          
+fun h/2.
+
+let P = new a; in(c,x); (
+  (if x = a then out(c1,ok))
+  | out(c2,ok)).
+
+let Q = new a; in(c,x); (
+  (if x = a then out(c1,ok))
+  | out(c2,ko)).
+
+query trace_equiv(P,Q).
+
+(* Should not be equivalent *)

@@ -24,7 +24,7 @@ rule token = parse
 | '{'   { LBRACK }
 | '}'   { RBRACK }
 | '"'   { QUOTE }
-| ['A'-'Z' 'a'-'z'] ['a'-'z' 'A'-'Z' '_' '0'-'9']*  as id { STRING(id) }
+| ['A'-'Z' 'a'-'z' '/' '_' '-' '.'] ['a'-'z' 'A'-'Z' '/' '_' '-' '0'-'9' '.']*  as id { STRING(id) }
 | ([ '0'-'9' ]) +
     {
       try

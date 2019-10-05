@@ -1,0 +1,8 @@
+free c.
+          
+fun h/2.
+
+let P = new a; new b; out(c,h(a,b)); out(c,a); out(c,b).
+let Q = new a; new b; new d; out(c,h(a,b)); out(c,a); out(c,d).
+
+query trace_equiv(P,Q).

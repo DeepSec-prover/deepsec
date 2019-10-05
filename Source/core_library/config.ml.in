@@ -53,6 +53,7 @@ let path_deepsec = ref ""
 let path_html_template = ref ""
 let path_index = ref (Filename.current_dir_name)
 let tmp_file = ref ""
+let path_database = ref ""
 
 (**** Trace display ****)
 
@@ -61,4 +62,14 @@ let display_trace = ref true
 (**** Distribution ****)
 
 let distributed = ref false
+let local_workers = ref 0
+let distant_workers = ref ([]:(string*string*int) list)
+let number_of_jobs = ref 0
+let round_timer = ref 120
+let without_POR = ref false
 let core_factor = ref 30
+
+(**** Semantics ****)
+
+let default_semantics = ref Types.Private
+let local_semantics = ref None
