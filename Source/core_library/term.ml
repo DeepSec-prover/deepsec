@@ -56,10 +56,6 @@ module Variable = struct
 
   let quantifier_of v = v.quantifier
 
-  (******* Testing *******)
-
-  let order v1 v2 = compare v1.index v2.index
-
   (******* Display *******)
 
   let display out v = match out with
@@ -201,8 +197,6 @@ module Recipe_Variable = struct
   let type_of v = v.type_r
 
   (******* Testing *******)
-
-  let is_equal (v1:recipe_variable) (v2:recipe_variable) = v1 == v2
 
   let order v1 v2 = match compare v1.type_r v2.type_r with
     | 0 -> compare v1.index_r v2.index_r
@@ -399,13 +393,6 @@ end
 **************************************)
 
 module Axiom = struct
-
-  let create i =
-    Config.debug (fun () ->
-      if i <= 0
-      then Config.internal_error "[term.ml >> Axiom.create] An axiom should always be positive";
-    );
-    i
 
   let order (ax1:int) (ax2:int) = compare ax1 ax2
 
@@ -609,8 +596,6 @@ module Symbol = struct
     then Printf.sprintf "%s/%d" (display out f) f.arity
     else Printf.sprintf "%s/%d [private]" (display out f) f.arity
 
-  let display_tuple f = string_of_int (f.arity)
-
   let reg_proj = Str.regexp "proj_{"
 
   let display_signature out constructor =
@@ -693,13 +678,6 @@ module Term = struct
     | _ -> false
 
   (* We follow the links TLink. *)
-  let rec quantified_var_occurs q = function
-    | Var v when v.quantifier == q -> true
-    | Var {link = TLink t; _} -> quantified_var_occurs q t
-    | Func(_,args) -> List.exists (quantified_var_occurs q) args
-    | _ -> false
-
-  (* We follow the links TLink. *)
   let rec is_equal t1 t2 = match t1, t2 with
     | Var v1, Var v2 when v1 == v2 -> true
     | Var { link = TLink t; _ }, t'
@@ -740,85 +718,6 @@ module Term = struct
     | Name { link_n = NLink n; _ } -> Name n
     | Name n -> Name n
     | Func(f,args) -> Func(f,List.map apply_renamings args)
-
-  exception No_renaming
-
-  (** In the following function, we assume that all variables are not linked
-     by an TLink or a XLink. Moreover, the SLink represent another variable
-     been linked to this variable. Finally, we assume that the variables are
-     distinct. *)
-  let renaming_variables v1 v2 = match v1.link with
-    | NoLink ->
-        if v2.link = SLink then raise No_renaming;
-        v1.link <- VLink v2;
-        v2.link <- SLink;
-        Variable.currently_linked := v1 :: v2 :: !Variable.currently_linked
-    | VLink v1' when v1' == v2 -> ()
-    | _ -> raise No_renaming
-
-  (** In the following function, the NSLink represent another name been linked
-     to this name. We also assume that the names are distinct. *)
-  let renaming_names n1 n2 = match n1.link_n with
-    | NNoLink ->
-        if n2.link_n = NSLink then raise No_renaming;
-        n1.link_n <- NLink n2;
-        n2.link_n <- NSLink;
-        Name.currently_linked := n1 :: n2 :: !Name.currently_linked
-    | NLink n1' when n1' == n2 -> ()
-    | _ -> raise No_renaming
-
-  (** Similar as [match_variables] and [match_names] but within terms.
-      One again we assume that the variables and names within the two
-      terms are distinct.*)
-  let rec renaming_variables_and_names_in_terms t1 t2 = match t1, t2 with
-    | Var { link = VLink v1';_}, Var v2 when v1' == v2 -> ()
-    | Var v1, Var v2 when v1.quantifier <> v2.quantifier -> raise No_renaming
-    | Var({ link = NoLink; _} as v1), Var({ link = NoLink; _ } as v2) ->
-        v1.link <- VLink v2;
-        v2.link <- SLink;
-        Variable.currently_linked := v1 :: v2 :: !Variable.currently_linked
-    | Name({ link_n = NLink n1'; _}), Name n2 when n1' == n2 -> ()
-    | Name({ link_n = NNoLink;_} as n1), Name({ link_n = NNoLink; _ } as n2) ->
-        n1.link_n <- NLink n2;
-        n2.link_n <- NSLink;
-        Name.currently_linked := n1 :: n2 :: !Name.currently_linked
-    | Func(f1,args1), Func(f2,args2) when f1 == f2 -> List.iter2 renaming_variables_and_names_in_terms args1 args2
-    | _,_ -> raise No_renaming
-
-  let rec renaming_one_elt_in_elt_list (f_next:'a list -> unit) (f_renaming_elt:(unit -> unit) -> 'a -> 'a -> unit) (prev: 'a list) (elt1:'a) = function
-    | [] -> raise No_renaming
-    | elt2 :: q ->
-        try
-          f_renaming_elt (fun () ->
-            f_next (List.rev_append prev q)
-          ) elt1 elt2
-        with No_renaming ->
-          renaming_one_elt_in_elt_list f_next f_renaming_elt (elt2::prev) elt1 q
-
-  let rec renaming_variables_and_names_elt_list f_next f_renaming_elt list1 list2 = match list1 with
-    | [] -> f_next ()
-    | diseq1 :: q1 ->
-        renaming_one_elt_in_elt_list (fun list2' ->
-          renaming_variables_and_names_elt_list f_next f_renaming_elt q1 list2'
-        ) f_renaming_elt [] diseq1 list2
-
-  let auto_cleanup_renaming (f:unit -> unit) =
-    let tmp_bound_vars = !Variable.currently_linked in
-    let tmp_bound_names = !Name.currently_linked in
-    Variable.currently_linked := [];
-    Name.currently_linked := [];
-    try
-      f ();
-      List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
-      List.iter (fun n -> n.link_n <- NNoLink) !Name.currently_linked;
-      Variable.currently_linked := tmp_bound_vars;
-      Name.currently_linked := tmp_bound_names
-    with No_renaming ->
-      List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
-      List.iter (fun n -> n.link_n <- NNoLink) !Name.currently_linked;
-      Variable.currently_linked := tmp_bound_vars;
-      Name.currently_linked := tmp_bound_names;
-      raise No_renaming
 
   (********** Unification ***********)
 
@@ -930,12 +829,6 @@ module Recipe = struct
     | RFunc(_,l) -> l
     | _ -> Config.internal_error "[terms.ml >> Recipe.get_args] The recipe is not a function application."
 
-  let rec get_type = function
-    | CRFunc(_,r) -> get_type r
-    | RFunc(_,args) -> List.fold_left (fun k r -> max k (get_type r)) 0 args
-    | RVar v ->  v.type_r
-    | Axiom ax -> ax
-
   (********* Testing *********)
 
   (** In the following funciton, we follow the links RLink. *)
@@ -969,18 +862,6 @@ module Recipe = struct
     | Axiom n1, Axiom n2 -> n1 == n2
     | RFunc(f1,args1), RFunc(f2,args2) -> f1 == f2 && List.for_all2 is_equal args1 args2
     | _,_ -> false
-
-  let is_variable = function
-    | RVar _ -> true
-    | _ -> false
-
-  let is_axiom = function
-    | Axiom _ -> true
-    | _ -> false
-
-  let is_function = function
-    | RFunc _ -> true
-    | _ -> false
 
   (********** Unification ***********)
 
