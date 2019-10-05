@@ -92,7 +92,7 @@ all: .display_obj $(ALL_OBJ)
 
 clean:
 	@echo ----- Clean $(NAME_PROGRAMME) -----
-	rm -f $(EXECUTABLE) worker_deepsec manager_deepsec
+	rm -f $(EXECUTABLE) worker_deepsec manager_deepsec deepsec_api
 	rm -f $(SOURCE)core_library/config.ml
 	rm -f *~ *.cm[ioxt] *.cmti *.o *.annot
 	rm -f */*~ */*.cm[ioxt] */*.cmti */*.o */*.annot
