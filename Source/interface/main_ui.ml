@@ -66,6 +66,13 @@ let copy_file path new_path =
     close_in channel_in;
     close_out channel_out
 
+let stdout_mutex = Mutex.create ()
+
+let send_command json_str =
+  Mutex.lock stdout_mutex;
+  output_string stdout (json_str^"\n");
+  Mutex.unlock stdout_mutex
+
 (* Generation of initial batch / run / query results *)
 
 let generate_initial_query_result batch_dir run_dir i (equiv,proc1,proc2) =
@@ -238,7 +245,7 @@ let generate_initial_batch_result input_files batch_options =
   close_out channel_out;
 
   let out_cmd = Batch_started batch_result.name_batch in
-  output_string stdout (Display_ui.display_json (Display_ui.of_output_command out_cmd));
+  send_command (Display_ui.display_json (Display_ui.of_output_command out_cmd));
 
   run_results
 
@@ -255,6 +262,112 @@ let set_up_batch_options options =
         Config.distributed := true;
         Config.local_workers := n
   ) options
+
+(* Execute runs and queries *)
+
+type computation_status =
+  {
+    mutable currently_running : (Thread.t * run_result * query_result) option;
+    mutable remaining_query : query_result list;
+    mutable remaining_run : (run_result * query_result list) list
+  }
+
+let computation_status = { currently_running = None; remaining_query = []; remaining_run = [] }
+
+let execution_mutex = Mutex.create ()
+
+let execution_condition = Condition.create ()
+
+let start_run run_result =
+  let start_time = int_of_float (Unix.time ()) in
+  let run_result1 = { run_result with r_start_time = Some start_time } in
+  let absolute_run_json = Filename.concat (get_database_path ()) run_result1.name_run in
+  let channel_out = open_out absolute_run_json in
+  output_string channel_out (Display_ui.display_json (Display_ui.of_run_result run_result1));
+  let out_cmd = Run_started run_result1.name_run in
+  send_command (Display_ui.display_json (Display_ui.of_output_command out_cmd));
+  run_result1
+
+let start_query query_result =
+  let start_time = int_of_float (Unix.time ()) in
+  let query_result1 = { query_result with q_start_time = Some start_time } in
+  let absolute_query_json = Filename.concat (get_database_path ()) query_result1.name_query in
+  let channel_out = open_out absolute_query_json in
+  output_string channel_out (Display_ui.display_json (Display_ui.of_query_result query_result1));
+  let out_cmd = Query_started query_result1.name_query in
+  send_command (Display_ui.display_json (Display_ui.of_output_command out_cmd));
+  query_result1
+
+let end_run run_result =
+  let end_time = int_of_float (Unix.time ()) in
+  let run_result1 = { run_result with r_end_time = Some end_time } in
+  let absolute_run_json = Filename.concat (get_database_path ()) run_result1.name_run in
+  let channel_out = open_out absolute_run_json in
+  output_string channel_out (Display_ui.display_json (Display_ui.of_run_result run_result1));
+  let out_cmd = Run_ended run_result1.name_run in
+  send_command (Display_ui.display_json (Display_ui.of_output_command out_cmd))
+
+let end_query query_result =
+  let end_time = int_of_float (Unix.time ()) in
+  let query_result1 = { query_result with q_end_time = Some end_time } in
+  let absolute_query_json = Filename.concat (get_database_path ()) query_result1.name_query in
+  let channel_out = open_out absolute_query_json in
+  output_string channel_out (Display_ui.display_json (Display_ui.of_query_result query_result1));
+  let out_cmd = Query_ended query_result1.name_query in
+  send_command (Display_ui.display_json (Display_ui.of_output_command out_cmd))
+
+let end_batch batch_result =
+  let out_cmd = Batch_ended  batch_result.name_batch in
+  send_command (Display_ui.display_json (Display_ui.of_output_command out_cmd))
+
+let rec execute_batch batch_result =
+  Mutex.lock execution_mutex;
+
+  let rec run_all () =
+    (* We send the ending command for the query && run *)
+    begin match computation_status.currently_running with
+      | None -> ()
+      | Some (_,run_result,query_result) ->
+          end_query query_result;
+          if computation_status.remaining_query = []
+          then end_run run_result
+    end;
+
+    match computation_status.remaining_query, computation_status.remaining_run with
+      | [], [] ->
+          (* No more execution *)
+          computation_status.currently_running <- None;
+          end_batch batch_result;
+          Mutex.unlock execution_mutex
+      | [], (run_result,[])::q_run ->
+          computation_status.currently_running <- None;
+          computation_status.remaining_run <- q_run;
+          let run_result1 = start_run run_result in
+          end_run run_result1;
+          run_all ()
+      | [], (run_result,query_result::q_query)::q_run ->
+          let run_result1 =  start_run run_result in
+          let query_result1 = start_query query_result in
+          let thread = execute_query query_result1 in
+          computation_status.currently_running <- Some (thread,run_result1,query_result1);
+          computation_status.remaining_query <- q_query;
+          computation_status.remaining_run <- q_run;
+          Condition.wait execution_condition execution_mutex;
+          run_all ()
+      | query_result::q_query, _ ->
+          let query_result1 = start_query query_result in
+          let run_result = match computation_status.currently_running with
+            | None -> Config.internal_error "[main_ui.ml >> execute_all_run] There should be a running run."
+            | Some (_,run_result,_) -> run_result
+          in
+          let thread = execute_query query_result1 in
+          computation_status.currently_running <- Some (thread,run_result,query_result1);
+          computation_status.remaining_query <- q_query;
+          Condition.wait execution_condition execution_mutex;
+          run_all ()
+  in
+
+  run_all ()
 
 (*
 type result =
@@ -520,5 +633,7 @@ let _ =
   match in_cmd with
     | Start_run (input_files,batch_options) ->
         set_up_batch_options batch_options;
-        ignore (generate_initial_batch_result input_files batch_options)
+        let run_results = generate_initial_batch_result input_files batch_options in
+        let computation_status = () in
+        ()
     | _ -> Printf.printf "Not Implemented yet !!"

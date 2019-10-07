@@ -143,3 +143,8 @@ type input_command =
 
 type output_command =
   | Batch_started of string
+  | Run_started of string
+  | Query_started of string
+  | Batch_ended of string
+  | Run_ended of string
+  | Query_ended of string

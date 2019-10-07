@@ -41,6 +41,18 @@ let json_process_of_process proc =
 
   explore 0 proc
 
+(*** Translation to process ***)
+
+let process_of_json_process proc =
+
+  let add_pos pos_to_add (id,args) = (id,args@pos_to_add) in
+
+  let rec explore pos_to_add = function
+    | JNil -> Nil
+    | JOutput(ch,t,p,pos) -> Output(ch,t,explore pos_to_add p,add_pos pos_to_add pos)
+    
+    | _ ->
+
 (*** Instantiate ***)
 
 let rec instantiate_pattern = function

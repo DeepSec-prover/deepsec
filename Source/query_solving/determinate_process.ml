@@ -109,12 +109,12 @@ let rec display_simple_process tab = function
   | SInput(ch,x,p,pos) ->
       let str = Printf.sprintf "{%s} in(%s,%s);" (display_position pos) (Symbol.display Terminal ch) (Variable.display Terminal x) in
       (display_with_tab tab str) ^ (display_simple_process tab p)
-  | SCondition(eq_list,Formula.T.Bot,fresh_vars,pthen,SNil,pos) ->
+  | SCondition(eq_list,Formula.T.Bot,_,pthen,SNil,pos) ->
       let str_eq = display_list display_equations (vee Terminal) eq_list in
       let str = Printf.sprintf "{%s} condition [%s]" (display_position pos) str_eq in
       let str_then = display_simple_process tab pthen in
       (display_with_tab tab str) ^ str_then
-  | SCondition(eq_list,neg_formula,fresh_vars,pthen,pelse,pos) ->
+  | SCondition(eq_list,neg_formula,_,pthen,pelse,pos) ->
       let str_eq = display_list display_equations (vee Terminal) eq_list in
       let str = Printf.sprintf "{%s} condition [%s]" (display_position pos) str_eq in
       let str_then = display_simple_process (tab+1) pthen in
