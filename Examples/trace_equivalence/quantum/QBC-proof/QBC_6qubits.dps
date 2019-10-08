@@ -1,0 +1,73 @@
+free c.
+free cqRead, cqWrite, cqMeasure [private].
+free cp [private].
+
+fun qubit/2.
+fun bs/5.
+const sampling[private].
+
+const zero, one, two, three, four.
+const bases.
+const bit.
+const Alice, Bob.
+const ok, cheat.
+
+reduc bsEqu( bs(k1,bitstring1,position1,role1,value1),
+             bs(k1,bitstring1,position1,role2,value1)) (* We could have used position2 here *)
+      -> ok.
+reduc measure((pos, qubit(bit, bs(s, bitstring, pos, role1, val))),  (* incoming qubit *)
+              (pos,            bs(s, bitstring, pos, role2, val)))   (* measurement request *)
+      -> bit [private].
+
+
+let Bob_proc(val) =
+  let b   = bs(sampling, bases, one, Alice, zero) in (* bit revealed to the attacker *)
+  let b_c = bs(sampling, bases, one, Alice, one ) in (* cheating bit, revealed later *)
+  let b1_ = bs(sampling, bases, one, Bob, zero) in (* Bases used by Bob *)
+  let b2_ = bs(sampling, bases, one, Bob, one) in
+  let b3_ = bs(sampling, bases, one, Bob, zero) in
+  let b4_ = bs(sampling, bases, one, Bob, one) in (
+    out(c, b); (
+      (* Bob is willing to measure qubits in <b1_,b2_> *)
+      out(cqRead, (one, b1_))  |
+      out(cqRead, (two, b2_))  |
+      out(cqRead, (three, b3_))  |
+      out(cqRead, (four, b4_))
+    ) | (
+      (* Bob gets the measured bits *)
+      in(cqMeasure, x1);
+      let (=one, bit1) = x1 in
+      in(cqMeasure, x2);  (* would be better to have those two in parallel, can we do that? TODO *)
+      let (=two, bit2) = x2 in
+      in(cqMeasure, x3);
+      let (=three, bit3) = x3 in
+      in(cqMeasure, x4);
+      let (=four, bit4) = x4 in
+      (* The attacker is given the base he was supposed to commit on in the first place *)
+      out(c, b_c);
+      (* Bob receives the commit base and the verification bits from network *)
+      in(c, x5);
+      let (=b_c, (=bit1, =bit2, =bit3, =bit4)) = x5 in
+      if val = cheat then
+      out(c, cheat)
+    )
+  ).
+
+let quantumChannelAndAttacker =
+(* Attacker can send qubits *)
+  in(c, write); (* request to send a qubit *)
+  let (pos, bitW, baseW) = write in
+  in(cqRead,  read); (* request by Bob to receive a qubit *)
+  let (=pos, baseR) = read in
+  let res = bsEqu(baseW, baseR) in
+    (* Matching base: Bob receives xbit, the attacker-chosen bit *)
+    out(cqMeasure, (pos, bitW))
+  else (* Non Matching base: Bob receives a random that can later be accessed by the attacker if he learnes the basis Bob used here*)
+    new n;
+    out(cqMeasure, (pos, n)).
+
+// equivalence
+query trace_equiv(
+  !^6 quantumChannelAndAttacker | Bob_proc(cheat),
+  !^6 quantumChannelAndAttacker | Bob_proc(ok)
+).

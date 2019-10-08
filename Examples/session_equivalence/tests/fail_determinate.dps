@@ -1,0 +1,7 @@
+free a,b.
+
+
+let sys1 = out(a,a) | out(b,b).
+let sys2 = out(a,b) | out(b,a).
+
+query session_equiv(sys1,sys2). // non-equivalent

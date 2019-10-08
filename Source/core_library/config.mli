@@ -9,6 +9,8 @@ val internal_error : string -> 'a
 (** [debug f] executes [f] if the program was compiled with the option [debug], else it does nothing. *)
 val debug : (unit -> unit) -> unit
 
+val print_in_log : string -> unit
+
 val test_activated : bool
 
 (** [debug f] executes [f] if the program was compiled with the option [testing], else it does nothing. *)
@@ -19,6 +21,9 @@ val version : string ref
 
 (** The git commit of the current version *)
 val git_commit : string ref
+
+(** The git branch of the current version *)
+val git_branch : string ref
 
 (** The path of the folder containing the html templates *)
 val path_html_template : string ref

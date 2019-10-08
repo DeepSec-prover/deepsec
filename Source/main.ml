@@ -3,6 +3,7 @@
 type result =
   | Standard of Equivalence.result_trace_equivalence
   | Determinate of Equivalence_determinate.result_trace_equivalence
+  | Session of Equivalence_session.result_analysis
 
 let print_index path n res_list =
 
@@ -55,17 +56,18 @@ let print_index path n res_list =
       let rec print_queries = function
         | (k, _) when k > n -> ()
         | (k, (res,rt)::tl) ->
-                Printf.fprintf out_html
-      	    "            <li>Query %d:</br>\n Result: the processes are %s</br>\n \nRunning time: %s (%s)</br>\n<a href=\"result/result_query_%d_%s.html\">Details</a></li>\n"
+            Printf.fprintf out_html
+      	    "            <li>Query %d:</br>\n Result: the processes are %s</br>\n \nRunning time: %s (%s)%s</li>\n"
       	    k
       	    (match res with
               | Standard Equivalence.Equivalent
-              | Determinate Equivalence_determinate.Equivalent -> "equivalent"
+              | Determinate Equivalence_determinate.Equivalent
+              | Session Equivalence_session.Equivalent -> "equivalent"
               | _ -> "not equivalent"
             )
       	    (Display.mkRuntime rt)
       	    (if !Config.distributed then "Workers: "^(Distributed_equivalence.DistribEquivalence.display_workers ())^" - nb_sets="^(string_of_int !Distributed_equivalence.DistribEquivalence.minimum_nb_of_jobs) else "Not distributed")
-      	    k !Config.tmp_file;
+            (match res with Session _ -> "" | _ -> Printf.sprintf "</br>\n<a href=\"result/result_query_%d_%s.html\">Details</a>" k !Config.tmp_file);
                 print_queries ((k+1), tl)
       	| (_ , _) -> Config.internal_error "Number of queries and number of results differ"
       in
@@ -109,6 +111,29 @@ let parse_file path =
 let start_time = ref (Unix.time ())
 
 let por_disable = ref false
+
+let execute_query_session goal exproc1 exproc2 id =
+  start_time := Unix.time ();
+  Printf.printf "\nExecuting query %d...\n" id;
+  flush_all ();
+  let conf1 = Process_session.Configuration.of_expansed_process exproc1 in
+  let conf2 = Process_session.Configuration.of_expansed_process exproc2 in
+  let (result,conf1,conf2,running_time) =
+    if !Config.distributed
+    then
+      begin
+        let (result,conf1,conf2) = Distributed_equivalence.session goal conf1 conf2 in
+        (result,conf1,conf2,Unix.time() -. !start_time)
+      end
+    else
+      begin
+        let result = Equivalence_session.analysis goal conf1 conf2 in
+        (result,conf1,conf2,Unix.time() -. !start_time)
+      end
+  in
+  Equivalence_session.publish_result goal id conf1 conf2 result running_time;
+  (Session result,running_time)
+
 
 let rec excecute_queries id = function
   | [] -> []
@@ -185,6 +210,12 @@ let rec excecute_queries id = function
 
     flush_all ();
     result::(excecute_queries (id+1) q)
+  | (Process.Session_Equivalence,exproc1,exproc2)::q ->
+    let res = execute_query_session Equivalence_session.Equivalence exproc1 exproc2 id in
+    res :: excecute_queries (id+1) q
+  | (Process.Session_Inclusion,exproc1,exproc2)::q ->
+    let res = execute_query_session Equivalence_session.Inclusion exproc1 exproc2 id in
+    res :: excecute_queries (id+1) q
   | _ -> Config.internal_error "Observational_equivalence not implemented"
 
 let process_file path =
@@ -273,6 +304,10 @@ let _ =
       Arg.Int( fun i -> Config.distributed := true; Distributed_equivalence.DistribEquivalence.local_workers i),
       "<n> Activate the distributed computing with n local workers");
     (
+      "-test",
+      Arg.Int( fun i -> Equivalence_session.PartitionTree.test_starting_node := i),
+      "<n> Testing node from [i]-th node generated.");
+    (
       "-distant_workers",
       Arg.Tuple(
         [Arg.Set_string(dist_host);
@@ -310,7 +345,8 @@ let _ =
 
   Printf.printf "DeepSec - DEciding Equivalence Properties for SECurity protocols\n";
   Printf.printf "Version: %s\n" !Config.version;
-  Printf.printf "Git hash: %s\n\n" !Config.git_commit;
+  Printf.printf "Git hash: %s\n" !Config.git_commit;
+  Printf.printf "Git branch: %s\n\n" !Config.git_branch;
 
   let usage_msg = "Usage: deepsec <options> <filenames>\n" in
 

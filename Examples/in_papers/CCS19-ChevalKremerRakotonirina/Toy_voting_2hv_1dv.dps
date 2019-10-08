@@ -1,0 +1,88 @@
+free c. /* communication channel */
+free secure_channel [private]. /* a secure channel between mixer and board */
+free login_channel [private]. /* a secure channel for sending signature keys */
+
+const yes,no. /* potential votes */
+
+fun pk/1. /* public key generation */
+fun enc/3. /* randomized assymetric encryption */
+reduc dec(enc(x,pk(y),z),y) -> x. /* decryption */
+fun sign/2. /* signatures */
+reduc verify(sign(m,y),pk(y)) -> m. /* check signatures */
+
+const sk_enc [private]. /* encryption key */
+
+free channel_Alice,channel_Bob.
+
+
+/* a voter voting for v with public key pk */
+let honnest_voter(id,v) =
+  new sk_sign;
+  let pk_sign = pk(sk_sign) in
+  new r;
+  let v_enc = enc((v,pk_sign),pk(sk_enc),r) in
+  out(login_channel,pk_sign);
+  out(id,pk_sign);
+  out(id,sign(v_enc,sk_sign)).
+
+/* a dishonnest voter that reveals its signature key */
+let dishonnest_voter =
+  new sk_sign;
+  out(login_channel,pk(sk_sign));
+  out(c,sk_sign).
+
+/* mixnet */
+let mixer_false_attack =
+  in(login_channel,pk_sign);
+  in(c,x);
+  let (v,=pk_sign) = dec(verify(x,pk_sign),sk_enc) in
+  out(secure_channel,v).
+
+let mixer =
+  in(login_channel,pk_sign1); in(c,x1);
+  in(login_channel,pk_sign2); in(c,x2);
+  in(login_channel,pk_sign3); in(c,x3);
+  let (v1,=pk_sign1) = dec(verify(x1,pk_sign1),sk_enc) in
+  let (v2,=pk_sign2) = dec(verify(x2,pk_sign2),sk_enc) in
+  let (v3,=pk_sign3) = dec(verify(x3,pk_sign3),sk_enc) in (
+    out(secure_channel,v1) |
+    out(secure_channel,v2) |
+    out(secure_channel,v3)
+  ).
+
+/* bulletin board receiving and publishing the votes */
+let board =
+  /* receiving the mixed votes */
+  in(secure_channel,x1);
+  in(secure_channel,x2);
+  in(secure_channel,x3);
+  out(c,(x1,x2,x3)).
+
+
+/* the voting system */
+let system(v1,v2) =
+  out(c,pk(sk_enc)); (
+    honnest_voter(channel_Alice,v1) |
+    honnest_voter(channel_Bob,v2) |
+    dishonnest_voter |
+    mixer |
+    board
+  ).
+
+/* a modelling variant triggering a false attack */
+let system_bis(v1,v2) =
+  out(c,pk(sk_enc)); (
+    honnest_voter(channel_Alice,v1) |
+    honnest_voter(channel_Bob,v2) |
+    dishonnest_voter |
+    !^3 mixer_false_attack |
+    board
+  ).
+
+
+/* vote privacy for 4 honnest voters and 2 dishonnest voter */
+query session_equiv(system_bis(yes,no),system_bis(no,yes)). /* false attack */
+query session_equiv(system(yes,no),system(no,yes)). /* equivalence */
+
+/* query trace_equiv(system_bis(yes,no),system_bis(no,yes)).  */
+/* query trace_equiv(system(yes,no),system(no,yes)).  */

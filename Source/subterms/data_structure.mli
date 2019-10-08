@@ -40,6 +40,12 @@ module K : sig
   (** [iter] {% $\Solved$ %} [g] applies the function [g] on every deduction fact [psi] of {% $\Solved$ %}. *)
   val iter : t -> (Fact.deduction -> unit) -> unit
 
+  val iter_terms2 : (protocol_term -> protocol_term -> unit) -> t -> t -> unit
+
+  val iter_variables_and_terms : (fst_ord_variable -> unit) -> (protocol_term -> unit) -> t -> unit
+
+  val map_variables_and_terms : (fst_ord_variable -> fst_ord_variable) -> (protocol_term -> protocol_term) -> t -> t
+
   val tail_iter : t -> (Fact.deduction -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
 
   (** [iter_within_var_type k] {% $\Solved$ %} [f g] applies the function [g] on every deduction fact [psi] of {% $\SetRestr{\Solved}{k}$. %} *)
@@ -59,6 +65,8 @@ module K : sig
   val apply_recipe_from_gathering : t -> recipe array -> t
 
   (** {3 Testing} *)
+
+  val mem_fst_ord_variable : fst_ord_variable -> t -> bool
 
   (** [find] {% $\Solved$ %} [f] returns [f psi] where [psi] is a deduction fact of {% $\Solved$ %} such that [f psi] is
       different from [None], when such [psi] exists. Otherwise it returns [None]. *)
@@ -163,6 +171,12 @@ module DF : sig
       Warning : The order in which the function [iter] goes through the elements of the set $\Df$ is unspecified. %}*)
   val iter : t -> (snd_ord_variable -> protocol_term -> unit) -> unit
 
+  val iter2 : (protocol_term -> protocol_term -> unit) -> t -> t -> unit
+
+  val iter_variables_and_terms : (fst_ord_variable -> unit) -> (protocol_term -> unit) -> t -> unit
+
+  val map_variables_and_terms : (fst_ord_variable -> fst_ord_variable) -> (protocol_term -> protocol_term) -> t -> t
+
   (** [fold f elt] {% $\Df$ %} returns [f (... (f (f elt] {% $\dedfact{\xi_1}{t_1}$%}[)] {% $\dedfact{\xi_2}{t_2}$%}[) ...)]{% $\dedfact{\xi_n}{t_n}$ where $\Df = \{ \dedfact{\xi_i}{t_i} \}_{i=1}^n$.
       Warning : The order in which the function [fold] goes through the elements of the set $\Df$ is unspecified. %}*)
   val fold : ('a -> snd_ord_variable -> protocol_term -> 'a) -> 'a -> t -> 'a
@@ -239,6 +253,12 @@ module UF : sig
   (** [solved_solved fct UF] checks if at least one unsolved [fct] formula in [UF] occurs. *)
   val exists_unsolved_equality_formula : t -> bool
 
+  val match_variables_and_names : t -> t -> unit
+
+  val iter_variables_and_terms : (fst_ord_variable -> unit) -> (protocol_term -> unit) -> t -> unit
+
+  val map_variables_and_terms : (fst_ord_variable -> fst_ord_variable) -> (protocol_term -> protocol_term) -> t -> t
+
   (** {3 Display} *)
 
   (** [display out ~rho:rho ~per_line:n ~tab:k] {% $\USolved$ %} displays {% $\Df$ %} with at most [n] formulas per line. Moreover,
@@ -288,6 +308,14 @@ module Eq : sig
   (** [is_top] {% $\phi$ returns %} [true] if and only if {% $\phi = \top$.%} *)
   val is_top : ('a, 'b) t -> bool
 
+  val match_variables_and_names : (unit -> unit) -> (fst_ord, name) t -> (fst_ord, name) t -> unit
+
+  val iter_variables_and_terms : (fst_ord_variable -> unit) -> (protocol_term -> unit) -> (fst_ord, name) t -> unit
+
+  val map_variables_and_terms : (fst_ord_variable -> fst_ord_variable) -> (protocol_term -> protocol_term) -> (fst_ord, name) t -> (fst_ord, name) t
+
+  val occurs : fst_ord_variable -> (fst_ord, name) t -> bool
+
   (** {3 Display} *)
 
   val display : Display.output -> ?rho:display_renamings option -> ('a, 'b) atom -> ('a, 'b) t -> string
@@ -303,6 +331,8 @@ module Eq : sig
     val top : t
 
     val bot : t
+
+    val map_variables_and_terms : (fst_ord_variable -> fst_ord_variable) -> (protocol_term -> protocol_term) -> t -> t
 
     val wedge : t -> Diseq.Mixed.t -> t
 

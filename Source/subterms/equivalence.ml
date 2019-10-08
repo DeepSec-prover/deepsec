@@ -139,7 +139,6 @@ let apply_one_transition_and_rules_for_trace_in_classic csys_set size_frame f_co
 let apply_one_transition_and_rules_for_trace_in_private csys_set size_frame f_continuation f_next =
 
   (*** Generate the set for the next input ***)
-
   let private_channels_input = ref false in
   let csys_set_for_input = ref Constraint_system.Set.empty in
 

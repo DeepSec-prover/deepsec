@@ -1,0 +1,106 @@
+(* New version of Helios *)
+
+free id1.
+free id2.
+free id3.
+
+free c.
+
+free noRevotingAllowed.
+
+free yes.
+free no.
+
+(* Randomized asymmetric encryption *)
+
+fun aenc/3.
+fun pk/1.
+
+reduc adec(sk, aenc(pk(sk), sr, xm)) -> xm.
+
+(* Signature *)
+
+fun sign/2.
+fun vk/1.
+reduc checksign(vk(sk), sign(sk,m)) -> m.
+
+(* The zero knowledge proof definition. *)
+
+fun zkp/4.
+fun zkpok/0.
+reduc checkzkp(zkp(xr, xid, xv, aenc(xpk, xr, xv)), xid, aenc(xpk, xr, xv)) -> zkpok.
+
+(* The natural number model *)
+
+fun zero/0.
+fun s/1.
+
+(* The voting process *)
+
+let Voter(sk,id,v,pkE) =
+    new r;
+    let ballot = aenc(pkE, r, v) in
+    let zk = zkp(r, id, v, ballot) in
+    out(c, (id, sign(sk, (ballot, zk)))).
+
+(* The Tally *)
+
+let Outcome(prv_ch,skE) =
+  in(prv_ch,z);
+  let (vote1,vote2,vote3,nb_vote) = z in
+
+  (* We check that we have gone through 3 SubTally. *)
+  if nb_vote = s(s(s(s(s(s(s(zero))))))) then
+
+  let xv1 = adec(skE,vote1) in  (* Due to the fact that adec is a destructor, we are ensured that at least one vote of id1 and id2 were counted. *)
+  let xv2 = adec(skE,vote2) in
+  (out(c,xv1) | out(c,xv2) | out(c,adec(skE,vote3))). (* The decryption of the vallot of id3 is done at the lvl of the output allowing the attacker NOT to vote. *)
+
+let SubTally(prv_ch,vk1,vk2,vk3) =
+  in(prv_ch,z);
+  let (vote1,vote2,vote3,nb_vote) = z in
+
+  in(c, x);
+  let (yid, ysign) = x in
+    let ((zblob1,zzkp1),=id1) = (checksign(vk1,ysign),yid) in
+      if checkzkp(zzkp1, yid, zblob1) = zkpok
+      then out(prv_ch,(zblob1,vote2,vote3,s(nb_vote)))
+      else out(prv_ch,(vote1,vote2,vote3,s(nb_vote)))
+    else
+      let ((zblob2,zzkp2),=id2) = (checksign(vk2,ysign),yid) in
+        if checkzkp(zzkp2, yid, zblob2) = zkpok
+        then out(prv_ch,(vote1,zblob2,vote3,s(nb_vote)))
+        else out(prv_ch,(vote1,vote2,vote3,s(nb_vote)))
+      else
+        let ((zblob3,zzkp3),=id3) = (checksign(vk3,ysign),yid) in
+          if checkzkp(zzkp3, yid, zblob3) = zkpok
+          then out(prv_ch,(vote1,vote2,zblob3,s(nb_vote)))
+          else out(prv_ch,(vote1,vote2,vote3,s(nb_vote)))
+        else out(prv_ch,(vote1,vote2,vote3,s(nb_vote)))
+  else out(prv_ch,(vote1,vote2,vote3,s(nb_vote))).
+
+let Tally(skE,vk1,vk2,vk3) =
+  new prv_ch;
+  (
+    out(prv_ch,(zero,zero,zero,zero))
+  | Outcome(prv_ch,skE)
+  | !^7 SubTally(prv_ch,vk1,vk2,vk3)
+  ).
+
+
+let VotingSystem32(vote1,vote2) =
+  new skE;
+  out(c,pk(skE));
+  new sk1;
+  new sk2;
+  new sk3;
+  out(c,sk3);
+  out(c,vk(sk1));
+  out(c,vk(sk2)); (
+    !^3 Voter(sk1,id1,vote1,pk(skE)) |
+    !^2 Voter(sk2,id2,vote2,pk(skE)) |
+    Tally(skE,vk(sk1),vk(sk2),vk(sk3))
+  ).
+
+(* Should not find an attack. *)
+query session_equiv(VotingSystem32(yes,no),VotingSystem32(no,yes)).

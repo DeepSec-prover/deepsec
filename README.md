@@ -9,7 +9,7 @@ Automated verification has become an essential part in the security evaluation o
 ### Upgrading Ocaml using OPAM
 
 1. Run `opam switch list` (The version 4.05.0 should be displayed in the list. Otherwise run first `opam update`)
-2. Run `opam switch 4.05.0` (latest official release)
+2. Run `opam switch 4.05.0` (or a more recent version)
 3. Follow the instructions (at the end do not forget to set the environment by running ``eval `opam config env` ``)
 
 ### Installation of DeepSec
@@ -17,7 +17,7 @@ Automated verification has become an essential part in the security evaluation o
 1. Run `git clone https://github.com/DeepSec-prover/deepsec.git` (with a HTTPS connexion) or `git clone git@github.com:DeepSec-prover/deepsec.git` (with a SSH connexion)
 2. Inside the directory `deepsec`, run `make`
 3. The executable program `deepsec` has been built.
-4. Add the `deepsec` executable to your path, e.g. if your shell is bash, add the line `export DEEPSEC_DIR=<path to the deepsec folder>/deepsec` to the .bash_profile file
+4. Add the `deepsec` executable to your path, e.g. if your shell is bash, add the line `export DEEPSEC_DIR=<path_to_the_deepsec_folder>/deepsec` to the .bash_profile file
 
 The fourth step is not mandatory but highly recommended. If the variable `DEEPSEC_DIR` is not defined, `deepsec` can only be used with the option `-deepsec_dir <path to the deepsec folder>/deepsec`.
 

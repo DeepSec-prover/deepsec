@@ -1694,6 +1694,8 @@ let chosen_semantics = ref Private
 type equivalence =
   | Trace_Equivalence
   | Observational_Equivalence
+  | Session_Equivalence
+  | Session_Inclusion
 
 type output_gathering =
   {

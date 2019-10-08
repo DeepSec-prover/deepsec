@@ -14,7 +14,8 @@ type name =
   {
     label_n : string;
     index_n : int;
-    mutable link_n : link_n
+    mutable link_n : link_n;
+    mutable inj_link_n : bool;
   }
 
 and axiom = int
@@ -64,6 +65,7 @@ and ('a,'b) variable =
     label : string;
     index : int;
     mutable link : ('a, 'b) link;
+    mutable inj_link : bool;
     quantifier : quantifier;
     var_type : 'a
   }
@@ -86,6 +88,21 @@ type recipe = (snd_ord, axiom) term
 type fst_ord_variable = (fst_ord, name) variable
 
 type snd_ord_variable = (snd_ord, axiom) variable
+
+type vars = {
+  snd_ord : snd_ord_variable option;
+  axiom : axiom option;
+}
+let get_snd_ord v =
+  match v.snd_ord with
+  | None -> Config.internal_error "[term.ml >> get_snd_ord] Unexpected case."
+  | Some x -> x
+
+let get_axiom v =
+  match v.axiom with
+  | None -> Config.internal_error "[term.ml >> get_axiom] Unexpected case."
+  | Some x -> x
+
 
 type display_renamings =
   {
@@ -144,6 +161,8 @@ module HashtblSymb = Hashtbl.Make(HashSymb)
 
 module Variable = struct
 
+  let is_linked v = not (v.link = NoLink)
+
   let accumulator = ref 0
 
   let set_up_counter n = accumulator := n
@@ -161,7 +180,7 @@ module Variable = struct
   let has_not_infinite_type v = v.var_type <> max_int
 
   let fresh_with_label q ty s =
-    let var = { label = s; index = !accumulator; link = NoLink; quantifier = q; var_type = ty } in
+    let var = { label = s; index = !accumulator; link = NoLink; quantifier = q; var_type = ty ; inj_link = false } in
     incr accumulator;
     var
 
@@ -170,7 +189,7 @@ module Variable = struct
     | Recipe -> fresh_with_label q ty "X"
 
   let fresh_from var =
-    let var = { label = var.label; index = !accumulator; link = NoLink; quantifier = var.quantifier; var_type = var.var_type } in
+    let var = { label = var.label; index = !accumulator; link = NoLink; quantifier = var.quantifier; var_type = var.var_type ; inj_link = false } in
     accumulator := !accumulator + 1;
     var
 
@@ -283,9 +302,25 @@ module Variable = struct
           List.iter (fun var -> var.link <- NoLink) !linked_variables_snd;
           linked_variables_snd := []
 
+    let retrieve_and_clean () =
+      let l =
+        List.fold_left (fun acc v -> match v.link with
+          | VLink v' -> v.link <- NoLink; (v,v')::acc
+          | _ -> Config.internal_error "[Term.ml >> Variable.Renaming.retrieve_and_clean] Unexpected link."
+        ) [] !linked_variables_fst in
+      linked_variables_fst := [];
+      l
+
     let retrieve (type a) (type b) (at:(a,b) atom) = match at with
       | Protocol -> ((!linked_variables_fst): (a,b) variable list)
       | Recipe -> ((!linked_variables_snd): (a,b) variable list)
+
+    let from_linked_vars (v_list:fst_ord_variable list) =
+      List.rev_map (fun v -> match v.link with
+        | NoLink -> Config.internal_error "[term.ml >> Variable.Renaming.from_linked_vars] variables should be linked"
+        | VLink v' -> (v,v')
+        | _ -> Config.internal_error "[term.ml >> Variable.Renaming.from_linked_vars] unexpected link"
+      ) v_list
 
     let rec follow_link term =
       Config.debug (fun () ->
@@ -532,6 +567,8 @@ end
 
 module Name = struct
 
+  let is_linked n = not (n.link_n = NNoLink)
+
   let accumulator = ref 0
 
   let set_up_counter n = accumulator := n
@@ -539,7 +576,7 @@ module Name = struct
   let get_counter () = !accumulator
 
   let fresh_with_label n =
-    let name = { label_n = n; index_n = !accumulator; link_n = NNoLink } in
+    let name = { label_n = n; index_n = !accumulator; link_n = NNoLink ; inj_link_n = false } in
     accumulator := !accumulator + 1;
     name
 
@@ -606,6 +643,22 @@ module Name = struct
     let cleanup () =
       List.iter (fun n -> n.link_n <- NNoLink) !linked_names;
       linked_names := []
+
+    let from_linked_names (n_list:name list) =
+      List.rev_map (fun n -> match n.link_n with
+        | NNoLink -> Config.internal_error "[term.ml >> Names.Renaming.from_linked_names] names should be linked"
+        | NLink n' -> (n,n')
+        | _ -> Config.internal_error "[term.ml >> Name.Renaming.from_linked_names] unexpected link"
+      ) n_list
+
+    let retrieve_and_clean () =
+      let l =
+        List.fold_left (fun acc n -> match n.link_n with
+          | NLink n' -> n.link_n <- NNoLink; (n,n')::acc
+          | _ -> Config.internal_error "[Term.ml >> Name.Renaming.retrieve_and_clean] Unexpected link."
+        ) [] !linked_names in
+      linked_names := [];
+      l
 
     (**** Generation *****)
 
@@ -1031,6 +1084,36 @@ module AxName = struct
     | Recipe -> Axiom.display out axn
 end
 
+let rec apply_both_on_term term = match term.term with
+  | Var v -> { term with term = Var (Variable.Renaming.apply_variable v) }
+  | AxName n ->
+      begin match n.link_n with
+        | NLink n' -> { term with term = AxName n' }
+        | NNoLink -> { term with term = AxName n }
+        | _ -> Config.internal_error "[term.ml >> apply_both_on_term] Unexpected link."
+      end
+  | Func(f,args) -> { term with term = Func(f,List.map apply_both_on_term args) }
+
+let apply_both_renamings v_rho n_rho f_map a =
+  if v_rho = [] && n_rho = []
+  then a
+  else
+    begin
+      (* Link the variables and names of the renamings *)
+      List.iter (fun (v,v') -> v.link <- VLink v') v_rho;
+      List.iter (fun (n,n') -> n.link_n <- NLink n') n_rho;
+
+      (* Apply the renaming on the element *)
+      let a' = f_map Variable.Renaming.apply_variable apply_both_on_term a in
+
+      (* Unlink *)
+      List.iter (fun (v,_) -> v.link <- NoLink) v_rho;
+      List.iter (fun (n,_) -> n.link_n <- NNoLink) n_rho;
+
+      a'
+    end
+
+
 (********* Generate display renaming *********)
 
 let generate_display_renaming names fst_vars snd_vars =
@@ -1058,12 +1141,12 @@ let generate_display_renaming names fst_vars snd_vars =
           | [] -> Config.internal_error "[term.ml >> generate_display_renaming] Unexpected case 1"
           | [n] ->
               if List.exists (fun symb -> symb.name = str) !Symbol.all_constructors
-              then (n,{ label_n = str; index_n = 0; link_n = NNoLink })::(create_rho_names q)
-              else (n,{ label_n = str; index_n = 1; link_n = NNoLink })::(create_rho_names q)
+              then (n,{ label_n = str; index_n = 0; link_n = NNoLink; inj_link_n = false })::(create_rho_names q)
+              else (n,{ label_n = str; index_n = 1; link_n = NNoLink; inj_link_n = false })::(create_rho_names q)
           | _ ->
             let (new_l,_) =
               List.fold_left (fun (acc,i) n ->
-                ((n,{ label_n = str; index_n = i; link_n = NNoLink })::acc,i+1)
+                ((n,{ label_n = str; index_n = i; link_n = NNoLink; inj_link_n = false })::acc,i+1)
               ) (create_rho_names q, 1) l in
             new_l
         end
@@ -1074,11 +1157,11 @@ let generate_display_renaming names fst_vars snd_vars =
     | (str,l)::q ->
         begin match l with
           | [] -> Config.internal_error "[term.ml >> generate_display_renaming] Unexpected case 2"
-          | [n] -> (n,{ label = str; var_type = n.var_type; index = 0; link = NoLink; quantifier = n.quantifier })::(create_rho_variables q)
+          | [n] -> (n,{ label = str; var_type = n.var_type; index = 0; link = NoLink; quantifier = n.quantifier; inj_link = false })::(create_rho_variables q)
           | _ ->
             let (new_l,_) =
               List.fold_left (fun (acc,i) n ->
-                ((n,{ label = str; var_type = n.var_type; index = i; link = NoLink; quantifier = n.quantifier })::acc,i+1)
+                ((n,{ label = str; var_type = n.var_type; index = i; link = NoLink; quantifier = n.quantifier; inj_link = false })::acc,i+1)
               ) (create_rho_variables q, 1) l in
             new_l
         end
@@ -1118,12 +1201,12 @@ let generate_display_renaming_for_testing names fst_vars snd_vars =
   let rec generate_names full_std k std names = match std,names with
     | _,[] -> []
     | [],_ -> generate_names full_std (k+1) full_std  names
-    | str::q_std,n::q -> (n,{ label_n = str; index_n = k; link_n = NNoLink })::(generate_names full_std k q_std q) in
+    | str::q_std,n::q -> (n,{ label_n = str; index_n = k; link_n = NNoLink; inj_link_n = false })::(generate_names full_std k q_std q) in
 
   let rec generate_vars full_std  k std var = match std,var with
     | _,[] -> []
     | [],_ -> generate_vars full_std (k+1) full_std  var
-    | str::q_std,x::q -> (x,{ label = str; quantifier = x.quantifier; index = k; link = NoLink ; var_type = x.var_type })::(generate_vars full_std  k q_std q) in
+    | str::q_std,x::q -> (x,{ label = str; quantifier = x.quantifier; index = k; link = NoLink ; var_type = x.var_type; inj_link = false })::(generate_vars full_std  k q_std q) in
 
   {
     rho_name =(generate_names std_b_names 0 std_b_names names);
@@ -1286,6 +1369,93 @@ let rec is_equal at t1 t2 =
       | _,_ -> false
   else false
 
+exception No_Match
+
+let match_variables (v1:fst_ord_variable) (v2:fst_ord_variable) = match v1.link with
+  | NoLink ->
+      if v2.inj_link
+      then raise No_Match
+      else
+        begin
+          v1.link <- VLink v2;
+          v2.inj_link <- true;
+          Variable.Renaming.linked_variables_fst := v1 :: !Variable.Renaming.linked_variables_fst
+        end
+  | VLink v1' when v1' == v2 -> ()
+  | _ -> raise No_Match
+
+let match_names (n1:name) (n2:name) = match n1.link_n with
+  | NNoLink ->
+      if n2.inj_link_n
+      then raise No_Match
+      else
+        begin
+          n1.link_n <- NLink n2;
+          n2.inj_link_n <- true;
+          Name.Renaming.linked_names := n1 :: !Name.Renaming.linked_names
+        end
+  | NLink n1' when n1' == n2 -> ()
+  | _ -> raise No_Match
+
+let rec match_variables_and_names_in_terms (t1:protocol_term) (t2:protocol_term) = match t1.term, t2.term with
+  | Var({ link = VLink v1';_}),Var(v2) when v1' == v2 -> ()
+  | Var v1, Var v2 when v1.quantifier <> v2.quantifier -> raise No_Match
+  | Var({ link = NoLink; _} as v1), Var({ inj_link = false; _ } as v2) ->
+      v1.link <- VLink v2;
+      v2.inj_link <- true;
+      Variable.Renaming.linked_variables_fst := v1 :: !Variable.Renaming.linked_variables_fst
+  | AxName({ link_n = NLink n1'; _}),AxName n2 when n1' == n2 -> ()
+  | AxName({ link_n = NNoLink;_} as n1), AxName({ inj_link_n = false; _ } as n2) ->
+      n1.link_n <- NLink n2;
+      n2.inj_link_n <- true;
+      Name.Renaming.linked_names := n1 :: !Name.Renaming.linked_names
+  | Func(f1,args1), Func(f2,args2) when f1 == f2 -> List.iter2 match_variables_and_names_in_terms args1 args2
+  | _,_ -> raise No_Match
+
+let rec match_variables_and_names_one_elt f_next f_match_elt prev elt1 = function
+  | [] -> raise No_Match
+  | elt2 :: q ->
+      try
+        f_match_elt (fun () ->
+          f_next (List.rev_append prev q)
+        ) elt1 elt2
+      with No_Match ->
+        match_variables_and_names_one_elt f_next f_match_elt (elt2::prev) elt1 q
+
+let rec match_variables_and_names_elt_list f_next f_match_elt list1 list2 = match list1 with
+  | [] -> f_next ()
+  | diseq1 :: q1 ->
+      match_variables_and_names_one_elt (fun list2' ->
+        match_variables_and_names_elt_list f_next f_match_elt q1 list2'
+      ) f_match_elt [] diseq1 list2
+
+let auto_cleanup_matching f =
+  let tmp_bound_vars = !Variable.Renaming.linked_variables_fst in
+  let tmp_bound_names = !Name.Renaming.linked_names in
+  Variable.Renaming.linked_variables_fst := [];
+  Name.Renaming.linked_names := [];
+  try
+    let r = f () in
+    List.iter (fun var -> match var.link with
+      | VLink v' -> v'.inj_link <- false; var.link <- NoLink
+      | _ -> ()) !Variable.Renaming.linked_variables_fst;
+    Variable.Renaming.linked_variables_fst := tmp_bound_vars;
+    List.iter (fun n -> match n.link_n with
+      | NLink n' -> n'.inj_link_n <- false; n.link_n <- NNoLink
+      | _ -> ()) !Name.Renaming.linked_names;
+    Name.Renaming.linked_names := tmp_bound_names;
+    r
+  with No_Match ->
+    List.iter (fun var -> match var.link with
+      | VLink v' -> v'.inj_link <- false; var.link <- NoLink
+      | _ -> ()) !Variable.Renaming.linked_variables_fst;
+    Variable.Renaming.linked_variables_fst := tmp_bound_vars;
+    List.iter (fun n -> match n.link_n with
+      | NLink n' -> n'.inj_link_n <- false; n.link_n <- NNoLink
+      | _ -> ()) !Name.Renaming.linked_names;
+    Name.Renaming.linked_names := tmp_bound_names;
+    raise No_Match
+
 let is_variable term = match term.term with
   | Var(_) -> true
   | _ -> false
@@ -1358,7 +1528,7 @@ let get_vars at term =
   result
 
 let get_vars_not_in at term var_list =
-  Config.test (fun () ->
+  Config.debug (fun () ->
     if retrieve_search at <> []
     then Config.internal_error "[terml.ml >> get_vars] Linked variables should be empty."
   );
@@ -1442,6 +1612,54 @@ let rec iter_variables_and_axioms f recipe = match recipe.term with
   | AxName ax -> f (Some ax) None
   | Var v -> f None (Some v)
   | Func(_,args) -> List.iter (iter_variables_and_axioms f) args
+
+let rec map_axioms f_map r = match r.term with
+  | AxName ax -> { r with term = AxName (f_map ax) }
+  | Var _ -> r
+  | Func(f,args) -> { r with term = Func(f,List.map (map_axioms f_map) args) }
+
+let rec get_vars_and_names_term term = match term.term with
+  | Func(_,args) -> List.iter get_vars_and_names_term args
+  | AxName({ link_n = NNoLink; _} as n) -> Name.link_search n
+  | Var({link = NoLink; _ } as v) ->
+      if v.quantifier <> Universal
+      then
+        begin
+          v.link <- FLink;
+          linked_variables_search_fst := v::(!linked_variables_search_fst)
+        end
+  | Var({link = FLink; _}) | AxName _ -> ()
+  | Var _ -> Config.internal_error "[get_vars_and_names_term] Unexpected link"
+
+let get_variables v = match v.link with
+  | NoLink ->
+    if v.quantifier <> Universal
+    then
+      begin
+        v.link <- FLink;
+        linked_variables_search_fst := v::(!linked_variables_search_fst)
+      end
+  | FLink -> ()
+  | _ -> Config.internal_error "[get_variables] Linked variables should be empty."
+
+let get_vars_and_names f a =
+  Config.debug (fun () ->
+    if !Name.linked_names <> []
+    then Config.internal_error "[get_vars_and_names] Linked names should be empty.";
+    if !linked_variables_search_fst <> []
+    then Config.internal_error "[get_vars_and_names] Linked variables should be empty.";
+  );
+
+  f get_variables get_vars_and_names_term a;
+
+  let vars = !linked_variables_search_fst in
+  let names = Name.retrieve_search () in
+
+  List.iter (fun var -> var.link <- NoLink) !linked_variables_search_fst;
+  linked_variables_search_fst := [];
+  Name.cleanup_search ();
+
+  vars,names
 
 (********** Display **********)
 
@@ -1669,6 +1887,12 @@ module Subst = struct
   let get_axioms_with_list subst f_id ax_list  =
     List.fold_left (fun acc (_,t) -> get_axioms_with_list t f_id acc) ax_list subst
 
+  let iter_variables_and_terms (f_var:fst_ord_variable -> unit) (f_term:protocol_term -> unit) subst =
+    List.iter (fun (x,t) -> f_var x; f_term t) subst
+
+  let map_variables_and_terms f_var f_term subst =
+    List.rev_map (fun (x,t) -> f_var x, f_term t) subst
+
   (*********** Composition ************)
 
   let compose subst_1 subst_2 =
@@ -1829,6 +2053,21 @@ module Subst = struct
   let follow_link_var v = match v.link with
     | TLink t -> follow_link t
     | _ -> Config.internal_error "[term.ml >> Subst.follow_link_var] Unexpected link"
+
+  (*********** Matching **********)
+
+  let match_variables_and_names_one_eq f_next (x1,t1) (x2,t2) =
+    auto_cleanup_matching (fun () ->
+      match_variables x1 x2;
+      match_variables_and_names_in_terms t1 t2;
+      f_next ()
+    )
+
+  let match_variables_and_names f_next subst1 subst2 =
+    if List.length subst1 <> List.length subst2
+    then raise No_Match;
+
+    match_variables_and_names_elt_list f_next match_variables_and_names_one_eq subst1 subst2
 
   (******* Syntactic unification *******)
 
@@ -2027,6 +2266,22 @@ module Diseq = struct
     | _ -> false
 
   (*** Access ***)
+
+  let occurs (v:fst_ord_variable) = function
+    | Diseq l -> List.exists (fun (t1,t2) -> var_occurs v t1 || var_occurs v t2) l
+    | _ -> false
+
+  let get_vars_with_list_alias = get_vars_with_list
+
+  let iter_variables_and_terms (_:fst_ord_variable -> unit) (f_term:protocol_term -> unit) = function
+    | Diseq l ->
+        List.iter (fun (t1,t2) -> f_term t1; f_term t2) l
+    | _ -> ()
+
+  let map_variables_and_terms (_:fst_ord_variable -> fst_ord_variable) (f_term:protocol_term -> protocol_term) = function
+    | Diseq l ->
+        Diseq (List.rev_map (fun (t1,t2) -> f_term t1, f_term t2) l)
+    | dis -> dis
 
   let get_names_with_list (type a) (type b) (at:(a,b) atom) (diseq:(a,b) t) (l:name list) = match diseq with
     | Top | Bot -> l
@@ -2263,6 +2518,43 @@ module Diseq = struct
     );
     Diseq l
 
+  let match_variables_and_names_one_diseq f_next (t1,t2) (t1',t2') =
+    try
+      auto_cleanup_matching (fun () ->
+        match_variables_and_names_in_terms t1 t1';
+        match_variables_and_names_in_terms t2 t2';
+        f_next ()
+      )
+    with No_Match ->
+      auto_cleanup_matching (fun () ->
+        match_variables_and_names_in_terms t1 t2';
+        match_variables_and_names_in_terms t2 t1';
+        f_next ()
+      )
+
+  let match_variables_and_names f_next diseq1 diseq2 = match diseq1, diseq2 with
+    | Top, Top | Bot, Bot -> f_next ()
+    | Diseq dis_list1, Diseq dis_list2 ->
+        if List.length dis_list1 <> List.length dis_list2
+        then raise No_Match;
+
+        let univ_vars =
+          List.fold_left (fun acc (t1,t2) ->
+            let acc1 = get_vars_with_list_alias Protocol t1 (fun q -> q = Universal) acc in
+            get_vars_with_list_alias Protocol t2 (fun q -> q = Universal) acc1
+          ) [] dis_list1
+        in
+
+        match_variables_and_names_elt_list (fun () ->
+          auto_cleanup_matching (fun () ->
+            List.iter (fun v -> match v.link with
+              | VLink v' -> v'.inj_link <- false; v.link <- NoLink
+              | _ -> () ) univ_vars;
+            f_next ()
+          )
+        ) match_variables_and_names_one_diseq dis_list1 dis_list2
+    | _ -> raise No_Match
+
   module Mixed = struct
 
     type t =
@@ -2277,6 +2569,11 @@ module Diseq = struct
     let is_bot = function
       | MBot -> true
       | _ -> false
+
+    let map_variables_and_terms (_:fst_ord_variable -> fst_ord_variable) (f_term:protocol_term -> protocol_term) = function
+      | MDiseq (l1,l2) ->
+          MDiseq ((List.rev_map (fun (t1,t2) -> f_term t1, f_term t2) l1),l2)
+      | dis -> dis
 
     let apply_and_normalise (fst_subst:(fst_ord,name) Subst.t) (snd_subst:(snd_ord,axiom) Subst.t) = function
       | MTop -> MTop
@@ -2619,6 +2916,11 @@ module BasicFact = struct
 
   let get_protocol_term b_fact = b_fact.pterm
 
+  let iter_variables_and_terms (_:fst_ord_variable -> unit) (f_term:protocol_term -> unit)  bfact = f_term bfact.pterm
+
+  let map_variables_and_terms (_:fst_ord_variable -> fst_ord_variable) (f_term:protocol_term -> protocol_term)  bfact =
+    { bfact with pterm = f_term bfact.pterm }
+
   (********* Display *********)
 
   let display out ?(rho=None) ded =
@@ -2690,6 +2992,27 @@ module Fact = struct
     with Subst.Not_unifiable -> Subst.cleanup Protocol; raise Bot
 
   (********* Access ********)
+
+  let iter_variables_and_terms_deduction (_:fst_ord_variable -> unit) (f_term:protocol_term -> unit) ded =
+    f_term ded.df_term
+
+  let iter_variables_and_terms_formula (type a) (fct: a t) (f_var:fst_ord_variable -> unit) (f_term:protocol_term -> unit) (formula:a formula) = match fct with
+    | Deduction ->
+        f_term formula.head.df_term;
+        Subst.iter_variables_and_terms f_var f_term formula.equation_subst
+    | Equality ->
+        Subst.iter_variables_and_terms f_var f_term formula.equation_subst
+
+  let map_variables_and_terms_deduction (_:fst_ord_variable -> fst_ord_variable) (f_term:protocol_term -> protocol_term) ded =
+    { ded with df_term = f_term ded.df_term }
+
+  let map_variables_and_terms_formula (type a) (fct: a t) (f_var:fst_ord_variable -> fst_ord_variable) (f_term:protocol_term -> protocol_term) (formula:a formula) = match fct with
+    | Deduction ->
+        ({ head = { formula.head with df_term = f_term formula.head.df_term };
+        equation_subst =  Subst.map_variables_and_terms f_var f_term formula.equation_subst }: a formula)
+    | Equality ->
+        ({ formula with
+         equation_subst = Subst.map_variables_and_terms f_var f_term formula.equation_subst } : a formula)
 
   let get_recipe fct = fct.df_recipe
 
@@ -3084,6 +3407,7 @@ module Rewrite_rules = struct
   (****** Normalisation ******)
 
   exception Found_normalise of protocol_term
+  exception Not_message
 
   let rec normalise t = match t.term with
     | Func(f1,args) ->
@@ -3130,6 +3454,60 @@ module Rewrite_rules = struct
               end
         end
     | _ -> t
+
+  let rec normalise_message t = match t.term with
+    | Func(f1,args) ->
+        begin match f1.cat with
+          | Constructor | Tuple ->
+              let (ground,args') =
+                List.fold_right (fun t (g,t_list) ->
+                  let t' = normalise_message t in
+                  (g&&t'.ground,t'::t_list)
+                ) args (true,[])
+              in
+              {term = Func(f1,args'); ground = ground}
+          | Destructor (rw_rules) ->
+              let args' = List.map normalise_message args in
+              begin try
+                List.iter (fun (lhs,rhs) ->
+                  (***[BEGIN DEBUG]***)
+                  Config.debug (fun () ->
+                    if !Variable.Renaming.linked_variables_fst <> []
+                    then Config.internal_error "[term.ml >> Rewrite_rules.normalise] The list of linked variables for renaming should be empty";
+
+                  );
+                  (***[END DEBUG]***)
+
+                  let lhs' = List.map (Variable.Renaming.rename_term Protocol Existential Variable.fst_ord_type) lhs in
+                  let rhs' = Variable.Renaming.rename_term Protocol Existential Variable.fst_ord_type rhs in
+
+                  Variable.Renaming.cleanup Protocol;
+
+                  try
+                    List.iter2 (Subst.match_term Protocol) lhs' args';
+                    let rhs'' = Subst.follow_link rhs' in
+                    Subst.cleanup Protocol;
+                    raise (Found_normalise rhs'')
+                  with Subst.Not_matchable ->  Subst.cleanup Protocol
+                ) rw_rules;
+                raise Not_message
+              with Found_normalise t' -> t'
+              end
+        end
+    | _ -> t
+
+  let apply_recipe_on_frame r phi =
+
+    let rec explore_recipe r = match r.term with
+      | Var _ -> Config.internal_error "[term.ml >> Rewrite_rules.apply_recipe_on_frame] The recipe should be ground."
+      | Func(f,args) -> { ground = true; term = Func(f,List.map explore_recipe args) }
+      | AxName i ->
+          try
+            List.nth phi (i-1)
+          with Failure _ -> Config.internal_error "[term.ml >> Rewrite_rules.apply_recipe_on_frame] The axioms of the recipe are not included in the domain of the frame."
+    in
+
+    normalise_message (explore_recipe r)
 
   let rewrite_rule_recipe (lhs,rhs) =
 
@@ -3501,12 +3879,13 @@ module Rewrite_rules = struct
     match Subst.unify_protocol_opt (List.combine lhs1 lhs2) with
     | None -> None
     | Some subst ->
-        match Subst.apply subst (rhs1 :: rhs2 :: lhs1) (flip List.map) with
-        | rhs1' :: rhs2' :: lhs ->
-            if is_equal Protocol rhs1' rhs2'
-            then None
-            else Some(lhs,rhs1',rhs2')
-        | _ -> Config.internal_error "[term.ml >> critical_pair_joinable] unexpected case"
+      let flip (f:'a->'b->'c) : 'b->'a->'c = fun x y -> f y x in
+      match Subst.apply subst (rhs1 :: rhs2 :: lhs1) (flip List.map) with
+      | rhs1' :: rhs2' :: lhs ->
+          if is_equal Protocol rhs1' rhs2'
+          then None
+          else Some(lhs,rhs1',rhs2')
+      | _ -> Config.internal_error "[term.ml >> critical_pair_joinable] unexpected case"
 
   (* verifies that the reduction rules of a given destructor are subterm
   convergent *)
@@ -3552,7 +3931,7 @@ module Rewrite_rules = struct
 
 
 
-        
+
   (****** Access function ******)
 
   let get_skeleton i = !storage_skeletons.(i).skeleton

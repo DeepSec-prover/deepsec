@@ -1,6 +1,7 @@
 .depend
 deepsec
 test_deepsec
+index_old.html
 
 *.js
 *.cmi
@@ -17,6 +18,7 @@ test_deepsec
 *.pdf
 *.gz
 *.DS_Store
+*.native
 
 Source/parser/grammar.ml
 Source/parser/grammar.mli
@@ -28,11 +30,11 @@ Source/testing/testing_grammar.output
 Source/testing/testing_lexer.ml
 Source/core_library/config.ml
 
-Documentation/Core_library.tex
-Documentation/Subterms.tex
-Documentation/Testing.tex
-Documentation/Distributed.tex
-Documentation/main.aux
+# documentation/Core_library.tex
+# documentation/Subterms.tex
+# documentation/Testing.tex
+# documentation/Distributed.tex
+# documentation/main.aux
 
 index.html
 testing_data/tests_to_check/*
@@ -48,3 +50,10 @@ Examples/Benchmark/bench_*
 
 worker_deepsec
 manager_deepsec
+
+
+# other files
+*_build
+/Examples/session_equivalence/tests/scratch.dps
+/documentation/files/*
+!/documentation/files/.content

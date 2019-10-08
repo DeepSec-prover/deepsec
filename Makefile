@@ -1,6 +1,6 @@
 EXECUTABLE = deepsec
 NAME_PROGRAMME = DeepSec
-VERSION = 1.01
+VERSION = 1.02
 SOURCE = Source/
 ### Compiler
 
@@ -12,7 +12,9 @@ OCAMLOPT=$(if $(PROFIL),ocamloptp -p -P a,$(if $(DEBUG), ocamlc -g,ocamlopt))
 OCAMLDEP=ocamldep $(if $(DEBUG), ,-native)
 OCAMLDOC=ocamldoc
 
-GITCOMMIT:= $(shell Source/get-git-commit)
+GITCOMMIT = $(shell git rev-parse HEAD)
+GITBRANCH = $(shell git branch | grep \* | cut -d ' ' -f2)
+
 
 CMOX= $(if $(DEBUG),cmo,cmx)
 CMXA= $(if $(DEBUG),cma,cmxa)
@@ -29,10 +31,10 @@ OCAMLFLAGS = $(INCLUDES) $(V4OPTIONS) -w +a-44-e $(INCLUDES_MOD)
 GENERATED_SOURCES_NAME = parser/grammar.ml parser/lexer.ml parser/grammar.mli
 GENERATED_SOURCES = $(GENERATED_SOURCES_NAME:%=$(SOURCE)%)
 
-CORE_ML_NAME = extensions.ml display.ml term.ml process.ml process_determinate.ml
+CORE_ML_NAME = extensions.ml display.ml term.ml process_simulator.ml process.ml process_determinate.ml process_session.ml
 CORE_ML = $(CORE_ML_NAME:%.ml=$(SOURCE)core_library/%.ml)
 
-SUBTERMS_ML_NAME = data_structure.ml constraint_system.ml equivalence.ml equivalence_determinate.ml
+SUBTERMS_ML_NAME = data_structure.ml constraint_system.ml simulator.ml equivalence.ml equivalence_determinate.ml equivalence_session.ml
 SUBTERMS_ML = $(SUBTERMS_ML_NAME:%.ml=$(SOURCE)subterms/%.ml)
 
 DISTRIBUTED_ML_NAME = distrib.ml distributed_equivalence.ml
@@ -58,7 +60,7 @@ EXE_MANAGER_OBJ = $(EXE_MANAGER_ML:.ml=.$(CMOX))
 ### Targets
 
 all: .display_obj $(ALL_OBJ)
-	@sed -e 's/GITCOMMIT/$(GITCOMMIT)/g' -e's/VERSION/$(VERSION)/g' < Source/core_library/config.ml.in > Source/core_library/config.ml
+	@sed -e 's/GITCOMMIT/$(GITCOMMIT)/g' -e's/VERSION/$(VERSION)/g' -e 's/GITBRANCH/$(GITBRANCH)/g' < Source/core_library/config.ml.in > Source/core_library/config.ml
 	@echo
 	@echo The main executable:
 	@echo
@@ -154,7 +156,7 @@ without_debug:
 	@echo
 	@echo The Dependencies
 	@echo
-	@sed -e 's/GITCOMMIT/$(GITCOMMIT)/g' -e's/VERSION/$(VERSION)/g' < Source/core_library/config.ml.in > Source/core_library/config.ml
+	@sed -e 's/GITCOMMIT/$(GITCOMMIT)/g' -e's/VERSION/$(VERSION)/g' -e 's/GITBRANCH/$(GITBRANCH)/g' < Source/core_library/config.ml.in > Source/core_library/config.ml
 	$(OCAMLDEP) $(INCLUDES) $(ALL_ML) $(GENERATED_SOURCES) > .depend
 
 -include .depend

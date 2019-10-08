@@ -57,6 +57,17 @@ type recipe = (snd_ord, axiom) term
     When display renamings are given to display functions, they will display the names and variables according to these renaming. *)
 type display_renamings
 
+(** a wrapper for second-order variables and axioms. *)
+type vars = {
+  snd_ord : snd_ord_variable option;
+  axiom : axiom option;
+}
+
+(** acces functions for the wrapper. Raises [internal_error] inc ase of fail. *)
+val get_snd_ord : vars -> snd_ord_variable
+val get_axiom : vars -> axiom
+
+
 (** [generate_display_renaming n_l fst_l snd_l] generates display renamings so that names and variables will be displayed with consecutive indices
     starting from 0. This is very useful for pretty printing. *)
 val generate_display_renaming : name list -> fst_ord_variable list -> snd_ord_variable list -> display_renamings
@@ -201,6 +212,8 @@ module Variable : sig
   (** The variables of {% $\Xdeux$ %} are typed by an integer. Hence, [snd_ord_type i] corresponds to the type of variables in {% $\Xdeuxi{i}$ %} *)
   val snd_ord_type : int -> snd_ord
 
+  val is_linked : ('a, 'b) variable -> bool
+
   val infinite_snd_ord_type : snd_ord
 
   (** [fresh at q ty] creates a fresh variable quantified by [q] with type [ty]. *)
@@ -251,7 +264,11 @@ module Variable : sig
     (** Domain of a variable renaming *)
     type ('a, 'b) domain
 
+    val retrieve_and_clean : unit -> (fst_ord_variable * fst_ord_variable) list
+
     (** {4 Generation} *)
+
+    val from_linked_vars : fst_ord_variable list -> (fst_ord, name) t
 
     (** Returns the identify renaming. *)
     val identity : ('a, 'b) t
@@ -339,6 +356,8 @@ end
 
 module Name :  sig
 
+  val is_linked : name -> bool
+
   (** [fresh ()] creates a fresh name.*)
   val fresh :  unit -> name
 
@@ -370,10 +389,14 @@ module Name :  sig
     (** Name renaming. *)
     type t
 
+    val retrieve_and_clean : unit -> (name * name) list
+
     (** Domain of a name renaming *)
     type domain
 
     (** {4 Generation} *)
+
+    val from_linked_names : name list -> t
 
     (** Returns the identify renaming. *)
     val identity : t
@@ -427,6 +450,13 @@ end
 (** {2 Terms} *)
 
 (** {3 Generation of terms} *)
+
+val apply_both_renamings :
+  (fst_ord, name) Variable.Renaming.t ->
+  Name.Renaming.t ->
+  ((fst_ord_variable -> fst_ord_variable) -> (protocol_term -> protocol_term) -> 'a -> 'a) ->
+  'a ->
+  'a
 
 (** [of_variable x] returns the variable [x] considered as a term.*)
 val of_variable : ('a, 'b) variable -> ('a, 'b) term
@@ -484,7 +514,11 @@ val get_names_with_list : ('a, 'b) atom -> ('a, 'b) term -> name list -> name li
 (** [get_axioms_with_list t f_i l] adds the axiom in [t] whose index satisfies [f_i] in the list [l]. The addition of an axiom as the union of sets, i.e. there is no dupplicate in the resulting list..*)
 val get_axioms_with_list : recipe -> (int -> bool) -> axiom list -> axiom list
 
+val get_vars_and_names : ((fst_ord_variable -> unit) -> (protocol_term -> unit) -> 'a -> unit) -> 'a -> fst_ord_variable list * name list
+
 val iter_variables_and_axioms : (axiom option -> snd_ord_variable option -> unit) -> recipe -> unit
+
+val map_axioms : (axiom -> axiom) -> recipe -> recipe
 
 (** {3 Scanning} *)
 
@@ -530,6 +564,20 @@ val is_constructor : ('a, 'b) term -> bool
 (** {3 Display} *)
 
 val display : Display.output -> ?rho:display_renamings option -> ('a, 'b) atom -> ('a, 'b) term -> string
+
+(** {3 Matching} *)
+
+exception No_Match
+
+val match_variables : fst_ord_variable -> fst_ord_variable -> unit
+
+val match_names : name -> name -> unit
+
+val match_variables_and_names_in_terms : protocol_term -> protocol_term -> unit
+
+val match_variables_and_names_elt_list : (unit -> unit) -> ((unit -> unit) -> 'a -> 'a -> unit) -> 'a list -> 'a list -> unit
+
+val auto_cleanup_matching : (unit -> 'a) -> 'a
 
 (** {2 Substitution} *)
 
@@ -627,6 +675,12 @@ module Subst : sig
     Note that the order of the variables in $\sigma$ is unspecified. %}*)
   val fold : ('c -> ('a, 'b) variable -> ('a, 'b) term -> 'c) -> 'c -> ('a, 'b) t -> 'c
 
+  val match_variables_and_names : (unit -> unit) -> (fst_ord, name) t -> (fst_ord, name) t -> unit
+
+  val iter_variables_and_terms : (fst_ord_variable -> unit) -> (protocol_term -> unit) -> (fst_ord, name) t -> unit
+
+  val map_variables_and_terms : (fst_ord_variable -> fst_ord_variable) -> (protocol_term -> protocol_term) -> (fst_ord, name) t -> (fst_ord, name) t
+
   (** {3 Unification} *)
 
   exception Not_unifiable
@@ -693,7 +747,13 @@ module Diseq : sig
   (** [get_axioms_with_list s l] adds the axiom in [s] in the list [l]. The addition of an axiom as the union of sets, i.e. there is no dupplicate in the resulting list..*)
   val get_axioms_with_list : (snd_ord, axiom) t -> axiom list -> axiom list
 
+  val iter_variables_and_terms : (fst_ord_variable -> unit) -> (protocol_term -> unit) -> (fst_ord, name) t -> unit
+
+  val map_variables_and_terms : (fst_ord_variable -> fst_ord_variable) -> (protocol_term -> protocol_term) -> (fst_ord, name) t -> (fst_ord, name) t
+
   (** {4 Tesing} *)
+
+  val occurs : fst_ord_variable -> (fst_ord, name) t -> bool
 
   (** [is_top diseq] returns [true] iff the disequation is {% $\top$ %}. Note that it is a syntactic condition meaning
       that an disequation that is semantically a tautology is not necessarily {% $\top$ %}.*)
@@ -722,6 +782,8 @@ module Diseq : sig
       @raise Debug.Internal_error if {% $\sigma$ %} contains universal variables. {% \highdebug %} *)
   val apply_and_normalise : ('a, 'b) atom -> ('a, 'b) Subst.t -> ('a, 'b) t -> ('a, 'b) t
 
+  val match_variables_and_names : (unit -> unit) -> (fst_ord, name) t -> (fst_ord, name) t -> unit
+
   (** {4 Display} *)
 
   val display : Display.output -> ?rho:display_renamings option -> ('a, 'b) atom -> ('a, 'b) t -> string
@@ -737,6 +799,8 @@ module Diseq : sig
     val is_top : t -> bool
 
     val is_bot : t -> bool
+
+    val map_variables_and_terms : (fst_ord_variable -> fst_ord_variable) -> (protocol_term -> protocol_term) -> t -> t
 
     val apply_and_normalise : (fst_ord, name) Subst.t -> (snd_ord, axiom) Subst.t -> t -> t
   end
@@ -849,6 +913,10 @@ module BasicFact : sig
   (** [get_protocol_term fct] with [fct] being {% $\dedfact{X}{u}$ returns $u$. %} *)
   val get_protocol_term : t -> protocol_term
 
+  val iter_variables_and_terms : (fst_ord_variable -> unit) -> (protocol_term -> unit) -> t -> unit
+
+  val map_variables_and_terms : (fst_ord_variable -> fst_ord_variable) -> (protocol_term -> protocol_term) -> t -> t
+
   (** {3 Display} *)
 
   val display : Display.output -> ?rho:display_renamings option -> t -> string
@@ -901,6 +969,14 @@ module Fact : sig
   val create : 'a t -> 'a -> (protocol_term * protocol_term) list -> 'a formula
 
   (** {3 Access} *)
+
+  val iter_variables_and_terms_deduction : (fst_ord_variable -> unit) -> (protocol_term -> unit) -> deduction -> unit
+
+  val iter_variables_and_terms_formula : 'a t -> (fst_ord_variable -> unit) -> (protocol_term -> unit) -> 'a formula -> unit
+
+  val map_variables_and_terms_deduction : (fst_ord_variable -> fst_ord_variable) -> (protocol_term -> protocol_term) -> deduction -> deduction
+
+  val map_variables_and_terms_formula : 'a t -> (fst_ord_variable -> fst_ord_variable) -> (protocol_term -> protocol_term) -> 'a formula -> 'a formula
 
   (** [get_recipe fct] with [fct] being {% $\dedfact{\xi}{u}$ returns $\xi$. %} *)
   val get_recipe : deduction -> recipe
@@ -991,6 +1067,17 @@ module Rewrite_rules : sig
 
   (** [normalise t] returns the protocol_term [t] in its normal form. *)
   val normalise : protocol_term -> protocol_term
+
+  exception Not_message
+
+  (** [normalise_message t] returns the protocol term [t] in its normal form.
+      Raise [Not_message] when [t] is not a message.. *)
+  val normalise_message : protocol_term -> protocol_term
+
+  (* [apply_recipe_on_frame r phi] returns the protocol terms obtained by applying
+     [r] on the [phi] after normalisation. we assume that both [r] and [phi] are ground.
+     Raise [Not_message] when the resulting term is not a message. *)
+  val apply_recipe_on_frame : recipe -> protocol_term list -> protocol_term
 
   type skeleton =
     {

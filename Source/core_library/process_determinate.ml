@@ -1422,9 +1422,6 @@ let rec is_faulty_block block = function
 let is_block_list_authorized b_list cur_block snd_subst = match b_list with
   | [] -> true
   | _ ->
-      (*let str = ref "Begining of block test:\n" in
-
-      let counter = ref ((List.length b_list) + 1) in*)
 
       let b_list_1 =
         Subst.apply snd_subst (cur_block::b_list) (fun l f ->

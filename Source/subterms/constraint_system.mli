@@ -33,6 +33,12 @@ val get_names_with_list : 'a t ->  name list -> name list
 (** [get_axioms_with_list] {% $\C$ %} [l] adds the axiom in {% $\C$ %} in the list [l]. Note that it does not cover the potential axioms in the additional data. The addition of an axiom as the union of sets, i.e. there is no dupplicate in the resulting list..*)
 val get_axioms_with_list : 'a t -> axiom list -> axiom list
 
+val get_associated_fst_ord_var : 'a t -> snd_ord_variable -> fst_ord_variable
+
+val occurs_in_frame : 'a t -> fst_ord_variable -> bool
+
+val occurs_in_frame_full : 'a t -> fst_ord_variable -> bool
+
 (** {3 Generators} *)
 
 (** [create_from_free_names data] {% $[\ax_{-n};\ldots; \ax_0]$ returns the contraint system $\C = \ecsys{\emptyset}{\emptyset}{\top}{\top}{\Solved}{\emptyset}{\emptyset}$
@@ -59,7 +65,7 @@ val add_disequations : 'a t -> (Term.fst_ord, Term.name) Term.Diseq.t list -> 'a
 val add_private_channels : 'a t -> protocol_term list -> 'a t
 
 (** Replace the additional data in the constraint system by the one given as argument. *)
-val replace_additional_data : 'a t -> 'a -> 'a t
+val replace_additional_data : 'a t -> 'b -> 'b t
 
 (** [apply_substitution] {% $\C$~$\sigma$ returns $\C\sigma\Vnorm$.%}
     @raise Bot if {% $\C\sigma\Vnorm = \bot$. %}
@@ -71,9 +77,16 @@ val apply_substitution : 'a t -> (fst_ord, name) Subst.t -> 'a t
     @raise Internal_error if {% $\C$ %} is not in solved form. *)
 val instantiate_when_solved : 'a t -> (fst_ord, name) Subst.t * (snd_ord, axiom) Subst.t
 
+val match_variables_and_names : 'a t -> 'a t -> unit
+
 (** {3 Display function} *)
 
-val display : Display.output -> ?rho: display_renamings option -> ?hidden:bool -> ?id:int -> 'a t -> string
+val display :
+  Display.output ->
+  ?out_ch: out_channel ->
+  ?rho: display_renamings option ->
+  ?tab:int -> ?hidden:bool ->
+  ?id_link:int -> ?id:int -> 'a t -> unit
 
 (** {2 Most general solustions} *)
 
@@ -135,7 +148,11 @@ module Set : sig
 
   val optimise_snd_ord_recipes : 'a t -> 'a t
 
+  (** converts a set of constraint systems into a list *)
   val elements : 'a t -> 'a csys list
+
+  (** converts a list of constraint systems into a set *)
+  val of_list : 'a csys list -> 'a t
 
   (** [choose] {% $S$ returns one constraint system in $S$. %}
       @raise Internal_error if the set is empty. *)
@@ -144,7 +161,13 @@ module Set : sig
   (** [for_all f] {% $S$ %} returns [true] iff for all constraint system {% $\C \in S$, %} [f] {% $\C$ %} [= true].*)
   val for_all : ('a csys -> bool) -> 'a t -> bool
 
+  (** [exists f] {% $S$ %} returns [true] iff there exists a constraint system {% $\C \in S$, %} [f] {% $\C$ %} [= true]. *)
   val exists : ('a csys -> bool) -> 'a t -> bool
+
+  (** [find f] {% $S$ %} returns a constraint system {% $\C \in S$, %} [f] {% $\C$ %} [= true], if any. *)
+  val find : ('a csys -> bool) -> 'a t -> 'a csys option
+
+  val find_first : ('a csys -> bool) -> 'a t -> 'a csys * 'a t
 
   val size : 'a t -> int
 
@@ -159,7 +182,7 @@ module Set : sig
 
   (** Displays the set of constraint systems by index the constraint systems as {% $\C_k, \C_{k+1}, \ldots$ where $k$ is the integer given as argument.
       The default value of $k$ is 1. %} *)
-  val display: Display.output -> ?rho: display_renamings option -> ?id:int -> 'a t -> string
+  (*val display: Display.output -> ?rho: display_renamings option -> ?id:int -> 'a t -> string*)
 end
 
 (** {2 Normalisation and transformatin rules} *)
@@ -171,4 +194,14 @@ module Rule : sig
 
   val apply_rules_after_output :
     bool -> ('a Set.t -> (unit -> unit) -> unit) -> 'a Set.t -> (unit -> unit) -> unit
+
+  val apply_rules_after_input_with_compression :
+    bool -> ('a Set.t -> (unit -> unit) -> unit) -> 'a Set.t -> (unit -> unit) -> unit
+
+  val apply_rules_after_output_with_compression :
+    bool -> ('a Set.t -> (unit -> unit) -> unit) -> 'a Set.t -> (unit -> unit) -> unit
 end
+
+(* For ground processes, i.e. : the constraint system only represent a frame.
+   We assume that the knowledge base of the constraint system have been saturated *)
+val is_term_deducible : 'a t -> protocol_term -> bool

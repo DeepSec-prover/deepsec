@@ -63,7 +63,7 @@ struct
 
     let workers = ref []
     let nb_workers = ref 0
-      
+
     let local_workers n = workers := (Local,n) :: !workers; nb_workers := !nb_workers + n
     let add_distant_worker machine path n = workers := (Distant(machine,path),n) :: !workers; nb_workers := !nb_workers + n
 
@@ -251,7 +251,6 @@ struct
                       end
             ) available_in_Unix_ch
           done;
-
           if !tmp_job_list = []
           then continue_computing := false;
 

@@ -1,0 +1,32 @@
+// other model of bac where the readers receive their key from the passports,
+// by private communication
+
+free c, ok, error.
+free auth [private].
+
+fun enc/3.
+reduc dec(enc(x,y,z),z) -> x.
+
+let passport(k) =
+  out(auth,k);
+  new n;
+  out(c,n);
+  in(c,x);
+  if dec(x,k) = n then out(c,ok)
+  else out(c,error).
+
+let reader =
+  in(auth,k);
+  in(c,n);
+  new r;
+  out(c,enc(n,r,k)).
+
+let process11 =
+  !^2 new k; passport(k) |
+  !^2 reader.
+
+let process2 =
+  new k; !^2 passport(k) |
+  !^2 reader.
+
+query session_incl(process2,process11). // false attack

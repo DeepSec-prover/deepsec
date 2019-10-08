@@ -1,0 +1,26 @@
+free c.
+const ok.
+
+
+// This is **not** an actual counterexample (session inclusion does not hold because of the skeleton check)
+let P =
+  new k; (
+    out(c,k) |
+    in(c,x);
+    let (y,z) = x in
+    if y = k then
+    if z = k then
+    out(c,ok)
+  ).
+
+let Q =
+  new k; (
+    out(c,k) |
+    in(c,x);
+    let (y,z) = x in
+    if y = k then
+    out(c,ok)
+  ).
+
+
+query trace_equiv(P,Q).

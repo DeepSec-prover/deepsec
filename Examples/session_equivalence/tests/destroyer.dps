@@ -1,0 +1,23 @@
+free c.
+fun h/2.
+
+let P = in(c,x); in(c,y); out(c,h(x,y)).
+let Q = !^4 P.
+
+query session_equiv(Q,Q).
+
+/* Experiments (4 sessions)
+DEEPSEC trace: 11min
+Akiss: instant
+ProVerif: instant */
+
+
+let PP = in(c,x); out(c,x).
+let QQ = !^6 PP.
+
+query session_equiv(QQ,QQ).
+
+/* Experiments (6 sessions)
+DEEPSEC trace: 12s
+Akiss: instant
+ProVerif: instant */

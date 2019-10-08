@@ -45,8 +45,8 @@ let system1 =
   !^3 (new k_e; new k_m; (passport(k_e,k_m) | reader(k_e,k_m))).
 
 let system2 =
-    (new k_e; new k_m; !^2 (passport(k_e,k_m) | reader(k_e,k_m)))
-  | (new k_e; new k_m; (passport(k_e,k_m) | reader(k_e,k_m))).
+    new k_e; new k_m; (!^2 passport(k_e,k_m) | !^2 reader(k_e,k_m))
+  | new k_e; new k_m; (passport(k_e,k_m) | reader(k_e,k_m)).
 
 
 query trace_equiv(system1,system2).

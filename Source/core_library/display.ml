@@ -20,6 +20,7 @@ let display_list_i display_element connector = function
       ) q;
       !str
 
+(***** Tools *****)
 
 let rec internal_create_tab = function
   | 0 -> ""
@@ -32,22 +33,22 @@ let create_tab k =
   );
   internal_create_tab k
 
-    
+
 let mkRuntime f =
   let rt = int_of_float f in
   let hours = rt / 3600 in
-  let rem = rt mod 3600 in 
+  let rem = rt mod 3600 in
   let mins = rem / 60 in
   let secs = rem mod 60 in
-  
+
   let h = ( if hours>0 then ((string_of_int hours)^"h") else "") in
   let m = ( if mins>0 then ((string_of_int mins)^"m") else "") in
   let s = ((string_of_int secs)^"s") in
   h^(m^s)
 
-    
+
   (* Printf.sprintf "%ih %im %is" hours mins secs *)
-   
+
 let mkDate t =
   let weekday d =
     match d with
@@ -80,32 +81,32 @@ let mkDate t =
     (weekday t.Unix.tm_wday) (month t.Unix.tm_mon) t.Unix.tm_mday (1900 + t.Unix.tm_year)
     t.Unix.tm_hour t.Unix.tm_min t.Unix.tm_sec in
   d
-    
-    
+
+
 (**** Special character ****)
 
 let neqi = function
   | Terminal | Testing -> "<>_R"
   | Pretty_Terminal -> "≠𝓡"
-  | HTML -> "&#8800;<sub>&#8475;</sub>"
+  | HTML -> "&#8800;<sup>?</sup><sub>&#8475;</sub>"
   | Latex -> "\\neq^?_{\\mathcal{R}}"
 
 let eqi = function
   | Terminal | Testing -> "=_R"
   | Pretty_Terminal -> "=𝓡"
-  | HTML -> "&#61;<sub>&#8475;</sub>"
+  | HTML -> "&#61;<sup>?</sup><sub>&#8475;</sub>"
   | Latex -> "=^?_{\\mathcal{R}}"
 
 let neqs = function
   | Terminal | Testing -> "<>"
   | Pretty_Terminal -> "≠"
-  | HTML -> "&#8800;"
+  | HTML -> "&#8800;<sup>?</sup>"
   | Latex -> "\\neq^?"
 
 let eqs = function
   | Terminal | Testing -> "="
   | Pretty_Terminal -> "="
-  | HTML -> "&#61;"
+  | HTML -> "&#61;<sup>?</sup>"
   | Latex -> "=^?"
 
 let eqf = function
@@ -141,7 +142,7 @@ let exists = function
 let vdash = function
   | Terminal | Testing -> "|-"
   | Pretty_Terminal -> "⊢"
-  | HTML -> "&#8866;"
+  | HTML -> "&#8866;<sup>?</sup>"
   | Latex -> "\\vdash^?"
 
 let vee = function

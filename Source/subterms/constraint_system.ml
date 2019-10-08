@@ -82,6 +82,11 @@ exception Bot
 
 (******** Access functions ********)
 
+(* Should only be applied on solved constraint system. *)
+let get_associated_fst_ord_var csys v =
+  variable_of (DF.get_protocol_term csys.df v)
+
+
 let get_vars_Term = get_vars_with_list
 
 let get_names_Term = get_names_with_list
@@ -136,7 +141,63 @@ let get_axioms_with_list csys ax_list =
 
 (******** Scanning *****)
 
+let occurs_in_frame csys v = K.mem_fst_ord_variable v csys.sdf
+
+let occurs_in_frame_full csys v =
+  K.mem_fst_ord_variable v csys.sdf ||
+  Eq.occurs v csys.sub_cons
+
+
 let is_solved csys = Tools.is_solved_DF csys.df
+
+let match_variables_and_names_term f_next t1 t2 =
+  auto_cleanup_matching (fun () ->
+    match_variables_and_names_in_terms t1 t2;
+    f_next ()
+  )
+
+let match_variables_and_names csys1 csys2 =
+  DF.iter2 match_variables_and_names_in_terms csys1.df csys2.df;
+  K.iter_terms2 match_variables_and_names_in_terms csys1.sdf csys2.sdf
+
+let match_variables_and_names_inital f_next csys1 csys2 =
+  Term.auto_cleanup_matching (fun () ->
+    DF.iter2 match_variables_and_names_in_terms csys1.df csys2.df;
+    K.iter_terms2 match_variables_and_names_in_terms csys1.sdf csys2.sdf;
+    UF.match_variables_and_names csys1.uf csys2.uf;
+
+    match_variables_and_names_elt_list (fun () ->
+      Subst.match_variables_and_names (fun () ->
+        Eq.match_variables_and_names (fun () ->
+          Eq.match_variables_and_names f_next csys1.sub_cons csys2.sub_cons
+        ) csys1.eqfst csys2.eqfst
+      ) csys1.i_subst_fst csys2.i_subst_fst
+    ) match_variables_and_names_term csys1.private_channels csys2.private_channels
+  )
+
+let iter_variables_and_terms f_var f_term csys =
+  DF.iter_variables_and_terms f_var f_term csys.df;
+  List.iter f_term csys.private_channels;
+  Eq.iter_variables_and_terms f_var f_term csys.eqfst;
+  K.iter_variables_and_terms f_var f_term csys.sdf;
+  UF.iter_variables_and_terms f_var f_term csys.uf;
+  Subst.iter_variables_and_terms f_var f_term csys.i_subst_fst;
+  Eq.iter_variables_and_terms f_var f_term csys.sub_cons
+
+let get_vars_and_names csys = Term.get_vars_and_names iter_variables_and_terms csys
+
+let map_vars_and_terms f_var f_term csys =
+  { csys with
+    df = DF.map_variables_and_terms f_var f_term csys.df;
+    private_channels = List.rev_map f_term csys.private_channels;
+    eqfst = Eq.map_variables_and_terms f_var f_term csys.eqfst;
+    sdf = K.map_variables_and_terms f_var f_term csys.sdf;
+    uf = UF.map_variables_and_terms f_var f_term csys.uf;
+    i_subst_fst = Subst.map_variables_and_terms f_var f_term csys.i_subst_fst;
+    sub_cons = Eq.map_variables_and_terms f_var f_term csys.sub_cons;
+    history_skeleton = List.map (fun hist -> { hist with diseq = Eq.Mixed.map_variables_and_terms f_var f_term hist.diseq} ) csys.history_skeleton
+  }
+
 
 (******** Display *******)
 
@@ -148,11 +209,8 @@ let id_class_csys =
   in
   f
 
-let display out ?(rho=None) ?(hidden=false) ?(id=0) csys = match out with
+let display out ?(out_ch=stdout) ?(rho=None) ?(tab=0) ?(hidden=false) ?(id_link=0) ?(id=0) csys = match out with
   | HTML ->
-      let str = ref "" in
-      let id_j = id_class_csys () in
-      let id_s = if id = 0 then "" else "_"^(string_of_int id) in
       let style =
         if hidden
         then " style=\"display:none;\""
@@ -162,46 +220,110 @@ let display out ?(rho=None) ?(hidden=false) ?(id=0) csys = match out with
       let display_subst_eq_fst =
         let equations = Subst.equations_of csys.i_subst_fst in
         match equations = [], Eq.is_top csys.eqfst with
-          | true, true -> top Latex
-          | true, false -> Eq.display Latex ~rho:rho Protocol csys.eqfst
-          | false, true -> display_list (fun (x,t) -> Printf.sprintf "%s %s %s" (display Latex ~rho:rho Protocol x) (eqs Latex) (display Latex ~rho:rho Protocol t)) (Printf.sprintf " %s " (wedge Latex)) equations
+          | true, true -> top HTML
+          | true, false -> Eq.display HTML ~rho:rho Protocol csys.eqfst
+          | false, true -> display_list (fun (x,t) -> Printf.sprintf "%s %s %s" (display HTML ~rho:rho Protocol x) (eqs HTML) (display HTML ~rho:rho Protocol t)) (Printf.sprintf " %s " (wedge HTML)) equations
           | _,_ ->
-              (Eq.display Latex ~rho:rho Protocol csys.eqfst)^
-              " "^(wedge Latex)^" "^
-              (display_list (fun (x,t) -> Printf.sprintf "%s %s %s" (display Latex ~rho:rho Protocol x) (eqs Latex) (display Latex ~rho:rho Protocol t)) (Printf.sprintf " %s " (wedge Latex)) equations)
+              (Eq.display HTML ~rho:rho Protocol csys.eqfst)^
+              " "^(wedge HTML)^" "^
+              (display_list (fun (x,t) -> Printf.sprintf "%s %s %s" (display HTML ~rho:rho Protocol x) (eqs HTML) (display HTML ~rho:rho Protocol t)) (Printf.sprintf " %s " (wedge HTML)) equations)
       in
       let display_subst_eq_snd =
         let equations = Subst.equations_of (Subst.compose csys.i_subst_ground_snd  csys.i_subst_snd) in
         match equations = [], Eq.is_top csys.eqsnd with
-          | true, true -> top Latex
-          | true, false -> Eq.display Latex ~rho:rho Recipe csys.eqsnd
-          | false, true -> display_list (fun (x,t) -> Printf.sprintf "%s %s %s" (display Latex ~rho:rho Recipe x) (eqs Latex) (display Latex ~rho:rho Recipe t)) (Printf.sprintf " %s " (wedge Latex)) equations
+          | true, true -> top HTML
+          | true, false -> Eq.display HTML ~rho:rho Recipe csys.eqsnd
+          | false, true -> display_list (fun (x,t) -> Printf.sprintf "%s %s %s" (display HTML ~rho:rho Recipe x) (eqs HTML) (display HTML ~rho:rho Recipe t)) (Printf.sprintf " %s " (wedge HTML)) equations
           | _,_ ->
-              (Eq.display Latex ~rho:rho Recipe csys.eqsnd)^
-              " "^(wedge Latex)^" "^
-              (display_list (fun (x,t) -> Printf.sprintf "%s %s %s" (display Latex ~rho:rho Recipe x) (eqs Latex) (display Latex ~rho:rho Recipe t)) (Printf.sprintf " %s " (wedge Latex)) equations)
+              (Eq.display HTML ~rho:rho Recipe csys.eqsnd)^
+              " "^(wedge HTML)^" "^
+              (display_list (fun (x,t) -> Printf.sprintf "%s %s %s" (display HTML ~rho:rho Recipe x) (eqs HTML) (display HTML ~rho:rho Recipe t)) (Printf.sprintf " %s " (wedge HTML)) equations)
       in
 
-      let link_Phi = Printf.sprintf "<a href=\"javascript:show_single('Phi%d');\">\\(\\Phi%s\\)</a>"  id_j id_s in
-      let link_Df = Printf.sprintf "<a href=\"javascript:show_single('Df%d');\">\\({\\sf D}%s\\)</a>" id_j id_s in
-      let link_Sdf = Printf.sprintf "<a href=\"javascript:show_single('Sdf%d');\">\\({\\sf SDF}%s\\)</a>" id_j id_s in
-      let link_Uf = Printf.sprintf "<a href=\"javascript:show_single('Uf%d');\">\\({\\sf UF}%s\\)</a>" id_j id_s in
-      let link_Eq1 = Printf.sprintf "<a href=\"javascript:show_single('Equn%d');\">\\({\\sf E}^1%s\\)</a>" id_j id_s in
-      let link_Eq2 = Printf.sprintf "<a href=\"javascript:show_single('Eqdeux%d');\">\\({\\sf E}^2%s\\)</a>" id_j id_s in
-      let link_Uni = Printf.sprintf "<a href=\"javascript:show_single('Uni%d');\">\\({\\sf R}%s\\)</a>" id_j id_s in
+      let title_Df,main_df =
+        if DF.empty = csys.df
+        then
+          let title = DF.display HTML ~rho:rho csys.df in
+          title, None
+        else
+          let title = Printf.sprintf "<span class=\"mathsf\">D</span><sub>%d</sub>" id in
+          let main = Printf.sprintf "%s<div class=\"elt_csys\"><span class=\"mathsf\">D</span><sub>%d</sub> = %s</div>\n" (create_tab (tab+1)) id (DF.display HTML ~rho:rho csys.df) in
+          title, Some main
+      in
 
-      str := Printf.sprintf "\\( \\mathcal{C}%s =~(\\)%s, %s, %s, %s, %s, %s, %s\\()\\) &nbsp;&nbsp;&nbsp; <a href=\"javascript:show_class('csys%d');\">All</a>\n"
-        id_s link_Phi link_Df link_Eq1 link_Eq2 link_Sdf link_Uf link_Uni id_j;
+      let title_Sdf,main_Sdf =
+        if K.cardinal csys.sdf = 0
+        then
+          let title = emptyset HTML in
+          title, None
+        else
+          let title = Printf.sprintf "<span class=\"mathsf\">K</span><sub>%d</sub>" id in
+          let main = Printf.sprintf "%s<div class=\"elt_csys\"><span class=\"mathsf\">K</span><sub>%d</sub> = %s</div>\n" (create_tab (tab+1)) id (K.display HTML ~rho:rho csys.sdf) in
+          title, Some main
+      in
 
-      str := Printf.sprintf "%s            <div class=\"csys\">\n" !str;
-      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Df%d\" class=\"csys%d\"%s>\\({\\sf D}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (DF.display Latex ~rho:rho csys.df);
-      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Equn%d\" class=\"csys%d\"%s>\\({\\sf E}^1%s = %s\\)</div></div>\n" !str id_j id_j style id_s display_subst_eq_fst;
-      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Eqdeux%d\" class=\"csys%d\"%s>\\({\\sf E}^2%s = %s\\)</div></div>\n" !str id_j id_j style id_s display_subst_eq_snd;
-      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Sdf%d\" class=\"csys%d\"%s>\\({\\sf SDF}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (K.display Latex ~rho:rho csys.sdf);
-      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Uf%d\" class=\"csys%d\"%s>\\({\\sf UF}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (UF.display Latex ~rho:rho csys.uf);
-      str := Printf.sprintf "%s              <div class=\"elt_csys\"><div id=\"Uni%d\" class=\"csys%d\"%s>\\({\\sf R}%s = %s\\)</div></div>\n" !str id_j id_j style id_s (Eq.display Latex ~rho:rho Protocol csys.sub_cons);
+      let title_Uf, main_Uf =
+        if UF.empty = csys.uf
+        then emptyset HTML, None
+        else
+          let title = Printf.sprintf "<span class=\"mathsf\">UF</span><sub>%d</sub>" id in
+          let main = Printf.sprintf "%s<div class=\"elt_csys\"><span class=\"mathsf\">UF</span><sub>%d</sub> = %s</div>\n" (create_tab (tab+1)) id (UF.display HTML ~rho:rho csys.uf) in
+          title, Some main
+      in
 
-      Printf.sprintf "%s            </div>\n" !str
+      let title_Eq1, main_Eq1 =
+        let equations = Subst.equations_of csys.i_subst_fst in
+        if Eq.is_top csys.eqfst && equations = []
+        then display_subst_eq_fst, None
+        else
+          let title = Printf.sprintf "<span class=\"mathsf\">E</span><sup>1</sup><sub>%d</sub>" id in
+          let main = Printf.sprintf "%s<div class=\"elt_csys\"><span class=\"mathsf\">E</span><sup>1</sup><sub>%d</sub> = %s</div>\n" (create_tab (tab+1)) id display_subst_eq_fst in
+          title, Some main
+      in
+
+      let title_Eq2, main_Eq2 =
+        let equations = Subst.equations_of (Subst.compose csys.i_subst_ground_snd  csys.i_subst_snd) in
+        if Eq.is_top csys.eqsnd && equations = []
+        then display_subst_eq_snd, None
+        else
+          let title = Printf.sprintf "<span class=\"mathsf\">E</span><sup>2</sup><sub>%d</sub>" id in
+          let main = Printf.sprintf "%s<div class=\"elt_csys\"><span class=\"mathsf\">E</span><sup>2</sup><sub>%d</sub> = %s</div>\n" (create_tab (tab+1)) id display_subst_eq_snd in
+          title, Some main
+      in
+
+      let title_Uni, main_Uni =
+        if Eq.is_top csys.sub_cons
+        then (Eq.display HTML ~rho:rho Protocol csys.sub_cons), None
+        else
+          let title = Printf.sprintf "<span class=\"mathsf\">E</span><sub>%d</sub>" id in
+          let main = Printf.sprintf "%s<div class=\"elt_csys\"><span class=\"mathsf\">R</span><sub>%d</sub> = %s</div>\n" (create_tab (tab+1)) id (Eq.display HTML ~rho:rho Protocol csys.sub_cons) in
+          title, Some main
+      in
+
+      let with_str =
+        if main_df <> None || main_Sdf <> None || main_Uf <> None || main_Eq1 <> None || main_Eq2 <> None || main_Uni <> None
+        then " with"
+        else ""
+      in
+
+      Printf.fprintf out_ch "%s<div class=\"csys\" id=\"csys%d\"%s><span class=\"mathcal\">C</span><sub>%d</sub> = (%s,%s,%s,%s,%s,%s)%s\n"
+        (create_tab tab) id_link style id
+        title_Df title_Eq1 title_Eq2 title_Sdf title_Uf title_Uni
+        with_str;
+
+      let display_main = function
+        | None -> ()
+        | Some str -> Printf.fprintf out_ch "%s" str
+      in
+
+      display_main main_df;
+      display_main main_Eq1;
+      display_main main_Eq2;
+      display_main main_Sdf;
+      display_main main_Uf;
+      display_main main_Uni;
+
+      Printf.fprintf out_ch "%s</div>" (create_tab tab)
   | _ -> Config.internal_error "[constraint_system.ml >> display] This display mode is not implemented yet."
 
 (********* Generators *********)
@@ -1253,6 +1375,20 @@ module Set = struct
 
     List.hd csys_set
 
+  let of_list l_csys = l_csys
+
+  let find f csys_set = List.find_opt f csys_set
+
+  let find_first f csys_set =
+    let rec explore acc = function
+      | [] -> raise Not_found
+      | csys::q ->
+          if f csys
+          then csys, (List.rev_append acc q)
+          else explore (csys::acc) q
+    in
+    explore [] csys_set
+
   let elements csys_set = csys_set
 
   let find_representative csys_set predicate =
@@ -1296,16 +1432,60 @@ module Set = struct
 
   let iter f csys_set = List.iter f csys_set
 
-  let display_initial id size =
+  type 'a compressed_data =
+    {
+      original : 'a;
+      equal_modulo : ('a * (fst_ord, name) Variable.Renaming.t * Name.Renaming.t) list
+    }
+
+  let rec compress_one f_next csys vars names data prev = function
+    | [] -> f_next prev { csys with additional_data = data }
+    | csys' :: q ->
+        let result = ref None in
+        begin
+          try
+            match_variables_and_names_inital (fun () ->
+              let v_rho = Variable.Renaming.from_linked_vars vars in
+              let n_rho = Name.Renaming.from_linked_names names in
+              result := Some (v_rho,n_rho)
+            ) csys csys'
+          with No_Match -> ()
+        end;
+        match !result with
+          | None -> compress_one f_next csys vars names data (csys'::prev) q
+          | Some (v_rho,n_rho) ->
+              compress_one f_next csys vars names { data with equal_modulo = (csys'.additional_data,v_rho,n_rho)::data.equal_modulo } prev q
+
+  let rec compress_list f_next prev = function
+    | [] -> f_next prev
+    | csys :: q ->
+        let (vars,names) = get_vars_and_names csys in
+
+        compress_one (fun q' csys' ->
+          compress_list f_next (csys'::prev) q'
+        ) csys vars names { original = csys.additional_data; equal_modulo = [] } [] q
+
+  let compress_with_equal_modulo_renaming csys_set =
+    compress_list (fun csys_set' -> csys_set') [] csys_set
+
+  let decompress_with_equal_modulo_renaming (csys_set:'a compressed_data t) =
+    List.fold_left (fun accu csys ->
+      let orig_csys = { csys with additional_data = csys.additional_data.original } in
+      List.fold_left (fun accu' ((data:'a),v_rho,n_rho) ->
+        let csys' = Term.apply_both_renamings v_rho n_rho map_vars_and_terms csys in
+        { csys' with additional_data = data }::accu'
+      ) (orig_csys::accu) csys.additional_data.equal_modulo
+    ) [] csys_set
+
+  (*let display_initial id size =
 
     let rec go_through = function
       | 0 -> Printf.sprintf "\\mathcal{C}_%d" id
       | k -> Printf.sprintf "%s, \\mathcal{C}_%d" (go_through (k-1)) (k+id)
     in
-    go_through (size-1)
+    go_through (size-1)*)
 
-  let display out ?(rho=None) ?(id=1) csys_set = match out with
-    | Testing -> Printf.sprintf "{ %s }" (display_list (fun csys -> display Testing ~rho:rho csys) ", " csys_set)
+  (*let display out ?(rho=None) ?(id=1) csys_set = match out with
     | HTML ->
         if csys_set = []
         then Printf.sprintf "\\(%s\\)" (emptyset Latex)
@@ -1321,7 +1501,7 @@ module Set = struct
 
             Printf.sprintf "%s            </ul>\n" !str;
           end
-    | _ -> Config.internal_error "[constraint_system.ml >> display] This display mode is not implemented yet."
+    | _ -> Config.internal_error "[constraint_system.ml >> display] This display mode is not implemented yet."*)
 end
 
 (*************************************
@@ -3232,4 +3412,112 @@ module Rule = struct
       sat (sat_disequation (normalisation_split_deduction_axiom (
         normalisation_deduction_consequence (rewrite (equality_constructor (complete_equality_constructor_IK f_continuation)))
       )))
+
+  let apply_rules_after_input_with_compression exists_private (f_continuation: 'a Set.t -> (unit -> unit) -> unit) (csys_set: 'a Set.t) f_next =
+    if List.length csys_set >= 15
+    then
+      begin
+        (*let (csys_set':(int * 'a) Set.t) = List.mapi (fun i csys -> { csys with additional_data = (i+1,csys.additional_data) }) csys_set in*)
+        let compressed_csys_set = Set.compress_with_equal_modulo_renaming csys_set in
+        let decompression_before_continuation csys_set f_next =
+          f_continuation (Set.decompress_with_equal_modulo_renaming csys_set) f_next
+        in
+        (*let nb_son = ref [] in
+        let special_continuation csys_set f_next =
+          nb_son := (List.map (fun csys -> fst csys.additional_data ) csys_set):: !nb_son;
+          f_next ()
+        in
+        let nb_son_compress = ref [] in
+        let special_continuation_compress csys_set f_next =
+          nb_son_compress := (List.map (fun csys -> fst csys.additional_data.Set.original ) csys_set):: !nb_son_compress;
+          f_next ()
+        in
+        *)
+        let execute csys f_cont f_next =
+          if exists_private
+          then sat (sat_private (sat_disequation f_cont)) csys f_next
+          else sat (sat_disequation f_cont) csys f_next
+        in
+        (*
+        execute csys_set' special_continuation (fun () -> ());
+        execute compressed_csys_set special_continuation_compress (fun () -> ());
+
+        if !nb_son <> !nb_son_compress
+        then
+          begin
+            Printf.printf "----- Nb of csys in input:%d \n" (List.length csys_set');
+            Printf.printf "Nb of compressed csys :%d \n" (List.length compressed_csys_set);
+            let assoc =
+              Display.display_list (fun csys ->
+                let (origin_i,_) = csys.additional_data.Set.original in
+                Printf.sprintf "%d --> \n%s"
+                  origin_i
+                  (Display.display_list (fun ((i,_),v_rho,n_rho) ->
+                    Printf.sprintf "   * Id = %d / v_rho = %s / n_rho = %s" i (Variable.Renaming.display Terminal Protocol v_rho) (Name.Renaming.display Terminal n_rho)) "\n " csys.additional_data.Set.equal_modulo)
+              ) ";\n" compressed_csys_set
+            in
+            Printf.printf "Association :%s\n" assoc;
+            Printf.printf "Node sons, Normal execution: %s\n" (Display.display_list (fun l ->
+                Printf.sprintf "[ %s ]" (Display.display_list string_of_int "; " l)) "; " !nb_son);
+            Printf.printf "Node sons, compressed execution: %s\n" (Display.display_list (fun l ->
+                Printf.sprintf "[ %s ]" (Display.display_list string_of_int "; " l)) "; " !nb_son_compress);
+                Printf.printf "The initial set of constraint system: %s\n" (Set.display HTML csys_set);
+          end;
+          *)
+        execute compressed_csys_set decompression_before_continuation f_next
+        (*apply_rules_after_input exists_private f_continuation csys_set f_next*)
+      end
+    else apply_rules_after_input exists_private f_continuation csys_set f_next
+
+  let apply_rules_after_output_with_compression exists_private (f_continuation: 'a Set.t -> (unit -> unit) -> unit) (csys_set: 'a Set.t) f_next =
+    if List.length csys_set >= 15
+    then
+      begin
+        let compressed_csys_set = Set.compress_with_equal_modulo_renaming csys_set in
+        let decompression_before_continuation csys_set f_next =
+          f_continuation (Set.decompress_with_equal_modulo_renaming csys_set) f_next
+        in
+        (*let nb_son = ref [] in
+        let special_continuation csys f_next =
+          nb_son := (List.length csys):: !nb_son;
+          f_next ()
+        in
+        let nb_son_compress = ref [] in
+        let special_continuation_compress csys f_next =
+          nb_son_compress := (List.length (Set.decompress_with_equal_modulo_renaming csys)) :: !nb_son_compress;
+          f_next ()
+        in
+        *)
+        let execute csys f_cont f_next =
+          if exists_private
+          then
+            sat (sat_private (sat_disequation (normalisation_split_deduction_axiom (
+              normalisation_deduction_consequence (rewrite (equality_constructor (complete_equality_constructor_IK f_cont)))
+            )))) csys f_next
+          else
+            sat (sat_disequation (normalisation_split_deduction_axiom (
+              normalisation_deduction_consequence (rewrite (equality_constructor (complete_equality_constructor_IK f_cont)))
+            ))) csys f_next
+        in
+        (*
+        execute csys_set special_continuation (fun () -> ());
+        execute compressed_csys_set special_continuation_compress (fun () -> ());
+        assert(!nb_son = !nb_son_compress);*)
+
+        execute compressed_csys_set decompression_before_continuation f_next
+      end
+    else apply_rules_after_output exists_private f_continuation csys_set f_next
+
 end
+
+(* For ground processes, i.e. : the constraint system only represent a frame.
+   We assume that the knowledge base of the constraint system have been saturated *)
+let is_term_deducible csys t =
+  if is_function t && Symbol.get_arity (root t) = 0 && Symbol.is_public (root t)
+  then true
+  else
+    let simple_csys = simple_of_private csys t in
+
+    match one_mgs simple_csys with
+      | None -> false
+      | Some _ -> true

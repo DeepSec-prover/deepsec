@@ -1,3 +1,4 @@
+(* reimplementation and extension of the module List *)
 module List = struct
 
   include List
@@ -15,21 +16,84 @@ module List = struct
     find []
 
   (* overwriting some functions with tail-recursive versions *)
-  let fold_right f l a = fold_left (fun x a -> f a x) a (List.rev l)
+  let rec fold_right ?f_cont:(k=fun x->x) f l a =
+    match l with
+    | [] -> k a
+    | h :: t -> fold_right f t a ~f_cont:(fun res -> k (f h res))
+
+  let remove f l =
+    let rec explore prev = function
+      | [] -> raise Not_found
+      | t::q when f t -> rev_append prev q
+      | t::q -> explore (t::prev) q
+    in
+    explore [] l
+
   let map f l = fold_right (fun x ac -> f x :: ac) l []
   let (@) l1 l2 = fold_right (fun a ac -> a :: ac) l1 l2
   (* fold_left with arguments in the same order as fold_right *)
   let foldl f l a = fold_left (fun a x -> f x a) a l
+
+  (* rev_map + filter (on the transformed elements) *)
+  let map_if pred f l =
+    let rec map_filter ac pred f l = match l with
+      | [] -> ac
+      | p :: t ->
+        let elt = f p in
+        if pred elt then map_filter (elt::ac) pred f t
+        else map_filter ac pred f t in
+    map_filter [] pred f l
+
+  (* rev_map + filter (on the transformed elements, based on whether the
+  result of the transformation is None or not) *)
+  let map_if_opt f l =
+    List.fold_left (fun ac x ->
+      match f x with
+      | None -> ac
+      | Some y -> y :: ac
+    ) [] l
+
+  (* removes all elements of a list verifying a given predicate, and returns
+  one such element (if any). The ordering is not preserved. *)
+  let find_and_remove (f:'a->bool) (l:'a list) : 'a option * 'a list =
+    List.fold_left (fun (elt,accu) x ->
+      if elt = None && f x then (Some x,accu) else (elt,x::accu)
+    ) (None,[]) l
 
   (* finder in list *)
   let rec assoc_opt (e:'a) (l:('a*'b) list) : 'b option =
     match l with
     | [] -> None
     | (f,g) :: p -> if e = f then Some g else assoc_opt e p
+
+  (* a variant of the iterators where the remainder of the list can be taken
+  as an argument of the iterated function *)
+  let fold_left_with_memo (f:'a->'b->'b list->'b list->'a) (x:'a) (l:'b list) : 'a =
+    let rec browse memo ac l =
+      match l with
+      | [] -> ac
+      | h :: t -> browse (h::memo) (f ac h memo t) t in
+    browse [] x l
+
+  let iter_with_memo (f:'a->'a list->'a list->unit) (l:'a list) : unit =
+    fold_left_with_memo (fun () -> f) () l
+
+  (* applies fold left while a given predicate is satisfied *)
+  let rec fold_left_while (pred:'b->bool) (f:'a->'b->'a) (accu:'a) (l:'b list) : 'a =
+    match l with
+    | [] -> accu
+    | h :: t ->
+      if pred h then fold_left_while pred f (f accu h) t
+      else accu
+
+  (* puts the elements of a list that verify a predicate in head *)
+  let filter_in_head (pred:'a->bool) (l:'a list) : 'a list =
+    let (yes,no) = partition_unordered pred l in
+    List.rev_append yes no
 end
 
-let flip (f:'a->'b->'c) : 'b->'a->'c = fun x y -> f y x
 
+(* reimplementation and extension of the module Map *)
 module Map = struct
   (**************************************************************************)
   (*                                                                        *)
@@ -72,7 +136,7 @@ module Map = struct
     val singleton: key -> 'a -> 'a t
     val remove: key -> 'a t -> 'a t
     val remove_exception: key -> 'a t -> 'a * 'a t
-
+    val remove2: ('a -> unit) -> key -> 'a t
     val add_or_remove : key -> 'a -> ('a -> bool) -> 'a t -> 'a t
 
     val merge:
@@ -81,6 +145,7 @@ module Map = struct
     val compare: ('a -> 'a -> int) -> 'a t -> 'a t -> int
     val equal: ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
     val iter: (key -> 'a -> unit) -> 'a t -> unit
+    val iter2: (key -> 'a -> 'a -> unit) -> 'a t -> 'a t -> unit
     val fold: (key -> 'a -> 'b -> 'b) -> 'a t -> 'b -> 'b
     val fold_right : ('b  -> 'a -> 'b) -> 'b -> 'a t -> 'b
     val tail_iter : ('a -> (unit -> unit) -> unit) -> 'a t -> (unit -> unit) -> unit
@@ -105,6 +170,8 @@ module Map = struct
     val find_last: (key -> bool) -> 'a t -> key * 'a
     val find_last_opt: (key -> bool) -> 'a t -> (key * 'a) option
     val find_and_replace : (key -> 'a -> bool) -> ('a -> 'a) -> 'a t -> ('a * 'a t) option
+
+    val replace : key -> ('a -> 'a) -> 'a t -> 'a t
     val map: ('a -> 'b) -> 'a t -> 'b t
     val mapi: (key -> 'a -> 'b) -> 'a t -> 'b t
     val search : ('a -> bool) -> 'a t -> 'a
@@ -204,7 +271,7 @@ module Map = struct
       | Empty -> raise Not_found
       | Node {l; v; d; r; h} ->
           let c = Ord.compare x v in
-          if c = 0 then Node {l; v; d = f d; r; h}
+          if c = 0 then Node {l; v = x; d = f d; r; h}
           else if c < 0
           then Node {l = replace x f l; v; d; r; h}
           else Node {l; v; d; r = replace x f r; h}
@@ -290,7 +357,7 @@ module Map = struct
           else find_opt x (if c < 0 then l else r)
 
     let rec find_and_replace p f = function
-      | Empty -> None
+      | Empty -> raise Not_found
       | Node {l; v; d; r; h } ->
           if p v d
           then Some(d,Node { l; v; d = f d; r; h })
@@ -355,6 +422,17 @@ module Map = struct
           else
             let rr = remove x r in if r == rr then m else bal l v d rr
 
+    let rec remove2 f x = function
+        Empty ->
+          Empty
+      | (Node {l; v; d; r; _} as m) ->
+          let c = Ord.compare x v in
+          if c = 0 then (f d; merge l r)
+          else if c < 0 then
+            let ll = remove2 f x l in if l == ll then m else bal ll v d r
+          else
+            let rr = remove2 f x r in if r == rr then m else bal l v d rr
+
     let rec add_or_remove x data f = function
       | Empty ->
           Node{l=Empty; v=x; d=data; r=Empty; h=1}
@@ -408,6 +486,12 @@ module Map = struct
         Empty -> ()
       | Node {l; v; d; r; _} ->
           iter f l; f v d; iter f r
+
+    let rec iter2 f m1 m2 = match m1, m2 with
+        Empty,Empty -> ()
+      | Node n1, Node n2 ->
+          iter2 f n1.l n2.l; f n1.d n2.d; iter2 f n1.r n2.r
+      | _ -> raise (Invalid_argument "[extension.ml >> Map.iter2] The two maps should have the same keys")
 
     let rec map f = function
         Empty ->
@@ -574,6 +658,16 @@ module Map = struct
           then concat ll rr
           else join ll v dd rr
 
+    let rec map_filter f = function
+      | Empty -> Empty
+      | Node {l; v; d; r; _} ->
+        let ll = map_filter f l in
+        let rr = map_filter f r in
+        match f v d with
+        | None -> concat ll rr
+        | Some dd -> join ll v dd rr
+
+
     let rec partition p = function
         Empty -> (Empty, Empty)
       | Node {l; v; d; r; _} ->
@@ -658,6 +752,7 @@ module Map = struct
 end
 
 
+(* reimplementation and extension of the module Set *)
 module Set = struct
   (**************************************************************************)
   (*                                                                        *)
@@ -1234,4 +1329,77 @@ module Set = struct
       | Node{l;v;r;_} -> iter (f v) l; iter (f v) r
 
   end
+end
+
+
+(* sets modelled as maps with implicit integer keys. Useful on types where the comparison function is not available *)
+module IndexedSet = struct
+  module type S = sig
+    type t
+    type elt
+    val empty : t (* creates an empty data structure. *)
+    val is_empty : t -> bool (* checks the emptiness of the table *)
+    val choose : t -> elt (* returns an element of the table, and raises Internal_error if it is empty *)
+    val add_new_elt : t -> elt -> t * int (* adds a new element and returns the corresponding fresh index. *)
+    val find : t -> int -> elt (* same as find_opt but raises Internal_error if not found *)
+    val remove : t -> int -> t (* removes an element at a given index *)
+    val replace : t -> int -> elt -> t (* replaces an element at an index *)
+    val map : (int -> elt -> elt) -> t -> t (* applies a function on each element *)
+    val filter : (int -> elt -> bool) -> t -> t (* removes all elements whose index do not satisfy a given predicate *)
+    val map_filter : (int -> elt -> elt option) -> t -> t (* applies map but removes elements if the transformation returns None. *)
+    val iter : (int -> elt -> unit) -> t -> unit (* iterates an operation. NB. This operation should *not* modify the table itself. *)
+    (* val copy : t -> t (* creates a static copy of the table *) *)
+    val elements : (int -> elt -> 'a) -> t -> 'a list (* computes the list of binders (index,element) of the table and stores them in a list, after applying a transformation to them. For example, elements (fun x _ -> x) set returns the list of indexes of set. *)
+  end
+
+  module Make(O:sig type elt end) : S with type elt = O.elt = struct
+    type index = int
+    type elt = O.elt
+
+    module M = Map.Make(struct type t = index let compare = compare end)
+    type t = elt M.t * index
+    let empty : t = M.empty, 0
+    let is_empty (set,_) = M.is_empty set
+    let choose (set,_) = snd (M.choose set)
+    let add_new_elt (set,ind) x = (M.add ind x set,ind+1),ind
+    let replace (set,im) i x =  (M.replace i (fun _ -> x) set,im)
+    let find_opt (set,_) i = M.find_opt i set
+    let find set i =
+      match find_opt set i with
+      | None ->
+        Config.internal_error (Printf.sprintf "[equivalence_session.ml >> IndexedSet.find] Constraint system %d not found in table." i)
+      | Some x -> x
+    let remove (set,im) i = (M.remove i set,im)
+    let map f (set,i) = (M.mapi f set,i)
+    let filter f (set,im) =  (M.filter f set,im)
+    let map_filter f (set,i) = M.map_filter f set,i
+    let iter f (set,_) = M.iter f set
+    let elements f (set,_) =
+      M.fold (fun index elt accu -> f index elt::accu) set []
+  end
+end
+
+
+(* functional loops over integers *)
+module Func = struct
+  let rec loop f x i n = if i > n then x else loop f (f i x) (i+1) n
+  let rec downloop f x i n = if i < n then x else downloop f (f i x) (i-1) n
+  let iter f i n = loop (fun i () -> f i) () i n
+  let downiter f i n = downloop (fun i () -> f i) () i n
+  let rec find f i n =
+    if i > n then raise Not_found
+    else if f i then i
+    else find f (i+1) n
+  let rec downfind f i n =
+    if i < n then raise Not_found
+    else if f i then i
+    else downfind f (i-1) n
+  let rec find_opt f i n =
+    if i > n then None
+    else if f i then Some i
+    else find_opt f (i+1) n
+  let rec downfind_opt f i n =
+    if i < n then None
+    else if f i then Some i
+    else downfind_opt f (i-1) n
 end

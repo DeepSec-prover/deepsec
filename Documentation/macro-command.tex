@@ -1,3 +1,47 @@
+% If needed, Latex macros and packages used in ocamldoc documentation can
+% be declared here
+
+
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{mathtools}
+\usepackage{stmaryrd,amsthm}
+
+\usepackage{thmtools}
+\usepackage{thm-restate}
+
+\usepackage{xr}
+\usepackage{authblk}
+
+\usepackage{multirow}
+\usepackage[ruled,vlined]{algorithm2e}
+
+\usepackage{tikz}
+\usetikzlibrary{arrows}
+\usetikzlibrary{decorations.pathmorphing}
+
+\usepackage[inline]{enumitem}
+
+\usepackage{hyperref}
+
+\usepackage{ocamldoc}
+\usepackage{xspace}
+
+\usepackage{seqsplit}
+
+%%
+%%% Macro
+%%
+
+\newcommand{\paper}{\cite{CKR-report}}
+\newcommand{\lowdebug}{\textbf{[Debugging]}}
+\newcommand{\highdebug}{\textbf{[Debugging]}}
+
+\externaldocument[CKR17-]{paper}
+
+\newcommand{\citepaper}[2]{\cite[#1~\ref{CKR17-#2}]{CKR-report}}
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Manual  Counter that can be referenced
 %%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -27,54 +71,6 @@
   \end{picture}%
 }
 \makeatother
-
-
-
-\RequirePackage{mdframed}
-\newmdenv[
-  leftmargin = 3pt,
-  innerleftmargin = 8pt,
-  innertopmargin = 0pt,
-  innerbottommargin = 0pt,
-  innerrightmargin = 0pt,
-  rightmargin = 0pt,
-  linewidth = 0.6pt,
-  topline = false,
-  rightline = false,
-  bottomline = false,
-  linecolor=lightgray
-  ]{leftbar}
-
-
-%%
-%%% MODIFICATION OF THE PROOF ENVIRONEMENT (COMMENT TO GET BACK TO USUAL)
-%%
-
-\makeatletter
-\renewenvironment{proof}[1][\proofname]{\begin{leftbar}\par
-  \pushQED{\qed}%
-  \normalfont \topsep6\p@\@plus6\p@\relax
-  \trivlist
-  \item[%
-    \hskip\labelsep
-    \normalfont\itshape % was \itshape
-    #1%
-    \@addpunct{.}% remove this if you don't want punctuation
-  ]\ignorespaces
-}{%
-  \popQED\endtrivlist\@endpefalse
-  \end{leftbar}
-}
-\let\qed\relax % avoid a warning
-\DeclareRobustCommand{\qed}{%
-  \ifmmode \mathqed
-  \else
-    \leavevmode\unskip\penalty\@M\hbox{}\nobreak\hfill% was \hfill
-    \hbox{\qedsymbol}%
-  \fi
-}
-\makeatother
-
 
 
 
