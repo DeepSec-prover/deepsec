@@ -41,17 +41,186 @@ let json_process_of_process proc =
 
   explore 0 proc
 
-(*** Translation to process ***)
+(*** Translation from query_result ***)
 
-let process_of_json_process proc =
+type setting_query =
+  {
+    setting_special_all_p : (symbol * (symbol * int) list) list;
+    setting_symbol : Symbol.setting;
+    setting_variable : int;
+    setting_name : int
+  }
 
-  let add_pos pos_to_add (id,args) = (id,args@pos_to_add) in
+let update_setting_from_variable set_ref (v,_) =
+  set_ref := { !set_ref with setting_variable = max v.index !set_ref.setting_variable }
+
+let update_setting_from_name set_ref (n,_) =
+  set_ref := { !set_ref with setting_name = max n.index_n !set_ref.setting_name }
+
+let verify_projection x args = List.exists (fun t -> Term.is_equal t (Var x)) args
+
+let get_projection x args =
+  let rec explore n = function
+    | (Var y)::_ when x == y -> n
+    | (Var _)::q -> explore (n+1) q
+    | _ -> Config.internal_error "[interface.ml >> get_projection] Unexpected case."
+  in
+  explore 1 args
+
+let update_setting_from_symbol set_ref (f,_) = match f.cat with
+  | Tuple ->
+      let setting = !set_ref.setting_symbol in
+      if not (List.memq f setting.Symbol.all_t)
+      then
+        begin
+          let setting' =
+            { setting with
+              Symbol.all_c = f :: setting.Symbol.all_c;
+              Symbol.all_t = f :: setting.Symbol.all_t;
+              Symbol.nb_c = setting.Symbol.nb_c + 1;
+              Symbol.nb_symb = setting.Symbol.nb_symb + 1
+            }
+          in
+          set_ref := { !set_ref with setting_symbol = setting' }
+        end
+  | Constructor ->
+      let setting = !set_ref.setting_symbol in
+      if not (List.memq f setting.Symbol.all_c)
+      then
+        begin
+          let setting' =
+            { setting with
+              Symbol.all_c = f :: setting.Symbol.all_c;
+              Symbol.nb_c = setting.Symbol.nb_c + 1;
+              Symbol.nb_symb = setting.Symbol.nb_symb + 1
+            }
+          in
+          set_ref := { !set_ref with setting_symbol = setting' }
+        end
+  | Destructor [([Func(f_tuple,args)],Var x)] when f.cat = Tuple && verify_projection x args ->
+      (* We know that [f] is a projection of [f_tuple] *)
+      let i = get_projection x args in
+
+      let rec add_in_proj = function
+        | [] -> [f,i]
+        | (f',i')::q when i' = i -> Config.internal_error "[interface.ml >> update_setting_from_symbol] Should not have already been registered."
+        | (f',i')::q when i' < i -> (f',i')::(add_in_proj q)
+        | projs -> (f,i)::projs
+      in
+
+      let rec add_in_all_p = function
+        | [] -> [f_tuple,[(f,i)]]
+        | (f_tuple',projs)::q when f_tuple' == f_tuple ->
+            (f_tuple',add_in_proj projs)::q
+        | t::q -> t::(add_in_all_p q)
+      in
+
+      let setting = !set_ref.setting_symbol in
+      let setting' = { setting with Symbol.nb_symb = setting.Symbol.nb_symb + 1 } in
+      set_ref :=
+        { !set_ref with
+          setting_symbol = setting';
+          setting_special_all_p = add_in_all_p !set_ref.setting_special_all_p
+        }
+  | Destructor rw_rules ->
+      let setting = !set_ref.setting_symbol in
+      if not (List.memq f setting.Symbol.all_d)
+      then
+        begin
+          let setting' =
+            { setting with
+              Symbol.all_d = f :: setting.Symbol.all_d;
+              Symbol.nb_d = setting.Symbol.nb_d + 1;
+              Symbol.nb_symb = setting.Symbol.nb_symb + 1
+            }
+          in
+          set_ref := { !set_ref with setting_symbol = setting' }
+        end
+
+let rec apply_renaming = function
+  | Var v ->
+      begin match v.link with
+        | VLink v' -> Var v'
+        | _ -> Config.internal_error "[interface.ml >> apply_renaming] Unexpected link"
+      end
+  | Name n ->
+      begin match n.Types.link_n with
+        | NLink n' -> Name n'
+        | _ -> Config.internal_error "[interface.ml >> apply_renaming] Unexpected link (2)"
+      end
+  | Func(f,args) -> Func(f,List.map apply_renaming args)
+
+let rec apply_renaming_pat = function
+  | PatVar v ->
+      let v' = Variable.fresh_from v in
+      Variable.link v v';
+      PatVar v'
+  | PatEquality t -> PatEquality (apply_renaming t)
+  | PatTuple(f,args) -> PatTuple(f,List.map apply_renaming_pat args)
+
+let process_of_json_process setting proc =
+
+  let add_pos pos_to_add pos = (pos.js_index,pos.js_args@pos_to_add) in
 
   let rec explore pos_to_add = function
     | JNil -> Nil
-    | JOutput(ch,t,p,pos) -> Output(ch,t,explore pos_to_add p,add_pos pos_to_add pos)
-    
-    | _ ->
+    | JOutput(ch,t,p,pos) ->
+        let ch' = apply_renaming ch in
+        let t' = apply_renaming t in
+        Output(ch',t',explore pos_to_add p,add_pos pos_to_add pos)
+    | JInput(ch,pat,p,pos) ->
+        let ch' = apply_renaming ch in
+        Variable.auto_cleanup_with_reset_notail (fun () ->
+          let pat' = apply_renaming_pat pat in
+          Input(ch',pat',explore pos_to_add p,add_pos pos_to_add pos)
+        )
+    | JIfThenElse(t1,t2,p1,p2,pos) ->
+        IfThenElse(apply_renaming t1, apply_renaming t2, explore pos_to_add p1, explore pos_to_add p2, add_pos pos_to_add pos)
+    | JLet(pat,t,p1,p2,pos) ->
+        let t' = apply_renaming t in
+        let p2' = explore pos_to_add p2 in
+        Variable.auto_cleanup_with_reset_notail (fun () ->
+          let pat' = apply_renaming_pat pat in
+          let p1' = explore pos_to_add p1 in
+          Let(pat',t',p1',p2',add_pos pos_to_add pos)
+        )
+    | JNew(n,p,pos) ->
+        Name.auto_cleanup_with_reset_notail (fun () ->
+          let n' = Name.fresh_from n in
+          Name.link n n';
+          New(n',explore pos_to_add p,add_pos pos_to_add pos)
+        )
+    | JPar p_list -> Par (List.map (explore pos_to_add) p_list)
+    | JBang(mult,p,pos) ->
+        let rec explore_bang = function
+          | 0 -> []
+          | n -> (explore (pos_to_add @ [n]) p)::(explore_bang (n-1))
+        in
+        Bang(explore_bang mult,add_pos pos_to_add pos)
+    | JChoice(p1,p2,pos) ->
+        Choice(explore pos_to_add p1, explore pos_to_add p2, add_pos pos_to_add pos)
+  in
+
+  explore [] proc
+
+(*** Setup signature from query_result ***)
+
+let setup_signature query_result =
+  (* We reset the signature first *)
+  Symbol.empty_signature ();
+  Name.set_up_counter 0;
+  Variable.set_up_counter 0;
+
+  let setting_ref = ref { setting_special_all_p = []; setting_symbol = (Symbol.get_settings ()); setting_variable = 0; setting_name = 0 } in
+  List.iter (update_setting_from_name setting_ref) query_result.association.names;
+  List.iter (update_setting_from_variable setting_ref) query_result.association.variables;
+  List.iter (update_setting_from_symbol setting_ref) query_result.association.symbols;
+
+  let all_p = List.map (fun (f,projs) -> (f,List.map (fun (f_p,_) -> f_p) projs)) !setting_ref.setting_special_all_p in
+  let setting = { !setting_ref.setting_symbol with Symbol.all_p = all_p } in
+  Symbol.set_up_signature setting;
+  Name.set_up_counter !setting_ref.setting_name;
+  Variable.set_up_counter !setting_ref.setting_variable
 
 (*** Instantiate ***)
 

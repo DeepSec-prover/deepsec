@@ -53,6 +53,11 @@ let parse_json_from_file path =
   close_in channel_in;
   json
 
+let parse_json_from_string str =
+  let lexbuf = Lexing.from_string str in
+  Grammar_ui.main Lexer_ui.token lexbuf
+
+
 let copy_file path new_path =
   let channel_in = open_in path in
   let channel_out = open_out new_path in
@@ -319,7 +324,7 @@ let end_query query_result =
 let end_batch batch_result =
   let out_cmd = Batch_ended  batch_result.name_batch in
   send_command (Display_ui.display_json (Display_ui.of_output_command out_cmd))
-
+(*
 let rec execute_batch batch_result =
   Mutex.lock execution_mutex;
 
@@ -368,6 +373,7 @@ let rec execute_batch batch_result =
   in
 
   run_all ()
+*)
 
 (*
 type result =
@@ -627,7 +633,9 @@ let _ =
   then Unix.mkdir !Config.path_database 0o770;
 
   (* Retrieve the mock command *)
-  let in_cmd_json = parse_json_from_file "/Users/vincentcheval/Documents/Recherche/Outils/DeepSec/deepsec_ui/mock-data/command/start_run1.json" in
+  (*let in_cmd_json = parse_json_from_file "/Users/vincentcheval/Documents/Recherche/Outils/DeepSec/deepsec_ui/mock-data/command/start_run1.json" in*)
+  let in_cmd_str = read_line () in
+  let in_cmd_json = parse_json_from_string in_cmd_str in
   let in_cmd = Parsing_functions_ui.input_command_of in_cmd_json in
 
   match in_cmd with
