@@ -22,7 +22,7 @@ type skeleton =
     no_history : bool (* When true, nothing is added to the history. instead the skeleton is removed from the list to check. *)
   }
 
-type stored_sketon =
+type stored_skeleton =
   {
     skeleton : skeleton;
     compatible_rewrite_rules : (term list * term) list
@@ -875,3 +875,25 @@ let rec normalise_pattern = function
   | PatEquality t -> normalise t
   | PatTuple(f,args) -> Func(f,List.map normalise_pattern args)
   | PatVar x -> Var x
+
+
+(***** Skeleton settings *****)
+
+type skeleton_settings =
+  {
+    storage_skeletons : stored_skeleton list;
+    skeletons_index_by_symbol : int list list;
+    storage_skeletons_constructor : skeleton_constructor list
+  }
+
+let get_skeleton_settings () =
+  {
+    storage_skeletons = Array.to_list !storage_skeletons;
+    skeletons_index_by_symbol = Array.to_list !skeletons_index_by_symbol;
+    storage_skeletons_constructor = Array.to_list !storage_skeletons_constructor
+  }
+
+let set_up_skeleton_settings settings =
+  storage_skeletons := Array.of_list settings.storage_skeletons;
+  skeletons_index_by_symbol := Array.of_list settings.skeletons_index_by_symbol;
+  storage_skeletons_constructor := Array.of_list settings.storage_skeletons_constructor

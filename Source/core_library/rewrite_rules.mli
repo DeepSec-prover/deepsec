@@ -53,3 +53,11 @@ exception Not_message
 val normalise : term -> term
 
 val normalise_pattern : pattern -> term
+
+(** {2 Skeleton settings} *)
+
+type skeleton_settings
+
+val get_skeleton_settings : unit -> skeleton_settings
+
+val set_up_skeleton_settings : skeleton_settings -> unit

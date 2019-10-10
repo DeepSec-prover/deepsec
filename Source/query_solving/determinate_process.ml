@@ -1269,6 +1269,9 @@ let create_block label =
     used_axioms = []
   }
 
+let iter_recipe_variable f block =
+  List.iter f block.recipes
+
 (**************************************
 ***            Transition           ***
 ***************************************)

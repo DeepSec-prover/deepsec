@@ -426,6 +426,11 @@ module K = struct
 
   let get_term kb index = kb.data.(index).term
 
+  let instantiate kb =
+    { kb with
+      data = Array.map (fun elt -> { elt with recipe = Recipe.instantiate elt.recipe; term = Term.instantiate elt.term }) kb.data
+    }
+
   (* Iteration on the knowledge base *)
 
   let find_unifier_with_recipe_with_type kb t type_r f_continuation (f_next:unit->unit) =
@@ -838,7 +843,6 @@ module IK = struct
     let cleanup_f () =  List.iter (fun (n,l) -> n.deducible_n <- l) !cleanup_name in
     kb',ikb',id_assoc, cleanup_f
 
-
   let add ikb dfact =
     let index = ikb.index_counter in
     { ikb with
@@ -956,6 +960,11 @@ module IK = struct
           then f_next ()
           else explore ikb.data
         )
+
+  let instantiate ik =
+    { ik with
+      data = List.map (fun elt -> { elt with recipe = Recipe.instantiate elt.recipe; term = Term.instantiate elt.term} ) ik.data
+    }
 
   (* Testing *)
 

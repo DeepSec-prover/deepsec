@@ -41,6 +41,8 @@ let initialise_equivalence_problem init_processes else_branch csys_set =
     initial_processes = init_processes
   }
 
+(*** Generation of attack traces from initial processes ***)
+
 let generate_attack_trace (p1,p2) csys =
   (* We instantiate the variables of csys with attacker name *)
   let df = csys.Constraint_system.deduction_facts in
@@ -51,6 +53,35 @@ let generate_attack_trace (p1,p2) csys =
   if csys.Constraint_system.additional_data.origin_process = Left
   then (true,get_instantiated_trace p1 csys.Constraint_system.additional_data.configuration)
   else (false,get_instantiated_trace p2 csys.Constraint_system.additional_data.configuration)
+
+(*** Import / Export of equivalence problem ***)
+
+let export_equivalence_problem equiv_pbl =
+  let equiv_pbl' = { equiv_pbl with csys_set = { equiv_pbl.csys_set with Constraint_system.set = List.rev_map Constraint_system.instantiate equiv_pbl.csys_set.Constraint_system.set } } in
+
+  let recipe_subst = ref [] in
+
+  List.iter (
+    iter_recipe_variable (fun v ->
+      recipe_subst := (v, Recipe.instantiate (RVar v)) :: !recipe_subst
+    )
+  ) equiv_pbl.complete_blocks;
+
+  begin match equiv_pbl.ongoing_block with
+    | None -> ()
+    | Some b ->
+        iter_recipe_variable (fun v ->
+          recipe_subst := (v, Recipe.instantiate (RVar v)) :: !recipe_subst
+        )
+  end;
+
+  equiv_pbl', !recipe_subst
+
+
+let import_equivalence_problem equiv_bl recipe_subst =
+
+
+(*** Applying the determinate rules ***)
 
 exception Not_Trace_Equivalent of (bool * transition list)
 
@@ -75,6 +106,8 @@ let apply_faulty equiv_pbl (csys_left,symb_left) (csys_right,symb_right) is_left
         raise (Not_Trace_Equivalent (generate_attack_trace equiv_pbl.initial_processes wit_csys_2))
 
 let nb_apply_one_transition_and_rules = ref 0
+
+(*** Main functions ***)
 
 let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
   Config.debug (fun () ->

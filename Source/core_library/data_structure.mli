@@ -120,6 +120,8 @@ module K : sig
 
   val get_term : t -> int -> term
 
+  val instantiate : t -> t
+
   (** [find_unifier_with_recipe kb t ty f_continuation f_next] tries to unify [t] with
       every term of the knowledge base [kb]. When the unification is successul,
       the function [f_continuation is_identity r f_next'] is applied where [is_identity]
@@ -174,6 +176,8 @@ module IK : sig
   val remove : t -> int -> t
 
   val remove_last_entry : t -> t
+
+  val instantiate : t -> t
 
   val find_unifier_with_recipe_with_stop : K.t -> t -> term -> int -> bool ref ->
     (bool -> recipe -> (unit -> unit) -> unit) ->

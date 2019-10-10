@@ -270,9 +270,26 @@ let prepare_for_solving_procedure_closed csys =
     )
   )
 
+(* This function should only be applied on solved constraint system. *)
 let instantiate csys =
-    (** TODO : Need to implement this function *)
-    csys
+  Config.debug (fun () ->
+    DF.iter (fun bfact ->
+      if not (Term.is_variable bfact.bf_term)
+      then Config.internal_error "[constraint_system.ml >> instantiate] All term in the deduction facts should be variables."
+    ) csys.deduction_facts;
+
+    if csys.non_deducible_terms <> []
+    then Config.internal_error "[constraint_system.ml >> instantiate] There should not be any non deducible terms.";
+
+    if csys.unsolved_facts <> UF.empty
+    then Config.internal_error "[constraint_system.ml >> instantiate] All unsolved facts should have been resolved."
+  );
+
+  { csys with
+    knowledge = K.instantiate csys.knowledge;
+    incremented_knowledge = IK.instantiate csys.incremented_knowledge;
+    original_substitution = List.map (fun (v,t) -> (v,Term.instantiate t)) csys.original_substitution
+  }
 
 let display_constraint_system csys =
   let acc = ref "\n-- Constraint system:\n" in
