@@ -18,6 +18,10 @@ val add_axiom_in_block : int -> block -> block
 
 val initial_label : label
 
+(** {3 Access} *)
+
+val get_instantiated_trace : process -> configuration -> transition list
+
 (** {3 Testing} *)
 
 val is_strongly_action_determinate : process -> bool

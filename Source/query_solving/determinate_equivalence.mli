@@ -15,7 +15,7 @@ type symbolic_process =
 
 type equivalence_problem
 
-exception Not_Trace_Equivalent of symbolic_process Constraint_system.t
+exception Not_Trace_Equivalent of (bool * transition list)
 
 val apply_one_transition_and_rules :
   equivalence_problem ->
@@ -23,6 +23,6 @@ val apply_one_transition_and_rules :
   (unit -> unit) ->
   unit
 
-val initialise_equivalence_problem : bool -> symbolic_process Constraint_system.set -> equivalence_problem
+val initialise_equivalence_problem : (process * process) -> bool -> symbolic_process Constraint_system.set -> equivalence_problem
 
 val trace_equivalence : process -> process -> verification_result

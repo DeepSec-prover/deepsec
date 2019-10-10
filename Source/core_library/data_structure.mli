@@ -92,6 +92,8 @@ module DF : sig
 
   val rename_and_instantiate : t -> t
 
+  val iter : (basic_fact -> unit) -> t -> unit
+
   val display : t -> string
 
   val debug : string -> t -> unit

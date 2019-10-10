@@ -558,9 +558,12 @@ module Symbol = struct
     let acc = ref 0 in
 
     let f () =
-      let c = { label_s = (Printf.sprintf "kI_%d" !acc); arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
+      let symb = { label_s = (Printf.sprintf "#n_%d" !acc); arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
       incr acc;
-      c
+      incr accumulator_nb_symb;
+      all_constructors := symb :: !all_constructors;
+      incr number_of_constructors;
+      symb
     in
     f
 

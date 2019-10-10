@@ -184,6 +184,8 @@ module DF = struct
       raise Not_found
     with Found x -> x
 
+  let iter f df =
+    List.iter (fun (_,bfact_l) -> List.iter f bfact_l) df
   (******* Testing *******)
 
   let is_solved (df:t) =
