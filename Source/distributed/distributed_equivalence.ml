@@ -1,30 +1,26 @@
 open Term
-open Process
 
 module EquivJob =
 struct
   type shareddata = unit
 
-  type data_standard =
+  (*type data_standard =
     {
       chosen_semantics : semantics;
-      display_trace : bool;
 
       init_proc1 : Process.process;
       init_proc2 : Process.process;
 
       csys_set : Equivalence.symbolic_process Constraint_system.Set.t;
       frame_size : int
-    }
+    }*)
 
   type data_determinate = {
-    init_conf1 : Process_determinate.configuration;
-    init_conf2 : Process_determinate.configuration;
-
-    equiv_problem : Equivalence_determinate.equivalence_problem
+    equiv_problem : Determinate_equivalence.equivalence_problem;
+    recipe_substitution : (recipe_variable * recipe) list
   }
 
-  type data_session =
+  (*type data_session =
     {
       s_init_conf1 : Process_session.Configuration.t;
       s_init_conf2 : Process_session.Configuration.t;
@@ -32,17 +28,12 @@ struct
       optim_parameters : Equivalence_session.optimisation_parameters;
 
       node : Equivalence_session.PartitionTree.Node.t
-    }
+    }*)
 
   type data_equivalence =
-    | DStandard of data_standard
+    (*| DStandard of data_standard*)
     | DDeterminate of data_determinate
-    | DSession of data_session
-
-  type output_attack =
-    | OStandard of Equivalence.symbolic_process Constraint_system.t * Process.process * Process.process
-    | ODeterminate of Equivalence_determinate.symbolic_process Constraint_system.t * Process_determinate.configuration * Process_determinate.configuration
-    | OSession of Equivalence_session.Symbolic.Process.t * Process_session.Configuration.t * Process_session.Configuration.t
+    (*| DSession of data_session*)
 
   type job =
     {
@@ -61,9 +52,7 @@ struct
       data_equiv : data_equivalence
     }
 
-  type result =
-    | Equivalent
-    | Not_Equivalent of output_attack
+  type result = verification_result
 
   type command =
     | Kill
@@ -71,7 +60,7 @@ struct
 
   let initialise () = ()
 
-  let result_equivalence = ref Equivalent
+  let result_equivalence = ref RTrace_Equivalence None
 
   let evaluation job =
     Variable.set_up_counter job.variable_counter;
@@ -90,6 +79,22 @@ struct
     Data_structure.Tools.setup_stored_constructors job.stored_constructors;
 
     match job.data_equiv with
+      | DDeterminate (data:data_determinate) ->
+          let rec apply_rules equiv_pbl f_next =
+            Determinate_equivalence.apply_one_transition_and_rules equiv_pbl (fun eq_pbl_1 f_next_1 ->
+              apply_rules eq_pbl_1 f_next_1
+            ) f_next
+          in
+
+          begin try
+            Determinate_equivalence.import_equivalence_problem data.equiv_problem data.recipe_substitution;
+            apply_rules data.equiv_problem (fun () -> ());
+            RTrace_Equivalence None
+          with
+            | Determinate_equivalence.Not_Trace_Equivalent attack -> RTrace_Equivalence (Some attack)
+          end
+
+    (* match job.data_equiv with
       | DStandard (data:data_standard) ->
           Config.display_trace := data.display_trace;
           let rec apply_rules csys_set frame_size f_next =
@@ -125,11 +130,14 @@ struct
           with
             | Equivalence_session.Symbolic.Process.Attack_Witness csys ->
               Not_Equivalent (OSession (csys, data.s_init_conf1, data.s_init_conf2))
-          end
+          end*)
 
   let digest result = match result with
-    | Equivalent -> Continue
-    | Not_Equivalent output_attack -> result_equivalence := Not_Equivalent output_attack; Kill
+    | RTrace_Equivalence None
+    | RTrace_Inclusion None
+    | RSession_Inclusion None
+    | RSession_Equivalence None -> Continue
+    | _ -> result_equivalence := result; Kill
 
   type generated_jobs =
     | Jobs of job list
@@ -151,6 +159,24 @@ struct
     Rewrite_rules.setup_stored_skeletons job.stored_skeletons;
     Data_structure.Tools.setup_stored_constructors job.stored_constructors;
 
+    match job.data_equiv with
+      | DDeterminate data ->
+          begin try
+            let job_list = ref [] in
+            Determinate_equivalence.apply_one_transition_and_rules data.equiv_problem
+              (fun equiv_pbl_1 f_next_1 ->
+                let (equiv_pbl_2,recipe_subst) = Determinate_equivalence.export_equivalence_problem equiv_pbl_1 in
+                job_list := { job with data_equiv = DDeterminate { data with equiv_problem = equiv_pbl_2; recipe_substitution = recipe_subst }; variable_counter = Variable.get_counter (); name_counter = Name.get_counter () } :: !job_list;
+                f_next_1 ()
+              )
+              (fun () -> ());
+
+            if !job_list = []
+            then Result (RTrace_Equivalence None)
+            else Jobs !job_list
+          with Determinate_equivalence.Not_Trace_Equivalent attack -> Result (RTrace_Equivalence (Some attack))
+          end
+    (*
     match job.data_equiv with
       | DStandard data ->
           Config.display_trace := data.display_trace;
@@ -207,12 +233,13 @@ struct
         with
         | Equivalence_session.Symbolic.Process.Attack_Witness csys ->
           Result (Not_Equivalent (OSession (csys, data.s_init_conf1, data.s_init_conf2)))
-        end
+        end*)
 end
 
 
 module DistribEquivalence = Distrib.Distrib(EquivJob)
 
+(*
 let trace_equivalence semantics proc1 proc2 =
 
   (*** Initialise skeletons ***)
@@ -293,56 +320,50 @@ let trace_equivalence semantics proc1 proc2 =
     | EquivJob.Equivalent -> Equivalence.Equivalent, proc1, proc2
     | EquivJob.Not_Equivalent (EquivJob.OStandard(csys, init_proc1, init_proc2)) -> ((Equivalence.Not_Equivalent csys), init_proc1, init_proc2)
     | _ -> Config.internal_error "[distributed_equivalence.ml >> trace_equivalence] We should expect an output for standard equivalence."
+*)
 
-let trace_equivalence_determinate conf1 conf2 =
+let trace_equivalence_determinate proc1 proc2 =
 
   (*** Initialise skeletons ***)
 
-  Rewrite_rules.initialise_skeletons ();
-  Data_structure.Tools.initialise_constructor ();
+  Rewrite_rules.initialise_all_skeletons ();
 
   (*** Generate the initial constraint systems ***)
 
+  let proc1' = Process.detect_and_replace_pure_fresh_name proc1 in
+  let proc2' = Process.detect_and_replace_pure_fresh_name proc2 in
+
+  let (conf1,conf2,else_branch) = Determinate_process.generate_initial_configurations proc1' proc2' in
+
   let symb_proc_1 =
     {
-      Equivalence_determinate.origin_process = Equivalence_determinate.Left;
-      Equivalence_determinate.configuration = Process_determinate.clean_inital_configuration conf1;
+      Determinate_equivalence.origin_process = Determinate_equivalence.Left;
+      Determinate_equivalence.configuration = conf1
     }
   and symb_proc_2 =
     {
-      Equivalence_determinate.origin_process = Equivalence_determinate.Right;
-      Equivalence_determinate.configuration = Process_determinate.clean_inital_configuration conf2;
+      Determinate_equivalence.origin_process = Determinate_equivalence.Right;
+      Determinate_equivalence.configuration = conf2
     }
   in
-  let else_branch =
-    Process_determinate.exists_else_branch_initial_configuration symb_proc_1.Equivalence_determinate.configuration ||
-    Process_determinate.exists_else_branch_initial_configuration symb_proc_2.Equivalence_determinate.configuration in
 
-  let comp_conf1, comp_conf2 = Process_determinate.compress_initial_configuration symb_proc_1.Equivalence_determinate.configuration symb_proc_2.Equivalence_determinate.configuration in
-
-  let symb_proc_1' = { symb_proc_1 with Equivalence_determinate.configuration = comp_conf1 }
-  and symb_proc_2' = { symb_proc_2 with Equivalence_determinate.configuration = comp_conf2 } in
-
-  let csys_1 = Constraint_system.empty symb_proc_1' in
-  let csys_2 = Constraint_system.empty symb_proc_2' in
+  let csys_1 = Constraint_system.empty symb_proc_1 in
+  let csys_2 = Constraint_system.empty symb_proc_2 in
 
   (**** Generate the initial set ****)
 
-  let csys_set_1 = Constraint_system.Set.add csys_1 Constraint_system.Set.empty in
-  let csys_set_2 = Constraint_system.Set.add csys_2 csys_set_1 in
+  let csys_set = { Constraint_system.eq_recipe = Formula.R.Top; Constraint_system.set = [csys_1; csys_2] } in
 
   let setting = Symbol.get_settings () in
   let v_counter = Variable.get_counter () in
   let n_counter = Name.get_counter () in
 
-  let equiv_pbl = Equivalence_determinate.initialise_equivalence_problem else_branch csys_set_2 in
+  let equiv_pbl = Determinate_process.initialise_equivalence_problem (proc1,proc2) else_branch csys_set in
 
   let data : EquivJob.data_determinate =
     {
-      EquivJob.init_conf1 = conf1;
-      EquivJob.init_conf2 = conf2;
-
-      EquivJob.equiv_problem = equiv_pbl
+      EquivJob.equiv_problem = equiv_pbl;
+      EquivJob.recipe_substitution = []
     }
   in
 
@@ -379,6 +400,7 @@ let trace_equivalence_determinate conf1 conf2 =
     | EquivJob.Not_Equivalent (EquivJob.ODeterminate (csys, init_proc1, init_proc2)) -> ((Equivalence_determinate.Not_Equivalent csys), init_proc1, init_proc2)
     | _ -> Config.internal_error "[distributed_equivalence.ml >> trace_equivalence_determinate] We should expect an output for determinate equivalence."
 
+(*
 let session (goal:Equivalence_session.goal) (conf1:Process_session.Configuration.t) (conf2:Process_session.Configuration.t) : Equivalence_session.result_analysis * Process_session.Configuration.t * Process_session.Configuration.t =
   let root = Equivalence_session.compute_root goal conf1 conf2 in
   let setting = Symbol.get_settings () in
@@ -420,3 +442,4 @@ let session (goal:Equivalence_session.goal) (conf1:Process_session.Configuration
   | EquivJob.Equivalent -> Equivalence_session.Equivalent, conf1, conf2
   | EquivJob.Not_Equivalent (EquivJob.OSession (csys, init_proc1, init_proc2)) -> ((Equivalence_session.Not_Equivalent csys), init_proc1, init_proc2)
   | _ -> Config.internal_error "[distributed_equivalence.ml >> session_equivalence] We should expect an output for equivalence by session."
+*)

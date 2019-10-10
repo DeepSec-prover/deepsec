@@ -36,8 +36,6 @@ module type TASK =
   end
 
 module Distrib = functor (Task:TASK) ->
-
-
 struct
     type request =
       | Compute of Task.job
@@ -132,12 +130,12 @@ struct
     let minimum_nb_of_jobs = ref 0
 
     let rec replace_job in_ch job acc = function
-      | [] -> Config.internal_error "[distrib.ml] There should be an entry in the list"
+      | [] -> Config.internal_error "[distrib.ml >> replace_job] There should be an entry in the list"
       | (in_ch',_)::q when in_ch = in_ch' -> List.rev_append ((in_ch,job)::q) acc
       | t::q -> replace_job in_ch job (t::acc) q
 
     let rec remove_job in_ch acc = function
-      | [] -> Config.internal_error "[distrib.ml] There should be an entry in the list"
+      | [] -> Config.internal_error "[distrib.ml >> remove_job] There should be an entry in the list"
       | (in_ch',_)::q when in_ch = in_ch' -> List.rev_append q acc
       | t::q -> remove_job in_ch (t::acc) q
 
