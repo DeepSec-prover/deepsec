@@ -72,7 +72,7 @@ let export_equivalence_problem equiv_pbl =
     | Some b ->
         iter_recipe_variable (fun v ->
           recipe_subst := (v, Recipe.instantiate (RVar v)) :: !recipe_subst
-        )
+        ) b
   end;
 
   equiv_pbl', !recipe_subst
