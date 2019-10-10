@@ -47,13 +47,6 @@ check:
 	@printf "\033[1mChecking installation requirements...\033[0m\n"
 	@$(SCRIPTS)check
 
-# documentation
-doc:
-	@printf "\033[1mGenerating documentation...\033[0m\n"
-	ocamlbuild -use-ocamlfind $(PACKAGES) doc.docdir/index.html doc.docdir/doc.tex
-	@./Documentation/finishdoc
-
-
 # removes automatically generated files
 clean:
 	rm -rf _build $(SOURCE)core_library/config.ml $(TEMP) $(EXECUTABLE) worker_deepsec manager_deepsec
