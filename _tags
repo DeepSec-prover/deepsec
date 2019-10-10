@@ -1,2 +1,6 @@
 true: bin_annot, warn(+a-44-e), color(always)
-<Source/*>: include
+<Source/core_library>: include
+<Source/distributed>: include
+<Source/parser>: include
+<Source/subterms>: include
+<Source>: include
