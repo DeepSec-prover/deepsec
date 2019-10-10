@@ -1,171 +1,54 @@
-EXECUTABLE = deepsec
 NAME_PROGRAMME = DeepSec
 VERSION = 1.02
 SOURCE = Source/
-### Compiler
+SCRIPTS = Scripts/
 
-# For bytecode compilation, unset NATIVECODE below or run:
-#  make NATIVECODE="" <target>
-DEBUG=
-PROFIL=
-OCAMLOPT=$(if $(PROFIL),ocamloptp -p -P a,$(if $(DEBUG), ocamlc -g,ocamlopt))
-OCAMLDEP=ocamldep $(if $(DEBUG), ,-native)
-OCAMLDOC=ocamldoc
+PACKAGES = -package str -package unix
+TEMP = *.native *.p.native *.d.byte index.html result
+
+# for profiling or advanced debugging, set the variables below to 1
+PROFILE= # seems broken on OSX 10.9 or later
+ADVDEBUG=
+EXTENSION=$(if $(PROFILE),p.native,$(if $(ADVDEBUG),d.byte,native))
 
 GITCOMMIT = $(shell git rev-parse HEAD)
 GITBRANCH = $(shell git branch | grep \* | cut -d ' ' -f2)
 
+NBLINE = $(find . -name "*.ml" -or -name "*.mli" -or -name "*.mly" -or -name "*.mll" | xargs cat | wc -l)
 
-CMOX= $(if $(DEBUG),cmo,cmx)
-CMXA= $(if $(DEBUG),cma,cmxa)
+# whole compilation
+all:
+	@printf "\033[1mCompilation of DeepSec $(VERSION)\033[0m\n"
+	@printf "\033[1mBuilding sources$(if $(PROFILE), (PROFILE on),$(if $(ADVDEBUG), (ADVDEBUG on),))...\033[0m\n"
+	@make -s config compil
+	@printf "\033[1mNumber of lines in the source code of the program :\033[0m $(NBLINE) \n"
 
-### Compiler options
-INCLUDES_MOD = str.$(CMXA) unix.$(CMXA) threads.$(CMXA)
-INCLUDES = -I $(SOURCE)core_library -I $(SOURCE)query_solving -I $(SOURCE)parser -I $(SOURCE)distributed -I $(SOURCE)interface -I +threads
-# Compiler options specific to OCaml version >= 4
-V4OPTIONS=$(if $(shell $(OCAMLOPT) -version | grep '^4'),-bin-annot)
-OCAMLFLAGS = $(INCLUDES) $(V4OPTIONS) -w +a-44-e $(INCLUDES_MOD)
-
-### Sources
-
-GENERATED_SOURCES_NAME = parser/grammar.ml parser/lexer.ml parser/grammar.mli interface/grammar_ui.ml interface/lexer_ui.ml interface/grammar_ui.mli
-GENERATED_SOURCES = $(GENERATED_SOURCES_NAME:%=$(SOURCE)%)
-
-CORE_ML_NAME = extensions.ml display.ml term.ml formula.ml data_structure.ml rewrite_rules.ml constraint_system.ml process.ml
-CORE_ML = $(CORE_ML_NAME:%.ml=$(SOURCE)core_library/%.ml)
-
-QUERY_SOLVING_ML_NAME = determinate_process.ml determinate_equivalence.ml
-QUERY_SOLVING_ML = $(QUERY_SOLVING_ML_NAME:%.ml=$(SOURCE)query_solving/%.ml)
-
-DISTRIBUTED_ML_NAME = distrib.ml distributed_equivalence.ml
-DISTRIBUTED_ML = $(DISTRIBUTED_ML_NAME:%.ml=$(SOURCE)distributed/%.ml)
-
-INTERFACE_ML_NAME = display_ui.ml interface.ml parsing_functions_ui.ml grammar_ui.ml lexer_ui.ml
-INTERFACE_ML = $(INTERFACE_ML_NAME:%.ml=$(SOURCE)interface/%.ml)
-
-PARSER_ML_NAME = parser_functions.ml grammar.ml lexer.ml
-PARSER_ML = $(PARSER_ML_NAME:%.ml=$(SOURCE)parser/%.ml)
-
-ALL_ML = $(SOURCE)core_library/types.mli $(SOURCE)core_library/config.ml $(CORE_ML) $(QUERY_SOLVING_ML) $(PARSER_ML) $(SOURCE)interface/types_ui.mli $(INTERFACE_ML) $(SOURCE)interface/main_ui.ml $(SOURCE)main.ml
-
- #$(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)main.ml $(SOURCE)distributed/worker.ml $(SOURCE)distributed/manager.ml
-
-#EXE_MAIN_ML = $(SOURCE)core_library/config.ml $(CORE_ML) $(QUERY_SOLVING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)main.ml
-EXE_MAIN_UI_ML = $(SOURCE)core_library/types.mli $(SOURCE)core_library/config.ml $(CORE_ML) $(QUERY_SOLVING_ML) $(PARSER_ML) $(INTERFACE_ML) $(SOURCE)interface/main_ui.ml
-EXE_MAIN_ML = $(SOURCE)core_library/types.mli $(SOURCE)core_library/config.ml $(CORE_ML) $(QUERY_SOLVING_ML) $(PARSER_ML) $(INTERFACE_ML) $(SOURCE)main.ml
-EXE_WORKER_ML = $(SOURCE)core_library/types.mli $(SOURCE)core_library/config.ml $(CORE_ML) $(QUERY_SOLVING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)distributed/worker.ml
-EXE_MANAGER_ML = $(SOURCE)core_library/types.mli $(SOURCE)core_library/config.ml $(CORE_ML) $(QUERY_SOLVING_ML) $(PARSER_ML) $(DISTRIBUTED_ML) $(SOURCE)distributed/manager.ml
-
-ALL_OBJ = $(ALL_ML:.ml=.$(CMOX))
-EXE_MAIN_OBJ = $(EXE_MAIN_ML:.ml=.$(CMOX))
-EXE_MAIN_UI_OBJ = $(EXE_MAIN_UI_ML:.ml=.$(CMOX))
-EXE_WORKER_OBJ = $(EXE_WORKER_ML:.ml=.$(CMOX))
-EXE_MANAGER_OBJ = $(EXE_MANAGER_ML:.ml=.$(CMOX))
-
-.PHONY: clean debug without_debug
-
-
-### Targets
-
-all: .display_obj $(ALL_OBJ)
-	@sed -e 's/GITCOMMIT/$(GITCOMMIT)/g' -e's/VERSION/$(VERSION)/g' -e 's/GITBRANCH/$(GITBRANCH)/g' < Source/core_library/config.ml.in > Source/core_library/config.ml
-	@echo
-	@echo The main executable:
-	@echo
-	$(OCAMLOPT) -o $(EXECUTABLE) $(OCAMLFLAGS) $(EXE_MAIN_OBJ)
-	$(OCAMLOPT) -o deepsec_api $(OCAMLFLAGS) $(EXE_MAIN_UI_OBJ)
-	@echo
-	@echo The executables for distributed worker:
-	@echo
-	#$(OCAMLOPT) -o worker_deepsec $(OCAMLFLAGS) $(EXE_WORKER_OBJ)
-	#$(OCAMLOPT) -o manager_deepsec $(OCAMLFLAGS) $(EXE_MANAGER_OBJ)
-	@echo
-	@grep -q "let debug_activated = false" Source/core_library/config.ml || echo WARNING : Debug mode is activated; echo
-	@grep -q "let test_activated = false" Source/core_library/config.ml || echo WARNING : Testing interface is activated; echo
-	@test -e index.html || cp Source/html_templates/index_init.html index.html
-	@echo ----- Some Statistics -----
-	@echo
-	@echo Number of lines in the source code of the program :
-	@find . -name "*.ml" -or -name "*.mli" -or -name "*.mly" -or -name "*.mll" | xargs cat | wc -l
-	@rm -f .display .display_obj
-
-
-clean:
-	@echo ----- Clean $(NAME_PROGRAMME) -----
-	rm -f $(EXECUTABLE) worker_deepsec manager_deepsec deepsec_api
-	rm -f $(SOURCE)core_library/config.ml
-	rm -f *~ *.cm[ioxt] *.cmti *.o *.annot
-	rm -f */*~ */*.cm[ioxt] */*.cmti */*.o */*.annot
-	rm -f */*/*~ */*/*.cm[ioxt] */*/*.cmti */*/*.o */*/*.annot */*/*.output
-	rm -f $(GENERATED_SOURCES)
-	rm -f .depend .display .display_obj
-
+# same, but activates debugging functions in the code (for development only)
 debug:
-	@echo Prepare the compilation of deepsec for debugging
+	@printf "\033[1mCompiling DeepSec (debugging functions on)...\033[0m\n"
+	@make -s config
 	@sed /debug_activated/s/false/true/ Source/core_library/config.ml > .tmp.ml
 	@mv .tmp.ml Source/core_library/config.ml
-	@echo
-	@echo To complete the compilation, you should run make
+	@make -s compil
 
-without_debug:
-	@echo Prepare the compilation of deepsec to run without debugging
-	@sed /debug_activated/s/true/false/ Source/core_library/config.ml > .tmp.ml
-	@mv .tmp.ml Source/core_library/config.ml
-	@echo
-	@echo To complete the compilation, you should run make
+# generates config.ml
+config:
+	@sed -e "s/VERSION/${VERSION}/g" -e "s/GITCOMMIT/${GITCOMMIT}/g" -e "s/GITBRANCH/${GITBRANCH}/g" < Source/core_library/config.ml.in > Source/core_library/config.ml
 
-#testing:
-#	@echo Prepare the compilation of deepsec for generating tests
-#	@sed /test_activated/s/false/true/ Source/core_library/config.ml > .tmp.ml
-#	@mv .tmp.ml Source/core_library/config.ml
-#	@echo
-#	@echo To complete the compilation, you should run make
+# configures and compiles
+compil:
+	@ocamlbuild -use-ocamlfind $(PACKAGES) $(SOURCE)main.$(EXTENSION) worker.$(EXTENSION) manager.$(EXTENSION) main_ui.$(EXTENSION)
+	@mv main.$(EXTENSION) deepsec
+	@mv worker.$(EXTENSION) worker_deepsec
+	@mv manager.$(EXTENSION) manager_deepsec
+	@mv main_ui.$(EXTENSION) deepsec_api
+	@printf "\033[1mBuild successful!\033[0m You can invoke ./deepsec alone to display version data, or ./deepsec -help for usage information.\n"
 
-#without_testing:
-#	@echo Prepare the compilation of deepsec to run without generation of tests
-#	@sed /test_activated/s/true/false/ Source/core_library/config.ml > .tmp.ml
-#	@mv .tmp.ml Source/core_library/config.ml
-#	@echo
-#	@echo To complete the compilation, you should run make
+# checks installation requirements
+check:
+	@printf "\033[1mChecking installation requirements...\033[0m\n"
+	@$(SCRIPTS)check
 
-.display:
-	@echo ----------------------------------------------
-	@echo          Compilation of $(NAME_PROGRAMME) $(VERSION)
-	@echo ----------------------------------------------
-	@echo
-	@echo Generation of files by the parsers and lexers
-	@echo
-	@touch .display
-
-.display_obj:
-	@echo
-	@echo Generation of objects
-	@echo
-	@touch .display_obj
-
-### Common rules
-
-.SUFFIXES: .ml .mli .$(CMOX) .cmi .mll .mly
-
-.ml.$(CMOX):
-	$(OCAMLOPT) $(OCAMLFLAGS) -c $<
-
-.mli.cmi:
-	$(OCAMLOPT) $(OCAMLFLAGS) -c $<
-
-.mll.ml:
-	ocamllex $<
-
-.mly.ml:
-	ocamlyacc -v $<
-
-### Dependencies
-
-.depend: .display $(CORE_ML) $(GENERATED_SOURCES)
-	@echo
-	@echo The Dependencies
-	@echo
-	@sed -e 's/GITCOMMIT/$(GITCOMMIT)/g' -e's/VERSION/$(VERSION)/g' -e 's/GITBRANCH/$(GITBRANCH)/g' < Source/core_library/config.ml.in > Source/core_library/config.ml
-	$(OCAMLDEP) $(INCLUDES) $(ALL_ML) $(GENERATED_SOURCES) > .depend
-
--include .depend
+# removes automatically generated files
+clean:
+	rm -rf _build $(SOURCE)core_library/config.ml $(TEMP) deepsec worker_deepsec manager_deepsec deepsec_api

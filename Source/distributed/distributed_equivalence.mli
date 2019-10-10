@@ -81,8 +81,8 @@ end
     [sem]. The function returns a triple [(res,proc1',proc')] where [proc1'] and [proc2'] are typically the processes [proc1] and [proc2] respectively.
     Due to the marshalling, the initial processes are given in each job and returned by each worker to ensure that physical equality within the processes
     are preserved. As such, when displaying an attack trace given by [res], one should use the processes [proc1'] and [proc2'] instead of [proc1] and [proc2]. *)
-val trace_equivalence : Process.semantics -> Process.process -> Process.process -> Equivalence.result_trace_equivalence * Process.process * Process.process
+(*val trace_equivalence : Process.semantics -> Process.process -> Process.process -> Equivalence.result_trace_equivalence * Process.process * Process.process*)
 
-val trace_equivalence_determinate : Process_determinate.configuration -> Process_determinate.configuration -> Equivalence_determinate.result_trace_equivalence * Process_determinate.configuration * Process_determinate.configuration
+val trace_equivalence_determinate : Types.process -> Types.process -> Types.verification_result
 
-val session : Equivalence_session.goal -> Process_session.Configuration.t -> Process_session.Configuration.t -> Equivalence_session.result_analysis * Process_session.Configuration.t * Process_session.Configuration.t
+(*val session : Equivalence_session.goal -> Process_session.Configuration.t -> Process_session.Configuration.t -> Equivalence_session.result_analysis * Process_session.Configuration.t * Process_session.Configuration.t*)
