@@ -4,7 +4,7 @@ Automated verification has become an essential part in the security evaluation o
 
 ## How to install DeepSec?
 
-**DeepSec** has been successfully tested on Linux and MacOSX (Windows is currently not supported). **DeepSec** requires **OCaml > 4.03**.  It is highly recommended to install **OCaml** through `opam` instead of a native package manager, such as `apt-get` (the latest version on `apt-get may` not be the latest release of OCaml). `opam` itself may however be safely installed using your favorite package manager (see instructions for installing `opam`).
+**DeepSec** has been successfully tested on Linux and MacOSX (Windows is currently not supported). **DeepSec** requires **OCaml > 4.03**.  It is highly recommended to install **OCaml** through `opam` instead of a native package manager, such as `apt-get` (the latest version on `apt-get` may not be the latest release of OCaml). `opam` itself may however be safely installed using your favorite package manager (see instructions for installing `opam`).
 
 ### Upgrading Ocaml using OPAM
 

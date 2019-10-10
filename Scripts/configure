@@ -2,9 +2,9 @@
 
 
 # getting configuration data
-VERSION="1.0alpha"
-GITCOMMIT=$(head -n 1 <(git rev-parse HEAD 2>/dev/null))
-GITBRANCH=$(git branch | grep \* | cut -d ' ' -f2)
+VERSION=$1
+GITCOMMIT=$2
+GITBRANCH=$3
 
 # generating the config.ml file
 sed -e "s/VERSION/${VERSION}/g" -e "s/GITCOMMIT/${GITCOMMIT}/g" -e "s/GITBRANCH/${GITBRANCH}/g" < Source/core_library/config.ml.in > Source/core_library/config.ml

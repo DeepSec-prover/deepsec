@@ -229,9 +229,14 @@ let process_file path =
       Config.path_deepsec:=
       	(
       	  try Sys.getenv "DEEPSEC_DIR" with
-      	    Not_found -> Printf.printf "Environment variable DEEPSEC_DIR not defined and -deepsec_dir not specified on command line\n"; exit 1
-      	)
+      	    Not_found -> "./"
+      	);
     end;
+  let files_dir = Command.run (Printf.sprintf "ls %s" !Config.path_deepsec) in
+  if List.exists (fun file -> not (List.mem file files_dir)) ["deepsec"; "manager_deepsec"; "worker_deepsec"] then
+    let _ = Sys.command "printf \"$(tput bold)Error:$(tput sgr0) Unable to find DeepSec executables. Either run DeepSec from the directory in which they are located, or specify it by a variable DEEPSEC_DIR in your ~/.bash_profile. You can also run DeepSec with the option -deepsec_dir <path-to-the-deepsec-directory>.\n\"" in
+    exit 1
+  else ();
 
   if Filename.is_relative !Config.path_deepsec then
     begin
@@ -276,7 +281,7 @@ let _ =
     match sem with
     | "Classic" -> Process.chosen_semantics := Process.Classic
     | "Private" -> Process.chosen_semantics := Process.Private
-    | "Eavesddrop" -> Process.chosen_semantics := Process.Eavesdrop
+    | "Eavesdrop" -> Process.chosen_semantics := Process.Eavesdrop
     | _ -> raise (Arg.Bad("Undefined semantics"))
   in
 
@@ -343,10 +348,11 @@ let _ =
   ]
   in
 
-  Printf.printf "DeepSec - DEciding Equivalence Properties for SECurity protocols\n";
+  let _ = Sys.command "printf \"$(tput bold)DeepSec - DEciding Equivalence Properties for SECurity protocols$(tput sgr0)\n\"" in
   Printf.printf "Version: %s\n" !Config.version;
-  Printf.printf "Git hash: %s\n" !Config.git_commit;
-  Printf.printf "Git branch: %s\n\n" !Config.git_branch;
+  Printf.printf "Website: https://deepsec-prover.github.io\n";
+  Printf.printf "Git info: branch %s, hash %s\n" !Config.git_branch !Config.git_commit;
+  flush_all();
 
   let usage_msg = "Usage: deepsec <options> <filenames>\n" in
 
