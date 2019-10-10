@@ -2,6 +2,8 @@
 
 exception Internal_error of string
 
+val running_api : bool ref
+
 (** [internal_error s] displays the error message [s] plus some other information.
     @raise Internal_error after displaying the message. *)
 val internal_error : string -> 'a

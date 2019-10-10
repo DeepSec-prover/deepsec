@@ -95,12 +95,17 @@ let display_env_elt_type = function
 
 (**** Error message ****)
 
+exception User_Error of string
+
+
+
 let error_message line str =
-  Printf.printf "Error! Line %d : %s\n" line str;
-  exit 0
+  raise (User_Error (Printf.sprintf "Line %d : %s" line str))
+
+let warnings = ref []
 
 let warning_message line str =
-  Printf.printf "Warning! Line %d : %s\n" line str
+  warnings := !warnings @ [ Printf.sprintf "Line %d : %s" line str]
 
 (******** Parse free names *******)
 
@@ -488,3 +493,4 @@ let reset_parser () =
   environment := (Env.empty:env_elt Env.t);
   Config.local_semantics := None;
   query_list := [];
+  warnings := []

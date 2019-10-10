@@ -2,11 +2,6 @@
 
 open Types
 
-type result =
-  (*| Standard of Equivalence.result_trace_equivalence*)
-  | Determinate of Determinate_equivalence.result_trace_equivalence
-  (*| Session of Equivalence_session.result_analysis*)
-
 (******* Parsing *****)
 
 let parse_file path =
@@ -88,7 +83,7 @@ let rec excecute_queries id = function
             begin
               let result = Determinate_equivalence.trace_equivalence proc1 proc2 in
               let running_time = ( Unix.time () -. !start_time ) in
-              (Determinate result,running_time)
+              (result,running_time)
             end
         end
       else Config.internal_error "[NOT ImPLeMENTED]"
@@ -162,7 +157,7 @@ let rec excecute_queries id = function
     in*)
 
     begin match result with
-      | Determinate Determinate_equivalence.Equivalent, running_time ->
+      | RTrace_Equivalence None, running_time ->
           if !Config.display_trace
           then Printf.printf "Query %d: Equivalent processes.\nRunning time: %s.\nAdditional informations on the HTML interface.\n" id (Display.mkRuntime running_time)
           else Printf.printf "Query %d: Equivalent processes.\nRunning time: %s.\nAdditional informations on the HTML interface.\n" id (Display.mkRuntime running_time)

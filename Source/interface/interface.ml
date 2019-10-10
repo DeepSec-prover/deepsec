@@ -41,101 +41,7 @@ let json_process_of_process proc =
 
   explore 0 proc
 
-(*** Translation from query_result ***)
-
-type setting_query =
-  {
-    setting_special_all_p : (symbol * (symbol * int) list) list;
-    setting_symbol : Symbol.setting;
-    setting_variable : int;
-    setting_name : int
-  }
-
-let update_setting_from_variable set_ref (v,_) =
-  set_ref := { !set_ref with setting_variable = max v.index !set_ref.setting_variable }
-
-let update_setting_from_name set_ref (n,_) =
-  set_ref := { !set_ref with setting_name = max n.index_n !set_ref.setting_name }
-
-let verify_projection x args = List.exists (fun t -> Term.is_equal t (Var x)) args
-
-let get_projection x args =
-  let rec explore n = function
-    | (Var y)::_ when x == y -> n
-    | (Var _)::q -> explore (n+1) q
-    | _ -> Config.internal_error "[interface.ml >> get_projection] Unexpected case."
-  in
-  explore 1 args
-
-let update_setting_from_symbol set_ref (f,_) = match f.cat with
-  | Tuple ->
-      let setting = !set_ref.setting_symbol in
-      if not (List.memq f setting.Symbol.all_t)
-      then
-        begin
-          let setting' =
-            { setting with
-              Symbol.all_c = f :: setting.Symbol.all_c;
-              Symbol.all_t = f :: setting.Symbol.all_t;
-              Symbol.nb_c = setting.Symbol.nb_c + 1;
-              Symbol.nb_symb = setting.Symbol.nb_symb + 1
-            }
-          in
-          set_ref := { !set_ref with setting_symbol = setting' }
-        end
-  | Constructor ->
-      let setting = !set_ref.setting_symbol in
-      if not (List.memq f setting.Symbol.all_c)
-      then
-        begin
-          let setting' =
-            { setting with
-              Symbol.all_c = f :: setting.Symbol.all_c;
-              Symbol.nb_c = setting.Symbol.nb_c + 1;
-              Symbol.nb_symb = setting.Symbol.nb_symb + 1
-            }
-          in
-          set_ref := { !set_ref with setting_symbol = setting' }
-        end
-  | Destructor [([Func(f_tuple,args)],Var x)] when f.cat = Tuple && verify_projection x args ->
-      (* We know that [f] is a projection of [f_tuple] *)
-      let i = get_projection x args in
-
-      let rec add_in_proj = function
-        | [] -> [f,i]
-        | (f',i')::q when i' = i -> Config.internal_error "[interface.ml >> update_setting_from_symbol] Should not have already been registered."
-        | (f',i')::q when i' < i -> (f',i')::(add_in_proj q)
-        | projs -> (f,i)::projs
-      in
-
-      let rec add_in_all_p = function
-        | [] -> [f_tuple,[(f,i)]]
-        | (f_tuple',projs)::q when f_tuple' == f_tuple ->
-            (f_tuple',add_in_proj projs)::q
-        | t::q -> t::(add_in_all_p q)
-      in
-
-      let setting = !set_ref.setting_symbol in
-      let setting' = { setting with Symbol.nb_symb = setting.Symbol.nb_symb + 1 } in
-      set_ref :=
-        { !set_ref with
-          setting_symbol = setting';
-          setting_special_all_p = add_in_all_p !set_ref.setting_special_all_p
-        }
-  | Destructor rw_rules ->
-      let setting = !set_ref.setting_symbol in
-      if not (List.memq f setting.Symbol.all_d)
-      then
-        begin
-          let setting' =
-            { setting with
-              Symbol.all_d = f :: setting.Symbol.all_d;
-              Symbol.nb_d = setting.Symbol.nb_d + 1;
-              Symbol.nb_symb = setting.Symbol.nb_symb + 1
-            }
-          in
-          set_ref := { !set_ref with setting_symbol = setting' }
-        end
+(*** Translation to process ***)
 
 let rec apply_renaming = function
   | Var v ->
@@ -158,7 +64,7 @@ let rec apply_renaming_pat = function
   | PatEquality t -> PatEquality (apply_renaming t)
   | PatTuple(f,args) -> PatTuple(f,List.map apply_renaming_pat args)
 
-let process_of_json_process setting proc =
+let process_of_json_process proc =
 
   let add_pos pos_to_add pos = (pos.js_index,pos.js_args@pos_to_add) in
 
@@ -211,16 +117,71 @@ let setup_signature query_result =
   Name.set_up_counter 0;
   Variable.set_up_counter 0;
 
-  let setting_ref = ref { setting_special_all_p = []; setting_symbol = (Symbol.get_settings ()); setting_variable = 0; setting_name = 0 } in
-  List.iter (update_setting_from_name setting_ref) query_result.association.names;
-  List.iter (update_setting_from_variable setting_ref) query_result.association.variables;
-  List.iter (update_setting_from_symbol setting_ref) query_result.association.symbols;
+  Symbol.set_up_signature query_result.settings.symbol_set;
+  Name.set_up_counter query_result.settings.name_set;
+  Variable.set_up_counter query_result.settings.var_set
 
-  let all_p = List.map (fun (f,projs) -> (f,List.map (fun (f_p,_) -> f_p) projs)) !setting_ref.setting_special_all_p in
-  let setting = { !setting_ref.setting_symbol with Symbol.all_p = all_p } in
-  Symbol.set_up_signature setting;
-  Name.set_up_counter !setting_ref.setting_name;
-  Variable.set_up_counter !setting_ref.setting_variable
+(*** Updating query result from equivalence result ***)
+
+let json_position_of_position (i,pos_l) =
+  { js_index = i; js_args = pos_l }
+
+let json_transition_of_transition = function
+  | AOutput(r,pos) -> JAOutput(r,json_position_of_position pos)
+  | AInput(r1,r2,pos) -> JAInput(r1,r2,json_position_of_position pos)
+  | AEaves(r,pos1,pos2) -> JAEaves(r,json_position_of_position pos1,json_position_of_position pos2)
+  | AComm(pos1,pos2) -> JAComm(json_position_of_position pos1,json_position_of_position pos2)
+  | ABang(n,pos) -> JABang(n,json_position_of_position pos)
+  | ATau pos -> JATau(json_position_of_position pos)
+  | AChoice (pos,side) -> JAChoice(json_position_of_position pos,side)
+
+let record_new_symbols assoc trans =
+
+  let record_symbol f = match List.assq_opt f !assoc.symbols with
+    | None ->
+        let i = !assoc.size in
+        assoc := { !assoc with size = i + 1; symbols = (f,i):: (!assoc).symbols }
+    | Some _ -> ()
+  in
+
+  let rec from_recipe = function
+    | CRFunc(_,r) -> from_recipe r
+    | RFunc(f,args) ->
+        record_symbol f;
+        List.iter from_recipe args
+    | _ -> ()
+  in
+
+  match trans with
+    | AOutput (r,_)
+    | AEaves (r,_,_) -> from_recipe r
+    | AInput (r1,r2,_) -> from_recipe r1; from_recipe r2
+    | _ -> ()
+
+let query_result_of_equivalence_result query_result result end_time = match result with
+  | RTrace_Equivalence None ->
+      { query_result with
+        q_status = QCompleted None;
+        q_end_time = Some end_time
+      }
+  | RTrace_Equivalence (Some (is_left_proc,trans_list)) ->
+      (* We record the potential function symbols added in the trace *)
+      let assoc_ref = ref query_result.association in
+      List.iter (record_new_symbols assoc_ref) trans_list;
+
+      let json_attack =
+        {
+          id_proc = if is_left_proc then 1 else 2;
+          transitions = List.map json_transition_of_transition trans_list
+        }
+      in
+      { query_result with
+        q_status = QCompleted (Some json_attack);
+        q_end_time = Some end_time;
+        association = !assoc_ref;
+        settings = { query_result.settings with symbol_set = Symbol.get_settings () }
+      }
+  | _ -> Config.internal_error "[interface.ml >> query_result_of_equivalence_result] Not implemented yet."
 
 (*** Instantiate ***)
 

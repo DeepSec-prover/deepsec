@@ -3,7 +3,7 @@
 open Types_ui
 
   let error_message line str =
-    Printf.printf "Error! Line %d : %s\n" line str;
+    Printf.printf "Error Json Parser ! Line %d : %s\n" line str;
     exit 0
 
 %}
@@ -14,7 +14,7 @@ open Types_ui
 %token DOUBLEDOT COMMA
 %token LBRACE RBRACE
 %token LBRACK RBRACK
-%token QUOTE
+%token NULL TRUE FALSE
 
 %token EOF
 
@@ -36,25 +36,36 @@ main:
 json:
   | INT
       { JInt $1 }
+  | TRUE
+      { JBool true }
+  | FALSE
+      { JBool false }
+  | NULL
+      { JNull }
   | STRING
-      { match $1 with
-          | "null" -> JNull
-          | "true" -> JBool true
-          | "false" -> JBool false
-          | _ -> Config.internal_error "[grammer_ui.mly >> Unexpected case]"
-      }
-  | QUOTE STRING QUOTE
-      { JString $2 }
+      { JString $1 }
+  | main_label_list
+      { JObject $1 }
+  | main_json_list
+      { JList $1 }
+
+main_label_list:
+  | LBRACK RBRACK
+      { [] }
   | LBRACK label_list RBRACK
-      { JObject $2 }
-  | LBRACE json_list RBRACE
-      { JList $2 }
+      { $2 }
 
 label_list:
-  | QUOTE STRING QUOTE DOUBLEDOT json
-      { [$2,$5] }
-  | QUOTE STRING QUOTE DOUBLEDOT json COMMA label_list
-      { ($2,$5)::$7 }
+  | STRING DOUBLEDOT json
+      { [$1,$3] }
+  | STRING DOUBLEDOT json COMMA label_list
+      { ($1,$3)::$5 }
+
+main_json_list:
+  | LBRACE RBRACE
+      { [] }
+  | LBRACE json_list RBRACE
+      { $2 }
 
 json_list:
   | json

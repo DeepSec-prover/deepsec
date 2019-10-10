@@ -72,9 +72,19 @@ type json_atomic =
 
 type query_status =
   | QCompleted of json_attack_trace option
-  | QOngoing
+  | QIn_progress
   | QCanceled
+  | QInternal_error of string
 
+type query_settings =
+  {
+    var_set : int; (* Indicate the largest index created for a variable *)
+    name_set : int; (* Indicate the largest index created for a name *)
+    symbol_set : Term.Symbol.setting
+  }
+
+(* We assume that the association contains all variables, names and symbols
+   occurring in the signature, processes and traces. *)
 type query_result =
   {
     name_query : string;
@@ -86,16 +96,17 @@ type query_result =
     association : association;
     semantics : semantics;
     query_type : equivalence;
-    processes : json_process list
+    processes : json_process list;
+    settings : query_settings
   }
 
 (* Run result *)
 
 type run_status =
-  | RUser_error of string
   | RInternal_error of string
   | RCompleted
   | RIn_progress
+  | RCanceled
 
 type run_result =
   {
@@ -107,7 +118,8 @@ type run_result =
     r_start_time : int option;
     r_end_time : int option;
     query_result_files : string list option;
-    query_results : query_result list option
+    query_results : query_result list option;
+    warnings : string list
   }
 
 (* Batch result *)
@@ -120,9 +132,16 @@ type batch_options =
   | Without_por
   | Distributed of int
 
+type batch_status =
+  | BCanceled
+  | BCompleted
+  | BIn_progress
+  | BInternal_error of string
+
 type batch_result =
   {
     name_batch : string;
+    b_status : batch_status;
     deepsec_version : string;
     git_branch : string;
     git_hash : string;
@@ -142,9 +161,18 @@ type input_command =
   | Set_config of string
 
 type output_command =
-  | Batch_started of string
+  (* Errors *)
+  | Init_internal_error of string
+  | Batch_internal_error of string
+  | User_error of (string (* Error msg*) * string (* file *) * string list (* warnings *)) list
+  | Query_internal_error of string (* Error msg*) * string (* file *)
+  (* Started *)
+  | Batch_started of string * (string * string list) list
   | Run_started of string
   | Query_started of string
+  (* Ended *)
   | Batch_ended of string
-  | Run_ended of string
-  | Query_ended of string
+  | Run_ended of string * run_status
+  | Query_ended of string * query_status
+  (* Exit *)
+  | ExitUi

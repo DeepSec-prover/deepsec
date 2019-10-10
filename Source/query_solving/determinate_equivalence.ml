@@ -63,16 +63,7 @@ let apply_faulty (csys_left,symb_left) (csys_right,symb_right) is_left f_conf f_
 
 let nb_apply_one_transition_and_rules = ref 0
 
-let fresh_index_node =
-  let acc = ref 0 in
-  let f () =
-    let r = !acc in
-    incr acc;
-    r
-  in
-  f
-
-let apply_one_transition_and_rules previous_node current_node equiv_pbl f_continuation f_next =
+let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
   Config.debug (fun () ->
     incr nb_apply_one_transition_and_rules;
     Constraint_system.Set.debug_check_structure "[Determinate_process >> apply_one_transition_and_rules]" equiv_pbl.csys_set;
@@ -81,7 +72,7 @@ let apply_one_transition_and_rules previous_node current_node equiv_pbl f_contin
           (csys_1.Constraint_system.additional_data.origin_process = Left && csys_2.Constraint_system.additional_data.origin_process = Right) ||
           (csys_1.Constraint_system.additional_data.origin_process = Right && csys_2.Constraint_system.additional_data.origin_process = Left)
           ->
-            Config.print_in_log (Printf.sprintf "\n\n====Application of one transtion rule : %d -> %d (%d)=======\n" previous_node current_node !nb_apply_one_transition_and_rules);
+            Config.print_in_log (Printf.sprintf "\n\n====Application of one transtion rule : (%d)=======\n" !nb_apply_one_transition_and_rules);
             Config.print_in_log (display_symbolic_process csys_1.Constraint_system.additional_data);
             Config.print_in_log (display_symbolic_process csys_2.Constraint_system.additional_data);
             Config.print_in_log ("Eq recipe = "^(Formula.R.display Display.Terminal equiv_pbl.csys_set.Constraint_system.eq_recipe));
@@ -586,10 +577,6 @@ let apply_one_transition_and_rules previous_node current_node equiv_pbl f_contin
           then (Config.print_in_log "Not equivalent : origin issue\n"; raise (Not_Trace_Equivalent (Constraint_system.instantiate csys)))
           else f_next ()
 
-type result_trace_equivalence =
-  | Equivalent
-  | Not_Equivalent of symbolic_process Constraint_system.t
-
 let trace_equivalence proc1 proc2 =
 
   (*** Initialise skeletons ***)
@@ -632,21 +619,21 @@ let trace_equivalence proc1 proc2 =
     }
   in
 
-  let rec apply_rules previous_node equiv_pbl f_next =
-    let current_node = fresh_index_node () in
-    apply_one_transition_and_rules previous_node current_node equiv_pbl (apply_rules current_node) f_next
+  let rec apply_rules equiv_pbl f_next =
+    apply_one_transition_and_rules equiv_pbl apply_rules f_next
   in
 
   try
-    apply_rules (fresh_index_node ()) equiv_pbl (fun () -> ());
+    apply_rules equiv_pbl (fun () -> ());
     Config.debug (fun () ->
       Config.print_in_log ~always:true (Printf.sprintf "Result = Equivalent (Nb of application of apply_one_transition_and_rules = %d)\n" !nb_apply_one_transition_and_rules);
       Constraint_system.Rule.debug_display_data ()
     );
-    Equivalent
+    RTrace_Equivalence None
   with Not_Trace_Equivalent csys ->
     Config.debug (fun () ->
       Config.print_in_log ~always:true (Printf.sprintf "Result = Not Equivalent (Nb of application of apply_one_transition_and_rules = %d)\n" !nb_apply_one_transition_and_rules);
       Constraint_system.Rule.debug_display_data ()
     );
-    Not_Equivalent csys
+    (** TODO : To change *)
+    RTrace_Equivalence None

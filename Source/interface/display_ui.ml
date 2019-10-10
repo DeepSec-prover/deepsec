@@ -318,6 +318,7 @@ let of_query_result query_res =
   let assoc = ref query_res.association in
 
   let jlist1 = [
+    "atomic_data", of_atomic_association assoc;
     "batch_file", JString query_res.q_batch_file;
     "run_file", JString query_res.q_run_file;
     "semantics", of_semantics query_res.semantics;
@@ -331,13 +332,12 @@ let of_query_result query_res =
   let jlist4 = match query_res.q_status with
     | QCompleted att_trace_op ->
         of_option (("status",JString "completed")::jlist3) (of_attack_trace assoc) "attack_trace" att_trace_op
-    | QOngoing -> ("status",JString "in_progress")::jlist3
+    | QIn_progress -> ("status",JString "in_progress")::jlist3
     | QCanceled -> ("status",JString "canceled")::jlist3
+    | QInternal_error err -> ("status", JString "internal_error")::("error_msg", JString err)::jlist3
   in
 
-  let jlist5 = ("atomic_data", of_atomic_association assoc) :: jlist4 in
-
-  JObject jlist5
+  JObject jlist4
 
 (* Run result *)
 
@@ -345,10 +345,10 @@ let of_run_result run_res =
 
   let jlist1 = [ "batch_file", JString run_res.r_batch_file ] in
   let jlist2 = match run_res.r_status with
-    | RUser_error err -> ("status", JString "user_error")::("error_msg",JString err)::jlist1
     | RInternal_error err -> ("status", JString "internal_error")::("error_msg",JString err)::jlist1
     | RCompleted -> ("status", JString "completed")::jlist1
     | RIn_progress -> ("status", JString "in_progress")::jlist1
+    | RCanceled -> ("status", JString "canceled")::jlist1
   in
   let jlist3 = of_option jlist2 of_string "input_file" run_res.input_file in
   let jlist4 = of_option jlist3 of_string "input_str" run_res.input_str in
@@ -356,8 +356,12 @@ let of_run_result run_res =
   let jlist6 = of_option jlist5 of_int "end_time" run_res.r_end_time in
   let jlist7 = of_option jlist6 (fun str_l -> JList (List.map of_string str_l)) "query_result_files" run_res.query_result_files in
   let jlist8 = of_option jlist7 (fun qres_l -> JList (List.map of_query_result qres_l)) "query_results" run_res.query_results in
-
-  JObject jlist8
+  let jlist9 =
+    if run_res.warnings <> []
+    then ("warnings", JList (List.map of_string run_res.warnings))::jlist8
+    else jlist8
+  in
+  JObject jlist9
 
 (* Batch result *)
 
@@ -394,4 +398,47 @@ let of_batch_result batch_res =
 (* Output commands *)
 
 let of_output_command = function
-  | Batch_started str -> JObject [ "command", JString "batch_started"; "result_file", JString str ]
+  (* Errors *)
+  | Init_internal_error err -> JObject [ "command", JString "init_internal_error"; "error_msg", JString err ]
+  | Batch_internal_error err -> JObject [ "command", JString "batch_internal_error"; "error_msg", JString err ]
+  | User_error err_list ->
+      JObject [
+        "command", JString "user_error";
+        "error_runs", JList (List.map (fun (err_msg,file,warnings) ->
+          JObject [ "error_msg", JString err_msg; "file", JString file; "warnings", JList (List.map of_string warnings)]
+        ) err_list)
+      ]
+  | Query_internal_error (err_msg,file) ->
+      JObject [
+        "command", JString "query_internal_error";
+        "error_msg", JString err_msg;
+        "file", JString file
+      ]
+  (* Started *)
+  | Batch_started(str,warnings) ->
+      JObject [
+        "command", JString "batch_started";
+        "file", JString str;
+        "warning_runs", JList (List.map (fun (file,warns) -> JObject [ "file", JString file; "warnings", JList (List.map of_string warns)]) warnings)
+      ]
+  | Run_started str -> JObject [ "command", JString "run_started"; "file", JString str ]
+  | Query_started str -> JObject [ "command", JString "query_started"; "file", JString str ]
+  (* Ended *)
+  | Batch_ended str -> JObject [ "command", JString "batch_ended"; "file", JString str ]
+  | Run_ended(str,status) ->
+      let status_str = match status with
+        | RInternal_error _ -> JString "internal_error"
+        | RCompleted -> JString "completed"
+        | RIn_progress -> JString "in_progress"
+        | RCanceled -> JString "canceled"
+      in
+      JObject [ "command", JString "run_ended"; "file", JString str ; "status", status_str ]
+  | Query_ended(str,status) ->
+      let status_str = match status with
+        | QInternal_error _ -> JString "internal_error"
+        | QCompleted _ -> JString "completed"
+        | QIn_progress -> JString "in_progress"
+        | QCanceled -> JString "canceled"
+      in
+      JObject [ "command", JString "query_ended"; "file", JString str ; "status", status_str]
+  | ExitUi -> JObject [ "command", JString "exit"]

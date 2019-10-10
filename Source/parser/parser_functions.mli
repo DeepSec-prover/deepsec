@@ -51,6 +51,9 @@ type declaration =
   | Query of query * int
   | ExtendedProcess of ident * ident list * extended_process
 
+val warnings : string list ref
+
+exception User_Error of string
 
 val error_message : int -> string -> 'a
 

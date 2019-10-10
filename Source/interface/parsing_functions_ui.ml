@@ -24,6 +24,14 @@ let member_option f label = function
       end
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> member_opt] Expecting a json object."
 
+let iter_member_option f label = function
+  | JObject l ->
+      begin match List.assoc_opt label l with
+        | Some a -> f a
+        | None -> ()
+      end
+  | _ -> Config.internal_error "[parsing_functions_ui.ml >> member_opt] Expecting a json object."
+
 (*** Basic Convertor function ***)
 
 let int_of = function
@@ -213,7 +221,7 @@ let destructor_of assoc nb_symbol all_d nb_d rw_rules json =
         all_d := f :: !all_d;
         f
 
-let atomic_data_of ?(initial=true) = function
+let atomic_data_of = function
   | JList value_l ->
       let size = List.length value_l in
       let assoc = Array.make size (JAtomVar{label = ""; index = 0; link = NoLink; quantifier = Existential}) in
@@ -226,22 +234,6 @@ let atomic_data_of ?(initial=true) = function
       let all_d = ref [] in
       let nb_c = ref 0 in
       let nb_d = ref 0 in
-
-      if not initial
-      then
-        begin
-          let setting = Symbol.get_settings () in
-          max_symbol_index := setting.Symbol.nb_symb;
-          all_t := setting.Symbol.all_t;
-          all_p :=
-            List.map (fun (f,projs) ->
-              (f,List.mapi (fun i f_p -> (i+1,f_p)) projs)
-            ) setting.Symbol.all_p;
-          all_c := setting.Symbol.all_c;
-          all_d := setting.Symbol.all_d;
-          nb_c := setting.Symbol.nb_c;
-          nb_d := setting.Symbol.nb_d
-        end;
 
       List.iteri (fun i json -> match string_of (member "type" json) with
         | "Variable" ->
@@ -288,9 +280,7 @@ let atomic_data_of ?(initial=true) = function
         | _ -> Config.internal_error "[parsing_functions_ui.ml >> atomic_data_of] Unexpected type."
       ) value_l;
 
-      (* We set the new setting and set it up *)
-
-      let setting =
+      let symbol_setting =
         {
           Symbol.all_t = !all_t;
           Symbol.all_p =
@@ -304,14 +294,15 @@ let atomic_data_of ?(initial=true) = function
           Symbol.nb_symb = !max_symbol_index + 1
         }
       in
-      Symbol.set_up_signature setting;
-      Variable.set_up_counter (!max_var_index + 1);
-      Name.set_up_counter (!max_name_index + 1);
+      let query_setting =
+        {
+          var_set = !max_var_index + 1;
+          name_set = !max_name_index + 1;
+          symbol_set = symbol_setting
+        }
+      in
 
-      if initial
-      then Rewrite_rules.initialise_all_skeletons ();
-
-      assoc
+      assoc, query_setting
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> parse_atomic_data] Unexpected case."
 
 (*** Traces and processes ***)
@@ -424,7 +415,7 @@ let attack_trace_of assoc json =
 (*** Query, run and batch result ***)
 
 let query_result_of file_name json =
-  let assoc = atomic_data_of json in
+  let (assoc,setting) = atomic_data_of json in
   let batch_file = string_of (member "batch_file" json) in
   let run_file = string_of (member "run_file" json) in
   let start_time = member_option int_of "start_time" json in
@@ -432,11 +423,14 @@ let query_result_of file_name json =
   let proc_l = list_of (process_of assoc) (member "processes" json) in
   let sem = semantics_of (member "semantics" json) in
   let status = match string_of (member "status" json) with
-    | "in_progress" -> QOngoing
+    | "in_progress" -> QIn_progress
     | "canceled" -> QCanceled
     | "completed" ->
         let res = member_option (attack_trace_of assoc) "attack_trace" json in
         QCompleted res
+    | "internal_error" ->
+        let err = string_of (member "error_msg" json) in
+        QInternal_error err
     | _ -> Config.internal_error "[parsing_functions_ui.ml >> query_result_of] Unexpected status."
   in
   let equiv_type = match string_of (member "type" json) with
@@ -478,7 +472,8 @@ let query_result_of file_name json =
     query_type = equiv_type;
     association = association;
     semantics = sem;
-    processes = proc_l
+    processes = proc_l;
+    settings = setting
   }
 
 (* We assume that we do not parse run that contain query result as json data. *)
@@ -487,9 +482,7 @@ let run_result_of file_name json =
   let status = match string_of (member "status" json) with
     | "in_progress" -> RIn_progress
     | "completed" -> RCompleted
-    | "user_error" ->
-        let err = string_of (member "error_msg" json) in
-        RUser_error err
+    | "canceled" -> RCanceled
     | "internal_error" ->
         let err = string_of (member "error_msg" json) in
         RInternal_error err
@@ -499,6 +492,7 @@ let run_result_of file_name json =
   let end_time = member_option int_of "end_time" json in
   let input_file = member_option string_of "input_file" json in
   let query_result_files = member_option (list_of string_of) "query_result_files" json in
+  let warnings = list_of string_of (member "warnings" json) in
   {
     name_run = file_name;
     r_batch_file = batch_file;
@@ -508,24 +502,29 @@ let run_result_of file_name json =
     r_start_time = start_time;
     r_end_time = end_time;
     query_result_files = query_result_files;
-    query_results = None
+    query_results = None;
+    warnings = warnings
   }
 
-let batch_options_of json = match string_of (member "label" json) with
-  | "nb_jobs" -> Nb_jobs (int_of (member "value" json))
-  | "round_timer" ->  Round_timer (int_of (member "value" json))
-  | "default_semantics" -> Default_semantics (semantics_of (member "value" json))
-  | "distant_workers" ->
-      let distant_of json' =
-        let host = string_of (member "host" json') in
-        let path = string_of (member "path" json') in
-        let nb_workers = int_of (member "nb_workers" json') in
-        (host,path,nb_workers)
-      in
-      Distant_workers (list_of distant_of (member "value" json))
-  | "without_por" -> Without_por
-  | "distributed" -> Distributed (int_of (member "value" json))
-  | _ -> Config.internal_error "[parsing_functions_ui.ml >> command_options_of] Unexpected option."
+let batch_options_of json =
+  let options = ref [] in
+
+  iter_member_option (fun i -> options := Nb_jobs (int_of i) :: !options) "nb_jobs" json;
+  iter_member_option (fun i -> options := Round_timer (int_of i) :: !options) "round_time" json;
+  iter_member_option (fun sem -> options := Default_semantics (semantics_of sem) :: !options) "default_semantics" json;
+  iter_member_option (fun host_l ->
+    let distant_of json' =
+      let host = string_of (member "host" json') in
+      let path = string_of (member "path" json') in
+      let nb_workers = int_of (member "nb_workers" json') in
+      (host,path,nb_workers)
+    in
+    options := Distant_workers (list_of distant_of host_l) :: !options
+  ) "distant_workers" json;
+  iter_member_option (fun b -> if bool_of b then options := Without_por :: !options) "without_por" json;
+  iter_member_option (fun i -> options := Distributed (int_of i) :: !options) "distributed" json;
+
+  !options
 
 (* We assume that we do not parse bacth that contain run result as json data. *)
 let batch_result_of file_name json =
@@ -534,10 +533,20 @@ let batch_result_of file_name json =
   let git_hash = string_of (member "git_hash" json) in
   let run_result_files = member_option (list_of string_of) "run_result_files" json in
   let import_date = member_option int_of "import_date" json in
-  let command_options = list_of batch_options_of (member "command_options" json) in
+  let command_options = batch_options_of (member "command_options" json) in
+  let status = match string_of (member "status" json) with
+    | "in_progress" -> BIn_progress
+    | "completed" -> BCompleted
+    | "canceled" -> BCanceled
+    | "internal_error" ->
+        let err = string_of (member "error_msg" json) in
+        BInternal_error err
+    | _ -> Config.internal_error "[parsing_functions_ui.ml >> batch_result_of] Unexpected status."
+  in
 
   {
     name_batch = file_name;
+    b_status = status;
     deepsec_version = version;
     git_branch = git_branch;
     git_hash = git_hash;
@@ -552,7 +561,7 @@ let batch_result_of file_name json =
 let input_command_of json = match string_of (member "command" json) with
   | "start_run" ->
       let input_files = list_of string_of (member "input_files" json) in
-      let command_options = list_of batch_options_of (member "command_options" json) in
+      let command_options = batch_options_of (member "command_options" json) in
       Start_run(input_files,command_options)
   | "cancel_run" -> Cancel_run (string_of (member "result_file" json))
   | "cancel_query" -> Cancel_query (string_of (member "result_file" json))

@@ -125,3 +125,18 @@ type equivalence =
   | Observational_Equivalence
   | Session_Equivalence
   | Session_Inclusion
+
+type transition =
+  | AOutput of recipe * position
+  | AInput of recipe * recipe * position
+  | AEaves of recipe * position * position
+  | AComm of position * position
+  | ABang of int * position
+  | ATau of position
+  | AChoice of position * bool (* True when the left process is chosen *)
+
+type verification_result =
+  | RTrace_Equivalence of (bool * transition list) option
+  | RTrace_Inclusion of transition list option
+  | RSession_Equivalence of (bool * transition list) option
+  | RSession_Inclusion of transition list option

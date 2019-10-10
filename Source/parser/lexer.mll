@@ -83,15 +83,13 @@ rule token = parse
       with
         | Failure _ ->
             let pos = lexbuf.Lexing.lex_curr_p in
-            Printf.printf "Line %d : Syntax Error\n" (pos.Lexing.pos_lnum);
-            exit 0
+            raise (Parser_functions.User_Error (Printf.sprintf "Line %d : Syntax Error" (pos.Lexing.pos_lnum)))
     }
 | eof { EOF }
 | _
     {
       let pos = lexbuf.Lexing.lex_curr_p in
-    	Printf.printf "Line %d : Syntax Error\n" (pos.Lexing.pos_lnum);
-      exit 0
+      raise (Parser_functions.User_Error (Printf.sprintf "Line %d : Syntax Error" (pos.Lexing.pos_lnum)))
     }
 
 and comment_slash = parse

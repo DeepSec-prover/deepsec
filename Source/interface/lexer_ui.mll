@@ -13,6 +13,7 @@
 
 rule token = parse
 | "//" [^ '\n']* '\n' { newline lexbuf; token lexbuf } (* Line comment *)
+| '"' ((_#'"')* as id) '"'  { STRING id }
 | [' ' '\t' ] { token lexbuf } (* Skip blanks *)
 | "\xC2\xA0" { token lexbuf }
 | ['\n'	'\r']	{ newline lexbuf; token lexbuf } (* New line *)
@@ -23,8 +24,9 @@ rule token = parse
 | ']'   { RBRACE }
 | '{'   { LBRACK }
 | '}'   { RBRACK }
-| '"'   { QUOTE }
-| ['A'-'Z' 'a'-'z' '/' '_' '-' '.'] ['a'-'z' 'A'-'Z' '/' '_' '-' '0'-'9' '.']*  as id { STRING(id) }
+| "null" { NULL }
+| "true" { TRUE }
+| "false" { FALSE }
 | ([ '0'-'9' ]) +
     {
       try
@@ -32,13 +34,13 @@ rule token = parse
       with
         | Failure _ ->
             let pos = lexbuf.Lexing.lex_curr_p in
-            Printf.printf "Line %d : Syntax Error\n" (pos.Lexing.pos_lnum);
+            Printf.printf "Error Json Lexer ! Line %d : Syntax Error\n" (pos.Lexing.pos_lnum);
             exit 0
     }
 | eof { EOF }
 | _
     {
       let pos = lexbuf.Lexing.lex_curr_p in
-    	Printf.printf "Line %d : Syntax Error\n" (pos.Lexing.pos_lnum);
+    	Printf.printf "Error Json Lexer ! Line %d : Syntax Error\n" (pos.Lexing.pos_lnum);
       exit 0
     }

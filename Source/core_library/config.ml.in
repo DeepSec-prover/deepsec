@@ -1,5 +1,7 @@
 exception Internal_error of string
 
+let running_api = ref false
+
 let debug_activated = false
 
 let log_file =
@@ -14,8 +16,13 @@ let internal_error msg =
       Printf.fprintf log_file "Internal error : %s\nPlease report the bug to vincent.cheval@loria.fr with the input file and output\n" msg;
       flush log_file
     end;
-  Printf.printf "Internal error : %s\nPlease report the bug to vincent.cheval@loria.fr with the input file and output\n" msg;
-  exit 0
+  if !running_api
+  then raise (Internal_error msg)
+  else
+    begin
+      Printf.printf "Internal error : %s\nPlease report the bug to vincent.cheval@loria.fr with the input file and output\n" msg;
+      exit 0
+    end
 
 let debug =
   if debug_activated
