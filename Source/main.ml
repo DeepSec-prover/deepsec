@@ -232,7 +232,7 @@ let process_file path =
       	    Not_found -> "./"
       	);
     end;
-  let files_dir = Sys.readdir !Config.path_deepsec in
+  let files_dir = Array.to_list (Sys.readdir !Config.path_deepsec) in
   if List.exists (fun file -> not (List.mem file files_dir)) ["deepsec"; "manager_deepsec"; "worker_deepsec"] then
     let _ = Sys.command "printf \"$(tput bold)Error:$(tput sgr0) Unable to find DeepSec executables. Either run DeepSec from the directory in which they are located, or specify it by a variable DEEPSEC_DIR in your ~/.bash_profile. You can also run DeepSec with the option -deepsec_dir <path-to-the-deepsec-directory>.\n\"" in
     exit 1
