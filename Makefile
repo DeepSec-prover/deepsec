@@ -14,13 +14,12 @@ EXTENSION=$(if $(PROFILE),p.native,$(if $(ADVDEBUG),d.byte,native))
 GITCOMMIT = $(shell git rev-parse HEAD)
 GITBRANCH = $(shell git branch | grep \* | cut -d ' ' -f2)
 
-NBLINE = $(find . -name "*.ml" -or -name "*.mli" -or -name "*.mly" -or -name "*.mll" | xargs cat | wc -l)
+NBLINE = $(shell find . -name "*.ml" -or -name "*.mli" -or -name "*.mly" -or -name "*.mll" | xargs cat | wc -l)
 
 # whole compilation
 all:
 	@printf "\033[1m--------------------------------\n  Compilation of DeepSec $(VERSION)\n--------------------------------\n\033[0m"
 	@make -s config compil
-	@printf "\033[1mNumber of lines in the source code of the program :\033[0m $(NBLINE) \n"
 
 # same, but activates debugging functions in the code (for development only)
 debug:
@@ -36,12 +35,11 @@ config:
 
 # configures and compiles
 compil:
-	@ocamlbuild -use-ocamlfind $(PACKAGES) $(SOURCE)main.$(EXTENSION) worker.$(EXTENSION) manager.$(EXTENSION) main_ui.$(EXTENSION)
+	@ocamlbuild -use-ocamlfind $(PACKAGES) $(SOURCE)main.$(EXTENSION) worker.$(EXTENSION) manager.$(EXTENSION)
 	@mv main.$(EXTENSION) deepsec
 	@mv worker.$(EXTENSION) worker_deepsec
 	@mv manager.$(EXTENSION) manager_deepsec
-	@mv main_ui.$(EXTENSION) deepsec_api
-	@printf "\033[1mBuild successful!\033[0m You can invoke ./deepsec alone to display version data, or ./deepsec -help for usage information.\n"
+	@printf "\033[1mBuild successful!\033[0m You can invoke ./deepsec alone to display version data, or ./deepsec -help for usage information.\n\033[1mNumber of lines in the source code:\033[0m $(NBLINE)\n"
 
 # checks installation requirements
 check:
