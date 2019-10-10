@@ -1067,7 +1067,7 @@ module PartitionTree = struct
               match transition_type with
               | None ->
                 (* the end of the trace: one verifies that equivalence is not violated, which concludes the analysis of this branch. *)
-                let _ = Node.decast released_node in
+                let _ = Node.decast released_node csys_set in
                 f_next1 ()
               | Some Configuration.Transition.RStart ->
                 (* very beginning of the analysis: only a skeleton check is needed before moving on to the constructing the successor nodes (no unauthorised blocks possible). *)
