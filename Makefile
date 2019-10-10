@@ -45,7 +45,7 @@ compil:
 # checks installation requirements
 check:
 	@printf "\033[1mChecking installation requirements...\033[0m\n"
-	@$(SOURCE)check
+	@$(SCRIPTS)check
 
 # documentation
 doc:
