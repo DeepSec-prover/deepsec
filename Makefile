@@ -21,7 +21,6 @@ all:
 	@printf "\033[1mCompilation of DeepSec $(VERSION)\033[0m\n"
 	@printf "\033[1mBuilding sources$(if $(PROFILE), (PROFILE on),$(if $(ADVDEBUG), (ADVDEBUG on),))...\033[0m\n"
 	@make -s config compil
-	@printf "\033[1mNumber of lines in the source code of the program :\033[0m $(NBLINE) \n"
 
 # same, but activates debugging functions in the code (for development only)
 debug:
@@ -42,7 +41,7 @@ compil:
 	@mv worker.$(EXTENSION) worker_deepsec
 	@mv manager.$(EXTENSION) manager_deepsec
 	@mv main_ui.$(EXTENSION) deepsec_api
-	@printf "\033[1mBuild successful!\033[0m You can invoke ./deepsec alone to display version data, or ./deepsec -help for usage information.\n\033[1mNumber of lines in the source code:\033[0m $(NBLINE)\n"
+	@printf "\033[1mBuild successful!\033[0m You can invoke ./deepsec alone to display version data, or ./deepsec -help for usage information.\n\033[1mNumber of lines in the source code: $(NBLINE)\033[0m\n"
 
 # checks installation requirements
 check:
