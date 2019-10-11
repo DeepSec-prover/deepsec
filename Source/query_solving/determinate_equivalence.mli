@@ -15,6 +15,10 @@ type symbolic_process =
 
 type equivalence_problem
 
+val export_equivalence_problem : equivalence_problem -> equivalence_problem * (recipe_variable * recipe) list
+
+val import_equivalence_problem : (unit -> 'a) -> equivalence_problem -> (recipe_variable * recipe) list -> 'a
+
 exception Not_Trace_Equivalent of (bool * transition list)
 
 val apply_one_transition_and_rules :

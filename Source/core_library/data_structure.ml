@@ -966,6 +966,11 @@ module IK = struct
       data = List.map (fun elt -> { elt with recipe = Recipe.instantiate elt.recipe; term = Term.instantiate elt.term} ) ik.data
     }
 
+  let iteri f ikb =
+    List.iter (fun elt ->
+      f elt.id elt.recipe elt.term
+    ) ikb.data
+
   (* Testing *)
 
   let for_all_term f_test ikb = List.for_all (fun e -> f_test e.term) ikb.data

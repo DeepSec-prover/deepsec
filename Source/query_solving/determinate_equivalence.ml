@@ -77,9 +77,27 @@ let export_equivalence_problem equiv_pbl =
 
   equiv_pbl', !recipe_subst
 
+let import_equivalence_problem f_next equiv_pbl recipe_subst =
+  Recipe_Variable.auto_cleanup_with_reset_notail (fun () ->
+    (* We link the recipe substitution *)
+    List.iter (fun (x,r) -> Recipe_Variable.link_recipe x r) recipe_subst;
 
-let import_equivalence_problem equiv_bl recipe_subst =
+    (* Set up the deducible names *)
+    let set_up_deducible_name i r t = match t with
+      | Name ({ deducible_n = None; _} as n) ->
+          Name.set_deducible n (CRFunc(i,r))
+      | _ -> ()
+    in
 
+    Name.auto_deducible_cleanup_with_reset_notail (fun () ->
+      List.iter (fun csys ->
+        Data_structure.K.iteri set_up_deducible_name csys.Constraint_system.knowledge;
+        Data_structure.IK.iteri set_up_deducible_name csys.Constraint_system.incremented_knowledge
+      ) equiv_pbl.csys_set.Constraint_system.set;
+
+      f_next ()
+    )
+  )
 
 (*** Applying the determinate rules ***)
 

@@ -442,3 +442,17 @@ let of_output_command = function
       in
       JObject [ "command", JString "query_ended"; "file", JString str ; "status", status_str]
   | ExitUi -> JObject [ "command", JString "exit"]
+  | Progression(i,None)-> JObject [ "command", JString "progression"; "percent", JInt i]
+  | Progression(i,Some r) -> JObject [ "command", JString "progression"; "percent", JInt i; "round", JInt r]
+
+(* Sending command *)
+
+let stdout_mutex = Mutex.create ()
+
+let send_command json_str =
+  Mutex.lock stdout_mutex;
+  output_string stdout (json_str^"\n");
+  flush_all ();
+  Mutex.unlock stdout_mutex
+
+let send_output_command out_cmd = send_command (display_json (of_output_command out_cmd))

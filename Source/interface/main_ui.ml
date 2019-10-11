@@ -52,18 +52,6 @@ let write_batch batch_result = write_in_file batch_result.name_batch (Display_ui
 let write_run run_result = write_in_file run_result.name_run (Display_ui.of_run_result run_result)
 let write_query query_result = write_in_file query_result.name_query (Display_ui.of_query_result query_result)
 
-(* Sending command *)
-
-let stdout_mutex = Mutex.create ()
-
-let send_command json_str =
-  Mutex.lock stdout_mutex;
-  output_string stdout (json_str^"\n");
-  flush_all ();
-  Mutex.unlock stdout_mutex
-
-let send_output_command out_cmd = send_command (Display_ui.display_json (Display_ui.of_output_command out_cmd))
-
 (* The main function will listen to the standard input and wait for
    commands.
 
@@ -264,15 +252,14 @@ let remove_current_query () =
 (* Dealing with errors *)
 
 let send_exit () =
-  send_command (Display_ui.display_json (Display_ui.of_output_command ExitUi));
+  Display_ui.send_output_command ExitUi;
   exit 0
 
 let catch_init_internal_error f =
   try
     f ()
   with Config.Internal_error err ->
-    let out_cmd = Init_internal_error err in
-    send_command (Display_ui.display_json (Display_ui.of_output_command out_cmd));
+    Display_ui.send_output_command (Init_internal_error err);
     send_exit ()
 
 let catch_batch_internal_error f =
@@ -301,8 +288,7 @@ let catch_batch_internal_error f =
         write_run run';
         List.iter (fun query -> write_query { query with q_status = QCanceled }) qlist
       ) !computation_status.remaining_runs;
-      let out_cmd = Batch_internal_error err in
-      send_command (Display_ui.display_json (Display_ui.of_output_command out_cmd));
+      Display_ui.send_output_command (Batch_internal_error err);
       send_exit ()
     end
 
@@ -335,7 +321,7 @@ let catch_query_internal_error f =
         List.iter (fun query -> write_query { query with q_status = QCanceled }) qlist
       ) !computation_status.remaining_runs;
 
-      List.iter (fun cmd -> send_command (Display_ui.display_json (Display_ui.of_output_command cmd))) !command_to_send;
+      List.iter Display_ui.send_output_command !command_to_send;
       send_exit ()
     end
 
@@ -418,8 +404,7 @@ let start_batch input_files batch_options =
         ) parsing_results []
       in
 
-      let out_cmd = Batch_started(batch_result.name_batch,warning_runs) in
-      send_command (Display_ui.display_json (Display_ui.of_output_command out_cmd))
+      Display_ui.send_output_command (Batch_started(batch_result.name_batch,warning_runs))
     end
   else
     begin
@@ -430,7 +415,7 @@ let start_batch input_files batch_options =
           | IRUser_error (msg,warnings) -> (msg, input_file, warnings)::acc
         ) input_files parsing_results []
       in
-      send_command (Display_ui.display_json (Display_ui.of_output_command (User_error errors_runs)));
+      Display_ui.send_output_command (User_error errors_runs);
       send_exit ()
     end
 
@@ -440,8 +425,7 @@ let start_query query_result =
   let absolute_query_json = Filename.concat (get_database_path ()) query_result1.name_query in
   let channel_out = open_out absolute_query_json in
   output_string channel_out (Display_ui.display_json (Display_ui.of_query_result query_result1));
-  let out_cmd = Query_started query_result1.name_query in
-  send_command (Display_ui.display_json (Display_ui.of_output_command out_cmd));
+  Display_ui.send_output_command (Query_started query_result1.name_query);
   query_result1
 
 let end_run run_result =
@@ -450,8 +434,7 @@ let end_run run_result =
   let absolute_run_json = Filename.concat (get_database_path ()) run_result1.name_run in
   let channel_out = open_out absolute_run_json in
   output_string channel_out (Display_ui.display_json (Display_ui.of_run_result run_result1));
-  let out_cmd = Run_ended(run_result1.name_run,run_result1.r_status) in
-  send_command (Display_ui.display_json (Display_ui.of_output_command out_cmd))
+  Display_ui.send_output_command (Run_ended(run_result1.name_run,run_result1.r_status))
 
 let end_query query_result =
   let end_time = int_of_float (Unix.time ()) in
@@ -459,18 +442,16 @@ let end_query query_result =
   let absolute_query_json = Filename.concat (get_database_path ()) query_result1.name_query in
   let channel_out = open_out absolute_query_json in
   output_string channel_out (Display_ui.display_json (Display_ui.of_query_result query_result1));
-  let out_cmd = Query_ended(query_result1.name_query,query_result1.q_status) in
-  send_command (Display_ui.display_json (Display_ui.of_output_command out_cmd))
+  Display_ui.send_output_command (Query_ended(query_result1.name_query,query_result1.q_status))
 
 let end_batch batch_result =
-  let out_cmd = Batch_ended  batch_result.name_batch in
-  send_command (Display_ui.display_json (Display_ui.of_output_command out_cmd))
+  Display_ui.send_output_command (Batch_ended  batch_result.name_batch)
 
 (* Executing the queries / runs / batch *)
 
 let execute_query query_result =
   (* We send the start command *)
-  send_output_command (Query_started query_result.name_query);
+  Display_ui.send_output_command (Query_started query_result.name_query);
 
   catch_query_internal_error (fun () ->
     (* We reset the signature *)
@@ -487,20 +468,25 @@ let execute_query query_result =
           in
           if Determinate_process.is_strongly_action_determinate proc1 && Determinate_process.is_strongly_action_determinate proc2
           then
-            if !Config.distributed
-            then Config.internal_error "[main_ui.ml >> execute_query] Currently, the distributed versionn is not implemented."
-            else
-              begin
-                let result = Determinate_equivalence.trace_equivalence proc1 proc2 in
-                let end_time = int_of_float (Unix.time ()) in
-                let query_result1 = Interface.query_result_of_equivalence_result query_result result end_time in
-                Mutex.lock execution_mutex;
-                write_query query_result1;
-                remove_current_query ();
-                send_output_command (Query_ended(query_result1.name_query,query_result1.q_status));
-                Condition.signal execution_condition;
-                Mutex.unlock execution_mutex
-              end
+            begin
+              let query_result1 =
+                if !Config.distributed
+                then
+                  let result = Distributed_equivalence.trace_equivalence_determinate proc1 proc2 in
+                  let end_time = int_of_float (Unix.time ()) in
+                  Interface.query_result_of_equivalence_result_distributed query_result result end_time
+                else
+                  let result = Determinate_equivalence.trace_equivalence proc1 proc2 in
+                  let end_time = int_of_float (Unix.time ()) in
+                  Interface.query_result_of_equivalence_result query_result result end_time
+              in
+              Mutex.lock execution_mutex;
+              write_query query_result1;
+              remove_current_query ();
+              Display_ui.send_output_command (Query_ended(query_result1.name_query,query_result1.q_status));
+              Condition.signal execution_condition;
+              Mutex.unlock execution_mutex
+            end
           else Config.internal_error "[main_ui.ml >> execute_query] Currently, on the determinate processes are accepted."
       | _ -> Config.internal_error "[main_ui.ml >> execute_query] Currently, only trace equivalence is implemented."
     )
@@ -519,7 +505,7 @@ let execute_batch () =
           | (run,query_list)::q ->
               let run_1 = { run with r_start_time = Some (int_of_float (Unix.time ())) } in
               write_run run_1;
-              send_output_command (Run_started run_1.name_run);
+              Display_ui.send_output_command (Run_started run_1.name_run);
               let run_comp = { cur_query = None; remaining_queries = query_list; ongoing_run = run_1 } in
               computation_status := { !computation_status with cur_run = Some run_comp; remaining_runs = q };
               execute_run ()
@@ -533,7 +519,7 @@ let execute_batch () =
               (* No query left to verify. We end the run. *)
               let run_1 = { run_comp.ongoing_run with r_end_time = Some (int_of_float (Unix.time ())); r_status = RCompleted } in
               write_run run_1;
-              send_output_command (Run_ended (run_1.name_run,run_1.r_status));
+              Display_ui.send_output_command (Run_ended (run_1.name_run,run_1.r_status));
               computation_status := { !computation_status with cur_run = None };
               execute_run ()
           | query::query_list ->

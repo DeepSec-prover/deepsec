@@ -26,6 +26,7 @@ struct
       number_of_destructors : int;
       number_of_symbols : int;
       skeleton_settings : Rewrite_rules.skeleton_settings;
+      running_api : bool;
 
       data_equiv : data_equivalence
     }
@@ -54,6 +55,7 @@ struct
         Symbol.nb_symb = job.number_of_symbols
       };
     Rewrite_rules.set_up_skeleton_settings job.skeleton_settings;
+    Config.running_api := job.running_api;
 
     match job.data_equiv with
       | DDeterminate (data:data_determinate) ->
@@ -64,9 +66,10 @@ struct
           in
 
           begin try
-            Determinate_equivalence.import_equivalence_problem data.equiv_problem data.recipe_substitution;
-            apply_rules data.equiv_problem (fun () -> ());
-            RTrace_Equivalence None
+            Determinate_equivalence.import_equivalence_problem (fun () ->
+              apply_rules data.equiv_problem (fun () -> ());
+              RTrace_Equivalence None
+            ) data.equiv_problem data.recipe_substitution
           with
             | Determinate_equivalence.Not_Trace_Equivalent attack -> RTrace_Equivalence (Some attack)
           end
@@ -96,22 +99,25 @@ struct
         Symbol.nb_symb = job.number_of_symbols
       };
     Rewrite_rules.set_up_skeleton_settings job.skeleton_settings;
+    Config.running_api := job.running_api;
 
     match job.data_equiv with
       | DDeterminate data ->
           begin try
-            let job_list = ref [] in
-            Determinate_equivalence.apply_one_transition_and_rules data.equiv_problem
-              (fun equiv_pbl_1 f_next_1 ->
-                let (equiv_pbl_2,recipe_subst) = Determinate_equivalence.export_equivalence_problem equiv_pbl_1 in
-                job_list := { job with data_equiv = DDeterminate { equiv_problem = equiv_pbl_2; recipe_substitution = recipe_subst }; variable_counter = Variable.get_counter (); name_counter = Name.get_counter () } :: !job_list;
-                f_next_1 ()
-              )
-              (fun () -> ());
+            Determinate_equivalence.import_equivalence_problem (fun () ->
+              let job_list = ref [] in
+              Determinate_equivalence.apply_one_transition_and_rules data.equiv_problem
+                (fun equiv_pbl_1 f_next_1 ->
+                  let (equiv_pbl_2,recipe_subst) = Determinate_equivalence.export_equivalence_problem equiv_pbl_1 in
+                  job_list := { job with data_equiv = DDeterminate { equiv_problem = equiv_pbl_2; recipe_substitution = recipe_subst }; variable_counter = Variable.get_counter (); name_counter = Name.get_counter () } :: !job_list;
+                  f_next_1 ()
+                )
+                (fun () -> ());
 
-            if !job_list = []
-            then Result (RTrace_Equivalence None)
-            else Jobs !job_list
+              if !job_list = []
+              then Result (RTrace_Equivalence None)
+              else Jobs !job_list
+            ) data.equiv_problem data.recipe_substitution
           with Determinate_equivalence.Not_Trace_Equivalent attack -> Result (RTrace_Equivalence (Some attack))
           end
 end
@@ -176,22 +182,21 @@ let trace_equivalence_determinate proc1 proc2 =
       EquivJob.number_of_destructors = setting.Symbol.nb_d;
       EquivJob.number_of_symbols = setting.Symbol.nb_symb;
       EquivJob.skeleton_settings = Rewrite_rules.get_skeleton_settings ();
+      EquivJob.running_api = !Config.running_api;
 
       EquivJob.data_equiv = EquivJob.DDeterminate data
     }
   in
 
-  Printf.printf "Starting distributed computing...\n%!";
+  if not !Config.running_api
+  then Printf.printf "Starting distributed computing...\n%!";
 
   (**** Launch the jobs in parallel ****)
 
-  EquivJob.result_equivalence := EquivJob.Equivalent;
+  EquivJob.result_equivalence := RTrace_Equivalence None;
 
   DistribEquivalence.compute_job () job;
 
   (**** Return the result of the computation ****)
 
-  match !EquivJob.result_equivalence with
-    | EquivJob.Equivalent -> Equivalence_determinate.Equivalent, conf1, conf2
-    | EquivJob.Not_Equivalent (EquivJob.ODeterminate (csys, init_proc1, init_proc2)) -> ((Equivalence_determinate.Not_Equivalent csys), init_proc1, init_proc2)
-    | _ -> Config.internal_error "[distributed_equivalence.ml >> trace_equivalence_determinate] We should expect an output for determinate equivalence."
+  !EquivJob.result_equivalence

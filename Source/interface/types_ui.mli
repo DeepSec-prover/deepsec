@@ -176,3 +176,5 @@ type output_command =
   | Query_ended of string * query_status
   (* Exit *)
   | ExitUi
+  (* Progression *)
+  | Progression of int (* percent *) * int option (* round *)

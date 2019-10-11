@@ -22,4 +22,4 @@ val of_batch_result : batch_result -> json
 
 (* Output commands *)
 
-val of_output_command : output_command -> json
+val send_output_command : output_command -> unit

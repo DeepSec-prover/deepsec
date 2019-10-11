@@ -179,6 +179,8 @@ module IK : sig
 
   val instantiate : t -> t
 
+  val iteri : (int -> recipe -> term -> unit) -> t -> unit
+
   val find_unifier_with_recipe_with_stop : K.t -> t -> term -> int -> bool ref ->
     (bool -> recipe -> (unit -> unit) -> unit) ->
     (unit -> unit) ->
