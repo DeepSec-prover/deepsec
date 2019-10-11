@@ -13,12 +13,13 @@ EXTENSION=$(if $(PROFILE),p.native,$(if $(ADVDEBUG),d.byte,native))
 
 GITCOMMIT = $(shell git rev-parse HEAD)
 GITBRANCH = $(shell git branch | grep \* | cut -d ' ' -f2)
-
+PHYSICALCORE = $(shell script/cpu_linux_osx)
 NBLINE = $(shell find . -name "*.ml" -or -name "*.mli" -or -name "*.mly" -or -name "*.mll" | xargs cat | wc -l)
 
 # whole compilation
 all:
 	@printf "\033[1mCompilation of DeepSec $(VERSION)\033[0m\n"
+	@echo $(CORES)
 	@printf "\033[1mBuilding sources$(if $(PROFILE), (PROFILE on),$(if $(ADVDEBUG), (ADVDEBUG on),))...\033[0m\n"
 	@make -s config compil
 
@@ -32,7 +33,7 @@ debug:
 
 # generates config.ml
 config:
-	@sed -e "s/VERSION/${VERSION}/g" -e "s/GITCOMMIT/${GITCOMMIT}/g" -e "s/GITBRANCH/${GITBRANCH}/g" < Source/core_library/config.ml.in > Source/core_library/config.ml
+	@sed -e "s/VERSION/${VERSION}/g" -e "s/GITCOMMIT/${GITCOMMIT}/g" -e "s/GITBRANCH/${GITBRANCH}/g" -e "s/PHYSICALCORE/${PHYSICALCORE}/g" < Source/core_library/config.ml.in > Source/core_library/config.ml
 
 # configures and compiles
 compil:

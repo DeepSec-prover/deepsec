@@ -59,18 +59,21 @@ struct
   	Sys.set_signal Sys.sigterm sig_handle
 
   let timer_progression = ref 0.
+  let last_progression_timer = ref 0.
 
-  let initialise_timer_progression () = timer_progression := Unix.time ()
+  let initialise_timer_progression () =
+    timer_progression := Unix.time ();
+    last_progression_timer := !timer_progression
 
   let send_progression round nb_job_tot nb_job_remain =
     let time = Unix.time () in
-    if time -. !timer_progression >= 1.
+    if time -. !last_progression_timer >= 1.
     then
       begin
         let nb_job = nb_job_tot - nb_job_remain in
         let percent = (nb_job * 100)/nb_job_tot in
-        timer_progression := time;
-        Display_ui.send_output_command (Progression(percent,Some round, nb_job_remain))
+        last_progression_timer := time;
+        Display_ui.send_output_command (Progression(percent,Some round, nb_job_remain, int_of_float (time -. !timer_progression)))
       end
 
   (****** Setting up the workers *******)

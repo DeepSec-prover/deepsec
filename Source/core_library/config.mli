@@ -59,6 +59,8 @@ val round_timer : int ref
 
 val core_factor : int ref
 
+val physical_core : int
+
 (*** Semantics parameters ***)
 
 val default_semantics : Types.semantics ref

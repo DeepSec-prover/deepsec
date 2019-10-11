@@ -441,8 +441,8 @@ let of_output_command = function
       in
       JObject [ "command", JString "query_ended"; "file", JString str ; "status", status_str]
   | ExitUi -> JObject [ "command", JString "exit"]
-  | Progression(i,None,nb)-> JObject [ "command", JString "progression"; "percent", JInt i; "nb_jobs", JInt nb]
-  | Progression(i,Some r,nb) -> JObject [ "command", JString "progression"; "percent", JInt i; "round", JInt r; "nb_jobs", JInt nb]
+  | Progression(i,None,nb,time)-> JObject [ "command", JString "progression"; "percent", JInt i; "nb_jobs", JInt nb ; "execution_time", JInt time ]
+  | Progression(i,Some r,nb,time) -> JObject [ "command", JString "progression"; "percent", JInt i; "round", JInt r; "jobs_remaining", JInt nb; "execution_time", JInt time]
 
 (* Sending command *)
 

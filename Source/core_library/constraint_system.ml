@@ -1183,8 +1183,6 @@ module MGS = struct
 
     List.iter (fun v -> v.link_r <- RNoLink) !remain_rec_vars_ref;
 
-    (** TODO : Possible test -> check how many times the unification below is the identity or unify a single element. *)
-
     match equation_op with
       | None -> None
       | Some(equations,new_eq_uniformity_1) ->
@@ -2726,8 +2724,6 @@ module Rule = struct
     )
 
   let is_term_deducible csys t =
-    (** TODO : We need to link the deducible names and unlink them afterward. Do not
-        consider pure fresh names. *)
     match t with
       | Func(f,[]) when f.public -> true
       | _ ->

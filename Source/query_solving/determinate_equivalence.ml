@@ -700,5 +700,4 @@ let trace_equivalence proc1 proc2 =
       Config.print_in_log ~always:true (Printf.sprintf "Result = Not Equivalent (Nb of application of apply_one_transition_and_rules = %d)\n" !nb_apply_one_transition_and_rules);
       Constraint_system.Rule.debug_display_data ()
     );
-    (** TODO : To change *)
     RTrace_Equivalence (Some attack)

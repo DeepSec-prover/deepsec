@@ -176,4 +176,8 @@ type output_command =
   (* Exit *)
   | ExitUi
   (* Progression *)
-  | Progression of int (* percent *) * int option (* round *) * int (* Nb of jobs remaining *)
+  | Progression of
+      int (* percent *) *
+      int option (* round *) *
+      int (* Nb of jobs remaining *) *
+      int (* Computation_time *)
