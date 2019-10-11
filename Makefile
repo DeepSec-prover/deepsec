@@ -14,7 +14,9 @@ EXTENSION=$(if $(PROFILE),p.native,$(if $(ADVDEBUG),d.byte,native))
 GITCOMMIT = $(shell git rev-parse HEAD)
 GITBRANCH = $(shell git branch | grep \* | cut -d ' ' -f2)
 
-NBLINE = $(shell find . -name "*.ml" -or -name "*.mli" -or -name "*.mly" -or -name "*.mll" | xargs cat | wc -l)
+NBLINE = $(shell find Source -name "*.ml" -or -name "*.mli" -or -name "*.mly" -or -name "*.mll" | xargs cat | wc -l)
+
+.PHONY: check # to allow make check to work
 
 # whole compilation
 all:
@@ -48,4 +50,4 @@ check:
 
 # removes automatically generated files
 clean:
-	rm -rf _build $(SOURCE)core_library/config.ml $(TEMP) deepsec worker_deepsec manager_deepsec deepsec_api
+	rm -rf _build $(SOURCE)core_library/config.ml $(TEMP) deepsec worker_deepsec manager_deepsec
