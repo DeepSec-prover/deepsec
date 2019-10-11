@@ -1,7 +1,7 @@
 NAME_PROGRAMME = DeepSec
 VERSION = 1.02
 SOURCE = Source/
-SCRIPTS = Scripts/
+SCRIPTS = script/
 
 PACKAGES = -package str -package unix
 TEMP = *.native *.p.native *.d.byte index.html result
@@ -13,8 +13,11 @@ EXTENSION=$(if $(PROFILE),p.native,$(if $(ADVDEBUG),d.byte,native))
 
 GITCOMMIT = $(shell git rev-parse HEAD)
 GITBRANCH = $(shell git branch | grep \* | cut -d ' ' -f2)
-PHYSICALCORE = $(shell script/cpu_linux_osx)
+PHYSICALCORE = $(shell $(SCRIPTS)/cpu_linux_osx)
 NBLINE = $(shell find . -name "*.ml" -or -name "*.mli" -or -name "*.mly" -or -name "*.mll" | xargs cat | wc -l)
+
+.PHONY: check
+
 
 # whole compilation
 all:

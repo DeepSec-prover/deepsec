@@ -1,0 +1,39 @@
+#! /bin/bash
+
+# checks requirements for DeepSec installation
+
+function prog_exists() {
+  if command -v $1 &> /dev/null; then
+    return 0; # exists
+  else return 1; # does not exist
+  fi
+}
+
+function checks() {
+  # printf "Checking installation requirements...\n"
+  if prog_exists ocamlopt; then
+    printf " \xE2\x9C\x94 ocamlopt found\n";
+    if $(command -v ocamlopt | grep opam); then
+      printf " \xE2\x9C\x94 ocaml has been installed with opam\n";
+      REQUIREDOCAML=4.03.0
+      CURRENTOCAML=$(ocamlopt --version)
+      if [ "$(printf '%s\n' "$REQUIREDOCAML" "$CURRENTOCAML" | sort -V | head -n1)" = "$CURRENTOCAML" ]; then
+        printf " - ocaml version should be >$REQUIREDOCAML (installed version: $CURRENTOCAML). Install a more recent version by using 'opam switch'\n";
+        return 1;
+      else
+        printf " \xE2\x9C\x94 ocaml version ($CURRENTOCAML) is recent enough (>$REQUIREDOCAML)\n";
+        return 0;
+      fi
+    else
+      printf " - ocaml does not seem to be install using opam! Please visit https://deepsec-prover.github.io for help.\n";
+      return 1;
+    fi
+  else printf " - ocamlopt not found! Please visit https://deepsec-prover.github.io for help.\n"; return 1;
+  fi
+}
+
+if checks; then
+  printf "$(tput bold)All installation requirements are satisfied$(tput sgr0)\n";
+else
+  printf "\033[91m$(tput bold)Some installation requirements are not met. It is advised to patch them before running 'make'.$(tput sgr0)\n";
+fi
