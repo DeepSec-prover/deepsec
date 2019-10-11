@@ -57,8 +57,6 @@ val number_of_jobs : int ref
 
 val round_timer : int ref
 
-val without_POR : bool ref
-
 val core_factor : int ref
 
 (*** Semantics parameters ***)

@@ -129,7 +129,6 @@ type batch_options =
   | Round_timer of int
   | Default_semantics of semantics
   | Distant_workers of (string * string * int) list
-  | Without_por
   | Distributed of int
 
 type batch_status =
@@ -177,4 +176,4 @@ type output_command =
   (* Exit *)
   | ExitUi
   (* Progression *)
-  | Progression of int (* percent *) * int option (* round *)
+  | Progression of int (* percent *) * int option (* round *) * int (* Nb of jobs remaining *)

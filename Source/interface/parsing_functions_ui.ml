@@ -521,7 +521,6 @@ let batch_options_of json =
     in
     options := Distant_workers (list_of distant_of host_l) :: !options
   ) "distant_workers" json;
-  iter_member_option (fun b -> if bool_of b then options := Without_por :: !options) "without_por" json;
   iter_member_option (fun i -> options := Distributed (int_of i) :: !options) "distributed" json;
 
   !options

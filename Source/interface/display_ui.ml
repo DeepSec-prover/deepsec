@@ -376,7 +376,6 @@ let of_batch_options = function
         ) dist_l
       in
       JObject [ "label", JString "distant_workers"; "value", JList value ]
-  | Without_por -> JObject [ "label", JString "without_por"; "value", JBool true]
   | Distributed n -> JObject [ "label", JString "distributed"; "value", JInt n]
 
 let of_batch_result batch_res =
@@ -442,8 +441,8 @@ let of_output_command = function
       in
       JObject [ "command", JString "query_ended"; "file", JString str ; "status", status_str]
   | ExitUi -> JObject [ "command", JString "exit"]
-  | Progression(i,None)-> JObject [ "command", JString "progression"; "percent", JInt i]
-  | Progression(i,Some r) -> JObject [ "command", JString "progression"; "percent", JInt i; "round", JInt r]
+  | Progression(i,None,nb)-> JObject [ "command", JString "progression"; "percent", JInt i; "nb_jobs", JInt nb]
+  | Progression(i,Some r,nb) -> JObject [ "command", JString "progression"; "percent", JInt i; "round", JInt r; "nb_jobs", JInt nb]
 
 (* Sending command *)
 

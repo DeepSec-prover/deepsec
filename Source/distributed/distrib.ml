@@ -64,13 +64,13 @@ struct
 
   let send_progression round nb_job_tot nb_job_remain =
     let time = Unix.time () in
-    if time -. !timer_progression >= 2.
+    if time -. !timer_progression >= 1.
     then
       begin
         let nb_job = nb_job_tot - nb_job_remain in
         let percent = (nb_job * 100)/nb_job_tot in
         timer_progression := time;
-        Display_ui.send_output_command (Progression(percent,Some round))
+        Display_ui.send_output_command (Progression(percent,Some round, nb_job_remain))
       end
 
   (****** Setting up the workers *******)
@@ -412,7 +412,12 @@ struct
     local_workers !Config.local_workers;
     List.iter (fun (host,path,n) -> add_distant_worker host path n) !Config.distant_workers;
     time_between_round := float_of_int !Config.round_timer;
-    minimum_nb_of_jobs := !Config.number_of_jobs;
+    minimum_nb_of_jobs :=
+      if !Config.number_of_jobs = 0
+      then
+        (* Default *)
+        !Config.core_factor * !nb_workers
+      else !Config.number_of_jobs;
     initialise_timer_progression ();
     one_round_compute_job 1 shared [job]
 end

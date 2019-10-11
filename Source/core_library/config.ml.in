@@ -73,8 +73,7 @@ let local_workers = ref 0
 let distant_workers = ref ([]:(string*string*int) list)
 let number_of_jobs = ref 0
 let round_timer = ref 120
-let without_POR = ref false
-let core_factor = ref 30
+let core_factor = ref 100
 
 (**** Semantics ****)
 

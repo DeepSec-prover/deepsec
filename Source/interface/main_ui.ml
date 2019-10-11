@@ -207,7 +207,6 @@ let set_up_batch_options options =
     | Round_timer n -> Config.round_timer := n
     | Default_semantics sem -> Config.default_semantics := sem
     | Distant_workers dist_host -> Config.distant_workers := dist_host
-    | Without_por -> Config.without_POR := true
     | Distributed n -> if n > 0 then (Config.distributed := true; Config.local_workers := n)
   ) options
 
