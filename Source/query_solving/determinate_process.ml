@@ -22,8 +22,8 @@ type equations = (variable * term) list
 type simple_process =
   | SStart of simple_process
   | SNil
-  | SOutput of symbol * term * simple_process * position
-  | SInput of symbol * variable * simple_process * position
+  | SOutput of symbol * term * simple_process * position * variable list
+  | SInput of symbol * variable * simple_process * position * variable list
   | SCondition of equations list * Formula.T.t * variable list (* fresh variable *) * simple_process * simple_process * position
   | SNew of variable * name * simple_process * position
   | SPar of simple_process list
@@ -103,11 +103,11 @@ let display_trace = function
 let rec display_simple_process tab = function
   | SStart p -> (display_with_tab tab "Start") ^ (display_simple_process tab p)
   | SNil -> (display_with_tab tab "Nil")
-  | SOutput(ch,t,p,pos) ->
-      let str = Printf.sprintf "{%s} out(%s,%s);" (display_position pos) (Symbol.display Terminal ch) (Term.display Terminal t) in
+  | SOutput(ch,t,p,pos,used_vars) ->
+      let str = Printf.sprintf "{%s} out(%s,%s); [Vars = %s]" (display_position pos) (Symbol.display Terminal ch) (Term.display Terminal t) (display_list (Variable.display Terminal) "," used_vars) in
       (display_with_tab tab str) ^ (display_simple_process tab p)
-  | SInput(ch,x,p,pos) ->
-      let str = Printf.sprintf "{%s} in(%s,%s);" (display_position pos) (Symbol.display Terminal ch) (Variable.display Terminal x) in
+  | SInput(ch,x,p,pos,used_vars) ->
+      let str = Printf.sprintf "{%s} in(%s,%s); [Vars = %s]" (display_position pos) (Symbol.display Terminal ch) (Variable.display Terminal x) (display_list (Variable.display Terminal) "," used_vars) in
       (display_with_tab tab str) ^ (display_simple_process tab p)
   | SCondition(eq_list,Formula.T.Bot,_,pthen,SNil,pos) ->
       let str_eq = display_list display_equations (vee Terminal) eq_list in
@@ -368,8 +368,8 @@ let clean_intermediate_process = function
 let rec do_else_branches_lead_to_improper_block after_in = function
   | SStart p ->  do_else_branches_lead_to_improper_block true p
   | SNil -> true
-  | SOutput(_,_,p,_) -> do_else_branches_lead_to_improper_block false p
-  | SInput(_,_,p,_) -> do_else_branches_lead_to_improper_block true p
+  | SOutput(_,_,p,_,_) -> do_else_branches_lead_to_improper_block false p
+  | SInput(_,_,p,_,_) -> do_else_branches_lead_to_improper_block true p
   | SCondition(_,_,_,pthen,SNil,_) ->
       if after_in
       then do_else_branches_lead_to_improper_block true pthen
@@ -752,9 +752,58 @@ let decompress_process channels_list p =
 
   explore p
 
+(**** Used variables ****)
+
+let rec get_used_variables_term = function
+  | Var ({ link = NoLink; _} as v)->
+      v.link <- SLink;
+      Variable.currently_linked := v :: !Variable.currently_linked
+  | Func(_,args) -> List.iter get_used_variables_term args
+  | _ -> ()
+
+let rec get_used_variables_pattern = function
+  | PatVar ({ link = NoLink; _} as v) ->
+      v.link <- SLink;
+      Variable.currently_linked := v :: !Variable.currently_linked
+  | PatEquality t -> get_used_variables_term t
+  | PatTuple(_,args) -> List.iter get_used_variables_pattern args
+  | _ -> ()
+
+(* We assume that the variables are not linked. *)
+let rec get_used_variables = function
+  | SStart p -> get_used_variables p
+  | SNil -> ()
+  | SOutput(_,_,_,_,vars)
+  | SInput(_,_,_,_,vars )->
+      List.iter (fun v -> match v.link with
+        | NoLink -> v.link <- SLink; Variable.currently_linked := v :: !Variable.currently_linked
+        | _ -> ()
+      ) vars
+  | SCondition(equations,_,_,p1,p2,_) ->
+      List.iter (fun eqs ->
+        List.iter (fun (v,t) ->
+          get_used_variables_term (Var v);
+          get_used_variables_term t
+        ) eqs
+      ) equations;
+      get_used_variables p1;
+      get_used_variables p2
+  | SNew(_,_,p,_) -> get_used_variables p
+  | SPar p_list -> List.iter get_used_variables p_list
+  | SParMult p_list -> List.iter (fun (_,p) -> get_used_variables p) p_list
+
 (**** Intermediate process of simple process ****)
 
 (* We first transform the conditionals and then we replace names by variables. *)
+
+let removed_unused_variables var_list p =
+  Variable.auto_cleanup_with_reset_notail (fun () ->
+    get_used_variables p;
+    List.fold_left (fun acc v -> match v.link with
+      | SLink -> v::acc
+      | _ -> acc
+    ) [] var_list
+  )
 
 let simple_process_of_intermediate_process proc =
 
@@ -811,16 +860,41 @@ let simple_process_of_intermediate_process proc =
     )
   in
 
-  let rec explore assoc = function
-    | IStart p -> SStart (explore assoc p)
+  let rec explore assoc prev_vars = function
+    | IStart p -> SStart (explore assoc prev_vars p)
     | INil -> SNil
-    | IOutput(ch,t,p,pos) -> SOutput(ch,replace_name_by_variables assoc t,explore assoc p,pos)
+    | IOutput(ch,t,p,pos) ->
+        let p' = explore assoc prev_vars p in
+
+        let used_vars =
+          Variable.auto_cleanup_with_reset_notail (fun () ->
+            get_used_variables p';
+            get_used_variables_term t;
+            List.fold_left (fun acc v -> match v.link with
+              | SLink -> v::acc
+              | _ -> acc
+            ) [] prev_vars
+          )
+        in
+        SOutput(ch,replace_name_by_variables assoc t,p',pos,used_vars)
     | IInput(ch,v,p,pos) ->
         Config.debug (fun () ->
           if v.link <> NoLink
           then Config.internal_error "[determinate_process.ml >> simple_process_of_intermediate_process] Variables should not be linked (4)."
         );
-        SInput(ch,v,explore assoc p,pos)
+
+        let p' = explore assoc (v::prev_vars) p in
+
+        let used_vars =
+          Variable.auto_cleanup_with_reset_notail (fun () ->
+            get_used_variables p';
+            List.fold_left (fun acc v -> match v.link with
+              | SLink -> v::acc
+              | _ -> acc
+            ) [] prev_vars
+          )
+        in
+        SInput(ch,v,p',pos,used_vars)
     | IIfThenElse(t1,t2,pthen,pelse,pos) ->
         Config.debug (fun () ->
           if !Variable.currently_linked <> []
@@ -829,7 +903,7 @@ let simple_process_of_intermediate_process proc =
         let (equations_1,disequations_1) = Rewrite_rules.compute_equality_modulo_and_rewrite [(t1,t2)] in
         let equations_2 = List.map (replace_name_by_variables_equations assoc) equations_1 in
         let disequations_2 = replace_name_by_variables_formula assoc disequations_1 in
-        SCondition(equations_2,disequations_2,[],explore assoc pthen,explore assoc pelse,pos)
+        SCondition(equations_2,disequations_2,[],explore assoc prev_vars pthen,explore assoc prev_vars pelse,pos)
     | ILet(t,cond,fresh_vars,pthen,pelse,pos) ->
         Config.debug (fun () ->
           if !Variable.currently_linked <> []
@@ -839,16 +913,16 @@ let simple_process_of_intermediate_process proc =
         let disequations_2 = replace_fresh_vars_by_universal fresh_vars disequations_1 in
         let disequations_3 = replace_name_by_variables_formula assoc disequations_2 in
         let equations_2 = List.map (replace_name_by_variables_equations assoc) equations_1 in
-        SCondition(equations_2,disequations_3,fresh_vars,explore assoc pthen, explore assoc pelse,pos)
+        SCondition(equations_2,disequations_3,fresh_vars,explore assoc (fresh_vars@prev_vars) pthen, explore assoc prev_vars pelse,pos)
     | INew(n,p,pos) ->
         let x = Variable.fresh Free in
-        let det_p = explore ((n,x)::assoc) p in
+        let det_p = explore ((n,x)::assoc) prev_vars p in
         SNew(x,n,det_p,pos)
-    | IPar p_list -> SPar(List.map (explore assoc) p_list)
-    | IParMult p_list -> SParMult (List.map (fun (s_l,p) -> (s_l,explore assoc p)) p_list)
+    | IPar p_list -> SPar(List.map (explore assoc prev_vars) p_list)
+    | IParMult p_list -> SParMult (List.map (fun (s_l,p) -> (s_l,explore assoc prev_vars p)) p_list)
   in
 
-  explore [] proc
+  explore [] [] proc
 
 let generate_initial_configurations proc1 proc2 =
   let p1 = clean_intermediate_process (IStart(intermediate_process_of_process proc1)) in
@@ -928,13 +1002,13 @@ let compare_normalised_process p1 p2 = match p1, p2 with
       compare_channels ch1 ch2
   | SOutput _ , SInput _  -> -1
   | SInput _, SOutput _ -> 1
-  | SInput(c1,_,_,_), SInput(c2,_,_,_) -> Symbol.order c1 c2
-  | SOutput(c1,_,_,_), SOutput(c2,_,_,_) -> Symbol.order c1 c2
+  | SInput(c1,_,_,_,_), SInput(c2,_,_,_,_) -> Symbol.order c1 c2
+  | SOutput(c1,_,_,_,_), SOutput(c2,_,_,_,_) -> Symbol.order c1 c2
   | _,_ -> Config.internal_error "[process_determinate.ml >> compare_normalised_process] We should only compare Inputs and sure Outputs."
 
 let rec is_equal_skeleton p1 p2 = match p1, p2 with
-  | SOutput(c1,_,_,_), SOutput(c2,_,_,_)
-  | SInput(c1,_,_,_), SInput(c2,_,_,_) -> c1 == c2
+  | SOutput(c1,_,_,_,_), SOutput(c2,_,_,_,_)
+  | SInput(c1,_,_,_,_), SInput(c2,_,_,_,_) -> c1 == c2
   | SNil, SNil -> true
   | SStart _, SStart _ -> true
   | SPar pl_1, SPar pl_2 ->
@@ -1017,12 +1091,12 @@ let find_faulty_skeleton_det size_frame conf1 conf2 p1 p2 =
   let ordered_list_2 = List.fast_sort compare_normalised_process list_2 in
 
   let retrieve_action conf = function
-    | SOutput(c,t,_,pos) ->
+    | SOutput(c,t,_,pos,_) ->
         let axiom = size_frame + 1 in
         let f_action = FOutput (axiom, t) in
         let f_conf = { conf with trace = TrOutput(c,pos) :: conf.trace } in
         (f_conf,f_action)
-    | SInput(c,x,_,pos) ->
+    | SInput(c,x,_,pos,_) ->
         let var_X = Recipe_Variable.fresh Free size_frame in
         let f_action = FInput (var_X, Var x) in
         let f_conf = { conf with trace = TrInput(c,var_X,pos) :: conf.trace } in
@@ -1234,14 +1308,17 @@ let rec update_recipe_for_block max_var used_axioms = function
 let is_block_list_authorized b_list cur_block = match b_list with
   | [] -> true
   | _ ->
-
+      let b_list_0 = match cur_block with
+        | None -> b_list
+        | Some b -> b::b_list
+      in
       let b_list_1 =
         List.map (fun block ->
           let max_var = ref 0 in
           let used_axioms = ref [] in
           List.iter (fun var -> update_recipe_for_block max_var used_axioms (RVar var)) block.recipes;
           { block with used_axioms = !used_axioms; maximal_var = !max_var }
-        ) (cur_block::b_list)
+        ) b_list_0
       in
 
       let rec explore_block = function
@@ -1456,7 +1533,7 @@ let apply_start_in snd_var a_conf_list f_apply f_continuation f_next =
 
   let rec explore a conf acc prev_p = function
     | [] -> acc
-    | ({ proc = SInput(c,x,p',pos); label_p = l } as p)::q_list ->
+    | ({ proc = SInput(c,x,p',pos,_); label_p = l } as p)::q_list ->
         let conf' =
           { conf with
             sure_input_proc = List.rev_append prev_p q_list;
@@ -1485,7 +1562,7 @@ let apply_start_in snd_var a_conf_list f_apply f_continuation f_next =
 
   and explore_mult a conf acc prev_p = function
     | [] -> acc
-    | ({ proc = SInput(c,x,p',pos); label_p = l } as p)::q_list ->
+    | ({ proc = SInput(c,x,p',pos,_); label_p = l } as p)::q_list ->
         let conf' =
           { conf with
             sure_input_proc = List.rev_append prev_p (List.rev_append q_list conf.sure_input_proc);
@@ -1550,7 +1627,7 @@ let apply_start_in snd_var a_conf_list f_apply f_continuation f_next =
   join_list a_list_list_to_join f_next
 
 let apply_pos_in snd_var conf = match conf.focused_proc with
-  | Some { proc = SInput(c,x,p,pos); label_p = l }->
+  | Some { proc = SInput(c,x,p,pos,_); label_p = l }->
       let conf' =
         { conf with
           focused_proc = (Some { label_p = l; proc = p });
@@ -1562,7 +1639,7 @@ let apply_pos_in snd_var conf = match conf.focused_proc with
 
 let rec search_output_process_list = function
   | [] -> None
-  | SOutput(c,t,p',pos)::q -> Some(c,t,pos,p'::q)
+  | SOutput(c,t,p',pos,_)::q -> Some(c,t,pos,p'::q)
   | p::q ->
       match search_output_process_list q with
         | None -> None
@@ -1570,7 +1647,7 @@ let rec search_output_process_list = function
 
 let rec search_output_channel_process_list = function
   | [] -> None
-  | (ch,SOutput(c,t,p',pos))::q -> Some(c,t,pos,(ch,p')::q)
+  | (ch,SOutput(c,t,p',pos,_))::q -> Some(c,t,pos,(ch,p')::q)
   | (ch,SPar pl)::q ->
       begin match search_output_process_list pl with
         | None ->
@@ -1590,7 +1667,7 @@ let apply_neg_out conf =
   let p = List.hd conf.sure_output_proc in
 
   match p.proc with
-    | SOutput(c,t,p',pos) ->
+    | SOutput(c,t,p',pos,_) ->
         let conf' =
           { conf with
             sure_output_proc = List.tl conf.sure_output_proc;

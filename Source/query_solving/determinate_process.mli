@@ -30,7 +30,7 @@ val is_strongly_action_determinate : process -> bool
 
 val do_else_branches_lead_to_improper_block_conf : configuration -> bool
 
-val is_block_list_authorized : block list -> block -> bool
+val is_block_list_authorized : block list -> block option -> bool
 
 val generate_initial_configurations : process -> process -> configuration * configuration * bool (* indicates whether there are else branches *)
 
