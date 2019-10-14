@@ -744,7 +744,7 @@ and rewrite_term quantifier next_f = function
   | t -> next_f t
 
 (** We assume here that [eq_list] only contains free variables *)
-let compute_equality_modulo_and_rewrite term_list eq_list =
+let compute_equality_modulo_and_rewrite eq_list =
 
   let free_vars = ref [] in
 
@@ -760,7 +760,6 @@ let compute_equality_modulo_and_rewrite term_list eq_list =
   in
 
   Variable.auto_cleanup_with_reset_notail (fun () ->
-    List.iter get_vars term_list;
     List.iter (fun (t1,t2) -> get_vars t1; get_vars t2) eq_list
   );
 
@@ -793,40 +792,34 @@ let compute_equality_modulo_and_rewrite term_list eq_list =
   let accumulator = ref [] in
   let accumulator_diseq = ref Formula.T.Top in
 
-  rewrite_term_list Existential (fun term_list' ->
-    explore_equality_list (fun () ->
-      let term_list'' = List.map Term.instantiate term_list' in
-      let equations =
-        List.fold_left (fun acc v -> match v.link with
-          | NoLink -> acc
-          | TLink t ->
-              if v.quantifier = Free
-              then (v,Term.instantiate t)::acc
-              else acc
-          | _ -> Config.internal_error "[rewrite_rules.ml >> compute_equality_modulo] Unexpected link."
-        ) [] !free_vars
-      in
-      let diseq =
-        if equations = []
-        then Diseq.T.Bot
-        else
-          Diseq.T.Disj(
-            Variable.auto_cleanup_with_reset_notail (fun () ->
-              List.map (fun (v,t) -> v,replace_existential_to_universal t) equations
-            )
+  explore_equality_list (fun () ->
+    let equations =
+      List.fold_left (fun acc v -> match v.link with
+        | NoLink -> acc
+        | TLink t ->
+            if v.quantifier = Free
+            then (v,Term.instantiate t)::acc
+            else acc
+        | _ -> Config.internal_error "[rewrite_rules.ml >> compute_equality_modulo] Unexpected link."
+      ) [] !free_vars
+    in
+    let diseq =
+      if equations = []
+      then Diseq.T.Bot
+      else
+        Diseq.T.Disj(
+          Variable.auto_cleanup_with_reset_notail (fun () ->
+            List.map (fun (v,t) -> v,replace_existential_to_universal t) equations
           )
-      in
-      accumulator := (term_list'',equations) :: !accumulator;
-      accumulator_diseq := Formula.T.wedge diseq !accumulator_diseq
-    ) eq_list
-  ) term_list;
+        )
+    in
+    accumulator := equations :: !accumulator;
+    accumulator_diseq := Formula.T.wedge diseq !accumulator_diseq
+  ) eq_list;
 
-  if !accumulator = []
-  then
-    (* Unsatisfiable *)
-    [], Formula.T.Bot
-  else
-    !accumulator, !accumulator_diseq
+  if List.exists (fun eq -> eq = []) !accumulator
+  then [[]], Formula.T.Bot
+  else !accumulator, !accumulator_diseq
 
 exception Found_normalise of term
 

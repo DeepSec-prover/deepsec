@@ -251,6 +251,8 @@ module Name :  sig
 
   val auto_cleanup_with_reset_notail : (unit -> 'a) -> 'a
 
+  val auto_cleanup_with_exception : (unit -> 'a) -> 'a
+
   val set_deducible : name -> recipe -> unit
 
   val currently_deducible : name list ref
@@ -292,6 +294,10 @@ module Term : sig
   (** [var_occurs x t] returns [true] iff the variable [x] occurs in the term [t], i.e., {% $x \in \vars{t}$. %}
       Warning: The function follow through the links [TLink]. *)
   val var_occurs : variable -> term -> bool
+
+  (** [quantified_var_occurs q t] returns [true] iff there exists a variable in [t]
+      with [q] as quantification. *)
+  val quantified_var_occurs : quantifier -> term -> bool
 
   (** [is_equal t1 t2] returns [true] iff the terms [t1] and [t2] are equal.
       Warning: The function follow through the links [TLink]. *)

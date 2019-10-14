@@ -1,5 +1,5 @@
 open Types
 
-(*** Transform process with pure fresh name ***)
+(*** Transformation and simplifications ***)
 
-val detect_and_replace_pure_fresh_name : process -> process
+val simplify : process -> process * (transition list -> transition list) 

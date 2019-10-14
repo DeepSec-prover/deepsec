@@ -379,6 +379,20 @@ module Name = struct
 
     r
 
+  let auto_cleanup_with_exception (f_cont:unit -> 'a) =
+    let tmp = !currently_linked in
+    currently_linked := [];
+
+    try
+      let r = f_cont () in
+      List.iter (fun n -> n.link_n <- NNoLink) !currently_linked;
+      currently_linked := tmp;
+      r
+    with e ->
+      List.iter (fun n -> n.link_n <- NNoLink) !currently_linked;
+      currently_linked := tmp;
+      raise e
+
   let set_deducible n recipe =
     Config.debug (fun () ->
       if n.deducible_n <> None
@@ -678,6 +692,11 @@ module Term = struct
     | Var v' when v == v' -> true
     | Var {link = TLink t; _} -> var_occurs v t
     | Func(_,args) -> List.exists (var_occurs v) args
+    | _ -> false
+
+  let rec quantified_var_occurs q = function
+    | Var { quantifier = q'; _ } -> q = q'
+    | Func(_,args) -> List.exists (quantified_var_occurs q) args
     | _ -> false
 
   (* We follow the links TLink. *)

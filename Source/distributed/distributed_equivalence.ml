@@ -133,8 +133,8 @@ let trace_equivalence_determinate proc1 proc2 =
 
   (*** Generate the initial constraint systems ***)
 
-  let proc1' = Process.detect_and_replace_pure_fresh_name proc1 in
-  let proc2' = Process.detect_and_replace_pure_fresh_name proc2 in
+  let (proc1', translate_trace1) = Process.simplify proc1 in
+  let (proc2', translate_trace2) = Process.simplify proc2 in
 
   let (conf1,conf2,else_branch) = Determinate_process.generate_initial_configurations proc1' proc2' in
 
@@ -199,4 +199,12 @@ let trace_equivalence_determinate proc1 proc2 =
 
   (**** Return the result of the computation ****)
 
-  !EquivJob.result_equivalence
+  match !EquivJob.result_equivalence with
+    | RTrace_Equivalence (Some (is_left,trans_list)) ->
+        let trans_list' =
+          if is_left
+          then translate_trace1 trans_list
+          else translate_trace2 trans_list
+        in
+        RTrace_Equivalence (Some (is_left,trans_list'))
+    | r -> r

@@ -46,7 +46,7 @@ val initialise_all_skeletons : unit -> unit
 
 val rewrite_term : quantifier -> (term -> unit) -> term -> unit
 
-val compute_equality_modulo_and_rewrite : term list -> (term * term) list -> (term list * (variable * term) list) list * Formula.T.t
+val compute_equality_modulo_and_rewrite : (term * term) list -> (variable * term) list list * Formula.T.t
 
 exception Not_message
 

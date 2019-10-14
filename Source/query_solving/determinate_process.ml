@@ -824,8 +824,8 @@ let simple_process_of_intermediate_process proc =
           if !Variable.currently_linked <> []
           then Config.internal_error "[determinate_process.ml >> simple_process_of_intermediate_process] No variables should be linked."
         );
-        let (equations_1,disequations_1) = Rewrite_rules.compute_equality_modulo_and_rewrite [] [(t1,t2)] in
-        let equations_2 = List.map (fun (_,eqs) -> replace_name_by_variables_equations assoc eqs) equations_1 in
+        let (equations_1,disequations_1) = Rewrite_rules.compute_equality_modulo_and_rewrite [(t1,t2)] in
+        let equations_2 = List.map (replace_name_by_variables_equations assoc) equations_1 in
         let disequations_2 = replace_name_by_variables_formula assoc disequations_1 in
         SCondition(equations_2,disequations_2,[],explore assoc pthen,explore assoc pelse,pos)
     | ILet(t,cond,fresh_vars,pthen,pelse,pos) ->
@@ -833,10 +833,10 @@ let simple_process_of_intermediate_process proc =
           if !Variable.currently_linked <> []
           then Config.internal_error "[determinate_process.ml >> simple_process_of_intermediate_process] No variables should be linked."
         );
-        let (equations_1,disequations_1) = Rewrite_rules.compute_equality_modulo_and_rewrite [] [(t,cond)] in
+        let (equations_1,disequations_1) = Rewrite_rules.compute_equality_modulo_and_rewrite [(t,cond)] in
         let disequations_2 = replace_fresh_vars_by_universal fresh_vars disequations_1 in
         let disequations_3 = replace_name_by_variables_formula assoc disequations_2 in
-        let equations_2 = List.map (fun (_,eqs) -> replace_name_by_variables_equations assoc eqs) equations_1 in
+        let equations_2 = List.map (replace_name_by_variables_equations assoc) equations_1 in
         SCondition(equations_2,disequations_3,fresh_vars,explore assoc pthen, explore assoc pelse,pos)
     | INew(n,p,pos) ->
         let x = Variable.fresh Free in

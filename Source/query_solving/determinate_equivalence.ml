@@ -649,8 +649,8 @@ let trace_equivalence proc1 proc2 =
 
   (*** Generate the initial constraint systems ***)
 
-  let proc1' = Process.detect_and_replace_pure_fresh_name proc1 in
-  let proc2' = Process.detect_and_replace_pure_fresh_name proc2 in
+  let (proc1', translate_trace1) = Process.simplify proc1 in
+  let (proc2', translate_trace2) = Process.simplify proc2 in
 
   let (conf1,conf2,else_branch) = Determinate_process.generate_initial_configurations proc1' proc2' in
 
@@ -695,9 +695,14 @@ let trace_equivalence proc1 proc2 =
       Constraint_system.Rule.debug_display_data ()
     );
     RTrace_Equivalence None
-  with Not_Trace_Equivalent attack ->
+  with Not_Trace_Equivalent (is_left,trans_list) ->
     Config.debug (fun () ->
       Config.print_in_log ~always:true (Printf.sprintf "Result = Not Equivalent (Nb of application of apply_one_transition_and_rules = %d)\n" !nb_apply_one_transition_and_rules);
       Constraint_system.Rule.debug_display_data ()
     );
-    RTrace_Equivalence (Some attack)
+    let trans_list' =
+      if is_left
+      then translate_trace1 trans_list
+      else translate_trace2 trans_list
+    in
+    RTrace_Equivalence (Some (is_left,trans_list'))
