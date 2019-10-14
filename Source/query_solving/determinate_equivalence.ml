@@ -63,7 +63,9 @@ let export_equivalence_problem equiv_pbl =
 
   List.iter (
     iter_recipe_variable (fun v ->
-      recipe_subst := (v, Recipe.instantiate (RVar v)) :: !recipe_subst
+      match Recipe.instantiate (RVar v) with
+        | RVar v' when v == v' -> ()
+        | r -> recipe_subst := (v, r) :: !recipe_subst
     )
   ) equiv_pbl.complete_blocks;
 
@@ -71,7 +73,9 @@ let export_equivalence_problem equiv_pbl =
     | None -> ()
     | Some b ->
         iter_recipe_variable (fun v ->
-          recipe_subst := (v, Recipe.instantiate (RVar v)) :: !recipe_subst
+          match Recipe.instantiate (RVar v) with
+            | RVar v' when v == v' -> ()
+            | r -> recipe_subst := (v, r) :: !recipe_subst
         ) b
   end;
 
@@ -680,7 +684,7 @@ let trace_equivalence proc1 proc2 =
       ongoing_block = None;
       size_frame = 0;
       else_branch = else_branch;
-      initial_processes = (proc1,proc2)
+      initial_processes = (proc1',proc2')
     }
   in
 

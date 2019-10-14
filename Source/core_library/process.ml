@@ -332,7 +332,7 @@ let rec insert_name n fresh proc = match proc with
       if occur_in_term n t || occur_in_pattern n pat
       then apply_replacement n fresh proc
       else Let(pat,t,insert_name n true p1, insert_name n true p2,pos)
-  | New(n,p,pos) -> New(n,insert_name n fresh p,pos)
+  | New(n',p,pos) -> New(n',insert_name n fresh p,pos)
   | Par p_list ->
       let rec explore prev = function
         | [] -> None
@@ -364,7 +364,7 @@ let rec move_new_name = function
   | Par p_list -> Par (List.map move_new_name p_list)
   | Bang(p_list,pos) -> Bang(List.map move_new_name p_list,pos)
   | Choice(p1,p2,pos) -> Choice(move_new_name p1,move_new_name p2,pos)
-  | New(n,p,_) -> insert_name n false p
+  | New(n,p,_) -> insert_name n false (move_new_name p)
 
 (*** Apply trivial let ***)
 
@@ -747,7 +747,7 @@ let rec regroup_else_branches = function
         let (p1',pos_match1) = regroup_else_branches p1 in
         let (p2',pos_match2) = regroup_else_branches p2 in
         begin match gather_names_let p1' with
-          | None -> Let(pat,t,p1,p2,pos), (pos_match1 @ pos_match2)
+          | None -> Let(pat,t,p1',p2',pos), (pos_match1 @ pos_match2)
           | Some(pat',t',pthen,pelse,names_l) ->
               begin
                 try
@@ -764,7 +764,8 @@ let rec regroup_else_branches = function
                   let new_t =  Func(f,[t;t']) in
                   let p = Let(new_pat,new_t,pthen,pelse,dummy_pos) in
                   add_names p names_l, new_matchings
-                with No_Match -> Let(pat,t,p1,p2,pos), (pos_match1 @ pos_match2)
+                with No_Match ->
+                  Let(pat,t,p1',p2',pos), (pos_match1 @ pos_match2)
               end
         end
       )
@@ -798,25 +799,11 @@ let rec regroup_else_branches = function
 (*** General function ***)
 
 let simplify p =
-  Printf.printf "******** Simplification *********\n";
-  Printf.printf "0) Initial process : \n%s" (display 0 p);
-  flush_all ();
   let p1 = clean p in
-  Printf.printf "1) Clean process : \n%s" (display 0 p1);
-  flush_all ();
-  let p2 = move_new_name p1 in
-  Printf.printf "2) Move new : \n%s" (display 0 p2);
-  flush_all ();
-  let p3 = add_let_for_output_input p2 in
-  Printf.printf "3) Add let for output and input : \n%s" (display 0 p3);
-  flush_all ();
-  let p4 = apply_trivial_let p3 in
-  Printf.printf "4) Apply trivial let : \n%s" (display 0 p4);
-  flush_all ();
-  let p5 = detect_and_replace_pure_fresh_name p4 in
-  Printf.printf "5) Detect pure names : \n%s" (display 0 p5);
-  flush_all ();
+  let p2 = add_let_for_output_input p1 in
+  let p3 = apply_trivial_let p2 in
+  let p4 = detect_and_replace_pure_fresh_name p3 in
+  let p5 = move_new_name p4 in
   let (p6,pos_match) = regroup_else_branches p5 in
-  Printf.printf "6) Regroup else branch : \n%s" (display 0 p6);
-  flush_all ();
+  (** TODO : implement the reconstruction of traces. **)
   p6, (fun trace -> trace)

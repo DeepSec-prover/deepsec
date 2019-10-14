@@ -176,6 +176,7 @@ struct
     let rec create_processes pid_list = function
       | [] -> []
       | (host,0)::q ->
+          Config.debug (fun () -> Unix.sleep 1);
       	  let manager = match host with
       	    | Local -> Filename.concat !Config.path_deepsec "manager_deepsec"
       	    | Distant(machine,path) ->  Printf.sprintf "ssh %s %s%smanager_deepsec" machine path (if path.[(String.length path) - 1] = '/' then "" else "/")
@@ -220,6 +221,10 @@ struct
 
       if not !Config.running_api
       then Printf.printf "Generation of sets of constraint systems...\n%!";
+
+      Config.debug (fun () ->
+        Config.print_in_log ~always:true "Generation of jobs\n"
+      );
 
       while !continue_computing && List.length !job_list_ref < !minimum_nb_of_jobs do
 
@@ -284,6 +289,10 @@ struct
           if !Config.running_api
           then send_progression nb_round nb_of_jobs_created !nb_of_jobs
           else Printf.printf "Number of sets of constraint systems generated: %d\n%!" !nb_of_jobs;
+
+          Config.debug (fun () ->
+            Config.print_in_log "Jobs generated.\n"
+          );
 
           (**** Compute the first jobs ****)
 

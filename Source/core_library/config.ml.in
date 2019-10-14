@@ -5,6 +5,7 @@ let running_api = ref false
 let debug_activated = false
 
 let log_file =
+  Random.init (int_of_float (Unix.time ()));
   if debug_activated
   then open_out (Printf.sprintf "debug_log_%d.txt" (Random.int 100000))
   else stdout

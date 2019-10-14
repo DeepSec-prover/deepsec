@@ -86,6 +86,11 @@ struct
     | Result of result
 
   let generate_jobs job =
+    Config.running_api := job.running_api;
+
+    Config.debug (fun () ->
+      Config.print_in_log ~always:true "Start generate one job\n"
+    );
     Variable.set_up_counter job.variable_counter;
     Name.set_up_counter job.name_counter;
     Symbol.set_up_signature
@@ -99,17 +104,32 @@ struct
         Symbol.nb_symb = job.number_of_symbols
       };
     Rewrite_rules.set_up_skeleton_settings job.skeleton_settings;
-    Config.running_api := job.running_api;
+
+    Config.debug (fun () ->
+      Config.print_in_log ~always:true "Setting complete\n"
+    );
 
     match job.data_equiv with
       | DDeterminate data ->
           begin try
+            Config.debug (fun () ->
+              Config.print_in_log ~always:true "Import\n"
+            );
             Determinate_equivalence.import_equivalence_problem (fun () ->
               let job_list = ref [] in
+              Config.debug (fun () ->
+                Config.print_in_log ~always:true "Apply one transition\n"
+              );
               Determinate_equivalence.apply_one_transition_and_rules data.equiv_problem
                 (fun equiv_pbl_1 f_next_1 ->
+                  Config.debug (fun () ->
+                    Config.print_in_log ~always:true "Export\n"
+                  );
                   let (equiv_pbl_2,recipe_subst) = Determinate_equivalence.export_equivalence_problem equiv_pbl_1 in
                   job_list := { job with data_equiv = DDeterminate { equiv_problem = equiv_pbl_2; recipe_substitution = recipe_subst }; variable_counter = Variable.get_counter (); name_counter = Name.get_counter () } :: !job_list;
+                  Config.debug (fun () ->
+                    Config.print_in_log ~always:true "Next\n"
+                  );
                   f_next_1 ()
                 )
                 (fun () -> ());
@@ -161,7 +181,7 @@ let trace_equivalence_determinate proc1 proc2 =
   let v_counter = Variable.get_counter () in
   let n_counter = Name.get_counter () in
 
-  let equiv_pbl = Determinate_equivalence.initialise_equivalence_problem (proc1,proc2) else_branch csys_set in
+  let equiv_pbl = Determinate_equivalence.initialise_equivalence_problem (proc1',proc2') else_branch csys_set in
 
   let data : EquivJob.data_determinate =
     {
@@ -190,6 +210,10 @@ let trace_equivalence_determinate proc1 proc2 =
 
   if not !Config.running_api
   then Printf.printf "Starting distributed computing...\n%!";
+
+  Config.debug (fun () ->
+    Config.print_in_log ~always:true "Starting distributed computin\n"
+  );
 
   (**** Launch the jobs in parallel ****)
 
