@@ -40,6 +40,7 @@ type 'a t =
     (* Original variables and names *)
 
     original_substitution : (variable * term) list;
+    original_names : (variable * name) list;
 
     (* Data for rules *)
     rule_data : rule_data
@@ -100,6 +101,8 @@ module Rule : sig
   val apply_rules_after_input : bool -> ('a set -> (unit -> unit) -> unit) -> 'a set -> (unit -> unit) -> unit
 
   val apply_rules_after_output : bool -> ('a set -> (unit -> unit) -> unit) -> 'a set -> (unit -> unit) -> unit
+
+  val instantiate_useless_deduction_facts : ('a set -> (unit -> unit) -> unit) -> 'a set -> (unit -> unit) -> unit
 
   val debug_display_data : unit -> unit
 

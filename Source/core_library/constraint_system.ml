@@ -54,6 +54,7 @@ type 'a t =
     (* Original variables and names *)
 
     original_substitution : (variable * term) list;
+    original_names : (variable * name) list;
 
     (* Data for rules *)
     rule_data : rule_data
@@ -99,6 +100,7 @@ let empty data =
     eq_term = Formula.T.Top;
     eq_uniformity = Formula.T.Top;
     original_substitution = [];
+    original_names = [];
 
     rule_data =
       {
@@ -157,6 +159,7 @@ let prepare_for_solving_procedure after_output csys =
       let eq_term = Formula.T.rename_and_instantiate csys.eq_term in
       let eq_uni = Formula.T.rename_and_instantiate csys.eq_uniformity in
       let orig_subst = List.rev_map (fun (v,t) -> (v,Term.rename_and_instantiate t)) csys.original_substitution in
+      let orig_names = List.rev_map (fun (v,n) -> (v,Name.rename_and_instantiate n)) csys.original_names in
 
       let history_skeleton =
         List.map (fun hist ->
@@ -212,6 +215,7 @@ let prepare_for_solving_procedure after_output csys =
           eq_term = eq_term;
           eq_uniformity = eq_uni;
           original_substitution = orig_subst;
+          original_names = orig_names;
           rule_data = rule_data
         }
       in
@@ -298,6 +302,9 @@ let display_constraint_system csys =
   acc := !acc ^ (Printf.sprintf "%s" (IK.display csys.knowledge csys.incremented_knowledge));
   acc := !acc ^ (Printf.sprintf "Eq_term = %s\n" (Formula.T.display Display.Terminal csys.eq_term));
   acc := !acc ^ (Printf.sprintf "Eq_uni = %s\n" (Formula.T.display Display.Terminal csys.eq_uniformity));
+  acc := !acc ^ (Printf.sprintf "Orig_subst = %s\n" (Display.display_list (fun (x,t) ->
+      Printf.sprintf "%s -> %s" (Variable.display Display.Terminal x) (Term.display Display.Terminal t)
+    ) "; " csys.original_substitution));
   !acc
 
 let debug_on_constraint_system msg csys =
@@ -2696,6 +2703,90 @@ module Rule = struct
     if exists_private
     then sat (sat_non_deducible_terms (split_data_constructor (normalisation_deduction_consequence (rewrite (equality_constructor f_continuation)))))
     else sat (sat_disequation (split_data_constructor (normalisation_deduction_consequence (rewrite (equality_constructor f_continuation)))))
+
+  (*** Additional function ***)
+
+  let rec mark_variables = function
+    | Var v ->
+        begin
+          match v.link with
+          | TLink t -> mark_variables t
+          | NoLink -> v.link <- SLink; Variable.currently_linked := v :: !Variable.currently_linked
+          | _ -> Config.internal_error "[constraint_system.ml >> mark_variables] Unexpected link."
+        end
+    | Func(_,args) -> List.iter mark_variables args
+    | _ -> ()
+
+  let rec instantiate_useless_deduction_facts_list rec_vars = function
+    | [] -> rec_vars
+    | csys::q ->
+        let rec_vars' =
+          Variable.auto_cleanup_with_reset_notail (fun () ->
+            K.iter_term mark_variables csys.knowledge;
+            IK.iter_term mark_variables csys.incremented_knowledge;
+            List.iter (fun (_,t) -> mark_variables t) csys.original_substitution;
+            let rec_vars1 = ref [] in
+            DF.iter (fun bfact -> match bfact.bf_term with
+              | Var { link = NoLink; _ } ->
+                  if List.memq bfact.bf_var rec_vars
+                  then rec_vars1 := bfact.bf_var :: !rec_vars1
+              | Var { link = SLink; _ } -> ()
+              | _ -> Config.internal_error "[constraint_system.ml >> instantiate_useless_deduction_facts_list] Unexpected term."
+            ) csys.deduction_facts;
+            !rec_vars1
+          )
+        in
+        if rec_vars' = []
+        then []
+        else instantiate_useless_deduction_facts_list rec_vars' q
+
+  let instantiate_useless_deduction_facts f_continuation csys_set f_next =
+    if csys_set.set = []
+    then f_continuation csys_set f_next
+    else
+      let csys = List.hd csys_set.set in
+      if DF.is_empty csys.deduction_facts
+      then f_continuation csys_set f_next
+      else
+        let first_rec_vars =
+          Variable.auto_cleanup_with_reset_notail (fun () ->
+            K.iter_term mark_variables csys.knowledge;
+            IK.iter_term mark_variables csys.incremented_knowledge;
+            List.iter (fun (_,t) -> mark_variables t) csys.original_substitution;
+            let rec_vars = ref [] in
+            DF.iter (fun bfact -> match bfact.bf_term with
+              | Var { link = NoLink; _ } -> rec_vars := bfact.bf_var :: !rec_vars
+              | Var { link = SLink; _ } -> ()
+              | _ -> Config.internal_error "[constraint_system.ml >> instantiate_useless_deduction_facts] Unexpected term."
+            ) csys.deduction_facts;
+            !rec_vars
+          )
+        in
+        if first_rec_vars = []
+        then f_continuation csys_set f_next
+        else
+          let final_rec_vars = instantiate_useless_deduction_facts_list first_rec_vars (List.tl csys_set.set) in
+          Recipe_Variable.auto_cleanup_with_reset (fun f_next1 ->
+            List.iter (fun x ->
+              let f = Symbol.fresh_attacker_name () in
+              Recipe_Variable.link_recipe x (RFunc(f,[]))
+            ) final_rec_vars;
+
+            let eq_recipe = Formula.R.instantiate_and_normalise csys_set.eq_recipe in
+
+            Config.debug (fun () ->
+              if eq_recipe = Formula.R.Bot
+              then Config.internal_error "[constraint_system.ml >> instantiate_useless_deduction_facts] Should not be bot."
+            );
+
+            let csys_list =
+              List.rev_map (fun csys ->
+                { csys with deduction_facts = DF.remove_all_linked_variables csys.deduction_facts }
+              ) csys_set.set
+            in
+
+            f_continuation { eq_recipe = eq_recipe; set = csys_list } f_next1
+          ) f_next
 
   (*** Main functions for closed constraint system ***)
 

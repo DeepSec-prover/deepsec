@@ -122,6 +122,26 @@ module DF = struct
 
     (explore df:t)
 
+  let remove_all_linked_variables (df:t) =
+
+    let rec explore_bfact_list = function
+      | [] -> []
+      | bfact::q when bfact.bf_var.link_r = RNoLink ->
+          bfact::(explore_bfact_list q)
+      | _::q -> explore_bfact_list q
+    in
+
+    let rec explore = function
+      | [] -> []
+      | (i,bfact_list)::q ->
+          let bfact_list' = explore_bfact_list bfact_list in
+          if bfact_list' = []
+          then q
+          else (i,bfact_list')::(explore q)
+    in
+
+    explore df
+
   (******* Access *******)
 
   let get_term (df:t) (x:recipe_variable) =
@@ -186,6 +206,7 @@ module DF = struct
 
   let iter f df =
     List.iter (fun (_,bfact_l) -> List.iter f bfact_l) df
+
   (******* Testing *******)
 
   let is_solved (df:t) =
@@ -215,6 +236,8 @@ module DF = struct
     let result = explore df in
     List.iter (fun v -> v.link <- NoLink) !linked_vars;
     result
+
+  let is_empty (df:t) = df = []
 
   (******* Function for MGS *********)
 
@@ -610,6 +633,11 @@ module K = struct
       f i kb.data.(i).recipe kb.data.(i).term
     done
 
+  let iter_term f kb =
+    for i = 0 to kb.size - 1 do
+      f kb.data.(i).term
+    done
+
   (* Consequence *)
 
   exception Uniformity_falsified
@@ -969,6 +997,11 @@ module IK = struct
   let iteri f ikb =
     List.iter (fun elt ->
       f elt.id elt.recipe elt.term
+    ) ikb.data
+
+  let iter_term f ikb =
+    List.iter (fun elt ->
+      f elt.term
     ) ikb.data
 
   (* Testing *)

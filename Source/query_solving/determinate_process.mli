@@ -24,6 +24,8 @@ val iter_recipe_variable : (recipe_variable -> unit) -> block -> unit
 
 val get_instantiated_trace : process -> configuration -> transition list
 
+val link_used_variables : (unit -> 'a) -> configuration -> 'a
+
 (** {3 Testing} *)
 
 val is_strongly_action_determinate : process -> bool
@@ -49,6 +51,7 @@ val display_configuration : configuration -> string
 type gathering_normalise =
   {
     original_subst : (variable * term) list;
+    original_names : (variable * name) list;
     disequations : Formula.Formula.T.t
   }
 
@@ -56,6 +59,7 @@ val normalise_configuration :
   configuration ->
   bool ->
   (variable * term) list ->
+  (variable * name) list ->
   (gathering_normalise -> configuration -> unit) ->
   unit
 

@@ -599,7 +599,7 @@ let rec equal_modulo_renaming f_next proc1 proc2 = match proc1, proc2 with
       )
   | New _, New _ -> gather_names_and_match f_next [] [] proc1 proc2
   | Par p_list1, Par p_list2 when List.length p_list1 = List.length p_list2 -> equal_modulo_renaming_list f_next p_list1 p_list2
-  | Bang(p_list1,pos1), Bang(p2::p_list2,pos2) ->
+  | Bang(p_list1,pos1), Bang(p_list2,pos2) ->
       let size1 = List.length p_list1 in
       let size2 = List.length p_list2 in
 
@@ -668,7 +668,7 @@ and gather_names_and_match f_next n_l1 n_l2 proc1 proc2 = match proc1, proc2 wit
 (*** Join equal else branches ***)
 
 let rec gather_names_let = function
-  | New(n,p,pos) ->
+  | New(n,p,_) ->
       begin match gather_names_let p with
         | None -> None
         | Some(pat,t,pthen,pelse,name_list) -> Some(pat,t,pthen,pelse,n::name_list)

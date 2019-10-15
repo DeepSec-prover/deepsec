@@ -400,6 +400,15 @@ module Name = struct
     );
     currently_deducible := n :: !currently_deducible;
     n.deducible_n <- Some recipe
+
+  let rename_and_instantiate n = match n.link_n with
+    | NLink n' -> n' (* n' is the fresh replacement of n *)
+    | NNoLink ->
+        let n' = { label_n = n.label_n; index_n = n.index_n; pure_fresh_n = n.pure_fresh_n; link_n = NNoLink; deducible_n = n.deducible_n } in
+        Config.debug (fun () -> if n == n' then Config.internal_error "[term.ml >> Name.rename_and_instantiate] Should not be physically equal.");
+        link n n';
+        n'
+    | _ -> Config.internal_error "[term.ml >> Name.rename_and_instantiat] Unexpected link of name."
 end
 
 (*************************************
@@ -570,6 +579,7 @@ module Symbol = struct
   (* Used to instantiate the variables of a solved constraint system. *)
   let fresh_attacker_name =
     let acc = ref 0 in
+    (** TODO : Put the counter for fresh attacker name outside and put it in the settings *)
 
     let f () =
       let symb = { label_s = (Printf.sprintf "#n_%d" !acc); arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
@@ -798,7 +808,7 @@ module Term = struct
               let v' = Variable.fresh_with_label v.quantifier v.label in
               Variable.link v v';
               Var v'
-          | _ -> Config.internal_error "[term.ml >> rename_and_instantiate_term] Unexpected link of variable."
+          | _ -> Config.internal_error "[term.ml >> Term.rename_and_instantiate] Unexpected link of variable."
         end
     | Func(f,args) -> Func(f,List.map rename_and_instantiate args)
     | Name n ->
@@ -806,10 +816,10 @@ module Term = struct
           | NLink n' -> Name n' (* n' is the fresh replacement of n *)
           | NNoLink ->
               let n' = { label_n = n.label_n; index_n = n.index_n; pure_fresh_n = n.pure_fresh_n; link_n = NNoLink; deducible_n = n.deducible_n } in
-              Config.debug (fun () -> if n == n' then Config.internal_error "[constraint_system.ml >> rename_and_instantiate_term] Should not be physically equal.");
+              Config.debug (fun () -> if n == n' then Config.internal_error "[term.ml >> Term.rename_and_instantiate] Should not be physically equal.");
               Name.link n n';
               Name n'
-          | _ -> Config.internal_error "[term.ml >> rename_and_instantiate_term] Unexpected link of name."
+          | _ -> Config.internal_error "[term.ml >> Term.rename_and_instantiate] Unexpected link of name."
 
   (********** Display **********)
 

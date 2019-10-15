@@ -55,6 +55,8 @@ module DF : sig
       @raise Internal_error if no basic deduction in {% $\Df$ has $X$ as variable. \highdebug %} *)
   val remove : t -> recipe_variable -> t
 
+  val remove_all_linked_variables : t -> t
+
   (** {3 Access} *)
 
   (** [get] {% $\Df$~$X$ %} returns [Some] {% $\dedfact{X}{u}$ if $\dedfact{X}{u} \in \Df$, %} and returns [None] otherwise.  *)
@@ -70,6 +72,8 @@ module DF : sig
 
   (** [is_solved df] verifies that [df] contains distinct variables has right hand side. *)
   val is_solved : t -> bool
+
+  val is_empty : t -> bool
 
   (** {3 Function for MGS generation and application} *)
 
@@ -140,6 +144,8 @@ module K : sig
 
   val iteri : (int -> recipe -> term -> unit) -> t -> unit
 
+  val iter_term : (term -> unit) -> t -> unit
+
   exception Uniformity_falsified
 
   val consequence_uniform_recipe : t -> Formula.T.t -> recipe -> Formula.T.t * term * int
@@ -180,6 +186,8 @@ module IK : sig
   val instantiate : t -> t
 
   val iteri : (int -> recipe -> term -> unit) -> t -> unit
+
+  val iter_term : (term -> unit) -> t -> unit
 
   val find_unifier_with_recipe_with_stop : K.t -> t -> term -> int -> bool ref ->
     (bool -> recipe -> (unit -> unit) -> unit) ->

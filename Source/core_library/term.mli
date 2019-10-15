@@ -256,6 +256,8 @@ module Name :  sig
   val set_deducible : name -> recipe -> unit
 
   val currently_deducible : name list ref
+
+  val rename_and_instantiate : name -> name
 end
 
 (** {2 Terms} *)

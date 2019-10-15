@@ -171,29 +171,42 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           let symb_proc = csys.Constraint_system.additional_data in
           let conf = apply_start symb_proc.configuration in
 
-           Variable.auto_cleanup_with_reset_notail (fun () ->
-             (* We link the initial substitution from the constraint system *)
-             let original_subst = csys.Constraint_system.original_substitution in
-             List.iter (fun (x,t) -> Variable.link_term x t) original_subst;
+          Variable.auto_cleanup_with_reset_notail (fun () ->
+          (* We link the initial substitution from the constraint system *)
+          let original_subst = csys.Constraint_system.original_substitution in
+          let original_names = csys.Constraint_system.original_names in
+          List.iter (fun (x,t) -> Variable.link_term x t) original_subst;
+          List.iter (fun (x,n) -> Variable.link_term x (Name n)) original_names;
 
-             normalise_configuration conf else_branch original_subst (fun gathering conf_1 ->
-               let eq_uniformity = Formula.T.instantiate_and_normalise_full csys.Constraint_system.eq_uniformity in
-               if eq_uniformity = Formula.T.Bot
-               then ()
-               else
-                 let csys_1 =
-                   { csys with
-                     Constraint_system.original_substitution = gathering.Determinate_process.original_subst;
-                     Constraint_system.additional_data = { symb_proc with configuration = conf_1 };
-                     Constraint_system.eq_term = gathering.disequations;
-                     Constraint_system.eq_uniformity = eq_uniformity
-                   }
-                 in
-                 let csys_2 = Constraint_system.prepare_for_solving_procedure false csys_1 in
-                 csys_list_for_start := csys_2 :: !csys_list_for_start
-             )
-           )
+          normalise_configuration conf else_branch original_subst original_names (fun gathering conf_1 ->
+            let eq_uniformity = Formula.T.instantiate_and_normalise_full csys.Constraint_system.eq_uniformity in
+            if eq_uniformity = Formula.T.Bot
+            then ()
+            else
+              let csys_1 =
+                { csys with
+                  Constraint_system.original_substitution = gathering.original_subst;
+                  Constraint_system.original_names = gathering.original_names;
+                  Constraint_system.additional_data = { symb_proc with configuration = conf_1 };
+                  Constraint_system.eq_term = gathering.disequations;
+                  Constraint_system.eq_uniformity = eq_uniformity
+                }
+              in
+              let csys_2 = Constraint_system.prepare_for_solving_procedure false csys_1 in
+              csys_list_for_start := csys_2 :: !csys_list_for_start
+            )
+          )
         ) equiv_pbl.csys_set.Constraint_system.set;
+
+        (* Optimise the original substitution within constraint systems *)
+        csys_list_for_start :=
+          List.rev_map (fun csys ->
+            let conf = csys.Constraint_system.additional_data.configuration in
+            link_used_variables (fun () ->
+              let original_subst = List.filter (fun (x,_) -> x.link = SLink) csys.Constraint_system.original_substitution in
+              { csys with Constraint_system.original_substitution = original_subst }
+            ) conf
+          ) !csys_list_for_start;
 
         let csys_set_for_start = { equiv_pbl.csys_set with Constraint_system.set = !csys_list_for_start } in
 
@@ -252,11 +265,13 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                 | OK (conf_left, conf_right) ->
                     let csys_left = { csys_left with Constraint_system.additional_data = { symb_left with configuration = conf_left } } in
                     let csys_right = { csys_right with Constraint_system.additional_data = { symb_right with configuration = conf_right } } in
-
                     let csys_set = { csys_set with Constraint_system.set = [csys_left;csys_right] } in
-                    let block = create_block initial_label in
-                    let equiv_pbl_1 = { equiv_pbl with ongoing_block = Some block; csys_set = csys_set } in
-                    f_continuation equiv_pbl_1 f_next
+
+                    Constraint_system.Rule.instantiate_useless_deduction_facts (fun csys_set1 f_next1 ->
+                      let block = create_block initial_label in
+                      let equiv_pbl_1 = { equiv_pbl with ongoing_block = Some block; csys_set = csys_set1 } in
+                      f_continuation equiv_pbl_1 f_next1
+                    ) csys_set f_next
                 | Faulty (is_left,f_conf,f_action) ->
                     apply_faulty equiv_pbl (csys_left, symb_left) (csys_right, symb_right) is_left f_conf f_action
         in
@@ -304,9 +319,11 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
                   (* We link the initial substitution from the constraint system *)
                   let original_subst = (x,Var x_fresh)::csys.Constraint_system.original_substitution in
+                  let original_names = csys.Constraint_system.original_names in
                   List.iter (fun (x,t) -> Variable.link_term x t) original_subst;
+                  List.iter (fun (x,n) -> Variable.link_term x (Name n)) original_names;
 
-                  normalise_configuration symb_proc.configuration else_branch original_subst (fun gathering conf_1 ->
+                  normalise_configuration symb_proc.configuration else_branch original_subst original_names (fun gathering conf_1 ->
                     let eq_uniformity = Formula.T.instantiate_and_normalise_full csys.Constraint_system.eq_uniformity in
                     if eq_uniformity = Formula.T.Bot
                     then ()
@@ -318,6 +335,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                           Constraint_system.eq_term = gathering.disequations;
                           Constraint_system.additional_data = { symb_proc with configuration = conf_1 };
                           Constraint_system.original_substitution = gathering.original_subst;
+                          Constraint_system.original_names = gathering.original_names;
                           Constraint_system.eq_uniformity = eq_uniformity
                         }
                       in
@@ -327,6 +345,16 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                   )
                 )
               ) csys_var_list;
+
+              (* Optimise the original substitution within constraint systems *)
+              csys_list_for_input :=
+                List.rev_map (fun csys ->
+                  let conf = csys.Constraint_system.additional_data.configuration in
+                  link_used_variables (fun () ->
+                    let original_subst = List.filter (fun (x,_) -> x.link = SLink) csys.Constraint_system.original_substitution in
+                    { csys with Constraint_system.original_substitution = original_subst }
+                  ) conf
+                ) !csys_list_for_input;
 
               let csys_set_for_input = { equiv_pbl.csys_set with Constraint_system.set = !csys_list_for_input } in
 
@@ -395,8 +423,10 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                           let csys_right = { csys_right with Constraint_system.additional_data = { symb_right with configuration = conf_right } } in
                           let csys_set_2 = { csys_set with Constraint_system.set = [csys_left;csys_right] } in
 
-                          let equiv_pbl_1 = { equiv_pbl with complete_blocks = complete_blocks_1; ongoing_block = Some block_1; csys_set = csys_set_2 } in
-                          f_continuation equiv_pbl_1 f_next
+                          Constraint_system.Rule.instantiate_useless_deduction_facts (fun csys_set_3 f_next_1 ->
+                            let equiv_pbl_1 = { equiv_pbl with complete_blocks = complete_blocks_1; ongoing_block = Some block_1; csys_set = csys_set_3 } in
+                            f_continuation equiv_pbl_1 f_next_1
+                          ) csys_set_2 f_next
                       | Faulty (is_left,f_conf,f_action) ->
                           apply_faulty equiv_pbl (csys_left, symb_left) (csys_right, symb_right) is_left f_conf f_action
               in
@@ -427,9 +457,11 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
             (* We link the initial substitution from the constraint system *)
             let original_subst = (x,Var x_fresh)::csys.Constraint_system.original_substitution in
+            let original_names = csys.Constraint_system.original_names in
             List.iter (fun (x,t) -> Variable.link_term x t) original_subst;
+            List.iter (fun (x,n) -> Variable.link_term x (Name n)) original_names;
 
-            normalise_configuration conf else_branch original_subst (fun gathering conf_1 ->
+            normalise_configuration conf else_branch original_subst original_names (fun gathering conf_1 ->
               let eq_uniformity = Formula.T.instantiate_and_normalise_full csys.Constraint_system.eq_uniformity in
               if eq_uniformity = Formula.T.Bot
               then ()
@@ -441,6 +473,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                     Constraint_system.eq_term = gathering.disequations;
                     Constraint_system.additional_data = { symb_proc with configuration = conf_1 };
                     Constraint_system.original_substitution = gathering.original_subst;
+                    Constraint_system.original_names = gathering.original_names;
                     Constraint_system.eq_uniformity = eq_uniformity
                   }
                 in
@@ -450,6 +483,16 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
             )
           )
         ) conf_var_list;
+
+        (* Optimise the original substitution within constraint systems *)
+        csys_list_for_input :=
+          List.rev_map (fun csys ->
+            let conf = csys.Constraint_system.additional_data.configuration in
+            link_used_variables (fun () ->
+              let original_subst = List.filter (fun (x,_) -> x.link = SLink) csys.Constraint_system.original_substitution in
+              { csys with Constraint_system.original_substitution = original_subst }
+            ) conf
+          ) !csys_list_for_input;
 
         let csys_set_for_input = { equiv_pbl.csys_set with Constraint_system.set = !csys_list_for_input } in
 
@@ -514,8 +557,10 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                     let csys_right = { csys_right with Constraint_system.additional_data = { symb_right with configuration = conf_right } } in
                     let csys_set_2 = { csys_set with Constraint_system.set = [csys_left;csys_right] } in
 
-                    let equiv_pbl_1 = { equiv_pbl with ongoing_block = Some block; csys_set = csys_set_2 } in
-                    f_continuation equiv_pbl_1 f_next
+                    Constraint_system.Rule.instantiate_useless_deduction_facts (fun csys_set_3 f_next_1 ->
+                      let equiv_pbl_1 = { equiv_pbl with ongoing_block = Some block; csys_set = csys_set_3 } in
+                      f_continuation equiv_pbl_1 f_next_1
+                    ) csys_set_2 f_next
                 | Faulty (is_left,f_conf,f_action) ->
                     apply_faulty equiv_pbl (csys_left, symb_left) (csys_right, symb_right) is_left f_conf f_action
         in
@@ -537,9 +582,11 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
               Variable.auto_cleanup_with_reset_notail (fun () ->
                 (* We link the initial substitution from the constraint system *)
                 let original_subst = csys.Constraint_system.original_substitution in
+                let original_names = csys.Constraint_system.original_names in
                 List.iter (fun (x,t) -> Variable.link_term x t) original_subst;
+                List.iter (fun (x,n) -> Variable.link_term x (Name n)) original_names;
 
-                normalise_configuration conf equiv_pbl.else_branch original_subst (fun gathering conf_1 ->
+                normalise_configuration conf equiv_pbl.else_branch original_subst original_names (fun gathering conf_1 ->
                   let eq_uniformity = Formula.T.instantiate_and_normalise_full csys.Constraint_system.eq_uniformity in
                   if eq_uniformity = Formula.T.Bot
                   then ()
@@ -550,6 +597,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                         Constraint_system.eq_term = gathering.disequations;
                         Constraint_system.additional_data = { symb_proc with configuration = conf_1 };
                         Constraint_system.original_substitution = gathering.original_subst;
+                        Constraint_system.original_names = gathering.original_names;
                         Constraint_system.eq_uniformity = eq_uniformity
                       }
                     in
@@ -559,6 +607,16 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                 )
               )
             ) equiv_pbl.csys_set.Constraint_system.set;
+
+            (* Optimise the original substitution within constraint systems *)
+            csys_list_for_output :=
+              List.rev_map (fun csys ->
+                let conf = csys.Constraint_system.additional_data.configuration in
+                link_used_variables (fun () ->
+                  let original_subst = List.filter (fun (x,_) -> x.link = SLink) csys.Constraint_system.original_substitution in
+                  { csys with Constraint_system.original_substitution = original_subst }
+                ) conf
+              ) !csys_list_for_output;
 
             let csys_set_for_output = { equiv_pbl.csys_set with Constraint_system.set = !csys_list_for_output } in
 
@@ -625,8 +683,10 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                         let csys_right = { csys_right with Constraint_system.additional_data = { symb_right with configuration = conf_right } } in
                         let csys_set_2 = { csys_set with Constraint_system.set = [csys_left;csys_right] } in
 
-                        let equiv_pbl_1 = { equiv_pbl with size_frame = equiv_pbl.size_frame + 1; ongoing_block = Some block; csys_set = csys_set_2 } in
-                        f_continuation equiv_pbl_1 f_next
+                        Constraint_system.Rule.instantiate_useless_deduction_facts (fun csys_set_3 f_next_1 ->
+                          let equiv_pbl_1 = { equiv_pbl with size_frame = equiv_pbl.size_frame + 1; ongoing_block = Some block; csys_set = csys_set_3 } in
+                          f_continuation equiv_pbl_1 f_next_1
+                        ) csys_set_2 f_next
                     | Faulty (is_left,f_conf,f_action) ->
                         apply_faulty equiv_pbl (csys_left, symb_left) (csys_right, symb_right) is_left f_conf f_action
                     | FocusNil -> Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] The focus should not be nil when output is applied (should be empty) (2)"

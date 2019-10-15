@@ -42,6 +42,10 @@ struct
   let result_equivalence = ref (RTrace_Equivalence None)
 
   let evaluation job =
+    Config.running_api := job.running_api;
+    Config.debug (fun () ->
+      Config.print_in_log ~always:true "Start evaluation one job\n"
+    );
     Variable.set_up_counter job.variable_counter;
     Name.set_up_counter job.name_counter;
     Symbol.set_up_signature
@@ -55,7 +59,6 @@ struct
         Symbol.nb_symb = job.number_of_symbols
       };
     Rewrite_rules.set_up_skeleton_settings job.skeleton_settings;
-    Config.running_api := job.running_api;
 
     match job.data_equiv with
       | DDeterminate (data:data_determinate) ->

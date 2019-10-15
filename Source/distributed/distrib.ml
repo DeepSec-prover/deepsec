@@ -188,6 +188,7 @@ struct
           managers := (in_ch,out_ch) :: !managers;
           create_processes [] q
       | (host,n)::q ->
+          Config.debug (fun () -> Unix.sleep 1);
       	  let worker =
       	    match host with
       	    | Local -> Filename.concat !Config.path_deepsec "worker_deepsec"
