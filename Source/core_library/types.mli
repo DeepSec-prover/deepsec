@@ -129,8 +129,8 @@ type equivalence =
 type transition =
   | AOutput of recipe * position
   | AInput of recipe * recipe * position
-  | AEaves of recipe * position * position
-  | AComm of position * position
+  | AEaves of recipe * position (* out *) * position (* in *)
+  | AComm of position (* out *) * position (* in *)
   | ABang of int * position
   | ATau of position
   | AChoice of position * bool (* True when the left process is chosen *)

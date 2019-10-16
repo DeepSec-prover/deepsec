@@ -789,6 +789,11 @@ module Term = struct
     | Func(f,args) -> Func(f,List.map instantiate args)
     | t -> t
 
+  let rec instantiate_pattern = function
+    | PatEquality t -> PatEquality (instantiate t)
+    | PatTuple(f,args) -> PatTuple(f,List.map instantiate_pattern args)
+    | pat -> pat
+
   let rec replace_universal_to_existential = function
     | Var { link = TLink t; _} -> replace_universal_to_existential t
     | Var v when v.quantifier = Universal ->

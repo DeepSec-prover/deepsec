@@ -330,6 +330,8 @@ module Term : sig
       by the value of their links. *)
   val instantiate : term -> term
 
+  val instantiate_pattern : pattern -> pattern
+
   val replace_universal_to_existential : term -> unit
 
   exception Not_unifiable

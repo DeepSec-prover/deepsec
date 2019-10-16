@@ -169,61 +169,16 @@ let display_configuration conf =
 
 (* Trace of determinate trace *)
 
-let search_next_pos pos proc =
+let rec trace_of_determinate_trace acc = function
+  | [] -> acc
+  | TrOutput(f,pos)::q -> trace_of_determinate_trace (AOutput(RFunc(f,[]),pos)::acc) q
+  | TrInput(f,r_x,pos)::q -> trace_of_determinate_trace (AInput(RFunc(f,[]),Recipe.instantiate (RVar r_x),pos)::acc) q
 
-  let rec explore act_l = function
-    | Nil -> raise Not_found
-    | Output(_,_,p,pos')
-    | Input(_,_,p,pos') when pos = pos' -> act_l, p
-    | Output _ | Input _ -> raise Not_found
-    | IfThenElse(_,_,p1,p2,pos')
-    | Let(_,_,p1,p2,pos') ->
-        begin
-          try
-            explore ((ATau pos')::act_l) p1
-          with Not_found ->
-            explore ((ATau pos')::act_l) p2
-        end
-    | New(_,p,pos') -> explore ((ATau pos')::act_l) p
-    | Par p_list -> explore_par act_l [] p_list
-    | Bang _
-    | Choice _ -> Config.internal_error "[determinate_process.ml >> search_next_pos] A determinate process should not have any bang nor choice."
-
-  and explore_par act_l prev_p = function
-    | [] -> raise Not_found
-    | p::q ->
-        try
-          let (act_l',p') = explore act_l p in
-          let p_list' =
-            if p' = Nil
-            then prev_p @ q
-            else prev_p @ (p'::q)
-          in
-          if p_list' = []
-          then act_l, Nil
-          else act_l', Par p_list'
-        with Not_found ->
-          explore_par act_l (prev_p @ [p]) q
-  in
-
-  explore [] proc
-
-let rec trace_of_determinate_trace p = function
-  | [] -> []
-  | TrOutput(f,pos)::q ->
-      let (act_l,p') =
-        try search_next_pos pos p
-        with Not_found -> Config.internal_error "[determinate_process.ml >> trace_of_determinate_trace] We should find the action"
-      in
-      (List.rev act_l)@( AOutput(RFunc(f,[]),pos) :: trace_of_determinate_trace p' q)
-  | TrInput(f,r_x,pos)::q ->
-      let (act_l,p') =
-        try search_next_pos pos p
-        with Not_found -> Config.internal_error "[determinate_process.ml >> trace_of_determinate_trace] We should find the action (2)"
-      in
-      (List.rev act_l)@( AInput(RFunc(f,[]),Recipe.instantiate (RVar r_x),pos) :: trace_of_determinate_trace p' q)
-
-let get_instantiated_trace p conf = trace_of_determinate_trace p (List.rev conf.trace)
+let get_instantiated_trace conf =
+  Config.debug (fun () ->
+    Config.print_in_log (Printf.sprintf "Found trace = %s\n" (display_list display_trace  "; " (List.rev conf.trace)))
+  );
+  trace_of_determinate_trace [] conf.trace
 
 (*** Transformation from processes to determinate processes ***)
 

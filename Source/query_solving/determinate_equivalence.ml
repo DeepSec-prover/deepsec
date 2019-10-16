@@ -45,7 +45,7 @@ let initialise_equivalence_problem init_processes else_branch csys_set =
 
 (*** Generation of attack traces from initial processes ***)
 
-let generate_attack_trace (p1,p2) csys =
+let generate_attack_trace csys =
   (* We instantiate the variables of csys with attacker name *)
   let df = csys.Constraint_system.deduction_facts in
   Data_structure.DF.iter (fun bfact ->
@@ -53,8 +53,8 @@ let generate_attack_trace (p1,p2) csys =
   ) df;
 
   if csys.Constraint_system.additional_data.origin_process = Left
-  then (true,get_instantiated_trace p1 csys.Constraint_system.additional_data.configuration)
-  else (false,get_instantiated_trace p2 csys.Constraint_system.additional_data.configuration)
+  then (true,get_instantiated_trace csys.Constraint_system.additional_data.configuration)
+  else (false,get_instantiated_trace csys.Constraint_system.additional_data.configuration)
 
 (*** Import / Export of equivalence problem ***)
 
@@ -114,20 +114,20 @@ type result_skeleton =
   | Faulty of bool * configuration * action
   | FocusNil
 
-let apply_faulty equiv_pbl (csys_left,symb_left) (csys_right,symb_right) is_left f_conf f_action =
+let apply_faulty (csys_left,symb_left) (csys_right,symb_right) is_left f_conf f_action =
   let wit_csys, symb_proc = if is_left then csys_left, symb_left else csys_right, symb_right in
   match f_action with
     | FOutput(ax,t) ->
         let wit_csys_1 = Constraint_system.add_axiom wit_csys ax t in
         let wit_csys_2 = { wit_csys_1 with Constraint_system.additional_data = { symb_proc with configuration = f_conf } } in
-        Config.print_in_log "Not equivalent : Skelet output\n";
-        raise (Not_Trace_Equivalent (generate_attack_trace equiv_pbl.initial_processes wit_csys_2))
+        Config.debug (fun () -> Config.print_in_log "Not equivalent : Skelet output\n");
+        raise (Not_Trace_Equivalent (generate_attack_trace wit_csys_2))
     | FInput(var_X,t) ->
         let ded_fact_term = { Data_structure.bf_var = var_X; Data_structure.bf_term = t } in
         let wit_csys_1 = Constraint_system.add_basic_facts wit_csys [ded_fact_term] in
         let wit_csys_2 = { wit_csys_1 with Constraint_system.additional_data = { symb_proc with configuration = f_conf } } in
-        Config.print_in_log "Not equivalent : Skelet input\n";
-        raise (Not_Trace_Equivalent (generate_attack_trace equiv_pbl.initial_processes wit_csys_2))
+        Config.debug (fun () -> Config.print_in_log "Not equivalent : Skelet input\n");
+        raise (Not_Trace_Equivalent (generate_attack_trace wit_csys_2))
 
 let nb_apply_one_transition_and_rules = ref 0
 
@@ -243,7 +243,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
             let csys = List.hd csys_list in
             let origin_process = csys.Constraint_system.additional_data.origin_process in
             if List.for_all (fun csys -> csys.Constraint_system.additional_data.origin_process = origin_process) csys_list
-            then raise (Not_Trace_Equivalent (generate_attack_trace equiv_pbl.initial_processes csys))
+            then raise (Not_Trace_Equivalent (generate_attack_trace csys))
             else
               let csys_left, csys_right =
                 Config.debug (fun () ->
@@ -292,7 +292,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                       f_continuation equiv_pbl_1 f_next1
                     ) csys_set f_next
                 | Faulty (is_left,f_conf,f_action) ->
-                    apply_faulty equiv_pbl (csys_left, symb_left) (csys_right, symb_right) is_left f_conf f_action
+                    apply_faulty (csys_left, symb_left) (csys_right, symb_right) is_left f_conf f_action
         in
 
         Constraint_system.Rule.apply_rules_after_input false in_apply_final_test csys_set_for_start f_next
@@ -388,7 +388,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                   let csys = List.hd csys_list in
                   let origin_process = csys.Constraint_system.additional_data.origin_process in
                   if List.for_all (fun csys -> csys.Constraint_system.additional_data.origin_process = origin_process) csys_list
-                  then raise (Not_Trace_Equivalent (generate_attack_trace equiv_pbl.initial_processes csys))
+                  then raise (Not_Trace_Equivalent (generate_attack_trace csys))
                   else
                     let complete_blocks_1 = match equiv_pbl.ongoing_block with
                       | None -> Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] Ongoing blocks should exists"
@@ -447,7 +447,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                             f_continuation equiv_pbl_1 f_next_1
                           ) csys_set_2 f_next
                       | Faulty (is_left,f_conf,f_action) ->
-                          apply_faulty equiv_pbl (csys_left, symb_left) (csys_right, symb_right) is_left f_conf f_action
+                          apply_faulty (csys_left, symb_left) (csys_right, symb_right) is_left f_conf f_action
               in
 
               Constraint_system.Rule.apply_rules_after_input false in_apply_final_test csys_set_for_input f_next_1
@@ -460,16 +460,17 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
         let csys_list_for_input = ref [] in
 
-        let (else_branch, conf_var_list) =
+        let (else_branch, csys_var_list) =
           List.fold_left (fun (acc_else,acc_conf) csys ->
             let (conf,x) = apply_pos_in var_X (csys.Constraint_system.additional_data).configuration in
-            (acc_else || not (do_else_branches_lead_to_improper_block_conf conf), (conf,x)::acc_conf)
+            (acc_else || not (do_else_branches_lead_to_improper_block_conf conf), (csys,conf,x)::acc_conf)
           ) (false,[]) equiv_pbl.csys_set.Constraint_system.set
         in
 
         Config.debug (fun () -> Config.print_in_log (Printf.sprintf "Local value else_branh = %b\n" else_branch));
 
-        List.iter (fun (conf,x) ->
+        List.iter (fun (csys,conf,x) ->
+          let symb_proc = csys.Constraint_system.additional_data in
 
           Variable.auto_cleanup_with_reset_notail (fun () ->
             let x_fresh = Variable.fresh Existential in
@@ -501,7 +502,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                 csys_list_for_input := csys_2 :: !csys_list_for_input
             )
           )
-        ) conf_var_list;
+        ) csys_var_list;
 
         (* Optimise the original substitution within constraint systems *)
         csys_list_for_input :=
@@ -515,6 +516,14 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
         let csys_set_for_input = { equiv_pbl.csys_set with Constraint_system.set = !csys_list_for_input } in
 
+        Config.debug (fun () ->
+          Config.print_in_log "Generated Pos In csys:\n";
+          List.iter (fun csys ->
+            Config.print_in_log (Constraint_system.display_constraint_system csys);
+            Config.print_in_log (display_symbolic_process csys.Constraint_system.additional_data)
+          ) !csys_list_for_input;
+        );
+
         let in_apply_final_test csys_set f_next =
           Config.debug (fun () ->
             Constraint_system.Set.debug_check_structure "[Determinate_process >> apply_one_transition_and_rules >> RPosIn >> final_test]" csys_set
@@ -526,7 +535,13 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
             let csys = List.hd csys_list in
             let origin_process = csys.Constraint_system.additional_data.origin_process in
             if List.for_all (fun csys -> csys.Constraint_system.additional_data.origin_process = origin_process) csys_list
-            then raise (Not_Trace_Equivalent (generate_attack_trace equiv_pbl.initial_processes csys))
+            then
+              begin
+                Config.debug (fun () ->
+                  Config.print_in_log "Attack trace found due not deepsec solving\n";
+                );
+                raise (Not_Trace_Equivalent (generate_attack_trace csys))
+              end
             else
               let csys_left, csys_right =
                 Config.debug (fun () ->
@@ -581,7 +596,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                       f_continuation equiv_pbl_1 f_next_1
                     ) csys_set_2 f_next
                 | Faulty (is_left,f_conf,f_action) ->
-                    apply_faulty equiv_pbl (csys_left, symb_left) (csys_right, symb_right) is_left f_conf f_action
+                    apply_faulty (csys_left, symb_left) (csys_right, symb_right) is_left f_conf f_action
         in
 
         Constraint_system.Rule.apply_rules_after_input false in_apply_final_test csys_set_for_input f_next
@@ -650,7 +665,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                 let csys = List.hd csys_list in
                 let origin_process = csys.Constraint_system.additional_data.origin_process in
                 if List.for_all (fun csys -> csys.Constraint_system.additional_data.origin_process = origin_process) csys_list
-                then (Config.print_in_log "Not equivalent : origin issue\n"; raise (Not_Trace_Equivalent (generate_attack_trace equiv_pbl.initial_processes csys)))
+                then (Config.print_in_log "Not equivalent : origin issue\n"; raise (Not_Trace_Equivalent (generate_attack_trace csys)))
                 else
                   let csys_left, csys_right =
                     Config.debug (fun () ->
@@ -707,7 +722,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                           f_continuation equiv_pbl_1 f_next_1
                         ) csys_set_2 f_next
                     | Faulty (is_left,f_conf,f_action) ->
-                        apply_faulty equiv_pbl (csys_left, symb_left) (csys_right, symb_right) is_left f_conf f_action
+                        apply_faulty (csys_left, symb_left) (csys_right, symb_right) is_left f_conf f_action
                     | FocusNil -> Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] The focus should not be nil when output is applied (should be empty) (2)"
             in
 
@@ -723,7 +738,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           let csys = List.hd csys_list in
           let origin_process = csys.Constraint_system.additional_data.origin_process in
           if List.for_all (fun csys -> csys.Constraint_system.additional_data.origin_process = origin_process) csys_list
-          then (Config.print_in_log "Not equivalent : origin issue\n"; raise (Not_Trace_Equivalent (generate_attack_trace equiv_pbl.initial_processes csys)))
+          then (Config.print_in_log "Not equivalent : origin issue\n"; raise (Not_Trace_Equivalent (generate_attack_trace csys)))
           else f_next ()
 
 let trace_equivalence proc1 proc2 =

@@ -85,6 +85,15 @@ let rec display tab = function
       let str_plus = Printf.sprintf "{%s} +" (display_position pos) in
       str_1 ^ (display_with_tab tab str_plus) ^ str_2
 
+let display_transition = function
+  | AInput(ch,x,pos) -> Printf.sprintf "in(%s,%s,%s)" (Recipe.display Terminal ch) (Recipe.display Terminal x) (display_position pos)
+  | AOutput(ch,pos) -> Printf.sprintf "out(%s,%s)" (Recipe.display Terminal ch) (display_position pos)
+  | ATau pos -> Printf.sprintf "tau(%s)" (display_position pos)
+  | ABang(i,pos) -> Printf.sprintf "bang(%d,%s)" i (display_position pos)
+  | AChoice(pos,side) -> Printf.sprintf "choice(%s,%b)" (display_position pos) side
+  | AComm(pos_out,pos_in) -> Printf.sprintf "comm(%s,%s)" (display_position pos_out) (display_position pos_in)
+  | AEaves(ch,pos_out,pos_in) -> Printf.sprintf "eaves(%s,%s,%s)" (Recipe.display Terminal ch) (display_position pos_out) (display_position pos_in)
+
 (*****************************************
     Transformation and simplifications
 ******************************************)
@@ -798,6 +807,179 @@ let rec regroup_else_branches = function
 
 (*** General function ***)
 
+type configuration =
+  {
+    frame : term list;
+    process : process
+  }
+
+let is_equal_pos pos_match pos pos' =
+  if pos = pos'
+  then true
+  else
+    try
+      (List.assoc pos pos_match) = pos'
+    with Not_found -> false
+
+let is_pos_in_process pos_match pos proc =
+
+  let rec explore = function
+    | Nil -> false
+    | Output(_,_,_,pos')
+    | Input(_,_,_,pos') -> is_equal_pos pos_match pos' pos
+    | IfThenElse(_,_,p1,p2,_)
+    | Let(_,_,p1,p2,_) -> explore p1 || explore p2
+    | New(_,p,_) -> explore p
+    | Par p_list
+    | Bang (p_list,_) -> List.exists explore p_list
+    | Choice(_,_,pos') -> is_equal_pos pos_match pos' pos
+  in
+
+  explore proc
+
+let instantiate_term t =
+  Variable.auto_cleanup_with_exception (fun () ->
+    Rewrite_rules.normalise (Term.instantiate t)
+  )
+
+let instantiate_pattern pat =
+  Variable.auto_cleanup_with_exception (fun () ->
+    Rewrite_rules.normalise_pattern (Term.instantiate_pattern pat)
+  )
+
+let apply_ground_recipe_on_frame frame r =
+
+  let rec explore = function
+    | RFunc(f,args) -> Func(f,List.map explore args)
+    | Axiom i -> List.nth frame (i-1)
+    | _ -> Config.internal_error "[process.ml >> apply_ground_recipe_on_frame] Unexpected recipe."
+  in
+
+  try
+    Variable.auto_cleanup_with_exception (fun () -> Rewrite_rules.normalise (explore r))
+  with Rewrite_rules.Not_message -> Config.internal_error "[process.ml >> apply_ground_recipe_on_frame] The recipe should be a message."
+
+let rec retrieve_transition_list f_next pos_match act conf = match conf.process,act with
+  | Output(_,t,p,pos), AOutput(_,pos') when is_equal_pos pos_match pos pos' ->
+      f_next pos [] { frame = conf.frame@[Term.instantiate t]; process = p }
+  | Input(_,pat,p,pos), AInput(_,r_t,pos') when is_equal_pos pos_match pos pos' ->
+      let t = apply_ground_recipe_on_frame conf.frame r_t in
+      begin try
+        let pat' = instantiate_pattern pat in
+        Variable.auto_cleanup_with_exception (fun () ->
+          Term.unify pat' t;
+          f_next pos [] { conf with process = p }
+        )
+      with Term.Not_unifiable | Rewrite_rules.Not_message ->
+        f_next pos [] { conf with process = Nil }
+      end
+  | IfThenElse(t1,t2,p1,p2,pos), _ ->
+      let do_then_branch =
+        try
+          Term.is_equal (instantiate_term t1) (instantiate_term t2)
+        with Rewrite_rules.Not_message -> false
+      in
+
+      if do_then_branch
+      then retrieve_transition_list (fun pos' act_l conf' -> f_next pos' ((ATau pos)::act_l) conf') pos_match act { conf with process = p1 }
+      else retrieve_transition_list (fun pos' act_l conf' -> f_next pos' ((ATau pos)::act_l) conf') pos_match act { conf with process = p2 }
+  | Let(pat,t,p1,p2,pos), _ ->
+      begin try
+        let pat' = instantiate_pattern pat in
+        let t' = instantiate_term t in
+        Variable.auto_cleanup_with_exception (fun () ->
+          Term.unify pat' t';
+          retrieve_transition_list (fun pos' act_l conf' -> f_next pos' ((ATau pos)::act_l) conf') pos_match act { conf with process = p1 }
+        )
+      with Rewrite_rules.Not_message | Term.Not_unifiable ->
+        retrieve_transition_list (fun pos' act_l conf' -> f_next pos' ((ATau pos)::act_l) conf') pos_match act { conf with process = p2 }
+      end
+  | New(_,p,pos),_ -> retrieve_transition_list (fun pos' act_l conf' -> f_next pos' ((ATau pos)::act_l) conf') pos_match act { conf with process = p }
+  | Par p_list, (AOutput(_,pos) | AInput(_,_,pos) | AChoice(pos,_) ) ->
+      retrieve_transition_list_from_par f_next pos_match pos act conf.frame [] p_list
+  | Bang(p_list,pos_bang), (AOutput(_,pos) | AInput(_,_,pos) | AChoice(pos,_) ) ->
+      retrieve_transition_list_from_bang f_next pos_match pos pos_bang 1 act conf.frame [] p_list
+  | Choice(p1,p2,pos), AChoice(pos',choose_left) when is_equal_pos pos_match pos pos' ->
+      if choose_left
+      then f_next pos [] { conf with process = p1 }
+      else f_next pos [] { conf with process = p2 }
+  | _ -> Config.internal_error "[process.ml >> retrieve_transition_list] Unexpected case."
+
+and retrieve_transition_list_from_par f_next pos_match pos act frame prev_p = function
+  | [] -> Config.internal_error "[process.ml >> retrieve_transition_list_from_par] We should find the position."
+  | p::q ->
+      if is_pos_in_process pos_match pos p
+      then
+        retrieve_transition_list (fun pos' act_l conf' ->
+          f_next pos' act_l { conf' with process = Par(prev_p @ (conf'.process :: q)) }
+        ) pos_match act { frame = frame; process = p }
+      else retrieve_transition_list_from_par f_next pos_match pos act frame (prev_p@[p]) q
+
+and retrieve_transition_list_from_bang f_next pos_match pos pos_bang nb_unfold act frame prev_p = function
+  | [] -> Config.internal_error "[process.ml >> retrieve_transition_list_from_bang] We should find the position."
+  | p::q ->
+      if is_pos_in_process pos_match pos p
+      then
+        retrieve_transition_list (fun pos' act_l conf' ->
+          if List.length q <= 1
+          then f_next pos' (ABang(nb_unfold,pos_bang)::act_l) { conf' with process = Par(prev_p @ (conf'.process::q)) }
+          else f_next pos' (ABang(nb_unfold,pos_bang)::act_l) { conf' with process = Par(prev_p @ [conf'.process; Bang(q,pos_bang)]) }
+        ) pos_match act { frame = frame; process = p }
+      else
+        if List.length q <= 1
+        then retrieve_transition_list_from_bang f_next pos_match pos pos_bang nb_unfold act frame (prev_p@[p]) q
+        else retrieve_transition_list_from_bang f_next pos_match pos pos_bang (nb_unfold+1) act frame (prev_p@[p]) q
+
+let rec retrieve_trace f_next pos_match conf = function
+  | [] -> f_next []
+  | AOutput(r,pos)::q ->
+      retrieve_transition_list (fun pos' act_l conf' ->
+        retrieve_trace (fun act_l' ->
+          f_next (act_l @ (AOutput(r,pos')::act_l'))
+        ) pos_match conf' q
+      ) pos_match (AOutput(r,pos)) conf
+  | AInput(r,r_t,pos)::q ->
+      retrieve_transition_list (fun pos' act_l conf' ->
+        retrieve_trace (fun act_l' ->
+          f_next (act_l @ (AInput(r,r_t,pos')::act_l'))
+        ) pos_match conf' q
+      ) pos_match (AInput(r,r_t,pos)) conf
+  | AChoice(pos,choose_left)::q ->
+      retrieve_transition_list (fun pos' act_l conf' ->
+        retrieve_trace (fun act_l' ->
+          f_next (act_l @ (AChoice(pos',choose_left)::act_l'))
+        ) pos_match conf' q
+      ) pos_match (AChoice(pos,choose_left)) conf
+  | AEaves(r,pos_out,pos_in)::q ->
+      retrieve_transition_list (fun pos_out' act_l_out conf' ->
+        retrieve_transition_list (fun pos_in' act_l_in conf'' ->
+          retrieve_trace (fun act_l' ->
+            f_next (act_l_out @ act_l_in @ (AEaves(r,pos_out',pos_in')::act_l'))
+          ) pos_match conf'' q
+        ) pos_match (AInput(r,Axiom (List.length conf'.frame),pos_in)) conf'
+      ) pos_match (AOutput(r,pos_out)) conf
+  | AComm(pos_out,pos_in)::q ->
+      retrieve_transition_list (fun pos_out' act_l_out conf' ->
+        retrieve_transition_list (fun pos_in' act_l_in conf'' ->
+          retrieve_trace (fun act_l' ->
+            f_next (act_l_out @ act_l_in @ (AComm(pos_out',pos_in')::act_l'))
+          ) pos_match { conf'' with frame = conf.frame } q
+        ) pos_match (AInput(Axiom 0,Axiom (List.length conf'.frame),pos_in)) conf'
+      ) pos_match (AOutput(Axiom 0,pos_out)) conf
+  | _ -> Config.internal_error "[process.ml >> retrieve_trace] Unexpected trace action."
+
+let rec normalise_pos_match prev = function
+  | [] -> prev
+  | (pos1,pos2)::q ->
+      let f_apply (pos1',pos2') =
+        if pos2' = pos1
+        then (pos1',pos2)
+        else (pos1',pos2')
+      in
+      let prev' = List.map f_apply prev in
+      let q' = List.map f_apply q in
+      normalise_pos_match ((pos1,pos2)::prev') q'
+
 let simplify_for_determinate p =
   let p1 = clean p in
   let p2 = add_let_for_output_input p1 in
@@ -805,9 +987,19 @@ let simplify_for_determinate p =
   let p4 = detect_and_replace_pure_fresh_name p3 in
   let p5 = move_new_name p4 in
   let (p6,pos_match) = regroup_else_branches p5 in
+  let pos_match_normalised =  normalise_pos_match [] pos_match in
   Config.debug (fun () ->
     Config.print_in_log (Printf.sprintf "Before simplification :\n %s" (display 1 p));
     Config.print_in_log (Printf.sprintf "After simplification :\n %s" (display 1 p6));
   );
-  (** TODO : implement the reconstruction of traces. **)
-  p6, (fun trace -> trace)
+  let retrieve_trace trans_list =
+    Config.debug (fun () ->
+      Config.print_in_log (Printf.sprintf "Input retrieve_trace = %s\n" (display_list display_transition  "; " trans_list))
+    );
+    let result = retrieve_trace (fun x -> x) pos_match_normalised { frame = []; process = p } trans_list in
+    Config.debug (fun () ->
+      Config.print_in_log (Printf.sprintf "Output retrieve_trace = %s\n" (display_list display_transition  "; " result))
+    );
+    result
+  in
+  p6, retrieve_trace

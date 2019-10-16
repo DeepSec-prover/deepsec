@@ -22,7 +22,7 @@ val iter_recipe_variable : (recipe_variable -> unit) -> block -> unit
 
 (** {3 Access} *)
 
-val get_instantiated_trace : process -> configuration -> transition list
+val get_instantiated_trace : configuration -> transition list
 
 val link_used_variables : (unit -> 'a) -> configuration -> 'a
 
