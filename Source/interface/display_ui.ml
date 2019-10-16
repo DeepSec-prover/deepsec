@@ -287,6 +287,15 @@ let record_from_signature assoc =
   ) setting.Term.Symbol.all_p;
   List.iter (fun f -> ignore (get_symbol_id assoc f)) setting.Term.Symbol.all_d
 
+let of_meta () =
+  let setting = Term.Symbol.get_settings () in
+  JObject [
+    "number_of_symbols", JInt setting.Term.Symbol.nb_symb;
+    "number_of_attacker_names", JInt setting.Term.Symbol.nb_a;
+    "number_of_variables", JInt (Term.Variable.get_counter ());
+    "number_of_names", JInt (Term.Name.get_counter ())
+  ]
+
 let of_atomic_association assoc =
   (* We start with symbols because destructors contain variables. *)
   let symb_list = List.map (fun (f,id) -> (of_atomic_symbol assoc f,id)) !assoc.symbols in
@@ -296,6 +305,12 @@ let of_atomic_association assoc =
   List.iter (fun (x,id) -> tab_json.(id) <- of_atomic_variable x) !assoc.variables;
   List.iter (fun (json_f,id) -> tab_json.(id) <- json_f) symb_list;
   JList (Array.to_list tab_json)
+
+let of_atomic_data assoc =
+  JObject [
+    "meta", of_meta ();
+    "data", of_atomic_association assoc
+  ]
 
 (* Query result *)
 
@@ -318,7 +333,7 @@ let of_query_result query_res =
   let assoc = ref query_res.association in
 
   let jlist1 = [
-    "atomic_data", of_atomic_association assoc;
+    "atomic_data", of_atomic_data assoc;
     "batch_file", JString query_res.q_batch_file;
     "run_file", JString query_res.q_run_file;
     "semantics", of_semantics query_res.semantics;

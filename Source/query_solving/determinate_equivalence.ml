@@ -18,6 +18,7 @@ type equivalence_problem =
     csys_set : symbolic_process Constraint_system.set;
     complete_blocks : block list;
     ongoing_block : block option;
+    input_added : bool;
     size_frame : int;
     else_branch : bool;
     initial_processes : process * process
@@ -36,6 +37,7 @@ let initialise_equivalence_problem init_processes else_branch csys_set =
     csys_set = csys_set;
     complete_blocks = [];
     ongoing_block = None;
+    input_added = false;
     size_frame = 0;
     else_branch = else_branch;
     initial_processes = init_processes
@@ -108,7 +110,7 @@ let import_equivalence_problem f_next equiv_pbl recipe_subst =
 exception Not_Trace_Equivalent of (bool * transition list)
 
 type result_skeleton =
-  | OK of configuration * configuration
+  | OK of configuration * configuration * bool
   | Faulty of bool * configuration * action
   | FocusNil
 
@@ -130,6 +132,23 @@ let apply_faulty equiv_pbl (csys_left,symb_left) (csys_right,symb_right) is_left
 let nb_apply_one_transition_and_rules = ref 0
 
 (*** Main functions ***)
+
+let is_current_block_proper csys equiv_pbl =
+  if equiv_pbl.input_added
+  then true
+  else
+    begin
+      let minimal_axiom = match equiv_pbl.ongoing_block with
+        | None -> Config.internal_error "[determinate_equivalence.ml >> is_current_block_proper] There should be an ongoing block"
+        | Some block -> get_minimal_axiom block
+      in
+      let current_max_type_recipe = Data_structure.IK.get_max_type_recipe csys.Constraint_system.knowledge csys.Constraint_system.incremented_knowledge in
+      Config.debug (fun () ->
+        if minimal_axiom > current_max_type_recipe
+        then Config.print_in_log "Found an improper block !\n"
+      );
+      minimal_axiom <= current_max_type_recipe
+    end
 
 let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
   Config.debug (fun () ->
@@ -252,24 +271,24 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
               let result_skel_test =
                 try
-                  let cl,cr,is_focus_nil = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
+                  let cl,cr,is_focus_nil,input_added = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
                   if is_focus_nil
                   then FocusNil
-                  else OK (cl,cr)
+                  else OK (cl,cr,input_added)
                 with
                 | Faulty_skeleton (is_left,f_conf,f_action) -> Faulty (is_left,f_conf,f_action)
               in
 
               match result_skel_test with
                 | FocusNil -> f_next ()
-                | OK (conf_left, conf_right) ->
+                | OK (conf_left, conf_right, input_added) ->
                     let csys_left = { csys_left with Constraint_system.additional_data = { symb_left with configuration = conf_left } } in
                     let csys_right = { csys_right with Constraint_system.additional_data = { symb_right with configuration = conf_right } } in
                     let csys_set = { csys_set with Constraint_system.set = [csys_left;csys_right] } in
 
                     Constraint_system.Rule.instantiate_useless_deduction_facts (fun csys_set1 f_next1 ->
                       let block = create_block initial_label in
-                      let equiv_pbl_1 = { equiv_pbl with ongoing_block = Some block; csys_set = csys_set1 } in
+                      let equiv_pbl_1 = { equiv_pbl with ongoing_block = Some block; csys_set = csys_set1; input_added = input_added } in
                       f_continuation equiv_pbl_1 f_next1
                     ) csys_set f_next
                 | Faulty (is_left,f_conf,f_action) ->
@@ -279,7 +298,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
         Constraint_system.Rule.apply_rules_after_input false in_apply_final_test csys_set_for_start f_next
     | RStartIn ->
         Config.debug (fun () -> Config.print_in_log "apply Start In\n");
-        if is_block_list_authorized equiv_pbl.complete_blocks equiv_pbl.ongoing_block
+        if is_current_block_proper csys equiv_pbl && is_block_list_authorized equiv_pbl.complete_blocks equiv_pbl.ongoing_block
         then
           begin
             let var_X = Recipe_Variable.fresh Free (Data_structure.IK.get_max_type_recipe csys.Constraint_system.knowledge csys.Constraint_system.incremented_knowledge) in
@@ -404,17 +423,17 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
                     let result_skel_test =
                       try
-                        let cl,cr,is_focus_nil = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
+                        let cl,cr,is_focus_nil,input_added = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
                         if is_focus_nil
                         then FocusNil
-                        else OK (cl,cr)
+                        else OK (cl,cr,input_added)
                       with
                       | Faulty_skeleton (is_left,f_conf,f_action) -> Faulty (is_left,f_conf,f_action)
                     in
 
                     match result_skel_test with
                       | FocusNil -> f_next ()
-                      | OK (conf_left, conf_right) ->
+                      | OK (conf_left, conf_right,input_added) ->
 
                           let block = create_block label in
                           let block_1 = add_variable_in_block var_X block in
@@ -424,7 +443,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                           let csys_set_2 = { csys_set with Constraint_system.set = [csys_left;csys_right] } in
 
                           Constraint_system.Rule.instantiate_useless_deduction_facts (fun csys_set_3 f_next_1 ->
-                            let equiv_pbl_1 = { equiv_pbl with complete_blocks = complete_blocks_1; ongoing_block = Some block_1; csys_set = csys_set_3 } in
+                            let equiv_pbl_1 = { equiv_pbl with complete_blocks = complete_blocks_1; ongoing_block = Some block_1; csys_set = csys_set_3; input_added = input_added } in
                             f_continuation equiv_pbl_1 f_next_1
                           ) csys_set_2 f_next
                       | Faulty (is_left,f_conf,f_action) ->
@@ -537,17 +556,17 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
               let result_skel_test =
                 try
-                  let cl,cr,is_focus_nil = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
+                  let cl,cr,is_focus_nil,input_added = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
                   if is_focus_nil
                   then FocusNil
-                  else OK (cl,cr)
+                  else OK (cl,cr,input_added)
                 with
                 | Faulty_skeleton (is_left,f_conf,f_action) -> Faulty (is_left,f_conf,f_action)
               in
 
               match result_skel_test with
                 | FocusNil -> f_next ()
-                | OK (conf_left, conf_right) ->
+                | OK (conf_left, conf_right,input_added) ->
                     let block = match equiv_pbl.ongoing_block with
                       | None -> Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] Ongoing blocks should exists (2)."
                       | Some b -> add_variable_in_block var_X b
@@ -558,7 +577,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                     let csys_set_2 = { csys_set with Constraint_system.set = [csys_left;csys_right] } in
 
                     Constraint_system.Rule.instantiate_useless_deduction_facts (fun csys_set_3 f_next_1 ->
-                      let equiv_pbl_1 = { equiv_pbl with ongoing_block = Some block; csys_set = csys_set_3 } in
+                      let equiv_pbl_1 = { equiv_pbl with ongoing_block = Some block; csys_set = csys_set_3; input_added = equiv_pbl.input_added || input_added } in
                       f_continuation equiv_pbl_1 f_next_1
                     ) csys_set_2 f_next
                 | Faulty (is_left,f_conf,f_action) ->
@@ -662,18 +681,18 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                   let result_skel_test =
                     try
                       Config.debug (fun () ->
-                        let _,_,is_focus_nil = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
+                        let _,_,is_focus_nil,_ = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
                         if is_focus_nil
                         then Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] The focus should not be nil when output is applied (should be empty)"
                       );
-                      let cl,cr,_ = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
-                      OK (cl,cr)
+                      let cl,cr,_,input_added = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
+                      OK (cl,cr,input_added)
                     with
                     | Faulty_skeleton (is_left,f_conf,f_action) -> Faulty (is_left,f_conf,f_action)
                   in
 
                   match result_skel_test with
-                    | OK (conf_left, conf_right) ->
+                    | OK (conf_left, conf_right,input_added) ->
                         let block = match equiv_pbl.ongoing_block with
                           | None -> Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] Ongoing blocks should exists (2)."
                           | Some b -> add_axiom_in_block axiom b
@@ -684,7 +703,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                         let csys_set_2 = { csys_set with Constraint_system.set = [csys_left;csys_right] } in
 
                         Constraint_system.Rule.instantiate_useless_deduction_facts (fun csys_set_3 f_next_1 ->
-                          let equiv_pbl_1 = { equiv_pbl with size_frame = equiv_pbl.size_frame + 1; ongoing_block = Some block; csys_set = csys_set_3 } in
+                          let equiv_pbl_1 = { equiv_pbl with size_frame = equiv_pbl.size_frame + 1; ongoing_block = Some block; csys_set = csys_set_3; input_added = equiv_pbl.input_added || input_added } in
                           f_continuation equiv_pbl_1 f_next_1
                         ) csys_set_2 f_next
                     | Faulty (is_left,f_conf,f_action) ->
@@ -715,8 +734,8 @@ let trace_equivalence proc1 proc2 =
 
   (*** Generate the initial constraint systems ***)
 
-  let (proc1', translate_trace1) = Process.simplify proc1 in
-  let (proc2', translate_trace2) = Process.simplify proc2 in
+  let (proc1', translate_trace1) = Process.simplify_for_determinate proc1 in
+  let (proc2', translate_trace2) = Process.simplify_for_determinate proc2 in
 
   let (conf1,conf2,else_branch) = Determinate_process.generate_initial_configurations proc1' proc2' in
 
@@ -746,7 +765,8 @@ let trace_equivalence proc1 proc2 =
       ongoing_block = None;
       size_frame = 0;
       else_branch = else_branch;
-      initial_processes = (proc1',proc2')
+      initial_processes = (proc1',proc2');
+      input_added = false
     }
   in
 

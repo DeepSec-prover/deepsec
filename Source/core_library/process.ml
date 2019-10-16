@@ -798,12 +798,16 @@ let rec regroup_else_branches = function
 
 (*** General function ***)
 
-let simplify p =
+let simplify_for_determinate p =
   let p1 = clean p in
   let p2 = add_let_for_output_input p1 in
   let p3 = apply_trivial_let p2 in
   let p4 = detect_and_replace_pure_fresh_name p3 in
   let p5 = move_new_name p4 in
   let (p6,pos_match) = regroup_else_branches p5 in
+  Config.debug (fun () ->
+    Config.print_in_log (Printf.sprintf "Before simplification :\n %s" (display 1 p));
+    Config.print_in_log (Printf.sprintf "After simplification :\n %s" (display 1 p6));
+  );
   (** TODO : implement the reconstruction of traces. **)
   p6, (fun trace -> trace)

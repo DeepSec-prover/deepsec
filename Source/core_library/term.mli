@@ -41,7 +41,8 @@ module Symbol : sig
       all_d : symbol list ;
       nb_c : int ;
       nb_d : int;
-      nb_symb : int
+      nb_symb : int;
+      nb_a : int
     }
 
   val set_up_signature : setting -> unit
@@ -224,7 +225,7 @@ module Name :  sig
   val fresh :  unit -> name
 
   (** [fresh_with_label s] creates a fresh name with the boundedness [b] and label [s].*)
-  val fresh_with_label : string -> name
+  val fresh_with_label : ?pure:bool -> string -> name
 
   (** [fresh_from n] creates a fresh name with the same label and same boundedness as [n].*)
   val fresh_from : name -> name

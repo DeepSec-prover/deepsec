@@ -25,6 +25,7 @@ struct
       number_of_constructors : int;
       number_of_destructors : int;
       number_of_symbols : int;
+      number_of_attacker_name : int;
       skeleton_settings : Rewrite_rules.skeleton_settings;
       running_api : bool;
 
@@ -56,7 +57,8 @@ struct
         Symbol.all_d = job.all_destructors;
         Symbol.nb_c = job.number_of_constructors;
         Symbol.nb_d = job.number_of_destructors;
-        Symbol.nb_symb = job.number_of_symbols
+        Symbol.nb_symb = job.number_of_symbols;
+        Symbol.nb_a = job.number_of_attacker_name
       };
     Rewrite_rules.set_up_skeleton_settings job.skeleton_settings;
 
@@ -104,7 +106,8 @@ struct
         Symbol.all_d = job.all_destructors;
         Symbol.nb_c = job.number_of_constructors;
         Symbol.nb_d = job.number_of_destructors;
-        Symbol.nb_symb = job.number_of_symbols
+        Symbol.nb_symb = job.number_of_symbols;
+        Symbol.nb_a = job.number_of_attacker_name
       };
     Rewrite_rules.set_up_skeleton_settings job.skeleton_settings;
 
@@ -156,8 +159,8 @@ let trace_equivalence_determinate proc1 proc2 =
 
   (*** Generate the initial constraint systems ***)
 
-  let (proc1', translate_trace1) = Process.simplify proc1 in
-  let (proc2', translate_trace2) = Process.simplify proc2 in
+  let (proc1', translate_trace1) = Process.simplify_for_determinate proc1 in
+  let (proc2', translate_trace2) = Process.simplify_for_determinate proc2 in
 
   let (conf1,conf2,else_branch) = Determinate_process.generate_initial_configurations proc1' proc2' in
 
@@ -206,6 +209,7 @@ let trace_equivalence_determinate proc1 proc2 =
       EquivJob.number_of_symbols = setting.Symbol.nb_symb;
       EquivJob.skeleton_settings = Rewrite_rules.get_skeleton_settings ();
       EquivJob.running_api = !Config.running_api;
+      EquivJob.number_of_attacker_name = setting.Symbol.nb_a;
 
       EquivJob.data_equiv = EquivJob.DDeterminate data
     }

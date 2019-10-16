@@ -129,14 +129,14 @@ let rec display_simple_process tab = function
       (display_list (display_simple_process (tab+1)) (display_with_tab tab ") | (") p_list) ^
       (display_with_tab tab ")")
   | SParMult(p_list) ->
-      (display_with_tab tab "(") ^
+      (display_with_tab tab "[") ^
       (display_list (fun (ch_l,p) ->
           let str_ch = Printf.sprintf "Channels = %s" (display_list (Symbol.display Terminal) ", " ch_l) in
           (display_with_tab (tab+1) str_ch) ^
           (display_simple_process (tab+1) p)
-        ) (display_with_tab tab ") | (") p_list
+        ) (display_with_tab tab "] | [") p_list
       ) ^
-      (display_with_tab tab ")")
+      (display_with_tab tab "]")
 
 let display_label label =
   Display.display_list string_of_int "." label
@@ -615,7 +615,7 @@ and compress_process ch_set = function
             else Some (IParMult((SymbolSet.elements channels,p)::acc_mod),acc_no_mod)
         | (channels',p')::q ->
             if is_equal_modulo_renaming channels channels' p p' && not (contain_mult p) && not (contain_mult p')
-            then  search channels p acc_no_mod ((SymbolSet.elements channels',p')::acc_mod) q
+            then search channels p acc_no_mod ((SymbolSet.elements channels',p')::acc_mod) q
             else search channels p ((channels',p')::acc_no_mod) acc_mod q
       in
 
@@ -707,7 +707,7 @@ let inter_mult_channels (chl_l_l1:symbol list list list) (chl_l_l2:symbol list l
                 else out2::ql_l_l2
               in
               if List.length same > 1
-              then kept_channels := List.rev_append same !kept_channels;
+              then kept_channels := same :: !kept_channels;
 
               explore_channels chl_l_l1' chl_l_l2'
     in
@@ -716,7 +716,45 @@ let inter_mult_channels (chl_l_l1:symbol list list list) (chl_l_l2:symbol list l
 
     !kept_channels
 
-let decompress_process channels_list p =
+let decompress_process channels_list_list p =
+
+  let equality_channels channels1 channels2 = List.for_all2 (fun f f' -> f == f') channels1 channels2 in
+
+  let rec extract_mult_process_list removed kept channels_list = function
+    | [] -> removed, kept
+    | (channels,p)::q when List.exists (equality_channels channels) channels_list -> extract_mult_process_list removed ((channels,p)::kept) channels_list  q
+    | chp::q -> extract_mult_process_list (chp::removed) kept channels_list q
+  in
+
+  (* prev_mult is a list of IParMult *)
+  let rec split_mult_process_list prev_mult remain_mult channels_list_list = match remain_mult,channels_list_list with
+    | [],_ ->
+        (* There is not more process to check *)
+        begin match prev_mult with
+          | [] -> Config.internal_error "[determinate_process.ml >> split_mult_process_list] Should not be empty."
+          | [iparmult] -> iparmult
+          | _ -> IPar prev_mult
+        end
+    | _, [] -> (* We have checked all mult channels *)
+        let remain_ult' = List.map (fun (_,p) -> p) remain_mult in
+        IPar(prev_mult@remain_ult')
+    | _, channels_list::q_ch_list ->
+        let (removed_mult, kept_mult) = extract_mult_process_list [] [] channels_list remain_mult in
+        if kept_mult = []
+        then
+          (* Nothing was found *)
+          split_mult_process_list prev_mult remain_mult q_ch_list
+        else
+          begin
+            (* We found some *)
+            Config.debug (fun () ->
+              if List.length kept_mult = 1
+              then Config.internal_error "[determinate_process.ml >> split_mult_process_list] Should be more than one."
+            );
+            let new_proc = IParMult (List.fast_sort (fun (ch1,_) (ch2,_) -> compare_channels ch1 ch2) kept_mult) in
+            split_mult_process_list (new_proc::prev_mult) removed_mult q_ch_list
+          end
+  in
 
   let rec explore = function
     | INil -> INil
@@ -732,22 +770,7 @@ let decompress_process channels_list p =
             | IPar p_list' -> List.rev_append p_list' acc
             | p' -> p'::acc
         ) [] p_list)
-    | IParMult pmult_list ->
-        Config.debug (fun () ->
-          if pmult_list = []
-          then Config.internal_error "[decompress_process] The list should not be empty."
-        );
-        let removed_p, kept_p = explore_mult [] [] pmult_list in
-        begin match removed_p, kept_p with
-          | [], _ -> IParMult (List.fast_sort (fun (ch1,_) (ch2,_) -> compare_channels ch1 ch2) kept_p)
-          | _, [] -> IPar removed_p
-          | _, _ -> IPar((IParMult (List.fast_sort (fun (ch1,_) (ch2,_) -> compare_channels ch1 ch2) kept_p))::removed_p)
-        end
-
-  and explore_mult removed_p kept_p = function
-    | [] -> removed_p, kept_p
-    | (channels,p)::q when List.exists (fun ch_list -> List.for_all2 (fun f f' -> f == f') ch_list channels) channels_list -> explore_mult removed_p ((channels,p)::kept_p) q
-    | (_,p)::q -> explore_mult (p::removed_p) kept_p q
+    | IParMult pmult_list -> split_mult_process_list [] pmult_list channels_list_list
   in
 
   explore p
@@ -947,7 +970,32 @@ let generate_initial_configurations proc1 proc2 =
   let extracted_ch1 = retrieve_par_mult_channels comp_p1
   and extracted_ch2 = retrieve_par_mult_channels comp_p2 in
 
+  Config.debug (fun () ->
+    let display_list_symb l = Printf.sprintf "[%s]" (display_list (Symbol.display Display.Terminal) "; " l) in
+    let display_list_list_symb l = Printf.sprintf "[%s]" (display_list display_list_symb "; " l) in
+    let display_list_list_list_symb l = Printf.sprintf "[%s]" (display_list display_list_list_symb "; " l) in
+    Config.print_in_log (Printf.sprintf "Extracted1 = %s\n" (display_list_list_list_symb extracted_ch1));
+    Config.print_in_log (Printf.sprintf "Extracted2 = %s\n" (display_list_list_list_symb extracted_ch2))
+  );
+
   let inter_channel = inter_mult_channels extracted_ch1 extracted_ch2 in
+
+  Config.debug (fun () ->
+    let display_list_symb l = Printf.sprintf "[%s]" (display_list (Symbol.display Display.Terminal) "; " l) in
+    let display_list_list_symb l = Printf.sprintf "[%s]" (display_list display_list_symb "; " l) in
+    let display_list_list_list_symb l = Printf.sprintf "[%s]" (display_list display_list_list_symb "; " l) in
+    Config.print_in_log (Printf.sprintf "Inter_channel = %s\n" (display_list_list_list_symb inter_channel));
+
+    let sp1 = simple_process_of_intermediate_process comp_p1 in
+    let sp2 = simple_process_of_intermediate_process comp_p2 in
+    Config.print_in_log "Compressed simple processes:\n";
+    Config.print_in_log "--Process 1:\n";
+    Config.print_in_log (display_simple_process 0 sp1);
+    Config.print_in_log "--Process 2:\n";
+    Config.print_in_log (display_simple_process 0 sp2)
+  );
+
+
 
   let comp_p1' = decompress_process inter_channel comp_p1
   and comp_p2' = decompress_process inter_channel comp_p2 in
@@ -1161,31 +1209,31 @@ let add_par_mult_arguments_in_conf conf label p_list =
 
   let p_list' = explore 1 p_list in
   if p_list' = []
-  then conf
-  else { conf with sure_input_mult_proc = p_list'::conf.sure_input_mult_proc }
+  then conf, false
+  else { conf with sure_input_mult_proc = p_list'::conf.sure_input_mult_proc }, true
 
 let add_par_arguments_in_conf conf label p_list =
 
-  let rec explore acc_conf i = function
-    | [] -> acc_conf
+  let rec explore acc_conf input_added i = function
+    | [] -> acc_conf, input_added
     | ((SOutput _) as p)::q ->
         let acc_conf' =  { acc_conf with sure_output_proc = { label_p = label @ [i]; proc = p }::acc_conf.sure_output_proc } in
-        explore acc_conf' (i+1) q
+        explore acc_conf' input_added (i+1) q
     | ((SInput _) as p)::q ->
         let acc_conf' =  { acc_conf with sure_input_proc = { label_p = label @ [i]; proc = p }::acc_conf.sure_input_proc } in
-        explore acc_conf' (i+1) q
+        explore acc_conf' true (i+1) q
     | ((SParMult pl) as p)::q ->
         if List.exists (fun (_,p) -> exists_output p) pl
         then
           let acc_conf' =  { acc_conf with sure_output_proc = { label_p = label @ [i]; proc = p }::acc_conf.sure_output_proc } in
-          explore acc_conf' (i+1) q
+          explore acc_conf' input_added (i+1) q
         else
-          let acc_conf' = add_par_mult_arguments_in_conf acc_conf (label @ [i]) pl in
-          explore acc_conf' (i+1) q
+          let acc_conf', input_added' = add_par_mult_arguments_in_conf acc_conf (label @ [i]) pl in
+          explore acc_conf' (input_added' || input_added) (i+1) q
     | _ -> Config.internal_error "[process_determinate.ml >> add_par_arguments_in_conf] Unexpected case."
   in
 
-  explore conf 1 p_list
+  explore conf false 1 p_list
 
 let is_equal_skeleton_conf size_frame conf1 conf2 =
   Config.debug (fun () ->
@@ -1218,15 +1266,15 @@ let is_equal_skeleton_conf size_frame conf1 conf2 =
               | SOutput _, SOutput _ ->
                   let conf1' = { conf1 with sure_uncheked_skeletons = None; sure_output_proc = p1::conf1.sure_output_proc } in
                   let conf2' = { conf2 with sure_uncheked_skeletons = None; sure_output_proc = p2::conf2.sure_output_proc } in
-                  conf1', conf2', false
+                  conf1', conf2', false, false
               | SInput _, SInput _ ->
                   let conf1' = { conf1 with sure_uncheked_skeletons = None; sure_input_proc = p1::conf1.sure_input_proc } in
                   let conf2' = { conf2 with sure_uncheked_skeletons = None; sure_input_proc = p2::conf2.sure_input_proc } in
-                  conf1', conf2', false
+                  conf1', conf2', false, true
               | SPar pl1, SPar pl2 ->
-                  let conf1' = add_par_arguments_in_conf conf1 p1.label_p pl1 in
-                  let conf2' = add_par_arguments_in_conf conf2 p2.label_p pl2 in
-                  { conf1' with sure_uncheked_skeletons = None }, { conf2' with sure_uncheked_skeletons = None }, false
+                  let conf1', input_added = add_par_arguments_in_conf conf1 p1.label_p pl1 in
+                  let conf2', _ = add_par_arguments_in_conf conf2 p2.label_p pl2 in
+                  { conf1' with sure_uncheked_skeletons = None }, { conf2' with sure_uncheked_skeletons = None }, false, input_added
               | SParMult pl1, SParMult pl2 ->
                   Config.debug (fun () ->
                     match List.exists (fun (_,p) -> exists_output p) pl1, List.exists (fun (_,p) -> exists_output p) pl2 with
@@ -1239,12 +1287,12 @@ let is_equal_skeleton_conf size_frame conf1 conf2 =
                   then
                     let conf1' = { conf1 with sure_uncheked_skeletons = None; sure_output_proc = p1::conf1.sure_output_proc } in
                     let conf2' = { conf2 with sure_uncheked_skeletons = None; sure_output_proc = p2::conf2.sure_output_proc } in
-                    conf1',conf2', false
+                    conf1',conf2', false, false
                   else
-                    let conf1' = add_par_mult_arguments_in_conf conf1 p1.label_p pl1 in
-                    let conf2' = add_par_mult_arguments_in_conf conf2 p2.label_p pl2 in
-                    { conf1' with sure_uncheked_skeletons = None }, { conf2' with sure_uncheked_skeletons = None }, false
-              | SNil, SNil -> { conf1 with sure_uncheked_skeletons = None }, { conf2 with sure_uncheked_skeletons = None }, false
+                    let conf1', input_added = add_par_mult_arguments_in_conf conf1 p1.label_p pl1 in
+                    let conf2', _ = add_par_mult_arguments_in_conf conf2 p2.label_p pl2 in
+                    { conf1' with sure_uncheked_skeletons = None }, { conf2' with sure_uncheked_skeletons = None }, false, input_added
+              | SNil, SNil -> { conf1 with sure_uncheked_skeletons = None }, { conf2 with sure_uncheked_skeletons = None }, false, false
               | _, _ -> Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] This case should not happen since they have the same skeletons."
           else
             let is_left,f_conf,f_action = find_faulty_skeleton_det size_frame conf1 conf2 p1 p2 in
@@ -1259,12 +1307,12 @@ let is_equal_skeleton_conf size_frame conf1 conf2 =
               | SOutput _, SOutput _ ->
                   let conf1' = { conf1 with focused_proc = None; sure_output_proc = p1::conf1.sure_output_proc } in
                   let conf2' = { conf2 with focused_proc = None; sure_output_proc = p2::conf2.sure_output_proc } in
-                  conf1', conf2', false
-              | SInput _, SInput _ -> conf1, conf2, false
+                  conf1', conf2', false, false
+              | SInput _, SInput _ -> conf1, conf2, false, false
               | SPar pl1, SPar pl2 ->
-                  let conf1' = add_par_arguments_in_conf conf1 p1.label_p pl1 in
-                  let conf2' = add_par_arguments_in_conf conf2 p2.label_p pl2 in
-                  { conf1' with focused_proc = None }, { conf2' with focused_proc = None }, false
+                  let conf1', input_added = add_par_arguments_in_conf conf1 p1.label_p pl1 in
+                  let conf2', _ = add_par_arguments_in_conf conf2 p2.label_p pl2 in
+                  { conf1' with focused_proc = None }, { conf2' with focused_proc = None }, false, input_added
               | SParMult pl1, SParMult pl2 ->
                   Config.debug (fun () ->
                     match List.exists (fun (_,p) -> exists_output p) pl1, List.exists (fun (_,p) -> exists_output p) pl2 with
@@ -1277,12 +1325,12 @@ let is_equal_skeleton_conf size_frame conf1 conf2 =
                   then
                     let conf1' = { conf1 with focused_proc = None; sure_output_proc = p1::conf1.sure_output_proc } in
                     let conf2' = { conf2 with focused_proc = None; sure_output_proc = p2::conf2.sure_output_proc } in
-                    conf1',conf2' , false
+                    conf1',conf2' , false, false
                   else
-                    let conf1' = add_par_mult_arguments_in_conf conf1 p1.label_p pl1 in
-                    let conf2' = add_par_mult_arguments_in_conf conf2 p2.label_p pl2 in
-                    { conf1' with focused_proc = None }, { conf2' with focused_proc = None }, false
-              | SNil, SNil -> { conf1 with focused_proc = None }, { conf2 with focused_proc = None }, true
+                    let conf1', input_added = add_par_mult_arguments_in_conf conf1 p1.label_p pl1 in
+                    let conf2', _ = add_par_mult_arguments_in_conf conf2 p2.label_p pl2 in
+                    { conf1' with focused_proc = None }, { conf2' with focused_proc = None }, false, input_added
+              | SNil, SNil -> { conf1 with focused_proc = None }, { conf2 with focused_proc = None }, true, false
               | _, _ -> Config.internal_error "[process_determinate.ml >> is_equal_skeleton_conf] This case should not happen since they have the same skeletons."
           else
             let is_left,f_conf,f_action = find_faulty_skeleton_det size_frame conf1 conf2 p1 p2 in
@@ -1363,6 +1411,8 @@ let create_block label =
 
 let iter_recipe_variable f block =
   List.iter f block.recipes
+
+let get_minimal_axiom block = block.minimal_axiom
 
 (**************************************
 ***            Transition           ***

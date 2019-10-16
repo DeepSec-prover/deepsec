@@ -298,14 +298,14 @@ module Name = struct
 
   (******* Generation *******)
 
-  let fresh_with_label n =
-    let name = { label_n = n; index_n = !accumulator; pure_fresh_n = false; link_n = NNoLink; deducible_n = None } in
+  let fresh_with_label ?(pure=false) n =
+    let name = { label_n = n; index_n = !accumulator; pure_fresh_n = pure; link_n = NNoLink; deducible_n = None } in
     accumulator := !accumulator + 1;
     name
 
   let fresh () = fresh_with_label "n"
 
-  let fresh_from name = fresh_with_label name.label_n
+  let fresh_from name = fresh_with_label ~pure:name.pure_fresh_n name.label_n
 
   let pure_fresh_from name =
     let name' = { label_n = name.label_n; index_n = !accumulator; pure_fresh_n = true; link_n = NNoLink; deducible_n = None } in
@@ -322,7 +322,7 @@ module Name = struct
     | Terminal ->
         if n.index_n = 0
         then display_identifier out n.label_n
-        else Printf.sprintf "%s_%d" n.label_n n.index_n
+        else Printf.sprintf "%s_%d%s" n.label_n n.index_n (if n.pure_fresh_n then "[p]" else "")
     | HTML ->
         if n.index_n = 0
         then display_identifier out n.label_n
@@ -446,6 +446,8 @@ module Symbol = struct
 
   let number_of_destructors = ref 0
 
+  let number_of_attacker_name = ref 0
+
   let all_projection : symbol list HashtblSymb.t = HashtblSymb.create 7
 
   let special_constructor : (int,symbol) Hashtbl.t = Hashtbl.create 7
@@ -467,7 +469,8 @@ module Symbol = struct
       all_d : symbol list ;
       nb_c : int ;
       nb_d : int ;
-      nb_symb : int
+      nb_symb : int;
+      nb_a : int
     }
 
   let set_up_signature setting =
@@ -481,7 +484,8 @@ module Symbol = struct
     Hashtbl.reset special_constructor;
     List.iter (fun (f,list_proj) ->
       HashtblSymb.add all_projection f list_proj
-    ) setting.all_p
+    ) setting.all_p;
+    number_of_attacker_name := setting.nb_a
 
   let get_settings () =
     {
@@ -491,7 +495,8 @@ module Symbol = struct
       all_d = !all_destructors;
       nb_c = !number_of_constructors;
       nb_d = !number_of_destructors;
-      nb_symb = !accumulator_nb_symb
+      nb_symb = !accumulator_nb_symb;
+      nb_a = !number_of_attacker_name
     }
 
   (********* Testing *********)
@@ -577,19 +582,13 @@ module Symbol = struct
         c
 
   (* Used to instantiate the variables of a solved constraint system. *)
-  let fresh_attacker_name =
-    let acc = ref 0 in
-    (** TODO : Put the counter for fresh attacker name outside and put it in the settings *)
-
-    let f () =
-      let symb = { label_s = (Printf.sprintf "#n_%d" !acc); arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
-      incr acc;
-      incr accumulator_nb_symb;
-      all_constructors := symb :: !all_constructors;
-      incr number_of_constructors;
-      symb
-    in
-    f
+  let fresh_attacker_name () =
+    let symb = { label_s = (Printf.sprintf "#n_%d" !number_of_attacker_name); arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
+    incr number_of_attacker_name;
+    incr accumulator_nb_symb;
+    all_constructors := symb :: !all_constructors;
+    incr number_of_constructors;
+    symb
 
   (******** Display function *******)
 

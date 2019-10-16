@@ -26,6 +26,8 @@ val get_instantiated_trace : process -> configuration -> transition list
 
 val link_used_variables : (unit -> 'a) -> configuration -> 'a
 
+val get_minimal_axiom : block -> int
+
 (** {3 Testing} *)
 
 val is_strongly_action_determinate : process -> bool
@@ -42,7 +44,7 @@ type action =
 
 exception Faulty_skeleton of bool * configuration * action
 
-val is_equal_skeleton_conf : int -> configuration -> configuration -> configuration * configuration * bool
+val is_equal_skeleton_conf : int -> configuration -> configuration -> configuration * configuration * bool * bool
 
 val display_configuration : configuration -> string
 

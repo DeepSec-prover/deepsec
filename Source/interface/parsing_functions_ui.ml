@@ -115,7 +115,7 @@ let representation_of json = match string_of json with
   | "Attacker" -> AttackerPublicName
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> representation_of] Wrong value."
 
-let tuple_constructor_of nb_symbol all_t all_c all_p nb_c cat json =
+let tuple_constructor_of all_t all_c all_p nb_c cat json =
   let index = int_of (member "index" json) in
   let label = string_of (member "label" json) in
   let arity = int_of (member "arity" json) in
@@ -136,7 +136,6 @@ let tuple_constructor_of nb_symbol all_t all_c all_p nb_c cat json =
     | Some f -> f
     | None ->
         let f = { label_s = label; index_s = index; arity = arity; cat = cat; public = public; represents = representation } in
-        nb_symbol := max index !nb_symbol;
         if cat = Tuple
         then
           begin
@@ -147,7 +146,7 @@ let tuple_constructor_of nb_symbol all_t all_c all_p nb_c cat json =
         incr nb_c;
         f
 
-let projection_of assoc nb_symbol all_p id_t id_p rw_rules json =
+let projection_of assoc all_p id_t id_p rw_rules json =
   let f_tuple = match assoc.(id_t) with
     | JAtomSymbol f -> f
     | _ -> Config.internal_error "[parsing_functions_ui.ml >> projection_of] Should be a function symbol."
@@ -168,7 +167,6 @@ let projection_of assoc nb_symbol all_p id_t id_p rw_rules json =
 
   and explore_projs = function
     | [] ->
-        nb_symbol := max index !nb_symbol;
         let rewrite_rules = list_of (rewrite_rule_of assoc) rw_rules in
         let f = { label_s = label; index_s = index; arity = arity; cat = Destructor rewrite_rules; public = public; represents = representation } in
         result_f := Some f;
@@ -182,7 +180,6 @@ let projection_of assoc nb_symbol all_p id_t id_p rw_rules json =
         result_f := Some f;
         (id,f)::q
     | (id,f)::q ->
-        nb_symbol := max index !nb_symbol;
         let rewrite_rules = list_of (rewrite_rule_of assoc) rw_rules in
         let f' = { label_s = label; index_s = index; arity = arity; cat = Destructor rewrite_rules; public = public; represents = representation } in
         result_f := Some f;
@@ -194,7 +191,7 @@ let projection_of assoc nb_symbol all_p id_t id_p rw_rules json =
     | None -> Config.internal_error "[parsing_functions_ui.ml >> projection_of] A projection should have been defined."
     | Some f -> f
 
-let destructor_of assoc nb_symbol all_d nb_d rw_rules json =
+let destructor_of assoc all_d nb_d rw_rules json =
   let index = int_of (member "index" json) in
   let label = string_of (member "label" json) in
   let arity = int_of (member "arity" json) in
@@ -214,20 +211,16 @@ let destructor_of assoc nb_symbol all_d nb_d rw_rules json =
   match res_search with
     | Some f -> f
     | None ->
-        nb_symbol := max index !nb_symbol;
         let rewrite_rules = list_of (rewrite_rule_of assoc) rw_rules in
         let f = { label_s = label; index_s = index; arity = arity; cat = Destructor rewrite_rules; public = public; represents = representation } in
         incr nb_d;
         all_d := f :: !all_d;
         f
 
-let atomic_data_of = function
+let atomic_association_of = function
   | JList value_l ->
       let size = List.length value_l in
       let assoc = Array.make size (JAtomVar{label = ""; index = 0; link = NoLink; quantifier = Existential}) in
-      let max_var_index = ref 0 in
-      let max_name_index = ref 0 in
-      let max_symbol_index = ref 0 in
       let all_t = ref [] in
       let all_p = ref [] in
       let all_c = ref [] in
@@ -240,23 +233,21 @@ let atomic_data_of = function
             let label = string_of (member "label" json) in
             let index = int_of (member "index" json) in
             let free = bool_option_of (member_opt "free" json) in
-            max_var_index := max !max_var_index index;
             let quantifier = if free then Free else Existential in
             assoc.(i) <- JAtomVar {label = label; index = index; link = NoLink; quantifier = quantifier}
         | "Name" ->
             let label = string_of (member "label" json) in
             let index = int_of (member "index" json) in
-            max_name_index := max !max_name_index index;
             assoc.(i) <- JAtomName {label_n = label; index_n = index; pure_fresh_n = false; link_n = NNoLink; deducible_n = None}
         | "Symbol" ->
             let cat = member "category" json in
             begin match string_of (member "type" cat) with
-              | "Tuple" -> assoc.(i) <- JAtomSymbol (tuple_constructor_of max_symbol_index all_t all_c all_p nb_c Tuple json)
-              | "Constructor" -> assoc.(i) <- JAtomSymbol (tuple_constructor_of max_symbol_index all_t all_c all_p nb_c Constructor json)
+              | "Tuple" -> assoc.(i) <- JAtomSymbol (tuple_constructor_of all_t all_c all_p nb_c Tuple json)
+              | "Constructor" -> assoc.(i) <- JAtomSymbol (tuple_constructor_of all_t all_c all_p nb_c Constructor json)
               | "Destructor" | "Projection" -> ()
-              | _ -> Config.internal_error "[parsing_functions_ui.ml >> atomic_data_of] Unexpected type for category."
+              | _ -> Config.internal_error "[parsing_functions_ui.ml >> atomic_association_of] Unexpected type for category."
             end
-        | _ -> Config.internal_error "[parsing_functions_ui.ml >> atomic_data_of] Unexpected type."
+        | _ -> Config.internal_error "[parsing_functions_ui.ml >> atomic_association_of] Unexpected type."
       ) value_l;
 
       (* We now parse the destructors *)
@@ -269,15 +260,15 @@ let atomic_data_of = function
               | "Tuple" | "Constructor" -> ()
               | "Destructor" ->
                   let rw_rules = member "rewrite_rules" cat in
-                  assoc.(i) <- JAtomSymbol (destructor_of assoc max_symbol_index all_d nb_d rw_rules json)
+                  assoc.(i) <- JAtomSymbol (destructor_of assoc all_d nb_d rw_rules json)
               | "Projection" ->
                   let rw_rules = member "rewrite_rules" cat in
                   let id_t = int_of (member "tuple" cat) in
                   let id_p = int_of (member "projection_nb" cat) in
-                  assoc.(i) <- JAtomSymbol (projection_of assoc max_symbol_index all_p id_t id_p rw_rules json)
-              | _ -> Config.internal_error "[parsing_functions_ui.ml >> atomic_data_of] Unexpected type for category."
+                  assoc.(i) <- JAtomSymbol (projection_of assoc all_p id_t id_p rw_rules json)
+              | _ -> Config.internal_error "[parsing_functions_ui.ml >> atomic_association_of] Unexpected type for category."
             end
-        | _ -> Config.internal_error "[parsing_functions_ui.ml >> atomic_data_of] Unexpected type."
+        | _ -> Config.internal_error "[parsing_functions_ui.ml >> atomic_association_of] Unexpected type."
       ) value_l;
 
       let symbol_setting =
@@ -291,19 +282,33 @@ let atomic_data_of = function
           Symbol.all_d = !all_d;
           Symbol.nb_c = !nb_c;
           Symbol.nb_d = !nb_d;
-          Symbol.nb_symb = !max_symbol_index + 1
-        }
-      in
-      let query_setting =
-        {
-          var_set = !max_var_index + 1;
-          name_set = !max_name_index + 1;
-          symbol_set = symbol_setting
+          Symbol.nb_symb = 0;
+          Symbol.nb_a = 0
         }
       in
 
-      assoc, query_setting
-  | _ -> Config.internal_error "[parsing_functions_ui.ml >> parse_atomic_data] Unexpected case."
+      assoc, symbol_setting
+  | _ -> Config.internal_error "[parsing_functions_ui.ml >> atomic_association_of] Unexpected case."
+
+let atomic_data_of json =
+  let meta_json = member "meta" json in
+  let (assoc,symbol_settings) = atomic_association_of (member "data" json) in
+
+  let symbol_settings1 =
+    { symbol_settings with
+      Symbol.nb_symb = int_of (member "number_symbols" meta_json);
+      Symbol.nb_a = int_of (member "number_of_attacker_names" meta_json)
+    }
+  in
+
+  let query_setting =
+    {
+      var_set = int_of (member "number_of_variables" meta_json);
+      name_set = int_of (member "number_names" meta_json);
+      symbol_set = symbol_settings1
+    }
+  in
+  assoc, query_setting
 
 (*** Traces and processes ***)
 
