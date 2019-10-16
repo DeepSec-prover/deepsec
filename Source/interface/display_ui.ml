@@ -350,21 +350,24 @@ let of_query_result query_res =
     | QIn_progress -> ("status",JString "in_progress")::jlist3
     | QCanceled -> ("status",JString "canceled")::jlist3
     | QInternal_error err -> ("status", JString "internal_error")::("error_msg", JString err)::jlist3
+    | QWaiting -> ("status",JString "waiting")::jlist3
   in
 
   JObject jlist4
 
 (* Run result *)
 
+let of_run_batch_status json_list = function
+  | RBInternal_error err -> ("status", JString "internal_error")::("error_msg",JString err)::json_list
+  | RBCompleted -> ("status", JString "completed")::json_list
+  | RBIn_progress -> ("status", JString "in_progress")::json_list
+  | RBCanceled -> ("status", JString "canceled")::json_list
+  | RBWaiting -> ("status", JString "waiting")::json_list
+
 let of_run_result run_res =
 
   let jlist1 = [ "batch_file", JString run_res.r_batch_file ] in
-  let jlist2 = match run_res.r_status with
-    | RInternal_error err -> ("status", JString "internal_error")::("error_msg",JString err)::jlist1
-    | RCompleted -> ("status", JString "completed")::jlist1
-    | RIn_progress -> ("status", JString "in_progress")::jlist1
-    | RCanceled -> ("status", JString "canceled")::jlist1
-  in
+  let jlist2 = of_run_batch_status jlist1 run_res.r_status in
   let jlist3 = of_option jlist2 of_string "input_file" run_res.input_file in
   let jlist4 = of_option jlist3 of_string "input_str" run_res.input_str in
   let jlist5 = of_option jlist4 of_int "start_time" run_res.r_start_time in
@@ -406,10 +409,18 @@ let of_batch_result batch_res =
   let jlist2 = of_option jlist1 (fun str_l -> JList (List.map of_string str_l)) "run_result_files" batch_res.run_result_files in
   let jlist3 = of_option jlist2 (fun res_l -> JList (List.map of_run_result res_l)) "run_results" batch_res.run_results in
   let jlist4 = of_option jlist3 of_int "import_date" batch_res.import_date in
+  let jlist5 = of_run_batch_status jlist4 batch_res.b_status in
 
-  JObject jlist4
+  JObject jlist5
 
 (* Output commands *)
+
+let of_run_batch_status_for_command = function
+  | RBInternal_error _ -> JString "internal_error"
+  | RBCompleted -> JString "completed"
+  | RBIn_progress -> JString "in_progress"
+  | RBCanceled -> JString "canceled"
+  | RBWaiting -> JString "waiting"
 
 let of_output_command = function
   (* Errors *)
@@ -438,21 +449,17 @@ let of_output_command = function
   | Run_started str -> JObject [ "command", JString "run_started"; "file", JString str ]
   | Query_started str -> JObject [ "command", JString "query_started"; "file", JString str ]
   (* Ended *)
-  | Batch_ended str -> JObject [ "command", JString "batch_ended"; "file", JString str ]
+  | Batch_ended (str,status) ->
+      JObject [ "command", JString "batch_ended"; "file", JString str ; "status", (of_run_batch_status_for_command status)  ]
   | Run_ended(str,status) ->
-      let status_str = match status with
-        | RInternal_error _ -> JString "internal_error"
-        | RCompleted -> JString "completed"
-        | RIn_progress -> JString "in_progress"
-        | RCanceled -> JString "canceled"
-      in
-      JObject [ "command", JString "run_ended"; "file", JString str ; "status", status_str ]
+      JObject [ "command", JString "run_ended"; "file", JString str ; "status", (of_run_batch_status_for_command status) ]
   | Query_ended(str,status) ->
       let status_str = match status with
         | QInternal_error _ -> JString "internal_error"
         | QCompleted _ -> JString "completed"
         | QIn_progress -> JString "in_progress"
         | QCanceled -> JString "canceled"
+        | QWaiting -> JString "waiting"
       in
       JObject [ "command", JString "query_ended"; "file", JString str ; "status", status_str]
   | ExitUi -> JObject [ "command", JString "exit"]

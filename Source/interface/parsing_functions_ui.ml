@@ -429,6 +429,7 @@ let query_result_of file_name json =
   let sem = semantics_of (member "semantics" json) in
   let status = match string_of (member "status" json) with
     | "in_progress" -> QIn_progress
+    | "waiting" -> QWaiting
     | "canceled" -> QCanceled
     | "completed" ->
         let res = member_option (attack_trace_of assoc) "attack_trace" json in
@@ -481,18 +482,21 @@ let query_result_of file_name json =
     settings = setting
   }
 
+let run_batch_status_of json = match string_of (member "status" json) with
+  | "waiting" -> RBWaiting
+  | "in_progress" -> RBIn_progress
+  | "canceled" -> RBCanceled
+  | "completed" -> RBCompleted
+  | "internal_error" ->
+      let err = string_of (member "error_msg" json) in
+      RBInternal_error err
+  | _ -> Config.internal_error "[parsing_functions_ui.ml >> run_batch_status_of] Unexpected status."
+
+
 (* We assume that we do not parse run that contain query result as json data. *)
 let run_result_of file_name json =
   let batch_file = string_of (member "batch_file" json) in
-  let status = match string_of (member "status" json) with
-    | "in_progress" -> RIn_progress
-    | "completed" -> RCompleted
-    | "canceled" -> RCanceled
-    | "internal_error" ->
-        let err = string_of (member "error_msg" json) in
-        RInternal_error err
-    | _ -> Config.internal_error "[parsing_functions_ui.ml >> run_result_of] Unexpected status."
-  in
+  let status = run_batch_status_of json in
   let start_time = member_option int_of "start_time" json in
   let end_time = member_option int_of "end_time" json in
   let input_file = member_option string_of "input_file" json in
@@ -538,15 +542,7 @@ let batch_result_of file_name json =
   let run_result_files = member_option (list_of string_of) "run_result_files" json in
   let import_date = member_option int_of "import_date" json in
   let command_options = batch_options_of (member "command_options" json) in
-  let status = match string_of (member "status" json) with
-    | "in_progress" -> BIn_progress
-    | "completed" -> BCompleted
-    | "canceled" -> BCanceled
-    | "internal_error" ->
-        let err = string_of (member "error_msg" json) in
-        BInternal_error err
-    | _ -> Config.internal_error "[parsing_functions_ui.ml >> batch_result_of] Unexpected status."
-  in
+  let status = run_batch_status_of json in
 
   {
     name_batch = file_name;

@@ -72,6 +72,7 @@ type json_atomic =
 
 type query_status =
   | QCompleted of json_attack_trace option
+  | QWaiting
   | QIn_progress
   | QCanceled
   | QInternal_error of string
@@ -102,17 +103,18 @@ type query_result =
 
 (* Run result *)
 
-type run_status =
-  | RInternal_error of string
-  | RCompleted
-  | RIn_progress
-  | RCanceled
+type run_batch_status =
+  | RBInternal_error of string
+  | RBWaiting
+  | RBCompleted
+  | RBIn_progress
+  | RBCanceled
 
 type run_result =
   {
     name_run : string;
     r_batch_file : string;
-    r_status : run_status;
+    r_status : run_batch_status;
     input_file : string option;
     input_str : string option;
     r_start_time : int option;
@@ -131,16 +133,10 @@ type batch_options =
   | Distant_workers of (string * string * int) list
   | Distributed of int
 
-type batch_status =
-  | BCanceled
-  | BCompleted
-  | BIn_progress
-  | BInternal_error of string
-
 type batch_result =
   {
     name_batch : string;
-    b_status : batch_status;
+    b_status : run_batch_status;
     deepsec_version : string;
     git_branch : string;
     git_hash : string;
@@ -170,8 +166,8 @@ type output_command =
   | Run_started of string
   | Query_started of string
   (* Ended *)
-  | Batch_ended of string
-  | Run_ended of string * run_status
+  | Batch_ended of string * run_batch_status
+  | Run_ended of string * run_batch_status
   | Query_ended of string * query_status
   (* Exit *)
   | ExitUi

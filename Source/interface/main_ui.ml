@@ -140,7 +140,7 @@ let generate_initial_query_result batch_dir run_dir i (equiv,proc1,proc2) =
 
   {
     name_query = query_json;
-    q_status = QIn_progress;
+    q_status = QWaiting;
     q_batch_file = batch_dir^".json";
     q_run_file = run_dir^".json";
     q_start_time = None;
@@ -187,7 +187,7 @@ let parse_dps_file batch_dir input_file =
           {
             name_run = run_dir^".json";
             r_batch_file = batch_dir^".json";
-            r_status = RIn_progress;
+            r_status = RBWaiting;
             input_file = Some new_path_input_file;
             input_str = None;
             r_start_time = None;
@@ -232,7 +232,7 @@ type computation_status  =
     batch : batch_result
   }
 
-let computation_status = ref { cur_run = None; remaining_runs = []; batch = { name_batch = ""; b_status = BIn_progress; deepsec_version = ""; git_branch = ""; git_hash = ""; run_result_files = None; run_results = None; import_date = None; command_options = []} }
+let computation_status = ref { cur_run = None; remaining_runs = []; batch = { name_batch = ""; b_status = RBIn_progress; deepsec_version = ""; git_branch = ""; git_hash = ""; run_result_files = None; run_results = None; import_date = None; command_options = []} }
 
 let execution_mutex = Mutex.create ()
 let execution_condition = Condition.create ()
@@ -267,15 +267,15 @@ let catch_batch_internal_error f =
   with Config.Internal_error err ->
     begin
       (* We put the status of the batch and current run to internal_error. We put cancel to all other remaing ones. *)
-      let batch = { !computation_status.batch with b_status = BInternal_error err } in
+      let batch = { !computation_status.batch with b_status = RBInternal_error err } in
       write_batch batch;
       let end_time = int_of_float (Unix.time ()) in
       begin match !computation_status.cur_run with
         | None -> ()
         | Some run_comp ->
-            let run = { run_comp.ongoing_run with r_status = RInternal_error err; r_end_time = Some end_time } in
+            let run = { run_comp.ongoing_run with r_status = RBInternal_error err; r_end_time = Some end_time } in
             write_run run;
-            List.iter (fun query -> write_query { query with q_status = QCanceled }) run_comp.remaining_queries;
+            List.iter (fun query -> write_query { query with q_status = QCanceled; q_end_time = Some end_time }) run_comp.remaining_queries;
             match run_comp.cur_query with
               | None -> ()
               | Some query_comp ->
@@ -283,9 +283,9 @@ let catch_batch_internal_error f =
                   write_query { query_comp.ongoing_query with q_status = QInternal_error err; q_end_time = Some end_time }
       end;
       List.iter (fun (run,qlist) ->
-        let run' = { run with r_status = RCanceled } in
+        let run' = { run with r_status = RBCanceled; r_end_time = Some end_time } in
         write_run run';
-        List.iter (fun query -> write_query { query with q_status = QCanceled }) qlist
+        List.iter (fun query -> write_query { query with q_status = QCanceled; q_end_time = Some end_time }) qlist
       ) !computation_status.remaining_runs;
       Display_ui.send_output_command (Batch_internal_error err);
       send_exit ()
@@ -297,17 +297,17 @@ let catch_query_internal_error f =
   with Config.Internal_error err ->
     begin
       Mutex.lock execution_mutex;
-      let command_to_send = ref [Batch_ended !computation_status.batch.name_batch] in
       let end_time = int_of_float (Unix.time ()) in
-      let batch = { !computation_status.batch with b_status = BInternal_error err } in
+      let batch = { !computation_status.batch with b_status = RBInternal_error err } in
       write_batch batch;
+      let command_to_send = ref [Batch_ended (batch.name_batch,batch.b_status) ] in
       begin match !computation_status.cur_run with
         | None -> ()
         | Some run_comp ->
-            let run = { run_comp.ongoing_run with r_status = RInternal_error err; r_end_time = Some end_time } in
+            let run = { run_comp.ongoing_run with r_status = RBInternal_error err; r_end_time = Some end_time } in
             command_to_send := (Run_ended(run.name_run,run.r_status)):: !command_to_send;
             write_run run;
-            List.iter (fun query -> write_query { query with q_status = QCanceled }) run_comp.remaining_queries;
+            List.iter (fun query -> write_query { query with q_status = QCanceled; q_end_time = Some end_time }) run_comp.remaining_queries;
             match run_comp.cur_query with
               | None -> ()
               | Some query_comp ->
@@ -315,9 +315,9 @@ let catch_query_internal_error f =
                   write_query { query_comp.ongoing_query with q_status = QInternal_error err; q_end_time = Some end_time }
       end;
       List.iter (fun (run,qlist) ->
-        let run' = { run with r_status = RCanceled } in
+        let run' = { run with r_status = RBCanceled; r_end_time = Some end_time } in
         write_run run';
-        List.iter (fun query -> write_query { query with q_status = QCanceled }) qlist
+        List.iter (fun query -> write_query { query with q_status = QCanceled; q_end_time = Some end_time }) qlist
       ) !computation_status.remaining_runs;
 
       List.iter Display_ui.send_output_command !command_to_send;
@@ -353,7 +353,7 @@ let start_batch input_files batch_options =
           run_results = None;
           import_date = None;
           command_options = batch_options;
-          b_status = BIn_progress
+          b_status = RBIn_progress
         }
       in
       (* We write the batch result *)
@@ -418,33 +418,8 @@ let start_batch input_files batch_options =
       send_exit ()
     end
 
-let start_query query_result =
-  let start_time = int_of_float (Unix.time ()) in
-  let query_result1 = { query_result with q_start_time = Some start_time } in
-  let absolute_query_json = Filename.concat (get_database_path ()) query_result1.name_query in
-  let channel_out = open_out absolute_query_json in
-  output_string channel_out (Display_ui.display_json (Display_ui.of_query_result query_result1));
-  Display_ui.send_output_command (Query_started query_result1.name_query);
-  query_result1
-
-let end_run run_result =
-  let end_time = int_of_float (Unix.time ()) in
-  let run_result1 = { run_result with r_end_time = Some end_time } in
-  let absolute_run_json = Filename.concat (get_database_path ()) run_result1.name_run in
-  let channel_out = open_out absolute_run_json in
-  output_string channel_out (Display_ui.display_json (Display_ui.of_run_result run_result1));
-  Display_ui.send_output_command (Run_ended(run_result1.name_run,run_result1.r_status))
-
-let end_query query_result =
-  let end_time = int_of_float (Unix.time ()) in
-  let query_result1 = { query_result with q_end_time = Some end_time } in
-  let absolute_query_json = Filename.concat (get_database_path ()) query_result1.name_query in
-  let channel_out = open_out absolute_query_json in
-  output_string channel_out (Display_ui.display_json (Display_ui.of_query_result query_result1));
-  Display_ui.send_output_command (Query_ended(query_result1.name_query,query_result1.q_status))
-
 let end_batch batch_result =
-  Display_ui.send_output_command (Batch_ended  batch_result.name_batch)
+  Display_ui.send_output_command (Batch_ended(batch_result.name_batch,batch_result.b_status))
 
 (* Executing the queries / runs / batch *)
 
@@ -502,7 +477,7 @@ let execute_batch () =
               end_batch !computation_status.batch;
               send_exit ()
           | (run,query_list)::q ->
-              let run_1 = { run with r_start_time = Some (int_of_float (Unix.time ())) } in
+              let run_1 = { run with r_start_time = Some (int_of_float (Unix.time ())); r_status = RBIn_progress } in
               write_run run_1;
               Display_ui.send_output_command (Run_started run_1.name_run);
               let run_comp = { cur_query = None; remaining_queries = query_list; ongoing_run = run_1 } in
@@ -516,13 +491,13 @@ let execute_batch () =
         match run_comp.remaining_queries with
           | [] ->
               (* No query left to verify. We end the run. *)
-              let run_1 = { run_comp.ongoing_run with r_end_time = Some (int_of_float (Unix.time ())); r_status = RCompleted } in
+              let run_1 = { run_comp.ongoing_run with r_end_time = Some (int_of_float (Unix.time ())); r_status = RBCompleted } in
               write_run run_1;
               Display_ui.send_output_command (Run_ended (run_1.name_run,run_1.r_status));
               computation_status := { !computation_status with cur_run = None };
               execute_run ()
           | query::query_list ->
-              let query_1 = { query with q_start_time = Some (int_of_float (Unix.time ())) } in
+              let query_1 = { query with q_start_time = Some (int_of_float (Unix.time ())); q_status = QIn_progress } in
               write_query query_1;
               let thread = Thread.create execute_query query_1 in
               let query_comp = { thread = thread; ongoing_query = query_1 } in
