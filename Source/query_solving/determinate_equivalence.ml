@@ -611,7 +611,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
             List.iter (fun csys ->
               let symb_proc = csys.Constraint_system.additional_data in
-              let conf, term = apply_neg_out symb_proc.configuration in
+              let (conf, term) = apply_neg_out symb_proc.configuration in
 
               Variable.auto_cleanup_with_reset_notail (fun () ->
                 (* We link the initial substitution from the constraint system *)
@@ -665,7 +665,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                 let csys = List.hd csys_list in
                 let origin_process = csys.Constraint_system.additional_data.origin_process in
                 if List.for_all (fun csys -> csys.Constraint_system.additional_data.origin_process = origin_process) csys_list
-                then (Config.print_in_log "Not equivalent : origin issue\n"; raise (Not_Trace_Equivalent (generate_attack_trace csys)))
+                then raise (Not_Trace_Equivalent (generate_attack_trace csys))
                 else
                   let csys_left, csys_right =
                     Config.debug (fun () ->
@@ -738,7 +738,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           let csys = List.hd csys_list in
           let origin_process = csys.Constraint_system.additional_data.origin_process in
           if List.for_all (fun csys -> csys.Constraint_system.additional_data.origin_process = origin_process) csys_list
-          then (Config.print_in_log "Not equivalent : origin issue\n"; raise (Not_Trace_Equivalent (generate_attack_trace csys)))
+          then raise (Not_Trace_Equivalent (generate_attack_trace csys))
           else f_next ()
 
 let trace_equivalence proc1 proc2 =

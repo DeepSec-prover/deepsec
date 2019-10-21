@@ -500,7 +500,7 @@ let run_result_of file_name json =
   let start_time = member_option int_of "start_time" json in
   let end_time = member_option int_of "end_time" json in
   let input_file = member_option string_of "input_file" json in
-  let query_result_files = member_option (list_of string_of) "query_result_files" json in
+  let query_result_files = member_option (list_of string_of) "query_files" json in
   let warnings = list_of string_of (member "warnings" json) in
   {
     name_run = file_name;
@@ -539,7 +539,7 @@ let batch_result_of file_name json =
   let version = string_of (member "deepsec_version" json) in
   let git_branch = string_of (member "git_branch" json) in
   let git_hash = string_of (member "git_hash" json) in
-  let run_result_files = member_option (list_of string_of) "run_result_files" json in
+  let run_result_files = member_option (list_of string_of) "run_files" json in
   let import_date = member_option int_of "import_date" json in
   let command_options = batch_options_of (member "command_options" json) in
   let status = run_batch_status_of json in

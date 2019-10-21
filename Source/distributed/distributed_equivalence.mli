@@ -85,4 +85,5 @@ end
 
 val trace_equivalence_determinate : Types.process -> Types.process -> Types.verification_result
 
+val trace_equivalence_generic : Types.semantics -> Types.process -> Types.process -> Types.verification_result
 (*val session : Equivalence_session.goal -> Process_session.Configuration.t -> Process_session.Configuration.t -> Equivalence_session.result_analysis * Process_session.Configuration.t * Process_session.Configuration.t*)

@@ -149,7 +149,7 @@ let of_process ?(highlight=[]) assoc proc =
         ]))
     | JInput(ch,pat,p,pos) ->
         JObject (add_highlight pos (add_nil p "process" [
-          "type", JString "Output";
+          "type", JString "Input";
           "channel", of_term assoc ch;
           "pattern", of_pattern assoc pat;
           "position", of_position pos
@@ -372,7 +372,7 @@ let of_run_result run_res =
   let jlist4 = of_option jlist3 of_string "input_str" run_res.input_str in
   let jlist5 = of_option jlist4 of_int "start_time" run_res.r_start_time in
   let jlist6 = of_option jlist5 of_int "end_time" run_res.r_end_time in
-  let jlist7 = of_option jlist6 (fun str_l -> JList (List.map of_string str_l)) "query_result_files" run_res.query_result_files in
+  let jlist7 = of_option jlist6 (fun str_l -> JList (List.map of_string str_l)) "query_files" run_res.query_result_files in
   let jlist8 = of_option jlist7 (fun qres_l -> JList (List.map of_query_result qres_l)) "query_results" run_res.query_results in
   let jlist9 =
     if run_res.warnings <> []
@@ -406,7 +406,7 @@ let of_batch_result batch_res =
     ]
   in
 
-  let jlist2 = of_option jlist1 (fun str_l -> JList (List.map of_string str_l)) "run_result_files" batch_res.run_result_files in
+  let jlist2 = of_option jlist1 (fun str_l -> JList (List.map of_string str_l)) "run_files" batch_res.run_result_files in
   let jlist3 = of_option jlist2 (fun res_l -> JList (List.map of_run_result res_l)) "run_results" batch_res.run_results in
   let jlist4 = of_option jlist3 of_int "import_date" batch_res.import_date in
   let jlist5 = of_run_batch_status jlist4 batch_res.b_status in

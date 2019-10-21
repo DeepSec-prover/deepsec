@@ -71,7 +71,7 @@ module DF = struct
       | [] -> [type_r, [bfact]]
       | ((i,_) as head)::q when i < type_r -> head :: (explore q)
       | (i,bfact_list)::q when i = type_r -> (i,bfact::bfact_list)::q
-      | _ -> (type_r, [bfact])::df
+      | df' -> (type_r, [bfact])::df'
     in
     explore df
 
@@ -84,7 +84,7 @@ module DF = struct
         | [] -> [type_r,bfact_list]
         | ((i,_) as head)::q when i < type_r -> head :: (explore q)
         | (i,bfact_list')::q when i = type_r -> (i,List.rev_append bfact_list bfact_list')::q
-        | _ -> (type_r, bfact_list)::df
+        | df' -> (type_r, bfact_list)::df'
       in
       explore df
 
@@ -136,7 +136,7 @@ module DF = struct
       | (i,bfact_list)::q ->
           let bfact_list' = explore_bfact_list bfact_list in
           if bfact_list' = []
-          then q
+          then explore q
           else (i,bfact_list')::(explore q)
     in
 
@@ -318,7 +318,7 @@ module DF = struct
       | (i,bfact_list)::q ->
           let bfact_list' = explore_bfact_list bfact_list in
           if bfact_list' = []
-          then q
+          then explore q
           else (i,bfact_list')::(explore q)
     in
 

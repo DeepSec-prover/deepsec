@@ -305,6 +305,9 @@ let display_constraint_system csys =
   acc := !acc ^ (Printf.sprintf "Orig_subst = %s\n" (Display.display_list (fun (x,t) ->
       Printf.sprintf "%s -> %s" (Variable.display Display.Terminal x) (Term.display Display.Terminal t)
     ) "; " csys.original_substitution));
+  acc := !acc ^ (Printf.sprintf "Orig_names = %s\n" (Display.display_list (fun (x,n) ->
+      Printf.sprintf "%s -> %s" (Variable.display Display.Terminal x) (Name.display Display.Terminal n)
+    ) "; " csys.original_names));
   !acc
 
 let debug_on_constraint_system msg csys =
@@ -579,6 +582,7 @@ module MGS = struct
     }
 
   let compute_all csys f_found_mgs f_next =
+    Config.debug (fun () -> DF.debug "[compute_all]" csys.simp_deduction_facts);
     let rec apply_rules df eq_term eq_rec eq_uni exist_vars f_next_0 =
       Config.debug (fun () -> DF.debug "[compute_all >> apply_rules]" df);
       Recipe_Variable.auto_cleanup_with_reset (fun f_next_1 ->
@@ -592,6 +596,7 @@ module MGS = struct
               in
               f_found_mgs { mgs_deduction_facts = df; mgs_eq_term = eq_term; mgs_eq_recipe = eq_rec; mgs_eq_uniformity =  eq_uni; mgs_eq_skeleton = Formula.M.Top; mgs_fresh_existential_vars = exist_vars' } f_next_1
           | DF.UnifyVariables df' ->
+              Config.debug (fun () -> DF.debug "[compute_all >> apply_rules >> UnifyVariables]" df');
               let eq_rec' = Formula.R.instantiate_and_normalise eq_rec in
               if eq_rec' = Formula.R.Bot
               then f_next_1 ()
@@ -606,7 +611,7 @@ module MGS = struct
           | DF.UnsolvedFact(bfact,df',unif) ->
               let x = bfact.bf_var
               and t = bfact.bf_term in
-
+              Config.debug (fun () -> DF.debug "[compute_all >> apply_rules >> UnsolvedFact]" df');
               Config.debug (fun () ->
                 if x.type_r = Recipe_Variable.infinite_type
                 then Config.internal_error "[constraint_system.ml >> MGS.compute_all] There should not be variable with infinite type when computing all mgs."
@@ -795,11 +800,6 @@ module MGS = struct
           | DF.UnsolvedFact(bfact,df',unif) ->
               let x = bfact.bf_var
               and t = bfact.bf_term in
-
-              Config.debug (fun () ->
-                if x.type_r = Recipe_Variable.infinite_type
-                then Config.internal_error "[constraint_system.ml >> MGS.compute_one] There should not be variable with infinite type when computing all mgs."
-              );
 
               match t with
                 | Func(f,[]) when f.public ->
@@ -1361,13 +1361,7 @@ module Rule = struct
       ) csys_set.set
     );
 
-    let rec internal checked_csys to_check_csys eq_rec vars_df_op f_next_1 =
-      Config.debug (fun () ->
-        List.iter (fun csys -> debug_on_constraint_system "[Rule Sat >> internal]" csys) checked_csys;
-        List.iter (fun csys -> debug_on_constraint_system "[Rule Sat >> internal]" csys) to_check_csys;
-        Set.debug_check_structure "[Internal]" { set = checked_csys @ to_check_csys; eq_recipe = eq_rec };
-      );
-      match exploration_sat checked_csys to_check_csys with
+    let rec internal checked_csys to_check_csys eq_rec vars_df_op f_next_1 = match exploration_sat checked_csys to_check_csys with
       | None, checked_csys_1 -> f_continuation { set = checked_csys_1; eq_recipe = eq_rec } f_next_1
       | Some(csys,to_check_csys_1), checked_csys_1 ->
           let simple_csys = MGS.simple_of csys eq_rec in
@@ -2701,7 +2695,7 @@ module Rule = struct
 
   let apply_rules_after_output exists_private f_continuation =
     if exists_private
-    then sat (sat_non_deducible_terms (split_data_constructor (normalisation_deduction_consequence (rewrite (equality_constructor f_continuation)))))
+    then sat (sat_non_deducible_terms (sat_disequation (split_data_constructor (normalisation_deduction_consequence (rewrite (equality_constructor f_continuation))))))
     else sat (sat_disequation (split_data_constructor (normalisation_deduction_consequence (rewrite (equality_constructor f_continuation)))))
 
   (*** Additional function ***)
@@ -2712,6 +2706,7 @@ module Rule = struct
           match v.link with
           | TLink t -> mark_variables t
           | NoLink -> v.link <- SLink; Variable.currently_linked := v :: !Variable.currently_linked
+          | SLink -> ()
           | _ -> Config.internal_error "[constraint_system.ml >> mark_variables] Unexpected link."
         end
     | Func(_,args) -> List.iter mark_variables args

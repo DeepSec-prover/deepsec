@@ -838,6 +838,12 @@ module Term = struct
         Printf.sprintf "%s%s%s" (langle out) (display_list (display out) "," args) (rangle out)
     | Func(f_symb,args) ->
         Printf.sprintf "%s(%s)" (Symbol.display out f_symb) (display_list (display out) "," args)
+
+  let rec display_pattern out = function
+    | PatVar { link = TLink t; _} -> display out t
+    | PatVar v -> Variable.display out v
+    | PatEquality t -> display out t
+    | PatTuple(_,args) -> Printf.sprintf "%s%s%s" (langle out) (display_list (display_pattern out) "," args) (rangle out)
 end
 
 (*************************************

@@ -385,10 +385,16 @@ let rec add_let_for_output_input = function
   | Output(c,t,p,pos) ->
       let x = Variable.fresh Free in
       let y = Variable.fresh Free in
-      let f = Symbol.get_tuple 2 in
-      let pat = PatTuple(f,[PatVar x;PatVar y]) in
-      let term = Func(f,[c;t]) in
-      Let(pat,term,Output(Var x,Var y,add_let_for_output_input p,pos),Nil,dummy_pos)
+
+      Let(PatVar x,c,
+        Let(PatVar y,t,
+          Output(Var x,Var y,add_let_for_output_input p,pos),
+          Nil,
+          dummy_pos
+        ),
+        Nil,
+        dummy_pos
+      )
   | Input(c,pat,p,pos) ->
       begin match pat with
         | PatVar _ ->
@@ -418,6 +424,34 @@ let rec term_of_pattern vars_pat = function
   | PatTuple(f,args) -> Func(f,List.map (term_of_pattern vars_pat) args)
   | PatEquality t -> t
 
+let update_equations_with_pattern_vars equations pat_vars =
+
+  let rec explore prev = function
+    | [] -> prev
+    | (x,Var x')::q when not (List.memq x pat_vars) && List.memq x' pat_vars ->
+        let new_equations =
+          Variable.auto_cleanup_with_reset_notail (fun () ->
+            Variable.link_term x' (Var x);
+            let prev' = List.map (fun (y,t) -> (y,Term.instantiate t)) prev in
+            let q' = List.map (fun (y,t) -> (y,Term.instantiate t)) q in
+            (((x',Var x)::prev')@q')
+          )
+        in
+        explore [] new_equations
+    | eq::q -> explore (eq::prev) q
+  in
+
+  let new_equations = explore [] equations in
+
+  Config.debug (fun () ->
+    List.iter (function
+      | (x,Var x') when List.memq x' pat_vars && List.memq x pat_vars -> Config.internal_error "[process.ml >> update_equations_with_pattern_vars] Should not occur"
+      | _ -> ()
+    ) new_equations
+  );
+
+  new_equations
+
 let rec apply_trivial_let = function
   | Nil -> Nil
   | Output(c,t,p,pos) -> Output(c,t,apply_trivial_let p,pos)
@@ -439,18 +473,19 @@ let rec apply_trivial_let = function
             (* We first check that there is no existential variables *)
             if List.for_all (fun (x,t') -> x.quantifier <> Existential && not (Term.quantified_var_occurs Existential t')) equations
             then
+              let new_equations = update_equations_with_pattern_vars equations !vars_pat in
               (* We now check that all variables in the domain are from the pattern *)
-              if List.for_all (fun (x,t') -> (List.memq x !vars_pat) && does_not_occurs !vars_pat t') equations
+              if List.for_all (fun (x,t') -> (List.memq x !vars_pat) && does_not_occurs !vars_pat t') new_equations
               then
                 begin
                   (* We can instantiate and remove the Let *)
                   Config.debug (fun () ->
-                    if not (List.for_all (fun (_,t') -> does_not_occurs !vars_pat t') equations)
+                    if not (List.for_all (fun (_,t') -> does_not_occurs !vars_pat t') new_equations)
                     then Config.internal_error "[process.ml >> apply_trivial_let] Having only variables from the pattern in the domain should imply that no variables in the image are from the pattern."
                   );
                   let p1' =
                     Variable.auto_cleanup_with_reset_notail (fun () ->
-                      List.iter (fun (x,t') -> Variable.link_term x t') equations;
+                      List.iter (fun (x,t') -> Variable.link_term x t') new_equations;
                       instantiate p1
                     )
                   in
@@ -460,7 +495,7 @@ let rec apply_trivial_let = function
                 (* We can instantiate but we need to keep the Let *)
                 let p1' =
                   Variable.auto_cleanup_with_reset_notail (fun () ->
-                    List.iter (fun (x,t') -> Variable.link_term x t') equations;
+                    List.iter (fun (x,t') -> Variable.link_term x t') new_equations;
                     instantiate p1
                   )
                 in
@@ -805,6 +840,75 @@ let rec regroup_else_branches = function
       let (p2',pos_match2) = regroup_else_branches p2 in
       Choice(p1',p2',pos), pos_match1 @ pos_match2
 
+(*** Regroup equal process from par in bang ***)
+
+let rec regroup_equal_par_processes = function
+  | Nil -> Nil
+  | Output(c,t,p,pos) -> Output(c,t,regroup_equal_par_processes p,pos)
+  | Input(c,pat,p,pos) ->
+      cleanup_all_linked (fun () ->
+        self_match_pattern pat;
+        Input(c,pat,regroup_equal_par_processes p,pos)
+      )
+  | IfThenElse(t1,t2,p1,p2,pos) -> IfThenElse(t1,t2,regroup_equal_par_processes p1, regroup_equal_par_processes p2,pos)
+  | Let(pat,t,p1,p2,pos) ->
+      cleanup_all_linked (fun () ->
+        self_match_pattern pat;
+        Let(pat,t,regroup_equal_par_processes p1,regroup_equal_par_processes p2,pos)
+      )
+  | New(n,p,pos) ->
+      cleanup_all_linked (fun () ->
+        self_match_name n;
+        New(n,regroup_equal_par_processes p,pos)
+      )
+  | Par p_list ->
+      let rec insert_in_proc_list_list p = function
+        | [] -> [[p]]
+        | (p'::q)::q_list ->
+            begin try
+              equal_modulo_renaming (fun _ -> ()) p p';
+              (p::p'::q)::q_list
+            with No_Match ->
+              (p'::q)::(insert_in_proc_list_list p q_list)
+            end
+        | []::_ -> Config.internal_error "[process.ml >> regroup_equal_par_processes] Unexpected case"
+      in
+
+      let rec regroup_list = function
+        | [] -> []
+        | p::q ->
+            let proc_list_list = regroup_list q in
+            insert_in_proc_list_list p proc_list_list
+      in
+
+      let par_list =
+        List.map (function
+          | [] -> Config.internal_error "[process.ml >> regroup_equal_par_processes] Unexpected case 2"
+          | [p] -> p
+          | p_list -> Bang(p_list,dummy_pos)
+        ) (regroup_list p_list)
+      in
+      begin match par_list with
+        | [] -> Config.internal_error "[process.ml >> regroup_equal_par_processes] Unexpected case 3"
+        | [p] -> p
+        | _ -> Par par_list
+      end
+  | Bang(p_list,pos) ->
+      let p_list' = List.map regroup_equal_par_processes p_list in
+      let p = List.hd p_list in
+      begin match p with
+        | Bang _ ->
+            let p_list'' =
+              List.fold_right (fun p' acc -> match p' with
+                | Bang(p_list'',_) -> p_list''@acc
+                | _ -> Config.internal_error "[process.ml >> regroup_equal_par_processes] Should only be bang processes."
+              ) p_list' []
+            in
+            Bang(p_list'',pos)
+        | _ -> Bang(p_list',pos)
+      end
+  | Choice(p1,p2,pos) -> Choice(regroup_equal_par_processes p1, regroup_equal_par_processes p2,pos)
+
 (*** General function ***)
 
 type configuration =
@@ -838,14 +942,20 @@ let is_pos_in_process pos_match pos proc =
   explore proc
 
 let instantiate_term t =
-  Variable.auto_cleanup_with_exception (fun () ->
+  Config.debug (fun () -> Config.print_in_log (Printf.sprintf "Instantiate_term %s\n" (Term.display Terminal t)));
+  let r = Variable.auto_cleanup_with_exception (fun () ->
     Rewrite_rules.normalise (Term.instantiate t)
-  )
+  ) in
+  Config.debug (fun () -> Config.print_in_log "End instantiate_term\n");
+  r
 
 let instantiate_pattern pat =
-  Variable.auto_cleanup_with_exception (fun () ->
+  Config.debug (fun () -> Config.print_in_log (Printf.sprintf "Instantiate_pattern %s\n" (Term.display_pattern Terminal pat)));
+  let r = Variable.auto_cleanup_with_exception (fun () ->
     Rewrite_rules.normalise_pattern (Term.instantiate_pattern pat)
-  )
+  ) in
+  Config.debug (fun () -> Config.print_in_log "End instantiate_pattern\n");
+  r
 
 let apply_ground_recipe_on_frame frame r =
 
@@ -863,6 +973,9 @@ let rec retrieve_transition_list f_next pos_match act conf = match conf.process,
   | Output(_,t,p,pos), AOutput(_,pos') when is_equal_pos pos_match pos pos' ->
       f_next pos [] { frame = conf.frame@[Term.instantiate t]; process = p }
   | Input(_,pat,p,pos), AInput(_,r_t,pos') when is_equal_pos pos_match pos pos' ->
+      Config.debug (fun () ->
+        Config.print_in_log (Printf.sprintf "Input at position %s : Recipe = %s; Frame = [ %s ]\n" (display_position pos) (Recipe.display Terminal r_t) (display_list (Term.display Terminal) "; " conf.frame))
+      );
       let t = apply_ground_recipe_on_frame conf.frame r_t in
       begin try
         let pat' = instantiate_pattern pat in
@@ -987,6 +1100,30 @@ let simplify_for_determinate p =
   let p4 = detect_and_replace_pure_fresh_name p3 in
   let p5 = move_new_name p4 in
   let (p6,pos_match) = regroup_else_branches p5 in
+  let pos_match_normalised =  normalise_pos_match [] pos_match in
+  Config.debug (fun () ->
+    Config.print_in_log (Printf.sprintf "Before simplification :\n %s" (display 1 p));
+    Config.print_in_log (Printf.sprintf "After simplification :\n %s" (display 1 p6));
+  );
+  let retrieve_trace trans_list =
+    Config.debug (fun () ->
+      Config.print_in_log (Printf.sprintf "Input retrieve_trace = %s\n" (display_list display_transition  "; " trans_list))
+    );
+    let result = retrieve_trace (fun x -> x) pos_match_normalised { frame = []; process = p } trans_list in
+    Config.debug (fun () ->
+      Config.print_in_log (Printf.sprintf "Output retrieve_trace = %s\n" (display_list display_transition  "; " result))
+    );
+    result
+  in
+  p6, retrieve_trace
+
+let simplify_for_generic p =
+  let p1 = clean p in
+  let p2 = add_let_for_output_input p1 in
+  let p3 = apply_trivial_let p2 in
+  let p4 = move_new_name p3 in
+  let (p5,pos_match) = regroup_else_branches p4 in
+  let p6 = regroup_equal_par_processes p5 in
   let pos_match_normalised =  normalise_pos_match [] pos_match in
   Config.debug (fun () ->
     Config.print_in_log (Printf.sprintf "Before simplification :\n %s" (display 1 p));

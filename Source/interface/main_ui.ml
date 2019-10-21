@@ -440,28 +440,35 @@ let execute_query query_result =
                 Interface.process_of_json_process p2
             | _ -> Config.internal_error "[main_ui.ml >> execute_query] Should not occur when equivalence."
           in
-          if Determinate_process.is_strongly_action_determinate proc1 && Determinate_process.is_strongly_action_determinate proc2
-          then
-            begin
-              let query_result1 =
-                if !Config.distributed
-                then
-                  let result = Distributed_equivalence.trace_equivalence_determinate proc1 proc2 in
-                  let end_time = int_of_float (Unix.time ()) in
-                  Interface.query_result_of_equivalence_result_distributed query_result result end_time
-                else
-                  let result = Determinate_equivalence.trace_equivalence proc1 proc2 in
-                  let end_time = int_of_float (Unix.time ()) in
-                  Interface.query_result_of_equivalence_result query_result result end_time
-              in
-              Mutex.lock execution_mutex;
-              write_query query_result1;
-              remove_current_query ();
-              Display_ui.send_output_command (Query_ended(query_result1.name_query,query_result1.q_status));
-              Condition.signal execution_condition;
-              Mutex.unlock execution_mutex
-            end
-          else Config.internal_error "[main_ui.ml >> execute_query] Currently, on the determinate processes are accepted."
+          let query_result1 =
+            if Determinate_process.is_strongly_action_determinate proc1 && Determinate_process.is_strongly_action_determinate proc2
+            then
+              if !Config.distributed
+              then
+                let result = Distributed_equivalence.trace_equivalence_determinate proc1 proc2 in
+                let end_time = int_of_float (Unix.time ()) in
+                Interface.query_result_of_equivalence_result_distributed query_result result end_time
+              else
+                let result = Determinate_equivalence.trace_equivalence proc1 proc2 in
+                let end_time = int_of_float (Unix.time ()) in
+                Interface.query_result_of_equivalence_result query_result result end_time
+            else
+              if !Config.distributed
+              then
+                let result = Distributed_equivalence.trace_equivalence_generic query_result.semantics proc1 proc2 in
+                let end_time = int_of_float (Unix.time ()) in
+                Interface.query_result_of_equivalence_result_distributed query_result result end_time
+              else
+                let result = Generic_equivalence.trace_equivalence query_result.semantics proc1 proc2 in
+                let end_time = int_of_float (Unix.time ()) in
+                Interface.query_result_of_equivalence_result query_result result end_time
+          in
+          Mutex.lock execution_mutex;
+          write_query query_result1;
+          remove_current_query ();
+          Display_ui.send_output_command (Query_ended(query_result1.name_query,query_result1.q_status));
+          Condition.signal execution_condition;
+          Mutex.unlock execution_mutex
       | _ -> Config.internal_error "[main_ui.ml >> execute_query] Currently, only trace equivalence is implemented."
     )
 
@@ -474,7 +481,9 @@ let execute_batch () =
         begin match !computation_status.remaining_runs with
           | [] ->
               (* No run left to verify. We end the batch. *)
-              end_batch !computation_status.batch;
+              if !computation_status.batch.b_status = RBIn_progress
+              then end_batch { !computation_status.batch with b_status = RBCompleted }
+              else end_batch !computation_status.batch;
               send_exit ()
           | (run,query_list)::q ->
               let run_1 = { run with r_start_time = Some (int_of_float (Unix.time ())); r_status = RBIn_progress } in

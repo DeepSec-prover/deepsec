@@ -244,6 +244,8 @@ module Name :  sig
 
   val get_counter : unit -> int
 
+  val currently_linked : name list ref
+
   val link : name -> name -> unit
 
   val auto_deducible_cleanup_with_reset : ((unit -> unit) -> unit) -> (unit -> unit) -> unit
@@ -353,6 +355,8 @@ module Term : sig
   (** {3 Display} *)
 
   val display : Display.output -> term -> string
+
+  val display_pattern : Display.output -> pattern -> string
 end
 
 (** {2 Recipe} *)

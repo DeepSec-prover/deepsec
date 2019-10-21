@@ -854,9 +854,9 @@ let rec normalise = function
                   List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
                   Variable.currently_linked := [];
                   raise (Found_normalise rhs')
-                with Recipe.No_match ->
-                  List.iter (fun v -> v.link_r <- RNoLink) !Recipe_Variable.currently_linked;
-                  Recipe_Variable.currently_linked := [];
+                with Term.No_match ->
+                  List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
+                  Variable.currently_linked := [];
               ) rw_rules;
               raise Not_message
             with Found_normalise t' -> t'
