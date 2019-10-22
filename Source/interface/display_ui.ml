@@ -410,8 +410,10 @@ let of_batch_result batch_res =
   let jlist3 = of_option jlist2 (fun res_l -> JList (List.map of_run_result res_l)) "run_results" batch_res.run_results in
   let jlist4 = of_option jlist3 of_int "import_date" batch_res.import_date in
   let jlist5 = of_run_batch_status jlist4 batch_res.b_status in
+  let jlist6 = of_option jlist5 of_int "start_time" batch_res.b_start_time in
+  let jlist7 = of_option jlist6 of_int "end_time" batch_res.b_end_time in
 
-  JObject jlist5
+  JObject jlist7
 
 (* Output commands *)
 

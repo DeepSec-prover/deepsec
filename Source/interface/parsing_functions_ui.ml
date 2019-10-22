@@ -541,12 +541,16 @@ let batch_result_of file_name json =
   let git_hash = string_of (member "git_hash" json) in
   let run_result_files = member_option (list_of string_of) "run_files" json in
   let import_date = member_option int_of "import_date" json in
+  let start_time = member_option int_of "start_time" json in
+  let end_time = member_option int_of "end_time" json in
   let command_options = batch_options_of (member "command_options" json) in
   let status = run_batch_status_of json in
 
   {
     name_batch = file_name;
     b_status = status;
+    b_start_time = start_time;
+    b_end_time = end_time;
     deepsec_version = version;
     git_branch = git_branch;
     git_hash = git_hash;

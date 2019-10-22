@@ -137,6 +137,8 @@ type batch_result =
   {
     name_batch : string;
     b_status : run_batch_status;
+    b_start_time : int option;
+    b_end_time : int option;
     deepsec_version : string;
     git_branch : string;
     git_hash : string;
