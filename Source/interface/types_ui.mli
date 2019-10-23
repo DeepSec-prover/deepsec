@@ -89,6 +89,7 @@ type query_settings =
 type query_result =
   {
     name_query : string;
+    q_index : int;
     q_status : query_status;
     q_batch_file : string;
     q_run_file : string;
@@ -127,11 +128,15 @@ type run_result =
 (* Batch result *)
 
 type batch_options =
-  | Nb_jobs of int
+  | Nb_jobs of int option
   | Round_timer of int
   | Default_semantics of semantics
-  | Distant_workers of (string * string * int) list
-  | Distributed of int
+  | Distant_workers of (string * string * int option) list
+  | Distributed of bool option
+  | Local_workers of int option
+  | Quiet
+  | ShowTrace
+  | POR of bool
 
 type batch_result =
   {
@@ -165,12 +170,17 @@ type output_command =
   | Query_internal_error of string (* Error msg*) * string (* file *)
   (* Started *)
   | Batch_started of string * (string * string list) list
-  | Run_started of string
-  | Query_started of string
+  | Run_started of string * string (* Dps file *)
+  | Query_started of string * int (* Index of query *)
   (* Ended *)
   | Batch_ended of string * run_batch_status
   | Run_ended of string * run_batch_status
-  | Query_ended of string * query_status
+  | Query_ended of
+      string *
+      query_status *
+      int (* Index of query *) *
+      int (* Running time *) *
+      equivalence
   (* Exit *)
   | ExitUi
   (* Progression *)
@@ -178,4 +188,5 @@ type output_command =
       int (* percent *) *
       int option (* round *) *
       int (* Nb of jobs remaining *) *
-      int (* Computation_time *)
+      int (* Computation_time *) *
+      int (* Index of query *)

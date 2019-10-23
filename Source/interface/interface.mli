@@ -1,6 +1,8 @@
 open Types
 open Types_ui
 
+val current_query : int ref
+
 val json_process_of_process : process -> json_process
 
 val process_of_json_process : json_process -> process

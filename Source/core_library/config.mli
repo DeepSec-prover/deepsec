@@ -45,15 +45,17 @@ val tmp_file : string ref
     disabled. *)
 val display_trace : bool ref
 
+val quiet : bool ref 
+
 (*** Parameters for distributed computation ***)
 
-val distributed : bool ref
+val distributed : bool option ref
 
-val local_workers : int ref
+val local_workers : int option ref
 
-val distant_workers : (string * string * int) list ref
+val distant_workers : (string * string * int option) list ref
 
-val number_of_jobs : int ref
+val number_of_jobs : int option ref
 
 val round_timer : int ref
 

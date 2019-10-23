@@ -17,13 +17,7 @@ let internal_error msg =
       Printf.fprintf log_file "Internal error : %s\nPlease report the bug to vincent.cheval@loria.fr with the input file and output\n" msg;
       flush log_file
     end;
-  if !running_api
-  then raise (Internal_error msg)
-  else
-    begin
-      Printf.printf "Internal error : %s\nPlease report the bug to vincent.cheval@loria.fr with the input file and output\n" msg;
-      exit 0
-    end
+  raise (Internal_error msg)
 
 let debug =
   if debug_activated
@@ -65,16 +59,17 @@ let path_database = ref ""
 
 (**** Trace display ****)
 
-let display_trace = ref true
+let display_trace = ref false
+let quiet = ref false
 
 (**** Distribution ****)
 
 let physical_core = PHYSICALCORE
 
-let distributed = ref false
-let local_workers = ref 0
-let distant_workers = ref ([]:(string*string*int) list)
-let number_of_jobs = ref 0
+let distributed = ref None
+let local_workers = ref None
+let distant_workers = ref ([]:(string*string*int option) list)
+let number_of_jobs = ref None
 let round_timer = ref 120
 let core_factor = ref 100
 

@@ -1,5 +1,6 @@
 open Types
 open Types_ui
+open Display
 
 (*** Retrieving id of atomic data ***)
 
@@ -336,6 +337,7 @@ let of_query_result query_res =
     "atomic_data", of_atomic_data assoc;
     "batch_file", JString query_res.q_batch_file;
     "run_file", JString query_res.q_run_file;
+    "index", JInt query_res.q_index;
     "semantics", of_semantics query_res.semantics;
     "processes", JList (List.map (of_process assoc) query_res.processes);
     "type", of_equivalence_type query_res.query_type
@@ -383,18 +385,27 @@ let of_run_result run_res =
 
 (* Batch result *)
 
-let of_batch_options = function
-  | Nb_jobs n -> JObject [ "label", JString "nb_jobs"; "value", JInt n]
-  | Round_timer n -> JObject [ "label", JString "round_time"; "value", JInt n]
-  | Default_semantics sem -> JObject [ "label", JString "default_semantcis"; "value", of_semantics sem]
-  | Distant_workers dist_l ->
-      let value =
-        List.map (fun (host,path,nb) ->
-          JObject [ "host", JString host; "path", JString path; "nb_workers", JInt nb ]
-        ) dist_l
-      in
-      JObject [ "label", JString "distant_workers"; "value", JList value ]
-  | Distributed n -> JObject [ "label", JString "distributed"; "value", JInt n]
+let of_batch_options opt_list =
+  JObject (List.fold_left (fun acc options -> match options with
+    | Nb_jobs None -> ("nb_jobs", JString "auto")::acc
+    | Nb_jobs (Some n) -> ("nb_jobs", JInt n)::acc
+    | Round_timer n -> ("round_timer", JInt n)::acc
+    | Default_semantics sem -> ("default_semantics", of_semantics sem)::acc
+    | Distant_workers dist_l ->
+        let value =
+          List.map (fun (host,path,nb_opt) -> match nb_opt with
+            | None -> JObject [ "host", JString host; "path", JString path; "workers", JString "auto" ]
+            | Some nb -> JObject [ "host", JString host; "path", JString path; "workers", JInt nb ]
+          ) dist_l
+        in
+        ("distant_workers", JList value)::acc
+    | Distributed None -> ("distributed", JString "auto")::acc
+    | Distributed Some b -> ("distributed", JBool b)::acc
+    | Local_workers None -> ("local_workers", JString "auto")::acc
+    | Local_workers (Some n) -> ("local_workers", JInt n)::acc
+    | POR b ->  ("por", JBool b)::acc
+    | _ -> acc
+  ) [] opt_list)
 
 let of_batch_result batch_res =
 
@@ -402,7 +413,7 @@ let of_batch_result batch_res =
     "deepsec_version", JString batch_res.deepsec_version;
     "git_branch", JString batch_res.git_branch;
     "git_hash", JString batch_res.git_hash;
-    "command_options", JList (List.map of_batch_options batch_res.command_options)
+    "command_options", of_batch_options batch_res.command_options
     ]
   in
 
@@ -448,14 +459,14 @@ let of_output_command = function
         "file", JString str;
         "warning_runs", JList (List.map (fun (file,warns) -> JObject [ "file", JString file; "warnings", JList (List.map of_string warns)]) warnings)
       ]
-  | Run_started str -> JObject [ "command", JString "run_started"; "file", JString str ]
-  | Query_started str -> JObject [ "command", JString "query_started"; "file", JString str ]
+  | Run_started(str,_) -> JObject [ "command", JString "run_started"; "file", JString str ]
+  | Query_started(str,_) -> JObject [ "command", JString "query_started"; "file", JString str ]
   (* Ended *)
   | Batch_ended (str,status) ->
       JObject [ "command", JString "batch_ended"; "file", JString str ; "status", (of_run_batch_status_for_command status)  ]
   | Run_ended(str,status) ->
       JObject [ "command", JString "run_ended"; "file", JString str ; "status", (of_run_batch_status_for_command status) ]
-  | Query_ended(str,status) ->
+  | Query_ended(str,status,_,_,_) ->
       let status_str = match status with
         | QInternal_error _ -> JString "internal_error"
         | QCompleted _ -> JString "completed"
@@ -465,8 +476,68 @@ let of_output_command = function
       in
       JObject [ "command", JString "query_ended"; "file", JString str ; "status", status_str]
   | ExitUi -> JObject [ "command", JString "exit"]
-  | Progression(i,None,nb,time)-> JObject [ "command", JString "progression"; "percent", JInt i; "nb_jobs", JInt nb ; "execution_time", JInt time ]
-  | Progression(i,Some r,nb,time) -> JObject [ "command", JString "query_progression"; "percent", JInt i; "round", JInt r; "jobs_remaining", JInt nb; "execution_time", JInt time]
+  | Progression(i,None,nb,time,_)-> JObject [ "command", JString "progression"; "percent", JInt i; "nb_jobs", JInt nb ; "execution_time", JInt time ]
+  | Progression(i,Some r,nb,time,_) -> JObject [ "command", JString "query_progression"; "percent", JInt i; "round", JInt r; "jobs_remaining", JInt nb; "execution_time", JInt time]
+
+let print_output_command = function
+  (* Errors *)
+  | Init_internal_error err
+  | Batch_internal_error err
+  | Query_internal_error (err,_)->
+      Printf.printf "\n%s: %s\nPlease report the bug to vincent.cheval@loria.fr with the input file and output\n%!" (Display.coloured_terminal_text Red [Underline;Bold] "Internal Error") err
+  | User_error err_list ->
+      List.iter (fun (err_msg,file,warnings) ->
+        Printf.printf "\n%s on file %s:\n%!" (Display.coloured_terminal_text Red [Underline;Bold] "Error") file;
+        Printf.printf "   %s\n" err_msg;
+
+        if warnings <> []
+        then
+          begin
+            Printf.printf "\n%s on file %s:\n%!" (Display.coloured_terminal_text Yellow [Bold] "Warnings") file;
+            List.iter (fun str -> Printf.printf "   %s\n%!" str) warnings
+          end
+      ) err_list
+  (* Started *)
+  | Batch_started(_,warning_runs) ->
+      Printf.printf "\nStarting verification...\n";
+
+      List.iter (fun (file,warnings) ->
+        if warnings <> []
+        then
+          begin
+            Printf.printf "\n%s on file %s:\n" (Display.coloured_terminal_text Yellow [Bold] "Warnings") file;
+            List.iter (fun str -> Printf.printf "   %s\n" str) warnings
+          end
+      ) warning_runs
+  | Run_started(_,name_dps) -> Printf.printf "\nStarting verification of %s...\n%!" name_dps
+  | Query_started(_,index) ->
+      if not !Config.quiet
+      then Printf.printf "Verifying query %d...%!" index
+  (* Ended *)
+  | Batch_ended (_,status) ->
+      if status = RBCompleted
+      then Printf.printf "Verification complete.\n%!"
+      else if status = RBCanceled
+      then Printf.printf "\n%s\n%!" (coloured_terminal_text Red [Bold] "Verification canceled !")
+  | Run_ended _ -> ()
+  | Query_ended(_,status,index,time,qtype) ->
+      let return = if !Config.quiet then "" else "\x0d" in
+      begin match status, qtype with
+        | QCompleted None, Trace_Equivalence -> Printf.printf "%sResult query %d: The two processes are %s. Verified in %s\n%!" return index (Display.coloured_terminal_text Green [Bold] "trace equivalent") (Display.mkRuntime time)
+        | QCompleted None, Trace_Inclusion -> Printf.printf "%sResult query %d: Process 1 is %s in process 2. Verified in %s\n%!" return index (Display.coloured_terminal_text Green [Bold] "trace included") (Display.mkRuntime time)
+        | QCompleted None, _ -> ()
+        | QCompleted _, Trace_Equivalence -> Printf.printf "%sResult query %d: The two processes are %s. Verified in %s\n%!" return index (Display.coloured_terminal_text Red [Bold] "not trace equivalent") (Display.mkRuntime time)
+        | QCompleted _, Trace_Inclusion -> Printf.printf "%sResult query %d: Process 1 is %s in process 2. Verified in %s\n%!" return index (Display.coloured_terminal_text Red [Bold] "not trace included") (Display.mkRuntime time)
+        | QCompleted _, _ -> ()
+        | _ -> ()
+      end
+  | ExitUi -> ()
+  | Progression(i,None,_,time,index)->
+      if not !Config.quiet
+      then Printf.printf "\x0dVerifying query %d... [completed: %d%%; running time: %s]              %!" index i (Display.mkRuntime time)
+  | Progression(i,Some r,_,time,index) ->
+      if not !Config.quiet
+      then Printf.printf "\x0dVerifying query %d... [completed: %d%% of round %d; running time: %s]              %!" index i r (Display.mkRuntime time)
 
 (* Sending command *)
 
@@ -478,4 +549,7 @@ let send_command json_str =
   flush_all ();
   Mutex.unlock stdout_mutex
 
-let send_output_command out_cmd = send_command (display_json (of_output_command out_cmd))
+let send_output_command out_cmd =
+  if !Config.running_api
+  then send_command (display_json (of_output_command out_cmd))
+  else print_output_command out_cmd

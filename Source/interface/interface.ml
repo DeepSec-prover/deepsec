@@ -2,6 +2,10 @@ open Types
 open Types_ui
 open Term
 
+(*** Values ***)
+
+let current_query = ref 0
+
 (*** Translation from process ***)
 
 let json_process_of_process proc =

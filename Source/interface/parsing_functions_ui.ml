@@ -38,9 +38,19 @@ let int_of = function
   | JInt i -> i
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> int_of] Wrong structure."
 
+let int_auto_of = function
+| JInt i -> Some i
+| JString "auto" -> None
+| _ -> Config.internal_error "[parsing_functions_ui.ml >> int_auto_of] Wrong structure."
+
 let bool_of = function
   | JBool b -> b
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> bool_of] Wrong structure."
+
+let bool_auto_of = function
+| JBool i -> Some i
+| JString "auto" -> None
+| _ -> Config.internal_error "[parsing_functions_ui.ml >> bool_auto_of] Wrong structure."
 
 let bool_option_of = function
   | None -> false
@@ -423,6 +433,7 @@ let query_result_of file_name json =
   let (assoc,setting) = atomic_data_of json in
   let batch_file = string_of (member "batch_file" json) in
   let run_file = string_of (member "run_file" json) in
+  let index = int_of (member "index" json) in
   let start_time = member_option int_of "start_time" json in
   let end_time = member_option int_of "end_time" json in
   let proc_l = list_of (process_of assoc) (member "processes" json) in
@@ -470,6 +481,7 @@ let query_result_of file_name json =
 
   {
     name_query = file_name;
+    q_index = index;
     q_status = status;
     q_batch_file = batch_file;
     q_run_file = run_file;
@@ -491,7 +503,6 @@ let run_batch_status_of json = match string_of (member "status" json) with
       let err = string_of (member "error_msg" json) in
       RBInternal_error err
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> run_batch_status_of] Unexpected status."
-
 
 (* We assume that we do not parse run that contain query result as json data. *)
 let run_result_of file_name json =
@@ -518,19 +529,20 @@ let run_result_of file_name json =
 let batch_options_of json =
   let options = ref [] in
 
-  iter_member_option (fun i -> options := Nb_jobs (int_of i) :: !options) "nb_jobs" json;
-  iter_member_option (fun i -> options := Round_timer (int_of i) :: !options) "round_time" json;
-  iter_member_option (fun sem -> options := Default_semantics (semantics_of sem) :: !options) "default_semantics" json;
-  iter_member_option (fun host_l ->
-    let distant_of json' =
-      let host = string_of (member "host" json') in
-      let path = string_of (member "path" json') in
-      let nb_workers = int_of (member "nb_workers" json') in
-      (host,path,nb_workers)
-    in
-    options := Distant_workers (list_of distant_of host_l) :: !options
-  ) "distant_workers" json;
-  iter_member_option (fun i -> options := Distributed (int_of i) :: !options) "distributed" json;
+  let distant_of json' =
+    let host = string_of (member "host" json') in
+    let path = string_of (member "path" json') in
+    let nb_workers = int_auto_of (member "workers" json') in
+    (host,path,nb_workers)
+  in
+
+  options := Nb_jobs (int_auto_of (member "nb_jobs" json)) :: !options;
+  options := Round_timer (int_of (member "round_timer" json)) :: !options;
+  options := Default_semantics (semantics_of (member "default_semantics" json)) :: !options;
+  options := Distant_workers (list_of distant_of (member "distant_workers" json)) :: !options;
+  options := Local_workers (int_auto_of (member "local_workers" json)) :: !options;
+  options := Distributed (bool_auto_of (member "distributed" json)) :: !options;
+  options := POR (bool_of (member "por" json)) :: !options;
 
   !options
 

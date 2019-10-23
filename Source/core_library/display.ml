@@ -3,6 +3,35 @@ type output =
   | HTML
   | Latex
 
+type colour =
+  | Black
+  | Red
+  | Green
+  | Yellow
+  | Blue
+  | Magenta
+  | Cyan
+  | White
+
+type decoration =
+  | Bold
+  | Underline
+
+let colour_to_int = function
+  | Black -> 0 | Red     -> 1 | Green -> 2 | Yellow -> 3
+  | Blue  -> 4 | Magenta -> 5 | Cyan  -> 6 | White  -> 7
+
+
+let coloured_terminal_text colour deco text =
+  let deco_str =
+    List.fold_left (fun acc decoration -> match decoration with
+      | Bold -> "\027[1m"^acc
+      | Underline -> "\027[4m"^acc
+    ) "" deco
+  in
+
+  Printf.sprintf "%s\027[3%dm%s\027[0m" deco_str (colour_to_int colour) text
+
 let rec display_list display_element connector = function
   | [] -> ""
   | [t] -> display_element t
@@ -53,17 +82,19 @@ let create_tab k =
   internal_create_tab k
 
 
-let mkRuntime f =
-  let rt = int_of_float f in
-  let hours = rt / 3600 in
-  let rem = rt mod 3600 in
-  let mins = rem / 60 in
-  let secs = rem mod 60 in
+let mkRuntime rt =
+  if rt = 0
+  then "< 1s"
+  else
+    let hours = rt / 3600 in
+    let rem = rt mod 3600 in
+    let mins = rem / 60 in
+    let secs = rem mod 60 in
 
-  let h = ( if hours>0 then ((string_of_int hours)^"h") else "") in
-  let m = ( if mins>0 then ((string_of_int mins)^"m") else "") in
-  let s = ((string_of_int secs)^"s") in
-  h^(m^s)
+    let h = ( if hours>0 then ((string_of_int hours)^"h") else "") in
+    let m = ( if mins>0 then ((string_of_int mins)^"m") else "") in
+    let s = ((string_of_int secs)^"s") in
+    h^(m^s)
 
 
   (* Printf.sprintf "%ih %im %is" hours mins secs *)
