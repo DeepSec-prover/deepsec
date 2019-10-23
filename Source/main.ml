@@ -284,7 +284,7 @@ let parse_distant_workers op_str host path = function
       in
       add_and_verify_option (Distant_workers [host,path, Some i])
 
-(*let _ =
+let _ =
   Config.running_api := false;
 
   (* Initialisation of random generator *)
@@ -360,37 +360,3 @@ let parse_distant_workers op_str host path = function
         Execution_manager.execute_batch ()
       )
     end
-*)
-
-exception User_interrupt
-
-let compute() =
-  try
-    let x = ref 1 in
-    while true do
-      x := !x * 1 + 2
-    done;
-    assert false
-  with
-    | User_interrupt ->
-	print_string "Thread interrupted!\n"
-;;
-
-let main() =
-  (* Install the signal handler: *)
-  print_string "Thread interrupted!\n";
-  print_string "Thread interrupted!\n";
-  (* Fire up the compute thread: *)
-  ignore (Thread.create (fun () -> ignore (Thread.create compute ()); Printf.printf "End of sub thread\n") ());
-  print_string "Press Return: 2\n";
-  (* Wait for user: *)
-  print_string "Press Return:\n";
-  let t = read_line () in
-  Printf.printf "%s\n" t;
-  Printf.printf "Signal was sent\n";
-  Printf.printf "Signal was sent\n";
-  (* Wait until the thread terminates: *)
-  Printf.printf "End of thread\n"
-;;
-
-main();;

@@ -265,9 +265,13 @@ let send_exit () =
 let catch_init_internal_error f =
   try
     f ()
-  with Config.Internal_error err ->
-    Display_ui.send_output_command (Init_internal_error err);
-    send_exit ()
+  with
+    | Config.Internal_error err ->
+        Display_ui.send_output_command (Init_internal_error err);
+        send_exit ()
+    | ex ->
+        Display_ui.send_output_command (Init_internal_error (Printexc.to_string ex));
+        send_exit ()
 
 let catch_batch_internal_error f =
   try

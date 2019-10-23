@@ -160,6 +160,7 @@ struct
 
     let job_list_ref = ref job_list in
     let managers = ref [] in
+    nb_workers := 0;
 
     let processes_in_out_ch_ref = ref [] in
 
@@ -413,6 +414,7 @@ struct
       | EndRound -> one_round_compute_job (nb_round+1) shared (List.rev_map (fun (_,job) -> job) !active_jobs)
 
   let compute_job shared job =
+    workers := [];
     local_workers ();
     List.iter (fun (host,path,n) -> add_distant_worker host path n) !Config.distant_workers;
     time_between_round := float_of_int !Config.round_timer;

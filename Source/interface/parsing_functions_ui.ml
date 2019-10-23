@@ -536,13 +536,18 @@ let batch_options_of json =
     (host,path,nb_workers)
   in
 
-  options := Nb_jobs (int_auto_of (member "nb_jobs" json)) :: !options;
-  options := Round_timer (int_of (member "round_timer" json)) :: !options;
-  options := Default_semantics (semantics_of (member "default_semantics" json)) :: !options;
-  options := Distant_workers (list_of distant_of (member "distant_workers" json)) :: !options;
-  options := Local_workers (int_auto_of (member "local_workers" json)) :: !options;
-  options := Distributed (bool_auto_of (member "distributed" json)) :: !options;
-  options := POR (bool_of (member "por" json)) :: !options;
+  let check_member f str = match member_opt str json with
+    | None -> ()
+    | Some json' -> options := (f json') :: !options
+  in
+
+  check_member (fun json' -> Nb_jobs (int_auto_of json')) "nb_jobs";
+  check_member (fun json' -> Round_timer (int_of json')) "round_timer";
+  check_member (fun json' -> Default_semantics (semantics_of json')) "default_semantics";
+  check_member (fun json' -> Distant_workers (list_of distant_of json')) "distant_workers";
+  check_member (fun json' -> Local_workers (int_auto_of json')) "local_workers";
+  check_member (fun json' -> Distributed (bool_auto_of json')) "distributed";
+  check_member (fun json' -> POR (bool_of json')) "por";
 
   !options
 

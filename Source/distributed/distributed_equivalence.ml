@@ -389,9 +389,6 @@ let trace_equivalence_generic semantics proc1 proc2 =
     }
   in
 
-  if not !Config.running_api
-  then Printf.printf "Starting distributed computing...\n%!";
-
   Config.debug (fun () ->
     Config.print_in_log ~always:true "Starting distributed computing\n"
   );
