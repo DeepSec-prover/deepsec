@@ -323,7 +323,6 @@ let of_semantics = function
 let of_equivalence_type = function
   | Trace_Equivalence -> JString "trace_equiv"
   | Trace_Inclusion -> JString "trace_incl"
-  | Observational_Equivalence -> JString "obs_equiv"
   | Session_Equivalence -> JString "session_equiv"
   | Session_Inclusion -> JString "session_incl"
 
@@ -476,8 +475,22 @@ let of_output_command = function
       in
       JObject [ "command", JString "query_ended"; "file", JString str ; "status", status_str]
   | ExitUi -> JObject [ "command", JString "exit"]
-  | Progression(i,None,nb,time,_)-> JObject [ "command", JString "progression"; "percent", JInt i; "nb_jobs", JInt nb ; "execution_time", JInt time ]
-  | Progression(i,Some r,nb,time,_) -> JObject [ "command", JString "query_progression"; "percent", JInt i; "round", JInt r; "jobs_remaining", JInt nb; "execution_time", JInt time]
+  | Progression(_,_,PNot_defined) -> Config.internal_error "[display_ui.ml >> of_output_command] Unexpected progression"
+  | Progression(_,_,PSingleCore prog) ->
+      let (label,obj) = match prog with
+        | PVerif(percent,jobs) -> ("verification",JObject [ "percent", JInt percent; "jobs_remaining", JInt jobs ])
+        | PGeneration(jobs,min_jobs) -> ("generation", JObject [ "minimum_jobs", JInt min_jobs; "jobs_created", JInt jobs ])
+      in
+      JObject [ "command", JString "progression"; "round", JInt 0; label,obj ]
+  | Progression(_,_,PDistributed(round,prog)) ->
+      let (label,obj) = match prog with
+        | PVerif(percent,jobs) -> ("verification",JObject [ "percent", JInt percent; "jobs_remaining", JInt jobs ])
+        | PGeneration(jobs,min_jobs) -> ("generation", JObject [ "minimum_jobs", JInt min_jobs; "jobs_created", JInt jobs ])
+      in
+      JObject [ "command", JString "progression"; "round", JInt round; label,obj ]
+  | Query_canceled file -> JObject [ "command", JString "query_canceled"; "file", JString file ]
+  | Run_canceled file -> JObject [ "command", JString "run_canceled"; "file", JString file ]
+  | Batch_canceled -> JObject [ "command", JString "batch_canceled"]
 
 let print_output_command = function
   (* Errors *)
@@ -523,8 +536,8 @@ let print_output_command = function
   | Query_ended(_,status,index,time,qtype) ->
       let return = if !Config.quiet then "" else "\x0d" in
       begin match status, qtype with
-        | QCompleted None, Trace_Equivalence -> Printf.printf "%sResult query %d: The two processes are %s. Verified in %s\n%!" return index (Display.coloured_terminal_text Green [Bold] "trace equivalent") (Display.mkRuntime time)
-        | QCompleted None, Trace_Inclusion -> Printf.printf "%sResult query %d: Process 1 is %s in process 2. Verified in %s\n%!" return index (Display.coloured_terminal_text Green [Bold] "trace included") (Display.mkRuntime time)
+        | QCompleted None, Trace_Equivalence -> Printf.printf "%sResult query %d: The two processes are %s. Verified in %s                                     \n%!" return index (Display.coloured_terminal_text Green [Bold] "trace equivalent") (Display.mkRuntime time)
+        | QCompleted None, Trace_Inclusion -> Printf.printf "%sResult query %d: Process 1 is %s in process 2. Verified in %s                                   \n%!" return index (Display.coloured_terminal_text Green [Bold] "trace included") (Display.mkRuntime time)
         | QCompleted None, _ -> ()
         | QCompleted _, Trace_Equivalence -> Printf.printf "%sResult query %d: The two processes are %s. Verified in %s\n%!" return index (Display.coloured_terminal_text Red [Bold] "not trace equivalent") (Display.mkRuntime time)
         | QCompleted _, Trace_Inclusion -> Printf.printf "%sResult query %d: Process 1 is %s in process 2. Verified in %s\n%!" return index (Display.coloured_terminal_text Red [Bold] "not trace included") (Display.mkRuntime time)
@@ -532,12 +545,20 @@ let print_output_command = function
         | _ -> ()
       end
   | ExitUi -> ()
-  | Progression(i,None,_,time,index)->
-      if not !Config.quiet
-      then Printf.printf "\x0dVerifying query %d... [completed: %d%%; running time: %s]              %!" index i (Display.mkRuntime time)
-  | Progression(i,Some r,_,time,index) ->
-      if not !Config.quiet
-      then Printf.printf "\x0dVerifying query %d... [completed: %d%% of round %d; running time: %s]              %!" index i r (Display.mkRuntime time)
+  | Progression(_,_,PNot_defined) -> Config.internal_error "[display_ui.ml >> print_output_command] Unexpected progression"
+  | Progression(index,time,PSingleCore prog) ->
+      begin match prog with
+        | PVerif(percent,jobs) -> Printf.printf "\x0dVerifying query %d... [jobs verification: %d%% (%d jobs remaning); run time: %s]                               %!" index percent jobs (Display.mkRuntime time)
+        | PGeneration(jobs,min_jobs) -> Printf.printf "\x0dVerifying query %d... [jobs generation: %d; minimum nb of jobs required: %d;  run time: %s]                  %!" index jobs min_jobs (Display.mkRuntime time)
+      end
+  | Progression(index,time,PDistributed(round, prog)) ->
+      begin match prog with
+        | PVerif(percent,jobs) -> Printf.printf "\x0dVerifying query %d... [round %d jobs verification:: %d%% (%d jobs remaning); run time: %s]                              %!" index round percent jobs (Display.mkRuntime time)
+        | PGeneration(jobs,min_jobs) -> Printf.printf "\x0dVerifying query %d... [round %d jobs generation: %d; minimum nb of jobs required: %d;  run time: %s]                  %!" index round jobs min_jobs (Display.mkRuntime time)
+      end
+  | Query_canceled _
+  | Run_canceled _ -> Config.internal_error "[print_output_command] Should not occur"
+  | Batch_canceled -> Printf.printf "\n%s\n" (coloured_terminal_text Red [Bold] "Verification canceled !")
 
 (* Sending command *)
 

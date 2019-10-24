@@ -33,5 +33,5 @@ let _ =
               Execution_manager.execute_batch ()
             )
           )
-      | _ -> Printf.printf "Not Implemented yet !!"
+      | _ -> Printf.printf "No other option available so far."
   )

@@ -1,9 +1,9 @@
 open Types
+open Types_ui
 open Term
 
 module EquivJob =
 struct
-  type shareddata = unit
 
   type data_determinate =
     {
@@ -35,23 +35,11 @@ struct
       number_of_symbols : int;
       number_of_attacker_name : int;
       skeleton_settings : Rewrite_rules.skeleton_settings;
-      running_api : bool;
 
       data_equiv : data_equivalence
     }
 
-  type result = verification_result
-
-  type command =
-    | Kill
-    | Continue
-
-  let initialise () = ()
-
-  let result_equivalence = ref (RTrace_Equivalence None)
-
   let evaluation job =
-    Config.running_api := job.running_api;
     Config.debug (fun () ->
       Config.print_in_log ~always:true "Start evaluation one job\n"
     );
@@ -99,19 +87,11 @@ struct
           with Generic_equivalence.Not_Trace_Equivalent attack -> RTrace_Equivalence (Some attack)
           end
 
-  let digest result = match result with
-    | RTrace_Equivalence None
-    | RTrace_Inclusion None
-    | RSession_Inclusion None
-    | RSession_Equivalence None -> Continue
-    | _ -> result_equivalence := result; Kill
+  type result_generation =
+    | Job_list of job list
+    | Completed of verification_result
 
-  type generated_jobs =
-    | Jobs of job list
-    | Result of result
-
-  let generate_jobs job =
-    Config.running_api := job.running_api;
+  let generate job =
 
     Config.debug (fun () ->
       Config.print_in_log ~always:true "Start generate one job\n"
@@ -138,33 +118,21 @@ struct
     match job.data_equiv with
       | DDeterminate data ->
           begin try
-            Config.debug (fun () ->
-              Config.print_in_log ~always:true "Import\n"
-            );
             Determinate_equivalence.import_equivalence_problem (fun () ->
               let job_list = ref [] in
-              Config.debug (fun () ->
-                Config.print_in_log ~always:true "Apply one transition\n"
-              );
               Determinate_equivalence.apply_one_transition_and_rules data.det_equiv_problem
                 (fun equiv_pbl_1 f_next_1 ->
-                  Config.debug (fun () ->
-                    Config.print_in_log ~always:true "Export\n"
-                  );
                   let (equiv_pbl_2,recipe_subst) = Determinate_equivalence.export_equivalence_problem equiv_pbl_1 in
-                  job_list := { job with data_equiv = DDeterminate { det_equiv_problem = equiv_pbl_2; det_recipe_substitution = recipe_subst }; variable_counter = Variable.get_counter (); name_counter = Name.get_counter () } :: !job_list;
-                  Config.debug (fun () ->
-                    Config.print_in_log ~always:true "Next\n"
-                  );
+                  job_list := { job with data_equiv = DDeterminate { det_equiv_problem = equiv_pbl_2; det_recipe_substitution = recipe_subst }; variable_counter = Variable.get_counter (); name_counter = Name.get_counter (); number_of_attacker_name = Symbol.get_number_of_attacker_name () } :: !job_list;
                   f_next_1 ()
                 )
                 (fun () -> ());
 
               if !job_list = []
-              then Result (RTrace_Equivalence None)
-              else Jobs !job_list
+              then Completed (RTrace_Equivalence None)
+              else Job_list !job_list
             ) data.det_equiv_problem data.det_recipe_substitution
-          with Determinate_equivalence.Not_Trace_Equivalent attack -> Result (RTrace_Equivalence (Some attack))
+          with Determinate_equivalence.Not_Trace_Equivalent attack -> Completed (RTrace_Equivalence (Some attack))
           end
     | DGeneric data ->
         let apply_one_transition = match data.gen_semantics with
@@ -187,7 +155,7 @@ struct
                   Config.print_in_log ~always:true "Export\n"
                 );
                 let (equiv_pbl_2,recipe_subst) = Generic_equivalence.export_equivalence_problem equiv_pbl_1 in
-                job_list := { job with data_equiv = DGeneric { gen_equiv_problem = equiv_pbl_2; gen_recipe_substitution = recipe_subst; gen_semantics = data.gen_semantics }; variable_counter = Variable.get_counter (); name_counter = Name.get_counter () } :: !job_list;
+                job_list := { job with data_equiv = DGeneric { gen_equiv_problem = equiv_pbl_2; gen_recipe_substitution = recipe_subst; gen_semantics = data.gen_semantics }; variable_counter = Variable.get_counter (); name_counter = Name.get_counter (); number_of_attacker_name = Symbol.get_number_of_attacker_name () } :: !job_list;
                 Config.debug (fun () ->
                   Config.print_in_log ~always:true "Next\n"
                 );
@@ -196,14 +164,108 @@ struct
               (fun () -> ());
 
             if !job_list = []
-            then Result (RTrace_Equivalence None)
-            else Jobs !job_list
+            then Completed (RTrace_Equivalence None)
+            else Job_list !job_list
           ) data.gen_equiv_problem data.gen_recipe_substitution
-        with Generic_equivalence.Not_Trace_Equivalent attack -> Result (RTrace_Equivalence (Some attack))
+        with Generic_equivalence.Not_Trace_Equivalent attack -> Completed (RTrace_Equivalence (Some attack))
         end
+
+  exception Completed_execution of verification_result
+
+  let evaluation_single_core send_prog job =
+
+    let last_progression_timer = ref (Unix.time ()) in
+    let last_write_progression_timer = ref (Unix.time ()) in
+
+    let send_progression f_prog =
+      let time = Unix.time () in
+      if time -. !last_write_progression_timer >= 60.
+      then
+        begin
+          last_write_progression_timer := time;
+          last_progression_timer := time;
+          f_prog true
+        end
+      else
+        if time -. !last_progression_timer >= 1.
+        then
+          begin
+            last_progression_timer := time;
+            f_prog false
+          end
+        else ()
+    in
+
+    let progression_verification nb_job nb_job_remain =
+      send_progression (fun to_write ->
+        let percent = ((nb_job - nb_job_remain) * 100) / nb_job in
+        let progression = PVerif(percent,nb_job_remain) in
+        send_prog (progression,to_write)
+      )
+    in
+
+    let progression_generation nb_job =
+      send_progression (fun to_write ->
+        let progression = PGeneration(nb_job,!Config.core_factor) in
+        send_prog (progression,to_write)
+      )
+    in
+
+    let verified_result = ref (
+      match job.data_equiv with
+        | DDeterminate _
+        | DGeneric _ -> RTrace_Equivalence None
+      )
+    in
+
+    (* Generate the jobs *)
+    let current_jobs = ref [job] in
+    let current_nb_jobs = ref 1 in
+
+    let rec generate_jobs tmp_jobs tmp_nb_jobs = function
+      | [] -> (tmp_jobs,tmp_nb_jobs)
+      | job :: q ->
+          match generate job with
+            | Completed (RTrace_Equivalence None)
+            | Completed (RTrace_Inclusion None)
+            | Completed (RSession_Equivalence None)
+            | Completed (RSession_Inclusion None) -> generate_jobs tmp_jobs tmp_nb_jobs q
+            | Completed res -> raise (Completed_execution res)
+            | Job_list job_list ->
+                generate_jobs (List.rev_append job_list tmp_jobs) (List.length job_list + tmp_nb_jobs) q
+    in
+
+    let rec evaluate_jobs nb_job_remain = function
+      | [] -> raise (Completed_execution !verified_result)
+      | job::q ->
+            let result = evaluation job in
+            if result = !verified_result
+            then
+              begin
+                progression_verification !current_nb_jobs (nb_job_remain - 1);
+                evaluate_jobs (nb_job_remain - 1) q
+              end
+            else raise (Completed_execution result)
+    in
+
+    try
+      while !current_nb_jobs < !Config.core_factor do
+        progression_generation !current_nb_jobs;
+        let (new_jobs,new_nb_jobs) = generate_jobs [] 0 !current_jobs in
+        if new_nb_jobs = 0
+        then raise (Completed_execution !verified_result)
+        else
+          begin
+            current_jobs := new_jobs;
+            current_nb_jobs := new_nb_jobs
+          end
+      done;
+
+      evaluate_jobs !current_nb_jobs !current_jobs
+    with Completed_execution result -> result
 end
 
-module DistribEquivalence = Distrib.Distrib(EquivJob)
+module Distribution = Distrib.Distrib(EquivJob)
 
 let convert_trace_to_original_symbols trace =
 
@@ -293,7 +355,6 @@ let trace_equivalence_determinate proc1 proc2 =
       EquivJob.number_of_destructors = setting.Symbol.nb_d;
       EquivJob.number_of_symbols = setting.Symbol.nb_symb;
       EquivJob.skeleton_settings = Rewrite_rules.get_skeleton_settings ();
-      EquivJob.running_api = !Config.running_api;
       EquivJob.number_of_attacker_name = setting.Symbol.nb_a;
 
       EquivJob.data_equiv = EquivJob.DDeterminate data
@@ -304,15 +365,27 @@ let trace_equivalence_determinate proc1 proc2 =
     Config.print_in_log ~always:true "Starting distributed computin\n"
   );
 
-  (**** Launch the jobs in parallel ****)
+  (**** Launch the local manager ****)
 
-  EquivJob.result_equivalence := RTrace_Equivalence None;
+  let path_name = Filename.concat !Config.path_deepsec "deepsec_worker" in
+  let (in_ch,out_ch) = Unix.open_process path_name in
+  Distrib.send out_ch Distrib.Local_manager;
 
-  DistribEquivalence.compute_job () job;
+  let distrib_job =
+    {
+      Distribution.WLM.distributed = !Config.distributed;
+      Distribution.WLM.local_workers = !Config.local_workers;
+      Distribution.WLM.distant_workers = !Config.distant_workers;
+      Distribution.WLM.nb_jobs = !Config.number_of_jobs;
+      Distribution.WLM.time_between_round = !Config.round_timer;
+      Distribution.WLM.equivalence_type = Trace_Equivalence;
+      Distribution.WLM.initial_job = job
+    }
+  in
 
-  (**** Return the result of the computation ****)
+  Distrib.send out_ch (Distribution.WLM.Execute_query distrib_job);
 
-  match !EquivJob.result_equivalence with
+  let convert_result = function
     | RTrace_Equivalence (Some (is_left,trans_list)) ->
         let trans_list' =
           if is_left
@@ -321,6 +394,9 @@ let trace_equivalence_determinate proc1 proc2 =
         in
         RTrace_Equivalence (Some (is_left,trans_list'))
     | r -> r
+  in
+
+  (in_ch,out_ch,convert_result)
 
 let trace_equivalence_generic semantics proc1 proc2 =
   (*** Initialise skeletons ***)
@@ -382,7 +458,6 @@ let trace_equivalence_generic semantics proc1 proc2 =
       EquivJob.number_of_destructors = setting.Symbol.nb_d;
       EquivJob.number_of_symbols = setting.Symbol.nb_symb;
       EquivJob.skeleton_settings = Rewrite_rules.get_skeleton_settings ();
-      EquivJob.running_api = !Config.running_api;
       EquivJob.number_of_attacker_name = setting.Symbol.nb_a;
 
       EquivJob.data_equiv = EquivJob.DGeneric data
@@ -393,15 +468,27 @@ let trace_equivalence_generic semantics proc1 proc2 =
     Config.print_in_log ~always:true "Starting distributed computing\n"
   );
 
-  (**** Launch the jobs in parallel ****)
+  (**** Launch the local manager ****)
 
-  EquivJob.result_equivalence := RTrace_Equivalence None;
+  let path_name = Filename.concat !Config.path_deepsec "deepsec_worker" in
+  let (in_ch,out_ch) = Unix.open_process path_name in
+  Distrib.send out_ch Distrib.Local_manager;
 
-  DistribEquivalence.compute_job () job;
+  let distrib_job =
+    {
+      Distribution.WLM.distributed = !Config.distributed;
+      Distribution.WLM.local_workers = !Config.local_workers;
+      Distribution.WLM.distant_workers = !Config.distant_workers;
+      Distribution.WLM.nb_jobs = !Config.number_of_jobs;
+      Distribution.WLM.time_between_round = !Config.round_timer;
+      Distribution.WLM.equivalence_type = Trace_Equivalence;
+      Distribution.WLM.initial_job = job
+    }
+  in
 
-  (**** Return the result of the computation ****)
+  Distrib.send out_ch (Distribution.WLM.Execute_query distrib_job);
 
-  match !EquivJob.result_equivalence with
+  let convert_result = function
     | RTrace_Equivalence (Some (is_left,trans_list)) ->
         let trans_list' =
           if is_left
@@ -410,3 +497,6 @@ let trace_equivalence_generic semantics proc1 proc2 =
         in
         RTrace_Equivalence (Some (is_left,trans_list'))
     | r -> r
+  in
+
+  (in_ch,out_ch,convert_result)

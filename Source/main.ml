@@ -73,7 +73,7 @@ let help =
     4, Printf.sprintf "Set the number of local workers to %s. Automatically set %s to 'true'." int_value (coloured_terminal_text Black [Bold] "--distributed");
     4, Printf.sprintf "%s distributes the computation amongst the local workers and distant workers." deepsec;
     0, "\n";
-    2, Printf.sprintf "%s %s %s %s" (coloured_terminal_text Black [Bold] "-d, --distant_workers") host_value path_value value;
+    2, Printf.sprintf "%s %s %s %s" (coloured_terminal_text Black [Bold] "-w, --distant_workers") host_value path_value value;
     4, Printf.sprintf "Allow the computation to be also distributed on the distant machine %s." host_value;
     4, Printf.sprintf "%s must be the path on %s to the directory that contains the %s executable." path_value host_value deepsec;
     4, Printf.sprintf "The value %s represents the number of workers used on the distant machine. %s must" value value;
@@ -316,7 +316,7 @@ let _ =
     "--local_workers",Arg.String(parse_local_workers "--local_workers"), "";
     "-l",Arg.String(parse_local_workers "-l"), "";
     "--distant_workers", Arg.Tuple [Arg.Set_string(dist_host); Arg.Set_string(dist_path); Arg.String(parse_distant_workers "--distant_workers" !dist_host !dist_path)], "";
-    "-d", Arg.Tuple [Arg.Set_string(dist_host); Arg.Set_string(dist_path); Arg.String(parse_distant_workers "--d" !dist_host !dist_path)], "";
+    "-w", Arg.Tuple [Arg.Set_string(dist_host); Arg.Set_string(dist_path); Arg.String(parse_distant_workers "--d" !dist_host !dist_path)], "";
     "--jobs",Arg.String(parse_nb_jobs "--jobs"), "";
     "-j",Arg.String(parse_nb_jobs "-j"), "";
     "--round_timer",Arg.String(parse_round_timer "--round_timer"), "";

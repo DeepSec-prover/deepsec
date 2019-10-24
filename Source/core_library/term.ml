@@ -452,6 +452,8 @@ module Symbol = struct
 
   let special_constructor : (int,symbol) Hashtbl.t = Hashtbl.create 7
 
+  let get_number_of_attacker_name () = !number_of_attacker_name
+
   let empty_signature () =
     all_constructors := [];
     all_destructors := [];

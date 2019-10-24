@@ -88,6 +88,10 @@ module List = struct
   let filter_in_head (pred:'a->bool) (l:'a list) : 'a list =
     let (yes,no) = partition_unordered pred l in
     List.rev_append yes no
+
+  let pop = function
+    | [] -> raise Not_found
+    | t::q -> t, q
 end
 
 

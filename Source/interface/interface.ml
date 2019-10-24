@@ -139,29 +139,6 @@ let json_transition_of_transition = function
   | ATau pos -> JATau(json_position_of_position pos)
   | AChoice (pos,side) -> JAChoice(json_position_of_position pos,side)
 
-let record_new_symbols assoc trans =
-
-  let record_symbol f = match List.assq_opt f !assoc.symbols with
-    | None ->
-        let i = !assoc.size in
-        assoc := { !assoc with size = i + 1; symbols = (f,i):: (!assoc).symbols }
-    | Some _ -> ()
-  in
-
-  let rec from_recipe = function
-    | CRFunc(_,r) -> from_recipe r
-    | RFunc(f,args) ->
-        record_symbol f;
-        List.iter from_recipe args
-    | _ -> ()
-  in
-
-  match trans with
-    | AOutput (r,_)
-    | AEaves (r,_,_) -> from_recipe r
-    | AInput (r1,r2,_) -> from_recipe r1; from_recipe r2
-    | _ -> ()
-
 let rec replace_structural_recipe assoc = function
   | RFunc(f,args) ->
       let f' =
@@ -185,32 +162,8 @@ let query_result_of_equivalence_result query_result result end_time = match resu
   | RTrace_Equivalence None ->
       { query_result with
         q_status = QCompleted None;
-        q_end_time = Some end_time
-      }
-  | RTrace_Equivalence (Some (is_left_proc,trans_list)) ->
-      (* We record the potential function symbols added in the trace *)
-      let assoc_ref = ref query_result.association in
-      List.iter (record_new_symbols assoc_ref) trans_list;
-
-      let json_attack =
-        {
-          id_proc = if is_left_proc then 1 else 2;
-          transitions = List.map json_transition_of_transition trans_list
-        }
-      in
-      { query_result with
-        q_status = QCompleted (Some json_attack);
         q_end_time = Some end_time;
-        association = !assoc_ref;
-        settings = { query_result.settings with symbol_set = Symbol.get_settings () }
-      }
-  | _ -> Config.internal_error "[interface.ml >> query_result_of_equivalence_result] Not implemented yet."
-
-let query_result_of_equivalence_result_distributed query_result result end_time = match result with
-  | RTrace_Equivalence None ->
-      { query_result with
-        q_status = QCompleted None;
-        q_end_time = Some end_time
+        progression = PNot_defined
       }
   | RTrace_Equivalence (Some (is_left_proc,trans_list)) ->
       (* We record the potential function symbols added in the trace *)
@@ -228,7 +181,8 @@ let query_result_of_equivalence_result_distributed query_result result end_time 
         q_status = QCompleted (Some json_attack);
         q_end_time = Some end_time;
         association = !assoc_ref;
-        settings = { query_result.settings with symbol_set = Symbol.get_settings () }
+        settings = { query_result.settings with symbol_set = Symbol.get_settings () };
+        progression = PNot_defined
       }
   | _ -> Config.internal_error "[interface.ml >> query_result_of_equivalence_result] Not implemented yet."
 

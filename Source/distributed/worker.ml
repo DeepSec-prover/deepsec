@@ -1,5 +1,9 @@
 open Distributed_equivalence
 
-module DistribEquivalence = Distrib.Distrib(EquivJob)
+let _ =
+Sys.set_signal Sys.sigint (Sys.Signal_handle (fun _ -> ()));
 
-let _ = DistribEquivalence.worker_main ()
+  match ((input_value stdin): Distrib.worker) with
+    | Distrib.Evaluator -> Distribution.WE.main ()
+    | Distrib.Local_manager -> Distribution.WLM.main ()
+    | Distrib.Distant_manager -> Distribution.WDM.main ()

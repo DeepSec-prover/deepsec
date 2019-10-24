@@ -70,6 +70,15 @@ type json_atomic =
 
 (* Query result *)
 
+type progression =
+  | PVerif of int (* Percent *) * int (* Job remaining *)
+  | PGeneration of int (* Job generated *) * int (* Minimum nb of jobs *)
+
+type query_progression =
+  | PDistributed of int (* Round *) * progression
+  | PSingleCore of progression
+  | PNot_defined
+
 type query_status =
   | QCompleted of json_attack_trace option
   | QWaiting
@@ -99,7 +108,8 @@ type query_result =
     semantics : semantics;
     query_type : equivalence;
     processes : json_process list;
-    settings : query_settings
+    settings : query_settings;
+    progression : query_progression
   }
 
 (* Run result *)
@@ -159,6 +169,7 @@ type input_command =
   | Start_run of string list * batch_options list
   | Cancel_run of string
   | Cancel_query of string
+  | Cancel_batch
   | Get_config
   | Set_config of string
 
@@ -182,11 +193,9 @@ type output_command =
       int (* Running time *) *
       equivalence
   (* Exit *)
+  | Run_canceled of string
+  | Query_canceled of string
+  | Batch_canceled
   | ExitUi
   (* Progression *)
-  | Progression of
-      int (* percent *) *
-      int option (* round *) *
-      int (* Nb of jobs remaining *) *
-      int (* Computation_time *) *
-      int (* Index of query *)
+  | Progression of int (* Index of query *) * int (* execution time *) * query_progression

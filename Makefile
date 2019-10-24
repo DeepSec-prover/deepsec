@@ -40,12 +40,11 @@ config:
 
 # configures and compiles
 compil:
-	@ocamlbuild $(PACKAGES) main.$(EXTENSION) worker.$(EXTENSION) manager.$(EXTENSION) main_api.$(EXTENSION)
+	@ocamlbuild $(PACKAGES) main.$(EXTENSION) worker.$(EXTENSION) main_api.$(EXTENSION)
 	@mv `ls -l main.$(EXTENSION) | sed 's/^.* -> //'` deepsec
 	@mv `ls -l main_api.$(EXTENSION) | sed 's/^.* -> //'` deepsec_api
-	@mv `ls -l worker.$(EXTENSION) | sed 's/^.* -> //'` worker_deepsec
-	@mv `ls -l manager.$(EXTENSION) | sed 's/^.* -> //'` manager_deepsec
-	rm main.$(EXTENSION) main_api.$(EXTENSION) worker.$(EXTENSION) manager.$(EXTENSION)
+	@mv `ls -l worker.$(EXTENSION) | sed 's/^.* -> //'` deepsec_worker
+	rm main.$(EXTENSION) main_api.$(EXTENSION) worker.$(EXTENSION)
 	@printf "\033[1mBuild successful!\033[0m You can invoke ./deepsec alone to display version data, or ./deepsec -help for usage information.\n\033[1mNumber of lines in the source code: $(NBLINE)\033[0m\n"
 
 # checks installation requirements
@@ -55,4 +54,4 @@ check:
 
 # removes automatically generated files
 clean:
-	rm -rf _build $(SOURCE)core_library/config.ml $(TEMP) deepsec worker_deepsec manager_deepsec deepsec_api
+	rm -rf _build $(SOURCE)core_library/config.ml $(TEMP) deepsec deepsec_worker deepsec_api

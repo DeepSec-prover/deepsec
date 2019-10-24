@@ -429,6 +429,23 @@ let attack_trace_of assoc json =
 
 (*** Query, run and batch result ***)
 
+let progression_of json =
+  let round = int_of (member "round" json) in
+  match member_opt "verification" json with
+    | Some json_verif ->
+        let percent = int_of (member "percent" json_verif) in
+        let jobs_remaining = int_of (member "jobs_remaining" json_verif) in
+        if round = 0
+        then PSingleCore (PVerif(percent,jobs_remaining))
+        else PDistributed(round,PVerif(percent,jobs_remaining))
+    | None ->
+        let json_gen = member "generation" json in
+        let minimum_jobs = int_of (member "minimum_jobs" json_gen) in
+        let jobs_created = int_of (member "jobs_created" json_gen) in
+        if round = 0
+        then PSingleCore (PGeneration(jobs_created,minimum_jobs))
+        else PDistributed(round,PGeneration(jobs_created,minimum_jobs))
+
 let query_result_of file_name json =
   let (assoc,setting) = atomic_data_of json in
   let batch_file = string_of (member "batch_file" json) in
@@ -453,7 +470,6 @@ let query_result_of file_name json =
   let equiv_type = match string_of (member "type" json) with
     | "trace_equiv" -> Trace_Equivalence
     | "trace_incl" -> Trace_Inclusion
-    | "obs_equiv" -> Observational_Equivalence
     | "session_equiv" -> Session_Equivalence
     | "session_incl" -> Session_Inclusion
     | _ -> Config.internal_error "[parsing_functions_ui.ml >> query_result_of] Unexpected equivalence type."
@@ -479,6 +495,11 @@ let query_result_of file_name json =
     }
   in
 
+  let progression = match member_opt "progression" json with
+    | None -> PNot_defined
+    | Some json' -> progression_of json'
+  in
+
   {
     name_query = file_name;
     q_index = index;
@@ -491,7 +512,8 @@ let query_result_of file_name json =
     association = association;
     semantics = sem;
     processes = proc_l;
-    settings = setting
+    settings = setting;
+    progression = progression
   }
 
 let run_batch_status_of json = match string_of (member "status" json) with
@@ -586,6 +608,7 @@ let input_command_of json = match string_of (member "command" json) with
       Start_run(input_files,command_options)
   | "cancel_run" -> Cancel_run (string_of (member "result_file" json))
   | "cancel_query" -> Cancel_query (string_of (member "result_file" json))
+  | "cancel_batch" | "exit" -> Cancel_batch
   | "get_config" -> Get_config
   | "set_config" -> Set_config (string_of (member "output_dir" json))
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> input_command_of] Unknown command."

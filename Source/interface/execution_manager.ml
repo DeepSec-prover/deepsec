@@ -1,4 +1,5 @@
 open Types_ui
+open Distributed_equivalence
 
 (*** Main UI ***)
 
@@ -155,7 +156,8 @@ let generate_initial_query_result batch_dir run_dir i (equiv,proc1,proc2) =
         var_set = Term.Variable.get_counter ();
         name_set = Term.Name.get_counter () ;
         symbol_set = Term.Symbol.get_settings ()
-      }
+      };
+    progression = PNot_defined
   }
 
 type initial_run =
@@ -220,41 +222,40 @@ let set_up_batch_options options =
 
 (* Computation *)
 
-type query_computation_status =
-  {
-    thread : Thread.t;
-    ongoing_query : query_result;
-  }
-
 type run_computation_status =
   {
-    cur_query : query_computation_status option;
+    one_query_canceled : bool;
+    cur_query : (query_result * in_channel * out_channel) option;
     remaining_queries : query_result list;
     ongoing_run : run_result
   }
 
 type computation_status  =
   {
+    one_run_canceled : bool;
     cur_run : run_computation_status option;
-    remaining_runs : (run_result * query_result list) list;
+    remaining_runs : (run_result * bool * query_result list) list;
     batch : batch_result
   }
 
-let computation_status = ref { cur_run = None; remaining_runs = []; batch = { name_batch = ""; b_status = RBIn_progress; deepsec_version = ""; git_branch = ""; git_hash = ""; run_result_files = None; run_results = None; import_date = None; command_options = []; b_start_time = None; b_end_time = None } }
-
-let execution_mutex = Mutex.create ()
-let execution_condition = Condition.create ()
+let computation_status = ref { one_run_canceled = false; cur_run = None; remaining_runs = []; batch = { name_batch = ""; b_status = RBIn_progress; deepsec_version = ""; git_branch = ""; git_hash = ""; run_result_files = None; run_results = None; import_date = None; command_options = []; b_start_time = None; b_end_time = None } }
 
 let remove_current_query () =
   let cur_run = match !computation_status.cur_run with
     | None -> Config.internal_error "[main_ui.ml >> remove_current_query] Should have a current run."
     | Some cur_run -> cur_run
   in
+  let cur_query = match cur_run.cur_query with
+    | None -> Config.internal_error "[main_ui.ml >> remove_current_query] Should have a current query."
+    | Some (cur_query,in_ch,out_ch) ->
+        Distrib.send out_ch Distribution.WLM.Die;
+        ignore (Unix.close_process (in_ch,out_ch));
+        cur_query
+  in
 
-  computation_status :=
-    { !computation_status with
-      cur_run = Some { cur_run with cur_query = None }
-    }
+  computation_status := { !computation_status with cur_run = Some { cur_run with cur_query = None } };
+
+  cur_query
 
 (* Dealing with errors *)
 
@@ -290,11 +291,12 @@ let catch_batch_internal_error f =
             List.iter (fun query -> write_query { query with q_status = QCanceled; q_end_time = Some end_time }) run_comp.remaining_queries;
             match run_comp.cur_query with
               | None -> ()
-              | Some query_comp ->
-                  Thread.kill query_comp.thread;
-                  write_query { query_comp.ongoing_query with q_status = QInternal_error err; q_end_time = Some end_time }
+              | Some (query_comp,in_ch,out_ch) ->
+                  Distrib.send out_ch Distribution.WLM.Die;
+                  ignore (Unix.close_process (in_ch,out_ch));
+                  write_query { query_comp with q_status = QInternal_error err; q_end_time = Some end_time }
       end;
-      List.iter (fun (run,qlist) ->
+      List.iter (fun (run,_,qlist) ->
         let run' = { run with r_status = RBCanceled; r_end_time = Some end_time } in
         write_run run';
         List.iter (fun query -> write_query { query with q_status = QCanceled; q_end_time = Some end_time }) qlist
@@ -303,43 +305,36 @@ let catch_batch_internal_error f =
       send_exit ()
     end
 
-let catch_query_internal_error f =
-  try
-    f ()
-  with Config.Internal_error err ->
-    begin
-      Mutex.lock execution_mutex;
-      let end_time = int_of_float (Unix.time ()) in
-      let batch = { !computation_status.batch with b_status = RBInternal_error err; b_end_time = Some end_time } in
-      write_batch batch;
-      let command_to_send = ref [Batch_ended (batch.name_batch,batch.b_status) ] in
-      begin match !computation_status.cur_run with
-        | None -> ()
-        | Some run_comp ->
-            let run = { run_comp.ongoing_run with r_status = RBInternal_error err; r_end_time = Some end_time } in
-            command_to_send := (Run_ended(run.name_run,run.r_status)):: !command_to_send;
-            write_run run;
-            List.iter (fun query -> write_query { query with q_status = QCanceled; q_end_time = Some end_time }) run_comp.remaining_queries;
-            match run_comp.cur_query with
-              | None -> ()
-              | Some query_comp ->
-                  command_to_send := Query_internal_error(err,query_comp.ongoing_query.name_query) :: !command_to_send;
-                  write_query { query_comp.ongoing_query with q_status = QInternal_error err; q_end_time = Some end_time }
-      end;
-      List.iter (fun (run,qlist) ->
-        let run' = { run with r_status = RBCanceled; r_end_time = Some end_time } in
-        write_run run';
-        List.iter (fun query -> write_query { query with q_status = QCanceled; q_end_time = Some end_time }) qlist
-      ) !computation_status.remaining_runs;
-
-      List.iter Display_ui.send_output_command !command_to_send;
-      send_exit ()
-    end
+let apply_internal_error_in_query err_msg progress =
+  let end_time = int_of_float (Unix.time ()) in
+  let batch = { !computation_status.batch with b_status = RBInternal_error err_msg; b_end_time = Some end_time } in
+  write_batch batch;
+  let command_to_send = ref [Batch_ended (batch.name_batch,batch.b_status) ] in
+  begin match !computation_status.cur_run with
+    | None -> ()
+    | Some run_comp ->
+        let run = { run_comp.ongoing_run with r_status = RBInternal_error err_msg; r_end_time = Some end_time } in
+        command_to_send := (Run_ended(run.name_run,run.r_status)):: !command_to_send;
+        write_run run;
+        List.iter (fun query -> write_query { query with q_status = QCanceled; q_end_time = Some end_time }) run_comp.remaining_queries;
+        match run_comp.cur_query with
+          | None -> ()
+          | Some (query_comp,_,_) ->
+              command_to_send := Query_internal_error(err_msg,query_comp.name_query) :: !command_to_send;
+              write_query { query_comp with q_status = QInternal_error err_msg; q_end_time = Some end_time; progression = progress }
+  end;
+  List.iter (fun (run,_,qlist) ->
+    let run' = { run with r_status = RBCanceled; r_end_time = Some end_time } in
+    write_run run';
+    List.iter (fun query -> write_query { query with q_status = QCanceled; q_end_time = Some end_time }) qlist
+  ) !computation_status.remaining_runs;
+  List.iter Display_ui.send_output_command !command_to_send;
+  send_exit ()
 
 (* Canceling *)
 
 let cancel_batch () =
-  (* We put the status of the batch and current run to internal_error. We put cancel to all other remaing ones. *)
+  (* We put the status of the batch and current run to canceled as well as to remaing ones. *)
   let end_time = int_of_float (Unix.time ()) in
   let batch = { !computation_status.batch with b_status = RBCanceled; b_end_time = Some end_time } in
   write_batch batch;
@@ -351,17 +346,128 @@ let cancel_batch () =
         List.iter (fun query -> write_query { query with q_status = QCanceled; q_end_time = Some end_time }) run_comp.remaining_queries;
         match run_comp.cur_query with
           | None -> ()
-          | Some query_comp ->
-              Thread.kill query_comp.thread;
-              write_query { query_comp.ongoing_query with q_status = QCanceled; q_end_time = Some end_time }
+          | Some (query_comp,in_ch,out_ch) ->
+              Distrib.send out_ch Distribution.WLM.Die;
+              ignore (Unix.close_process (in_ch,out_ch));
+              write_query { query_comp with q_status = QCanceled; q_end_time = Some end_time }
   end;
-  List.iter (fun (run,qlist) ->
+  List.iter (fun (run,_,qlist) ->
     let run' = { run with r_status = RBCanceled; r_end_time = Some end_time } in
     write_run run';
     List.iter (fun query -> write_query { query with q_status = QCanceled; q_end_time = Some end_time }) qlist
   ) !computation_status.remaining_runs;
-  Display_ui.send_output_command (Batch_ended(batch.name_batch,batch.b_status));
+  Display_ui.send_output_command Batch_canceled;
   send_exit ()
+
+exception Current_canceled
+
+let cancel_run file =
+  let end_time = int_of_float (Unix.time ()) in
+  begin match !computation_status.cur_run with
+    | Some run_comp when run_comp.ongoing_run.name_run = file ->
+        (* The current run is canceled *)
+        let run = { run_comp.ongoing_run with r_status = RBCanceled; r_end_time = Some end_time } in
+        write_run run;
+        List.iter (fun query -> write_query { query with q_status = QCanceled; q_end_time = Some end_time }) run_comp.remaining_queries;
+        begin match run_comp.cur_query with
+          | None -> ()
+          | Some (query_comp,in_ch,out_ch) ->
+              Distrib.send out_ch Distribution.WLM.Die;
+              ignore (Unix.close_process (in_ch,out_ch));
+              write_query { query_comp with q_status = QCanceled; q_end_time = Some end_time };
+              computation_status := { !computation_status with one_run_canceled = true; cur_run = None };
+              Display_ui.send_output_command (Run_canceled file);
+              raise Current_canceled
+        end
+    | _ -> ()
+  end;
+  let rec replace_run = function
+    | [] -> []
+    | (run,_,qlist)::q when run.name_run = file ->
+        let run' = { run with r_status = RBCanceled; r_end_time = Some end_time } in
+        write_run run';
+        List.iter (fun query -> write_query { query with q_status = QCanceled; q_end_time = Some end_time }) qlist;
+        q
+    | (run,b,qlist)::q -> (run,b,qlist)::(replace_run q)
+  in
+  computation_status := { !computation_status with one_run_canceled = true; remaining_runs = replace_run !computation_status.remaining_runs };
+  Display_ui.send_output_command (Run_canceled file)
+
+exception Found_query
+
+let cancel_query file =
+  let end_time = int_of_float (Unix.time ()) in
+
+  let rec replace_query = function
+    | [] -> [],false
+    | query::q  when query.name_query = file ->
+        write_query { query with q_status = QCanceled; q_end_time = Some end_time };
+        q, true
+    | query::q ->
+        let q', found = replace_query q in
+        query::q', found
+  in
+
+  try
+    begin match !computation_status.cur_run with
+      | Some run_comp ->
+          begin match run_comp.cur_query with
+            | Some (query_comp,in_ch,out_ch) when query_comp.name_query = file ->
+                Distrib.send out_ch Distribution.WLM.Die;
+                ignore (Unix.close_process (in_ch,out_ch));
+                write_query { query_comp with q_status = QCanceled; q_end_time = Some end_time };
+                let run_comp' = { run_comp with cur_query = None; one_query_canceled = true } in
+                computation_status := { !computation_status with one_run_canceled = true; cur_run = Some run_comp' };
+                Display_ui.send_output_command (Query_canceled file);
+                raise Current_canceled
+            | _ ->
+              let (remaining_queries, found) = replace_query run_comp.remaining_queries in
+              if found
+              then
+                begin
+                  let run_comp' = { run_comp with remaining_queries = remaining_queries; one_query_canceled = true } in
+                  computation_status := { !computation_status with one_run_canceled = true; cur_run = Some run_comp' };
+                  Display_ui.send_output_command (Query_canceled file);
+                  raise Found_query
+                end
+          end;
+      | None -> ()
+    end;
+
+    let new_remaining_runs =
+      List.map (fun (run,one_query_canceled,query_list) ->
+        let (query_list1, found) = replace_query query_list in
+        if found
+        then (run,true,query_list1)
+        else (run,one_query_canceled,query_list)
+      ) !computation_status.remaining_runs
+    in
+    computation_status := { !computation_status with one_run_canceled = true; remaining_runs = new_remaining_runs };
+    Display_ui.send_output_command (Query_canceled file);
+  with Found_query -> ()
+
+(* Progress *)
+
+let apply_progress progress to_write =
+  let cur_run = match !computation_status.cur_run with
+    | None -> Config.internal_error "[main_ui.ml >> apply_progress] Should have a current run."
+    | Some cur_run -> cur_run
+  in
+  let (cur_query,in_ch,out_ch) = match cur_run.cur_query with
+    | None -> Config.internal_error "[main_ui.ml >> apply_progress] Should have a current query."
+    | Some (cur_query,in_ch,out_ch) -> (cur_query,in_ch,out_ch)
+  in
+  let cur_query_1 = { cur_query with progression = progress } in
+
+  if to_write then write_query cur_query_1;
+
+  let time = match cur_query_1.q_start_time with
+    | None -> Config.internal_error "[main_ui.ml >> apply_progress] Should have a start time."
+    | Some t -> int_of_float (Unix.time ()) - t
+  in
+
+  Display_ui.send_output_command (Progression(cur_query_1.q_index,time,progress));
+  computation_status := { !computation_status with cur_run = Some { cur_run with cur_query = Some (cur_query_1,in_ch,out_ch) } }
 
 (* Starting the computation *)
 
@@ -425,10 +531,11 @@ let start_batch input_files batch_options =
       (* Update computation status *)
       computation_status :=
         {
+          one_run_canceled = false;
           batch = batch_result;
           cur_run = None;
           remaining_runs = List.map (function
-              | IRSuccess(run_result,query_results,_) -> run_result,query_results
+              | IRSuccess(run_result,query_results,_) -> run_result,false,query_results
               | _ -> Config.internal_error "[main_ui.ml >> start_batch] Unexpected case (3)"
             ) parsing_results
         };
@@ -470,101 +577,102 @@ let execute_query query_result =
   Interface.current_query := query_result.q_index;
   Display_ui.send_output_command (Query_started(query_result.name_query,query_result.q_index));
 
-  catch_query_internal_error (fun () ->
-    (* We reset the signature *)
-    Interface.setup_signature query_result;
+  (* We reset the signature *)
+  Interface.setup_signature query_result;
 
-    (* We retrieve the query_type *)
-    match query_result.query_type with
-      | Types.Trace_Equivalence ->
-          let (proc1,proc2) = match query_result.processes with
-            | [ p1; p2 ] ->
-                Interface.process_of_json_process p1,
-                Interface.process_of_json_process p2
-            | _ -> Config.internal_error "[main_ui.ml >> execute_query] Should not occur when equivalence."
-          in
-          let query_result1 =
-            if !Config.por && Determinate_process.is_strongly_action_determinate proc1 && Determinate_process.is_strongly_action_determinate proc2
-            then
-              if !Config.distributed = Some true || (!Config.distributed = None && Config.physical_core > 1)
-              then
-                let result = Distributed_equivalence.trace_equivalence_determinate proc1 proc2 in
+  (* We retrieve the query_type *)
+  match query_result.query_type with
+    | Types.Trace_Equivalence ->
+        let (proc1,proc2) = match query_result.processes with
+          | [ p1; p2 ] ->
+              Interface.process_of_json_process p1,
+              Interface.process_of_json_process p2
+          | _ -> Config.internal_error "[main_ui.ml >> execute_query] Should not occur when equivalence."
+        in
+        if !Config.por && Determinate_process.is_strongly_action_determinate proc1 && Determinate_process.is_strongly_action_determinate proc2
+        then trace_equivalence_determinate proc1 proc2
+        else trace_equivalence_generic query_result.semantics proc1 proc2
+    | _ -> Config.internal_error "[main_ui.ml >> execute_query] Currently, only trace equivalence is implemented."
+
+let listen_to_command in_ch translation_result =
+  let fd_in_ch = Unix.descr_of_in_channel in_ch in
+  let do_listen = ref true in
+
+  while !do_listen do
+    let (available_fd_in_ch,_,_) = Unix.select [Unix.stdin;fd_in_ch] [] [] (-1.) in
+
+    try
+      List.iter (fun fd ->
+        if fd = Unix.stdin
+        then
+          (* Can receive JSON command to cancel executions. *)
+          let str = ((input_value stdin):string) in
+          match Parsing_functions_ui.input_command_of (parse_json_from_string str) with
+            | Cancel_run file -> cancel_run file
+            | Cancel_query file -> cancel_query file
+            | Cancel_batch -> cancel_batch ()
+            | _ -> Config.internal_error "[execution_manager.ml >> listen_to_command] Unexpected command"
+        else
+          (* Message from the local manager *)
+          match ((input_value in_ch):Distribution.WLM.output_command) with
+            | Distribution.WLM.Completed verif_result ->
+                (* The query was completed *)
                 let end_time = int_of_float (Unix.time ()) in
-                Interface.query_result_of_equivalence_result_distributed query_result result end_time
-              else
-                let result = Determinate_equivalence.trace_equivalence proc1 proc2 in
-                let end_time = int_of_float (Unix.time ()) in
-                Interface.query_result_of_equivalence_result query_result result end_time
-            else
-              if !Config.distributed = Some true || (!Config.distributed = None && Config.physical_core > 1)
-              then
-                let result = Distributed_equivalence.trace_equivalence_generic query_result.semantics proc1 proc2 in
-                let end_time = int_of_float (Unix.time ()) in
-                Interface.query_result_of_equivalence_result_distributed query_result result end_time
-              else
-                let result = Generic_equivalence.trace_equivalence query_result.semantics proc1 proc2 in
-                let end_time = int_of_float (Unix.time ()) in
-                Interface.query_result_of_equivalence_result query_result result end_time
-          in
-          Mutex.lock execution_mutex;
-          write_query query_result1;
-          remove_current_query ();
-          let running_time = match query_result1.q_end_time, query_result1.q_start_time with
-            | Some e, Some s -> e - s
-            | _ -> Config.internal_error "[execution_manager.ml >> execute_query] The query result should have a start and end time."
-          in
-          Display_ui.send_output_command (Query_ended(query_result1.name_query,query_result1.q_status,query_result1.q_index,running_time,query_result1.query_type));
-          Condition.signal execution_condition;
-          Mutex.unlock execution_mutex
-      | _ -> Config.internal_error "[main_ui.ml >> execute_query] Currently, only trace equivalence is implemented."
-    )
+                let cur_query = remove_current_query () in
+                let cur_query_1 = Interface.query_result_of_equivalence_result cur_query (translation_result verif_result) end_time in
+                write_query cur_query_1;
+                let running_time = match cur_query_1.q_end_time, cur_query_1.q_start_time with
+                  | Some e, Some s -> e - s
+                  | _ -> Config.internal_error "[execution_manager.ml >> execute_query] The query result should have a start and end time."
+                in
+                Display_ui.send_output_command (Query_ended(cur_query_1.name_query,cur_query_1.q_status,cur_query_1.q_index,running_time,cur_query_1.query_type));
+                do_listen := false
+            | Distribution.WLM.Error_msg (err_msg,progress) -> apply_internal_error_in_query err_msg progress
+            | Distribution.WLM.Progress(progress,to_write) -> apply_progress progress to_write
+            | Distribution.WLM.Computed_settings distrib_settings -> ()
+      ) available_fd_in_ch
+    with Current_canceled -> do_listen := false
+  done
 
-let execute_batch () =
-  Mutex.lock execution_mutex;
+let rec execute_batch () = match !computation_status.cur_run with
+  | None ->
+      (* Not run is ongoing. Starting a new one *)
+      begin match !computation_status.remaining_runs with
+        | [] ->
+            (* No run left to verify. We end the batch. *)
+            if !computation_status.batch.b_status = RBIn_progress
+            then end_batch { !computation_status.batch with b_status = (if !computation_status.one_run_canceled then RBCanceled else RBCompleted); b_end_time =  Some (int_of_float (Unix.time ())) }
+            else end_batch !computation_status.batch;
+            send_exit ()
+        | (run,one_query_canceled,query_list)::q ->
+            let run_1 = { run with r_start_time = Some (int_of_float (Unix.time ())); r_status = RBIn_progress } in
+            write_run run_1;
+            let dps_file = match run_1.input_file with
+              | Some str -> Filename.basename str
+              | None -> Config.internal_error "[execution_manager.ml >> execute_batch] The run should have a dps file."
+            in
+            Display_ui.send_output_command (Run_started(run_1.name_run,dps_file));
+            let run_comp = { one_query_canceled = one_query_canceled; cur_query = None; remaining_queries = query_list; ongoing_run = run_1 } in
+            computation_status := { !computation_status with cur_run = Some run_comp; remaining_runs = q };
+            execute_batch ()
+      end
+  | Some run_comp ->
+      if run_comp.cur_query <> None
+      then Config.internal_error "[main_ui.ml >> execute_batch] When executing the main batch, the current query should have been completed.";
 
-  let rec execute_run () = match !computation_status.cur_run with
-    | None ->
-        (* Not run is ongoing. Starting a new one *)
-        begin match !computation_status.remaining_runs with
-          | [] ->
-              (* No run left to verify. We end the batch. *)
-              if !computation_status.batch.b_status = RBIn_progress
-              then end_batch { !computation_status.batch with b_status = RBCompleted; b_end_time =  Some (int_of_float (Unix.time ())) }
-              else end_batch !computation_status.batch;
-              send_exit ()
-          | (run,query_list)::q ->
-              let run_1 = { run with r_start_time = Some (int_of_float (Unix.time ())); r_status = RBIn_progress } in
-              write_run run_1;
-              let dps_file = match run_1.input_file with
-                | Some str -> Filename.basename str
-                | None -> Config.internal_error "[execution_manager.ml >> execute_batch] The run should have a dps file."
-              in
-              Display_ui.send_output_command (Run_started(run_1.name_run,dps_file));
-              let run_comp = { cur_query = None; remaining_queries = query_list; ongoing_run = run_1 } in
-              computation_status := { !computation_status with cur_run = Some run_comp; remaining_runs = q };
-              execute_run ()
-        end
-    | Some run_comp ->
-        if run_comp.cur_query <> None
-        then Config.internal_error "[main_ui.ml >> execute_batch] When executing the main batch, the current query should have been completed.";
-
-        match run_comp.remaining_queries with
-          | [] ->
-              (* No query left to verify. We end the run. *)
-              let run_1 = { run_comp.ongoing_run with r_end_time = Some (int_of_float (Unix.time ())); r_status = RBCompleted } in
-              write_run run_1;
-              Display_ui.send_output_command (Run_ended (run_1.name_run,run_1.r_status));
-              computation_status := { !computation_status with cur_run = None };
-              execute_run ()
-          | query::query_list ->
-              let query_1 = { query with q_start_time = Some (int_of_float (Unix.time ())); q_status = QIn_progress } in
-              write_query query_1;
-              let thread = Thread.create execute_query query_1 in
-              let query_comp = { thread = thread; ongoing_query = query_1 } in
-              let run_comp_1 = { run_comp with cur_query = Some query_comp; remaining_queries = query_list } in
-              computation_status := { !computation_status with cur_run = Some run_comp_1 };
-              Condition.wait execution_condition execution_mutex;
-              execute_run ()
-  in
-
-  execute_run ()
+      match run_comp.remaining_queries with
+        | [] ->
+            (* No query left to verify. We end the run. *)
+            let run_1 = { run_comp.ongoing_run with r_end_time = Some (int_of_float (Unix.time ())); r_status = (if run_comp.one_query_canceled then RBCanceled else RBCompleted) } in
+            write_run run_1;
+            Display_ui.send_output_command (Run_ended (run_1.name_run,run_1.r_status));
+            computation_status := { !computation_status with cur_run = None };
+            execute_batch ()
+        | query::query_list ->
+            let query_1 = ref { query with q_start_time = Some (int_of_float (Unix.time ())); q_status = QIn_progress } in
+            write_query !query_1;
+            let (in_ch,out_ch,transformation_result) = execute_query !query_1 in
+            let run_comp_1 = { run_comp with cur_query = Some (!query_1,in_ch,out_ch); remaining_queries = query_list } in
+            computation_status := { !computation_status with cur_run = Some run_comp_1 };
+            listen_to_command in_ch transformation_result;
+            execute_batch ()

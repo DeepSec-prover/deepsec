@@ -45,6 +45,8 @@ module Symbol : sig
       nb_a : int
     }
 
+  val get_number_of_attacker_name : unit -> int
+
   val set_up_signature : setting -> unit
 
   val get_settings : unit -> setting

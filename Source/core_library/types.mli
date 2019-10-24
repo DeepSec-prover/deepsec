@@ -122,7 +122,6 @@ type semantics =
 type equivalence =
   | Trace_Equivalence
   | Trace_Inclusion
-  | Observational_Equivalence
   | Session_Equivalence
   | Session_Inclusion
 
