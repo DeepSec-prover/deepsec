@@ -128,9 +128,6 @@ module Distrib = functor (Task:Evaluator_task) -> struct
       let nb_evaluators = ((input_value stdin): int) in
       let evaluator_path = Filename.concat !Config.path_deepsec "deepsec_worker" in
 
-      output_value stdout evaluator_path;
-      flush stdout;
-
       let cur_evaluators = ref ([]: evaluator_data list) in
       let cur_fd_in_ch_evaluators = ref ([]:Unix.file_descr list) in
 
@@ -350,28 +347,17 @@ module Distrib = functor (Task:Evaluator_task) -> struct
         send out_ch Distant_manager;
         let dist_m = { in_ch = in_ch; fd_in_ch = fd_in_ch; out_ch = out_ch } in
         distant_managers := dist_m :: ! distant_managers;
-        Printf.fprintf stderr "Receiving physical core\n";
-        flush stderr;
         let physical_core = ((input_value in_ch):int) in
         let nb_eval = match n_op with
           | None -> physical_core
           | Some n -> n
         in
-        Printf.fprintf stderr "Physical core\n";
-        flush stderr;
         dist_setting := (host,path,nb_eval):: !dist_setting;
         nb_total_evalutators := nb_eval + !nb_total_evalutators;
         send out_ch nb_eval;
-        let eval_path = ((input_value in_ch):string) in
-        Printf.fprintf stderr "Sending nb_eval = %d, evaluator = %s\n" nb_eval eval_path;
-        flush stderr;
         send out_ch WDM.Generate_evaluators;
-        Printf.fprintf stderr "Waiting input\n";
-        flush stderr;
         match ((input_value in_ch): WDM.output_command) with
           | WDM.Pid_evaluators pid_list ->
-              Printf.fprintf stderr "OK\n";
-              flush stderr;
               distant_evaluators := List.fold_left (fun acc pid -> (pid,dist_m)::acc) !distant_evaluators pid_list;
               fd_in_ch_eval_and_manager := dist_m.fd_in_ch :: !fd_in_ch_eval_and_manager
           | WDM.Error_msg err -> send_error err
@@ -437,19 +423,15 @@ module Distrib = functor (Task:Evaluator_task) -> struct
     let kill_all () =
       (* Killing local evaluators *)
       List.iter (fun eval ->
-        try
-          Unix.kill eval.WDM.pid kill_signal;
-          ignore (Unix.close_process (eval.WDM.in_ch,eval.WDM.out_ch))
-        with ex -> Printf.fprintf stderr "Error : %s " (Printexc.to_string ex)
+        Unix.kill eval.WDM.pid kill_signal;
+        ignore (Unix.close_process (eval.WDM.in_ch,eval.WDM.out_ch))
       ) !local_evaluators;
       local_evaluators := [];
 
       (* Killing distant evaluators through distant managers *)
       List.iter (fun dist_m ->
-        try
-          send dist_m.out_ch WDM.Die;
-          ignore (Unix.close_process (dist_m.in_ch,dist_m.out_ch))
-        with ex -> Printf.fprintf stderr "Error : %s " (Printexc.to_string ex)
+        send dist_m.out_ch WDM.Die;
+        ignore (Unix.close_process (dist_m.in_ch,dist_m.out_ch))
       ) !distant_managers;
 
       distant_managers := [];
