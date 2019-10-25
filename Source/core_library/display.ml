@@ -81,7 +81,6 @@ let create_tab k =
   );
   internal_create_tab k
 
-
 let mkRuntime rt =
   if rt = 0
   then "< 1s"
@@ -131,7 +130,6 @@ let mkDate t =
     (weekday t.Unix.tm_wday) (month t.Unix.tm_mon) t.Unix.tm_mday (1900 + t.Unix.tm_year)
     t.Unix.tm_hour t.Unix.tm_min t.Unix.tm_sec in
   d
-
 
 (**** Special character ****)
 

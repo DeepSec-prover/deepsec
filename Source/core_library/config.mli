@@ -13,6 +13,8 @@ val debug : (unit -> unit) -> unit
 
 val print_in_log : ?always:bool -> string -> unit
 
+val log : (unit -> string) -> unit
+
 val test_activated : bool
 
 (** [debug f] executes [f] if the program was compiled with the option [testing], else it does nothing. *)
@@ -45,7 +47,7 @@ val tmp_file : string ref
     disabled. *)
 val display_trace : bool ref
 
-val quiet : bool ref 
+val quiet : bool ref
 
 (*** Parameters for distributed computation ***)
 

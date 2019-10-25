@@ -5,10 +5,15 @@ let running_api = ref false
 let debug_activated = false
 
 let log_file =
-  Random.init (int_of_float (Unix.time ()));
-  if debug_activated
-  then open_out (Printf.sprintf "debug_log_%d.txt" (Random.int 100000))
-  else stdout
+  let pid = Unix.getpid () in
+  let local_time = Unix.localtime (Unix.time()) in
+  let path =
+    Unix.(Printf.sprintf "log/log_%d_%d_%d_%dh%dm%ds_%d.txt"
+    local_time.tm_year local_time.tm_mon local_time.tm_mday
+    local_time.tm_hour local_time.tm_min local_time.tm_sec
+    pid)
+  in
+  open_out path
 
 let internal_error msg =
   if debug_activated
@@ -24,7 +29,7 @@ let debug =
   then fun f -> f ()
   else fun _ -> ()
 
-let display_in_log = true
+let display_in_log = false
 
 let print_in_log ?(always=false) s =
   if display_in_log || always
@@ -33,6 +38,15 @@ let print_in_log ?(always=false) s =
       Printf.fprintf log_file "%s" s;
       flush log_file
     end
+
+let log =
+  if debug_activated
+  then
+    (fun f ->
+        Printf.fprintf log_file "%s" (f());
+        flush log_file
+    )
+  else fun _ -> ()
 
 (**** Testing *****)
 
