@@ -13,7 +13,9 @@ let log_file =
     local_time.tm_hour local_time.tm_min local_time.tm_sec
     pid)
   in
-  open_out path
+  let exe_path = Filename.dirname Sys.executable_name in
+  let file = Filename.concat exe_path path in
+  open_out file
 
 let internal_error msg =
   if debug_activated

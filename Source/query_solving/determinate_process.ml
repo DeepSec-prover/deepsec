@@ -146,7 +146,6 @@ let display_determinate_process p =
 
 let display_configuration conf =
   let acc = ref "----- Configuration\n" in
-  Config.debug (fun () -> Config.print_in_log ~always:true "Print processes\n");
   acc := !acc ^ (Printf.sprintf "Sure_input_proc:\n%s" (display_list display_determinate_process "*****\n" conf.sure_input_proc));
   acc := !acc ^ (Printf.sprintf "Sure_output_proc:\n%s" (display_list display_determinate_process "*****\n" conf.sure_output_proc));
 
@@ -164,7 +163,6 @@ let display_configuration conf =
   acc := !acc ^ (display_option_det_process "Sure_uncheked_skeletons" conf.sure_uncheked_skeletons);
   acc := !acc ^ (display_option_det_process "Unsure_proc:" conf.unsure_proc);
   acc := !acc ^ (display_option_det_process "Focused_proc:" conf.focused_proc);
-  Config.debug (fun () -> Config.print_in_log ~always:true "Print trace\n");
   !acc ^ (Printf.sprintf "Trace: %s\n" (display_list display_trace "; " conf.trace))
 
 (* Trace of determinate trace *)
