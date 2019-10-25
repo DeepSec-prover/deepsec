@@ -267,7 +267,7 @@ let parse_distributed op_str = function
       ))
 
 let parse_distant_workers op_str host path = function
-  | "auto" -> add_and_verify_option (Distant_workers [host,path, None])
+  | "auto" -> add_and_verify_option (Distant_workers [!host,!path, None])
   | str ->
       let i =
         try
@@ -282,7 +282,7 @@ let parse_distant_workers op_str host path = function
             (coloured_terminal_text Black [Bold] op_str)
           ))
       in
-      add_and_verify_option (Distant_workers [host,path, Some i])
+      add_and_verify_option (Distant_workers [!host,!path, Some i])
 
 let _ =
   Config.running_api := false;
@@ -315,8 +315,8 @@ let _ =
     "-d",Arg.String(parse_distributed "-d"), "";
     "--local_workers",Arg.String(parse_local_workers "--local_workers"), "";
     "-l",Arg.String(parse_local_workers "-l"), "";
-    "--distant_workers", Arg.Tuple [Arg.Set_string(dist_host); Arg.Set_string(dist_path); Arg.String(parse_distant_workers "--distant_workers" !dist_host !dist_path)], "";
-    "-w", Arg.Tuple [Arg.Set_string(dist_host); Arg.Set_string(dist_path); Arg.String(parse_distant_workers "--d" !dist_host !dist_path)], "";
+    "--distant_workers", Arg.Tuple [Arg.Set_string(dist_host); Arg.Set_string(dist_path); Arg.String(parse_distant_workers "--distant_workers" dist_host dist_path)], "";
+    "-w", Arg.Tuple [Arg.Set_string(dist_host); Arg.Set_string(dist_path); Arg.String(parse_distant_workers "-w" dist_host dist_path)], "";
     "--jobs",Arg.String(parse_nb_jobs "--jobs"), "";
     "-j",Arg.String(parse_nb_jobs "-j"), "";
     "--round_timer",Arg.String(parse_round_timer "--round_timer"), "";

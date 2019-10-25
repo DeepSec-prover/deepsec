@@ -340,7 +340,8 @@ module Distrib = functor (Task:Evaluator_task) -> struct
       let dist_setting = ref [] in
 
       List.iter (fun (host,path,n_op) ->
-        let path_name_manager = Printf.sprintf "ssh %s %s%sdeepsec_worker" host path (if path.[(String.length path) - 1] = '/' then "" else "/") in
+        let full_name = Filename.concat path "deepsec_worker" in
+        let path_name_manager = Printf.sprintf "ssh %s %s" host full_name in
         let (in_ch,out_ch) = Unix.open_process path_name_manager in
         let fd_in_ch = Unix.descr_of_in_channel in_ch in
         send out_ch Distant_manager;
@@ -353,7 +354,6 @@ module Distrib = functor (Task:Evaluator_task) -> struct
         in
         dist_setting := (host,path,nb_eval):: !dist_setting;
         nb_total_evalutators := nb_eval + !nb_total_evalutators;
-
         send out_ch nb_eval;
         send out_ch WDM.Generate_evaluators;
         match ((input_value in_ch): WDM.output_command) with
