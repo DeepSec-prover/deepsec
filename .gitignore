@@ -5,6 +5,8 @@ deepsec_worker
 test_deepsec
 index_old.html
 
+log
+
 *.js
 *.cmi
 *.cmt
