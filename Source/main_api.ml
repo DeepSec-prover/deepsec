@@ -3,11 +3,12 @@ open Types_ui
 let _ =
   Config.running_api := true;
 
+  Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
+  Sys.set_signal Sys.sigint (Sys.Signal_handle (fun _ -> Execution_manager.cancel_batch ()));
+
   Execution_manager.catch_init_internal_error (fun () ->
     (* Initialisation of random generator *)
     Random.init (int_of_float (Unix.time ()));
-
-    Sys.set_signal Sys.sigint (Sys.Signal_handle (fun _ -> Execution_manager.cancel_batch ()));
 
     (* Retrieve deepsec path *)
     let exe_path = Filename.dirname Sys.executable_name in

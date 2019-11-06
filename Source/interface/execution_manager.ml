@@ -45,8 +45,9 @@ let new_file_name dir f_rand =
 let absolute path = Filename.concat !Config.path_database path
 
 let write_in_file relative_path json =
+  let str = Display_ui.display_json json in
   let channel_out = open_out (absolute relative_path) in
-  output_string channel_out (Display_ui.display_json json);
+  output_string channel_out str;
   close_out channel_out
 
 let write_batch batch_result = write_in_file batch_result.name_batch (Display_ui.of_batch_result batch_result)

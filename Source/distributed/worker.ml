@@ -6,6 +6,7 @@ let _ =
   Config.path_deepsec := exe_path;
   Config.log (fun () -> (Printf.sprintf "[worker.ml] Executable path = %s; pid = %d\n" exe_path (Unix.getpid ())));
 
+  Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
   Sys.set_signal Sys.sigint Sys.Signal_ignore;
 
   match ((input_value stdin): Distrib.worker) with
