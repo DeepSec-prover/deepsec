@@ -2712,6 +2712,12 @@ module Rule = struct
     | Func(_,args) -> List.iter mark_variables args
     | _ -> ()
 
+  let rec record_marked_variables f_next = function
+    | Var { link = NoLink; _ } -> f_next ()
+    | Var { link = SLink; _ } -> ()
+    | Var { link = TLink t; _ } -> record_marked_variables f_next t
+    | _ -> Config.internal_error "[constraint_system.ml >> record_marked_variables] Unexpected term."
+
   let rec instantiate_useless_deduction_facts_list rec_vars = function
     | [] -> rec_vars
     | csys::q ->
@@ -2721,12 +2727,11 @@ module Rule = struct
             IK.iter_term mark_variables csys.incremented_knowledge;
             List.iter (fun (_,t) -> mark_variables t) csys.original_substitution;
             let rec_vars1 = ref [] in
-            DF.iter (fun bfact -> match bfact.bf_term with
-              | Var { link = NoLink; _ } ->
-                  if List.memq bfact.bf_var rec_vars
-                  then rec_vars1 := bfact.bf_var :: !rec_vars1
-              | Var { link = SLink; _ } -> ()
-              | _ -> Config.internal_error "[constraint_system.ml >> instantiate_useless_deduction_facts_list] Unexpected term."
+            DF.iter (fun bfact ->
+              record_marked_variables (fun () ->
+                if List.memq bfact.bf_var rec_vars
+                then rec_vars1 := bfact.bf_var :: !rec_vars1
+              ) bfact.bf_term
             ) csys.deduction_facts;
             !rec_vars1
           )
@@ -2749,10 +2754,8 @@ module Rule = struct
             IK.iter_term mark_variables csys.incremented_knowledge;
             List.iter (fun (_,t) -> mark_variables t) csys.original_substitution;
             let rec_vars = ref [] in
-            DF.iter (fun bfact -> match bfact.bf_term with
-              | Var { link = NoLink; _ } -> rec_vars := bfact.bf_var :: !rec_vars
-              | Var { link = SLink; _ } -> ()
-              | _ -> Config.internal_error "[constraint_system.ml >> instantiate_useless_deduction_facts] Unexpected term."
+            DF.iter (fun bfact ->
+              record_marked_variables (fun () -> rec_vars := bfact.bf_var :: !rec_vars) bfact.bf_term
             ) csys.deduction_facts;
             !rec_vars
           )
