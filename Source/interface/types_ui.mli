@@ -147,6 +147,7 @@ type batch_options =
   | Quiet
   | ShowTrace
   | POR of bool
+  | Title of string
 
 type batch_result =
   {
@@ -162,7 +163,8 @@ type batch_result =
     import_date : int option;
     command_options : batch_options list;
     command_options_cmp : batch_options list;
-    ocaml_version : string
+    ocaml_version : string;
+    debug : bool
   }
 
 (* Input Command *)

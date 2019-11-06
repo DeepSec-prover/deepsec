@@ -570,6 +570,7 @@ let batch_options_of json =
   check_member (fun json' -> Local_workers (int_auto_of json')) "local_workers";
   check_member (fun json' -> Distributed (bool_auto_of json')) "distributed";
   check_member (fun json' -> POR (bool_of json')) "por";
+  check_member (fun json' -> Title (String.escaped (string_of json'))) "title";
 
   !options
 
@@ -599,7 +600,8 @@ let batch_result_of file_name json =
     import_date = import_date;
     command_options = command_options;
     command_options_cmp = [];
-    ocaml_version = ocaml_version
+    ocaml_version = ocaml_version;
+    debug = Config.debug_activated
   }
 
 (*** Commands ***)

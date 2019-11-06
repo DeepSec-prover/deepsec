@@ -420,10 +420,17 @@ let of_batch_options opt_list =
     | Local_workers None -> ("local_workers", JString "auto")::acc
     | Local_workers (Some n) -> ("local_workers", JInt n)::acc
     | POR b ->  ("por", JBool b)::acc
+    | Title s -> ("title", JString s)::acc
     | _ -> acc
   ) [] opt_list)
 
 let of_batch_result batch_res =
+
+  let title = ref None in
+  List.iter (function
+    | Title str -> title := Some str
+    | _ -> ()
+  ) batch_res.command_options;
 
   let jlist1 = [
     "ocaml_version", JString batch_res.ocaml_version;
@@ -441,8 +448,10 @@ let of_batch_result batch_res =
   let jlist5 = of_run_batch_status jlist4 batch_res.b_status in
   let jlist6 = of_option jlist5 of_int "start_time" batch_res.b_start_time in
   let jlist7 = of_option jlist6 of_int "end_time" batch_res.b_end_time in
+  let jlist8 = of_option jlist7 of_string "title" !title in
+  let jlist9 = if batch_res.debug then ("debug", JBool true)::jlist8 else jlist8 in
 
-  JObject jlist7
+  JObject jlist9
 
 (* Output commands *)
 

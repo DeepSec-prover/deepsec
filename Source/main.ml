@@ -26,6 +26,7 @@ let help =
   let file = coloured_terminal_text Black [Underline] "FILE" in
   let deepsec = coloured_terminal_text Black [Bold] "deepsec" in
   let value = coloured_terminal_text Black [Underline] "VALUE" in
+  let title = coloured_terminal_text Black [Underline] "TITLE" in
   let int_value = coloured_terminal_text Black [Underline] "INT" in
   let bool_value = coloured_terminal_text Black [Underline] "BOOL" in
   let host_value = coloured_terminal_text Black [Underline] "HOST" in
@@ -52,10 +53,13 @@ let help =
     4, Printf.sprintf "with 'true', %s will apply the POR techniques only when it is able to prove that" deepsec;
     4, Printf.sprintf "the processes are action-determinate.";
     0, "\n";
+    2, Printf.sprintf "%s %s" (coloured_terminal_text Black [Bold] "-t, --title") title;
+    4, Printf.sprintf "Set %s as the title of this run (displayed only with the UI)." title;
+    0, "\n";
     2, Printf.sprintf "%s" (coloured_terminal_text Black [Bold] "-q, --quiet");
     4, Printf.sprintf "Only display the result of query verification.";
     0, "\n";
-    2, Printf.sprintf "%s" (coloured_terminal_text Black [Bold] "-t, --trace");
+    2, Printf.sprintf "%s" (coloured_terminal_text Black [Bold] "--trace");
     4, Printf.sprintf "When an attack is found, display the full trace with the execution of the process.";
     4, Printf.sprintf "Incompatible with %s." (coloured_terminal_text Black [Bold] "--quiet");
     0, "\n";
@@ -309,7 +313,8 @@ let _ =
     "--quiet", Arg.Unit(fun () -> add_and_verify_option Quiet), "";
     "-q", Arg.Unit(fun () -> add_and_verify_option Quiet), "";
     "--trace", Arg.Unit(fun () -> add_and_verify_option ShowTrace), "";
-    "-t", Arg.Unit(fun () -> add_and_verify_option ShowTrace), "";
+    "--title", Arg.String(fun str -> add_and_verify_option (Title (String.escaped str))), "";
+    "-t", Arg.String(fun str -> add_and_verify_option (Title (String.escaped str))), "";
 
     "--distributed",Arg.String(parse_distributed "--distributed"), "";
     "-d",Arg.String(parse_distributed "-d"), "";

@@ -1,3 +1,4 @@
+open Types
 open Types_ui
 open Distributed_equivalence
 
@@ -220,6 +221,7 @@ let set_up_batch_options options =
     | Quiet -> Config.quiet := true
     | ShowTrace -> Config.display_trace := true
     | POR b -> Config.por := b
+    | Title _ -> ()
   ) options
 
 (* Computation *)
@@ -240,7 +242,28 @@ type computation_status  =
     batch : batch_result
   }
 
-let computation_status = ref { one_run_canceled = false; cur_run = None; remaining_runs = []; batch = { name_batch = ""; b_status = RBIn_progress; deepsec_version = ""; git_branch = ""; git_hash = ""; run_result_files = None; run_results = None; import_date = None; command_options = []; command_options_cmp = []; b_start_time = None; b_end_time = None; ocaml_version = "" } }
+let computation_status = ref
+  { one_run_canceled = false;
+    cur_run = None;
+    remaining_runs = [];
+    batch =
+      {
+        name_batch = "";
+        b_status = RBIn_progress;
+        deepsec_version = "";
+        git_branch = "";
+        git_hash = "";
+        run_result_files = None;
+        run_results = None;
+        import_date = None;
+        command_options = [];
+        command_options_cmp = [];
+        b_start_time = None;
+        b_end_time = None;
+        ocaml_version = "";
+        debug = false
+      }
+  }
 
 let remove_current_query () =
   let cur_run = match !computation_status.cur_run with
@@ -507,7 +530,8 @@ let start_batch input_files batch_options =
           b_start_time = Some (int_of_float (Unix.time ()));
           b_end_time = None;
           command_options_cmp = [];
-          ocaml_version = Sys.ocaml_version
+          ocaml_version = Sys.ocaml_version;
+          debug = Config.debug_activated
         }
       in
       (* We write the batch result *)
@@ -579,22 +603,32 @@ let end_batch batch_result =
 
 (* Executing the queries / runs / batch *)
 
-let rec command_options_of_distrib_settings settings = function
-  | [] ->
-      begin match settings with
-        | None -> [ Distributed (Some false)]
-        | Some set ->
-            [
-              Nb_jobs (Some set.Distribution.WLM.comp_nb_jobs);
-              Distributed (Some true);
-              Local_workers (Some set.Distribution.WLM.comp_local_workers);
-              Distant_workers (List.map (fun (host,path,workers) ->
-                (host,path,Some workers)
-              ) set.Distribution.WLM.comp_distant_workers)
-            ]
-      end
-  | ( Nb_jobs _ | Distant_workers _ | Distributed _ | Local_workers _)::q -> command_options_of_distrib_settings settings q
-  | op::q -> op::(command_options_of_distrib_settings settings q)
+let command_options_of_distrib_settings settings options =
+  let semantics = ref false in
+  let rec explore = function
+    | [] ->
+        let distrib = match settings with
+          | None -> [ Distributed (Some false)]
+          | Some set ->
+              [
+                Nb_jobs (Some set.Distribution.WLM.comp_nb_jobs);
+                Distributed (Some true);
+                Local_workers (Some set.Distribution.WLM.comp_local_workers);
+                Distant_workers (List.map (fun (host,path,workers) ->
+                  (host,path,Some workers)
+                ) set.Distribution.WLM.comp_distant_workers)
+              ]
+        in
+        if !semantics
+        then distrib
+        else (Default_semantics Private)::distrib
+    | ( Nb_jobs _ | Distant_workers _ | Distributed _ | Local_workers _)::q -> explore q
+    | (Default_semantics _) as op :: q ->
+        semantics := true;
+        op::(explore q)
+    | op::q -> op::(explore q)
+  in
+  explore options
 
 let execute_query query_result =
   (* We send the start command *)

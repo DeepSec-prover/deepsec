@@ -11,6 +11,8 @@ val internal_error : string -> 'a
 (** [debug f] executes [f] if the program was compiled with the option [debug], else it does nothing. *)
 val debug : (unit -> unit) -> unit
 
+val debug_activated : bool
+
 val print_in_log : ?always:bool -> string -> unit
 
 val log : (unit -> string) -> unit
