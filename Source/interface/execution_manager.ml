@@ -112,7 +112,7 @@ let parse_json_from_string str =
 
 let copy_file path new_path =
   let channel_in = open_in path in
-  let channel_out = open_out new_path in
+  let channel_out = open_out_gen [Open_wronly; Open_creat; Open_trunc; Open_text] 0o444 new_path in
 
   try
     while true do
@@ -240,7 +240,7 @@ type computation_status  =
     batch : batch_result
   }
 
-let computation_status = ref { one_run_canceled = false; cur_run = None; remaining_runs = []; batch = { name_batch = ""; b_status = RBIn_progress; deepsec_version = ""; git_branch = ""; git_hash = ""; run_result_files = None; run_results = None; import_date = None; command_options = []; command_options_cmp = []; b_start_time = None; b_end_time = None } }
+let computation_status = ref { one_run_canceled = false; cur_run = None; remaining_runs = []; batch = { name_batch = ""; b_status = RBIn_progress; deepsec_version = ""; git_branch = ""; git_hash = ""; run_result_files = None; run_results = None; import_date = None; command_options = []; command_options_cmp = []; b_start_time = None; b_end_time = None; ocaml_version = "" } }
 
 let remove_current_query () =
   let cur_run = match !computation_status.cur_run with
@@ -506,7 +506,8 @@ let start_batch input_files batch_options =
           b_status = RBIn_progress;
           b_start_time = Some (int_of_float (Unix.time ()));
           b_end_time = None;
-          command_options_cmp = []
+          command_options_cmp = [];
+          ocaml_version = Sys.ocaml_version
         }
       in
       (* We write the batch result *)

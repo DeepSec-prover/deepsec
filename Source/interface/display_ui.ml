@@ -426,6 +426,7 @@ let of_batch_options opt_list =
 let of_batch_result batch_res =
 
   let jlist1 = [
+    "ocaml_version", JString batch_res.ocaml_version;
     "deepsec_version", JString batch_res.deepsec_version;
     "git_branch", JString batch_res.git_branch;
     "git_hash", JString batch_res.git_hash;
@@ -454,8 +455,8 @@ let of_run_batch_status_for_command = function
 
 let of_output_command = function
   (* Errors *)
-  | Init_internal_error err -> JObject [ "command", JString "init_internal_error"; "error_msg", JString err ]
-  | Batch_internal_error err -> JObject [ "command", JString "batch_internal_error"; "error_msg", JString err ]
+  | Init_internal_error err -> JObject [ "command", JString "init_internal_error"; "error_msg", JString (String.escaped err) ]
+  | Batch_internal_error err -> JObject [ "command", JString "batch_internal_error"; "error_msg", JString (String.escaped err) ]
   | User_error err_list ->
       JObject [
         "command", JString "user_error";
@@ -466,7 +467,7 @@ let of_output_command = function
   | Query_internal_error (err_msg,file) ->
       JObject [
         "command", JString "query_internal_error";
-        "error_msg", JString err_msg;
+        "error_msg", JString (String.escaped err_msg);
         "file", JString file
       ]
   (* Started *)

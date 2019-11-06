@@ -161,7 +161,8 @@ type batch_result =
     run_results : run_result list option;
     import_date : int option;
     command_options : batch_options list;
-    command_options_cmp : batch_options list
+    command_options_cmp : batch_options list;
+    ocaml_version : string
   }
 
 (* Input Command *)

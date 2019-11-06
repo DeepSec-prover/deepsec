@@ -575,6 +575,7 @@ let batch_options_of json =
 
 (* We assume that we do not parse bacth that contain run result as json data. *)
 let batch_result_of file_name json =
+  let ocaml_version = string_of (member "ocaml_version" json) in
   let version = string_of (member "deepsec_version" json) in
   let git_branch = string_of (member "git_branch" json) in
   let git_hash = string_of (member "git_hash" json) in
@@ -597,7 +598,8 @@ let batch_result_of file_name json =
     run_results = None;
     import_date = import_date;
     command_options = command_options;
-    command_options_cmp = []
+    command_options_cmp = [];
+    ocaml_version = ocaml_version
   }
 
 (*** Commands ***)
