@@ -326,6 +326,21 @@ let of_equivalence_type = function
   | Session_Equivalence -> JString "session_equiv"
   | Session_Inclusion -> JString "session_incl"
 
+let of_progression jlist = function
+  | PNot_defined -> jlist
+  | PSingleCore prog ->
+      let (label,obj) = match prog with
+        | PVerif(percent,jobs) -> ("verification",JObject [ "percent", JInt percent; "jobs_remaining", JInt jobs ])
+        | PGeneration(jobs,min_jobs) -> ("generation", JObject [ "minimum_jobs", JInt min_jobs; "jobs_created", JInt jobs ])
+      in
+      ("progression",JObject [ "round", JInt 0; label,obj ])::jlist
+  | PDistributed(round,prog) ->
+      let (label,obj) = match prog with
+        | PVerif(percent,jobs) -> ("verification",JObject [ "percent", JInt percent; "jobs_remaining", JInt jobs ])
+        | PGeneration(jobs,min_jobs) -> ("generation", JObject [ "minimum_jobs", JInt min_jobs; "jobs_created", JInt jobs ])
+      in
+      ("progression", JObject [ "round", JInt round; label,obj ])::jlist
+
 (* We assume here that the association within [query_res]
    contains at least the function symbols of the signature. *)
 let of_query_result query_res =
@@ -354,7 +369,9 @@ let of_query_result query_res =
     | QWaiting -> ("status",JString "waiting")::jlist3
   in
 
-  JObject jlist4
+  let jlist5 = of_progression jlist4 query_res.progression in
+
+  JObject jlist5
 
 (* Run result *)
 
@@ -412,7 +429,8 @@ let of_batch_result batch_res =
     "deepsec_version", JString batch_res.deepsec_version;
     "git_branch", JString batch_res.git_branch;
     "git_hash", JString batch_res.git_hash;
-    "command_options", of_batch_options batch_res.command_options
+    "command_options", of_batch_options batch_res.command_options;
+    "computed_options", of_batch_options batch_res.command_options_cmp
     ]
   in
 
@@ -567,7 +585,7 @@ let stdout_mutex = Mutex.create ()
 let send_command json_str =
   Mutex.lock stdout_mutex;
   output_string stdout (json_str^"\n");
-  flush_all ();
+  flush stdout;
   Mutex.unlock stdout_mutex
 
 let send_output_command out_cmd =

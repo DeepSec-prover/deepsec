@@ -56,12 +56,17 @@ module Distribution : sig
       type input_command =
         | Execute_query of job
         | Die
+        | Acknowledge
 
       type output_command =
         | Completed of verification_result
         | Error_msg of string * query_progression
         | Progress of query_progression * bool (* To write *)
         | Computed_settings of distributed_settings option
+
+      val get_output_command : in_channel -> output_command
+
+      val send_input_command : out_channel -> input_command -> unit
 
       val main : unit -> unit
   end

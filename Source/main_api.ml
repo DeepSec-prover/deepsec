@@ -7,6 +7,8 @@ let _ =
     (* Initialisation of random generator *)
     Random.init (int_of_float (Unix.time ()));
 
+    Sys.set_signal Sys.sigint (Sys.Signal_handle (fun _ -> Execution_manager.cancel_batch ()));
+
     (* Retrieve deepsec path *)
     let exe_path = Filename.dirname Sys.executable_name in
     Config.path_deepsec := exe_path;

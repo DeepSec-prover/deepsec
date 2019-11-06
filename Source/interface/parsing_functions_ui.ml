@@ -596,7 +596,8 @@ let batch_result_of file_name json =
     run_result_files = run_result_files;
     run_results = None;
     import_date = import_date;
-    command_options = command_options
+    command_options = command_options;
+    command_options_cmp = []
   }
 
 (*** Commands ***)

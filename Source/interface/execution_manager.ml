@@ -238,7 +238,7 @@ type computation_status  =
     batch : batch_result
   }
 
-let computation_status = ref { one_run_canceled = false; cur_run = None; remaining_runs = []; batch = { name_batch = ""; b_status = RBIn_progress; deepsec_version = ""; git_branch = ""; git_hash = ""; run_result_files = None; run_results = None; import_date = None; command_options = []; b_start_time = None; b_end_time = None } }
+let computation_status = ref { one_run_canceled = false; cur_run = None; remaining_runs = []; batch = { name_batch = ""; b_status = RBIn_progress; deepsec_version = ""; git_branch = ""; git_hash = ""; run_result_files = None; run_results = None; import_date = None; command_options = []; command_options_cmp = []; b_start_time = None; b_end_time = None } }
 
 let remove_current_query () =
   let cur_run = match !computation_status.cur_run with
@@ -248,7 +248,6 @@ let remove_current_query () =
   let cur_query = match cur_run.cur_query with
     | None -> Config.internal_error "[main_ui.ml >> remove_current_query] Should have a current query."
     | Some (cur_query,in_ch,out_ch) ->
-        Distrib.send out_ch Distribution.WLM.Die;
         ignore (Unix.close_process (in_ch,out_ch));
         cur_query
   in
@@ -292,7 +291,8 @@ let catch_batch_internal_error f =
             match run_comp.cur_query with
               | None -> ()
               | Some (query_comp,in_ch,out_ch) ->
-                  Distrib.send out_ch Distribution.WLM.Die;
+                  Unix.sleep 1;
+                  Distribution.WLM.send_input_command out_ch Distribution.WLM.Die;
                   ignore (Unix.close_process (in_ch,out_ch));
                   write_query { query_comp with q_status = QInternal_error err; q_end_time = Some end_time }
       end;
@@ -339,16 +339,18 @@ let cancel_batch () =
   let batch = { !computation_status.batch with b_status = RBCanceled; b_end_time = Some end_time } in
   write_batch batch;
   begin match !computation_status.cur_run with
-    | None -> ()
+    | None ->  Printf.printf "Run Nothing\n"; flush stdout; ()
     | Some run_comp ->
         let run = { run_comp.ongoing_run with r_status = RBCanceled; r_end_time = Some end_time } in
         write_run run;
         List.iter (fun query -> write_query { query with q_status = QCanceled; q_end_time = Some end_time }) run_comp.remaining_queries;
         match run_comp.cur_query with
-          | None -> ()
+          | None -> Printf.printf "Auery Nothing\n"; flush stdout; ()
           | Some (query_comp,in_ch,out_ch) ->
-              Distrib.send out_ch Distribution.WLM.Die;
+              Unix.sleep 1;
+              Distribution.WLM.send_input_command out_ch Distribution.WLM.Die;
               ignore (Unix.close_process (in_ch,out_ch));
+              flush stdout;
               write_query { query_comp with q_status = QCanceled; q_end_time = Some end_time }
   end;
   List.iter (fun (run,_,qlist) ->
@@ -372,7 +374,8 @@ let cancel_run file =
         begin match run_comp.cur_query with
           | None -> ()
           | Some (query_comp,in_ch,out_ch) ->
-              Distrib.send out_ch Distribution.WLM.Die;
+              Unix.sleep 1;
+              Distribution.WLM.send_input_command out_ch Distribution.WLM.Die;
               ignore (Unix.close_process (in_ch,out_ch));
               write_query { query_comp with q_status = QCanceled; q_end_time = Some end_time };
               computation_status := { !computation_status with one_run_canceled = true; cur_run = None };
@@ -413,7 +416,8 @@ let cancel_query file =
       | Some run_comp ->
           begin match run_comp.cur_query with
             | Some (query_comp,in_ch,out_ch) when query_comp.name_query = file ->
-                Distrib.send out_ch Distribution.WLM.Die;
+                Unix.sleep 1;
+                Distribution.WLM.send_input_command out_ch Distribution.WLM.Die;
                 ignore (Unix.close_process (in_ch,out_ch));
                 write_query { query_comp with q_status = QCanceled; q_end_time = Some end_time };
                 let run_comp' = { run_comp with cur_query = None; one_query_canceled = true } in
@@ -465,9 +469,8 @@ let apply_progress progress to_write =
     | None -> Config.internal_error "[main_ui.ml >> apply_progress] Should have a start time."
     | Some t -> int_of_float (Unix.time ()) - t
   in
-
-  Display_ui.send_output_command (Progression(cur_query_1.q_index,time,progress));
-  computation_status := { !computation_status with cur_run = Some { cur_run with cur_query = Some (cur_query_1,in_ch,out_ch) } }
+  computation_status := { !computation_status with cur_run = Some { cur_run with cur_query = Some (cur_query_1,in_ch,out_ch) } };
+  Display_ui.send_output_command (Progression(cur_query_1.q_index,time,progress))
 
 (* Starting the computation *)
 
@@ -500,7 +503,8 @@ let start_batch input_files batch_options =
           command_options = batch_options;
           b_status = RBIn_progress;
           b_start_time = Some (int_of_float (Unix.time ()));
-          b_end_time = None
+          b_end_time = None;
+          command_options_cmp = []
         }
       in
       (* We write the batch result *)
@@ -572,6 +576,23 @@ let end_batch batch_result =
 
 (* Executing the queries / runs / batch *)
 
+let rec command_options_of_distrib_settings settings = function
+  | [] ->
+      begin match settings with
+        | None -> [ Distributed (Some false)]
+        | Some set ->
+            [
+              Nb_jobs (Some set.Distribution.WLM.comp_nb_jobs);
+              Distributed (Some true);
+              Local_workers (Some set.Distribution.WLM.comp_local_workers);
+              Distant_workers (List.map (fun (host,path,workers) ->
+                (host,path,Some workers)
+              ) set.Distribution.WLM.comp_distant_workers)
+            ]
+      end
+  | ( Nb_jobs _ | Distant_workers _ | Distributed _ | Local_workers _)::q -> command_options_of_distrib_settings settings q
+  | op::q -> op::(command_options_of_distrib_settings settings q)
+
 let execute_query query_result =
   (* We send the start command *)
   Interface.current_query := query_result.q_index;
@@ -594,7 +615,7 @@ let execute_query query_result =
         else trace_equivalence_generic query_result.semantics proc1 proc2
     | _ -> Config.internal_error "[main_ui.ml >> execute_query] Currently, only trace equivalence is implemented."
 
-let listen_to_command in_ch translation_result =
+let listen_to_command in_ch out_ch translation_result =
   let fd_in_ch = Unix.descr_of_in_channel in_ch in
   let do_listen = ref true in
 
@@ -614,12 +635,13 @@ let listen_to_command in_ch translation_result =
             | _ -> Config.internal_error "[execution_manager.ml >> listen_to_command] Unexpected command"
         else
           (* Message from the local manager *)
-          match ((input_value in_ch):Distribution.WLM.output_command) with
+          match Distribution.WLM.get_output_command in_ch with
             | Distribution.WLM.Completed verif_result ->
                 (* The query was completed *)
                 let end_time = int_of_float (Unix.time ()) in
                 let cur_query = remove_current_query () in
-                let cur_query_1 = Interface.query_result_of_equivalence_result cur_query (translation_result verif_result) end_time in
+                let cur_query_0 = { cur_query with progression = PNot_defined } in
+                let cur_query_1 = Interface.query_result_of_equivalence_result cur_query_0 (translation_result verif_result) end_time in
                 write_query cur_query_1;
                 let running_time = match cur_query_1.q_end_time, cur_query_1.q_start_time with
                   | Some e, Some s -> e - s
@@ -628,8 +650,32 @@ let listen_to_command in_ch translation_result =
                 Display_ui.send_output_command (Query_ended(cur_query_1.name_query,cur_query_1.q_status,cur_query_1.q_index,running_time,cur_query_1.query_type));
                 do_listen := false
             | Distribution.WLM.Error_msg (err_msg,progress) -> apply_internal_error_in_query err_msg progress
-            | Distribution.WLM.Progress(progress,to_write) -> apply_progress progress to_write
-            | Distribution.WLM.Computed_settings distrib_settings -> ()
+            | Distribution.WLM.Progress(progress,to_write) ->
+                apply_progress progress to_write;
+                Distribution.WLM.send_input_command out_ch Distribution.WLM.Acknowledge
+            | Distribution.WLM.Computed_settings distrib_settings ->
+                let cur_batch = !computation_status.batch in
+                let cur_run = match !computation_status.cur_run with
+                  | None -> Config.internal_error "[execution_manager.ml >> listen_to_command] There should be a current run"
+                  | Some run ->
+                      let cur_query = match run.cur_query with
+                        | None -> Config.internal_error "[execution_manager.ml >> listen_to_command] There should be a current query"
+                        | Some (query,in_ch,out_ch) ->
+                            let progression = match distrib_settings with
+                              | None -> PSingleCore (PGeneration(0,!Config.core_factor))
+                              | Some set -> PDistributed(0,PGeneration(0,set.Distribution.WLM.comp_nb_jobs))
+                            in
+                            let query1 = { query with progression = progression} in
+                            write_query query1;
+                            Some (query1,in_ch,out_ch)
+                      in
+                      Some { run with cur_query = cur_query }
+                in
+                let cur_batch_1 = { cur_batch with command_options_cmp = command_options_of_distrib_settings distrib_settings cur_batch.command_options } in
+                write_batch cur_batch_1;
+                computation_status := { !computation_status with batch = cur_batch_1; cur_run = cur_run};
+                Distribution.WLM.send_input_command out_ch Distribution.WLM.Acknowledge
+
       ) available_fd_in_ch
     with Current_canceled -> do_listen := false
   done
@@ -674,5 +720,5 @@ let rec execute_batch () = match !computation_status.cur_run with
             let (in_ch,out_ch,transformation_result) = execute_query !query_1 in
             let run_comp_1 = { run_comp with cur_query = Some (!query_1,in_ch,out_ch); remaining_queries = query_list } in
             computation_status := { !computation_status with cur_run = Some run_comp_1 };
-            listen_to_command in_ch transformation_result;
+            listen_to_command in_ch out_ch transformation_result;
             execute_batch ()

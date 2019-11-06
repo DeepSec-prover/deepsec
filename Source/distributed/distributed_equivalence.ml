@@ -369,7 +369,8 @@ let trace_equivalence_determinate proc1 proc2 =
 
   let path_name = Filename.concat !Config.path_deepsec "deepsec_worker" in
   let (in_ch,out_ch) = Unix.open_process path_name in
-  Distrib.send out_ch Distrib.Local_manager;
+  output_value out_ch Distrib.Local_manager;
+  flush out_ch;
 
   let distrib_job =
     {
@@ -383,7 +384,7 @@ let trace_equivalence_determinate proc1 proc2 =
     }
   in
 
-  Distrib.send out_ch (Distribution.WLM.Execute_query distrib_job);
+  Distribution.WLM.send_input_command out_ch (Distribution.WLM.Execute_query distrib_job);
 
   let convert_result = function
     | RTrace_Equivalence (Some (is_left,trans_list)) ->
@@ -472,7 +473,8 @@ let trace_equivalence_generic semantics proc1 proc2 =
 
   let path_name = Filename.concat !Config.path_deepsec "deepsec_worker" in
   let (in_ch,out_ch) = Unix.open_process path_name in
-  Distrib.send out_ch Distrib.Local_manager;
+  output_value out_ch Distrib.Local_manager;
+  flush out_ch;
 
   let distrib_job =
     {
@@ -486,7 +488,7 @@ let trace_equivalence_generic semantics proc1 proc2 =
     }
   in
 
-  Distrib.send out_ch (Distribution.WLM.Execute_query distrib_job);
+  Distribution.WLM.send_input_command out_ch (Distribution.WLM.Execute_query distrib_job);
 
   let convert_result = function
     | RTrace_Equivalence (Some (is_left,trans_list)) ->

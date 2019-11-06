@@ -160,7 +160,8 @@ type batch_result =
     run_result_files : string list option;
     run_results : run_result list option;
     import_date : int option;
-    command_options : batch_options list
+    command_options : batch_options list;
+    command_options_cmp : batch_options list
   }
 
 (* Input Command *)
