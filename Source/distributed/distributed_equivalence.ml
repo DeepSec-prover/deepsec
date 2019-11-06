@@ -120,10 +120,19 @@ struct
           begin try
             Determinate_equivalence.import_equivalence_problem (fun () ->
               let job_list = ref [] in
+              Config.debug (fun () ->
+                Config.print_in_log ~always:true "Apply one transition\n"
+              );
               Determinate_equivalence.apply_one_transition_and_rules data.det_equiv_problem
                 (fun equiv_pbl_1 f_next_1 ->
+                  Config.debug (fun () ->
+                    Config.print_in_log ~always:true "Export\n"
+                  );
                   let (equiv_pbl_2,recipe_subst) = Determinate_equivalence.export_equivalence_problem equiv_pbl_1 in
                   job_list := { job with data_equiv = DDeterminate { det_equiv_problem = equiv_pbl_2; det_recipe_substitution = recipe_subst }; variable_counter = Variable.get_counter (); name_counter = Name.get_counter (); number_of_attacker_name = Symbol.get_number_of_attacker_name () } :: !job_list;
+                  Config.debug (fun () ->
+                    Config.print_in_log ~always:true "Next\n"
+                  );
                   f_next_1 ()
                 )
                 (fun () -> ());

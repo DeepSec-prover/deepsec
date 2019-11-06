@@ -96,6 +96,8 @@ module DF : sig
 
   val rename_and_instantiate : t -> t
 
+  val instantiate : t -> t
+
   val iter : (basic_fact -> unit) -> t -> unit
 
   val display : t -> string
@@ -103,6 +105,8 @@ module DF : sig
   val debug : string -> t -> unit
 
   val debug_same_structure : string -> t -> t -> unit
+
+  val debug_link_with_SLink : t -> unit
 end
 
 (** {2 {% The set of deduction facts \texorpdfstring{$\Solved$}{SDF} %}}*)
@@ -149,6 +153,8 @@ module K : sig
   exception Uniformity_falsified
 
   val consequence_uniform_recipe : t -> Formula.T.t -> recipe -> Formula.T.t * term * int
+
+  val debug_check_link_with_SLink : t -> unit
 end
 
 module IK : sig
@@ -203,6 +209,8 @@ module IK : sig
   val transfer_incremented_knowledge_into_knowledge : bool -> K.t -> t -> K.t * t * (int * int) list * (unit -> unit)
 
   val transfer_incremented_knowledge_into_knowledge_no_rename : K.t -> t -> K.t * t * (int * int) list * (unit -> unit)
+
+  val debug_check_link_with_SLink : t -> unit
 end
 
 (** {2 {% The set of unsolved formulas \texorpdfstring{$\USolved$}{UF} %}}*)
@@ -267,4 +275,10 @@ module UF : sig
   val normalise_deductions : t -> t
 
   val rename_and_instantiate : t -> t
+
+  (** {3 Display} *)
+
+  val display : t -> string
+
+  val debug_check_link_with_SLink : t -> unit
 end

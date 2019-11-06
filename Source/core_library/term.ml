@@ -846,6 +846,26 @@ module Term = struct
     | PatVar v -> Variable.display out v
     | PatEquality t -> display out t
     | PatTuple(_,args) -> Printf.sprintf "%s%s%s" (langle out) (display_list (display_pattern out) "," args) (rangle out)
+
+  (*********** Debug ************)
+
+  let rec debug_link_with_SLink = function
+    | Var { link = TLink t; _ } -> debug_link_with_SLink t
+    | Var { link = SLink; _} -> ()
+    | Var ({ link = NoLink; _ } as v) ->
+        v.link <- SLink;
+        Variable.currently_linked := v :: !Variable.currently_linked
+    | Var _ -> Config.internal_error "[term.ml >> Term.debug_link_term_with_SLink] Should not apply the debug term with VLink or XLink"
+    | Name _ -> ()
+    | Func(_,args) -> List.iter debug_link_with_SLink args
+
+  let rec debug_check_link_with_SLink = function
+    | Var { link = TLink t; _ } -> debug_check_link_with_SLink t
+    | Var { link = SLink; _} -> ()
+    | Var { link = NoLink; _ } -> raise Not_found
+    | Var _ -> Config.internal_error "[term.ml >> Term.debug_check_link_with_SLink] Should not apply the debug term with VLink or XLink"
+    | Name _ -> ()
+    | Func(_,args) -> List.iter debug_check_link_with_SLink args
 end
 
 (*************************************

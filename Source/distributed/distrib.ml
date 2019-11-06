@@ -693,7 +693,7 @@ module Distrib = functor (Task:Evaluator_task) -> struct
                 | WE.Error_msg err -> send_error err
                 | WE.Progress(prog,to_write) ->
                     current_progression := PSingleCore prog;
-                    send_output_command (Progress(PSingleCore prog,to_write))
+                    send_output_command_ack (Progress(PSingleCore prog,to_write))
                 | _ -> send_error "[distrib.ml >> evaluate_jobs] Unexpected output command from evaluator"
           ) available_fd_in_ch
         done

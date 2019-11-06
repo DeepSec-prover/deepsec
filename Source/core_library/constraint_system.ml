@@ -290,6 +290,7 @@ let instantiate csys =
   );
 
   { csys with
+    deduction_facts = DF.instantiate csys.deduction_facts;
     knowledge = K.instantiate csys.knowledge;
     incremented_knowledge = IK.instantiate csys.incremented_knowledge;
     original_substitution = List.map (fun (v,t) -> (v,Term.instantiate t)) csys.original_substitution
@@ -300,6 +301,7 @@ let display_constraint_system csys =
   acc := !acc ^ (Printf.sprintf "Size frame: %d\n" csys.size_frame);
   acc := !acc ^ (Printf.sprintf "%s" (DF.display csys.deduction_facts));
   acc := !acc ^ (Printf.sprintf "%s" (IK.display csys.knowledge csys.incremented_knowledge));
+  acc := !acc ^ (Printf.sprintf "%s" (UF.display csys.unsolved_facts));
   acc := !acc ^ (Printf.sprintf "Eq_term = %s\n" (Formula.T.display Display.Terminal csys.eq_term));
   acc := !acc ^ (Printf.sprintf "Eq_uni = %s\n" (Formula.T.display Display.Terminal csys.eq_uniformity));
   acc := !acc ^ (Printf.sprintf "Orig_subst = %s\n" (Display.display_list (fun (x,t) ->
@@ -310,8 +312,20 @@ let display_constraint_system csys =
     ) "; " csys.original_names));
   !acc
 
+let debug_check_origination msg csys =
+  try
+    Variable.auto_cleanup_with_exception (fun () ->
+      DF.debug_link_with_SLink csys.deduction_facts;
+      K.debug_check_link_with_SLink csys.knowledge;
+      IK.debug_check_link_with_SLink csys.incremented_knowledge;
+      UF.debug_check_link_with_SLink csys.unsolved_facts;
+      List.iter (fun (_,t) -> Term.debug_check_link_with_SLink t) csys.original_substitution
+    )
+  with Not_found -> Config.internal_error (msg^" Origination incorrect")
+
 let debug_on_constraint_system msg csys =
   DF.debug msg csys.deduction_facts;
+  debug_check_origination msg csys;
   if not (Formula.T.debug_no_linked_variables csys.eq_term)
   then Config.internal_error (msg^" Variables in eq_term should not be linked.");
   if not (Formula.T.debug_no_linked_variables csys.eq_uniformity)
@@ -1357,7 +1371,7 @@ module Rule = struct
         then Config.internal_error "[constraint_system.ml >> sat] Variables in eq_term should not be linked.";
         if not (Formula.T.debug_no_linked_variables csys.eq_uniformity)
         then Config.internal_error "[constraint_system.ml >> sat] Variables in eq_uniformity should not be linked.";
-
+        Config.print_in_log (display_constraint_system csys)
       ) csys_set.set
     );
 
@@ -1740,6 +1754,11 @@ module Rule = struct
       | Func(f,_) when f.cat = Tuple -> PTuple f
       | Var { link = TLink t; _ } -> explore t
       | Var v ->
+          Config.debug (fun () ->
+            try ignore (DF.find_term df (Var v)) with Not_found ->
+              Config.print_in_log (Printf.sprintf "Error:\nDF = %s\ndfact term = %s\nVariable = %s\n" (DF.display df) (Term.display Display.Terminal dfact.df_term) (Term.display Display.Terminal (Var v)));
+              Config.internal_error "[constraint_system >> Rule.extract_pattern_of_deduction_fact] Should be the recipe"
+          );
           let x = DF.find_term df (Var v) in
           PVar x
       | _ -> PTerm
@@ -1768,6 +1787,9 @@ module Rule = struct
           begin
             try
               List.iter (fun csys' ->
+                Config.debug (fun () ->
+                  Config.print_in_log (Printf.sprintf "*** Constraint system:\n%s" (display_constraint_system csys'))
+                );
                 let dfact_to_check = match UF.pop_deduction_fact_to_check_for_pattern csys'.unsolved_facts with
                   | Some df -> df
                   | _ -> Config.internal_error "[constraint_system.ml >> find_application_data_constructor] The should be a deduction fact to check for pattern."
@@ -1790,6 +1812,7 @@ module Rule = struct
     Config.debug (fun () ->
       Config.print_in_log (Printf.sprintf "- Rule split data constructor : Nb csys = %d\n" (List.length csys_set.set));
       Set.debug_check_structure "[Split data constructor]" csys_set;
+      List.iter (fun csys -> Config.print_in_log (display_constraint_system csys)) csys_set.set
     );
     match csys_set.set with
     | [] -> f_next ()
@@ -1798,8 +1821,10 @@ module Rule = struct
         match UF.pop_deduction_fact_to_check_for_pattern csys.unsolved_facts with
           | None -> f_continuation csys_set f_next
           | Some dfact ->
+              Config.debug (fun () -> Config.print_in_log "find_application_data_constructor\n");
               match find_application_data_constructor csys dfact q_csys with
                 | ADC_Variable x ->
+                    Config.debug (fun () -> Config.print_in_log "ADC_Variable\n");
                     let acc_no_formula = ref [] in
                     let acc_solved = ref [] in
                     let acc_unsolved = ref [] in
@@ -1811,8 +1836,9 @@ module Rule = struct
                             let tmp = !Variable.currently_linked in
                             Variable.currently_linked := [];
 
+                            Config.debug (fun () -> Config.print_in_log "DF.get_term\n");
                             let t_bfact = DF.get_term csys'.deduction_facts x in
-
+                            Config.debug (fun () -> Config.print_in_log "After DF.get_term\n");
                             try
                               Term.unify t_bfact dfact'.df_term;
 
@@ -1839,6 +1865,7 @@ module Rule = struct
                     ) csys_set.set;
 
                     let f_continuation_pos csys_set_1 f_next_1 =
+                      Config.debug (fun () -> Config.print_in_log "f_continuation_pos");
                       let csys_set_2 =
                         { csys_set_1 with set =
                             List.rev_map (fun csys ->
@@ -1853,6 +1880,7 @@ module Rule = struct
 
                     sat_equality_formula ~universal:false f_continuation_pos f_continuation_neg { satf_eq_recipe = csys_set.eq_recipe; satf_no_formula = !acc_no_formula; satf_solved = !acc_solved; satf_unsolved = !acc_unsolved } f_next
                 | ADC_Split(same_pattern_csys_list,diff_pattern_csys_list) ->
+                    Config.debug (fun () -> Config.print_in_log "ADC_Split\n");
                     split_data_constructor f_continuation { csys_set with set = same_pattern_csys_list } (fun () ->
                       split_data_constructor f_continuation { csys_set with set = diff_pattern_csys_list } f_next
                     )

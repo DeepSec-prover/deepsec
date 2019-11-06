@@ -59,7 +59,16 @@ let generate_attack_trace csys =
 (*** Import / Export of equivalence problem ***)
 
 let export_equivalence_problem equiv_pbl =
+  Config.debug (fun () ->
+    Constraint_system.Set.debug_check_structure "[determinate_equivalence.ml >> export_equivalence_problem]" equiv_pbl.csys_set;
+    List.iter (fun csys -> Constraint_system.debug_on_constraint_system "[determinate_equivalence.ml >> export_equivalence_problem]" csys) equiv_pbl.csys_set.Constraint_system.set
+  );
   let equiv_pbl' = { equiv_pbl with csys_set = { equiv_pbl.csys_set with Constraint_system.set = List.rev_map Constraint_system.instantiate equiv_pbl.csys_set.Constraint_system.set } } in
+
+  Config.debug (fun () ->
+    Constraint_system.Set.debug_check_structure "[determinate_equivalence.ml >> export_equivalence_problem >> After]" equiv_pbl'.csys_set;
+    List.iter (fun csys -> Constraint_system.debug_on_constraint_system "[determinate_equivalence.ml >> export_equivalence_problem >> After]" csys) equiv_pbl'.csys_set.Constraint_system.set
+  );
 
   let recipe_subst = ref [] in
 
@@ -84,6 +93,10 @@ let export_equivalence_problem equiv_pbl =
   equiv_pbl', !recipe_subst
 
 let import_equivalence_problem f_next equiv_pbl recipe_subst =
+  Config.debug (fun () ->
+    Constraint_system.Set.debug_check_structure "[determinate_equivalence.ml >> import_equivalence_problem]" equiv_pbl.csys_set;
+    List.iter (fun csys -> Constraint_system.debug_on_constraint_system "[determinate_equivalence.ml >> import_equivalence_problem]" csys) equiv_pbl.csys_set.Constraint_system.set
+  );
   Recipe_Variable.auto_cleanup_with_reset_notail (fun () ->
     (* We link the recipe substitution *)
     List.iter (fun (x,r) -> Recipe_Variable.link_recipe x r) recipe_subst;

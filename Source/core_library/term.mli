@@ -359,6 +359,12 @@ module Term : sig
   val display : Display.output -> term -> string
 
   val display_pattern : Display.output -> pattern -> string
+
+  (** {3 Debug} *)
+
+  val debug_link_with_SLink : term -> unit
+
+  val debug_check_link_with_SLink : term -> unit
 end
 
 (** {2 Recipe} *)

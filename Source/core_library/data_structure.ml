@@ -27,6 +27,18 @@ type deduction_formula =
 
 type equality_formula = (variable * term) list
 
+let display_deduction_fact ded_fact =
+  Printf.sprintf "%s |- %s" (Recipe.display Display.Terminal ded_fact.df_recipe) (Term.display Display.Terminal ded_fact.df_term)
+
+let display_equations eq =
+  Display.display_list (fun (x,t) -> (Variable.display Display.Terminal x)^" = "^(Term.display Display.Terminal t)) (" "^(Display.wedge Display.Terminal)^" ") eq
+
+let display_deduction_formula ded_form =
+  Printf.sprintf "%s <= %s" (display_deduction_fact ded_form.df_head) (display_equations ded_form.df_equations)
+
+let display_equality_formula eq =
+  Printf.sprintf "[%s] <= %s" (Display.eqf Display.Terminal) (display_equations eq)
+
 (************************)
 
 let instantiate_deduction_formula_to_fact form =
@@ -381,6 +393,11 @@ module DF = struct
       (i,List.map (fun bfact -> { bfact with bf_term = Term.rename_and_instantiate bfact.bf_term }) bfact_list)
     ) df
 
+  let instantiate (df:t) =
+    List.map (fun (i,bfact_list) ->
+      (i,List.map (fun bfact -> { bfact with bf_term = Term.instantiate bfact.bf_term }) bfact_list)
+    ) df
+
   (******* Function for debuging ******)
 
   let debug str (df:t) =
@@ -419,6 +436,13 @@ module DF = struct
           explore q1 q2
     in
     explore df1 df2
+
+  let debug_link_with_SLink (df:t) =
+    List.iter (fun (_,bfactl) ->
+      List.iter (fun bfact ->
+        Term.debug_link_with_SLink bfact.bf_term
+      ) bfactl
+    ) df
 end
 
 (*********************************
@@ -686,6 +710,13 @@ module K = struct
     in
 
     consequence eq_uni r
+
+  (* Debug *)
+
+  let debug_check_link_with_SLink kb =
+    for i = 0 to kb.size - 1 do
+      Term.debug_check_link_with_SLink kb.data.(i).term
+    done
 end
 
 (* Incremented knowledge base *)
@@ -1144,6 +1175,11 @@ module IK = struct
     List.iter (fun v -> v.link_r <- RNoLink) !accu_variables;
 
     t
+
+  (* Debug *)
+
+  let debug_check_link_with_SLink ikb =
+    List.iter (fun entry -> Term.debug_check_link_with_SLink entry.term) ikb.data
 end
 
 (************************
@@ -1167,6 +1203,26 @@ module UF = struct
       ded_formula : state_ded_form;
       eq_formula : state_eq_form
     }
+
+  (**** Display functions ****)
+
+  let display_state_eq_formula = function
+    | EqNone -> Display.emptyset Display.Terminal
+    | EqUnsolved eq -> display_equality_formula eq
+
+  let display_state_ded_form = function
+    | DedPattern (dfactl1, dfactl2) ->
+        Printf.sprintf "Pattern: 1-- %s 2-- %s" (Display.display_list display_deduction_fact "; " dfactl1) (Display.display_list display_deduction_fact "; " dfactl2)
+    | DedSolved dfactl ->
+        Printf.sprintf "Solved: %s" (Display.display_list display_deduction_fact "; " dfactl)
+    | DedUnsolved dforml ->
+        Printf.sprintf "Unsolved: %s" (Display.display_list display_deduction_formula "; " dforml)
+    | DedNone -> Display.emptyset Display.Terminal
+
+  let display  uf =
+    Printf.sprintf "UF :\n- Ded: %s\n- Eq: %s\n"
+      (display_state_ded_form uf.ded_formula)
+      (display_state_eq_formula uf.eq_formula)
 
   (******** Generation ********)
 
@@ -1370,4 +1426,16 @@ module UF = struct
           }
       | DedNone -> uf
       | _ -> Config.internal_error "[data_structure.ml >> UF.rename_and_instantiate] Unexpected case."
+
+  (* Debug *)
+
+  let debug_check_link_with_SLink uf =
+    begin match uf.ded_formula with
+      | DedPattern(dfact1,dfact2) ->
+          List.iter (fun dfact -> Term.debug_check_link_with_SLink dfact.df_term) dfact1;
+          List.iter (fun dfact -> Term.debug_check_link_with_SLink dfact.df_term) dfact2
+      | DedSolved dfactl ->
+          List.iter (fun dfact -> Term.debug_check_link_with_SLink dfact.df_term) dfactl
+      | _ -> ()
+    end
 end
