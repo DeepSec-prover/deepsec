@@ -7,17 +7,22 @@ let debug_activated = false
 let log_file =
   if debug_activated
   then
-    let pid = Unix.getpid () in
-    let local_time = Unix.localtime (Unix.time()) in
-    let path =
-      Unix.(Printf.sprintf "log/log_%d_%d_%d_%dh%dm%ds_%d.txt"
-      local_time.tm_year local_time.tm_mon local_time.tm_mday
-      local_time.tm_hour local_time.tm_min local_time.tm_sec
-      pid)
-    in
-    let exe_path = Filename.dirname Sys.executable_name in
-    let file = Filename.concat exe_path path in
-    open_out file
+    begin
+      let exe_path = Filename.dirname Sys.executable_name in
+      let log_dir = Filename.concat exe_path "log" in
+      if not (Sys.file_exists log_dir)
+      then Unix.mkdir log_dir 0o770;
+      let pid = Unix.getpid () in
+      let local_time = Unix.localtime (Unix.time()) in
+      let path =
+        Unix.(Printf.sprintf "log/log_%d_%d_%d_%dh%dm%ds_%d.txt"
+        local_time.tm_year local_time.tm_mon local_time.tm_mday
+        local_time.tm_hour local_time.tm_min local_time.tm_sec
+        pid)
+      in
+      let file = Filename.concat exe_path path in
+      open_out file
+    end
   else stdout
 
 let internal_error msg =
