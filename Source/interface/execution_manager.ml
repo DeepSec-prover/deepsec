@@ -604,7 +604,9 @@ let end_batch batch_result =
 (* Executing the queries / runs / batch *)
 
 let command_options_of_distrib_settings settings options =
-  let semantics = ref false in
+  let semantics = ref Private in
+  let por = ref true in
+  let round_timer = ref !Config.round_timer in
   let rec explore = function
     | [] ->
         let distrib = match settings with
@@ -619,13 +621,17 @@ let command_options_of_distrib_settings settings options =
                 ) set.Distribution.WLM.comp_distant_workers)
               ]
         in
-        if !semantics
-        then distrib
-        else (Default_semantics Private)::distrib
+        (Default_semantics !semantics)::(POR !por)::(Round_timer !round_timer)::distrib
     | ( Nb_jobs _ | Distant_workers _ | Distributed _ | Local_workers _)::q -> explore q
-    | (Default_semantics _) as op :: q ->
-        semantics := true;
+    | (Default_semantics sem) as op :: q ->
+        semantics := sem;
         op::(explore q)
+    | POR b :: q ->
+        por := b;
+        (POR b)::(explore q)
+    | Round_timer n :: q->
+        round_timer := n;
+        (Round_timer n)::(explore q)
     | op::q -> op::(explore q)
   in
   explore options
