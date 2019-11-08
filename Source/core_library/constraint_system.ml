@@ -1891,6 +1891,10 @@ module Rule = struct
     Config.debug (fun () ->
       Config.print_in_log (Printf.sprintf "- Rule equality_knowledge_base : Nb csys = %d\n" (List.length csys_set.set));
       Set.debug_check_structure "[Equality knowledge base]" csys_set;
+      List.iter (fun csys ->
+        debug_on_constraint_system "[equality_knowledge_base]" csys;
+        Config.print_in_log (display_constraint_system csys)
+      ) csys_set.set
     );
     match csys_set.set with
     | [] -> f_next ()

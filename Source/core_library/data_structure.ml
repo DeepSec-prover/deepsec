@@ -754,6 +754,8 @@ module IK = struct
 
   let empty = { index_counter = 0; type_rec = 0; data = []}
 
+  let empty_with_type_rec_one = { index_counter = 0; type_rec = 1; data = []}
+
   let rec prepare_names_for_transfer cleanup_name index = function
     | [] -> ()
     | elt::q ->

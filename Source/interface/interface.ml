@@ -504,7 +504,7 @@ let apply_transition semantics saturate csys transition = match transition with
 let execute_process semantics js_init_proc js_trace =
 
   let init_conf = { size_frame = 0; frame = []; process = js_init_proc } in
-  let init_csys = Constraint_system.empty init_conf in
+  let init_csys = { (Constraint_system.empty init_conf) with Constraint_system.incremented_knowledge = Data_structure.IK.empty_with_type_rec_one } in
 
   let rec explore_trace csys = function
     | [] -> []

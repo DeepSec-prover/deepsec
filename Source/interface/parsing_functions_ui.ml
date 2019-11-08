@@ -333,13 +333,13 @@ let atomic_data_of json =
   let symbol_settings1 =
     { symbol_settings with
       Symbol.nb_symb = int_of (member "number_symbols" meta_json);
-      Symbol.nb_a = int_of (member "number_of_attacker_names" meta_json)
+      Symbol.nb_a = int_of (member "number_attacker_names" meta_json)
     }
   in
 
   let query_setting =
     {
-      var_set = int_of (member "number_of_variables" meta_json);
+      var_set = int_of (member "number_variables" meta_json);
       name_set = int_of (member "number_names" meta_json);
       symbol_set = symbol_settings1
     }
@@ -653,5 +653,5 @@ let input_command_of json = match string_of (member "command" json) with
   | "start_display_trace" -> Display_trace (string_of (member "query_file" json))
   | "die" -> Die
   | "next_step" -> DTNext_step (detail_of json)
-  | "previous_step" -> DTNext_step (detail_of json)
+  | "previous_step" -> DTPrev_step (detail_of json)
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> input_command_of] Unknown command."

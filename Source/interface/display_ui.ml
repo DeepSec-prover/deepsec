@@ -296,10 +296,10 @@ let record_from_signature assoc =
 let of_meta () =
   let setting = Term.Symbol.get_settings () in
   JObject [
-    "number_of_symbols", JInt setting.Term.Symbol.nb_symb;
-    "number_of_attacker_names", JInt setting.Term.Symbol.nb_a;
-    "number_of_variables", JInt (Term.Variable.get_counter ());
-    "number_of_names", JInt (Term.Name.get_counter ())
+    "number_symbols", JInt setting.Term.Symbol.nb_symb;
+    "number_attacker_names", JInt setting.Term.Symbol.nb_a;
+    "number_variables", JInt (Term.Variable.get_counter ());
+    "number_names", JInt (Term.Name.get_counter ())
   ]
 
 let of_atomic_association assoc =

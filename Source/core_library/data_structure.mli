@@ -167,6 +167,8 @@ module IK : sig
   (** The empty set *)
   val empty : t
 
+  val empty_with_type_rec_one : t
+
   val add : t -> deduction_fact -> t
 
   val get_next_index : t -> int

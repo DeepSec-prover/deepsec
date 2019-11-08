@@ -4,7 +4,7 @@ let _ =
   Config.running_api := true;
 
   Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
-  Sys.set_signal Sys.sigint (Sys.Signal_handle (fun _ -> Execution_manager.cancel_batch ()));
+
 
   Execution_manager.catch_init_internal_error (fun () ->
     (* Initialisation of random generator *)
@@ -23,6 +23,7 @@ let _ =
 
     match in_cmd with
       | Start_run (input_files,batch_options) ->
+          Sys.set_signal Sys.sigint (Sys.Signal_handle (fun _ -> Execution_manager.cancel_batch ()));
           Execution_manager.catch_batch_internal_error (fun () ->
             Execution_manager.set_up_batch_options batch_options;
             (* Generate database if not existent *)

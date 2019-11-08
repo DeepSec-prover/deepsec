@@ -61,16 +61,18 @@ let display_trace json_file =
   let json = Parsing_functions_ui.parse_json_from_file full_path in
 
   (* Retrieve the query result *)
-  Printf.printf "Query result\n";
   let query_result = Parsing_functions_ui.query_result_of json_file json in
 
-  Printf.printf "Checking status\n";
   match query_result.q_status with
     | QCompleted (Some attack_trace) ->
         let process = List.nth query_result.processes (attack_trace.id_proc - 1) in
         let transitions = attack_trace.transitions in
         let semantics = query_result.semantics in
         let association = query_result.association in
+
+        (* We reset the signature *)
+        Interface.setup_signature query_result;
+        Rewrite_rules.initialise_all_skeletons ();
 
         let conf_csys_list = Interface.execute_process semantics process transitions in
         let conf_list = List.map (fun csys -> csys.Constraint_system.additional_data) conf_csys_list in
