@@ -1,6 +1,26 @@
+open Extensions
 open Types
 open Types_ui
 open Term
+
+(*** Parsing into JSON ***)
+
+let parse_json_from_file path =
+
+  if not (Sys.file_exists path)
+  then raise (Standard_error (File_Not_Found path));
+
+  let channel_in = open_in path in
+  let lexbuf = Lexing.from_channel channel_in in
+
+  let json = Grammar_ui.main Lexer_ui.token lexbuf in
+
+  close_in channel_in;
+  json
+
+let parse_json_from_string str =
+  let lexbuf = Lexing.from_string str in
+  Grammar_ui.main Lexer_ui.token lexbuf
 
 (*** Basic function ***)
 
@@ -8,7 +28,7 @@ let member label = function
   | JObject l ->
       begin
         try List.assoc label l
-        with Not_found -> Config.internal_error "[parsing_functions_ui.ml >> member] Label not belonging to json object."
+        with Not_found -> Config.internal_error (Printf.sprintf "[parsing_functions_ui.ml >> member] Label %s not belonging to json object." label)
       end
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> member] Expecting a json object."
 
@@ -39,18 +59,18 @@ let int_of = function
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> int_of] Wrong structure."
 
 let int_auto_of = function
-| JInt i -> Some i
-| JString "auto" -> None
-| _ -> Config.internal_error "[parsing_functions_ui.ml >> int_auto_of] Wrong structure."
+  | JInt i -> Some i
+  | JString "auto" -> None
+  | _ -> Config.internal_error "[parsing_functions_ui.ml >> int_auto_of] Wrong structure."
 
 let bool_of = function
   | JBool b -> b
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> bool_of] Wrong structure."
 
 let bool_auto_of = function
-| JBool i -> Some i
-| JString "auto" -> None
-| _ -> Config.internal_error "[parsing_functions_ui.ml >> bool_auto_of] Wrong structure."
+  | JBool i -> Some i
+  | JString "auto" -> None
+  | _ -> Config.internal_error "[parsing_functions_ui.ml >> bool_auto_of] Wrong structure."
 
 let bool_option_of = function
   | None -> false
@@ -80,6 +100,9 @@ let rec term_of assoc json = match string_of (member "type" json) with
         | _ -> Config.internal_error "[parsing_functions_ui.ml >> term_of] Should be a function symbol."
       in
       Func(symbol,args)
+  | "Attacker" ->
+      let label = string_of (member "label" json) in
+      Func(Symbol.get_attacker_name label,[])
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> term_of] Wrong value for type label."
 
 let rec pattern_of assoc json = match string_of (member "type" json) with
@@ -110,6 +133,9 @@ let rec recipe_of assoc json = match string_of (member "type" json) with
         | _ -> Config.internal_error "[parsing_functions_ui.ml >> recipe_of] Should be a function symbol."
       in
       RFunc(symbol,args)
+  | "Attacker" ->
+      let label = string_of (member "label" json) in
+      RFunc(Symbol.get_attacker_name label,[])
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> recipe_of] Wrong value for type label."
 
 (*** Atomic and association data ***)
@@ -447,7 +473,7 @@ let progression_of json =
         else PDistributed(round,PGeneration(jobs_created,minimum_jobs))
 
 let query_result_of file_name json =
-  let (assoc,setting) = atomic_data_of json in
+  let (assoc,setting) = atomic_data_of (member "atomic_data" json) in
   let batch_file = string_of (member "batch_file" json) in
   let run_file = string_of (member "run_file" json) in
   let index = int_of (member "index" json) in
@@ -604,6 +630,14 @@ let batch_result_of file_name json =
     debug = Config.debug_activated
   }
 
+(*** Simulator ***)
+
+let detail_of json = match string_of (member "detail" json) with
+  | "standard" -> DTStandard
+  | "io_only" -> DTIO_only
+  | "full" -> DTFull
+  | _ -> Config.internal_error "[parsing_functions_ui.ml >> detail_of] Unexpected argument."
+
 (*** Commands ***)
 
 let input_command_of json = match string_of (member "command" json) with
@@ -616,4 +650,8 @@ let input_command_of json = match string_of (member "command" json) with
   | "cancel_batch" | "exit" -> Cancel_batch
   | "get_config" -> Get_config
   | "set_config" -> Set_config (string_of (member "output_dir" json))
+  | "start_display_trace" -> Display_trace (string_of (member "query_file" json))
+  | "die" -> Die
+  | "next_step" -> DTNext_step (detail_of json)
+  | "previous_step" -> DTNext_step (detail_of json)
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> input_command_of] Unknown command."

@@ -343,25 +343,27 @@ let _ =
     end
   else
     begin
-      (* Parse the command line *)
-      Arg.parse (Arg.align speclist) (fun file -> all_files := !all_files @ [file]) (Printf.sprintf "Use %s to display help." (coloured_terminal_text Black [Bold] "deepsec --help"));
+      Execution_manager.catch_init_internal_error (fun () ->
+        (* Parse the command line *)
+        Arg.parse (Arg.align speclist) (fun file -> all_files := !all_files @ [file]) (Printf.sprintf "Use %s to display help." (coloured_terminal_text Black [Bold] "deepsec --help"));
 
-      print_string header;
-      print_string "\n";
+        print_string header;
+        print_string "\n";
 
-      complete_options ();
-      Execution_manager.set_up_batch_options !all_options;
+        complete_options ();
+        Execution_manager.set_up_batch_options !all_options;
 
-      Sys.set_signal Sys.sigint (Sys.Signal_handle (fun _ -> Execution_manager.cancel_batch ()));
+        Sys.set_signal Sys.sigint (Sys.Signal_handle (fun _ -> Execution_manager.cancel_batch ()));
 
-      (* Generate database if not existent *)
-      if not (Sys.file_exists !Config.path_database)
-      then Unix.mkdir !Config.path_database 0o770;
+        (* Generate database if not existent *)
+        if not (Sys.file_exists !Config.path_database)
+        then Unix.mkdir !Config.path_database 0o770;
 
-      (* Batch started *)
-      Execution_manager.start_batch !all_files !all_options;
+        (* Batch started *)
+        Execution_manager.start_batch !all_files !all_options;
 
-      Execution_manager.catch_batch_internal_error (fun () ->
-        Execution_manager.execute_batch ()
+        Execution_manager.catch_batch_internal_error (fun () ->
+          Execution_manager.execute_batch ()
+        )
       )
     end

@@ -84,6 +84,8 @@ module Symbol : sig
 
   val fresh_attacker_name : unit -> symbol
 
+  val get_attacker_name : string -> symbol
+
   (** {3 Symbol testing} *)
 
   (** [is_destructor f] returns true iff [f] is a destructor. *)

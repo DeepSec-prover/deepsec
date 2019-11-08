@@ -61,6 +61,8 @@ let rec of_term assoc = function
   | Name n ->
       let id  = get_name_id assoc n in
       JObject [ "type", JString "Atomic"; "id", JInt id]
+  | Func(f,[]) when f.represents = AttackerPublicName ->
+      JObject [ "type", JString "Attacker"; "label", JString f.label_s ]
   | Func(f,args) ->
       let id = get_symbol_id assoc f in
       JObject [
@@ -71,6 +73,8 @@ let rec of_term assoc = function
 
 let rec of_recipe assoc = function
   | CRFunc(_,r) -> of_recipe assoc r
+  | RFunc(f,[]) when f.represents = AttackerPublicName ->
+      JObject [ "type", JString "Attacker"; "label", JString f.label_s ]
   | RFunc(f,args) ->
       let id = get_symbol_id assoc f in
       JObject [
@@ -259,6 +263,7 @@ let of_atomic_symbol assoc f =
   let jlist = [
     "type", JString "Symbol";
       "label", JString f.label_s;
+      "index", JInt f.index_s;
       "arity", JInt f.arity;
       "category", of_category assoc f.cat;
       "representation", JString (match f.represents with UserName -> "UserName" | UserDefined -> "UserDefined" | _ -> "Attacker")
@@ -464,7 +469,7 @@ let of_run_batch_status_for_command = function
 
 let of_output_command = function
   (* Errors *)
-  | Init_internal_error err -> JObject [ "command", JString "init_internal_error"; "error_msg", JString (String.escaped err) ]
+  | Init_internal_error (err,b) -> JObject [ "command", JString "init_error"; "is_internal", JBool b; "error_msg", JString (String.escaped err) ]
   | Batch_internal_error err -> JObject [ "command", JString "batch_internal_error"; "error_msg", JString (String.escaped err) ]
   | User_error err_list ->
       JObject [
@@ -519,10 +524,22 @@ let of_output_command = function
   | Query_canceled file -> JObject [ "command", JString "query_canceled"; "file", JString file ]
   | Run_canceled file -> JObject [ "command", JString "run_canceled"; "file", JString file ]
   | Batch_canceled -> JObject [ "command", JString "batch_canceled"]
+  (* Simulator: Display_of_traces *)
+  | DTNo_attacker_trace -> JObject [ "command", JString "no_attack_trace" ]
+  | DTCurrent_step (assoc,conf,step) ->
+      let assoc_ref = ref assoc in
+      JObject [
+        "command", JString "current_step";
+        "process", of_process assoc_ref conf.process;
+        "frame", JList (List.map (of_term assoc_ref) conf.frame);
+        "current_action", JInt step
+      ]
 
 let print_output_command = function
   (* Errors *)
-  | Init_internal_error err
+  | Init_internal_error (err,false) ->
+      Printf.printf "\n%s: %s\n%!" (Display.coloured_terminal_text Red [Underline;Bold] "Error") err
+  | Init_internal_error (err,true)
   | Batch_internal_error err
   | Query_internal_error (err,_)->
       Printf.printf "\n%s: %s\nPlease report the bug to vincent.cheval@loria.fr with the input file and output\n%!" (Display.coloured_terminal_text Red [Underline;Bold] "Internal Error") err
@@ -587,16 +604,14 @@ let print_output_command = function
   | Query_canceled _
   | Run_canceled _ -> Config.internal_error "[print_output_command] Should not occur"
   | Batch_canceled -> Printf.printf "\n%s\n" (coloured_terminal_text Red [Bold] "Verification canceled !")
+  (* Simulator: Display_of_traces *)
+  | DTNo_attacker_trace | DTCurrent_step _ -> Config.internal_error "[print_output_command] SHould not occur in command mode."
 
 (* Sending command *)
 
-let stdout_mutex = Mutex.create ()
-
 let send_command json_str =
-  Mutex.lock stdout_mutex;
   output_string stdout (json_str^"\n");
-  flush stdout;
-  Mutex.unlock stdout_mutex
+  flush stdout
 
 let send_output_command out_cmd =
   if !Config.running_api

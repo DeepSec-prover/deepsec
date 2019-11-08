@@ -452,6 +452,8 @@ module Symbol = struct
 
   let special_constructor : (int,symbol) Hashtbl.t = Hashtbl.create 7
 
+  let attacker_names : (string,symbol) Hashtbl.t = Hashtbl.create 7
+
   let get_number_of_attacker_name () = !number_of_attacker_name
 
   let empty_signature () =
@@ -593,6 +595,14 @@ module Symbol = struct
     incr number_of_constructors;
     symb
 
+  let get_attacker_name str =
+    try
+      Hashtbl.find attacker_names str
+    with Not_found ->
+      let c = { label_s = str; arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
+      incr accumulator_nb_symb;
+      c
+      
   (******** Display function *******)
 
   let reg_proj = Str.regexp "proj_{\\([0-9]+\\),\\([0-9]+\\)}"

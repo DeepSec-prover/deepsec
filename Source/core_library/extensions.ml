@@ -1334,74 +1334,10 @@ module Set = struct
 end
 
 
-(* sets modelled as maps with implicit integer keys. Useful on types where the comparison function is not available *)
-module IndexedSet = struct
-  module type S = sig
-    type t
-    type elt
-    val empty : t (* creates an empty data structure. *)
-    val is_empty : t -> bool (* checks the emptiness of the table *)
-    val choose : t -> elt (* returns an element of the table, and raises Internal_error if it is empty *)
-    val add_new_elt : t -> elt -> t * int (* adds a new element and returns the corresponding fresh index. *)
-    val find : t -> int -> elt (* same as find_opt but raises Internal_error if not found *)
-    val remove : t -> int -> t (* removes an element at a given index *)
-    val replace : t -> int -> elt -> t (* replaces an element at an index *)
-    val map : (int -> elt -> elt) -> t -> t (* applies a function on each element *)
-    val filter : (int -> elt -> bool) -> t -> t (* removes all elements whose index do not satisfy a given predicate *)
-    val map_filter : (int -> elt -> elt option) -> t -> t (* applies map but removes elements if the transformation returns None. *)
-    val iter : (int -> elt -> unit) -> t -> unit (* iterates an operation. NB. This operation should *not* modify the table itself. *)
-    (* val copy : t -> t (* creates a static copy of the table *) *)
-    val elements : (int -> elt -> 'a) -> t -> 'a list (* computes the list of binders (index,element) of the table and stores them in a list, after applying a transformation to them. For example, elements (fun x _ -> x) set returns the list of indexes of set. *)
-  end
+(* Additional exception *)
 
-  module Make(O:sig type elt end) : S with type elt = O.elt = struct
-    type index = int
-    type elt = O.elt
+type standard_error =
+  | File_Not_Found of string
+  | Distant_Worker_Not_Accessible of string
 
-    module M = Map.Make(struct type t = index let compare = compare end)
-    type t = elt M.t * index
-    let empty : t = M.empty, 0
-    let is_empty (set,_) = M.is_empty set
-    let choose (set,_) = snd (M.choose set)
-    let add_new_elt (set,ind) x = (M.add ind x set,ind+1),ind
-    let replace (set,im) i x =  (M.replace i (fun _ -> x) set,im)
-    let find_opt (set,_) i = M.find_opt i set
-    let find set i =
-      match find_opt set i with
-      | None ->
-        Config.internal_error (Printf.sprintf "[equivalence_session.ml >> IndexedSet.find] Constraint system %d not found in table." i)
-      | Some x -> x
-    let remove (set,im) i = (M.remove i set,im)
-    let map f (set,i) = (M.mapi f set,i)
-    let filter f (set,im) =  (M.filter f set,im)
-    let map_filter f (set,i) = M.map_filter f set,i
-    let iter f (set,_) = M.iter f set
-    let elements f (set,_) =
-      M.fold (fun index elt accu -> f index elt::accu) set []
-  end
-end
-
-
-(* functional loops over integers *)
-module Func = struct
-  let rec loop f x i n = if i > n then x else loop f (f i x) (i+1) n
-  let rec downloop f x i n = if i < n then x else downloop f (f i x) (i-1) n
-  let iter f i n = loop (fun i () -> f i) () i n
-  let downiter f i n = downloop (fun i () -> f i) () i n
-  let rec find f i n =
-    if i > n then raise Not_found
-    else if f i then i
-    else find f (i+1) n
-  let rec downfind f i n =
-    if i < n then raise Not_found
-    else if f i then i
-    else downfind f (i-1) n
-  let rec find_opt f i n =
-    if i > n then None
-    else if f i then Some i
-    else find_opt f (i+1) n
-  let rec downfind_opt f i n =
-    if i < n then None
-    else if f i then Some i
-    else downfind_opt f (i-1) n
-end
+exception Standard_error of standard_error

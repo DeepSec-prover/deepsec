@@ -18,7 +18,7 @@ let _ =
 
     (* Retrieve the command *)
     let in_cmd_str = read_line () in
-    let in_cmd_json = Execution_manager.parse_json_from_string in_cmd_str in
+    let in_cmd_json = Parsing_functions_ui.parse_json_from_string in_cmd_str in
     let in_cmd = Parsing_functions_ui.input_command_of in_cmd_json in
 
     match in_cmd with
@@ -36,5 +36,6 @@ let _ =
               Execution_manager.execute_batch ()
             )
           )
+      | Display_trace json_file -> Simulator.display_trace json_file
       | _ -> Printf.printf "No other option available so far."
   )

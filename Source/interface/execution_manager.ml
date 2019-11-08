@@ -97,20 +97,6 @@ let parse_file path =
         close_in channel_in;
         PSuccess (List.rev !Parser_functions.query_list), !Parser_functions.warnings (*putting queries in the same order as in the file *)
 
-let parse_json_from_file path =
-
-  let channel_in = open_in path in
-  let lexbuf = Lexing.from_channel channel_in in
-
-  let json = Grammar_ui.main Lexer_ui.token lexbuf in
-
-  close_in channel_in;
-  json
-
-let parse_json_from_string str =
-  let lexbuf = Lexing.from_string str in
-  Grammar_ui.main Lexer_ui.token lexbuf
-
 let copy_file path new_path =
   let channel_in = open_in path in
   let channel_out = open_out_gen [Open_wronly; Open_creat; Open_trunc; Open_text] 0o444 new_path in
@@ -292,10 +278,10 @@ let catch_init_internal_error f =
     f ()
   with
     | Config.Internal_error err ->
-        Display_ui.send_output_command (Init_internal_error err);
+        Display_ui.send_output_command (Init_internal_error (err,true));
         send_exit ()
     | ex ->
-        Display_ui.send_output_command (Init_internal_error (Printexc.to_string ex));
+        Display_ui.send_output_command (Init_internal_error ((Printexc.to_string ex),true));
         send_exit ()
 
 let catch_batch_internal_error f =
@@ -671,7 +657,7 @@ let listen_to_command in_ch out_ch translation_result =
         then
           (* Can receive JSON command to cancel executions. *)
           let str = ((input_value stdin):string) in
-          match Parsing_functions_ui.input_command_of (parse_json_from_string str) with
+          match Parsing_functions_ui.input_command_of (Parsing_functions_ui.parse_json_from_string str) with
             | Cancel_run file -> cancel_run file
             | Cancel_query file -> cancel_query file
             | Cancel_batch -> cancel_batch ()

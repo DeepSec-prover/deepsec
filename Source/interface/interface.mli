@@ -10,3 +10,5 @@ val process_of_json_process : json_process -> process
 val query_result_of_equivalence_result : query_result -> verification_result -> int -> query_result
 
 val setup_signature : query_result -> unit
+
+val execute_process : semantics -> json_process -> json_transition list -> configuration Constraint_system.t list

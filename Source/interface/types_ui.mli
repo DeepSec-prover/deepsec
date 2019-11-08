@@ -167,6 +167,13 @@ type batch_result =
     debug : bool
   }
 
+(* Simulator types *)
+
+type detail_trace_display =
+  | DTFull
+  | DTStandard
+  | DTIO_only
+
 (* Input Command *)
 
 type input_command =
@@ -176,10 +183,15 @@ type input_command =
   | Cancel_batch
   | Get_config
   | Set_config of string
+  | Die
+  (* Simulator: Display of traces *)
+  | Display_trace of string (* Json of query result *)
+  | DTNext_step of detail_trace_display
+  | DTPrev_step of detail_trace_display
 
 type output_command =
   (* Errors *)
-  | Init_internal_error of string
+  | Init_internal_error of string * bool
   | Batch_internal_error of string
   | User_error of (string (* Error msg*) * string (* file *) * string list (* warnings *)) list
   | Query_internal_error of string (* Error msg*) * string (* file *)
@@ -203,3 +215,6 @@ type output_command =
   | ExitUi
   (* Progression *)
   | Progression of int (* Index of query *) * int (* execution time *) * query_progression
+  (* Simulator: Display_of_traces *)
+  | DTNo_attacker_trace
+  | DTCurrent_step of association * configuration * int
