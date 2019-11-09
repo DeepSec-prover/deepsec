@@ -246,6 +246,7 @@ module Distrib = functor (Task:Evaluator_task) -> struct
       Config.log (fun () -> "[distrib.ml >> WLM] Waiting for acknowledgement\n");
       match get_input_command () with
         | Acknowledge -> Config.log (fun () -> "[distrib.ml >> WLM] Ack received\n")
+        | Die -> raise Exit
         | _ -> Config.internal_error "[distrib.ml >> WLM.send_output_command_ack] Was expecting an acknowledgement."
 
     type distant_manager_data =

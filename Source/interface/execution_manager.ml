@@ -364,13 +364,13 @@ let cancel_batch () =
   let batch = { !computation_status.batch with b_status = RBCanceled; b_end_time = Some end_time } in
   write_batch batch;
   begin match !computation_status.cur_run with
-    | None ->  Printf.printf "Run Nothing\n"; flush stdout; ()
+    | None -> ()
     | Some run_comp ->
         let run = { run_comp.ongoing_run with r_status = RBCanceled; r_end_time = Some end_time } in
         write_run run;
         List.iter (fun query -> write_query { query with q_status = QCanceled; q_end_time = Some end_time }) run_comp.remaining_queries;
         match run_comp.cur_query with
-          | None -> Printf.printf "Auery Nothing\n"; flush stdout; ()
+          | None -> ()
           | Some (query_comp,in_ch,out_ch) ->
               Unix.sleep 1;
               Config.log (fun () -> "[execution_manager.ml >> Cancel_batch] Send die command\n");
