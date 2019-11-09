@@ -709,7 +709,7 @@ module Distrib = functor (Task:Evaluator_task) -> struct
         then
           begin
             Config.log (fun () -> "[distrib.ml >> WLM.evaluate_jobs >> End of round phase] Waiting on Unix.select\n");
-            let (available_fd_in_ch,_,_) = Unix.select (Unix.stdin :: !fd_in_ch_evaluators) [] [] (-1.) in
+            let (available_fd_in_ch,_,_) = Unix.select (Unix.stdin :: !fd_in_ch_evaluators) [] [] waiting_time in
             List.iter (fun fd_in_ch -> match get_type_file_descr fd_in_ch with
               | FStdin -> die_command ()
               | FEvaluator(eval,man_op) ->

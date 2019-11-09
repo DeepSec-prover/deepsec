@@ -1441,7 +1441,7 @@ module Rule = struct
 
   let sat_disequation f_continuation csys_set f_next =
     Config.debug (fun () ->
-    Config.print_in_log (Printf.sprintf "- Rule Sat disequation (%d): Nb csys = %d\n" !debug_sat_index (List.length csys_set.set));
+      Config.print_in_log (Printf.sprintf "- Rule Sat disequation (%d): Nb csys = %d\n" !debug_sat_index (List.length csys_set.set));
       Set.debug_check_structure "[Sat disequation]" csys_set;
       List.iter (fun csys ->
         if not (Formula.T.debug_no_linked_variables csys.eq_term)
@@ -2862,5 +2862,4 @@ module Rule = struct
               | None -> false
               | Some _ -> true
           )
-
 end
