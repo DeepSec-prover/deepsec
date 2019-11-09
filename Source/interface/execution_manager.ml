@@ -734,7 +734,7 @@ let listen_to_command_api in_ch out_ch translation_result =
                         | Some (query,in_ch,out_ch) ->
                             let progression = match distrib_settings with
                               | None -> PSingleCore (PGeneration(0,!Config.core_factor))
-                              | Some set -> PDistributed(0,PGeneration(0,set.Distribution.WLM.comp_nb_jobs))
+                              | Some set -> PDistributed(1,PGeneration(0,set.Distribution.WLM.comp_nb_jobs))
                             in
                             let query1 = { query with progression = progression} in
                             write_query query1;
@@ -794,7 +794,7 @@ let listen_to_command_generic in_ch out_ch translation_result =
                     | Some (query,in_ch,out_ch) ->
                         let progression = match distrib_settings with
                           | None -> PSingleCore (PGeneration(0,!Config.core_factor))
-                          | Some set -> PDistributed(0,PGeneration(0,set.Distribution.WLM.comp_nb_jobs))
+                          | Some set -> PDistributed(1,PGeneration(0,set.Distribution.WLM.comp_nb_jobs))
                         in
                         let query1 = { query with progression = progression} in
                         write_query query1;
