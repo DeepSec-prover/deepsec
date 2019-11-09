@@ -1,0 +1,122 @@
+(* public communication channel *)
+free c.
+free chMS1, chSN1.
+free chMS2, chSN2.
+free chMS3, chSN3.
+free chMS4, chSN4.
+free chMS5, chSN5.
+free chMS6, chSN6.
+
+(* public identity of MS *)
+free imsi_wtn.
+
+(* constant values *)
+fun Fail/0.
+fun reject/0.
+fun Sqn/0.
+
+(* UMTS AKA protocol specific mac and key generation functions *)
+fun f0/2.
+fun f1/2.
+fun f2/2.
+fun f3/2.
+fun f4/2.
+fun f5/2.
+
+(* symmetric key encryption function *)
+fun senc/3.
+reduc sdec(k, senc(k, r, m)) = m.
+
+(* public key generation function *)
+fun pub/1.
+
+(* public key encryption function *)
+fun aenc/3.
+reduc adec(k, aenc(pub(k), r, m))= m.
+
+let AKA_MS(ch,k,osqn,pbN,imsi) =
+  new r_ms;
+  in(ch, x);
+  let (xrand, xautn) = x in
+  let (msg, xmac) = xautn in
+  let ak = f5(k, xrand) in
+  let xsqn = sdec(ak, msg) in
+  (
+    let mac = f1(k, (xrand, xsqn)) in
+    if (xmac, xsqn) = (mac, osqn)
+    then (
+      let res = f2(k, xrand) in
+      let ck = f3(k, xrand) in
+      let ik = f4(k, xrand) in
+      out(ch, res);
+      in(ch, xmsg)
+    ) else
+      new rand;
+      new r;
+      out(ch, r)
+  )
+  else
+    new rand;
+    new r;
+    out(ch, r).
+
+
+let AKA_SN(ch,osqn,k)=
+    new rand;
+    new r_sn;
+    new s;
+    new r;
+    let mac = f1(k, (rand, osqn)) in
+    let res = f2(k, rand) in
+    let ck = f3(k, rand) in
+    let ik = f4(k, rand) in
+    let ak = f5(k, rand) in
+    let autn = (senc(ak, r_sn, osqn), mac) in
+    let av = (rand, res, ck, ik, ak) in
+    out(ch, (rand, autn));
+    in(ch, xres);
+    if xres = res
+    then new r2; out(ch, r2)
+    else out(ch, reject).
+
+let single_session(chMS,chSN,pbN,k,imsi) =
+  new osqn;
+  ( AKA_MS(chMS,k,osqn,pbN,imsi) | AKA_SN(chSN,osqn,k)).
+
+let Process1 =
+  new pvN;
+  let pbN = pub(pvN) in
+  out(c,pbN);
+  (
+    (new k; new imsi; single_session(chMS1,chSN1,pbN,k,imsi)) |
+    (new k; new imsi; single_session(chMS2,chSN2,pbN,k,imsi)) |
+    (new k; new imsi;
+      (single_session(chMS3,chSN3,pbN,k,imsi) |
+       single_session(chMS4,chSN4,pbN,k,imsi) |
+       single_session(chMS5,chSN5,pbN,k,imsi)
+      )
+    ) |
+    (new k; new imsi; single_session(chMS6,chSN6,pbN,k,imsi))
+  ).
+
+let Process2 =
+  new pvN;
+  let pbN = pub(pvN) in
+  out(c,pbN);
+  (
+    (
+      new k;
+      new imsi;
+      (single_session(chMS1,chSN1,pbN,k,imsi_wtn) | single_session(chMS2,chSN2,pbN,k,imsi_wtn))
+    ) |
+    (new k; new imsi;
+      (single_session(chMS3,chSN3,pbN,k,imsi) |
+       single_session(chMS4,chSN4,pbN,k,imsi) |
+       single_session(chMS5,chSN5,pbN,k,imsi)
+      )
+    ) |
+    (new k; new imsi; single_session(chMS6,chSN6,pbN,k,imsi))
+  ).
+
+
+query trace_equiv(Process1,Process2).
