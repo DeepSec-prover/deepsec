@@ -53,7 +53,13 @@ let log =
   if debug_activated
   then
     (fun f ->
-        Printf.fprintf log_file "%s" (f());
+        let local_time = Unix.localtime(Unix.time ()) in
+        let time =
+          Unix.(Printf.sprintf "%dh%dm%ds"
+            local_time.tm_hour local_time.tm_min local_time.tm_sec
+            )
+        in
+        Printf.fprintf log_file "%s %s" time (f());
         flush log_file
     )
   else fun _ -> ()
