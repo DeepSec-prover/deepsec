@@ -163,17 +163,25 @@ module Distrib = functor (Task:Evaluator_task) -> struct
 
     let main () =
       try
+        Config.log (fun () -> "[distrib.ml >> WDM] Sending physical core\n");
         (* Output of the number of physical core *)
         send_output_command (Physical_core Config.physical_core);
 
         while true do
+          Config.log (fun () -> "[distrib.ml >> WDM] Waiting for command\n");
           match get_input_command () with
-            | Kill_evaluator pid -> kill_evaluators pid
+            | Kill_evaluator pid ->
+                Config.log (fun () -> Printf.sprintf "[distrib.ml >> WDM] Kill pid %d\n" pid);
+                kill_evaluators pid
             | Die -> raise Exit
         done
       with
-        | Exit -> ()
-        | ex -> send_output_command (Error_msg(Printexc.to_string ex))
+        | Exit ->
+            Config.log (fun () -> "[distrib.ml >> WDM] Exit\n");
+            ()
+        | ex ->
+            Config.log (fun () -> Printf.sprintf "[distrib.ml >> WDM] Sending error message %s\n" (Printexc.to_string ex));
+            send_output_command (Error_msg(Printexc.to_string ex))
   end
 
   module WLM = struct
@@ -235,8 +243,9 @@ module Distrib = functor (Task:Evaluator_task) -> struct
     let send_output_command_ack : output_command -> unit = fun out_cmd ->
       output_value stdout out_cmd;
       flush stdout;
+      Config.log (fun () -> "[distrib.ml >> WLM] Waiting for acknowledgement\n");
       match get_input_command () with
-        | Acknowledge -> ()
+        | Acknowledge -> Config.log (fun () -> "[distrib.ml >> WLM] Ack received\n")
         | _ -> Config.internal_error "[distrib.ml >> WLM.send_output_command_ack] Was expecting an acknowledgement."
 
     type distant_manager_data =
@@ -333,13 +342,17 @@ module Distrib = functor (Task:Evaluator_task) -> struct
 
       let path_name = Filename.concat !Config.path_deepsec "deepsec_worker" in
       iter_n (fun () ->
+        Config.log (fun () -> "[distrib.ml >> WLM.initialisation] Create worker\n");
         let (in_ch,out_ch) = Unix.open_process path_name in
         let fd_in_ch = Unix.descr_of_in_channel in_ch in
+        Config.log (fun () -> "[distrib.ml >> WLM.initialisation] Sending role\n");
         send out_ch Evaluator;
+        Config.log (fun () -> "[distrib.ml >> WLM.initialisation] Waiting for pid\n");
         let pid = match WE.get_output_command in_ch with
           | WE.Pid n -> n
           | _ -> Config.internal_error "[distrib.ml >> WLM.initialisation] Unexpected output command from evaluators"
         in
+        Config.log (fun () -> Printf.sprintf "[distrib.ml >> WLM.initialisation] Pid received %d\n" pid);
         let eval = { WE.pid = pid; WE.in_ch = in_ch; WE.fd_in_ch = fd_in_ch; WE.out_ch = out_ch } in
         evaluators := (eval,None) :: !evaluators;
         fd_in_ch_evaluators := fd_in_ch :: !fd_in_ch_evaluators
@@ -347,7 +360,6 @@ module Distrib = functor (Task:Evaluator_task) -> struct
 
       let dist_setting = ref [] in
 
-      Config.log (fun () -> "[distrib.ml >> WLM >> initialisation] Generating distant manager\n");
       List.iter (fun (host,path,n_op) ->
         let full_name = Filename.concat path "deepsec_worker" in
         let path_name_worker = Printf.sprintf "ssh %s %s" host full_name in
@@ -355,12 +367,15 @@ module Distrib = functor (Task:Evaluator_task) -> struct
         let (in_ch,out_ch) = Unix.open_process path_name_worker in
         let fd_in_ch = Unix.descr_of_in_channel in_ch in
         let dist_m = { in_ch = in_ch; fd_in_ch = fd_in_ch; out_ch = out_ch; path = path_name_worker } in
+        Config.log (fun () -> "[distrib.ml >> WLM.initialisation] Sending role\n");
         send out_ch Distant_manager;
 
+        Config.log (fun () -> "[distrib.ml >> WLM.initialisation] Waiting for physical core\n");
         let physical_core = match WDM.get_output_command in_ch with
           | WDM.Physical_core n -> n
           | _ -> Config.internal_error "[distrib.ml >> WLM.initialisation] Unexpected output command from distant manager"
         in
+        Config.log (fun () -> Printf.sprintf "[distrib.ml >> WLM.initialisation] Physical core received %d\n" physical_core);
 
         let nb_eval = match n_op with
           | None -> physical_core
@@ -372,11 +387,14 @@ module Distrib = functor (Task:Evaluator_task) -> struct
           Config.log (fun () -> Printf.sprintf "[distrib.ml >> WLM >> initialisation] Open connexion to %s\n" path_name_worker);
           let (in_ch,out_ch) = Unix.open_process path_name_worker in
           let fd_in_ch = Unix.descr_of_in_channel in_ch in
+          Config.log (fun () -> "[distrib.ml >> WLM.initialisation] Sending role\n");
           send out_ch Evaluator;
+          Config.log (fun () -> "[distrib.ml >> WLM.initialisation] Waiting for pid\n");
           let pid = match WE.get_output_command in_ch with
             | WE.Pid n -> n
             | _ -> Config.internal_error "[distrib.ml >> WLM.initialisation] Unexpected output command from evaluators"
           in
+          Config.log (fun () -> Printf.sprintf "[distrib.ml >> WLM.initialisation] Pid received %d\n" pid);
           let eval = { WE.pid = pid; WE.in_ch = in_ch; WE.fd_in_ch = fd_in_ch; WE.out_ch = out_ch } in
           evaluators := (eval,Some dist_m) :: !evaluators;
           fd_in_ch_evaluators := fd_in_ch :: !fd_in_ch_evaluators
@@ -394,6 +412,7 @@ module Distrib = functor (Task:Evaluator_task) -> struct
       in
 
       minimum_nb_of_jobs := nb_jobs;
+      Config.log (fun () -> "[distrib.ml >> WLM.initialisation] Sending Computed settings\n");
       if distrib
       then
         let distributed_settings = { comp_local_workers = nb_local_evaluators; comp_distant_workers = !dist_setting; comp_nb_jobs = nb_jobs } in
@@ -404,19 +423,24 @@ module Distrib = functor (Task:Evaluator_task) -> struct
       (* Killing evaluators *)
       List.iter (fun (eval,man_op) -> match man_op with
         | None ->
+            Config.log (fun () -> Printf.sprintf "[distrib.ml >> WLM.kill_all] Sending kill signal: %d\n" eval.WE.pid);
             Unix.kill eval.WE.pid kill_signal;
             ignore (Unix.close_process (eval.WE.in_ch,eval.WE.out_ch))
         | Some manager ->
+            Config.log (fun () -> Printf.sprintf "[distrib.ml >> WLM.kill_all] Sending kill evaluator command: %d\n" eval.WE.pid);
             WDM.send_input_command manager.out_ch (WDM.Kill_evaluator eval.WE.pid)
       ) !evaluators;
 
       (* Kill managers *)
       List.iter (fun manager ->
+        Config.log (fun () -> "[distrib.ml >> WLM.kill_all] Sending kill manager command\n");
         WDM.send_input_command manager.out_ch WDM.Die;
         ignore (Unix.close_process (manager.in_ch,manager.out_ch))
       ) !distant_managers
 
-    let die_command () = match get_input_command () with
+    let die_command () =
+      Config.log (fun () -> "[distrib.ml >> WLM.die_command] Waiting for input command\n");
+      match get_input_command () with
       | Die -> raise Exit
       | _ -> send_error "[distrib.ml >> die_command] Unexpected input command."
 
@@ -445,6 +469,7 @@ module Distrib = functor (Task:Evaluator_task) -> struct
         let percent = ((nb_job - nb_job_remain) * 100) / nb_job in
         let progression = PDistributed(round,PVerif(percent,nb_job_remain)) in
         current_progression := progression;
+        Config.log (fun () -> "[distrib.ml >> WLM.progression_distributed_verification] Send command\n");
         send_output_command_ack (Progress (progression,to_write))
       )
 
@@ -452,6 +477,7 @@ module Distrib = functor (Task:Evaluator_task) -> struct
       send_progression (fun to_write ->
         let progression = PDistributed(round,PGeneration(nb_job,minimum_nb_of_jobs)) in
         current_progression := progression;
+        Config.log (fun () -> "[distrib.ml >> WLM.progression_distributed_generation] Send command\n");
         send_output_command_ack (Progress(progression,to_write))
       )
 
@@ -469,7 +495,16 @@ module Distrib = functor (Task:Evaluator_task) -> struct
     let kill_and_replace_active_evaluators active_jobs =
       let remove_evaluators eval man_op =
         evaluators := List.remove (fun (eval',man_op') -> eval = eval' && man_op = man_op') !evaluators;
-        fd_in_ch_evaluators := List.remove (fun fd_in_ch -> eval.WE.fd_in_ch = fd_in_ch) !fd_in_ch_evaluators
+        fd_in_ch_evaluators := List.remove (fun fd_in_ch -> eval.WE.fd_in_ch = fd_in_ch) !fd_in_ch_evaluators;
+        (* Killing evaluators *)
+        match man_op with
+          | None ->
+              Config.log (fun () -> Printf.sprintf "[distrib.ml >> WLM.kill_and_replace_active_evaluators] Sending kill signal: %d\n" eval.WE.pid);
+              Unix.kill eval.WE.pid kill_signal;
+              ignore (Unix.close_process (eval.WE.in_ch,eval.WE.out_ch))
+          | Some manager ->
+              Config.log (fun () -> Printf.sprintf "[distrib.ml >> WLM.kill_and_replace_active_evaluators] Sending kill evaluator command: %d\n" eval.WE.pid);
+              WDM.send_input_command manager.out_ch (WDM.Kill_evaluator eval.WE.pid)
       in
 
       let local_path = Filename.concat !Config.path_deepsec "deepsec_worker" in
@@ -480,13 +515,18 @@ module Distrib = functor (Task:Evaluator_task) -> struct
           | None -> local_path
           | Some manager -> manager.path
         in
+        Config.log (fun () -> "[distrib.ml >> WLM.kill_and_replace_active_evaluators] Create new process\n");
         let (in_ch,out_ch) = Unix.open_process path in
         let fd_in_ch = Unix.descr_of_in_channel in_ch in
+        Config.log (fun () -> "[distrib.ml >> WLM.kill_and_replace_active_evaluators] Send role\n");
         send out_ch Evaluator;
+        Config.log (fun () -> "[distrib.ml >> WLM.kill_and_replace_active_evaluators] Waiting for pid\n");
         let pid = match WE.get_output_command in_ch with
           | WE.Pid n -> n
-          | _ -> Config.internal_error "[distrib.ml >> WLM.initialisation] Unexpected output command from evaluators"
+          | _ -> Config.internal_error "[distrib.ml >> WLM.kill_and_replace_active_evaluators] Unexpected output command from evaluators"
         in
+        Config.log (fun () -> Printf.sprintf "[distrib.ml >> WLM.kill_and_replace_active_evaluators] Pid received %d\n" pid);
+
         let eval = { WE.pid = pid; WE.in_ch = in_ch; WE.fd_in_ch = fd_in_ch; WE.out_ch = out_ch } in
         evaluators := (eval,man_op) :: !evaluators;
         fd_in_ch_evaluators := fd_in_ch :: !fd_in_ch_evaluators
@@ -513,6 +553,7 @@ module Distrib = functor (Task:Evaluator_task) -> struct
               match pop_job () with
                 | None -> ()
                 | Some job ->
+                    Config.log (fun () -> Printf.sprintf "[distrib.ml >> WLM.generate_jobs >> first_generation_of_jobs] Send generate command to evaluator %d\n" eval.WE.pid);
                     WE.send_input_command eval.WE.out_ch (WE.Generate job);
                     incr active_evaluators;
                     explore_local q
@@ -548,17 +589,31 @@ module Distrib = functor (Task:Evaluator_task) -> struct
         first_generation_of_jobs ();
 
         while !active_evaluators <> 0 do
+          Config.log (fun () -> "[distrib.ml >> WLM.generate_jobs] Waiting on Unix.select\n");
           let (available_fd_in_ch,_,_) = Unix.select (Unix.stdin :: !fd_in_ch_evaluators) [] [] (-1.) in
           List.iter (fun fd_in_ch -> match get_type_file_descr fd_in_ch with
             | FStdin -> die_command ()
             | FEvaluator(eval,_) ->
+                Config.log (fun () -> Printf.sprintf "[distrib.ml >> WLM.generate_jobs] Reading output command from evaluator %d\n" eval.WE.pid);
                 match WE.get_output_command eval.WE.in_ch with
                   | WE.Completed verif_result ->
-                      handle_complete_command (fun job -> WE.send_input_command eval.WE.out_ch (WE.Generate job)) verif_result
+                      Config.log (fun () -> "[distrib.ml >> WLM.generate_jobs] Received complete\n");
+                      handle_complete_command (fun job ->
+                        Config.log (fun () -> "[distrib.ml >> WLM.generate_jobs] Sending generate command\n");
+                        WE.send_input_command eval.WE.out_ch (WE.Generate job)
+                      ) verif_result
                   | WE.Job_list job_list ->
-                      handle_job_list_command (fun job -> WE.send_input_command eval.WE.out_ch (WE.Generate job)) job_list
-                  | WE.Error_msg err -> send_error err
-                  | WE.Progress _| WE.Pid _ -> send_error "[distrib.ml >> generate_jobs] Unexpected output command from evaluator"
+                      Config.log (fun () -> "[distrib.ml >> WLM.generate_jobs] Received job list\n");
+                      handle_job_list_command (fun job ->
+                        Config.log (fun () -> "[distrib.ml >> WLM.generate_jobs] Sending generate command\n");
+                        WE.send_input_command eval.WE.out_ch (WE.Generate job)
+                      ) job_list
+                  | WE.Error_msg err ->
+                      Config.log (fun () -> "[distrib.ml >> WLM.generate_jobs] Received error message\n");
+                      send_error err
+                  | WE.Progress _| WE.Pid _ ->
+                      Config.log (fun () -> "[distrib.ml >> WLM.generate_jobs] Received progress or pid\n");
+                      send_error "[distrib.ml >> generate_jobs] Unexpected output command from evaluator"
           ) available_fd_in_ch
         done;
 
@@ -591,6 +646,7 @@ module Distrib = functor (Task:Evaluator_task) -> struct
           | [] -> ()
           | (eval,man_op)::q ->
               let job = List.hd !current_job_list in
+              Config.log (fun () -> Printf.sprintf "[distrib.ml >> WLM.evaluate_jobs >> first_evaluation_of_jobs] Send evaluate command to evaluator %d\n" eval.WE.pid);
               WE.send_input_command eval.WE.out_ch (WE.Evaluate job);
               active_jobs := (job,eval,man_op) :: !active_jobs;
               current_job_list := List.tl !current_job_list;
@@ -615,20 +671,27 @@ module Distrib = functor (Task:Evaluator_task) -> struct
 
       while !current_job_list <> [] do
         progression_distributed_verification round nb_jobs_created !current_nb_job_list;
-
+        Config.log (fun () -> "[distrib.ml >> WLM.evaluate_jobs] Waiting on Unix.select\n");
         let (available_fd_in_ch,_,_) = Unix.select (Unix.stdin :: !fd_in_ch_evaluators) [] [] (-1.) in
         List.iter (fun fd_in_ch -> match get_type_file_descr fd_in_ch with
           | FStdin -> die_command ()
           | FEvaluator(eval,man_op) ->
+              Config.log (fun () -> Printf.sprintf "[distrib.ml >> WLM.evaluate_jobs] Reading output command from evaluator %d\n" eval.WE.pid);
               match WE.get_output_command eval.WE.in_ch with
                 | WE.Completed verif_result ->
+                    Config.log (fun () -> "[distrib.ml >> WLM.evaluate_jobs] Received completed\n");
                     remove_active eval man_op;
                     handle_complete_command (fun job ->
                       active_jobs := (job,eval,man_op) :: !active_jobs;
+                      Config.log (fun () -> "[distrib.ml >> WLM.evaluate_jobs] Send job to be evaluated\n");
                       WE.send_input_command eval.WE.out_ch (WE.Evaluate job);
                     ) verif_result
-                | WE.Error_msg err -> send_error err
-                | _ -> send_error "[distrib.ml >> evaluate_jobs] Unexpected output command from evaluator"
+                | WE.Error_msg err ->
+                    Config.log (fun () -> "[distrib.ml >> WLM.evaluate_jobs] Received error message\n");
+                    send_error err
+                | _ ->
+                    Config.log (fun () -> "[distrib.ml >> WLM.evaluate_jobs] Received other output command\n");
+                    send_error "[distrib.ml >> evaluate_jobs] Unexpected output command from evaluator"
         ) available_fd_in_ch
       done;
 
@@ -643,19 +706,27 @@ module Distrib = functor (Task:Evaluator_task) -> struct
 
         if waiting_time > 0.
         then
-          let (available_fd_in_ch,_,_) = Unix.select (Unix.stdin :: !fd_in_ch_evaluators) [] [] (-1.) in
-          List.iter (fun fd_in_ch -> match get_type_file_descr fd_in_ch with
-            | FStdin -> die_command ()
-            | FEvaluator(eval,man_op) ->
-                match WE.get_output_command eval.WE.in_ch with
-                  | WE.Completed verif_result ->
-                      remove_active eval man_op;
-                      disgest_completed_result verif_result;
-                      decr current_nb_job_list
-                  | WE.Error_msg err -> send_error err
-                  | _ -> send_error "[distrib.ml >> evaluate_jobs] Unexpected output command from evaluator"
-          ) available_fd_in_ch
-        else ()
+          begin
+            Config.log (fun () -> "[distrib.ml >> WLM.evaluate_jobs >> End of round phase] Waiting on Unix.select\n");
+            let (available_fd_in_ch,_,_) = Unix.select (Unix.stdin :: !fd_in_ch_evaluators) [] [] (-1.) in
+            List.iter (fun fd_in_ch -> match get_type_file_descr fd_in_ch with
+              | FStdin -> die_command ()
+              | FEvaluator(eval,man_op) ->
+                  Config.log (fun () -> Printf.sprintf "[distrib.ml >> WLM.evaluate_jobs >> End of round phase] Reading output command from evaluator %d\n" eval.WE.pid);
+                  match WE.get_output_command eval.WE.in_ch with
+                    | WE.Completed verif_result ->
+                        Config.log (fun () -> "[distrib.ml >> WLM.evaluate_jobs >> End of round phase] Received completed\n");
+                        remove_active eval man_op;
+                        disgest_completed_result verif_result;
+                        decr current_nb_job_list
+                    | WE.Error_msg err ->
+                        Config.log (fun () -> "[distrib.ml >> WLM.evaluate_jobs >> End of round phase] Received error message\n");
+                        send_error err
+                    | _ ->
+                        Config.log (fun () -> "[distrib.ml >> WLM.evaluate_jobs >> End of round phase] Received other output command\n");
+                        send_error "[distrib.ml >> evaluate_jobs] Unexpected output command from evaluator"
+            ) available_fd_in_ch
+          end
       done;
 
       let jobs = List.map (fun (job,_,_) -> job) !active_jobs in
@@ -673,32 +744,43 @@ module Distrib = functor (Task:Evaluator_task) -> struct
         evaluate_distributed (round+1) remain_job_list_next_round
       with Completed_execution result ->
         kill_all ();
+        Config.log (fun () -> "[distrib.ml >> WLM.evaluate_distributed] Send completed command\n");
         send_output_command (Completed result)
 
     let evaluate_single_core job =
       let (eval,_) = List.hd !evaluators in
 
       (* The send the command to the worker *)
+      Config.log (fun () -> Printf.sprintf "[distrib.ml >> WLM.evaluate_single_core] Send the single core command to evaluator %d\n" eval.WE.pid);
       WE.send_input_command eval.WE.out_ch (WE.Evaluate_single_core job);
 
       try
         while true do
+          Config.log (fun () -> "[distrib.ml >> WLM.evaluate_single_core] Waiting for Unix.select\n");
           let (available_fd_in_ch,_,_) = Unix.select [Unix.stdin;eval.WE.fd_in_ch] [] [] (1.) in
-          List.iter (fun fd_in_ch ->
-            if fd_in_ch = Unix.stdin
-            then die_command ()
-            else
-              match WE.get_output_command eval.WE.in_ch with
-                | WE.Completed verif_result -> raise (Completed_execution verif_result)
-                | WE.Error_msg err -> send_error err
-                | WE.Progress(prog,to_write) ->
-                    current_progression := PSingleCore prog;
-                    send_output_command_ack (Progress(PSingleCore prog,to_write))
-                | _ -> send_error "[distrib.ml >> evaluate_jobs] Unexpected output command from evaluator"
+          List.iter (fun fd_in_ch -> match get_type_file_descr fd_in_ch with
+            | FStdin -> die_command ()
+            | FEvaluator(eval,_) ->
+                Config.log (fun () -> Printf.sprintf "[distrib.ml >> WLM.evaluate_single_core] Reading output command from evaluator %d\n" eval.WE.pid);
+                match WE.get_output_command eval.WE.in_ch with
+                  | WE.Completed verif_result ->
+                      Config.log (fun () -> "[distrib.ml >> WLM.evaluate_single_core] Received Completed\n");
+                      raise (Completed_execution verif_result)
+                  | WE.Error_msg err ->
+                      Config.log (fun () -> "[distrib.ml >> WLM.evaluate_single_core] Received error message\n");
+                      send_error err
+                  | WE.Progress(prog,to_write) ->
+                      Config.log (fun () -> "[distrib.ml >> WLM.evaluate_single_core] Received progression\n");
+                      current_progression := PSingleCore prog;
+                      send_output_command_ack (Progress(PSingleCore prog,to_write))
+                  | _ ->
+                      Config.log (fun () -> "[distrib.ml >> WLM.evaluate_single_core] Received other input command\n");
+                      send_error "[distrib.ml >> evaluate_jobs] Unexpected output command from evaluator"
           ) available_fd_in_ch
         done
       with Completed_execution result ->
         kill_all ();
+        Config.log (fun () -> "[distrib.ml >> WLM.evaluate_single_core] Send completed command\n");
         send_output_command (Completed result)
 
     let main () =
@@ -716,6 +798,7 @@ module Distrib = functor (Task:Evaluator_task) -> struct
         | Exit -> kill_all ()
         | ex ->
             kill_all ();
+            Config.log (fun () -> "[distrib.ml >> WLM.main] Send error command\n");
             send_output_command (Error_msg ((Printexc.to_string ex),!current_progression))
   end
 end

@@ -104,8 +104,6 @@ module Rule : sig
 
   val instantiate_useless_deduction_facts : ('a set -> (unit -> unit) -> unit) -> 'a set -> (unit -> unit) -> unit
 
-  val debug_display_data : unit -> unit
-
   val solve : 'a t -> 'a t
 
   val is_term_deducible : 'a t -> term -> bool

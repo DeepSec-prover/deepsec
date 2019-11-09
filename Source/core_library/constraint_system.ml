@@ -2863,9 +2863,4 @@ module Rule = struct
               | Some _ -> true
           )
 
-  (*** Debug function ***)
-
-  let debug_display_data () =
-    Config.print_in_log ~always:true (Printf.sprintf "Skeleton data : None = %d, No_IK_solution = %d, Simple positive = %d, Simple negative = %d\n" !nb_RSSNone_rewrite !nb_RSSNo_IK_solution_rewrite !nb_RSSSimple_pos_rewrite !nb_RSSSimple_neg_rewrite);
-    Config.print_in_log ~always:true (Printf.sprintf "Skeleton constructor data : None = %d, No_IK_solution = %d, Simple positive = %d, Simple negative = %d\n" !nb_RSSNone_constructor !nb_RSSNo_IK_solution_constructor !nb_RSSSimple_pos_constructor !nb_RSSSimple_neg_constructor)
 end

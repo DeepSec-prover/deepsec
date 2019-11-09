@@ -29,5 +29,3 @@ val apply_one_transition_and_rules_classic : equivalence_problem -> (equivalence
 val apply_one_transition_and_rules_private : equivalence_problem -> (equivalence_problem -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
 
 val apply_one_transition_and_rules_eavesdrop : equivalence_problem -> (equivalence_problem -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
-
-val trace_equivalence : semantics -> process -> process -> verification_result

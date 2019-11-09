@@ -28,5 +28,3 @@ val apply_one_transition_and_rules :
   unit
 
 val initialise_equivalence_problem : (process * process) -> bool -> symbolic_process Constraint_system.set -> equivalence_problem
-
-val trace_equivalence : process -> process -> verification_result
