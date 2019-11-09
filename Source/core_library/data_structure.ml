@@ -864,14 +864,14 @@ module IK = struct
 
     (* Copy data of K *)
     for i = 0 to kb.K.size - 1 do
-      data.(i) <- kb.K.data.(i)
+      data.(i) <- { kb.K.data.(i) with K.term = Term.instantiate kb.K.data.(i).K.term }
     done;
 
     (* Copy data of IK *)
     let rec copy index acc = function
       | [] -> acc
       | elt::q ->
-          data.(index) <- { K.type_rec = ikb.type_rec; K.recipe = elt.recipe; K.term = elt.term };
+          data.(index) <- { K.type_rec = ikb.type_rec; K.recipe = elt.recipe; K.term = Term.instantiate elt.term };
           copy (index-1) ((elt.id,index)::acc) q
     in
     let id_assoc = copy (new_size-1) [] ikb.data in

@@ -87,43 +87,6 @@ let rec display_generic_process tab = function
       (display_with_tab tab (Printf.sprintf "{%s} +" (display_position pos))) ^
       (display_generic_process (tab+1) p2)
 
-let rec display_generic_process_debug tab = function
-  | SNil -> (display_with_tab tab "Nil")
-  | SOutput(ch,t,p,pos,data) ->
-      let str = Printf.sprintf "{%s} out(%s,%s); %s" (display_position pos) (Term.display Terminal ch) (Term.display Terminal t) (display_used_data data) in
-      (display_with_tab tab str) ^ (display_generic_process_debug tab p)
-  | SInput(ch,x,p,pos,data) ->
-      let str = Printf.sprintf "{%s} in(%s,%s); %s" (display_position pos) (Term.display Terminal ch) (Variable.display Terminal x) (display_used_data data) in
-      (display_with_tab tab str) ^ (display_generic_process_debug tab p)
-  | SCondition(eq_list,Formula.T.Bot,_,pthen,SNil,data) ->
-      let str_eq = display_list display_equations (vee Terminal) eq_list in
-      let str = Printf.sprintf "condition [%s] %s" str_eq (display_used_data data)in
-      let str_then = display_generic_process_debug tab pthen in
-      (display_with_tab tab str) ^ str_then
-  | SCondition(eq_list,_,_,pthen,pelse,data) ->
-      let str_eq = display_list display_equations (vee Terminal) eq_list in
-      let str = Printf.sprintf "condition [%s] %s" str_eq (display_used_data data) in
-      let str_then = display_generic_process_debug (tab+1) pthen in
-      let str_else = display_generic_process_debug (tab+1) pelse in
-      let str_neg = "Else " in
-      (display_with_tab tab str) ^ str_then ^ (display_with_tab tab str_neg) ^ str_else
-  | SNew(x,n,p,data) ->
-      let str = Printf.sprintf "new %s -> %s; %s" (Variable.display Terminal x) (Name.display Terminal n) (display_used_data data) in
-      (display_with_tab tab str) ^ (display_generic_process_debug tab p)
-  | SPar p_list ->
-      (display_with_tab tab "(") ^
-      (display_list (display_generic_process_debug (tab+1)) (display_with_tab tab ") | (") p_list) ^
-      (display_with_tab tab ")")
-  | SBang p_list ->
-      (display_with_tab tab "[") ^
-      (display_list (display_generic_process_debug (tab+1)) (display_with_tab tab "] | [") p_list) ^
-      (display_with_tab tab "]")
-  | SChoice(p1,p2,pos) ->
-      (display_generic_process_debug (tab+1) p1) ^
-      (display_with_tab tab (Printf.sprintf "{%s} +" (display_position pos))) ^
-      (display_generic_process_debug (tab+1) p2)
-
-
 (*** Transformation from processes to simple process ***)
 
 let link_used_data data =
