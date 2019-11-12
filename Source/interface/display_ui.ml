@@ -514,13 +514,13 @@ let of_output_command = function
         | PVerif(percent,jobs) -> ("verification",JObject [ "percent", JInt percent; "jobs_remaining", JInt jobs ])
         | PGeneration(jobs,min_jobs) -> ("generation", JObject [ "minimum_jobs", JInt min_jobs; "jobs_created", JInt jobs ])
       in
-      JObject [ "command", JString "progression"; "round", JInt 0; label,obj ]
+      JObject [ "command", JString "query_progression"; "round", JInt 0; label,obj ]
   | Progression(_,_,PDistributed(round,prog)) ->
       let (label,obj) = match prog with
         | PVerif(percent,jobs) -> ("verification",JObject [ "percent", JInt percent; "jobs_remaining", JInt jobs ])
         | PGeneration(jobs,min_jobs) -> ("generation", JObject [ "minimum_jobs", JInt min_jobs; "jobs_created", JInt jobs ])
       in
-      JObject [ "command", JString "progression"; "round", JInt round; label,obj ]
+      JObject [ "command", JString "query_progression"; "round", JInt round; label,obj ]
   | Query_canceled file -> JObject [ "command", JString "query_canceled"; "file", JString file ]
   | Run_canceled file -> JObject [ "command", JString "run_canceled"; "file", JString file ]
   | Batch_canceled -> JObject [ "command", JString "batch_canceled"]
