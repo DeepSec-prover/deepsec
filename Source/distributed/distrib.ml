@@ -425,8 +425,9 @@ module Distrib = functor (Task:Evaluator_task) -> struct
       List.iter (fun (eval,man_op) -> match man_op with
         | None ->
             Config.log (fun () -> Printf.sprintf "[distrib.ml >> WLM.kill_all] Sending kill signal: %d\n" eval.WE.pid);
-            Unix.kill eval.WE.pid kill_signal;
-            ignore (Unix.close_process (eval.WE.in_ch,eval.WE.out_ch))
+            Unix.kill eval.WE.pid kill_signal
+            (* The following is removed for now as it seems to block from time to time. *)
+            (*ignore (Unix.close_process (eval.WE.in_ch,eval.WE.out_ch))*)
         | Some manager ->
             Config.log (fun () -> Printf.sprintf "[distrib.ml >> WLM.kill_all] Sending kill evaluator command: %d\n" eval.WE.pid);
             WDM.send_input_command manager.out_ch (WDM.Kill_evaluator eval.WE.pid)
@@ -435,8 +436,9 @@ module Distrib = functor (Task:Evaluator_task) -> struct
       (* Kill managers *)
       List.iter (fun manager ->
         Config.log (fun () -> "[distrib.ml >> WLM.kill_all] Sending kill manager command\n");
-        WDM.send_input_command manager.out_ch WDM.Die;
-        ignore (Unix.close_process (manager.in_ch,manager.out_ch))
+        WDM.send_input_command manager.out_ch WDM.Die
+        (* The following is removed for now as it seems to block from time to time. *)
+        (*ignore (Unix.close_process (manager.in_ch,manager.out_ch))*)
       ) !distant_managers
 
     let die_command () =
@@ -501,8 +503,9 @@ module Distrib = functor (Task:Evaluator_task) -> struct
         match man_op with
           | None ->
               Config.log (fun () -> Printf.sprintf "[distrib.ml >> WLM.kill_and_replace_active_evaluators] Sending kill signal: %d\n" eval.WE.pid);
-              Unix.kill eval.WE.pid kill_signal;
-              ignore (Unix.close_process (eval.WE.in_ch,eval.WE.out_ch))
+              Unix.kill eval.WE.pid kill_signal
+              (* The following is removed for now as it seems to block from time to time. *)
+              (*ignore (Unix.close_process (eval.WE.in_ch,eval.WE.out_ch))*)
           | Some manager ->
               Config.log (fun () -> Printf.sprintf "[distrib.ml >> WLM.kill_and_replace_active_evaluators] Sending kill evaluator command: %d\n" eval.WE.pid);
               WDM.send_input_command manager.out_ch (WDM.Kill_evaluator eval.WE.pid)
