@@ -183,6 +183,8 @@ module IK : sig
 
   val get_term : K.t -> t -> int -> term
 
+  val get_recipe : K.t -> t -> int -> recipe
+
   val get : K.t -> t -> int -> recipe * term
 
   val get_max_type_recipe : K.t -> t -> int

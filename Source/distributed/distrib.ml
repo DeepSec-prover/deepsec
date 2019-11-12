@@ -119,7 +119,7 @@ module Distrib = functor (Task:Evaluator_task) -> struct
             Config.log (fun () -> "[distrib.ml >> WE] Exit\n");
             exit 0
         | Config.Internal_error err_msg ->
-            Config.log (fun () -> Printf.sprintf "[distrib.ml >> WE] Ineternal error = %s\n" err_msg);
+            Config.log (fun () -> Printf.sprintf "[distrib.ml >> WE] Internal error = %s\n" err_msg);
             send_output_command (Error_msg err_msg)
         | ex ->
             Config.log (fun () -> Printf.sprintf "[distrib.ml >> WE] Other error : %s\n" (Printexc.to_string ex));

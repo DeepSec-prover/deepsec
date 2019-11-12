@@ -581,11 +581,11 @@ let print_output_command = function
   | Query_ended(_,status,index,time,qtype) ->
       let return = if !Config.quiet then "" else "\x0d" in
       begin match status, qtype with
-        | QCompleted None, Trace_Equivalence -> Printf.printf "%sResult query %d: The two processes are %s. Verified in %s                                     \n%!" return index (Display.coloured_terminal_text Green [Bold] "trace equivalent") (Display.mkRuntime time)
-        | QCompleted None, Trace_Inclusion -> Printf.printf "%sResult query %d: Process 1 is %s in process 2. Verified in %s                                   \n%!" return index (Display.coloured_terminal_text Green [Bold] "trace included") (Display.mkRuntime time)
+        | QCompleted None, Trace_Equivalence -> Printf.printf "%sResult query %d: The two processes are %s. Verified in %s                                          \n%!" return index (Display.coloured_terminal_text Green [Bold] "trace equivalent") (Display.mkRuntime time)
+        | QCompleted None, Trace_Inclusion -> Printf.printf "%sResult query %d: Process 1 is %s in process 2. Verified in %s                                        \n%!" return index (Display.coloured_terminal_text Green [Bold] "trace included") (Display.mkRuntime time)
         | QCompleted None, _ -> ()
-        | QCompleted _, Trace_Equivalence -> Printf.printf "%sResult query %d: The two processes are %s. Verified in %s\n%!" return index (Display.coloured_terminal_text Red [Bold] "not trace equivalent") (Display.mkRuntime time)
-        | QCompleted _, Trace_Inclusion -> Printf.printf "%sResult query %d: Process 1 is %s in process 2. Verified in %s\n%!" return index (Display.coloured_terminal_text Red [Bold] "not trace included") (Display.mkRuntime time)
+        | QCompleted _, Trace_Equivalence -> Printf.printf "%sResult query %d: The two processes are %s. Verified in %s                                             \n%!" return index (Display.coloured_terminal_text Red [Bold] "not trace equivalent") (Display.mkRuntime time)
+        | QCompleted _, Trace_Inclusion -> Printf.printf "%sResult query %d: Process 1 is %s in process 2. Verified in %s                                           \n%!" return index (Display.coloured_terminal_text Red [Bold] "not trace included") (Display.mkRuntime time)
         | QCompleted _, _ -> ()
         | _ -> ()
       end

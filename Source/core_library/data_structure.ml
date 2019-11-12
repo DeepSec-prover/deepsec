@@ -961,6 +961,17 @@ module IK = struct
       in
       explore ikb.data
 
+  let get_recipe kb ikb index =
+    if index < kb.K.size
+    then kb.K.data.(index).K.recipe
+    else
+      let rec explore = function
+        | [] -> Config.internal_error "[data_structure.ml >> IK.get_recipe] Invalid index."
+        | elt::_ when elt.id = index -> elt.recipe
+        | _::q -> explore q
+      in
+      explore ikb.data
+
   let get kb ikb index =
     if index < kb.K.size
     then kb.K.data.(index).K.recipe, kb.K.data.(index).K.term

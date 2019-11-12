@@ -640,15 +640,15 @@ let command_options_of_distrib_settings settings options =
         in
         (Default_semantics !semantics)::(POR !por)::(Round_timer !round_timer)::distrib
     | ( Nb_jobs _ | Distant_workers _ | Distributed _ | Local_workers _)::q -> explore q
-    | (Default_semantics sem) as op :: q ->
+    | Default_semantics sem :: q ->
         semantics := sem;
-        op::(explore q)
+        explore q
     | POR b :: q ->
         por := b;
-        (POR b)::(explore q)
+        explore q
     | Round_timer n :: q->
         round_timer := n;
-        (Round_timer n)::(explore q)
+        explore q
     | op::q -> op::(explore q)
   in
   explore options
