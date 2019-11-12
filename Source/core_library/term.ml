@@ -602,7 +602,7 @@ module Symbol = struct
       let c = { label_s = str; arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
       incr accumulator_nb_symb;
       c
-      
+
   (******** Display function *******)
 
   let reg_proj = Str.regexp "proj_{\\([0-9]+\\),\\([0-9]+\\)}"
@@ -847,7 +847,7 @@ module Term = struct
     | Func(f_symb,_) when f_symb.arity = 0 ->
         Printf.sprintf "%s" (Symbol.display out f_symb)
     | Func(f_symb,args) when f_symb.cat = Tuple ->
-        Printf.sprintf "%s%s%s" (langle out) (display_list (display out) "," args) (rangle out)
+        Printf.sprintf "(%s)" (display_list (display out) "," args)
     | Func(f_symb,args) ->
         Printf.sprintf "%s(%s)" (Symbol.display out f_symb) (display_list (display out) "," args)
 
@@ -996,7 +996,7 @@ module Recipe = struct
     | RFunc(f_symb,_) when f_symb.arity = 0 ->
         Printf.sprintf "%s" (Symbol.display out f_symb)
     | RFunc(f_symb,args) when f_symb.cat = Tuple ->
-        Printf.sprintf "%s%s%s" (langle out) (display_list (display out) "," args) (rangle out)
+        Printf.sprintf "(%s)" (display_list (display out) "," args)
     | RFunc(f_symb,args) ->
         Printf.sprintf "%s(%s)" (Symbol.display out f_symb) (display_list (display out) "," args)
 end

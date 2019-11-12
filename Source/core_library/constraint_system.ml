@@ -2588,8 +2588,8 @@ module Rule = struct
                   List.rev_map (fun csys' ->
                     let ikb =
                       if application_on_IK
-                      then IK.remove csys.incremented_knowledge index_kb
-                      else csys.incremented_knowledge
+                      then IK.remove csys'.incremented_knowledge index_kb
+                      else csys'.incremented_knowledge
                     in
                     let rule_data =
                       if application_on_IK
@@ -2656,8 +2656,8 @@ module Rule = struct
                       List.rev_map (fun csys' ->
                         let ikb =
                           if application_on_IK
-                          then IK.remove csys.incremented_knowledge index_kb
-                          else csys.incremented_knowledge
+                          then IK.remove csys'.incremented_knowledge index_kb
+                          else csys'.incremented_knowledge
                         in
                         let rule_data =
                           if application_on_IK

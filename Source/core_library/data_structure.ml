@@ -1122,7 +1122,7 @@ module IK = struct
           f_next r
       | Name _ -> raise Not_found
       | Func(f,_) when f.arity = 0 && f.public -> f_next (RFunc(f,[]))
-      | (Func(f,_)) as t when f.public ->
+      | (Func(f,_)) as t when not f.public ->
           find (fun recipe term ->
             if Term.is_equal t term
             then f_next recipe
