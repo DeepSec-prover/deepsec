@@ -3061,7 +3061,7 @@ module Rule_ground = struct
 
           let csys_list_ref = ref [] in
           List.iter (fun csys -> match Rule.create_generic_skeleton_formula csys index_skel recipe with
-            | FoundFact fact ->
+            | Rule.FoundFact fact ->
                 let new_ik =
                   if removal_allowed
                   then IK.remove csys.incremented_knowledge index_kb
@@ -3087,10 +3087,10 @@ module Rule_ground = struct
                   }
                 in
                 csys_list_ref := csys' :: !csys_list_ref
-            | NoFormula ->
+            | Rule.NoFormula ->
                 if !find_witness
                 then raise (WitnessMessage recipe)
-            | Unsolved _ -> Config.internal_error "[constraint_system.ml >> Rule_ground.rewrite] Since the frame is ground, there should not be unsolved formula."
+            | Rule.Unsolved _ -> Config.internal_error "[constraint_system.ml >> Rule_ground.rewrite] Since the frame is ground, there should not be unsolved formula."
           ) csys_list;
 
           split_data_constructor (normalisation_deduction_consequence internal_target) target_csys1 !csys_list_ref f_next_1
@@ -3132,10 +3132,10 @@ module Rule_ground = struct
           let csys_list_ref = ref [] in
 
           List.iter (fun csys -> match Rule.create_eq_constructor_formula csys index_kb recipe with
-            | NoEq ->
+            | Rule.NoEq ->
                 if !find_witness
                 then raise (WitnessEquality(recipe,IK.get_recipe csys.knowledge csys.incremented_knowledge index_kb))
-            | SolvedEq ->
+            | Rule.SolvedEq ->
                 let ikb =
                   if application_on_IK
                   then IK.remove csys.incremented_knowledge index_kb
@@ -3199,26 +3199,38 @@ module Rule_ground = struct
 
   (*** Main function ***)
 
+  let apply_rules f_continuation =
+    split_data_constructor (normalisation_deduction_consequence (rewrite (equality_constructor f_continuation)))
+
   type result_static_equivalence =
     | Static_equivalent
     | Witness_message of recipe
     | Witness_equality of recipe * recipe
 
-  (*
   let static_equivalence frame1 frame2 =
-    let csys1 = empty () in
-    let csys2 = empty () in
+    let csys1 = prepare_for_solving_procedure true (empty ()) in
+    let csys2 = prepare_for_solving_procedure true (empty ()) in
 
-    let rec explore k csys1 csys2 frame1 frame2 = match frame1,frame2 with
-      | [],[] -> Static_equivalent
+    let rec explore k csys1 csys2 frame1 frame2 f_next = match frame1,frame2 with
+      | [],[] -> ()
       | [], _ | _, [] -> Config.internal_error "[constraint_system.ml >> Rule_ground.static_equivalence] Frames should have the same number of terms"
       | t1::q1, t2::q2 ->
-          let csys1' = add_axiom csys1 k t1 in
-          let csys1'' = prepare_for_solving_procedure true csys1' in
+          let csys1_1 = add_axiom csys1 k t1 in
+          let csys1_2 = prepare_for_solving_procedure true csys1_1 in
 
-          let csys2' = add_axiom csys2 k t2 in
-          let csys2'' = prepare_for_solving_procedure true csys2' in
+          let csys2_1 = add_axiom csys2 k t2 in
+          let csys2_2 = prepare_for_solving_procedure true csys2_1 in
 
-    *)
+          apply_rules (fun csys1_3 csys_list f_next1 -> match csys_list with
+            | [csys2_3] -> explore (k+1) csys1_3 csys2_3 q1 q2 f_next1
+            | _ -> Config.internal_error "[constraint_system.ml >> Rule_ground.static_equivalence] There should be only one constraint system."
+          ) csys1_2 [csys2_2] f_next
+    in
 
+    try
+      explore 1 csys1 csys2 frame1 frame2 (fun () -> ());
+      Static_equivalent
+    with
+      | WitnessMessage r -> Witness_message r
+      | WitnessEquality (r1,r2) -> Witness_equality (r1,r2)
  end

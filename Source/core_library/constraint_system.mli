@@ -108,3 +108,15 @@ module Rule : sig
 
   val is_term_deducible : 'a t -> term -> bool
 end
+
+module Rule_ground : sig
+
+  val apply_rules : ('a t -> 'a t list -> (unit -> unit) -> unit) -> 'a t -> 'a t list -> (unit -> unit) -> unit
+
+  type result_static_equivalence =
+    | Static_equivalent
+    | Witness_message of recipe
+    | Witness_equality of recipe * recipe
+
+  val static_equivalence : term list -> term list -> result_static_equivalence
+end
