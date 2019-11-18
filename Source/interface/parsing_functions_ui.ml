@@ -652,6 +652,5 @@ let input_command_of json = match string_of (member "command" json) with
   | "set_config" -> Set_config (string_of (member "output_dir" json))
   | "start_display_trace" -> Display_trace (string_of (member "query_file" json))
   | "die" -> Die
-  | "next_step" -> DTNext_step (detail_of json)
-  | "previous_step" -> DTPrev_step (detail_of json)
+  | "goto_step" -> DTGo_to (int_of (member "id" json))
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> input_command_of] Unknown command."

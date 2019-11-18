@@ -224,7 +224,7 @@ let prepare_for_solving_procedure after_output csys =
     )
   )
 
-let prepare_for_solving_procedure_closed csys =
+let prepare_for_solving_procedure_ground csys =
   Variable.auto_cleanup_with_reset_notail (fun () ->
     Name.auto_cleanup_with_reset_notail (fun () ->
       let (kb,ikb,id_assoc,cleanup_deducible_name) = IK.transfer_incremented_knowledge_into_knowledge_no_rename csys.knowledge csys.incremented_knowledge in
@@ -2816,51 +2816,6 @@ module Rule = struct
 
             f_continuation { eq_recipe = eq_recipe; set = csys_list } f_next1
           ) f_next
-
-  (*** Main functions for closed constraint system ***)
-
-  let solve csys =
-    Name.auto_deducible_cleanup_with_reset_notail (fun () ->
-      K.iteri (fun i recipe term -> match term with
-        | Name n -> Name.set_deducible n (CRFunc(i,recipe))
-        | _ -> ()
-      ) csys.knowledge;
-      let csys_set = { set = [csys]; eq_recipe = Formula.R.Top } in
-      let csys_ref = ref None in
-      apply_rules_after_output false (fun csys_set' f_next ->
-        Config.debug (fun () ->
-          if csys_set'.set <> [] && !csys_ref <> None
-          then Config.internal_error "[constraint_system.ml >> Rule.solve] Since the constraint system is closed, there should only be one branch with the constraint system."
-        );
-        (* We need to add merge the incremented knowledge with the knowledge base *)
-        if csys_set'.set <> []
-        then csys_ref := Some (prepare_for_solving_procedure_closed (List.hd (csys_set'.set)));
-
-        f_next ()
-      ) csys_set (fun () -> ());
-      match !csys_ref with
-        | None -> Config.internal_error "[constraint_system.ml >> Rule.solve] There should be a solved constraint system."
-        | Some csys' -> csys'
-    )
-
-  let is_term_deducible csys t =
-    match t with
-      | Func(f,[]) when f.public -> true
-      | _ ->
-          Name.auto_deducible_cleanup_with_reset_notail (fun () ->
-            K.iteri (fun i recipe term -> match term with
-              | Name n -> Name.set_deducible n (CRFunc(i,recipe))
-              | _ -> ()
-            ) csys.knowledge;
-
-            let (simple_csys,x_var) = MGS.simple_of_non_deducible_term csys Formula.R.Top t in
-
-            let df_vars =  { MGS.std_vars = ref None; MGS.infinite_vars = [x_var] } in
-
-            match MGS.compute_one simple_csys df_vars with
-              | None -> false
-              | Some _ -> true
-          )
 end
 
 (***********************************************
@@ -2876,8 +2831,14 @@ module Rule_ground = struct
 
   (**** The normalisation rule for data constructor *)
 
+  let rec find_pattern = function
+    | Var { link = TLink t; _ } -> find_pattern t
+    | Var _ -> Config.internal_error "[constraint_system.ml >> Rule_ground.find_pattern] The term should be ground."
+    | Func(f,_) when f.cat = Tuple -> Some f
+    | _ -> None
+
   (* When [witness = true], the list [csys_list] only contains one element. *)
-  let rec split_data_constructor (f_continuation:'a t -> 'a t list -> (unit -> unit) -> unit) target_csys csys_list f_next =
+  let rec split_data_constructor (f_continuation:'a t -> 'a t list -> 'b) target_csys csys_list =
     Config.debug (fun () ->
       Config.print_in_log (Printf.sprintf "- Rule split data constructor : Nb csys = %d\n" (List.length csys_list));
       Config.print_in_log (Printf.sprintf "Target constraint system:%s\n" (display_constraint_system target_csys));
@@ -2885,23 +2846,17 @@ module Rule_ground = struct
       List.iter (fun csys -> Config.print_in_log (display_constraint_system csys)) csys_list
     );
     match UF.pop_deduction_fact_to_check_for_pattern target_csys.unsolved_facts with
-      | None -> f_continuation target_csys csys_list f_next
+      | None -> f_continuation target_csys csys_list
       | Some dfact ->
           let target_csys_1 = { target_csys with unsolved_facts = UF.validate_head_deduction_facts_for_pattern target_csys.unsolved_facts } in
-          let pattern = match dfact.df_term with
-            | Func(f,_) when f.cat = Tuple -> Some f
-            | _ -> None
-          in
+          let pattern = find_pattern dfact.df_term in
           let csys_list_ref = ref [] in
           List.iter (fun csys ->
             let dfact_to_check = match UF.pop_deduction_fact_to_check_for_pattern csys.unsolved_facts with
               | Some df -> df
               | _ -> Config.internal_error "[constraint_system.ml >> Rule_ground.split_data_constructor] The should be a deduction fact to check for pattern."
             in
-            let pattern' = match dfact_to_check.df_term with
-              | Func(f,_) when f.cat = Tuple -> Some f
-              | _ -> None
-            in
+            let pattern' = find_pattern dfact_to_check.df_term in
             match pattern,pattern' with
               | None, None -> csys_list_ref := { csys with unsolved_facts = UF.validate_head_deduction_facts_for_pattern csys.unsolved_facts } :: !csys_list_ref
               | Some f, Some f' when f == f' -> csys_list_ref := { csys with unsolved_facts = UF.validate_head_deduction_facts_for_pattern csys.unsolved_facts } :: !csys_list_ref
@@ -2914,7 +2869,7 @@ module Rule_ground = struct
                       let proj = List.hd (Symbol.get_projections f) in
                       raise (WitnessMessage (RFunc(proj,[dfact.df_recipe])))
           ) csys_list;
-          split_data_constructor f_continuation target_csys_1 !csys_list_ref f_next
+          split_data_constructor f_continuation target_csys_1 !csys_list_ref
 
   (**** The rule for adding element in the knowledge base ****)
 
@@ -2977,7 +2932,7 @@ module Rule_ground = struct
       - When no consequence -> Adding in SDF and followed by equality_SDF and then back to [normalisation_deduction_consequence]
       - When there are consequence -> add an equality formula and check it.
       *)
-  let rec normalisation_deduction_consequence f_continuation (target_csys:'a t) (csys_list:'a t list) (f_next:unit->unit) =
+  let rec normalisation_deduction_consequence f_continuation (target_csys:'a t) (csys_list:'a t list) =
     Config.debug (fun () ->
       Config.print_in_log (Printf.sprintf "- Rule normalisation_deduction_consequence : Nb csys = %d\n" (List.length csys_list));
       Config.print_in_log (Printf.sprintf "Target constraint system:%s\n" (display_constraint_system target_csys));
@@ -2992,27 +2947,25 @@ module Rule_ground = struct
       then
         begin
           let index_new_elt = IK.get_next_index target_csys.incremented_knowledge in
-          Name.auto_deducible_cleanup_with_reset (fun f_next_1 ->
-            let target_csys1 =
-              let (dfact,uf) = UF.pop_and_remove_deduction_fact target_csys.unsolved_facts in
+          let target_csys1 =
+            let (dfact,uf) = UF.pop_and_remove_deduction_fact target_csys.unsolved_facts in
+            link_name_with_recipe (CRFunc(index_new_elt,dfact.df_recipe)) dfact.df_term;
+            { target_csys with
+              unsolved_facts = uf;
+              incremented_knowledge = IK.add target_csys.incremented_knowledge dfact
+            }
+          in
+          let csys_list2 =
+            List.rev_map (fun csys ->
+              let (dfact,uf) = UF.pop_and_remove_deduction_fact csys.unsolved_facts in
               link_name_with_recipe (CRFunc(index_new_elt,dfact.df_recipe)) dfact.df_term;
-              { target_csys with
+              { csys with
                 unsolved_facts = uf;
-                incremented_knowledge = IK.add target_csys.incremented_knowledge dfact
+                incremented_knowledge = IK.add csys.incremented_knowledge dfact
               }
-            in
-            let csys_list2 =
-              List.rev_map (fun csys ->
-                let (dfact,uf) = UF.pop_and_remove_deduction_fact csys.unsolved_facts in
-                link_name_with_recipe (CRFunc(index_new_elt,dfact.df_recipe)) dfact.df_term;
-                { csys with
-                  unsolved_facts = uf;
-                  incremented_knowledge = IK.add csys.incremented_knowledge dfact
-                }
-              ) csys_list1
-            in
-            normalisation_deduction_consequence f_continuation target_csys1 csys_list2 f_next_1
-          ) f_next
+            ) csys_list1
+          in
+          normalisation_deduction_consequence f_continuation target_csys1 csys_list2
         end
       else
         begin
@@ -3022,13 +2975,13 @@ module Rule_ground = struct
             ) csys_list1
           in
           let target_csys1 = { target_csys with unsolved_facts = UF.remove_head_deduction_fact target_csys.unsolved_facts} in
-          normalisation_deduction_consequence f_continuation target_csys1 csys_list2 f_next
+          normalisation_deduction_consequence f_continuation target_csys1 csys_list2
         end
-    else f_continuation target_csys csys_list f_next
+    else f_continuation target_csys csys_list
 
   (*** The rule rewrite ***)
 
-  let rewrite f_continuation (target_csys:'a t) (csys_list:'a t list) (f_next:unit->unit) =
+  let rewrite f_continuation (target_csys:'a t) (csys_list:'a t list) =
     Config.debug (fun () ->
       Config.print_in_log (Printf.sprintf "- Rule rewrite : Nb csys = %d\n" (List.length csys_list));
       Config.print_in_log (Printf.sprintf "Target constraint system:%s\n" (display_constraint_system target_csys));
@@ -3036,18 +2989,18 @@ module Rule_ground = struct
       List.iter (fun csys -> Config.print_in_log (display_constraint_system csys)) csys_list
     );
 
-    let rec internal target_csys checked_csys to_check_csys f_next_1 = match Rule.exploration_rewrite Formula.R.Top (ref None) checked_csys to_check_csys with
-      | None, checked_csys_1 -> f_continuation target_csys checked_csys_1 f_next_1
+    let rec internal target_csys checked_csys to_check_csys = match Rule.exploration_rewrite Formula.R.Top (ref None) checked_csys to_check_csys with
+      | None, checked_csys_1 -> f_continuation target_csys checked_csys_1
       | Some(_,_,_,recipe,_,to_check_csys_1), checked_csys_1 ->
           (* We found an application of a destructor that is not applicable to the target csys. *)
           if !find_witness
           then raise (WitnessMessage recipe);
 
-          internal target_csys checked_csys_1 to_check_csys_1 f_next_1
+          internal target_csys checked_csys_1 to_check_csys_1
     in
 
-    let rec internal_target target_csys csys_list f_next_1 = match Rule.exploration_rewrite Formula.R.Top (ref None) [] [target_csys] with
-      | None, [target_csys1] -> internal target_csys1 [] csys_list f_next_1
+    let rec internal_target target_csys csys_list = match Rule.exploration_rewrite Formula.R.Top (ref None) [] [target_csys] with
+      | None, [target_csys1] -> internal target_csys1 [] csys_list
       | Some(index_kb,index_skel,mgs_data,recipe,target_csys1,[]),[] ->
           Config.debug (fun () ->
             if mgs_data.MGS.one_mgs_std_subst <> []
@@ -3093,15 +3046,15 @@ module Rule_ground = struct
             | Rule.Unsolved _ -> Config.internal_error "[constraint_system.ml >> Rule_ground.rewrite] Since the frame is ground, there should not be unsolved formula."
           ) csys_list;
 
-          split_data_constructor (normalisation_deduction_consequence internal_target) target_csys1 !csys_list_ref f_next_1
+          split_data_constructor (normalisation_deduction_consequence internal_target) target_csys1 !csys_list_ref
       | _ -> Config.internal_error "[constraint_system.ml >> Rule_ground.rewrite] Unexpected number of constraint system returned by exploration."
     in
 
-    internal_target target_csys csys_list f_next
+    internal_target target_csys csys_list
 
   (*** The rule consequence ***)
 
-  let internal_equality_constructor f_continuation (target_csys:'a t) (csys_list:'a t list) (f_next:unit->unit) =
+  let internal_equality_constructor f_continuation (target_csys:'a t) (csys_list:'a t list) =
     Config.debug (fun () ->
       Config.print_in_log (Printf.sprintf "- Rule equality_constructor : Nb csys = %d\n" (List.length csys_list));
       Config.print_in_log (Printf.sprintf "Target constraint system:%s\n" (display_constraint_system target_csys));
@@ -3109,18 +3062,18 @@ module Rule_ground = struct
       List.iter (fun csys -> Config.print_in_log (display_constraint_system csys)) csys_list
     );
 
-    let rec internal target_csys checked_csys to_check_csys f_next_1 = match Rule.exploration_equality_constructor Formula.R.Top (ref None) checked_csys to_check_csys with
-      | None, checked_csys_1 -> f_continuation target_csys checked_csys_1 f_next_1
+    let rec internal target_csys checked_csys to_check_csys = match Rule.exploration_equality_constructor Formula.R.Top (ref None) checked_csys to_check_csys with
+      | None, checked_csys_1 -> f_continuation target_csys checked_csys_1
       | Some(recipe,_,index_kb,csys,to_check_csys_1), checked_csys_1 ->
           (* We found an application of a destructor that is not applicable to the target csys. *)
           if !find_witness
           then raise (WitnessEquality(recipe,IK.get_recipe csys.knowledge csys.incremented_knowledge index_kb));
 
-          internal target_csys checked_csys_1 to_check_csys_1 f_next_1
+          internal target_csys checked_csys_1 to_check_csys_1
     in
 
-    let rec internal_target target_csys csys_list f_next_1 = match Rule.exploration_equality_constructor Formula.R.Top (ref None) [] [target_csys] with
-      | None, [target_csys1] -> internal target_csys1 [] csys_list f_next_1
+    let rec internal_target target_csys csys_list  = match Rule.exploration_equality_constructor Formula.R.Top (ref None) [] [target_csys] with
+      | None, [target_csys1] -> internal target_csys1 [] csys_list
       | Some(recipe,mgs_data,index_kb,target_csys_1,[]), [] ->
           Config.debug (fun () ->
             if mgs_data.MGS.one_mgs_std_subst <> []
@@ -3161,13 +3114,13 @@ module Rule_ground = struct
             | _ -> Config.internal_error "[constraint_system.ml >> Rule_ground.internal_equality_constructor] Unexpected case with ground constraint system."
           ) csys_list;
 
-          internal_target target_csys_1 !csys_list_ref f_next_1
+          internal_target target_csys_1 !csys_list_ref
       | _ -> Config.internal_error "[constraint_system.ml >> Rule_ground.internal_equality_constructor] Unexpected number of constraint system returned by exploration."
     in
 
-    internal_target target_csys csys_list f_next
+    internal_target target_csys csys_list
 
-  let initialise_equality_constructor f_continuation (target_csys:'a t) (csys_list:'a t list) (f_next:unit->unit) =
+  let initialise_equality_constructor f_continuation (target_csys:'a t) (csys_list:'a t list) =
 
     let all_id = IK.get_all_index target_csys.incremented_knowledge in
 
@@ -3193,44 +3146,82 @@ module Rule_ground = struct
       ) csys_list
     in
 
-    f_continuation target_csys1 csys_list1 f_next
+    f_continuation target_csys1 csys_list1
 
   let equality_constructor f_continuation = initialise_equality_constructor (internal_equality_constructor f_continuation)
 
   (*** Main function ***)
 
-  let apply_rules f_continuation =
-    split_data_constructor (normalisation_deduction_consequence (rewrite (equality_constructor f_continuation)))
+  let setup_deducible_names csys =
+    let f i recipe term = match term with
+      | Name n -> Name.set_deducible n (CRFunc(i,recipe))
+      | _ -> ()
+    in
+    K.iteri f csys.knowledge
+    
+  let apply_rules f_continuation target_csys csys_list f_next =
+    Name.auto_deducible_cleanup_with_reset (fun f_next_1 ->
+      let f_continuation' target_csys' csys_list' = f_continuation target_csys' csys_list' f_next_1 in
+      split_data_constructor (normalisation_deduction_consequence (rewrite (equality_constructor f_continuation'))) target_csys csys_list
+    ) f_next
 
-  type result_static_equivalence =
-    | Static_equivalent
+  type 'a result_static_equivalence =
+    | Static_equivalent of 'a t * 'a t
     | Witness_message of recipe
     | Witness_equality of recipe * recipe
 
-  let static_equivalence frame1 frame2 =
-    let csys1 = prepare_for_solving_procedure true (empty ()) in
-    let csys2 = prepare_for_solving_procedure true (empty ()) in
-
-    let rec explore k csys1 csys2 frame1 frame2 f_next = match frame1,frame2 with
-      | [],[] -> ()
-      | [], _ | _, [] -> Config.internal_error "[constraint_system.ml >> Rule_ground.static_equivalence] Frames should have the same number of terms"
-      | t1::q1, t2::q2 ->
-          let csys1_1 = add_axiom csys1 k t1 in
-          let csys1_2 = prepare_for_solving_procedure true csys1_1 in
-
-          let csys2_1 = add_axiom csys2 k t2 in
-          let csys2_2 = prepare_for_solving_procedure true csys2_1 in
-
-          apply_rules (fun csys1_3 csys_list f_next1 -> match csys_list with
-            | [csys2_3] -> explore (k+1) csys1_3 csys2_3 q1 q2 f_next1
-            | _ -> Config.internal_error "[constraint_system.ml >> Rule_ground.static_equivalence] There should be only one constraint system."
-          ) csys1_2 [csys2_2] f_next
+  let apply_rules_for_static_equivalence csys_1 csys_2 =
+    let f_continuation csys_1' csys_list = match csys_list with
+      | [ csys_2' ] ->
+          let csys_1'' = prepare_for_solving_procedure_ground csys_1' in
+          let csys_2'' = prepare_for_solving_procedure_ground csys_2' in
+          find_witness := false;
+          Static_equivalent (csys_1'',csys_2'')
+      | _ -> Config.internal_error "[constraint_system.ml >> Rule_ground.apply_rules_for_static_equivalence] Unexpected number of constraint system."
     in
 
+    find_witness := true;
     try
-      explore 1 csys1 csys2 frame1 frame2 (fun () -> ());
-      Static_equivalent
+      Name.auto_cleanup_with_exception (fun () ->
+        setup_deducible_names csys_1;
+        setup_deducible_names csys_2;
+        split_data_constructor (normalisation_deduction_consequence (rewrite (equality_constructor f_continuation))) csys_1 [csys_2]
+      )
     with
-      | WitnessMessage r -> Witness_message r
-      | WitnessEquality (r1,r2) -> Witness_equality (r1,r2)
+      | WitnessMessage r ->
+          find_witness := false;
+          Witness_message (Recipe.instantiate r)
+      | WitnessEquality (r1,r2) ->
+          find_witness := false;
+          Witness_equality (Recipe.instantiate r1,Recipe.instantiate r2)
+
+  let is_term_deducible csys t = match t with
+    | Func(f,[]) when f.public -> true
+    | _ ->
+        Name.auto_deducible_cleanup_with_reset_notail (fun () ->
+          setup_deducible_names csys;
+          (IK.consequence_term csys.knowledge csys.incremented_knowledge csys.deduction_facts t) <> None
+        )
+
+  let recipe_of_deducible_term csys t = match t with
+    | Func(f,[]) when f.public -> Some (RFunc(f,[]))
+    | _ ->
+        Name.auto_deducible_cleanup_with_reset_notail (fun () ->
+          setup_deducible_names csys;
+          match IK.consequence_term csys.knowledge csys.incremented_knowledge csys.deduction_facts t with
+            | None -> None
+            | Some r -> Some (Recipe.instantiate r)
+        )
+
+  let solve csys =
+    Name.auto_deducible_cleanup_with_reset_notail (fun () ->
+      setup_deducible_names csys;
+
+      let csys_ref = ref csys in
+      apply_rules (fun csys' _ f_next ->
+        csys_ref := prepare_for_solving_procedure_ground csys';
+        f_next ()
+      ) csys [] (fun () -> ());
+      !csys_ref
+    )
  end

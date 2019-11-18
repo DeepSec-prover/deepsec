@@ -81,6 +81,8 @@ val add_non_deducible_terms : 'a t -> term list -> 'a t
 
 val prepare_for_solving_procedure : bool -> 'a t -> 'a t
 
+val prepare_for_solving_procedure_ground : 'a t -> 'a t
+
 val instantiate : 'a t -> 'a t
 
 val debug_on_constraint_system : string -> 'a t -> unit
@@ -104,19 +106,22 @@ module Rule : sig
 
   val instantiate_useless_deduction_facts : ('a set -> (unit -> unit) -> unit) -> 'a set -> (unit -> unit) -> unit
 
-  val solve : 'a t -> 'a t
-
-  val is_term_deducible : 'a t -> term -> bool
 end
 
 module Rule_ground : sig
 
-  val apply_rules : ('a t -> 'a t list -> (unit -> unit) -> unit) -> 'a t -> 'a t list -> (unit -> unit) -> unit
-
-  type result_static_equivalence =
-    | Static_equivalent
+  type 'a result_static_equivalence =
+    | Static_equivalent of 'a t * 'a t
     | Witness_message of recipe
     | Witness_equality of recipe * recipe
 
-  val static_equivalence : term list -> term list -> result_static_equivalence
+  val apply_rules : ('a t -> 'a t list -> (unit -> unit) -> unit) -> 'a t -> 'a t list -> (unit -> unit) -> unit
+
+  val apply_rules_for_static_equivalence : 'a t -> 'a t -> 'a result_static_equivalence
+
+  val solve : 'a t -> 'a t
+
+  val is_term_deducible : 'a t -> term -> bool
+
+  val recipe_of_deducible_term : 'a t -> term -> recipe option
 end

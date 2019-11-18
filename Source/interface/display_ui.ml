@@ -532,7 +532,7 @@ let of_output_command = function
         "command", JString "current_step";
         "process", of_process assoc_ref conf.process;
         "frame", JList (List.map (of_term assoc_ref) conf.frame);
-        "current_action", JInt step
+        "current_action_id", JInt step
       ]
 
 let print_output_command = function
@@ -605,7 +605,7 @@ let print_output_command = function
   | Run_canceled _ -> Config.internal_error "[print_output_command] Should not occur"
   | Batch_canceled -> Printf.printf "\n%s\n" (coloured_terminal_text Red [Bold] "Verification canceled !")
   (* Simulator: Display_of_traces *)
-  | DTNo_attacker_trace | DTCurrent_step _ -> Config.internal_error "[print_output_command] SHould not occur in command mode."
+  | DTNo_attacker_trace | DTCurrent_step _ -> Config.internal_error "[print_output_command] Should not occur in command mode."
 
 (* Sending command *)
 

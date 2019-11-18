@@ -31,8 +31,8 @@ type configuration =
 type json_transition =
   | JAOutput of recipe * json_position
   | JAInput of recipe * recipe * json_position
-  | JAEaves of recipe * json_position * json_position
-  | JAComm of json_position * json_position
+  | JAEaves of recipe * json_position (* out *) * json_position (* in *)
+  | JAComm of json_position (* out *) * json_position (* in *)
   | JABang of int * json_position
   | JATau of json_position
   | JAChoice of json_position * bool (* True when the left process is chosen *)
@@ -186,8 +186,7 @@ type input_command =
   | Die
   (* Simulator: Display of traces *)
   | Display_trace of string (* Json of query result *)
-  | DTNext_step of detail_trace_display
-  | DTPrev_step of detail_trace_display
+  | DTGo_to of int
 
 type output_command =
   (* Errors *)

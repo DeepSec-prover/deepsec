@@ -454,7 +454,7 @@ let apply_transition semantics saturate csys transition = match transition with
       let csys_2 = { csys_1 with Constraint_system.additional_data = conf''} in
 
       if saturate
-      then Constraint_system.Rule.solve csys_2
+      then Constraint_system.Rule_ground.solve csys_2
       else csys_2
   | JAInput(r_ch,r_t,pos_in) ->
       let conf = csys.Constraint_system.additional_data in
@@ -475,7 +475,7 @@ let apply_transition semantics saturate csys transition = match transition with
       let csys_2 = { csys_1 with Constraint_system.additional_data = conf''} in
 
       if saturate
-      then Constraint_system.Rule.solve csys_2
+      then Constraint_system.Rule_ground.solve csys_2
       else csys_2
   | JAComm(pos_out,pos_in) ->
       let conf = csys.Constraint_system.additional_data in
@@ -484,7 +484,7 @@ let apply_transition semantics saturate csys transition = match transition with
       let conf' = apply_comm ch_ref t_ref pos_out pos_in conf in
       let ch = get_term_from_transition ch_ref in
 
-      if semantics <> Classic && Constraint_system.Rule.is_term_deducible csys ch
+      if semantics <> Classic && Constraint_system.Rule_ground.is_term_deducible csys ch
       then raise (Invalid_transition (Channel_deducible ch));
 
       { csys with Constraint_system.additional_data = conf' }
@@ -504,7 +504,7 @@ let apply_transition semantics saturate csys transition = match transition with
 let execute_process semantics js_init_proc js_trace =
 
   let init_conf = { size_frame = 0; frame = []; process = js_init_proc } in
-  let init_csys = { (Constraint_system.empty init_conf) with Constraint_system.incremented_knowledge = Data_structure.IK.empty_with_type_rec_one } in
+  let init_csys = Constraint_system.prepare_for_solving_procedure_ground (Constraint_system.empty init_conf) in
 
   let rec explore_trace csys = function
     | [] -> []
@@ -514,3 +514,177 @@ let execute_process semantics js_init_proc js_trace =
   in
 
   init_csys :: (explore_trace init_csys js_trace)
+
+(*** Find next possible transition ***)
+
+(*
+  In the classic semantics, outputs can be always be [comm]. Cannot be eavesdrop
+  In the private semantics, outputs can be Single or Comm but not both
+  In the eavesdrop semantics, outputs can be Single and Eavesdrop or Comm
+*)
+
+type available_transition =
+  | AVDirect of recipe
+  | AVComm
+  | AVEavesdrop of recipe
+
+type available_actions =
+  | AV_output of json_position (* output *) * json_position list (* tau actions *) * available_transition list
+  | AV_input of json_position (* input *) * json_position list (* tau actions *) * available_transition list
+  | AV_bang of json_position (* bang *) * json_position list (* tau actions *)
+  | AV_choice of json_position (* choice *) * json_position list (* tau actions *)
+  | AV_tau of json_position
+
+type attack_state =
+  {
+    id_attacked_action : int;
+    attacked_csys : configuration Constraint_system.t;
+    simulated_csys : configuration Constraint_system.t;
+    default_available_actions : available_actions list;
+    all_available_actions : available_actions list
+  }
+
+(* We assume that the constraint systen [conf_csys] is saturated. Hence no need to apply
+   additional rules to determinate deducible terms. *)
+let find_next_possible_transition semantics js_trans_op conf_csys =
+  let actions = ref [] in
+  let actions_full = ref [] in
+
+  let get_available_transition = match js_trans_op with
+    | Some (JAOutput(r,_)) ->
+        let ch = apply_recipe_on_frame r conf_csys.Constraint_system.additional_data in
+        begin match semantics with
+          | Classic -> (fun is_output ch' -> if is_output && Term.is_equal ch ch' then [AVDirect r;AVComm] else [AVComm])
+          | Private | Eavesdrop ->
+              (fun is_output ch' ->
+                if is_output && Term.is_equal ch ch'
+                then [AVDirect r]
+                else if Constraint_system.Rule_ground.is_term_deducible conf_csys ch' then [] else [AVComm]
+              )
+        end
+    | Some (JAInput(r,_,_)) ->
+        let ch = apply_recipe_on_frame r conf_csys.Constraint_system.additional_data in
+        begin match semantics with
+          | Classic -> (fun is_output ch' -> if not is_output && Term.is_equal ch ch' then [AVDirect r;AVComm] else [AVComm])
+          | Private | Eavesdrop ->
+              (fun is_output ch' ->
+                if not is_output && Term.is_equal ch ch'
+                then [AVDirect r]
+                else if Constraint_system.Rule_ground.is_term_deducible conf_csys ch' then [] else [AVComm]
+              )
+        end
+    | Some (JAEaves(r,_,_)) ->
+        let ch = apply_recipe_on_frame r conf_csys.Constraint_system.additional_data in
+        begin match semantics with
+          | Classic | Private -> Config.internal_error "[interface.ml >> find_next_possible_transition] Can only have an eavesdrop transition in eavesdrop semantics."
+          | Eavesdrop ->
+              (fun _ ch' ->
+                if Term.is_equal ch ch'
+                then [AVEavesdrop r]
+                else if Constraint_system.Rule_ground.is_term_deducible conf_csys ch' then [] else [AVComm]
+              )
+        end
+    | Some _ -> Config.internal_error "[interface.ml >> find_next_possible_transition] Only input / output / eavesdrop transition can be matched."
+    | None ->
+        begin match semantics with
+          | Classic ->
+              (fun _ ch' -> match Constraint_system.Rule_ground.recipe_of_deducible_term conf_csys ch' with
+                | None -> [AVComm]
+                | Some r -> [AVDirect r;AVComm])
+          | Private | Eavesdrop ->
+              (fun _ ch' -> match Constraint_system.Rule_ground.recipe_of_deducible_term conf_csys ch' with
+                | None -> [AVComm]
+                | Some r -> [AVDirect r;AVEavesdrop r]
+              )
+        end
+  in
+
+  let rec explore only_IO tau_actions = function
+    | JNil -> ()
+    | JOutput(ch,_,_,pos) ->
+        let av_trans = get_available_transition true ch in
+        if av_trans <> []
+        then
+          begin
+            actions := AV_output(pos,tau_actions,av_trans) :: !actions;
+            if not only_IO
+            then actions_full := AV_output(pos,tau_actions,av_trans) :: !actions_full;
+          end
+    | JInput(ch,_,_,pos) ->
+        let av_trans = get_available_transition false ch in
+        if av_trans <> []
+        then
+          begin
+            actions := AV_input(pos,tau_actions,av_trans) :: !actions;
+            if not only_IO
+            then actions_full := AV_input(pos,tau_actions,av_trans) :: !actions_full;
+          end
+    | JIfThenElse(t1,t2,p1,p2,pos) ->
+        begin
+          if not only_IO
+          then actions_full := AV_tau pos :: !actions_full;
+          try
+            let t1' = Rewrite_rules.normalise t1 in
+            let t2' = Rewrite_rules.normalise t2 in
+            if Term.is_equal t1' t2'
+            then explore true (pos::tau_actions) p1
+            else explore true (pos::tau_actions) p2
+          with Rewrite_rules.Not_message ->
+            explore true (pos::tau_actions) p2
+        end
+    | JLet(pat,t,p1,p2,pos) ->
+        if not only_IO
+        then actions_full := AV_tau pos :: !actions_full;
+
+        Variable.auto_cleanup_with_reset_notail (fun () ->
+          try
+            let t' = Rewrite_rules.normalise t in
+            let pat' = Rewrite_rules.normalise_pattern pat in
+            Term.unify pat' t';
+            explore true (pos::tau_actions) p1
+          with Term.Not_unifiable | Rewrite_rules.Not_message ->
+            explore true (pos::tau_actions) p2
+        )
+    | JNew(_,p,pos) ->
+        if not only_IO
+        then actions_full := AV_tau pos :: !actions_full;
+
+        explore true (pos::tau_actions) p
+    | JBang(_,_,pos) ->
+        actions :=
+
+
+         AV_bang (pos,tau_actions) :: !actions;
+        if not only_IO
+        then actions_full := AV_bang (pos,tau_actions) :: !actions_full
+    | JChoice(_,_,pos) ->
+        actions := AV_choice (pos,tau_actions) :: !actions;
+        if not only_IO
+        then actions_full := AV_choice (pos,tau_actions) :: !actions_full
+    | JPar p_list -> List.iter (explore only_IO tau_actions) p_list
+  in
+
+  explore false [] conf_csys.Constraint_system.additional_data.process;
+
+  !actions, !actions_full
+
+let apply_next_step semantics attack_frame attack_actions last_att_state action =
+
+  let simulated_csys1 = apply_transition semantics false last_att_state.simulated_csys action in
+
+  let solve = match action with JAOutput _ | JAEaves _ -> true | _ -> false in
+
+  if solve
+  then
+    let size_frame = simulated_csys1.Constraint_system.additional_data.size_frame in
+    let t = List.nth attack_frame (size_frame - 1) in
+    let attacked_csys1 = Constraint_system.add_axiom last_att_state.attacked_csys size_frame t in
+    let (attacked_csys2,simulated_csys2) = Constraint_system.Rule_ground.apply_rules_for_static_equivalence attacked_csys1 simulated_csys1 in
+    
+
+
+  else
+    { last_att_state with
+      simulated_csys = simulated_csys1;
+      default_available_actions = find_next_possible_transition
+    }
