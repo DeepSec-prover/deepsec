@@ -38,5 +38,6 @@ let _ =
             )
           )
       | Display_trace json_file -> Simulator.display_trace json_file
+      | Attack_simulator json_file -> Simulator.attack_simulator json_file
       | _ -> Printf.printf "No other option available so far."
   )

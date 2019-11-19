@@ -540,7 +540,8 @@ let query_result_of file_name json =
     processes = proc_l;
     settings = setting;
     progression = progression
-  }
+  },
+  assoc
 
 let run_batch_status_of json = match string_of (member "status" json) with
   | "waiting" -> RBWaiting
@@ -640,7 +641,7 @@ let detail_of json = match string_of (member "detail" json) with
 
 (*** Commands ***)
 
-let input_command_of json = match string_of (member "command" json) with
+let input_command_of ?(assoc=None) json = match string_of (member "command" json) with
   | "start_run" ->
       let input_files = list_of string_of (member "input_files" json) in
       let command_options = batch_options_of (member "command_options" json) in
@@ -652,5 +653,16 @@ let input_command_of json = match string_of (member "command" json) with
   | "set_config" -> Set_config (string_of (member "output_dir" json))
   | "start_display_trace" -> Display_trace (string_of (member "query_file" json))
   | "die" -> Die
-  | "goto_step" -> DTGo_to (int_of (member "id" json))
+  | "goto_step" ->
+      begin match member_opt "process_id" json with
+        | None -> DTGo_to (int_of (member "id" json))
+        | Some pid -> ASGo_to(int_of pid,int_of (member "id" json))
+      end
+  | "start_attack_simulator" -> Attack_simulator (string_of (member "query_file" json))
+  | "next_step_simulated" ->
+      let assoc_tbl = match assoc with
+        | None -> Config.internal_error "[parsing_function.ml >> input_command_of] Expect an associtation table."
+        | Some assoc_tbl ->  assoc_tbl
+      in
+      ASNext_step (transition_of assoc_tbl (member "selected_action" json))
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> input_command_of] Unknown command."

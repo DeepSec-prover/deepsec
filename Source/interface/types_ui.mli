@@ -174,6 +174,23 @@ type detail_trace_display =
   | DTStandard
   | DTIO_only
 
+type available_transition =
+  | AVDirect of recipe
+  | AVComm
+  | AVEavesdrop of recipe
+
+type available_action =
+  | AV_output of json_position (* output *) * term * json_position list (* tau actions *) * available_transition list
+  | AV_input of json_position (* input *) * term * json_position list (* tau actions *) * available_transition list
+  | AV_bang of json_position (* bang *) * json_position list (* tau actions *)
+  | AV_choice of json_position (* choice *) * json_position list (* tau actions *)
+  | AV_tau of json_position
+
+type status_static_equivalence =
+  | Static_equivalent
+  | Witness_message of recipe * term * int
+  | Witness_equality of recipe * recipe * term * term * term * int
+
 (* Input Command *)
 
 type input_command =
@@ -187,6 +204,10 @@ type input_command =
   (* Simulator: Display of traces *)
   | Display_trace of string (* Json of query result *)
   | DTGo_to of int
+  (* Simulator: Attack_simulator *)
+  | Attack_simulator of string (* Json of query result *)
+  | ASGo_to of int (* Id process *) * int (* Step *)
+  | ASNext_step of json_transition
 
 type output_command =
   (* Errors *)
@@ -217,3 +238,7 @@ type output_command =
   (* Simulator: Display_of_traces *)
   | DTNo_attacker_trace
   | DTCurrent_step of association * configuration * int
+  (* Simulator: Attack_simulator *)
+  | ASNo_attacker_trace
+  | ASCurrent_step_attacked of association * configuration * int * int
+  | ASCurrent_step_simulated of association * configuration * json_transition list * available_action list * available_action list * status_static_equivalence * int

@@ -458,6 +458,68 @@ let of_batch_result batch_res =
 
   JObject jlist9
 
+(* Simulator *)
+
+let of_available_transition assoc = function
+  | AVDirect r -> JObject [ "type", JString "direct"; "recipe", of_recipe assoc r]
+  | AVEavesdrop r -> JObject [ "type", JString "eavesdrop"; "recipe", of_recipe assoc r]
+  | AVComm -> JObject [ "type", JString "comm" ]
+
+let of_available_action assoc = function
+  | AV_output(pos,ch,tau_pos,av_trans) ->
+      JObject [
+        "type", JString "output";
+        "channel", of_term assoc ch;
+        "position", of_position pos;
+        "tau_positions", JList (List.map of_position tau_pos);
+        "transitions", JList (List.map (of_available_transition assoc) av_trans)
+      ]
+  | AV_input(pos,ch,tau_pos,av_trans) ->
+      JObject [
+        "type", JString "input";
+        "channel", of_term assoc ch;
+        "position", of_position pos;
+        "tau_positions", JList (List.map of_position tau_pos);
+        "transitions", JList (List.map (of_available_transition assoc) av_trans)
+      ]
+  | AV_bang(pos,tau_pos) ->
+      JObject [
+        "type", JString "bang";
+        "position", of_position pos;
+        "tau_positions", JList (List.map of_position tau_pos)
+      ]
+  | AV_choice(pos,tau_pos) ->
+      JObject [
+        "type", JString "choice";
+        "position", of_position pos;
+        "tau_positions", JList (List.map of_position tau_pos)
+      ]
+  | AV_tau pos ->
+      JObject [
+        "type", JString "new";
+        "position", of_position pos
+      ]
+
+let of_status_static_equivalence assoc = function
+  | Static_equivalent -> JObject [ "status", JString "equivalent" ]
+  | Witness_message (r,t,id_proc) ->
+      JObject [
+        "status", JString "non_equivalent_message";
+        "recipe", of_recipe assoc r;
+        "term", of_term assoc t;
+        "process_id", JInt id_proc
+      ]
+  | Witness_equality(r1,r2,t_eq,t1,t2,id_proc) ->
+      JObject [
+        "status", JString "non_equivalent_equality";
+        "recipe1", of_recipe assoc r1;
+        "recipe2", of_recipe assoc r2;
+        "term_equal", of_term assoc t_eq;
+        "term1", of_term assoc t1;
+        "term2", of_term assoc t2;
+        "process_id", JInt id_proc
+      ]
+
 (* Output commands *)
 
 let of_run_batch_status_for_command = function
@@ -534,6 +596,33 @@ let of_output_command = function
         "frame", JList (List.map (of_term assoc_ref) conf.frame);
         "current_action_id", JInt step
       ]
+  (* Simulator: Display_of_traces *)
+  | ASNo_attacker_trace -> JObject [ "command", JString "no_attack_trace" ]
+  | ASCurrent_step_attacked(assoc,conf,step,id_proc) ->
+      let assoc_ref = ref assoc in
+      JObject [
+        "command", JString "current_step_attacked";
+        "process_id", JInt id_proc;
+        "process", of_process assoc_ref conf.process;
+        "frame", JList (List.map (of_term assoc_ref) conf.frame);
+        "current_action_id", JInt step
+      ]
+  | ASCurrent_step_simulated(assoc,conf,new_trans,all_actions,default_actions,status_equiv,id_proc) ->
+      let assoc_ref = ref assoc in
+      let list1 =
+        [
+          "command", JString "current_step_simulated";
+          "process_id", JInt id_proc;
+          "process", of_process assoc_ref conf.process;
+          "frame", JList (List.map (of_term assoc_ref) conf.frame);
+          "all_available_actions", JList (List.map (of_available_action assoc_ref) all_actions);
+          "default_available_actions", JList (List.map (of_available_action assoc_ref) default_actions);
+          "status_equiv", of_status_static_equivalence assoc_ref status_equiv
+        ]
+      in
+      if new_trans = []
+      then JObject list1
+      else JObject (("new_actions", JList (List.map (of_transition assoc_ref) new_trans))::list1)
 
 let print_output_command = function
   (* Errors *)
@@ -605,7 +694,9 @@ let print_output_command = function
   | Run_canceled _ -> Config.internal_error "[print_output_command] Should not occur"
   | Batch_canceled -> Printf.printf "\n%s\n" (coloured_terminal_text Red [Bold] "Verification canceled !")
   (* Simulator: Display_of_traces *)
-  | DTNo_attacker_trace | DTCurrent_step _ -> Config.internal_error "[print_output_command] Should not occur in command mode."
+  | DTNo_attacker_trace | DTCurrent_step _
+  (* Simulator: Display_of_traces *)
+  | ASNo_attacker_trace | ASCurrent_step_attacked _ | ASCurrent_step_simulated _ -> Config.internal_error "[print_output_command] Should not occur in command mode."
 
 (* Sending command *)
 
