@@ -133,6 +133,7 @@ struct
         begin try
           Generic_equivalence.import_equivalence_problem (fun () ->
             let job_list = ref [] in
+            Statistic.reset ();
             apply_one_transition data.gen_equiv_problem
               (fun equiv_pbl_1 f_next_1 ->
                 let (equiv_pbl_2,recipe_subst) = Generic_equivalence.export_equivalence_problem equiv_pbl_1 in
@@ -140,6 +141,8 @@ struct
                 f_next_1 ()
               )
               (fun () -> ());
+
+            Config.log (fun () -> Printf.sprintf "[distributed_equivalence.ml >> generate] Statistic: %s\n" (Statistic.display_statistic ()));
 
             if !job_list = []
             then Completed (RTrace_Equivalence None)

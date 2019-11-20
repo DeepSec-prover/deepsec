@@ -690,7 +690,8 @@ let listen_to_command_api in_ch out_ch translation_result =
         then
           (* Can receive JSON command to cancel executions. *)
           let _ = Config.log (fun () -> "[execution_manager.ml >> listen_to_command] Reading command on stdin\n") in
-          let str = ((input_value stdin):string) in
+          let str = input_line stdin in
+          let _ = Config.log (fun () -> Printf.sprintf "[execution_manager.ml >> listen_to_command] Received following command : %s\n" str) in
           match Parsing_functions_ui.input_command_of (Parsing_functions_ui.parse_json_from_string str) with
             | Cancel_run file -> cancel_run file
             | Cancel_query file -> cancel_query file

@@ -914,3 +914,14 @@ let attack_simulator_apply_next_step semantics id_attacked_proc full_attacked_fr
   in
 
   apply_all_transitions simulated_state.simulated_csys list_transitions, list_transitions
+
+(*** Find equivalent trace ***)
+
+
+(*
+let find_equivalent_trace att_js_proc att_trace sim_js_proc =
+
+  (* Will use standard process instead of json_processes *)
+  let att_proc = process_of_json_process att_js_proc in
+  let sim_proc = process_of_json_process sim_js_proc in
+*)

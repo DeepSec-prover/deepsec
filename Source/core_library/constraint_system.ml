@@ -1351,6 +1351,14 @@ end
 
 module Rule = struct
 
+  (*** Record function ***)
+
+  let record =
+    if Statistic.record_time
+    then
+      (fun stat (f_continuation:('a set -> (unit -> unit) -> unit)) (set:'a set) -> Statistic.record_tail stat (f_continuation set))
+    else (fun _ f_continuation -> f_continuation)
+
   (**** The rule Sat ****)
 
   let rec exploration_sat prev_set = function
@@ -2729,6 +2737,66 @@ module Rule = struct
     then sat (sat_non_deducible_terms (sat_disequation (split_data_constructor (normalisation_deduction_consequence (rewrite (equality_constructor f_continuation))))))
     else sat (sat_disequation (split_data_constructor (normalisation_deduction_consequence (rewrite (equality_constructor f_continuation)))))
 
+  let apply_rules_after_input =
+    if Statistic.record_time
+    then
+      (fun exists_private f_continuation ->
+        if exists_private
+        then
+          record Statistic.time_sat (sat (
+            record Statistic.time_non_deducible_term (sat_non_deducible_terms (
+              record Statistic.time_sat_disequation (sat_disequation (
+                record Statistic.time_other f_continuation
+              ))
+            ))
+          ))
+        else
+          record Statistic.time_sat (sat (
+            record Statistic.time_sat_disequation (sat_disequation (
+              record Statistic.time_other f_continuation
+            ))
+          ))
+      )
+    else apply_rules_after_input
+
+  let apply_rules_after_output =
+    if Statistic.record_time
+    then
+      (fun exists_private f_continuation ->
+        if exists_private
+        then
+          record Statistic.time_sat (sat (
+            record Statistic.time_non_deducible_term (sat_non_deducible_terms (
+              record Statistic.time_sat_disequation (sat_disequation (
+                record Statistic.time_split_data_constructor (split_data_constructor (
+                  record Statistic.time_normalisation_deduction_consequence (normalisation_deduction_consequence (
+                    record Statistic.time_rewrite (rewrite (
+                      record Statistic.time_equality_constructor (equality_constructor (
+                        record Statistic.time_other f_continuation
+                      ))
+                    ))
+                  ))
+                ))
+              ))
+            ))
+          ))
+        else
+          record Statistic.time_sat (sat (
+            record Statistic.time_sat_disequation (sat_disequation (
+              record Statistic.time_split_data_constructor (split_data_constructor (
+                record Statistic.time_normalisation_deduction_consequence (normalisation_deduction_consequence (
+                  record Statistic.time_rewrite (rewrite (
+                    record Statistic.time_equality_constructor (equality_constructor (
+                      record Statistic.time_other f_continuation
+                    ))
+                  ))
+                ))
+              ))
+            ))
+          ))
+      )
+    else apply_rules_after_output
+
   (*** Additional function ***)
 
   let rec mark_variables = function
@@ -3158,7 +3226,7 @@ module Rule_ground = struct
       | _ -> ()
     in
     K.iteri f csys.knowledge
-    
+
   let apply_rules f_continuation target_csys csys_list f_next =
     Name.auto_deducible_cleanup_with_reset (fun f_next_1 ->
       let f_continuation' target_csys' csys_list' = f_continuation target_csys' csys_list' f_next_1 in

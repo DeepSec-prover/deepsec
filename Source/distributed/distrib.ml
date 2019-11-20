@@ -101,7 +101,7 @@ module Distrib = functor (Task:Evaluator_task) -> struct
                 Config.log (fun () -> "[distrib.ml >> WE] Generate job\n");
                 begin match Task.generate job with
                   | Task.Job_list job_list ->
-                      Config.log (fun () -> "[distrib.ml >> WE] Sending job list\n");
+                      Config.log (fun () -> Printf.sprintf "[distrib.ml >> WE] Sending job list of %d jobs\n" (List.length job_list));
                       send_output_command (Job_list job_list)
                   | Task.Completed result ->
                       Config.log (fun () -> "[distrib.ml >> WE] Sending result\n");
@@ -449,9 +449,9 @@ module Distrib = functor (Task:Evaluator_task) -> struct
 
     (* Progression management *)
 
-    let send_progression f_prog =
+    let send_progression ?(forced=false) f_prog =
       let time = Unix.time () in
-      if time -. !last_write_progression_timer >= 60.
+      if forced || time -. !last_write_progression_timer >= 60.
       then
         begin
           last_write_progression_timer := time;
@@ -467,8 +467,9 @@ module Distrib = functor (Task:Evaluator_task) -> struct
           end
         else ()
 
-    let progression_distributed_verification round nb_job nb_job_remain =
-      send_progression (fun to_write ->
+
+    let progression_distributed_verification ?(forced=false) round nb_job nb_job_remain =
+      send_progression ~forced:forced (fun to_write ->
         let percent = ((nb_job - nb_job_remain) * 100) / nb_job in
         let progression = PDistributed(round,PVerif(percent,nb_job_remain)) in
         current_progression := progression;
@@ -634,7 +635,7 @@ module Distrib = functor (Task:Evaluator_task) -> struct
       let current_nb_job_list = ref nb_jobs_created in
       let active_jobs = ref [] in
 
-      progression_distributed_verification round nb_jobs_created !current_nb_job_list;
+      progression_distributed_verification ~forced:true round nb_jobs_created !current_nb_job_list;
 
       (* Compute the first jobds *)
 

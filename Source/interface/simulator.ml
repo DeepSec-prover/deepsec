@@ -1,6 +1,17 @@
 open Extensions
 open Types_ui
 
+(* Tools *)
+
+let rec cut_list n = function
+  | [] -> Config.internal_error "[simulator.ml >> cut_list] Wrong index."
+  | t::_ when n = 0 -> t, [t]
+  | t::q ->
+      let (t',q') = cut_list (n-1) q in
+      t',t::q'
+
+(*** Find equivalence case ***)
+
 (*** Main function ***)
 
 let display_trace json_file =
@@ -47,13 +58,6 @@ let display_trace json_file =
         Display_ui.send_output_command DTNo_attacker_trace;
         Display_ui.send_output_command ExitUi
 
-let rec cut_list n = function
-  | [] -> Config.internal_error "[simulator.ml >> cut_list] Wrong index."
-  | t::_ when n = 0 -> t, [t]
-  | t::q ->
-      let (t',q') = cut_list (n-1) q in
-      t',t::q'
-
 let attack_simulator json_file =
 
   (* Opening and parse the json_file *)
@@ -99,8 +103,8 @@ let attack_simulator json_file =
           )
         in
 
-        Display_ui.send_output_command (ASCurrent_step_attacked(association,List.hd conf_list,-1,attacked_id_proc));
         Display_ui.send_output_command (get_current_step_simulated (List.hd !simulated_states) []);
+        Display_ui.send_output_command (ASCurrent_step_attacked(association,List.hd conf_list,-1,attacked_id_proc));
 
         begin try
           while true do
@@ -125,15 +129,13 @@ let attack_simulator json_file =
                   let (new_states, new_transitions) = Interface.attack_simulator_apply_next_step semantics attacked_id_proc full_frame transitions last_state trans in
                   let new_last_state = List.hd (List.rev new_states) in
                   simulated_states := !simulated_states @ new_states;
-
+                  Display_ui.send_output_command (get_current_step_simulated new_last_state new_transitions);
                   if last_state.Interface.attacked_id_transition <> new_last_state.Interface.attacked_id_transition
                   then
                     begin
                       let conf = List.nth conf_list (new_last_state.Interface.attacked_id_transition+1) in
                       Display_ui.send_output_command (ASCurrent_step_attacked(association,conf,new_last_state.Interface.attacked_id_transition,attacked_id_proc))
-                    end;
-
-                  Display_ui.send_output_command (get_current_step_simulated new_last_state new_transitions)
+                    end
               | Die -> raise Exit
               | _ -> Display_ui.send_output_command (Init_internal_error ("Unexpected input command.",true))
           done
