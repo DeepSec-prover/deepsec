@@ -1,6 +1,77 @@
+open Term
 open Types
 open Types_ui
 open Display
+
+(*** Display ***)
+
+let display_with_tab n str =
+  let rec print_tab = function
+    | 0 -> ""
+    | n -> "  "^(print_tab (n-1))
+  in
+  (print_tab n) ^ str ^"\n"
+
+let display_position pos = Printf.sprintf "%d[%s]" pos.js_index (display_list string_of_int "," pos.js_args)
+
+let display_transition = function
+  | JAOutput(r,pos) -> Printf.sprintf "out(%s,%s)" (Recipe.display Terminal r) (display_position pos)
+  | JAInput(r,r',pos) -> Printf.sprintf "in(%s,%s,%s)" (Recipe.display Terminal r) (Recipe.display Terminal r') (display_position pos)
+  | JAEaves(r,pos_out,pos_in) -> Printf.sprintf "eav(%s,%s,%s)" (Recipe.display Terminal r) (display_position pos_out) (display_position pos_in)
+  | JAComm(pos_out,pos_in) -> Printf.sprintf "comm(%s,%s)" (display_position pos_out) (display_position pos_in)
+  | JABang(n,pos) -> Printf.sprintf "bang(%d,%s)" n (display_position pos)
+  | JATau pos -> Printf.sprintf "tau(%s)" (display_position pos)
+  | JAChoice(pos,b) -> Printf.sprintf "choice(%s,%b)" (display_position pos) b
+
+let rec display_pattern = function
+  | PatEquality t -> Printf.sprintf "=%s" (Term.display Terminal t)
+  | PatTuple(_,args) -> Printf.sprintf "%s%s%s" (langle Terminal) (display_list display_pattern "," args) (rangle Terminal)
+  | PatVar x -> Variable.display Terminal x
+
+let rec display_process tab = function
+  | JNil -> (display_with_tab tab "Nil")
+  | JOutput(ch,t,p,pos) ->
+      let str = Printf.sprintf "{%s} out(%s,%s);" (display_position pos) (Term.display Terminal ch) (Term.display Terminal t) in
+      (display_with_tab tab str) ^ (display_process tab p)
+  | JInput(ch,pat,p,pos) ->
+      let str = Printf.sprintf "{%s} in(%s,%s);" (display_position pos) (Term.display Terminal ch) (display_pattern pat) in
+      (display_with_tab tab str) ^ (display_process tab p)
+  | JIfThenElse(t1,t2,pthen,JNil,pos) ->
+      let str = Printf.sprintf "{%s} if %s = %s then" (display_position pos) (Term.display Terminal t1) (Term.display Terminal t2) in
+      let str_then = display_process tab pthen in
+      (display_with_tab tab str) ^ str_then
+  | JIfThenElse(t1,t2,pthen,pelse,pos) ->
+      let str = Printf.sprintf "{%s} if %s = %s then" (display_position pos) (Term.display Terminal t1) (Term.display Terminal t2) in
+      let str_then = display_process (tab+1) pthen in
+      let str_else = display_process (tab+1) pelse in
+      let str_neg = "else" in
+      (display_with_tab tab str) ^ str_then ^ (display_with_tab tab str_neg) ^ str_else
+  | JLet(pat,t,pthen,JNil,pos) ->
+      let str = Printf.sprintf "{%s} let %s = %s in" (display_position pos) (display_pattern pat) (Term.display Terminal t) in
+      let str_then = display_process tab pthen in
+      (display_with_tab tab str) ^ str_then
+  | JLet(pat,t,pthen,pelse,pos) ->
+      let str = Printf.sprintf "{%s} let %s = %s in" (display_position pos) (display_pattern pat) (Term.display Terminal t) in
+      let str_then = display_process (tab+1) pthen in
+      let str_else = display_process (tab+1) pelse in
+      let str_neg = "else" in
+      (display_with_tab tab str) ^ str_then ^ (display_with_tab tab str_neg) ^ str_else
+  | JNew(n,p,pos) ->
+      let str = Printf.sprintf "{%s} new %s;" (display_position pos) (Name.display Terminal n) in
+      (display_with_tab tab str) ^ (display_process tab p)
+  | JPar p_list ->
+      (display_with_tab tab "(") ^
+      (display_list (display_process (tab+1)) (display_with_tab tab ") | (") p_list) ^
+      (display_with_tab tab ")")
+  | JBang(n,p,pos) ->
+      (display_with_tab tab (Printf.sprintf "{%s} !^%d" (display_position pos) n)) ^
+      (display_process tab p)
+  | JChoice(p1,p2,pos) ->
+      let str_1 = display_process (tab+1) p1 in
+      let str_2 = display_process (tab+1) p2 in
+      let str_plus = Printf.sprintf "{%s} +" (display_position pos) in
+      str_1 ^ (display_with_tab tab str_plus) ^ str_2
+
 
 (*** Retrieving id of atomic data ***)
 
@@ -113,7 +184,7 @@ let of_category assoc = function
             then
               let rec find_proj_number i = function
                 | [] -> Config.internal_error "[display_ui.ml >> of_category] Unexpected case"
-                | y::_  when Term.Term.is_equal x y -> i
+                | y::_  when Term.is_equal x y -> i
                 | _::q -> find_proj_number (i+1) q
               in
               Some(get_symbol_id assoc f,find_proj_number 1 args)
@@ -286,20 +357,20 @@ let of_atomic_variable x =
     | _ -> Config.internal_error "[display_ui.ml >> of_atomic_variable] Variables should not be universal."
 
 let record_from_signature assoc =
-  let setting = Term.Symbol.get_settings () in
-  List.iter (fun f -> ignore (get_symbol_id assoc f)) setting.Term.Symbol.all_c;
+  let setting = Symbol.get_settings () in
+  List.iter (fun f -> ignore (get_symbol_id assoc f)) setting.Symbol.all_c;
   List.iter (fun (_,proj_l) ->
     List.iter (fun f -> ignore (get_symbol_id assoc f)) proj_l
-  ) setting.Term.Symbol.all_p;
-  List.iter (fun f -> ignore (get_symbol_id assoc f)) setting.Term.Symbol.all_d
+  ) setting.Symbol.all_p;
+  List.iter (fun f -> ignore (get_symbol_id assoc f)) setting.Symbol.all_d
 
 let of_meta () =
-  let setting = Term.Symbol.get_settings () in
+  let setting = Symbol.get_settings () in
   JObject [
-    "number_symbols", JInt setting.Term.Symbol.nb_symb;
-    "number_attacker_names", JInt setting.Term.Symbol.nb_a;
-    "number_variables", JInt (Term.Variable.get_counter ());
-    "number_names", JInt (Term.Name.get_counter ())
+    "number_symbols", JInt setting.Symbol.nb_symb;
+    "number_attacker_names", JInt setting.Symbol.nb_a;
+    "number_variables", JInt (Variable.get_counter ());
+    "number_names", JInt (Name.get_counter ())
   ]
 
 let of_atomic_association assoc =

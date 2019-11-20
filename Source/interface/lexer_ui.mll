@@ -24,6 +24,7 @@ rule token = parse
 | ']'   { RBRACE }
 | '{'   { LBRACK }
 | '}'   { RBRACK }
+| '-'   { MINUS }
 | "null" { NULL }
 | "true" { TRUE }
 | "false" { FALSE }

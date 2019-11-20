@@ -211,28 +211,34 @@ let rec instantiate_process = function
 let add_pos pos n =
   { pos with js_args = pos.js_args @ [n] }
 
+let rec full_instantiate = function
+  | Var { link = VLink v; _ } -> Var v
+  | Name { link_n = NLink n; _ } -> Name n
+  | Func(f,args) -> Func(f,List.map full_instantiate args)
+  | t -> t
+
 let rec instantiate_and_rename_pattern = function
   | PatVar v ->
       let v' = Variable.fresh_from v in
       Variable.link v v';
       PatVar v'
-  | PatEquality t -> PatEquality (Term.instantiate t)
+  | PatEquality t -> PatEquality (full_instantiate t)
   | PatTuple(f,args) -> PatTuple(f,List.map instantiate_and_rename_pattern args)
 
 let rec fresh_process n = function
   | JNil -> JNil
   | JOutput(ch,t,p,pos) ->
-      JOutput(Term.instantiate ch,Term.instantiate t,fresh_process n p,add_pos pos n)
+      JOutput(full_instantiate ch,full_instantiate t,fresh_process n p,add_pos pos n)
   | JInput(ch,pat,p,pos) ->
-      let ch' = Term.instantiate ch in
+      let ch' = full_instantiate ch in
       Variable.auto_cleanup_with_reset_notail (fun () ->
         let pat' = instantiate_and_rename_pattern pat in
         JInput(ch',pat',fresh_process n p,add_pos pos n)
       )
   | JIfThenElse(t1,t2,p1,p2,pos) ->
-      JIfThenElse(Term.instantiate t1, Term.instantiate t2, fresh_process n p1, fresh_process n p2,add_pos pos n)
+      JIfThenElse(full_instantiate t1, full_instantiate t2, fresh_process n p1, fresh_process n p2,add_pos pos n)
   | JLet(pat,t,p1,p2,pos) ->
-      let t' = Term.instantiate t in
+      let t' = full_instantiate t in
       let p2' = fresh_process n p2 in
       Variable.auto_cleanup_with_reset_notail (fun () ->
         let pat' = instantiate_and_rename_pattern pat in
@@ -346,7 +352,7 @@ let apply_tau_transition target_pos conf =
   { conf with process = explore conf.process }
 
 let apply_bang_transition target_pos i conf =
-  let explore = function
+  let rec explore = function
     | JBang(2,p,pos) when is_equal_position pos target_pos ->
         if i <> 1
         then raise (Invalid_transition (Too_much_unfold i));
@@ -370,6 +376,9 @@ let apply_bang_transition target_pos i conf =
         in
 
         JPar(generate_fresh 1)
+    | JPar p_list ->
+        let p_list' = apply_transition_list explore p_list in
+        if p_list' = [] then JNil else JPar p_list'
     | _ -> raise (Invalid_transition Position_not_found)
   in
 

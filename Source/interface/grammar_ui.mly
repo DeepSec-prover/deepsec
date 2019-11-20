@@ -15,6 +15,7 @@ open Types_ui
 %token LBRACE RBRACE
 %token LBRACK RBRACK
 %token NULL TRUE FALSE
+%token MINUS
 
 %token EOF
 
@@ -36,6 +37,8 @@ main:
 json:
   | INT
       { JInt $1 }
+  | MINUS INT
+      { JInt (-$2) }
   | TRUE
       { JBool true }
   | FALSE

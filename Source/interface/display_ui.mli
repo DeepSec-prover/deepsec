@@ -1,5 +1,13 @@
 open Types_ui
 
+(*** Display ***)
+
+val display_position : json_position -> string
+
+val display_transition : json_transition -> string
+
+val display_process : int -> json_process -> string
+
 (*** Display of Json ***)
 
 val display_json : json -> string
