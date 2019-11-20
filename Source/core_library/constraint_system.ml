@@ -1354,7 +1354,7 @@ module Rule = struct
   (*** Record function ***)
 
   let record =
-    if Statistic.record_time
+    if Config.record_time
     then
       (fun stat (f_continuation:('a set -> (unit -> unit) -> unit)) (set:'a set) -> Statistic.record_tail stat (f_continuation set))
     else (fun _ f_continuation -> f_continuation)
@@ -1795,9 +1795,6 @@ module Rule = struct
           begin
             try
               List.iter (fun csys' ->
-                Config.debug (fun () ->
-                  Config.print_in_log (Printf.sprintf "*** Constraint system:\n%s" (display_constraint_system csys'))
-                );
                 let dfact_to_check = match UF.pop_deduction_fact_to_check_for_pattern csys'.unsolved_facts with
                   | Some df -> df
                   | _ -> Config.internal_error "[constraint_system.ml >> find_application_data_constructor] The should be a deduction fact to check for pattern."
@@ -1829,10 +1826,8 @@ module Rule = struct
         match UF.pop_deduction_fact_to_check_for_pattern csys.unsolved_facts with
           | None -> f_continuation csys_set f_next
           | Some dfact ->
-              Config.debug (fun () -> Config.print_in_log "find_application_data_constructor\n");
               match find_application_data_constructor csys dfact q_csys with
                 | ADC_Variable x ->
-                    Config.debug (fun () -> Config.print_in_log "ADC_Variable\n");
                     let acc_no_formula = ref [] in
                     let acc_solved = ref [] in
                     let acc_unsolved = ref [] in
@@ -1844,9 +1839,7 @@ module Rule = struct
                             let tmp = !Variable.currently_linked in
                             Variable.currently_linked := [];
 
-                            Config.debug (fun () -> Config.print_in_log "DF.get_term\n");
                             let t_bfact = DF.get_term csys'.deduction_facts x in
-                            Config.debug (fun () -> Config.print_in_log "After DF.get_term\n");
                             try
                               Term.unify t_bfact dfact'.df_term;
 
@@ -1873,7 +1866,6 @@ module Rule = struct
                     ) csys_set.set;
 
                     let f_continuation_pos csys_set_1 f_next_1 =
-                      Config.debug (fun () -> Config.print_in_log "f_continuation_pos");
                       let csys_set_2 =
                         { csys_set_1 with set =
                             List.rev_map (fun csys ->
@@ -1888,7 +1880,6 @@ module Rule = struct
 
                     sat_equality_formula ~universal:false f_continuation_pos f_continuation_neg { satf_eq_recipe = csys_set.eq_recipe; satf_no_formula = !acc_no_formula; satf_solved = !acc_solved; satf_unsolved = !acc_unsolved } f_next
                 | ADC_Split(same_pattern_csys_list,diff_pattern_csys_list) ->
-                    Config.debug (fun () -> Config.print_in_log "ADC_Split\n");
                     split_data_constructor f_continuation { csys_set with set = same_pattern_csys_list } (fun () ->
                       split_data_constructor f_continuation { csys_set with set = diff_pattern_csys_list } f_next
                     )
@@ -2738,7 +2729,7 @@ module Rule = struct
     else sat (sat_disequation (split_data_constructor (normalisation_deduction_consequence (rewrite (equality_constructor f_continuation)))))
 
   let apply_rules_after_input =
-    if Statistic.record_time
+    if Config.record_time
     then
       (fun exists_private f_continuation ->
         if exists_private
@@ -2760,7 +2751,7 @@ module Rule = struct
     else apply_rules_after_input
 
   let apply_rules_after_output =
-    if Statistic.record_time
+    if Config.record_time
     then
       (fun exists_private f_continuation ->
         if exists_private

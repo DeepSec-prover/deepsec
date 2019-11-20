@@ -77,10 +77,17 @@ struct
           let rec apply_rules equiv_pbl f_next = apply_one_transition equiv_pbl apply_rules f_next in
 
           begin try
-            Generic_equivalence.import_equivalence_problem (fun () ->
-              apply_rules data.gen_equiv_problem (fun () -> ());
-              RTrace_Equivalence None
-            ) data.gen_equiv_problem data.gen_recipe_substitution
+            Statistic.reset ();
+            let res =
+              Statistic.record_notail Statistic.time_other (fun () ->
+                Generic_equivalence.import_equivalence_problem (fun () ->
+                  apply_rules data.gen_equiv_problem (fun () -> ());
+                  RTrace_Equivalence None
+                ) data.gen_equiv_problem data.gen_recipe_substitution
+              )
+            in
+            Config.log (fun () -> Printf.sprintf "[distributed_equivalence.ml >> evaluate] Statistic: %s\n" (Statistic.display_statistic ()));
+            res
           with Generic_equivalence.Not_Trace_Equivalent attack -> RTrace_Equivalence (Some attack)
           end
 
@@ -134,13 +141,15 @@ struct
           Generic_equivalence.import_equivalence_problem (fun () ->
             let job_list = ref [] in
             Statistic.reset ();
-            apply_one_transition data.gen_equiv_problem
-              (fun equiv_pbl_1 f_next_1 ->
-                let (equiv_pbl_2,recipe_subst) = Generic_equivalence.export_equivalence_problem equiv_pbl_1 in
-                job_list := { job with data_equiv = DGeneric { gen_equiv_problem = equiv_pbl_2; gen_recipe_substitution = recipe_subst; gen_semantics = data.gen_semantics }; variable_counter = Variable.get_counter (); name_counter = Name.get_counter (); number_of_attacker_name = Symbol.get_number_of_attacker_name () } :: !job_list;
-                f_next_1 ()
-              )
-              (fun () -> ());
+            Statistic.record_notail Statistic.time_other (fun () ->
+              apply_one_transition data.gen_equiv_problem
+                (fun equiv_pbl_1 f_next_1 ->
+                  let (equiv_pbl_2,recipe_subst) = Generic_equivalence.export_equivalence_problem equiv_pbl_1 in
+                  job_list := { job with data_equiv = DGeneric { gen_equiv_problem = equiv_pbl_2; gen_recipe_substitution = recipe_subst; gen_semantics = data.gen_semantics }; variable_counter = Variable.get_counter (); name_counter = Name.get_counter (); number_of_attacker_name = Symbol.get_number_of_attacker_name () } :: !job_list;
+                  f_next_1 ()
+                )
+                (fun () -> ());
+            );
 
             Config.log (fun () -> Printf.sprintf "[distributed_equivalence.ml >> generate] Statistic: %s\n" (Statistic.display_statistic ()));
 

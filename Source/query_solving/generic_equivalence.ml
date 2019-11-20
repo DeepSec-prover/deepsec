@@ -161,7 +161,11 @@ let apply_one_transition_and_rules_classic_input type_max equiv_pbl f_continuati
               Constraint_system.eq_uniformity = eq_uniformity
             }
           in
-          let csys_2 = Constraint_system.prepare_for_solving_procedure false csys_1 in
+          let csys_2 =
+            Statistic.record_notail Statistic.time_prepare (fun () ->
+              Constraint_system.prepare_for_solving_procedure false csys_1
+            )
+          in
 
           csys_list := csys_2 :: !csys_list
       )
@@ -221,7 +225,11 @@ let apply_one_transition_and_rules_classic_output type_max equiv_pbl f_continuat
               Constraint_system.eq_uniformity = eq_uniformity
             }
           in
-          let csys_3 = Constraint_system.prepare_for_solving_procedure true csys_2 in
+          let csys_3 =
+            Statistic.record_notail Statistic.time_prepare (fun () ->
+              Constraint_system.prepare_for_solving_procedure true csys_2
+            )
+          in
 
           csys_list := csys_3 :: !csys_list
       )
@@ -311,7 +319,11 @@ let apply_one_transition_and_rules_private_input type_max equiv_pbl f_continuati
               Constraint_system.non_deducible_terms = in_gathering.private_channels
             }
           in
-          let csys_2 = Constraint_system.prepare_for_solving_procedure false csys_1 in
+          let csys_2 =
+            Statistic.record_notail Statistic.time_prepare (fun () ->
+              Constraint_system.prepare_for_solving_procedure false csys_1
+            )
+          in
 
           if in_gathering.private_channels <> []
           then has_private_channels := true;
@@ -377,7 +389,11 @@ let apply_one_transition_and_rules_private_output type_max equiv_pbl f_continuat
               Constraint_system.non_deducible_terms = out_gathering.private_channels
             }
           in
-          let csys_3 = Constraint_system.prepare_for_solving_procedure true csys_2 in
+          let csys_3 =
+            Statistic.record_notail Statistic.time_prepare (fun () ->
+              Constraint_system.prepare_for_solving_procedure true csys_2
+            )
+          in
 
           if out_gathering.private_channels <> []
           then has_private_channels := true;

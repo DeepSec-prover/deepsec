@@ -13,14 +13,11 @@ val debug : (unit -> unit) -> unit
 
 val debug_activated : bool
 
+val record_time : bool
+
 val print_in_log : ?always:bool -> string -> unit
 
 val log : (unit -> string) -> unit
-
-val test_activated : bool
-
-(** [debug f] executes [f] if the program was compiled with the option [testing], else it does nothing. *)
-val test : (unit -> unit) -> unit
 
 (** The current version *)
 val version : string ref

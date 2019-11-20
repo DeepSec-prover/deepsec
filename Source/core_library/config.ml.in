@@ -3,9 +3,10 @@ exception Internal_error of string
 let running_api = ref false
 
 let debug_activated = false
+let record_time = true
 
 let log_file =
-  if debug_activated
+  if debug_activated || record_time
   then
     begin
       let exe_path = Filename.dirname Sys.executable_name in
@@ -39,7 +40,7 @@ let debug =
   then fun f -> f ()
   else fun _ -> ()
 
-let display_in_log = false
+let display_in_log = true
 
 let print_in_log ?(always=false) s =
   if display_in_log || always
@@ -50,7 +51,7 @@ let print_in_log ?(always=false) s =
     end
 
 let log =
-  if debug_activated
+  if debug_activated || record_time
   then
     (fun f ->
         let local_time = Unix.localtime(Unix.time ()) in
@@ -62,15 +63,6 @@ let log =
         Printf.fprintf log_file "%s %s" time (f());
         flush log_file
     )
-  else fun _ -> ()
-
-(**** Testing *****)
-
-let test_activated = false
-
-let test =
-  if test_activated
-  then fun f -> f ()
   else fun _ -> ()
 
 (**** Version ****)

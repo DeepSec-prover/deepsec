@@ -582,164 +582,196 @@ and next_input_classic f_continuation proc rest_proc data f_next = match proc wi
 
 (***** Next input and output in the private semantics ******)
 
-let rec is_public_constant = function
-  | Func(f,[]) -> f.public
-  | Var { link = TLink t; _ } -> is_public_constant t
-  | _ -> false
+type term_deducibility_status =
+  | Deducible
+  | Not_deducible
+  | Unknown
+
+type communication_type =
+  | PublicComm
+  | PrivateComm
+  | AllComm
+
+let rec deducibility_status = function
+  | Func(f,[]) when f.public -> Deducible
+  | Var { link = TLink t; _ } -> deducibility_status t
+  | Name { deducible_n = None; _ } -> Not_deducible
+  | Name { deducible_n = Some _; _ } -> Deducible
+  | _ -> Unknown
 
 let add_private_channel ch ch_list =
   if List.exists (Term.is_equal ch) ch_list
   then ch_list
   else ch::ch_list
 
-let rec next_output_private f_continuation priv_channels proc rest_proc data f_next = match proc with
+let rec next_output_private f_continuation comm_type priv_channels proc rest_proc data f_next = match proc with
   | SOutput(ch,t,p,pos,_) ->
       (* This output is selected *)
       let gathering = { common_data = data; channel = ch; term = t; position = pos; private_channels = priv_channels } in
 
-      if is_public_constant ch
-      then f_continuation (make_par_processes p rest_proc) gathering f_next
-      else
-        let next_internal_communication f_next_1 =
-          next_input_private (fun rest_proc' in_gathering f_next_2 ->
-            if is_public_constant in_gathering.channel
-            then f_next_2 ()
-            else
-              Variable.auto_cleanup_with_reset (fun f_next_3 ->
-                if is_unifiable ch in_gathering.channel
-                then
-                  begin
-                    let x = Term.variable_of in_gathering.term in
-                    Config.debug (fun () ->
-                      if x.link <> NoLink
-                      then Config.internal_error "[generic_process.ml >> next_output_private] The variable of the input should not be linked."
-                    );
-                    Variable.link_term x t;
-                    let disequations_1 = Formula.T.instantiate_and_normalise in_gathering.common_data.disequations in
-                    if Formula.T.Bot = disequations_1
-                    then f_next_3 ()
-                    else
-                      let data_1 =
-                        { in_gathering.common_data with
-                          transitions = (AComm(pos,in_gathering.position)::in_gathering.common_data.transitions);
-                          original_subst = (x,t)::in_gathering.common_data.original_subst;
-                          disequations = disequations_1
-                        }
-                      in
-                      next_output_private f_continuation (add_private_channel ch in_gathering.private_channels) p rest_proc' data_1 f_next_3
-                  end
-                else f_next_3 ()
-              ) f_next_2
-          ) priv_channels rest_proc SNil data f_next_1
-        in
+      let next_internal_communication not_deduc f_next_1 =
+        next_input_private (fun rest_proc' in_gathering f_next_2 ->
+          Variable.auto_cleanup_with_reset (fun f_next_3 ->
+            if is_unifiable ch in_gathering.channel
+            then
+              begin
+                let x = Term.variable_of in_gathering.term in
+                Config.debug (fun () ->
+                  if x.link <> NoLink
+                  then Config.internal_error "[generic_process.ml >> next_output_private] The variable of the input should not be linked."
+                );
+                Variable.link_term x t;
+                let disequations_1 = Formula.T.instantiate_and_normalise in_gathering.common_data.disequations in
+                if Formula.T.Bot = disequations_1
+                then f_next_3 ()
+                else
+                  let data_1 =
+                    { in_gathering.common_data with
+                      transitions = (AComm(pos,in_gathering.position)::in_gathering.common_data.transitions);
+                      original_subst = (x,t)::in_gathering.common_data.original_subst;
+                      disequations = disequations_1
+                    }
+                  in
+                  if not_deduc
+                  then next_output_private f_continuation comm_type in_gathering.private_channels p rest_proc' data_1 f_next_3
+                  else next_output_private f_continuation comm_type (add_private_channel ch in_gathering.private_channels) p rest_proc' data_1 f_next_3
+              end
+            else f_next_3 ()
+          ) f_next_2
+        ) PrivateComm priv_channels rest_proc SNil data f_next_1
+      in
 
-        f_continuation (make_par_processes p rest_proc) gathering (fun () -> next_internal_communication f_next)
+      begin match deducibility_status ch with
+        | Deducible ->
+            if comm_type = PrivateComm
+            then f_next ()
+            else f_continuation (make_par_processes p rest_proc) gathering f_next
+        | Not_deducible ->
+            if comm_type = PublicComm
+            then next_internal_communication true f_next
+            else f_continuation (make_par_processes p rest_proc) gathering (fun () -> next_internal_communication true f_next)
+        | _ -> f_continuation (make_par_processes p rest_proc) gathering (fun () -> next_internal_communication false f_next)
+      end
   | SInput(ch,x,p,pos,_) ->
       (* Can only be used for internal communication *)
-      if is_public_constant ch
-      then f_next ()
-      else
-        next_output_private (fun rest_proc' out_gathering f_next_1 ->
-          if is_public_constant out_gathering.channel
-          then f_next_1 ()
-          else
-            Variable.auto_cleanup_with_reset (fun f_next_2 ->
-              if is_unifiable ch out_gathering.channel
-              then
-                begin
-                  Variable.link_term x out_gathering.term;
-                  let disequations_1 = Formula.T.instantiate_and_normalise out_gathering.common_data.disequations in
-                  if Formula.T.Bot = disequations_1
-                  then f_next_2 ()
-                  else
-                    let data_1 =
-                      { out_gathering.common_data with
-                        transitions = (AComm(out_gathering.position,pos)::out_gathering.common_data.transitions);
-                        original_subst = (x,out_gathering.term)::out_gathering.common_data.original_subst;
-                        disequations = disequations_1
-                      }
-                    in
-                    next_output_private f_continuation (add_private_channel ch out_gathering.private_channels) p rest_proc' data_1  f_next_2
-                end
-              else f_next_2 ()
-            ) f_next_1
-        ) priv_channels rest_proc SNil data f_next
-  | _ -> next_tau (next_output_private f_continuation priv_channels) proc rest_proc data f_next
+      let next_internal_communication not_deduc f_next_1 =
+        next_output_private (fun rest_proc' out_gathering f_next_2 ->
+          Variable.auto_cleanup_with_reset (fun f_next_3 ->
+            if is_unifiable ch out_gathering.channel
+            then
+              begin
+                Variable.link_term x out_gathering.term;
+                let disequations_1 = Formula.T.instantiate_and_normalise out_gathering.common_data.disequations in
+                if Formula.T.Bot = disequations_1
+                then f_next_3 ()
+                else
+                  let data_1 =
+                    { out_gathering.common_data with
+                      transitions = (AComm(out_gathering.position,pos)::out_gathering.common_data.transitions);
+                      original_subst = (x,out_gathering.term)::out_gathering.common_data.original_subst;
+                      disequations = disequations_1
+                    }
+                  in
+                  if not_deduc
+                  then next_output_private f_continuation comm_type out_gathering.private_channels p rest_proc' data_1  f_next_3
+                  else next_output_private f_continuation comm_type (add_private_channel ch out_gathering.private_channels) p rest_proc' data_1  f_next_3
+              end
+            else f_next_3 ()
+          ) f_next_2
+        ) PrivateComm priv_channels rest_proc SNil data f_next_1
+      in
 
-and next_input_private f_continuation priv_channels proc rest_proc data f_next = match proc with
+      begin match deducibility_status ch with
+        | Deducible -> f_next ()
+        | Not_deducible -> next_internal_communication true f_next
+        | _ -> next_internal_communication false f_next
+      end
+  | _ -> next_tau (next_output_private f_continuation comm_type priv_channels) proc rest_proc data f_next
+
+and next_input_private f_continuation comm_type priv_channels proc rest_proc data f_next = match proc with
   | SOutput(ch,t,p,pos,_) ->
       (* Can only be used for internal communication *)
-      if is_public_constant ch
-      then f_next ()
-      else
-        next_input_private (fun rest_proc' in_gathering f_next_1 ->
-          if is_public_constant in_gathering.channel
-          then f_next_1 ()
-          else
-            Variable.auto_cleanup_with_reset (fun f_next_2 ->
-              if is_unifiable ch in_gathering.channel
-              then
-                begin
-                  let x = Term.variable_of in_gathering.term in
-                  Config.debug (fun () ->
-                    if x.link <> NoLink
-                    then Config.internal_error "[generic_process.ml >> next_input_private] The variable of the input should not be linked."
-                  );
-                  Variable.link_term x t;
-                  let disequations_1 = Formula.T.instantiate_and_normalise in_gathering.common_data.disequations in
-                  if Formula.T.Bot = disequations_1
-                  then f_next_2 ()
-                  else
-                    let data_1 =
-                      { in_gathering.common_data with
-                        transitions = (AComm(pos,in_gathering.position)::in_gathering.common_data.transitions);
-                        original_subst = (x,t)::in_gathering.common_data.original_subst;
-                        disequations = disequations_1
-                      }
-                    in
-                    next_input_private f_continuation (add_private_channel ch in_gathering.private_channels) p rest_proc' data_1  f_next_2
-                end
-              else f_next_2 ()
-            ) f_next_1
-        ) priv_channels rest_proc SNil data f_next
+      let next_internal_communication not_deduc f_next_1 =
+        next_input_private (fun rest_proc' in_gathering f_next_2 ->
+          Variable.auto_cleanup_with_reset (fun f_next_3 ->
+            if is_unifiable ch in_gathering.channel
+            then
+              begin
+                let x = Term.variable_of in_gathering.term in
+                Config.debug (fun () ->
+                  if x.link <> NoLink
+                  then Config.internal_error "[generic_process.ml >> next_input_private] The variable of the input should not be linked."
+                );
+                Variable.link_term x t;
+                let disequations_1 = Formula.T.instantiate_and_normalise in_gathering.common_data.disequations in
+                if Formula.T.Bot = disequations_1
+                then f_next_3 ()
+                else
+                  let data_1 =
+                    { in_gathering.common_data with
+                      transitions = (AComm(pos,in_gathering.position)::in_gathering.common_data.transitions);
+                      original_subst = (x,t)::in_gathering.common_data.original_subst;
+                      disequations = disequations_1
+                    }
+                  in
+                  if not_deduc
+                  then next_input_private f_continuation comm_type in_gathering.private_channels p rest_proc' data_1  f_next_3
+                  else next_input_private f_continuation comm_type (add_private_channel ch in_gathering.private_channels) p rest_proc' data_1  f_next_3
+              end
+            else f_next_3 ()
+          ) f_next_2
+        ) PrivateComm priv_channels rest_proc SNil data f_next_1
+      in
+
+      begin match deducibility_status ch with
+        | Deducible -> f_next ()
+        | Not_deducible -> next_internal_communication true f_next
+        | _ -> next_internal_communication false f_next
+      end
   | SInput(ch,x,p,pos,_) ->
       (* This input is selected *)
 
       let gathering = { common_data = data; channel = ch; term = Var x; position = pos; private_channels = priv_channels } in
 
-      if is_public_constant ch
-      then f_continuation (make_par_processes p rest_proc) gathering f_next
-      else
-        let next_internal_communication f_next_1 =
-          next_output_private (fun rest_proc' out_gathering f_next_2 ->
-            if is_public_constant out_gathering.channel
-            then f_next_2 ()
-            else
-              Variable.auto_cleanup_with_reset (fun f_next_3 ->
-                if is_unifiable ch out_gathering.channel
-                then
-                  begin
-                    Variable.link_term x out_gathering.term;
-                    let disequations_1 = Formula.T.instantiate_and_normalise out_gathering.common_data.disequations in
-                    if Formula.T.Bot = disequations_1
-                    then f_next_3 ()
-                    else
-                      let data_1 =
-                        { out_gathering.common_data with
-                          transitions = (AComm(out_gathering.position,pos)::out_gathering.common_data.transitions);
-                          original_subst = (x,out_gathering.term)::out_gathering.common_data.original_subst;
-                          disequations = disequations_1
-                        }
-                      in
-                      next_input_private f_continuation (add_private_channel ch out_gathering.private_channels) p rest_proc' data_1 f_next_3
-                  end
-                else f_next_3 ()
-              ) f_next_2
-          ) priv_channels rest_proc SNil data f_next_1
-        in
+      let next_internal_communication not_deduc f_next_1 =
+        next_output_private (fun rest_proc' out_gathering f_next_2 ->
+          Variable.auto_cleanup_with_reset (fun f_next_3 ->
+            if is_unifiable ch out_gathering.channel
+            then
+              begin
+                Variable.link_term x out_gathering.term;
+                let disequations_1 = Formula.T.instantiate_and_normalise out_gathering.common_data.disequations in
+                if Formula.T.Bot = disequations_1
+                then f_next_3 ()
+                else
+                  let data_1 =
+                    { out_gathering.common_data with
+                      transitions = (AComm(out_gathering.position,pos)::out_gathering.common_data.transitions);
+                      original_subst = (x,out_gathering.term)::out_gathering.common_data.original_subst;
+                      disequations = disequations_1
+                    }
+                  in
+                  if not_deduc
+                  then next_input_private f_continuation comm_type out_gathering.private_channels p rest_proc' data_1 f_next_3
+                  else next_input_private f_continuation comm_type (add_private_channel ch out_gathering.private_channels) p rest_proc' data_1 f_next_3
+              end
+            else f_next_3 ()
+          ) f_next_2
+        ) PrivateComm priv_channels rest_proc SNil data f_next_1
+      in
 
-        f_continuation (make_par_processes p rest_proc) gathering (fun () -> next_internal_communication f_next)
-  | _ -> next_tau (next_input_private f_continuation priv_channels) proc rest_proc data f_next
+      begin match deducibility_status ch with
+        | Deducible ->
+            if comm_type = PrivateComm
+            then f_next ()
+            else f_continuation (make_par_processes p rest_proc) gathering f_next
+        | Not_deducible ->
+            if comm_type = PublicComm
+            then next_internal_communication true f_next
+            else f_continuation (make_par_processes p rest_proc) gathering (fun () -> next_internal_communication true f_next)
+        | _ -> f_continuation (make_par_processes p rest_proc) gathering (fun () -> next_internal_communication false f_next)
+      end
+  | _ -> next_tau (next_input_private f_continuation comm_type priv_channels) proc rest_proc data f_next
 
 (***** Next input and output in the eavesdrop semantics ******)
 
@@ -764,65 +796,121 @@ let rec next_eavesdrop_communication f_continuation priv_channels proc rest_proc
                 let data_1 = { in_gathering.common_data with original_subst = (x,t)::in_gathering.common_data.original_subst; disequations = disequations_1 } in
                 let gathering = { eav_common_data = data_1; eav_channel = ch; eav_term = t; eav_position_out = pos; eav_position_in = in_gathering.position; eav_private_channels = in_gathering.private_channels } in
 
-                if is_public_constant ch
-                then f_continuation (make_par_processes p rest_proc') gathering f_next_2
-                else
-                  f_continuation (make_par_processes p rest_proc') gathering (fun () ->
-                    (* Internal communication *)
-                    let data_2 =
-                      { in_gathering.common_data with
-                        transitions = (AComm(pos,in_gathering.position)::in_gathering.common_data.transitions);
-                        original_subst = (x,t)::in_gathering.common_data.original_subst;
-                        disequations = disequations_1
-                      }
-                    in
-                    next_eavesdrop_communication f_continuation (add_private_channel ch in_gathering.private_channels) p rest_proc' data_2 f_next_2
-                  )
+                match deducibility_status ch with
+                  | Deducible -> f_continuation (make_par_processes p rest_proc') gathering f_next_2
+                  | Not_deducible ->
+                      let data_2 =
+                        { in_gathering.common_data with
+                          transitions = (AComm(pos,in_gathering.position)::in_gathering.common_data.transitions);
+                          original_subst = (x,t)::in_gathering.common_data.original_subst;
+                          disequations = disequations_1
+                        }
+                      in
+                      next_eavesdrop_communication f_continuation in_gathering.private_channels p rest_proc' data_2 f_next_2
+                  | Unknown ->
+                      f_continuation (make_par_processes p rest_proc') gathering (fun () ->
+                        (* Internal communication *)
+                        let data_2 =
+                          { in_gathering.common_data with
+                            transitions = (AComm(pos,in_gathering.position)::in_gathering.common_data.transitions);
+                            original_subst = (x,t)::in_gathering.common_data.original_subst;
+                            disequations = disequations_1
+                          }
+                        in
+                        next_eavesdrop_communication f_continuation (add_private_channel ch in_gathering.private_channels) p rest_proc' data_2 f_next_2
+                      )
             end
           else f_next_2 ()
         ) f_next_1
-      ) priv_channels rest_proc SNil data f_next
+      ) AllComm priv_channels rest_proc SNil data f_next
   | SInput(ch,x,p,pos,_) ->
       (* Can only be used for internal communication *)
-      if is_public_constant ch
-      then f_next ()
-      else
-        next_output_private (fun rest_proc' out_gathering f_next_1 ->
-          if is_public_constant out_gathering.channel
-          then f_next_1 ()
-          else
-            Variable.auto_cleanup_with_reset (fun f_next_2 ->
-              if is_unifiable ch out_gathering.channel
-              then
-                begin
-                  Variable.link_term x out_gathering.term;
-                  let disequations_1 = Formula.T.instantiate_and_normalise out_gathering.common_data.disequations in
-                  if Formula.T.Bot = disequations_1
-                  then f_next_2 ()
-                  else
-                    let data_1 =
-                      { out_gathering.common_data with
-                        transitions = (AComm(out_gathering.position,pos)::out_gathering.common_data.transitions);
-                        original_subst = (x,out_gathering.term)::out_gathering.common_data.original_subst;
-                        disequations = disequations_1
-                      }
-                    in
-                    next_eavesdrop_communication f_continuation (add_private_channel ch out_gathering.private_channels) p rest_proc' data_1  f_next_2
-                end
-              else f_next_2 ()
-            ) f_next_1
-        ) priv_channels rest_proc SNil data f_next
+
+      let next_internal_communication not_deduc f_next_1 =
+        next_output_private (fun rest_proc' out_gathering f_next_2 ->
+          Variable.auto_cleanup_with_reset (fun f_next_3 ->
+            if is_unifiable ch out_gathering.channel
+            then
+              begin
+                Variable.link_term x out_gathering.term;
+                let disequations_1 = Formula.T.instantiate_and_normalise out_gathering.common_data.disequations in
+                if Formula.T.Bot = disequations_1
+                then f_next_3 ()
+                else
+                  let data_1 =
+                    { out_gathering.common_data with
+                      transitions = (AComm(out_gathering.position,pos)::out_gathering.common_data.transitions);
+                      original_subst = (x,out_gathering.term)::out_gathering.common_data.original_subst;
+                      disequations = disequations_1
+                    }
+                  in
+                  if not_deduc
+                  then next_eavesdrop_communication f_continuation out_gathering.private_channels p rest_proc' data_1  f_next_3
+                  else next_eavesdrop_communication f_continuation (add_private_channel ch out_gathering.private_channels) p rest_proc' data_1  f_next_3
+              end
+            else f_next_3 ()
+          ) f_next_2
+        ) PrivateComm priv_channels rest_proc SNil data f_next_1
+      in
+
+      begin match deducibility_status ch with
+        | Deducible -> f_next ()
+        | Not_deducible -> next_internal_communication true f_next
+        | Unknown -> next_internal_communication false f_next
+      end
   | _ -> next_tau (next_eavesdrop_communication f_continuation priv_channels) proc rest_proc data f_next
 
 (**** Main functions *****)
 
 let next_output sem proc orig_subst orig_names transitions (f_continuation:generic_process -> gathering -> unit) = match sem with
   | Classic -> next_output_classic (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) proc SNil { original_subst = orig_subst; original_names = orig_names; disequations = Formula.T.Top; transitions = transitions } (fun () -> ())
-  | _ -> next_output_private (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) [] proc SNil { original_subst = orig_subst; original_names = orig_names; disequations = Formula.T.Top; transitions = transitions } (fun () -> ())
+  | _ -> next_output_private (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) PublicComm [] proc SNil { original_subst = orig_subst; original_names = orig_names; disequations = Formula.T.Top; transitions = transitions } (fun () -> ())
+
+let next_output =
+  if Config.record_time
+  then
+    (fun sem proc orig_subst orig_names transitions f_continuation ->
+      Statistic.record_notail Statistic.time_next_transition (fun () ->
+        next_output sem proc orig_subst orig_names transitions (fun proc gather ->
+          Statistic.record_notail Statistic.time_other (fun () ->
+            f_continuation proc gather
+          )
+        )
+      )
+    )
+  else next_output
 
 let next_input sem proc orig_subst orig_names transitions (f_continuation:generic_process -> gathering -> unit) = match sem with
   | Classic -> next_input_classic (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) proc SNil { original_subst = orig_subst; original_names = orig_names; disequations = Formula.T.Top; transitions = transitions } (fun () -> ())
-  | _ -> next_input_private (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) [] proc SNil { original_subst = orig_subst; original_names = orig_names; disequations = Formula.T.Top; transitions = transitions } (fun () -> ())
+  | _ -> next_input_private (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) PublicComm [] proc SNil { original_subst = orig_subst; original_names = orig_names; disequations = Formula.T.Top; transitions = transitions } (fun () -> ())
+
+let next_input =
+  if Config.record_time
+  then
+    (fun sem proc orig_subst orig_names transitions f_continuation ->
+      Statistic.record_notail Statistic.time_next_transition (fun () ->
+        next_input sem proc orig_subst orig_names transitions (fun proc gather ->
+          Statistic.record_notail Statistic.time_other (fun () ->
+            f_continuation proc gather
+          )
+        )
+      )
+    )
+  else next_input
 
 let next_eavesdrop proc orig_subst orig_names transitions (f_continuation:generic_process -> eavesdrop_gathering -> unit) =
   next_eavesdrop_communication (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) [] proc SNil { original_subst = orig_subst; original_names = orig_names; disequations = Formula.T.Top; transitions = transitions } (fun () -> ())
+
+let next_eavesdrop =
+  if Config.record_time
+  then
+    (fun proc orig_subst orig_names transitions f_continuation ->
+      Statistic.record_notail Statistic.time_next_transition (fun () ->
+        next_eavesdrop proc orig_subst orig_names transitions (fun proc gather ->
+          Statistic.record_notail Statistic.time_other (fun () ->
+            f_continuation proc gather
+          )
+        )
+      )
+    )
+  else next_eavesdrop

@@ -909,6 +909,61 @@ let rec regroup_equal_par_processes = function
       end
   | Choice(p1,p2,pos) -> Choice(regroup_equal_par_processes p1, regroup_equal_par_processes p2,pos)
 
+(*** Replace private constant by names ***)
+
+let rec replace_private_name_term assoc = function
+  | Func(f,[]) when not f.public -> Name (List.assq f assoc)
+  | Func(f,args) -> Func(f,List.map (replace_private_name_term assoc) args)
+  | t -> t
+
+let rec replace_private_name_pattern assoc = function
+  | PatEquality t -> PatEquality(replace_private_name_term assoc t)
+  | PatTuple(f,args) -> PatTuple(f,List.map (replace_private_name_pattern assoc) args)
+  | pat -> pat
+
+let rec replace_private_name_process assoc = function
+  | Nil -> Nil
+  | Output(ch,t,p,pos) -> Output(replace_private_name_term assoc ch, replace_private_name_term assoc t, replace_private_name_process assoc p,pos)
+  | Input(ch,pat,p,pos) -> Input(replace_private_name_term assoc ch, replace_private_name_pattern assoc pat, replace_private_name_process assoc p,pos)
+  | IfThenElse(t1,t2,p1,p2,pos) -> IfThenElse(replace_private_name_term assoc t1, replace_private_name_term assoc t2, replace_private_name_process assoc p1, replace_private_name_process assoc p2,pos)
+  | Let(pat,t,p1,p2,pos) -> Let(replace_private_name_pattern assoc pat, replace_private_name_term assoc t, replace_private_name_process assoc p1, replace_private_name_process assoc p2,pos)
+  | New(n,p,pos) -> New(n,replace_private_name_process assoc p,pos)
+  | Par plist -> Par (List.map (replace_private_name_process assoc) plist)
+  | Bang(plist,pos) -> Bang(List.map (replace_private_name_process assoc) plist,pos)
+  | Choice(p1,p2,pos) -> Choice(replace_private_name_process assoc p1,replace_private_name_process assoc p2,pos)
+
+let rec private_constant_not_in_term f = function
+  | Func(f',_) when f == f' -> false
+  | Func(_,args) -> List.for_all (private_constant_not_in_term f) args
+  | _ -> true
+
+let private_constant_not_in_rewrite_rule f =
+  List.for_all (fun f' -> match f'.cat with
+    | Destructor rw_list ->
+        List.for_all (fun (lhs,rhs) ->
+          private_constant_not_in_term f rhs && List.for_all (private_constant_not_in_term f) lhs
+        ) rw_list
+    | _ -> Config.internal_error "[process.ml >> private_constant_not_in_rewrite_rule] Should only contain destructor functions."
+  ) !Symbol.all_destructors
+
+let replace_private_name proc =
+  let assoc =
+    List.fold_left (fun acc f ->
+      if not f.public && f.arity = 0 && private_constant_not_in_rewrite_rule f
+      then
+        let n = Name.fresh_with_label f.label_s in
+        (f,n)::acc
+      else acc
+    ) [] !Symbol.all_constructors
+  in
+
+  if assoc = []
+  then proc
+  else
+    List.fold_left (fun acc_p (_,n) ->
+      New(n,acc_p,dummy_pos)
+    ) (replace_private_name_process assoc proc) assoc
+
 (*** General function ***)
 
 type configuration =
@@ -1094,7 +1149,8 @@ let rec normalise_pos_match prev = function
       normalise_pos_match ((pos1,pos2)::prev') q'
 
 let simplify_for_determinate p =
-  let p1 = clean p in
+  let p0 = replace_private_name p in
+  let p1 = clean p0 in
   let p2 = add_let_for_output_input p1 in
   let p3 = apply_trivial_let p2 in
   let p4 = detect_and_replace_pure_fresh_name p3 in
@@ -1118,7 +1174,8 @@ let simplify_for_determinate p =
   p6, retrieve_trace
 
 let simplify_for_generic p =
-  let p1 = clean p in
+  let p0 = replace_private_name p in
+  let p1 = clean p0 in
   let p2 = add_let_for_output_input p1 in
   let p3 = apply_trivial_let p2 in
   let p4 = move_new_name p3 in
