@@ -417,7 +417,12 @@ let next_tau f_apply proc rest_proc data f_next = match proc with
           f_apply pelse rest_proc data_1 f_next_1
       in
 
-      apply_positive (fun () -> apply_negative f_next) equation_list
+      begin match pthen,pelse with
+        | SNil, SNil -> f_next ()
+        | _,SNil -> apply_positive f_next equation_list
+        | SNil, _ -> apply_negative f_next
+        | _,_ -> apply_positive (fun () -> apply_negative f_next) equation_list
+      end
   | SNew(x,n,p,_) ->
       Variable.auto_cleanup_with_reset (fun f_next_1 ->
         Variable.link_term x (Name n);
