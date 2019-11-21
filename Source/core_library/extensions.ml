@@ -24,6 +24,19 @@ module List = struct
     in
     explore (fun x -> x)
 
+  let unionq l1 l2 = match l1,l2 with
+    | [],l
+    | l, [] -> l
+    | _,_ ->
+        let rec add acc = function
+          | [] -> acc
+          | t::q ->
+              if List.memq t l2
+              then acc
+              else add (t::acc) q
+        in
+        add l2 l1
+
   let remove f l =
     let rec explore prev = function
       | [] -> raise Not_found

@@ -8,18 +8,35 @@ open Display
 
 type equations = (variable * term) list
 
+type channel_occurrence =
+  | TermOccurred
+  | NoChannel
+  | Constant of (symbol list * variable list (* Represents the private names *))
+
+type channel_type =
+  | CTSymb of symbol
+  | CTName of variable
+  | CTOther
+
 type used_data =
   {
     variables : variable list;
     names : variable list
   }
 
+type channel_data =
+  {
+    channel_type : channel_type;
+    in_channel : channel_occurrence;
+    out_channel : channel_occurrence
+  }
+
 type generic_process =
   | SNil
-  | SOutput of term * term * generic_process * position * used_data
-  | SInput of term * variable * generic_process * position * used_data
-  | SCondition of equations list * Formula.T.t * variable list (* fresh variables *) * generic_process * generic_process * used_data
-  | SNew of variable * name * generic_process * used_data
+  | SOutput of term * term * generic_process * position * used_data * channel_data
+  | SInput of term * variable * generic_process * position * used_data * channel_data
+  | SCondition of equations list * Formula.T.t * variable list (* fresh variables *) * generic_process * generic_process * used_data * channel_data
+  | SNew of variable * name * generic_process * used_data * channel_data
   | SPar of generic_process list
   | SBang of generic_process list
   | SChoice of generic_process * generic_process * position
@@ -46,6 +63,17 @@ let display_used_data data =
     (display_list (Variable.display Terminal) "," data.variables)
     (display_list (Variable.display Terminal) "," data.names)
 
+let display_channel_occurrence = function
+  | TermOccurred -> top Terminal
+  | NoChannel -> emptyset Terminal
+  | Constant(f_l,[]) -> display_list (Symbol.display Terminal) "," f_l
+  | Constant([],v_l) -> display_list (Variable.display Terminal) "," v_l
+  | Constant(f_l,v_l) ->
+      (display_list (Symbol.display Terminal) "," f_l)^","^(display_list (Variable.display Terminal) "," v_l)
+
+let display_channel_data data =
+  Printf.sprintf "{Out = %s; In = %s}" (display_channel_occurrence data.out_channel) (display_channel_occurrence data.in_channel)
+
 let display_position (i,args) =
   if args = []
   then string_of_int i
@@ -53,26 +81,26 @@ let display_position (i,args) =
 
 let rec display_generic_process tab = function
   | SNil -> (display_with_tab tab "Nil")
-  | SOutput(ch,t,p,pos,data) ->
-      let str = Printf.sprintf "{%s} out(%s,%s); %s" (display_position pos) (Term.display Terminal ch) (Term.display Terminal t) (display_used_data data) in
+  | SOutput(ch,t,p,pos,data,ch_data) ->
+      let str = Printf.sprintf "{%s} out(%s,%s); %s %s" (display_position pos) (Term.display Terminal ch) (Term.display Terminal t) (display_used_data data) (display_channel_data ch_data) in
       (display_with_tab tab str) ^ (display_generic_process tab p)
-  | SInput(ch,x,p,pos,data) ->
-      let str = Printf.sprintf "{%s} in(%s,%s); %s" (display_position pos) (Term.display Terminal ch) (Variable.display Terminal x) (display_used_data data) in
+  | SInput(ch,x,p,pos,data,ch_data) ->
+      let str = Printf.sprintf "{%s} in(%s,%s); %s %s" (display_position pos) (Term.display Terminal ch) (Variable.display Terminal x) (display_used_data data) (display_channel_data ch_data) in
       (display_with_tab tab str) ^ (display_generic_process tab p)
-  | SCondition(eq_list,Formula.T.Bot,_,pthen,SNil,data) ->
+  | SCondition(eq_list,Formula.T.Bot,_,pthen,SNil,data,ch_data) ->
       let str_eq = display_list display_equations (vee Terminal) eq_list in
-      let str = Printf.sprintf "condition [%s] %s" str_eq (display_used_data data)in
+      let str = Printf.sprintf "condition [%s] %s %s" str_eq (display_used_data data) (display_channel_data ch_data) in
       let str_then = display_generic_process tab pthen in
       (display_with_tab tab str) ^ str_then
-  | SCondition(eq_list,neg_formula,_,pthen,pelse,data) ->
+  | SCondition(eq_list,neg_formula,_,pthen,pelse,data,ch_data) ->
       let str_eq = display_list display_equations (vee Terminal) eq_list in
-      let str = Printf.sprintf "condition [%s] %s" str_eq (display_used_data data) in
+      let str = Printf.sprintf "condition [%s] %s %s" str_eq (display_used_data data) (display_channel_data ch_data) in
       let str_then = display_generic_process (tab+1) pthen in
       let str_else = display_generic_process (tab+1) pelse in
       let str_neg = "Else "^(Formula.T.display Terminal neg_formula) in
       (display_with_tab tab str) ^ str_then ^ (display_with_tab tab str_neg) ^ str_else
-  | SNew(x,n,p,data) ->
-      let str = Printf.sprintf "new %s -> %s; %s" (Variable.display Terminal x) (Name.display Terminal n) (display_used_data data) in
+  | SNew(x,n,p,data,ch_data) ->
+      let str = Printf.sprintf "new %s -> %s; %s %s" (Variable.display Terminal x) (Name.display Terminal n) (display_used_data data) (display_channel_data ch_data) in
       (display_with_tab tab str) ^ (display_generic_process tab p)
   | SPar p_list ->
       (display_with_tab tab "(") ^
@@ -127,10 +155,10 @@ let rec link_used_data_pattern assoc = function
 (* We assume that the variables are not linked. *)
 let rec link_used_data_process = function
   | SNil -> ()
-  | SOutput(_,_,_,_,data)
-  | SInput(_,_,_,_,data)
-  | SCondition(_,_,_,_,_,data)
-  | SNew(_,_,_,data) -> link_used_data data
+  | SOutput(_,_,_,_,data,_)
+  | SInput(_,_,_,_,data,_)
+  | SCondition(_,_,_,_,_,data,_)
+  | SNew(_,_,_,data,_) -> link_used_data data
   | SPar p_list -> List.iter link_used_data_process p_list
   | SBang p_list -> link_used_data_process (List.hd p_list)
   | SChoice(p1,p2,_) ->
@@ -145,6 +173,40 @@ let link_used_data f_next p =
     link_used_data_process p;
     f_next ()
   )
+
+(* Channel occurrence management *)
+
+let add_occurrence_channel assoc occ_ch = function
+  | Name n ->
+      let v = List.assq n assoc in
+      begin match occ_ch with
+        | NoChannel -> Constant([],[v]), CTName v
+        | TermOccurred -> TermOccurred, CTName v
+        | Constant (symb_list,name_list) ->
+            if List.memq v name_list
+            then Constant (symb_list,name_list), CTName v
+            else Constant (symb_list,v::name_list), CTName v
+      end
+  | Func(f,[]) when f.public ->
+      begin match occ_ch with
+        | NoChannel -> Constant([f],[]), CTSymb f
+        | TermOccurred -> TermOccurred, CTSymb f
+        | Constant (symb_list,name_list) ->
+            if List.memq f symb_list
+            then Constant (symb_list,name_list), CTSymb f
+            else Constant (f::symb_list,name_list), CTSymb f
+      end
+  | _ -> TermOccurred, CTOther
+
+let union_occurrence_channel occ_ch_1 occ_ch_2 = match occ_ch_1, occ_ch_2 with
+  | NoChannel, occ_ch
+  | occ_ch, NoChannel -> occ_ch
+  | TermOccurred, _
+  | _, TermOccurred -> TermOccurred
+  | Constant(symb_list1,name_list1), Constant(symb_list2,name_list2) ->
+      Constant(List.unionq symb_list1 symb_list2,List.unionq name_list1 name_list2)
+
+(* Main function *)
 
 let generic_process_of_process proc =
 
@@ -230,9 +292,9 @@ let generic_process_of_process proc =
   in
 
   let rec explore assoc prev_data = function
-    | Nil -> SNil
+    | Nil -> SNil, { channel_type = CTOther; in_channel = NoChannel; out_channel = NoChannel }
     | Output(ch,t,p,pos) ->
-        let p' = explore assoc prev_data p in
+        let (p',ch_data') = explore assoc prev_data p in
 
         let used_data =
           auto_cleanup_all (fun () ->
@@ -242,14 +304,17 @@ let generic_process_of_process proc =
             filter_used_data prev_data
           )
         in
-        SOutput(replace_name_by_variables assoc ch,replace_name_by_variables assoc t,p',pos,used_data)
+        let (out_occ, ch_type) = add_occurrence_channel assoc ch_data'.out_channel ch in
+        let ch_data_out = { ch_data' with channel_type = ch_type } in
+        let ch_data_next = { ch_data' with out_channel = out_occ } in
+        SOutput(replace_name_by_variables assoc ch,replace_name_by_variables assoc t,p',pos,used_data,ch_data_out), ch_data_next
     | Input(ch,PatVar v,p,pos) ->
         Config.debug (fun () ->
           if v.link <> NoLink
           then Config.internal_error "[generic_process.ml >> generic_process_of_process] Variables should not be linked (4)."
         );
 
-        let p' = explore assoc { prev_data with variables = v::prev_data.variables } p in
+        let (p',ch_data') = explore assoc { prev_data with variables = v::prev_data.variables } p in
 
         let used_data =
           auto_cleanup_all (fun () ->
@@ -258,7 +323,10 @@ let generic_process_of_process proc =
             filter_used_data prev_data
           )
         in
-        SInput(replace_name_by_variables assoc ch,v,p',pos,used_data)
+        let (in_occ, ch_type) = add_occurrence_channel assoc ch_data'.in_channel ch in
+        let ch_data_in = { ch_data' with channel_type = ch_type } in
+        let ch_data_next = { ch_data' with in_channel = in_occ } in
+        SInput(replace_name_by_variables assoc ch,v,p',pos,used_data,ch_data_in), ch_data_next
     | Input _ -> Config.internal_error "[generic_process.ml >> generic_process_of_process] Input should only have variable as pattern at this stage."
     | IfThenElse(t1,t2,pthen,pelse,_) ->
         Config.debug (fun () ->
@@ -266,8 +334,8 @@ let generic_process_of_process proc =
           then Config.internal_error "[generic_process.ml >> generic_process_of_process] No variables or names should be linked."
         );
 
-        let pthen' = explore assoc prev_data pthen in
-        let pelse' = explore assoc prev_data pelse in
+        let (pthen',ch_data_then') = explore assoc prev_data pthen in
+        let (pelse',ch_data_else') = explore assoc prev_data pelse in
 
         let used_data =
           auto_cleanup_all (fun () ->
@@ -278,11 +346,18 @@ let generic_process_of_process proc =
             filter_used_data prev_data
           )
         in
+        let ch_data =
+          {
+            channel_type = CTOther;
+            in_channel = union_occurrence_channel ch_data_then'.in_channel ch_data_else'.in_channel;
+            out_channel = union_occurrence_channel ch_data_then'.out_channel ch_data_else'.out_channel
+          }
+        in
 
         let (equations_1,disequations_1) = Rewrite_rules.compute_equality_modulo_and_rewrite [(t1,t2)] in
         let equations_2 = List.map (replace_name_by_variables_equations assoc) equations_1 in
         let disequations_2 = replace_name_by_variables_formula assoc disequations_1 in
-        SCondition(equations_2,disequations_2,[],pthen',pelse',used_data)
+        SCondition(equations_2,disequations_2,[],pthen',pelse',used_data,ch_data),ch_data
     | Let(pat,t,pthen,pelse,_) ->
         Config.debug (fun () ->
           if !Variable.currently_linked <> []
@@ -291,8 +366,8 @@ let generic_process_of_process proc =
         let fresh_vars = ref [] in
         get_pattern_vars fresh_vars pat;
 
-        let pthen' = explore assoc { prev_data with variables = !fresh_vars @ prev_data.variables } pthen in
-        let pelse' = explore assoc prev_data pelse in
+        let (pthen',ch_data_then') = explore assoc { prev_data with variables = !fresh_vars @ prev_data.variables } pthen in
+        let (pelse',ch_data_else') = explore assoc prev_data pelse in
 
         let used_data =
           auto_cleanup_all (fun () ->
@@ -304,30 +379,72 @@ let generic_process_of_process proc =
           )
         in
 
+        let ch_data =
+          {
+            channel_type = CTOther;
+            in_channel = union_occurrence_channel ch_data_then'.in_channel ch_data_else'.in_channel;
+            out_channel = union_occurrence_channel ch_data_then'.out_channel ch_data_else'.out_channel
+          }
+        in
+
         let (equations_1,disequations_1) = Rewrite_rules.compute_equality_modulo_and_rewrite [(t,term_of_pattern pat)] in
         let disequations_2 = replace_fresh_vars_by_universal !fresh_vars disequations_1 in
         let disequations_3 = replace_name_by_variables_formula assoc disequations_2 in
         let equations_2 = List.map (replace_name_by_variables_equations assoc) equations_1 in
-        SCondition(equations_2,disequations_3,!fresh_vars,pthen',pelse',used_data)
+        SCondition(equations_2,disequations_3,!fresh_vars,pthen',pelse',used_data,ch_data),ch_data
     | New(n,p,_) ->
         let x = Variable.fresh Free in
-        let p' = explore ((n,x)::assoc) { prev_data with names = x::prev_data.names } p in
+        let (p',ch_data) = explore ((n,x)::assoc) { prev_data with names = x::prev_data.names } p in
         let used_data =
           auto_cleanup_all (fun () ->
             link_used_data_process p';
             filter_used_data prev_data
           )
         in
-        SNew(x,n,p',used_data)
-    | Par p_list -> SPar(List.map (explore assoc prev_data) p_list)
-    | Bang(p_list,_) -> SBang(List.map (explore assoc prev_data) p_list)
+        SNew(x,n,p',used_data,ch_data), ch_data
+    | Par p_list ->
+        let (p_list',ch_data) =
+          List.fold_right (fun p (acc_p,acc_ch_data) ->
+            let (p',ch_data') = explore assoc prev_data p in
+            let acc_ch_data' =
+              { ch_data' with
+                out_channel = union_occurrence_channel ch_data'.out_channel acc_ch_data.out_channel;
+                in_channel = union_occurrence_channel ch_data'.in_channel acc_ch_data.in_channel
+              }
+            in
+            (p'::acc_p,acc_ch_data')
+          ) p_list ([],{ channel_type = CTOther; in_channel = NoChannel; out_channel = NoChannel })
+        in
+        SPar p_list', ch_data
+    | Bang(p_list,_) ->
+        let (p_list',ch_data) =
+          List.fold_right (fun p (acc_p,acc_ch_data) ->
+            let (p',ch_data') = explore assoc prev_data p in
+            let acc_ch_data' =
+              { ch_data' with
+                out_channel = union_occurrence_channel ch_data'.out_channel acc_ch_data.out_channel;
+                in_channel = union_occurrence_channel ch_data'.in_channel acc_ch_data.in_channel
+              }
+            in
+            (p'::acc_p,acc_ch_data')
+          ) p_list ([],{ channel_type = CTOther; in_channel = NoChannel; out_channel = NoChannel })
+        in
+        SBang p_list', ch_data
     | Choice(p1,p2,pos) ->
-        let p1' = explore assoc prev_data p1 in
-        let p2' = explore assoc prev_data p2 in
-        SChoice(p1',p2',pos)
+        let (p1',ch_data1) = explore assoc prev_data p1 in
+        let (p2',ch_data2) = explore assoc prev_data p2 in
+        let ch_data =
+          {
+            channel_type = CTOther;
+            out_channel = union_occurrence_channel ch_data1.out_channel ch_data2.out_channel;
+            in_channel = union_occurrence_channel ch_data1.in_channel ch_data2.in_channel
+          }
+        in
+        SChoice(p1',p2',pos), ch_data
   in
 
-  explore [] { variables = []; names = [] } proc
+  let (p,_) = explore [] { variables = []; names = [] } proc in
+  p
 
 (**************************************
 ***            Transition           ***
@@ -384,7 +501,7 @@ let make_par_processes p1 p2 = match p1, p2 with
 
 let next_tau f_apply proc rest_proc data f_next = match proc with
   | SNil -> f_next ()
-  | SCondition(equation_list,diseq_form,fresh_vars,pthen,pelse,_) ->
+  | SCondition(equation_list,diseq_form,fresh_vars,pthen,pelse,_,_) ->
       let rec apply_positive f_next_1 = function
         | [] -> f_next_1 ()
         | equation::q ->
@@ -423,7 +540,7 @@ let next_tau f_apply proc rest_proc data f_next = match proc with
         | SNil, _ -> apply_negative f_next
         | _,_ -> apply_positive (fun () -> apply_negative f_next) equation_list
       end
-  | SNew(x,n,p,_) ->
+  | SNew(x,n,p,_,_) ->
       Variable.auto_cleanup_with_reset (fun f_next_1 ->
         Variable.link_term x (Name n);
         f_apply p rest_proc { data with original_names = (x,n)::data.original_names } f_next_1
@@ -462,7 +579,7 @@ let next_tau f_apply proc rest_proc data f_next = match proc with
 (***** Next input and output in the classic semantics ******)
 
 let rec next_output_classic f_continuation proc rest_proc data f_next = match proc with
-  | SOutput(ch,t,p,pos,_) ->
+  | SOutput(ch,t,p,pos,_,_) ->
       (* This output is selected *)
 
       let gathering = { common_data = data; channel = ch; term = t; position = pos; private_channels = [] } in
@@ -498,7 +615,7 @@ let rec next_output_classic f_continuation proc rest_proc data f_next = match pr
       in
 
       f_continuation (make_par_processes p rest_proc) gathering (fun () -> next_internal_communication f_next)
-  | SInput(ch,x,p,pos,_) ->
+  | SInput(ch,x,p,pos,_,_) ->
       (* Can only be used for internal communication *)
       next_output_classic (fun rest_proc' out_gathering f_next_1 ->
         Variable.auto_cleanup_with_reset (fun f_next_2 ->
@@ -525,7 +642,7 @@ let rec next_output_classic f_continuation proc rest_proc data f_next = match pr
   | _ -> next_tau (next_output_classic f_continuation) proc rest_proc data f_next
 
 and next_input_classic f_continuation proc rest_proc data f_next = match proc with
-  | SOutput(ch,t,p,pos,_) ->
+  | SOutput(ch,t,p,pos,_,_) ->
       next_input_classic (fun rest_proc' in_gathering f_next_1 ->
         Variable.auto_cleanup_with_reset (fun f_next_2 ->
           if is_unifiable ch in_gathering.channel
@@ -553,7 +670,7 @@ and next_input_classic f_continuation proc rest_proc data f_next = match proc wi
           else f_next_2 ()
         ) f_next_1
       ) rest_proc SNil data f_next
-  | SInput(ch,x,p,pos,_) ->
+  | SInput(ch,x,p,pos,_,_) ->
       (* This input is selected *)
 
       let gathering = { common_data = data; channel = ch; term = Var x; position = pos; private_channels = [] } in
@@ -592,11 +709,6 @@ type term_deducibility_status =
   | Not_deducible
   | Unknown
 
-type communication_type =
-  | PublicComm
-  | PrivateComm
-  | AllComm
-
 let rec deducibility_status = function
   | Func(f,[]) when f.public -> Deducible
   | Var { link = TLink t; _ } -> deducibility_status t
@@ -604,25 +716,149 @@ let rec deducibility_status = function
   | Name { deducible_n = Some _; _ } -> Deducible
   | _ -> Unknown
 
+type communication_type =
+  | SpecificPublic of symbol
+  | SpecificPublicName of variable
+  | SpecificPrivate of variable
+  | PublicComm
+  | PrivateComm
+  | AllComm
+
+let is_comm_type_private = function
+  | PrivateComm | SpecificPrivate _ -> true
+  | _ -> false
+
+let is_comm_type_public = function
+  | PublicComm | SpecificPublic _ -> true
+  | _ -> false
+
+let get_intern_comm_type ch_data = match ch_data.channel_type with
+  | CTName v -> SpecificPrivate v
+  | _ -> PrivateComm
+
+let authorised_communication type_comm channel_occ = match type_comm, channel_occ with
+  | AllComm, _
+  | _, TermOccurred -> true
+  | _, NoChannel -> false
+  | PublicComm, Constant(symb_list,name_list) ->
+      symb_list <> [] || List.exists (function { link = TLink (Name { deducible_n = Some _; _}); _} -> true | _ -> false) name_list
+  | SpecificPublic f, Constant(symb_list,_) -> List.memq f symb_list
+  | SpecificPublicName v, Constant(_,name_list) -> List.memq v name_list
+  | PrivateComm, Constant(_,name_list) -> name_list <> []
+  | SpecificPrivate v, Constant(_,name_list) -> List.memq v name_list
+
 let add_private_channel ch ch_list =
   if List.exists (Term.is_equal ch) ch_list
   then ch_list
   else ch::ch_list
 
-let record_nb_next_output = ref 0
-let record_nb_next_input = ref 0
+type channel_info =
+  {
+    comm_type : communication_type;
+    is_output : bool;
+  }
 
-let rec next_output_private f_continuation comm_type priv_channels proc rest_proc data f_next =
-  incr record_nb_next_output;
-  match proc with
-  | SOutput(ch,t,p,pos,_) ->
+let is_authorised ch_info ch_data =
+  if ch_info.is_output
+  then authorised_communication ch_info.comm_type ch_data.out_channel
+  else authorised_communication ch_info.comm_type ch_data.in_channel
+
+let rec next_tau_private f_apply ch_to_check ch_info proc rest_proc data f_next = match proc with
+  | SNil -> f_next ()
+  | SCondition(equation_list,diseq_form,fresh_vars,pthen,pelse,_,ch_data) ->
+      let rec apply_positive ch_to_check_1 f_next_1 = function
+        | [] -> f_next_1 ()
+        | equation::q ->
+            Variable.auto_cleanup_with_reset (fun f_next_2 ->
+              let orig_subst_1 =
+                List.fold_left (fun acc v ->
+                  let v' = Variable.fresh Existential in
+                  Variable.link_term v (Var v');
+                  (v,Var v') :: acc
+                ) data.original_subst fresh_vars
+              in
+              if is_equations_unifiable equation
+              then
+                let disequations_1 = Formula.T.instantiate_and_normalise data.disequations in
+                if Formula.T.Bot = disequations_1
+                then f_next_2 ()
+                else
+                  let data_1 = { data with original_subst = orig_subst_1; disequations = disequations_1 } in
+                  next_tau_private f_apply ch_to_check_1 ch_info pthen rest_proc data_1 f_next_2
+              else f_next_2 ()
+            ) (fun () -> apply_positive ch_to_check_1 f_next_1 q)
+      in
+
+      let apply_negative ch_to_check_1 f_next_1 =
+        let diseq_form_1 = Formula.T.instantiate_and_normalise_full diseq_form in
+        if Formula.T.Bot = diseq_form_1
+        then f_next_1 ()
+        else
+          let data_1 = { data with disequations = Formula.T.wedge_formula diseq_form_1 data.disequations } in
+          next_tau_private f_apply ch_to_check_1 ch_info pelse rest_proc data_1 f_next_1
+      in
+
+      if not ch_to_check || is_authorised ch_info ch_data
+      then
+        match pthen,pelse with
+          | SNil, SNil -> f_next ()
+          | _,SNil -> apply_positive false f_next equation_list
+          | SNil, _ -> apply_negative false f_next
+          | _,_ -> apply_positive true (fun () -> apply_negative true f_next) equation_list
+      else f_next ()
+  | SNew(x,n,p,_,ch_data) ->
+      if not ch_to_check || is_authorised ch_info ch_data
+      then
+        Variable.auto_cleanup_with_reset (fun f_next_1 ->
+          Variable.link_term x (Name n);
+          next_tau_private f_apply false ch_info p rest_proc { data with original_names = (x,n)::data.original_names } f_next_1
+        ) f_next
+      else f_next ()
+  | SChoice(p1,p2,pos) ->
+      next_tau_private f_apply true ch_info p1 rest_proc { data with transitions =  AChoice(pos,true)::data.transitions } (fun () ->
+        next_tau_private f_apply true ch_info p2 rest_proc { data with transitions =  AChoice(pos,false)::data.transitions } f_next
+      )
+  | SPar [p1;p2] ->
+      next_tau_private f_apply true ch_info p1 (make_par_processes p2 rest_proc) data (fun () ->
+        next_tau_private f_apply true ch_info p2 (make_par_processes p1 rest_proc) data f_next
+      )
+  | SPar p_list ->
+      Config.debug (fun () ->
+        if List.length p_list <= 2
+        then Config.internal_error "[generic_process.ml >> next_tau] Par process should at least contain two processes."
+      );
+      let rec explore f_next_1 prev_p = function
+        | [] -> f_next_1 ()
+        | p::q ->
+            next_tau_private f_apply true ch_info p (make_par_processes (SPar (List.rev_append prev_p q)) rest_proc) data (fun () ->
+              explore f_next_1 (p::prev_p) q
+            )
+      in
+      explore f_next [] p_list
+  | SBang [p;p'] -> next_tau_private f_apply ch_to_check ch_info p (make_par_processes p' rest_proc) data f_next
+  | SBang (p::p_list) ->
+      Config.debug (fun () ->
+        if List.length p_list <= 1
+        then Config.internal_error "[generic_process.ml >> next_tau] Bang process should at least contain two processes."
+      );
+      next_tau_private f_apply ch_to_check ch_info p (make_par_processes (SBang p_list) rest_proc) data f_next
+  | SBang _ -> Config.internal_error "[generic_process.ml >> next_tau] Bang process should at least contain two processes (2)."
+  | _ -> f_apply proc rest_proc data f_next
+
+let rec next_output_private f_continuation comm_type priv_channels proc rest_proc data f_next = match proc with
+  | SOutput(ch,t,p,pos,_,ch_data) ->
       (* This output is selected *)
       let gathering = { common_data = data; channel = ch; term = t; position = pos; private_channels = priv_channels } in
 
-      let next_internal_communication not_deduc f_next_1 =
-        if p = SNil
-        then f_next_1 ()
-        else
+      (* We should only run the internal communication when :
+          - If comm_type is public and there are public outputs in used_data
+          - If comm_type is private if there are private outputs in used_data
+          - if comm_type is private specific and there is this specific channel in used_data
+          - If comm_type is all comm
+      *)
+      let next_internal_communication intern_comm_type not_deduc f_next_1 =
+        if authorised_communication comm_type ch_data.out_channel
+        then
           next_input_private (fun rest_proc' in_gathering f_next_2 ->
             Variable.auto_cleanup_with_reset (fun f_next_3 ->
               if is_unifiable ch in_gathering.channel
@@ -646,26 +882,32 @@ let rec next_output_private f_continuation comm_type priv_channels proc rest_pro
                 end
               else f_next_3 ()
             ) f_next_2
-          ) PrivateComm priv_channels rest_proc SNil data f_next_1
+          ) intern_comm_type priv_channels rest_proc SNil data f_next_1
+        else f_next_1 ()
       in
 
       begin match deducibility_status ch with
         | Deducible ->
-            if comm_type = PrivateComm
+            if is_comm_type_private comm_type
             then f_next ()
             else f_continuation (make_par_processes p rest_proc) gathering f_next
         | Not_deducible ->
-            if comm_type = PublicComm
-            then next_internal_communication true f_next
-            else f_continuation (make_par_processes p rest_proc) gathering (fun () -> next_internal_communication true f_next)
-        | _ -> f_continuation (make_par_processes p rest_proc) gathering (fun () -> next_internal_communication false f_next)
+            let interm_comm_type = get_intern_comm_type ch_data in
+            if is_comm_type_public comm_type
+            then next_internal_communication interm_comm_type true f_next
+            else f_continuation (make_par_processes p rest_proc) gathering (fun () -> next_internal_communication interm_comm_type true f_next)
+        | _ -> f_continuation (make_par_processes p rest_proc) gathering (fun () -> next_internal_communication PrivateComm false f_next)
       end
-  | SInput(ch,x,p,pos,_) ->
-      (* Can only be used for internal communication *)
-      let next_internal_communication not_deduc f_next_1 =
-        if p = SNil
-        then f_next_1 ()
-        else
+  | SInput(ch,x,p,pos,_,ch_data) ->
+      (* We should only run the internal communication when :
+          - If comm_type is public and there are public outputs in used_data
+          - If comm_type is private if there are private outputs in used_data
+          - if comm_type is private specific and there is this specific channel in used_data
+          - If comm_type is all comm
+      *)
+      let next_internal_communication intern_comm_type not_deduc f_next_1 =
+        if authorised_communication comm_type ch_data.out_channel
+        then
           next_output_private (fun rest_proc' out_gathering f_next_2 ->
             Variable.auto_cleanup_with_reset (fun f_next_3 ->
               if is_unifiable ch out_gathering.channel
@@ -684,25 +926,23 @@ let rec next_output_private f_continuation comm_type priv_channels proc rest_pro
                 end
               else f_next_3 ()
             ) f_next_2
-          ) PrivateComm priv_channels rest_proc SNil data f_next_1
+          ) intern_comm_type priv_channels rest_proc SNil data f_next_1
+        else f_next_1 ()
       in
 
       begin match deducibility_status ch with
         | Deducible -> f_next ()
-        | Not_deducible -> next_internal_communication true f_next
-        | _ -> next_internal_communication false f_next
+        | Not_deducible -> next_internal_communication (get_intern_comm_type ch_data) true f_next
+        | _ -> next_internal_communication PrivateComm false f_next
       end
-  | _ -> next_tau (next_output_private f_continuation comm_type priv_channels) proc rest_proc data f_next
+  | _ -> next_tau_private (next_output_private f_continuation comm_type priv_channels) true { comm_type = comm_type; is_output = true } proc rest_proc data f_next
 
-and next_input_private f_continuation comm_type priv_channels proc rest_proc data f_next =
-  incr record_nb_next_input;
-  match proc with
-  | SOutput(ch,t,p,pos,_) ->
+and next_input_private f_continuation comm_type priv_channels proc rest_proc data f_next = match proc with
+  | SOutput(ch,t,p,pos,_,ch_data) ->
       (* Can only be used for internal communication *)
-      let next_internal_communication not_deduc f_next_1 =
-        if p = SNil
-        then f_next_1 ()
-        else
+      let next_internal_communication intern_comm_type not_deduc f_next_1 =
+        if authorised_communication comm_type ch_data.in_channel
+        then
           next_input_private (fun rest_proc' in_gathering f_next_2 ->
             Variable.auto_cleanup_with_reset (fun f_next_3 ->
               if is_unifiable ch in_gathering.channel
@@ -726,23 +966,23 @@ and next_input_private f_continuation comm_type priv_channels proc rest_proc dat
                 end
               else f_next_3 ()
             ) f_next_2
-          ) PrivateComm priv_channels rest_proc SNil data f_next_1
+          ) intern_comm_type priv_channels rest_proc SNil data f_next_1
+        else f_next_1 ()
       in
 
       begin match deducibility_status ch with
         | Deducible -> f_next ()
-        | Not_deducible -> next_internal_communication true f_next
-        | _ -> next_internal_communication false f_next
+        | Not_deducible -> next_internal_communication (get_intern_comm_type ch_data) true f_next
+        | _ -> next_internal_communication PrivateComm false f_next
       end
-  | SInput(ch,x,p,pos,_) ->
+  | SInput(ch,x,p,pos,_,ch_data) ->
       (* This input is selected *)
 
       let gathering = { common_data = data; channel = ch; term = Var x; position = pos; private_channels = priv_channels } in
 
-      let next_internal_communication not_deduc f_next_1 =
-        if p = SNil
-        then f_next_1 ()
-        else
+      let next_internal_communication intern_comm not_deduc f_next_1 =
+        if authorised_communication comm_type ch_data.in_channel
+        then
           next_output_private (fun rest_proc' out_gathering f_next_2 ->
             Variable.auto_cleanup_with_reset (fun f_next_3 ->
               if is_unifiable ch out_gathering.channel
@@ -761,26 +1001,28 @@ and next_input_private f_continuation comm_type priv_channels proc rest_proc dat
                 end
               else f_next_3 ()
             ) f_next_2
-          ) PrivateComm priv_channels rest_proc SNil data f_next_1
+          ) intern_comm priv_channels rest_proc SNil data f_next_1
+        else f_next_1 ()
       in
 
       begin match deducibility_status ch with
         | Deducible ->
-            if comm_type = PrivateComm
+            if is_comm_type_private comm_type
             then f_next ()
             else f_continuation (make_par_processes p rest_proc) gathering f_next
         | Not_deducible ->
-            if comm_type = PublicComm
-            then next_internal_communication true f_next
-            else f_continuation (make_par_processes p rest_proc) gathering (fun () -> next_internal_communication true f_next)
-        | _ -> f_continuation (make_par_processes p rest_proc) gathering (fun () -> next_internal_communication false f_next)
+            let intern_comm = get_intern_comm_type ch_data in
+            if is_comm_type_public comm_type
+            then next_internal_communication intern_comm true f_next
+            else f_continuation (make_par_processes p rest_proc) gathering (fun () -> next_internal_communication intern_comm true f_next)
+        | _ -> f_continuation (make_par_processes p rest_proc) gathering (fun () -> next_internal_communication PrivateComm false f_next)
       end
-  | _ -> next_tau (next_input_private f_continuation comm_type priv_channels) proc rest_proc data f_next
+  | _ -> next_tau_private (next_input_private f_continuation comm_type priv_channels) true { comm_type = comm_type; is_output = false } proc rest_proc data f_next
 
 (***** Next input and output in the eavesdrop semantics ******)
 
 let rec next_eavesdrop_communication f_continuation priv_channels proc rest_proc data f_next = match proc with
-  | SOutput(ch,t,p,pos,_) ->
+  | SOutput(ch,t,p,pos,_,_) ->
       next_input_private (fun rest_proc' in_gathering f_next_1 ->
         Variable.auto_cleanup_with_reset (fun f_next_2 ->
           if is_unifiable ch in_gathering.channel
@@ -827,10 +1069,10 @@ let rec next_eavesdrop_communication f_continuation priv_channels proc rest_proc
           else f_next_2 ()
         ) f_next_1
       ) AllComm priv_channels rest_proc SNil data f_next
-  | SInput(ch,x,p,pos,_) ->
+  | SInput(ch,x,p,pos,_,ch_data) ->
       (* Can only be used for internal communication *)
 
-      let next_internal_communication not_deduc f_next_1 =
+      let next_internal_communication intern_comm_type not_deduc f_next_1 =
         next_output_private (fun rest_proc' out_gathering f_next_2 ->
           Variable.auto_cleanup_with_reset (fun f_next_3 ->
             if is_unifiable ch out_gathering.channel
@@ -854,29 +1096,21 @@ let rec next_eavesdrop_communication f_continuation priv_channels proc rest_proc
               end
             else f_next_3 ()
           ) f_next_2
-        ) PrivateComm priv_channels rest_proc SNil data f_next_1
+        ) intern_comm_type  priv_channels rest_proc SNil data f_next_1
       in
 
       begin match deducibility_status ch with
         | Deducible -> f_next ()
-        | Not_deducible -> next_internal_communication true f_next
-        | Unknown -> next_internal_communication false f_next
+        | Not_deducible -> next_internal_communication (get_intern_comm_type ch_data) true f_next
+        | Unknown -> next_internal_communication PrivateComm false f_next
       end
   | _ -> next_tau (next_eavesdrop_communication f_continuation priv_channels) proc rest_proc data f_next
 
 (**** Main functions *****)
 
 let next_output sem proc orig_subst orig_names transitions (f_continuation:generic_process -> gathering -> unit) = match sem with
-  | Classic ->
-      record_nb_next_output := 0;
-      record_nb_next_input := 0;
-      next_output_classic (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) proc SNil { original_subst = orig_subst; original_names = orig_names; disequations = Formula.T.Top; transitions = transitions } (fun () -> ());
-      Config.log (fun () -> Printf.sprintf "[next_output] Number input : %d, Number output : %d\n" !record_nb_next_input !record_nb_next_output)
-  | _ ->
-      record_nb_next_output := 0;
-      record_nb_next_input := 0;
-      next_output_private (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) PublicComm [] proc SNil { original_subst = orig_subst; original_names = orig_names; disequations = Formula.T.Top; transitions = transitions } (fun () -> ());
-      Config.log (fun () -> Printf.sprintf "[next_output] Number input : %d, Number output : %d\n" !record_nb_next_input !record_nb_next_output)
+  | Classic -> next_output_classic (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) proc SNil { original_subst = orig_subst; original_names = orig_names; disequations = Formula.T.Top; transitions = transitions } (fun () -> ())
+  | _ -> next_output_private (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) PublicComm [] proc SNil { original_subst = orig_subst; original_names = orig_names; disequations = Formula.T.Top; transitions = transitions } (fun () -> ())
 
 let next_output =
   if Config.record_time
@@ -894,11 +1128,7 @@ let next_output =
 
 let next_input sem proc orig_subst orig_names transitions (f_continuation:generic_process -> gathering -> unit) = match sem with
   | Classic -> next_input_classic (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) proc SNil { original_subst = orig_subst; original_names = orig_names; disequations = Formula.T.Top; transitions = transitions } (fun () -> ())
-  | _ ->
-      record_nb_next_output := 0;
-      record_nb_next_input := 0;
-      next_input_private (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) PublicComm [] proc SNil { original_subst = orig_subst; original_names = orig_names; disequations = Formula.T.Top; transitions = transitions } (fun () -> ());
-      Config.log (fun () -> Printf.sprintf "[next_input] Number input : %d, Number output : %d\n" !record_nb_next_input !record_nb_next_output)
+  | _ -> next_input_private (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) PublicComm [] proc SNil { original_subst = orig_subst; original_names = orig_names; disequations = Formula.T.Top; transitions = transitions } (fun () -> ())
 
 let next_input =
   if Config.record_time
