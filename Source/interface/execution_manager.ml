@@ -119,12 +119,16 @@ let generate_initial_query_result batch_dir run_dir i (equiv,proc1,proc2) =
   let query_json_basename = Printf.sprintf "query_%d.json" (i+1) in
   let query_json = Filename.concat run_dir query_json_basename in
 
-  let assoc = ref { size = 0; symbols = []; names = []; variables = [] } in
+  let assoc_ref = ref { size = 0; symbols = []; names = []; variables = [] } in
 
-  Display_ui.record_from_signature assoc;
+  Display_ui.record_from_signature assoc_ref;
+  Display_ui.record_from_process assoc_ref proc1;
+  Display_ui.record_from_process assoc_ref proc2;
 
-  let json_proc1 = Interface.json_process_of_process proc1 in
-  let json_proc2 = Interface.json_process_of_process proc2 in
+  let full_assoc = { std = !assoc_ref; repl = { repl_names = []; repl_variables = []}} in
+
+  let json_proc1 = Interface.json_process_of_process full_assoc proc1 in
+  let json_proc2 = Interface.json_process_of_process full_assoc proc2 in
 
   let semantics = match !Config.local_semantics with
     | Some sem -> sem
@@ -139,7 +143,7 @@ let generate_initial_query_result batch_dir run_dir i (equiv,proc1,proc2) =
     q_run_file = run_dir^".json";
     q_start_time = None;
     q_end_time = None;
-    association = !assoc;
+    association = !assoc_ref;
     semantics = semantics;
     query_type = equiv;
     processes = [json_proc1;json_proc2];

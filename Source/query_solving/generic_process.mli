@@ -23,7 +23,7 @@ val display_generic_process : int -> generic_process -> string
 
 type common_data =
   {
-    transitions : transition list;
+    trace_transitions : transition list;
     original_subst : (variable * term) list;
     original_names : (variable * name) list;
     disequations : Formula.T.t
@@ -67,6 +67,37 @@ val next_input :
   unit
 
 val next_eavesdrop :
+  generic_process ->
+  (variable * term) list ->
+  (variable * name) list ->
+  transition list ->
+  (generic_process -> eavesdrop_gathering -> unit) ->
+  unit
+
+(* Transition on ground processes *)
+
+val next_ground_output :
+  semantics ->
+  term ->
+  generic_process ->
+  (variable * term) list ->
+  (variable * name) list ->
+  transition list ->
+  (generic_process -> gathering -> unit) ->
+  unit
+
+val next_ground_input :
+  semantics ->
+  term ->
+  generic_process ->
+  (variable * term) list ->
+  (variable * name) list ->
+  transition list ->
+  (generic_process -> gathering -> unit) ->
+  unit
+
+val next_ground_eavesdrop :
+  term ->
   generic_process ->
   (variable * term) list ->
   (variable * name) list ->

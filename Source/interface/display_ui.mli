@@ -1,3 +1,4 @@
+open Types
 open Types_ui
 
 (*** Display ***)
@@ -8,6 +9,12 @@ val display_transition : json_transition -> string
 
 val display_process : int -> json_process -> string
 
+(*** Id retrieval ***)
+
+val get_variable_id : full_association -> variable -> int * int list
+
+val get_name_id : full_association -> name -> int * int list
+
 (*** Display of Json ***)
 
 val display_json : json -> string
@@ -16,9 +23,11 @@ val display_json : json -> string
 
 val record_from_signature : association ref -> unit
 
+val record_from_process : association ref -> process -> unit
+
 (* Traces and processes *)
 
-val of_process : ?highlight:json_position list -> association ref -> json_process -> json
+val of_json_process : full_association -> json_process -> json
 
 (* Batch / Run / Query result *)
 

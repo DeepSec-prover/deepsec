@@ -83,6 +83,8 @@ val prepare_for_solving_procedure : bool -> 'a t -> 'a t
 
 val prepare_for_solving_procedure_ground : 'a t -> 'a t
 
+val prepare_for_solving_procedure_with_additional_data : bool -> ('a -> 'a) -> 'a t -> 'a t
+
 val instantiate : 'a t -> 'a t
 
 val debug_on_constraint_system : string -> 'a t -> unit
@@ -115,7 +117,7 @@ module Rule_ground : sig
     | Witness_message of recipe
     | Witness_equality of recipe * recipe
 
-  val apply_rules : ('a t -> 'a t list -> (unit -> unit) -> unit) -> 'a t -> 'a t list -> (unit -> unit) -> unit
+  val apply_rules : ('a t -> 'b t list -> 'c) -> 'a t -> 'b t list -> 'c
 
   val apply_rules_for_static_equivalence : 'a t -> 'a t -> 'a result_static_equivalence
 

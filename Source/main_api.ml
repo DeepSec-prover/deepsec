@@ -37,7 +37,7 @@ let _ =
               Execution_manager.execute_batch ()
             )
           )
-      | Display_trace json_file -> Simulator.display_trace json_file
+      | Display_trace(json_file,id) -> Simulator.display_trace json_file id
       | Attack_simulator json_file -> Simulator.attack_simulator json_file
       | _ -> Printf.printf "No other option available so far."
   )

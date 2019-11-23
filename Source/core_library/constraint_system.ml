@@ -149,6 +149,83 @@ let add_non_deducible_terms csys l =
 (** For now we do not instantiate the recipe. Need to check if it's working with
     distributed computation. *)
 
+let prepare_for_solving_procedure_with_additional_data after_output additional_rename csys =
+  Variable.auto_cleanup_with_reset_notail (fun () ->
+    Name.auto_cleanup_with_reset_notail (fun () ->
+      let (kb,ikb,id_assoc,cleanup_deducible_name) = IK.transfer_incremented_knowledge_into_knowledge after_output csys.knowledge csys.incremented_knowledge in
+      let df = DF.rename_and_instantiate csys.deduction_facts in
+      let non_deducible_terms = List.rev_map Term.rename_and_instantiate csys.non_deducible_terms in
+      let uf = UF.rename_and_instantiate csys.unsolved_facts in
+      let eq_term = Formula.T.rename_and_instantiate csys.eq_term in
+      let eq_uni = Formula.T.rename_and_instantiate csys.eq_uniformity in
+      let orig_subst = List.rev_map (fun (v,t) -> (v,Term.rename_and_instantiate t)) csys.original_substitution in
+      let orig_names = List.rev_map (fun (v,n) -> (v,Name.rename_and_instantiate n)) csys.original_names in
+
+      let history_skeleton =
+        List.map (fun hist ->
+          { hist with
+              fst_vars = List.map Variable.rename hist.fst_vars;
+              diseq = Formula.M.rename_and_instantiate hist.diseq
+          }
+        ) csys.rule_data.history_skeleton
+      in
+
+      let skeletons_checked_K = match csys.rule_data.skeletons_K, csys.rule_data.skeletons_IK with
+        | (checked_K,[]), (checked_IK,[]) ->
+            List.fold_left (fun acc (index_ikb,index_skel) ->
+              Config.debug (fun () ->
+                if List.assoc_opt index_ikb id_assoc = None
+                then Config.internal_error "[constraint_system.ml >> prepare_for_solving_procedure] Index not found."
+              );
+              (List.assoc index_ikb id_assoc,index_skel)::acc
+            ) checked_K checked_IK
+        | _ -> Config.internal_error "[constraint_system.ml >> prepare_for_solving_procedure] All skeletons should have been checked."
+      in
+
+      let equality_constructor_checked_K = match csys.rule_data.equality_constructor_K, csys.rule_data.equality_constructor_IK with
+        | (checked_K,[]), (checked_IK,[]) ->
+            List.fold_left (fun acc index_ikb ->
+              Config.debug (fun () ->
+                if List.assoc_opt index_ikb id_assoc = None
+                then Config.internal_error "[constraint_system.ml >> prepare_for_solving_procedure] Index not found (2)."
+              );
+              (List.assoc index_ikb id_assoc)::acc
+            ) checked_K checked_IK
+        | _ -> Config.internal_error "[constraint_system.ml >> prepare_for_solving_procedure] All constructor skeletons should have been checked."
+      in
+
+      let rule_data =
+        {
+          history_skeleton = history_skeleton;
+          skeletons_K = (skeletons_checked_K,[]);
+          skeletons_IK = ([],[]);
+          equality_constructor_K = (equality_constructor_checked_K,[]);
+          equality_constructor_IK = ([],[]);
+          normalisation_deduction_checked = csys.rule_data.normalisation_deduction_checked
+        }
+      in
+
+      let csys' =
+        { csys with
+          additional_data = additional_rename csys.additional_data;
+          deduction_facts = df;
+          non_deducible_terms = non_deducible_terms;
+          knowledge = kb;
+          incremented_knowledge = ikb;
+          unsolved_facts = uf;
+          eq_term = eq_term;
+          eq_uniformity = eq_uni;
+          original_substitution = orig_subst;
+          original_names = orig_names;
+          rule_data = rule_data
+        }
+      in
+      cleanup_deducible_name ();
+      csys'
+    )
+  )
+
+
 let prepare_for_solving_procedure after_output csys =
   Variable.auto_cleanup_with_reset_notail (fun () ->
     Name.auto_cleanup_with_reset_notail (fun () ->
@@ -2897,7 +2974,7 @@ module Rule_ground = struct
     | _ -> None
 
   (* When [witness = true], the list [csys_list] only contains one element. *)
-  let rec split_data_constructor (f_continuation:'a t -> 'a t list -> 'b) target_csys csys_list =
+  let rec split_data_constructor (f_continuation:'a t -> 'b t list -> 'c) target_csys csys_list =
     Config.debug (fun () ->
       Config.print_in_log (Printf.sprintf "- Rule split data constructor : Nb csys = %d\n" (List.length csys_list));
       Config.print_in_log (Printf.sprintf "Target constraint system:%s\n" (display_constraint_system target_csys));
@@ -2991,7 +3068,7 @@ module Rule_ground = struct
       - When no consequence -> Adding in SDF and followed by equality_SDF and then back to [normalisation_deduction_consequence]
       - When there are consequence -> add an equality formula and check it.
       *)
-  let rec normalisation_deduction_consequence f_continuation (target_csys:'a t) (csys_list:'a t list) =
+  let rec normalisation_deduction_consequence f_continuation (target_csys:'a t) (csys_list:'b t list) =
     Config.debug (fun () ->
       Config.print_in_log (Printf.sprintf "- Rule normalisation_deduction_consequence : Nb csys = %d\n" (List.length csys_list));
       Config.print_in_log (Printf.sprintf "Target constraint system:%s\n" (display_constraint_system target_csys));
@@ -3040,7 +3117,7 @@ module Rule_ground = struct
 
   (*** The rule rewrite ***)
 
-  let rewrite f_continuation (target_csys:'a t) (csys_list:'a t list) =
+  let rewrite (f_continuation:'a t -> 'b t list -> 'c) (target_csys:'a t) (csys_list:'b t list) =
     Config.debug (fun () ->
       Config.print_in_log (Printf.sprintf "- Rule rewrite : Nb csys = %d\n" (List.length csys_list));
       Config.print_in_log (Printf.sprintf "Target constraint system:%s\n" (display_constraint_system target_csys));
@@ -3113,7 +3190,7 @@ module Rule_ground = struct
 
   (*** The rule consequence ***)
 
-  let internal_equality_constructor f_continuation (target_csys:'a t) (csys_list:'a t list) =
+  let internal_equality_constructor f_continuation (target_csys:'a t) (csys_list:'b t list) =
     Config.debug (fun () ->
       Config.print_in_log (Printf.sprintf "- Rule equality_constructor : Nb csys = %d\n" (List.length csys_list));
       Config.print_in_log (Printf.sprintf "Target constraint system:%s\n" (display_constraint_system target_csys));
@@ -3179,7 +3256,7 @@ module Rule_ground = struct
 
     internal_target target_csys csys_list
 
-  let initialise_equality_constructor f_continuation (target_csys:'a t) (csys_list:'a t list) =
+  let initialise_equality_constructor f_continuation (target_csys:'a t) (csys_list:'b t list) =
 
     let all_id = IK.get_all_index target_csys.incremented_knowledge in
 
@@ -3218,11 +3295,10 @@ module Rule_ground = struct
     in
     K.iteri f csys.knowledge
 
-  let apply_rules f_continuation target_csys csys_list f_next =
-    Name.auto_deducible_cleanup_with_reset (fun f_next_1 ->
-      let f_continuation' target_csys' csys_list' = f_continuation target_csys' csys_list' f_next_1 in
-      split_data_constructor (normalisation_deduction_consequence (rewrite (equality_constructor f_continuation'))) target_csys csys_list
-    ) f_next
+  let apply_rules f_continuation target_csys csys_list =
+    Name.auto_deducible_cleanup_with_reset_notail (fun () ->
+      split_data_constructor (normalisation_deduction_consequence (rewrite (equality_constructor f_continuation))) target_csys csys_list
+    )
 
   type 'a result_static_equivalence =
     | Static_equivalent of 'a t * 'a t

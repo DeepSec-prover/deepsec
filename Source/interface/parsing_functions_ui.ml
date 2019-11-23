@@ -109,10 +109,10 @@ let rec pattern_of assoc json = match string_of (member "type" json) with
   | "Atomic" ->
       let id = int_of (member "id" json) in
       begin match assoc.(id) with
-        | JAtomVar v -> PatVar v
+        | JAtomVar v -> JPVar(v,id)
         | _ -> Config.internal_error "[parsing_functions_ui.ml >> pattern_of] Should be a variable."
       end
-  | "Equality" -> PatEquality (term_of assoc (member "term" json))
+  | "Equality" -> JPEquality (term_of assoc (member "term" json))
   | "Function" ->
       let symbol_id = int_of (member "symbol" json) in
       let args = list_of (pattern_of assoc) (member "args" json) in
@@ -120,7 +120,7 @@ let rec pattern_of assoc json = match string_of (member "type" json) with
         | JAtomSymbol f -> f
         | _ -> Config.internal_error "[parsing_functions_ui.ml >> pattern_of] Should be a function symbol."
       in
-      PatTuple(symbol,args)
+      JPTuple(symbol,args)
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> pattern_of] Wrong value for type label."
 
 let rec recipe_of assoc json = match string_of (member "type" json) with
@@ -396,13 +396,14 @@ and process_of assoc json =
           let p2 = process_opt_of assoc (member_opt "process_else" json) in
           JLet(pat,t,p1,p2,pos)
       | "New" ->
-          let n = match assoc.(int_of (member "name" json)) with
+          let id_n = int_of (member "name" json) in
+          let n = match assoc.(id_n) with
             | JAtomName n -> n
             | _ -> Config.internal_error "[parsinf_functions_ui.ml >> process_of] Should be a name"
           in
           let pos = position_of (member "position" json) in
           let p = process_opt_of assoc (member_opt "process" json) in
-          JNew(n,p,pos)
+          JNew(n,id_n,p,pos)
       | "Par" -> JPar (list_of (process_of assoc) (member "process_list" json))
       | "Bang" ->
           let n = int_of (member "multiplicity" json) in
@@ -651,7 +652,7 @@ let input_command_of ?(assoc=None) json = match string_of (member "command" json
   | "cancel_batch" | "exit" -> Cancel_batch
   | "get_config" -> Get_config
   | "set_config" -> Set_config (string_of (member "output_dir" json))
-  | "start_display_trace" -> Display_trace (string_of (member "query_file" json))
+  | "start_display_trace" -> Display_trace (string_of (member "query_file" json), int_of (member "id" json))
   | "die" -> Die
   | "goto_step" ->
       begin match member_opt "process_id" json with

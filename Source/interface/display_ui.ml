@@ -24,9 +24,9 @@ let display_transition = function
   | JAChoice(pos,b) -> Printf.sprintf "choice(%s,%b)" (display_position pos) b
 
 let rec display_pattern = function
-  | PatEquality t -> Printf.sprintf "=%s" (Term.display Terminal t)
-  | PatTuple(_,args) -> Printf.sprintf "%s%s%s" (langle Terminal) (display_list display_pattern "," args) (rangle Terminal)
-  | PatVar x -> Variable.display Terminal x
+  | JPEquality t -> Printf.sprintf "=%s" (Term.display Terminal t)
+  | JPTuple(_,args) -> Printf.sprintf "%s%s%s" (langle Terminal) (display_list display_pattern "," args) (rangle Terminal)
+  | JPVar(x,_) -> Variable.display Terminal x
 
 let rec display_process tab = function
   | JNil -> (display_with_tab tab "Nil")
@@ -56,7 +56,7 @@ let rec display_process tab = function
       let str_else = display_process (tab+1) pelse in
       let str_neg = "else" in
       (display_with_tab tab str) ^ str_then ^ (display_with_tab tab str_neg) ^ str_else
-  | JNew(n,p,pos) ->
+  | JNew(n,_,p,pos) ->
       let str = Printf.sprintf "{%s} new %s;" (display_position pos) (Name.display Terminal n) in
       (display_with_tab tab str) ^ (display_process tab p)
   | JPar p_list ->
@@ -72,29 +72,102 @@ let rec display_process tab = function
       let str_plus = Printf.sprintf "{%s} +" (display_position pos) in
       str_1 ^ (display_with_tab tab str_plus) ^ str_2
 
+(*** Record atomic data ***)
+
+let record_name assoc_ref n =
+  if not (List.exists (fun (n',_) -> n == n') (!assoc_ref).names)
+  then
+    let i = !assoc_ref.size in
+    assoc_ref := { !assoc_ref with size = i + 1; names = (n,i)::(!assoc_ref).names }
+
+let record_symbol assoc_ref f =
+  if not (List.exists (fun (f',_) -> f == f') (!assoc_ref).symbols)
+  then
+    let i = !assoc_ref.size in
+    assoc_ref := { !assoc_ref with size = i + 1; symbols = (f,i)::(!assoc_ref).symbols }
+
+let record_variable assoc_ref x =
+  if not (List.exists (fun (x',_) -> x == x') (!assoc_ref).variables)
+  then
+    let i = !assoc_ref.size in
+    assoc_ref := { !assoc_ref with size = i + 1; variables = (x,i)::(!assoc_ref).variables }
+
+let rec record_from_term assoc_ref = function
+  | Var x -> record_variable assoc_ref x
+  | Name n -> record_name assoc_ref n
+  | Func(f,args) ->
+      record_symbol assoc_ref f;
+      List.iter (record_from_term assoc_ref) args
+
+let rec record_from_pattern assoc_ref = function
+  | PatEquality t -> record_from_term assoc_ref t
+  | PatTuple(f,args) ->
+      record_symbol assoc_ref f;
+      List.iter (record_from_pattern assoc_ref) args
+  | PatVar x -> record_variable assoc_ref x
+
+let record_from_category assoc_ref = function
+  | Tuple | Constructor -> ()
+  | Destructor rw_rules ->
+      List.iter (fun (lhs,rhs) ->
+        record_from_term assoc_ref rhs;
+        List.iter (record_from_term assoc_ref) lhs
+      ) rw_rules
+
+let record_from_full_symbol assoc_ref f =
+  record_symbol assoc_ref f;
+  record_from_category assoc_ref f.cat
+
+let record_from_signature assoc_ref =
+  let setting = Symbol.get_settings () in
+  List.iter (record_from_full_symbol assoc_ref) setting.Symbol.all_c;
+  List.iter (fun (_,proj_l) ->
+    List.iter (record_from_full_symbol assoc_ref) proj_l
+  ) setting.Symbol.all_p;
+  List.iter (record_from_full_symbol assoc_ref) setting.Symbol.all_d
+
+(* Within bang, we only record the first process *)
+let rec record_from_process assoc_ref = function
+  | Nil -> ()
+  | Output(ch,t,p,_) ->
+      record_from_term assoc_ref ch;
+      record_from_term assoc_ref t;
+      record_from_process assoc_ref p
+  | Input(ch,pat,p,_) ->
+      record_from_term assoc_ref ch;
+      record_from_pattern assoc_ref pat;
+      record_from_process assoc_ref p
+  | IfThenElse(t1,t2,p1,p2,_) ->
+      record_from_term assoc_ref t1;
+      record_from_term assoc_ref t2;
+      record_from_process assoc_ref p1;
+      record_from_process assoc_ref p2
+  | Let(pat,t,p1,p2,_) ->
+      record_from_term assoc_ref t;
+      record_from_pattern assoc_ref pat;
+      record_from_process assoc_ref p1;
+      record_from_process assoc_ref p2
+  | New(n,p,_) ->
+      record_name assoc_ref n;
+      record_from_process assoc_ref p
+  | Par p_list -> List.iter (record_from_process assoc_ref) p_list
+  | Bang([],_) -> Config.internal_error "[display_ui.ml >> record_from_process] Bang should at least contain one process."
+  | Bang(p::_,_) -> record_from_process assoc_ref p
+  | Choice(p1,p2,_) ->
+      record_from_process assoc_ref p1;
+      record_from_process assoc_ref p2
 
 (*** Retrieving id of atomic data ***)
 
-let get_name_id assoc_ref n = match List.assq_opt n (!assoc_ref).names with
-  | None ->
-      let i = !assoc_ref.size in
-      assoc_ref := { !assoc_ref with size = i + 1; names = (n,i)::(!assoc_ref).names };
-      i
-  | Some i -> i
+let get_name_id assoc n = match List.assq_opt n assoc.std.names with
+  | Some i -> i, []
+  | None -> List.assq n assoc.repl.repl_names
 
-let get_symbol_id assoc_ref f = match List.assq_opt f (!assoc_ref).symbols with
-  | None ->
-      let i = !assoc_ref.size in
-      assoc_ref := { !assoc_ref with size = i + 1; symbols = (f,i)::(!assoc_ref).symbols };
-      i
-  | Some i -> i
+let get_symbol_id assoc f = List.assq f assoc.std.symbols
 
-let get_variable_id assoc_ref x = match List.assq_opt x (!assoc_ref).variables with
-  | None ->
-      let i = !assoc_ref.size in
-      assoc_ref := { !assoc_ref with size = i + 1; variables = (x,i)::(!assoc_ref).variables };
-      i
-  | Some i -> i
+let get_variable_id assoc x = match List.assq_opt x assoc.std.variables with
+  | Some i -> i, []
+  | None -> List.assq x assoc.repl.repl_variables
 
 (*** Display of Json ***)
 
@@ -127,13 +200,20 @@ let of_string str = JString str
 
 let rec of_term assoc = function
   | Var v ->
-      let id  = get_variable_id assoc v in
-      JObject [ "type", JString "Atomic"; "id", JInt id]
+      let (id,args)  = get_variable_id assoc v in
+      if args = []
+      then JObject [ "type", JString "Atomic"; "id", JInt id]
+      else JObject [ "type", JString "Atomic"; "id", JInt id; "bang", JList (List.map of_int args)]
   | Name n ->
-      let id  = get_name_id assoc n in
-      JObject [ "type", JString "Atomic"; "id", JInt id]
+      let (id,args) = get_name_id assoc n in
+      if args = []
+      then JObject [ "type", JString "Atomic"; "id", JInt id]
+      else JObject [ "type", JString "Atomic"; "id", JInt id; "bang", JList (List.map of_int args)]
   | Func(f,[]) when f.represents = AttackerPublicName ->
       JObject [ "type", JString "Attacker"; "label", JString f.label_s ]
+  | Func(f,[]) ->
+      let id = get_symbol_id assoc f in
+      JObject [ "type", JString "Function"; "symbol", JInt id ]
   | Func(f,args) ->
       let id = get_symbol_id assoc f in
       JObject [
@@ -146,6 +226,9 @@ let rec of_recipe assoc = function
   | CRFunc(_,r) -> of_recipe assoc r
   | RFunc(f,[]) when f.represents = AttackerPublicName ->
       JObject [ "type", JString "Attacker"; "label", JString f.label_s ]
+  | RFunc(f,[]) ->
+      let id = get_symbol_id assoc f in
+      JObject [ "type", JString "Function"; "symbol", JInt id ]
   | RFunc(f,args) ->
       let id = get_symbol_id assoc f in
       JObject [
@@ -156,18 +239,23 @@ let rec of_recipe assoc = function
   | Axiom i -> JObject [ "type", JString "Axiom"; "id", JInt i ]
   | _ -> Config.internal_error "[interface.ml >> of_recipe] We should only display closed recipe."
 
-let rec of_pattern assoc = function
-  | PatVar v ->
-      let id  = get_variable_id assoc v in
-      JObject [ "type", JString "Atomic"; "id", JInt id]
-  | PatEquality t ->
-      JObject [ "type", JString "Equality"; "term", of_term assoc t]
-  | PatTuple(f,args) ->
+let rec of_json_pattern assoc = function
+  | JPVar (v,id_rec) ->
+      let (id,args)  = get_variable_id assoc v in
+      if id <> id_rec
+      then Config.internal_error "[display_ui.ml >> of_json_pattern] The recorded id and obtained id should be equal.";
+
+      if args = []
+      then JObject [ "type", JString "Atomic"; "id", JInt id]
+      else JObject [ "type", JString "Atomic"; "id", JInt id; "bang", JList (List.map of_int args)]
+  | JPEquality t -> JObject [ "type", JString "Equality"; "term", of_term assoc t]
+  | JPTuple(_,[]) -> Config.internal_error "[display_ui.ml >> of_json_pattern] Tuples cannot be of arity 0."
+  | JPTuple(f,args) ->
       let id = get_symbol_id assoc f in
       JObject [
         "type", JString "Function";
         "symbol", JInt id;
-        "args", JList (List.map (of_pattern assoc) args)
+        "args", JList (List.map (of_json_pattern assoc) args)
       ]
 
 let of_rewrite_rule assoc (lhs,rhs) =
@@ -201,13 +289,7 @@ let of_position pos =
 
 (* Traces and processes *)
 
-let of_process ?(highlight=[]) assoc proc =
-
-  let add_highlight pos l =
-    if List.exists (fun pos' -> pos = pos') highlight
-    then ("highlight", JBool true)::l
-    else l
-  in
+let of_json_process assoc proc =
 
   let rec add_nil p label l =
     if p = JNil
@@ -217,56 +299,64 @@ let of_process ?(highlight=[]) assoc proc =
   and explore = function
     | JNil -> JObject [ "type", JNull ]
     | JOutput(ch,t,p,pos) ->
-        JObject (add_highlight pos (add_nil p "process" [
+        let proc = add_nil p "process" [] in
+        JObject ([
           "type", JString "Output";
           "channel", of_term assoc ch;
           "term", of_term assoc t;
           "position", of_position pos
-        ]))
+        ]@proc)
     | JInput(ch,pat,p,pos) ->
-        JObject (add_highlight pos (add_nil p "process" [
+        let proc = add_nil p "process" [] in
+        JObject ([
           "type", JString "Input";
           "channel", of_term assoc ch;
-          "pattern", of_pattern assoc pat;
+          "pattern", of_json_pattern assoc pat;
           "position", of_position pos
-        ]))
+        ]@proc)
     | JIfThenElse(t1,t2,p1,p2,pos) ->
-        JObject (add_highlight pos (add_nil p1 "process_then" (add_nil p2 "process_else" [
+        let procs = add_nil p1 "process_then" (add_nil p2 "process_else" []) in
+        JObject ([
           "type", JString "IfThenElse";
           "term1", of_term assoc t1;
           "term2", of_term assoc t2;
           "position", of_position pos
-        ])))
+        ]@procs)
     | JLet(pat,t,p1,p2,pos) ->
-        JObject (add_highlight pos (add_nil p1 "process_then" (add_nil p2 "process_else" [
+        let procs = add_nil p1 "process_then" (add_nil p2 "process_else" []) in
+        JObject ([
           "type", JString "LetInElse";
-          "pattern", of_pattern assoc pat;
+          "pattern", of_json_pattern assoc pat;
           "term", of_term assoc t;
           "position", of_position pos
-        ])))
-    | JNew(n,p,pos) ->
-        let id = get_name_id assoc n in
-        JObject (add_highlight pos (add_nil p "process" [
-          "type", JString "New";
-          "name", JInt id;
-          "position", of_position pos
-        ]))
+        ]@procs)
+    | JNew(n,_,p,pos) ->
+        let proc = add_nil p "process" [] in
+        let (id,args) = get_name_id assoc n in
+        let jlist =
+          if args = []
+          then [ "type", JString "New"; "name", JInt id; "position", of_position pos]
+          else [ "type", JString "New"; "name", JInt id; "bang", JList (List.map of_int args); "position", of_position pos]
+        in
+        JObject(jlist@proc)
     | JPar p_list ->
         JObject [
           "type", JString "Par";
           "process_list", JList (List.map explore p_list)
         ]
     | JBang(i,p,pos) ->
-        JObject (add_highlight pos (add_nil p "process" [
+        let proc = add_nil p "process" [] in
+        JObject ([
           "type", JString "Bang";
           "multiplicity", JInt i;
           "position", of_position pos
-        ]))
+        ]@proc)
     | JChoice(p1,p2,pos) ->
-        JObject (add_highlight pos (add_nil p1 "process1" (add_nil p2 "process2" [
+        let procs = add_nil p1 "process1" (add_nil p2 "process2" []) in
+        JObject ([
           "type", JString "Choice";
           "position", of_position pos
-        ])))
+        ]@procs)
   in
   explore proc
 
@@ -356,14 +446,6 @@ let of_atomic_variable x =
     | Existential -> JObject jlist
     | _ -> Config.internal_error "[display_ui.ml >> of_atomic_variable] Variables should not be universal."
 
-let record_from_signature assoc =
-  let setting = Symbol.get_settings () in
-  List.iter (fun f -> ignore (get_symbol_id assoc f)) setting.Symbol.all_c;
-  List.iter (fun (_,proj_l) ->
-    List.iter (fun f -> ignore (get_symbol_id assoc f)) proj_l
-  ) setting.Symbol.all_p;
-  List.iter (fun f -> ignore (get_symbol_id assoc f)) setting.Symbol.all_d
-
 let of_meta () =
   let setting = Symbol.get_settings () in
   JObject [
@@ -374,13 +456,10 @@ let of_meta () =
   ]
 
 let of_atomic_association assoc =
-  (* We start with symbols because destructors contain variables. *)
-  let symb_list = List.map (fun (f,id) -> (of_atomic_symbol assoc f,id)) !assoc.symbols in
-
-  let tab_json = Array.make !assoc.size JNull in
-  List.iter (fun (n,id) -> tab_json.(id) <- of_atomic_name n) !assoc.names;
-  List.iter (fun (x,id) -> tab_json.(id) <- of_atomic_variable x) !assoc.variables;
-  List.iter (fun (json_f,id) -> tab_json.(id) <- json_f) symb_list;
+  let tab_json = Array.make assoc.std.size JNull in
+  List.iter (fun (n,id) -> tab_json.(id) <- of_atomic_name n) assoc.std.names;
+  List.iter (fun (x,id) -> tab_json.(id) <- of_atomic_variable x) assoc.std.variables;
+  List.iter (fun (f,id) -> tab_json.(id) <- of_atomic_symbol assoc f) assoc.std.symbols;
   JList (Array.to_list tab_json)
 
 let of_atomic_data assoc =
@@ -421,7 +500,8 @@ let of_progression jlist = function
    contains at least the function symbols of the signature. *)
 let of_query_result query_res =
 
-  let assoc = ref query_res.association in
+  let std_assoc = query_res.association in
+  let assoc = { std = std_assoc; repl = { repl_names = []; repl_variables = []}} in
 
   let jlist1 = [
     "atomic_data", of_atomic_data assoc;
@@ -429,7 +509,7 @@ let of_query_result query_res =
     "run_file", JString query_res.q_run_file;
     "index", JInt query_res.q_index;
     "semantics", of_semantics query_res.semantics;
-    "processes", JList (List.map (of_process assoc) query_res.processes);
+    "processes", JList (List.map (of_json_process assoc) query_res.processes);
     "type", of_equivalence_type query_res.query_type
     ]
   in
@@ -658,42 +738,38 @@ let of_output_command = function
   | Run_canceled file -> JObject [ "command", JString "run_canceled"; "file", JString file ]
   | Batch_canceled -> JObject [ "command", JString "batch_canceled"]
   (* Simulator: Display_of_traces *)
-  | DTNo_attacker_trace -> JObject [ "command", JString "no_attack_trace" ]
   | DTCurrent_step (assoc,conf,step) ->
-      let assoc_ref = ref assoc in
       JObject [
         "command", JString "current_step";
-        "process", of_process assoc_ref conf.process;
-        "frame", JList (List.map (of_term assoc_ref) conf.frame);
+        "process", of_json_process assoc conf.process;
+        "frame", JList (List.map (of_term assoc) conf.frame);
         "current_action_id", JInt step
       ]
-  (* Simulator: Display_of_traces *)
-  | ASNo_attacker_trace -> JObject [ "command", JString "no_attack_trace" ]
+  (* Simulator: Attack simulator *)
   | ASCurrent_step_attacked(assoc,conf,step,id_proc) ->
-      let assoc_ref = ref assoc in
       JObject [
         "command", JString "current_step_attacked";
         "process_id", JInt id_proc;
-        "process", of_process assoc_ref conf.process;
-        "frame", JList (List.map (of_term assoc_ref) conf.frame);
+        "process", of_json_process assoc conf.process;
+        "frame", JList (List.map (of_term assoc) conf.frame);
         "current_action_id", JInt step
       ]
   | ASCurrent_step_simulated(assoc,conf,new_trans,all_actions,default_actions,status_equiv,id_proc) ->
-      let assoc_ref = ref assoc in
       let list1 =
         [
           "command", JString "current_step_simulated";
           "process_id", JInt id_proc;
-          "process", of_process assoc_ref conf.process;
-          "frame", JList (List.map (of_term assoc_ref) conf.frame);
-          "all_available_actions", JList (List.map (of_available_action assoc_ref) all_actions);
-          "default_available_actions", JList (List.map (of_available_action assoc_ref) default_actions);
-          "status_equiv", of_status_static_equivalence assoc_ref status_equiv
+          "process", of_json_process assoc conf.process;
+          "frame", JList (List.map (of_term assoc) conf.frame);
+          "all_available_actions", JList (List.map (of_available_action assoc) all_actions);
+          "default_available_actions", JList (List.map (of_available_action assoc) default_actions);
+          "status_equiv", of_status_static_equivalence assoc status_equiv
         ]
       in
       if new_trans = []
       then JObject list1
-      else JObject (("new_actions", JList (List.map (of_transition assoc_ref) new_trans))::list1)
+      else JObject (("new_actions", JList (List.map (of_transition assoc) new_trans))::list1)
+  (* Simulator: Equivalence simulator *)
 
 let print_output_command = function
   (* Errors *)
@@ -765,9 +841,9 @@ let print_output_command = function
   | Run_canceled _ -> Config.internal_error "[print_output_command] Should not occur"
   | Batch_canceled -> Printf.printf "\n%s\n" (coloured_terminal_text Red [Bold] "Verification canceled !")
   (* Simulator: Display_of_traces *)
-  | DTNo_attacker_trace | DTCurrent_step _
+  | DTCurrent_step _
   (* Simulator: Display_of_traces *)
-  | ASNo_attacker_trace | ASCurrent_step_attacked _ | ASCurrent_step_simulated _ -> Config.internal_error "[print_output_command] Should not occur in command mode."
+  | ASCurrent_step_attacked _ | ASCurrent_step_simulated _ -> Config.internal_error "[print_output_command] Should not occur in command mode."
 
 (* Sending command *)
 

@@ -8,13 +8,18 @@ type json_position =
     js_args : int list
   }
 
+type json_pattern =
+  | JPVar of variable * int
+  | JPTuple of symbol * json_pattern list
+  | JPEquality of term
+
 type json_process =
   | JNil
   | JOutput of term * term * json_process * json_position
-  | JInput of term * pattern * json_process * json_position
+  | JInput of term * json_pattern * json_process * json_position
   | JIfThenElse of term * term * json_process * json_process * json_position
-  | JLet of pattern * term * json_process * json_process * json_position
-  | JNew of name * json_process * json_position
+  | JLet of json_pattern * term * json_process * json_process * json_position
+  | JNew of name * int * json_process * json_position
   | JPar of json_process list
   | JBang of int * json_process * json_position
   | JChoice of json_process * json_process * json_position
@@ -51,6 +56,18 @@ type association =
     symbols : (symbol * int) list;
     names : (name * int) list;
     variables : (variable * int) list
+  }
+
+type replicated_association =
+  {
+    repl_names : (name * (int * int list)) list;
+    repl_variables : (variable * (int * int list)) list
+  }
+
+type full_association =
+  {
+    std : association;
+    repl : replicated_association
   }
 
 (* JSON data *)
@@ -202,7 +219,7 @@ type input_command =
   | Set_config of string
   | Die
   (* Simulator: Display of traces *)
-  | Display_trace of string (* Json of query result *)
+  | Display_trace of string * int (* Json of query result *)
   | DTGo_to of int
   (* Simulator: Attack_simulator *)
   | Attack_simulator of string (* Json of query result *)
@@ -236,9 +253,8 @@ type output_command =
   (* Progression *)
   | Progression of int (* Index of query *) * int (* execution time *) * query_progression
   (* Simulator: Display_of_traces *)
-  | DTNo_attacker_trace
-  | DTCurrent_step of association * configuration * int
+  | DTCurrent_step of full_association * configuration * int
   (* Simulator: Attack_simulator *)
-  | ASNo_attacker_trace
-  | ASCurrent_step_attacked of association * configuration * int * int
-  | ASCurrent_step_simulated of association * configuration * json_transition list * available_action list * available_action list * status_static_equivalence * int
+  | ASCurrent_step_attacked of full_association * configuration * int * int
+  | ASCurrent_step_simulated of full_association * configuration * json_transition list * available_action list * available_action list * status_static_equivalence * int
+  (* Simulator: Equivalence_simulator *)

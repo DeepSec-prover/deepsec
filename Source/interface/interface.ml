@@ -1,6 +1,7 @@
 open Types
 open Types_ui
 open Term
+open Generic_process
 
 (*** Values ***)
 
@@ -8,7 +9,8 @@ let current_query = ref 0
 
 (*** Translation from process ***)
 
-let json_process_of_process proc =
+(* Note that the process should have been recorded beforehand *)
+let json_process_of_process assoc proc =
 
   let of_position n_to_remove (id,args) =
     let length_args = List.length args in
@@ -23,16 +25,29 @@ let json_process_of_process proc =
     }
   in
 
+  let rec of_pattern = function
+    | PatVar x ->
+        let (id,args) = Display_ui.get_variable_id assoc x in
+        if args <> []
+        then Config.internal_error "[interface.ml >> json_process_of_process] The process should be initial.";
+        JPVar(x,id)
+    | PatTuple(f,args) -> JPTuple(f,List.map of_pattern args)
+    | PatEquality t -> JPEquality t
+  in
+
   let rec explore nb_to_remove = function
     | Nil -> JNil
     | Output(ch,t,p,pos) -> JOutput(ch,t,explore nb_to_remove p,of_position nb_to_remove pos)
-    | Input(ch,pat,p,pos) -> JInput(ch,pat,explore nb_to_remove p,of_position nb_to_remove pos)
+    | Input(ch,pat,p,pos) -> JInput(ch,of_pattern pat,explore nb_to_remove p,of_position nb_to_remove pos)
     | IfThenElse(t1,t2,p1,p2,pos) ->
         JIfThenElse(t1,t2,explore nb_to_remove p1,explore nb_to_remove p2,of_position nb_to_remove pos)
     | Let(pat,t,p1,p2,pos) ->
-        JLet(pat,t,explore nb_to_remove p1, explore nb_to_remove p2,of_position nb_to_remove pos)
+        JLet(of_pattern pat,t,explore nb_to_remove p1, explore nb_to_remove p2,of_position nb_to_remove pos)
     | New(n,p,pos) ->
-        JNew(n,explore nb_to_remove p,of_position nb_to_remove pos)
+        let (id,args) = Display_ui.get_name_id assoc n in
+        if args <> []
+        then Config.internal_error "[interface.ml >> json_process_of_process] The process should be initial.";
+        JNew(n,id,explore nb_to_remove p,of_position nb_to_remove pos)
     | Par p_list ->
         JPar(List.map (explore nb_to_remove) p_list)
     | Bang([],_) -> Config.internal_error "[interface.ml >> json_process_of_process] Bang should not be empty."
@@ -68,6 +83,11 @@ let rec apply_renaming_pat = function
   | PatEquality t -> PatEquality (apply_renaming t)
   | PatTuple(f,args) -> PatTuple(f,List.map apply_renaming_pat args)
 
+let rec pattern_of_json_pattern = function
+  | JPEquality t -> PatEquality t
+  | JPTuple(f,args) -> PatTuple(f,List.map pattern_of_json_pattern args)
+  | JPVar(x,_) -> PatVar x
+
 let process_of_json_process proc =
 
   let add_pos pos_to_add pos = (pos.js_index,pos.js_args@pos_to_add) in
@@ -81,7 +101,7 @@ let process_of_json_process proc =
     | JInput(ch,pat,p,pos) ->
         let ch' = apply_renaming ch in
         Variable.auto_cleanup_with_reset_notail (fun () ->
-          let pat' = apply_renaming_pat pat in
+          let pat' = apply_renaming_pat (pattern_of_json_pattern pat) in
           Input(ch',pat',explore pos_to_add p,add_pos pos_to_add pos)
         )
     | JIfThenElse(t1,t2,p1,p2,pos) ->
@@ -90,11 +110,11 @@ let process_of_json_process proc =
         let t' = apply_renaming t in
         let p2' = explore pos_to_add p2 in
         Variable.auto_cleanup_with_reset_notail (fun () ->
-          let pat' = apply_renaming_pat pat in
+          let pat' = apply_renaming_pat (pattern_of_json_pattern pat) in
           let p1' = explore pos_to_add p1 in
           Let(pat',t',p1',p2',add_pos pos_to_add pos)
         )
-    | JNew(n,p,pos) ->
+    | JNew(n,_,p,pos) ->
         Name.auto_cleanup_with_reset_notail (fun () ->
           let n' = Name.fresh_from n in
           Name.link n n';
@@ -143,10 +163,10 @@ let rec replace_structural_recipe assoc = function
   | RFunc(f,args) ->
       let f' =
         try
-          fst (List.find (fun (f',_) -> f'.label_s = f.label_s && f'.index_s = f.index_s) !assoc.symbols)
+          fst (List.find (fun (f',_) -> f'.label_s = f.label_s && f'.index_s = f.index_s) assoc.symbols)
         with Not_found ->
-          let i = !assoc.size in
-          assoc := { !assoc with size = i + 1; symbols = (f,i)::(!assoc).symbols };
+          if f.represents <> AttackerPublicName
+          then Config.internal_error "[interface.ml >> replace_structural_recipe] The symbol should have been recorded.";
           f
       in
       RFunc(f',List.map (replace_structural_recipe assoc) args)
@@ -166,21 +186,17 @@ let query_result_of_equivalence_result query_result result end_time = match resu
         progression = PNot_defined
       }
   | RTrace_Equivalence (Some (is_left_proc,trans_list)) ->
-      (* We record the potential function symbols added in the trace *)
-      let assoc_ref = ref query_result.association in
-
-      let trans_list' = List.map (replace_structural_transition assoc_ref) trans_list in
+      let trans_list' = List.map (replace_structural_transition query_result.association) trans_list in
 
       let json_attack =
         {
-          id_proc = if is_left_proc then 1 else 2;
-          transitions = List.map json_transition_of_transition trans_list'
+          Types_ui.id_proc = if is_left_proc then 1 else 2;
+          Types_ui.transitions = List.map json_transition_of_transition trans_list'
         }
       in
       { query_result with
         q_status = QCompleted (Some json_attack);
         q_end_time = Some end_time;
-        association = !assoc_ref;
         settings = { query_result.settings with symbol_set = Symbol.get_settings () };
         progression = PNot_defined
       }
@@ -189,8 +205,8 @@ let query_result_of_equivalence_result query_result result end_time = match resu
 (*** Instantiate ***)
 
 let rec instantiate_pattern = function
-  | PatEquality t -> PatEquality (Term.instantiate t)
-  | PatTuple(f,args) -> PatTuple(f,List.map instantiate_pattern args)
+  | JPEquality t -> JPEquality (Term.instantiate t)
+  | JPTuple(f,args) -> JPTuple(f,List.map instantiate_pattern args)
   | pat -> pat
 
 let rec instantiate_process = function
@@ -201,7 +217,7 @@ let rec instantiate_process = function
       JIfThenElse(Term.instantiate t1, Term.instantiate t2, instantiate_process p1, instantiate_process p2,pos)
   | JLet(pat,t,p1,p2,pos) ->
       JLet(instantiate_pattern pat,Term.instantiate t,instantiate_process p1, instantiate_process p2,pos)
-  | JNew(n,p,pos) -> JNew(n,instantiate_process p,pos)
+  | JNew(n,id,p,pos) -> JNew(n,id,instantiate_process p,pos)
   | JPar p_list -> JPar (List.map instantiate_process p_list)
   | JBang(n,p,pos) -> JBang(n,instantiate_process p,pos)
   | JChoice(p1,p2,pos) -> JChoice(instantiate_process p1, instantiate_process p2,pos)
@@ -217,56 +233,48 @@ let rec full_instantiate = function
   | Func(f,args) -> Func(f,List.map full_instantiate args)
   | t -> t
 
-let rec instantiate_and_rename_pattern = function
-  | PatVar v ->
+let rec instantiate_and_rename_pattern assoc_ref pos_args = function
+  | JPVar(v,id) ->
       let v' = Variable.fresh_from v in
       Variable.link v v';
-      PatVar v'
-  | PatEquality t -> PatEquality (full_instantiate t)
-  | PatTuple(f,args) -> PatTuple(f,List.map instantiate_and_rename_pattern args)
+      assoc_ref := { !assoc_ref with repl = { !assoc_ref.repl with repl_variables = (v',(id,pos_args)):: !assoc_ref.repl.repl_variables }};
+      JPVar(v',id)
+  | JPEquality t -> JPEquality (full_instantiate t)
+  | JPTuple(f,args) -> JPTuple(f,List.map (instantiate_and_rename_pattern assoc_ref pos_args) args)
 
-let rec fresh_process n = function
+let rec fresh_process assoc_ref n = function
   | JNil -> JNil
   | JOutput(ch,t,p,pos) ->
-      JOutput(full_instantiate ch,full_instantiate t,fresh_process n p,add_pos pos n)
+      JOutput(full_instantiate ch,full_instantiate t,fresh_process assoc_ref n p,add_pos pos n)
   | JInput(ch,pat,p,pos) ->
+      let pos' = add_pos pos n in
       let ch' = full_instantiate ch in
       Variable.auto_cleanup_with_reset_notail (fun () ->
-        let pat' = instantiate_and_rename_pattern pat in
-        JInput(ch',pat',fresh_process n p,add_pos pos n)
+        let pat' = instantiate_and_rename_pattern assoc_ref pos'.js_args pat in
+        JInput(ch',pat',fresh_process assoc_ref n p,pos')
       )
   | JIfThenElse(t1,t2,p1,p2,pos) ->
-      JIfThenElse(full_instantiate t1, full_instantiate t2, fresh_process n p1, fresh_process n p2,add_pos pos n)
+      JIfThenElse(full_instantiate t1, full_instantiate t2, fresh_process assoc_ref n p1, fresh_process assoc_ref n p2,add_pos pos n)
   | JLet(pat,t,p1,p2,pos) ->
+      let pos' = add_pos pos n in
       let t' = full_instantiate t in
-      let p2' = fresh_process n p2 in
+      let p2' = fresh_process assoc_ref n p2 in
       Variable.auto_cleanup_with_reset_notail (fun () ->
-        let pat' = instantiate_and_rename_pattern pat in
-        let p1' = fresh_process n p1 in
-        JLet(pat',t',p1',p2',add_pos pos n)
+        let pat' = instantiate_and_rename_pattern assoc_ref pos'.js_args pat in
+        let p1' = fresh_process assoc_ref n p1 in
+        JLet(pat',t',p1',p2',pos')
       )
-  | JNew(name,p,pos) ->
+  | JNew(name,id,p,pos) ->
       Name.auto_cleanup_with_reset_notail (fun () ->
         let name' = Name.fresh_from name in
+        let pos' = add_pos pos n in
         Name.link name name';
-        JNew(name',fresh_process n p,add_pos pos n)
+        assoc_ref := { !assoc_ref with repl = { !assoc_ref.repl with repl_names = (name',(id,pos'.js_args)):: !assoc_ref.repl.repl_names }};
+        JNew(name',id,fresh_process assoc_ref n p,pos')
       )
-  | JPar p_list -> JPar (List.map (fresh_process n) p_list)
-  | JBang(n',p,pos) -> JBang(n',fresh_process n p,add_pos pos n)
-  | JChoice(p1,p2,pos) -> JChoice(fresh_process n p1, fresh_process n p2, add_pos pos n)
-
-let rec add_position n = function
-  | JNil -> JNil
-  | JOutput(ch,t,p,pos) -> JOutput(ch,t,add_position n p,add_pos pos n)
-  | JInput(ch,pat,p,pos) -> JInput(ch,pat,add_position n p, add_pos pos n)
-  | JIfThenElse(t1,t2,p1,p2,pos) ->
-      JIfThenElse(t1,t2,add_position n p1,add_position n p2,add_pos pos n)
-  | JLet(pat,t,p1,p2,pos) ->
-      JLet(pat,t,add_position n p1,add_position n p2,add_pos pos n)
-  | JNew(name,p,pos) -> JNew(name,add_position n p,add_pos pos n)
-  | JPar p_list -> JPar (List.map (add_position n) p_list)
-  | JBang(n,p,pos) -> JBang(n,add_position n p,add_pos pos n)
-  | JChoice(p1,p2,pos) -> JChoice(add_position n p1,add_position n p2,add_pos pos n)
+  | JPar p_list -> JPar (List.map (fresh_process assoc_ref n) p_list)
+  | JBang(n',p,pos) -> JBang(n',fresh_process assoc_ref n p,add_pos pos n)
+  | JChoice(p1,p2,pos) -> JChoice(fresh_process assoc_ref n p1, fresh_process assoc_ref n p2, add_pos pos n)
 
 (*** Execute a json_process ***)
 
@@ -276,7 +284,7 @@ type error_transition =
   | Recipe_not_message of recipe
   | Axiom_out_of_bound of int
   | Channel_not_equal of term * term
-  | Pattern_not_unifiable of pattern * term
+  | Pattern_not_unifiable of json_pattern * term
   | Channel_deducible of term
   | Too_much_unfold of int
 
@@ -290,7 +298,7 @@ let rec is_position_at_top_level pos = function
   | JInput(_,_,_,pos')
   | JIfThenElse(_,_,_,_,pos')
   | JLet(_,_,_,_,pos')
-  | JNew(_,_,pos')
+  | JNew(_,_,_,pos')
   | JChoice(_,_,pos')
   | JBang(_,_,pos') -> is_equal_position pos pos'
   | JPar p_list -> List.exists (is_position_at_top_level pos) p_list
@@ -323,6 +331,11 @@ let rec apply_transition_list f = function
           | p' -> p'::q
       with (Invalid_transition Position_not_found) -> p::(apply_transition_list f q)
 
+let rec normalise_json_pattern = function
+  | JPVar(x,_) -> Var x
+  | JPTuple(f,args) -> Func(f,List.map normalise_json_pattern args)
+  | JPEquality t -> Rewrite_rules.normalise t
+
 let apply_tau_transition target_pos conf =
   let rec explore = function
     | JIfThenElse(t1,t2,p1,p2,pos) when is_equal_position pos target_pos ->
@@ -333,12 +346,12 @@ let apply_tau_transition target_pos conf =
             if Term.is_equal t1' t2' then p1 else p2
           with Rewrite_rules.Not_message -> p2
         end
-    | JNew(_,p,pos) when is_equal_position pos target_pos -> p
+    | JNew(_,_,p,pos) when is_equal_position pos target_pos -> p
     | JLet(pat,t,pthen,pelse,pos) when is_equal_position pos target_pos ->
         Variable.auto_cleanup_with_reset_notail (fun () ->
           try
               let t' = Rewrite_rules.normalise t in
-              let pat' = Rewrite_rules.normalise_pattern pat in
+              let pat' = normalise_json_pattern pat in
               Term.unify pat' t';
               instantiate_process pthen
           with Term.Not_unifiable | Rewrite_rules.Not_message -> pelse
@@ -351,14 +364,15 @@ let apply_tau_transition target_pos conf =
 
   { conf with process = explore conf.process }
 
-let apply_bang_transition target_pos i conf =
+let apply_bang_transition assoc target_pos i conf =
+  let assoc_ref = ref assoc in
   let rec explore = function
     | JBang(2,p,pos) when is_equal_position pos target_pos ->
         if i <> 1
         then raise (Invalid_transition (Too_much_unfold i));
 
-        let p1 = add_position 1 p in
-        let p2 = fresh_process 2 p in
+        let p1 = fresh_process assoc_ref 1 p in
+        let p2 = fresh_process assoc_ref 2 p in
         JPar [p2;p1]
     | JBang(n,p,pos) when is_equal_position pos target_pos ->
         if i > n-1
@@ -366,13 +380,13 @@ let apply_bang_transition target_pos i conf =
 
         let remain =
           if i = n-1
-          then add_position 1 p
+          then fresh_process assoc_ref 1 p
           else JBang(n-i,p,pos)
         in
 
         let rec generate_fresh = function
           | k when k > i -> [remain]
-          | k -> (fresh_process (n-k+1) p)::(generate_fresh (k+1))
+          | k -> (fresh_process assoc_ref (n-k+1) p)::(generate_fresh (k+1))
         in
 
         JPar(generate_fresh 1)
@@ -382,7 +396,7 @@ let apply_bang_transition target_pos i conf =
     | _ -> raise (Invalid_transition Position_not_found)
   in
 
-  { conf with process = explore conf.process }
+  { conf with process = explore conf.process }, !assoc_ref
 
 let apply_choice target_pos side conf =
 
@@ -426,7 +440,7 @@ let apply_input ch t target_pos conf =
         let ch'' = try Rewrite_rules.normalise ch' with Rewrite_rules.Not_message -> raise (Invalid_transition (Term_not_message ch')) in
         if not (Term.is_equal ch' ch'') then raise (Invalid_transition (Channel_not_equal (ch,ch'')));
 
-        let pat' = try Rewrite_rules.normalise_pattern pat with Rewrite_rules.Not_message -> raise (Invalid_transition (Pattern_not_unifiable(pat,t))) in
+        let pat' = try normalise_json_pattern pat with Rewrite_rules.Not_message -> raise (Invalid_transition (Pattern_not_unifiable(pat,t))) in
         begin try
           Variable.auto_cleanup_with_exception (fun () ->
             Term.unify pat' t;
@@ -451,7 +465,7 @@ let apply_comm ch_ref t_ref pos_out pos_in conf =
     | Some ch, Some t -> apply_input ch t pos_in conf1
     | _ -> Config.internal_error "[interface.ml >> apply_comm] Applying the output transition should have instantiated the two references."
 
-let apply_transition semantics saturate csys transition = match transition with
+let apply_transition semantics saturate assoc csys transition = match transition with
   | JAOutput(r_ch,pos_out) ->
       let conf = csys.Constraint_system.additional_data in
       let ch = apply_recipe_on_conf r_ch conf in
@@ -465,14 +479,14 @@ let apply_transition semantics saturate csys transition = match transition with
       let csys_2 = { csys_1 with Constraint_system.additional_data = conf''} in
 
       if saturate
-      then Constraint_system.Rule_ground.solve csys_2
-      else csys_2
+      then Constraint_system.Rule_ground.solve csys_2, assoc
+      else csys_2, assoc
   | JAInput(r_ch,r_t,pos_in) ->
       let conf = csys.Constraint_system.additional_data in
       let ch = apply_recipe_on_conf r_ch conf in
       let t = apply_recipe_on_conf r_t conf in
       let conf' = apply_input ch t pos_in conf in
-      { csys with Constraint_system.additional_data = conf' }
+      { csys with Constraint_system.additional_data = conf' }, assoc
   | JAEaves(r_ch,pos_out,pos_in) ->
       let conf = csys.Constraint_system.additional_data in
       let ch = apply_recipe_on_conf r_ch conf in
@@ -486,8 +500,8 @@ let apply_transition semantics saturate csys transition = match transition with
       let csys_2 = { csys_1 with Constraint_system.additional_data = conf''} in
 
       if saturate
-      then Constraint_system.Rule_ground.solve csys_2
-      else csys_2
+      then Constraint_system.Rule_ground.solve csys_2, assoc
+      else csys_2, assoc
   | JAComm(pos_out,pos_in) ->
       let conf = csys.Constraint_system.additional_data in
       let ch_ref = ref None in
@@ -498,33 +512,33 @@ let apply_transition semantics saturate csys transition = match transition with
       if semantics <> Classic && Constraint_system.Rule_ground.is_term_deducible csys ch
       then raise (Invalid_transition (Channel_deducible ch));
 
-      { csys with Constraint_system.additional_data = conf' }
+      { csys with Constraint_system.additional_data = conf' }, assoc
   | JATau pos ->
       let conf = csys.Constraint_system.additional_data in
       let conf' = apply_tau_transition pos conf in
-      { csys with Constraint_system.additional_data = conf' }
+      { csys with Constraint_system.additional_data = conf' }, assoc
   | JABang(n,pos) ->
       let conf = csys.Constraint_system.additional_data in
-      let conf' = apply_bang_transition pos n conf in
-      { csys with Constraint_system.additional_data = conf' }
+      let (conf',assoc') = apply_bang_transition assoc pos n conf in
+      { csys with Constraint_system.additional_data = conf' }, assoc'
   | JAChoice(pos,side) ->
       let conf = csys.Constraint_system.additional_data in
       let conf' = apply_choice pos side conf in
-      { csys with Constraint_system.additional_data = conf' }
+      { csys with Constraint_system.additional_data = conf' }, assoc
 
-let execute_process semantics js_init_proc js_trace =
+let execute_process semantics init_assoc js_init_proc js_trace =
 
   let init_conf = { size_frame = 0; frame = []; process = js_init_proc } in
   let init_csys = Constraint_system.prepare_for_solving_procedure_ground (Constraint_system.empty init_conf) in
 
-  let rec explore_trace csys = function
+  let rec explore_trace csys assoc = function
     | [] -> []
     | trans::q ->
-        let csys' = apply_transition semantics true csys trans in
-        csys'::(explore_trace csys' q)
+        let (csys',assoc') = apply_transition semantics true assoc csys trans in
+        (csys',assoc')::(explore_trace csys' assoc' q)
   in
 
-  init_csys :: (explore_trace init_csys js_trace)
+  (init_csys,init_assoc) :: (explore_trace init_csys init_assoc js_trace)
 
 (*** Find next possible transition ***)
 
@@ -540,6 +554,8 @@ type simulated_state =
 
     attacked_csys : configuration Constraint_system.t; (* The configuration is a dummy one. *)
     simulated_csys : configuration Constraint_system.t;
+
+    simulated_assoc : full_association;
 
     default_available_actions : available_action list;
     all_available_actions : available_action list;
@@ -681,13 +697,13 @@ let find_next_possible_transition semantics forced_transition conf_csys =
         Variable.auto_cleanup_with_reset_notail (fun () ->
           try
             let t' = Rewrite_rules.normalise t in
-            let pat' = Rewrite_rules.normalise_pattern pat in
+            let pat' = normalise_json_pattern pat in
             Term.unify pat' t';
             explore true (pos::tau_actions) p1
           with Term.Not_unifiable | Rewrite_rules.Not_message ->
             explore true (pos::tau_actions) p2
         )
-    | JNew(_,p,pos) ->
+    | JNew(_,_,p,pos) ->
         if not only_IO
         then actions_all := AV_tau pos :: !actions_all;
 
@@ -788,7 +804,7 @@ let find_prev_transitions trans_list trans =
 
   List.fold_right (fun pos acc -> (JATau pos) :: acc) pos_list [trans]
 
-let initial_attack_simulator_state semantics attacked_trace process_simulated =
+let initial_attack_simulator_state semantics attacked_trace assoc_simulated process_simulated =
   let init_conf_simulated = { size_frame = 0; frame = []; process = process_simulated } in
   let init_conf_attacked = { size_frame = 0; frame = []; process = JNil } in
 
@@ -810,6 +826,7 @@ let initial_attack_simulator_state semantics attacked_trace process_simulated =
     attacked_id_transition = -1;
     attacked_csys = attacked_csys;
     simulated_csys = simulated_csys;
+    simulated_assoc = assoc_simulated;
     default_available_actions = default_trans;
     all_available_actions = all_trans;
     status_equivalence = Static_equivalent
@@ -874,11 +891,11 @@ let attack_simulator_apply_next_step semantics id_attacked_proc full_attacked_fr
     | _ -> forced_transition
   in
 
-  let rec apply_all_transitions acc_simul_csys = function
+  let rec apply_all_transitions acc_simul_csys acc_assoc = function
     | [] -> Config.internal_error "[interface.ml >> attack_simulator_apply_next_step] There should be at least one transition."
     | [trans] ->
         (* The main transition *)
-        let simulated_csys1 = apply_transition semantics false acc_simul_csys trans in
+        let (simulated_csys1,assoc1) = apply_transition semantics false acc_assoc acc_simul_csys trans in
 
         let attacked_csys1 = match trans with
           | JAOutput _ | JAEaves _ ->
@@ -902,6 +919,7 @@ let attack_simulator_apply_next_step semantics id_attacked_proc full_attacked_fr
             attacked_id_transition = attacked_id_transition;
             attacked_csys = attacked_csys2;
             simulated_csys = simulated_csys2;
+            simulated_assoc = assoc1;
             default_available_actions = default_trans;
             all_available_actions = all_trans;
             status_equivalence = status_equiv
@@ -909,28 +927,171 @@ let attack_simulator_apply_next_step semantics id_attacked_proc full_attacked_fr
         in
         [state]
     | trans::q ->
-        let simulated_csys = apply_transition semantics false acc_simul_csys trans in
+        let (simulated_csys,simulated_assoc) = apply_transition semantics false acc_assoc acc_simul_csys trans in
         let (default_trans,all_trans) = find_next_possible_transition semantics tau_forced_transition simulated_csys in
         let state =
           { simulated_state with
             simulated_csys = simulated_csys;
+            simulated_assoc = simulated_assoc;
             default_available_actions = default_trans;
             all_available_actions = all_trans;
             status_equivalence = Static_equivalent
           }
         in
-        state::(apply_all_transitions simulated_csys q)
+        state::(apply_all_transitions simulated_csys simulated_assoc q)
   in
 
-  apply_all_transitions simulated_state.simulated_csys list_transitions, list_transitions
+  apply_all_transitions simulated_state.simulated_csys simulated_state.simulated_assoc list_transitions, list_transitions
 
 (*** Find equivalent trace ***)
 
+(* All the processes are closed *)
 
-(*
-let find_equivalent_trace att_js_proc att_trace sim_js_proc =
+type ground_configuration =
+  {
+    gen_process : Generic_process.generic_process;
+    gen_frame : term list;
+    gen_trace : transition list
+  }
 
-  (* Will use standard process instead of json_processes *)
-  let att_proc = process_of_json_process att_js_proc in
-  let sim_proc = process_of_json_process sim_js_proc in
-*)
+let frame_rename conf = { conf with gen_frame = List.map (Term.rename_and_instantiate) conf.gen_frame }
+
+let clean_variables_names =
+  List.rev_map (fun csys ->
+    let conf = csys.Constraint_system.additional_data in
+    link_used_data (fun () ->
+      let original_subst = List.filter (fun (x,_) -> x.link = SLink) csys.Constraint_system.original_substitution in
+      let original_names = List.filter (fun (x,_) -> x.link = SLink) csys.Constraint_system.original_names in
+      { csys with Constraint_system.original_substitution = original_subst; Constraint_system.original_names = original_names }
+    ) conf.gen_process
+  )
+
+let rec apply_attack_trace sem size_frame att_assoc att_trace att_csys sim_csys_list = match att_trace with
+  | [] -> sim_csys_list
+  | JAOutput(r_ch,pos) :: q_trans ->
+      let sim_csys_list_ref = ref [] in
+      let axiom = size_frame + 1 in
+
+      List.iter (fun csys ->
+        let conf = csys.Constraint_system.additional_data in
+        Variable.auto_cleanup_with_reset_notail (fun () ->
+          List.iter (fun (x,t) -> Variable.link_term x t) csys.Constraint_system.original_substitution;
+          List.iter (fun (x,n) -> Variable.link_term x (Name n)) csys.Constraint_system.original_names;
+
+          let ch = apply_recipe_on_frame r_ch conf.gen_frame in
+
+          next_ground_output sem ch conf.gen_process csys.Constraint_system.original_substitution csys.Constraint_system.original_names conf.gen_trace (fun proc out_gathering ->
+            let csys_1 = Constraint_system.add_axiom csys axiom out_gathering.term in
+            let csys_2 =
+              { csys_1 with
+                Constraint_system.additional_data = { gen_process = proc; gen_frame = conf.gen_frame @ [out_gathering.term]; gen_trace = AOutput(r_ch,out_gathering.position)::out_gathering.common_data.trace_transitions };
+                Constraint_system.original_substitution = out_gathering.common_data.original_subst;
+                Constraint_system.original_names = out_gathering.common_data.original_names
+              }
+            in
+            let csys_3 = Constraint_system.prepare_for_solving_procedure_with_additional_data true frame_rename csys_2 in
+
+            if List.for_all (fun pch -> (Data_structure.IK.consequence_term csys_3.Constraint_system.knowledge csys_3.Constraint_system.incremented_knowledge csys_3.Constraint_system.deduction_facts pch) = None) out_gathering.private_channels
+            then sim_csys_list_ref := csys_3 :: !sim_csys_list_ref
+          )
+        )
+      ) sim_csys_list;
+
+      sim_csys_list_ref := clean_variables_names !sim_csys_list_ref;
+
+      let (att_csys_1,att_assoc_1) = apply_transition sem false att_assoc att_csys (JAOutput(r_ch,pos)) in
+
+      Constraint_system.Rule_ground.apply_rules (apply_attack_trace sem (size_frame+1) att_assoc_1 q_trans) att_csys_1 !sim_csys_list_ref
+  | JAInput(r_ch,r_t,pos) :: q_trans ->
+      let sim_csys_list_ref = ref [] in
+      List.iter (fun csys ->
+        let conf = csys.Constraint_system.additional_data in
+        Variable.auto_cleanup_with_reset_notail (fun () ->
+          List.iter (fun (x,t) -> Variable.link_term x t) csys.Constraint_system.original_substitution;
+          List.iter (fun (x,n) -> Variable.link_term x (Name n)) csys.Constraint_system.original_names;
+
+          let ch = apply_recipe_on_frame r_ch conf.gen_frame in
+          let t = apply_recipe_on_frame r_t conf.gen_frame in
+          next_ground_input sem ch conf.gen_process csys.Constraint_system.original_substitution csys.Constraint_system.original_names conf.gen_trace (fun proc in_gathering ->
+            let csys_1 =
+              { csys with
+                Constraint_system.additional_data = { conf with gen_process = proc; gen_trace = AInput(r_ch,r_t,in_gathering.position)::in_gathering.common_data.trace_transitions };
+                Constraint_system.original_substitution = (Term.variable_of in_gathering.term, t)::in_gathering.common_data.original_subst;
+                Constraint_system.original_names = in_gathering.common_data.original_names;
+              }
+            in
+            let csys_2 = Constraint_system.prepare_for_solving_procedure_with_additional_data false frame_rename csys_1 in
+
+            if List.for_all (fun pch -> (Data_structure.IK.consequence_term csys_2.Constraint_system.knowledge csys_2.Constraint_system.incremented_knowledge csys_2.Constraint_system.deduction_facts pch) = None) in_gathering.private_channels
+            then sim_csys_list_ref := csys_2 :: !sim_csys_list_ref
+          )
+        )
+      ) sim_csys_list;
+
+      sim_csys_list_ref := clean_variables_names !sim_csys_list_ref;
+
+      let (att_csys_1,att_assoc_1) = apply_transition sem false att_assoc att_csys (JAInput(r_ch,r_t,pos)) in
+
+      apply_attack_trace sem size_frame att_assoc_1 q_trans att_csys_1 !sim_csys_list_ref
+  | JAEaves(r_ch,out_pos,in_pos) :: q_trans ->
+      let sim_csys_list_ref = ref [] in
+      let axiom = size_frame + 1 in
+
+      List.iter (fun csys ->
+        let conf = csys.Constraint_system.additional_data in
+        Variable.auto_cleanup_with_reset_notail (fun () ->
+          List.iter (fun (x,t) -> Variable.link_term x t) csys.Constraint_system.original_substitution;
+          List.iter (fun (x,n) -> Variable.link_term x (Name n)) csys.Constraint_system.original_names;
+
+          let ch = apply_recipe_on_frame r_ch conf.gen_frame in
+
+          next_ground_eavesdrop ch conf.gen_process csys.Constraint_system.original_substitution csys.Constraint_system.original_names conf.gen_trace (fun proc eav_gathering ->
+            let csys_1 = Constraint_system.add_axiom csys axiom eav_gathering.eav_term in
+            let csys_2 =
+              { csys_1 with
+                Constraint_system.additional_data = { gen_process = proc; gen_frame = conf.gen_frame @ [eav_gathering.eav_term]; gen_trace = AEaves(r_ch,eav_gathering.eav_position_out,eav_gathering.eav_position_in)::eav_gathering.eav_common_data.trace_transitions };
+                Constraint_system.original_substitution = eav_gathering.eav_common_data.original_subst;
+                Constraint_system.original_names = eav_gathering.eav_common_data.original_names
+              }
+            in
+            let csys_3 = Constraint_system.prepare_for_solving_procedure_with_additional_data true frame_rename csys_2 in
+
+            if List.for_all (fun pch -> (Data_structure.IK.consequence_term csys_3.Constraint_system.knowledge csys_3.Constraint_system.incremented_knowledge csys_3.Constraint_system.deduction_facts pch) = None) eav_gathering.eav_private_channels
+            then sim_csys_list_ref := csys_3 :: !sim_csys_list_ref
+          )
+        )
+      ) sim_csys_list;
+
+      sim_csys_list_ref := clean_variables_names !sim_csys_list_ref;
+
+      let (att_csys_1,att_assoc_1) = apply_transition sem false att_assoc att_csys (JAEaves(r_ch,out_pos,in_pos)) in
+
+      Constraint_system.Rule_ground.apply_rules (apply_attack_trace sem (size_frame+1) att_assoc_1 q_trans) att_csys_1 !sim_csys_list_ref
+  | trans :: q_trans ->
+      let (att_csys_1,att_assoc_1) = apply_transition sem false att_assoc att_csys trans in
+      apply_attack_trace sem size_frame att_assoc_1 q_trans att_csys_1 sim_csys_list
+
+let find_equivalent_trace sem att_assoc att_js_proc att_trace sim_js_proc =
+
+  (* We used json process for the att_process but we used
+    generic process for the simulated process *)
+  let sim_proc_1 = process_of_json_process sim_js_proc in
+  let (sim_proc_2,translate_trace) = Process.simplify_for_generic sim_proc_1 in
+  let gen_sim_proc = Generic_process.generic_process_of_process sim_proc_2 in
+
+  let sim_conf = { gen_process = gen_sim_proc; gen_frame = []; gen_trace = [] } in
+  let att_conf = { size_frame = 0; frame = []; process = att_js_proc } in
+
+  let sim_csys = Constraint_system.empty sim_conf in
+  let att_csys = Constraint_system.empty att_conf in
+
+  let equiv_sim_csys_list = apply_attack_trace sem 0 att_assoc att_trace att_csys [sim_csys] in
+
+  Config.debug (fun () ->
+    if equiv_sim_csys_list = []
+    then Config.internal_error "[interface.ml >> find_equivalent_trace] Should only be applied on equivalent processes."
+  );
+
+  let equiv_csys = List.hd equiv_sim_csys_list in
+  let trace_list = equiv_csys.Constraint_system.additional_data.gen_trace in
+  List.map json_transition_of_transition (translate_trace trace_list)

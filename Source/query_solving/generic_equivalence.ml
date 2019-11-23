@@ -155,7 +155,7 @@ let apply_one_transition_and_rules_classic_input type_max equiv_pbl f_continuati
             { csys with
               Constraint_system.deduction_facts = Data_structure.DF.add_multiple_max_type csys.Constraint_system.deduction_facts [dfact_ch;dfact_t];
               Constraint_system.eq_term = in_gathering.common_data.disequations;
-              Constraint_system.additional_data = { conf with current_process = proc; trace = AInput(RVar var_X_ch,RVar var_X_t,in_gathering.position)::in_gathering.common_data.transitions };
+              Constraint_system.additional_data = { conf with current_process = proc; trace = AInput(RVar var_X_ch,RVar var_X_t,in_gathering.position)::in_gathering.common_data.trace_transitions };
               Constraint_system.original_substitution = (Term.variable_of in_gathering.term, Var x_fresh)::in_gathering.common_data.original_subst;
               Constraint_system.original_names = in_gathering.common_data.original_names;
               Constraint_system.eq_uniformity = eq_uniformity
@@ -219,7 +219,7 @@ let apply_one_transition_and_rules_classic_output type_max equiv_pbl f_continuat
             { csys_1 with
               Constraint_system.deduction_facts = Data_structure.DF.add_multiple_max_type csys.Constraint_system.deduction_facts [dfact_ch];
               Constraint_system.eq_term = out_gathering.common_data.disequations;
-              Constraint_system.additional_data = { conf with current_process = proc; trace = AOutput(RVar var_X_ch,out_gathering.position)::out_gathering.common_data.transitions };
+              Constraint_system.additional_data = { conf with current_process = proc; trace = AOutput(RVar var_X_ch,out_gathering.position)::out_gathering.common_data.trace_transitions };
               Constraint_system.original_substitution = out_gathering.common_data.original_subst;
               Constraint_system.original_names = out_gathering.common_data.original_names;
               Constraint_system.eq_uniformity = eq_uniformity
@@ -312,7 +312,7 @@ let apply_one_transition_and_rules_private_input type_max equiv_pbl f_continuati
             { csys with
               Constraint_system.deduction_facts = Data_structure.DF.add_multiple_max_type csys.Constraint_system.deduction_facts [dfact_ch;dfact_t];
               Constraint_system.eq_term = in_gathering.common_data.disequations;
-              Constraint_system.additional_data = { conf with current_process = proc; trace = AInput(RVar var_X_ch,RVar var_X_t,in_gathering.position)::in_gathering.common_data.transitions };
+              Constraint_system.additional_data = { conf with current_process = proc; trace = AInput(RVar var_X_ch,RVar var_X_t,in_gathering.position)::in_gathering.common_data.trace_transitions };
               Constraint_system.original_substitution = (Term.variable_of in_gathering.term, Var x_fresh)::in_gathering.common_data.original_subst;
               Constraint_system.original_names = in_gathering.common_data.original_names;
               Constraint_system.eq_uniformity = eq_uniformity;
@@ -382,7 +382,7 @@ let apply_one_transition_and_rules_private_output type_max equiv_pbl f_continuat
             { csys_1 with
               Constraint_system.deduction_facts = Data_structure.DF.add_multiple_max_type csys.Constraint_system.deduction_facts [dfact_ch];
               Constraint_system.eq_term = out_gathering.common_data.disequations;
-              Constraint_system.additional_data = { conf with current_process = proc; trace = AOutput(RVar var_X_ch,out_gathering.position)::out_gathering.common_data.transitions };
+              Constraint_system.additional_data = { conf with current_process = proc; trace = AOutput(RVar var_X_ch,out_gathering.position)::out_gathering.common_data.trace_transitions };
               Constraint_system.original_substitution = out_gathering.common_data.original_subst;
               Constraint_system.original_names = out_gathering.common_data.original_names;
               Constraint_system.eq_uniformity = eq_uniformity;
@@ -479,7 +479,7 @@ let apply_one_transition_and_rules_eavesdrop_eav_transition type_max equiv_pbl f
             { csys_1 with
               Constraint_system.deduction_facts = Data_structure.DF.add_multiple_max_type csys.Constraint_system.deduction_facts [dfact_ch];
               Constraint_system.eq_term = eav_gathering.eav_common_data.disequations;
-              Constraint_system.additional_data = { conf with current_process = proc; trace = AEaves(RVar var_X_ch,eav_gathering.eav_position_out,eav_gathering.eav_position_in)::eav_gathering.eav_common_data.transitions };
+              Constraint_system.additional_data = { conf with current_process = proc; trace = AEaves(RVar var_X_ch,eav_gathering.eav_position_out,eav_gathering.eav_position_in)::eav_gathering.eav_common_data.trace_transitions };
               Constraint_system.original_substitution = eav_gathering.eav_common_data.original_subst;
               Constraint_system.original_names = eav_gathering.eav_common_data.original_names;
               Constraint_system.eq_uniformity = eq_uniformity;
