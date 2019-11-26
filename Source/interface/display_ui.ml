@@ -72,6 +72,16 @@ let rec display_process tab = function
       let str_plus = Printf.sprintf "{%s} +" (display_position pos) in
       str_1 ^ (display_with_tab tab str_plus) ^ str_2
 
+let display_association assoc =
+  let display_args id args =  Printf.sprintf "%d[%s]" id (display_list string_of_int "," args) in
+  Printf.sprintf "Association (size = %d):\n%s\n%s\n%s\n%s\n%s\n"
+    assoc.std.size
+    ("Symbols: "^(display_list (fun (f,n) -> Printf.sprintf "%s->%s" (Symbol.display Terminal f) (display_args n [])) "," assoc.std.symbols))
+    ("Names: "^(display_list (fun (f,n) -> Printf.sprintf "%s->%s" (Name.display Terminal f) (display_args n [])) "," assoc.std.names))
+    ("Variables: "^(display_list (fun (f,n) -> Printf.sprintf "%s->%s" (Variable.display Terminal f) (display_args n [])) "," assoc.std.variables))
+    ("Repl Names: "^(display_list (fun (f,(n,args)) -> Printf.sprintf "%s->%s" (Name.display Terminal f) (display_args n args)) "," assoc.repl.repl_names))
+    ("Repl Variables: "^(display_list (fun (f,(n,args)) -> Printf.sprintf "%s->%s" (Variable.display Terminal f) (display_args n args)) "," assoc.repl.repl_variables))
+
 (*** Record atomic data ***)
 
 let record_name assoc_ref n =
@@ -161,13 +171,19 @@ let rec record_from_process assoc_ref = function
 
 let get_name_id assoc n = match List.assq_opt n assoc.std.names with
   | Some i -> i, []
-  | None -> List.assq n assoc.repl.repl_names
+  | None ->
+      match List.assq_opt n assoc.repl.repl_names with
+        | Some (i,args) -> i,args
+        | None -> Config.internal_error (Printf.sprintf "[display_ui.ml >> get_name_id] Cannot find the name %s" (Name.display Terminal n))
 
 let get_symbol_id assoc f = List.assq f assoc.std.symbols
 
 let get_variable_id assoc x = match List.assq_opt x assoc.std.variables with
   | Some i -> i, []
-  | None -> List.assq x assoc.repl.repl_variables
+  | None ->
+      match List.assq_opt x assoc.repl.repl_variables with
+        | Some (i,args) -> i,args
+        | None -> Config.internal_error (Printf.sprintf "[display_ui.ml >> get_variable_id] Cannot find the variable %s" (Variable.display Terminal x))
 
 (*** Display of Json ***)
 

@@ -9,6 +9,8 @@ val display_transition : json_transition -> string
 
 val display_process : int -> json_process -> string
 
+val display_association : full_association -> string
+
 (*** Id retrieval ***)
 
 val get_variable_id : full_association -> variable -> int * int list

@@ -344,7 +344,9 @@ let apply_tau_transition target_pos conf =
             let t1' = Rewrite_rules.normalise t1 in
             let t2' = Rewrite_rules.normalise t2 in
             if Term.is_equal t1' t2' then p1 else p2
-          with Rewrite_rules.Not_message -> p2
+          with Rewrite_rules.Not_message ->
+            Config.log (fun () -> Printf.sprintf "Else\n");
+            p2
         end
     | JNew(_,_,p,pos) when is_equal_position pos target_pos -> p
     | JLet(pat,t,pthen,pelse,pos) when is_equal_position pos target_pos ->
@@ -396,7 +398,8 @@ let apply_bang_transition assoc target_pos i conf =
     | _ -> raise (Invalid_transition Position_not_found)
   in
 
-  { conf with process = explore conf.process }, !assoc_ref
+  let proc = explore conf.process in
+  { conf with process = proc }, !assoc_ref
 
 let apply_choice target_pos side conf =
 
@@ -534,8 +537,6 @@ let execute_process semantics init_assoc js_init_proc js_trace =
   let rec explore_trace csys assoc = function
     | [] -> []
     | trans::q ->
-        Config.log (fun () -> Printf.sprintf "Explore trace: %s\n" (Display_ui.display_transition trans));
-        Config.log (fun () -> Printf.sprintf "Proces trace: %s\n" (Display_ui.display_process 1 csys.Constraint_system.additional_data.process));
         let (csys',assoc') = apply_transition semantics true assoc csys trans in
         (csys',assoc')::(explore_trace csys' assoc' q)
   in

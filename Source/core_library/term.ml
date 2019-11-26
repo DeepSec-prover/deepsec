@@ -600,6 +600,7 @@ module Symbol = struct
       Hashtbl.find attacker_names str
     with Not_found ->
       let c = { label_s = str; arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
+      Hashtbl.add attacker_names str c;
       incr accumulator_nb_symb;
       c
 
