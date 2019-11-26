@@ -3,6 +3,59 @@ open Types
 open Types_ui
 open Term
 
+(* Parsing of recipe *)
+
+let find_function str pos =
+  match List.find_opt (fun f -> f.label_s = str) !Symbol.all_constructors with
+    | Some f -> f
+    | None ->
+        match List.find_opt (fun f -> f.label_s = str) !Symbol.all_destructors with
+          | Some f -> f
+          | None -> Parser_functions.error_message ~with_line:false pos (Printf.sprintf "The function %s is not defined." str)
+
+let rec recipe_of_parsed_recipe max_ax = function
+  | Parser_functions.RAxiom(id,pos) ->
+      if id = 0
+      then Parser_functions.error_message ~with_line:false pos "Index of axioms should start at 1";
+      if id > max_ax
+      then Parser_functions.error_message ~with_line:false pos (Printf.sprintf "The axiom has index %d but the maximal possible index of the current frame is %d" id max_ax);
+      Axiom id
+  | Parser_functions.RAttacker id ->
+      let c = Symbol.get_attacker_name id in
+      RFunc(c,[])
+  | Parser_functions.RFuncApp((f_str,pos),r_list) ->
+      let f = find_function f_str pos in
+      if List.length r_list <> f.arity
+      then Parser_functions.error_message ~with_line:false pos (Printf.sprintf "The functin %s has arity %d but is given %d arguments" f_str f.arity (List.length r_list));
+      RFunc(f,List.map (recipe_of_parsed_recipe max_ax) r_list)
+  | Parser_functions.RProj(i1,i2,r,pos) ->
+      if i1 > i2
+      then Parser_functions.error_message ~with_line:false pos "The first argument of a projection should be smaller or equal to its second argument";
+      if i1 = 0 || i2 = 0
+      then Parser_functions.error_message ~with_line:false pos "Projection's arguments should not be 0";
+      let f_tuple = Symbol.get_tuple i2 in
+      let f_projs = Symbol.get_projections f_tuple in
+      let f = List.nth f_projs (i1-1) in
+      RFunc(f,[recipe_of_parsed_recipe max_ax r])
+  | Parser_functions.RTuple r_list ->
+      let n = List.length r_list in
+      let f_tuple = Symbol.get_tuple n in
+      RFunc(f_tuple,List.map (recipe_of_parsed_recipe max_ax) r_list)
+
+let parse_recipe_from_string max_ax str_r =
+  let lexbuf = Lexing.from_string str_r in
+  let parsed_r = Grammar.main_recipe Lexer.token lexbuf in
+  recipe_of_parsed_recipe max_ax parsed_r
+
+let parse_simulator_transition max_ax = function
+  | JSAOutput(r_ch,pos) -> JAOutput(parse_recipe_from_string max_ax r_ch,pos)
+  | JSAInput(r_ch,r_t,pos) -> JAInput(parse_recipe_from_string max_ax r_ch,parse_recipe_from_string max_ax r_t,pos)
+  | JSAEaves(r_ch,pos_out,pos_in) -> JAEaves(parse_recipe_from_string max_ax r_ch,pos_out,pos_in)
+  | JSAComm(pos_out,pos_in) -> JAComm(pos_out,pos_in)
+  | JSABang(n,pos) -> JABang(n,pos)
+  | JSATau(pos) -> JATau(pos)
+  | JSAChoice(pos,b) -> JAChoice(pos,b)
+
 (*** Parsing into JSON ***)
 
 let parse_json_from_file path =
@@ -94,7 +147,10 @@ let rec term_of assoc json = match string_of (member "type" json) with
       end
   | "Function" ->
       let symbol_id = int_of (member "symbol" json) in
-      let args = list_of (term_of assoc) (member "args" json) in
+      let args = match member_opt "args" json with
+        | None -> []
+        | Some json' -> list_of (term_of assoc) json'
+      in
       let symbol = match assoc.(symbol_id) with
         | JAtomSymbol f -> f
         | _ -> Config.internal_error "[parsing_functions_ui.ml >> term_of] Should be a function symbol."
@@ -115,7 +171,10 @@ let rec pattern_of assoc json = match string_of (member "type" json) with
   | "Equality" -> JPEquality (term_of assoc (member "term" json))
   | "Function" ->
       let symbol_id = int_of (member "symbol" json) in
-      let args = list_of (pattern_of assoc) (member "args" json) in
+      let args = match member_opt "args" json with
+        | None -> []
+        | Some json' -> list_of (pattern_of assoc) json'
+      in
       let symbol = match assoc.(symbol_id) with
         | JAtomSymbol f -> f
         | _ -> Config.internal_error "[parsing_functions_ui.ml >> pattern_of] Should be a function symbol."
@@ -127,7 +186,10 @@ let rec recipe_of assoc json = match string_of (member "type" json) with
   | "Axiom" ->  Axiom (int_of (member "id" json))
   | "Function" ->
       let symbol_id = int_of (member "symbol" json) in
-      let args = list_of (recipe_of assoc) (member "args" json) in
+      let args = match member_opt "args" json with
+        | None -> []
+        | Some json' -> list_of (recipe_of assoc) json'
+      in
       let symbol = match assoc.(symbol_id) with
         | JAtomSymbol f -> f
         | _ -> Config.internal_error "[parsing_functions_ui.ml >> recipe_of] Should be a function symbol."
@@ -454,6 +516,38 @@ let attack_trace_of assoc json =
   let transitions = list_of (transition_of assoc) (member "action_sequence" json) in
   { id_proc = id_proc; transitions = transitions }
 
+let simulator_action_of json = match string_of (member "type" json) with
+  | "output" ->
+      let r_ch = string_of (member "channel" json) in
+      let pos = position_of (member "position" json) in
+      JSAOutput(r_ch,pos)
+  | "input" ->
+      let r_ch = string_of (member "channel" json) in
+      let r_t = string_of (member "term" json) in
+      let pos = position_of (member "position" json) in
+      JSAInput(r_ch,r_t,pos)
+  | "comm" ->
+      let pos_out = position_of (member "output_position" json) in
+      let pos_in = position_of (member "input_position" json) in
+      JSAComm(pos_out,pos_in)
+  | "eavesdrop" ->
+      let r_ch = string_of (member "channel" json) in
+      let pos_out = position_of (member "output_position" json) in
+      let pos_in = position_of (member "input_position" json) in
+      JSAEaves(r_ch,pos_out,pos_in)
+  | "bang" ->
+      let pos = position_of (member "position" json) in
+      let n = int_of (member "nb_process_unfolded" json) in
+      JSABang(n,pos)
+  | "tau" ->
+      let pos = position_of (member "position" json) in
+      JSATau pos
+  | "choice" ->
+      let pos = position_of (member "position" json) in
+      let side = bool_option_of (member_opt "choose_left" json) in
+      JSAChoice(pos,side)
+  | _ -> Config.internal_error "[parsing_functions_ui.ml >> transition_of] Wrong format."
+
 (*** Query, run and batch result ***)
 
 let progression_of json =
@@ -656,8 +750,8 @@ let input_command_of ?(assoc=None) json = match string_of (member "command" json
   | "die" -> Die
   | "goto_step" ->
       begin match member_opt "process_id" json with
-        | None -> DTGo_to (int_of (member "id" json))
-        | Some pid -> ASGo_to(int_of pid,int_of (member "id" json))
+        | None -> Goto_step(None,(int_of (member "id" json)))
+        | Some pid -> Goto_step(Some (int_of pid),int_of (member "id" json))
       end
   | "start_attack_simulator" -> Attack_simulator (string_of (member "query_file" json))
   | "next_step_simulated" ->
@@ -666,4 +760,9 @@ let input_command_of ?(assoc=None) json = match string_of (member "command" json
         | Some assoc_tbl ->  assoc_tbl
       in
       ASNext_step (transition_of assoc_tbl (member "selected_action" json))
+  | "start_equivalence_simulator" ->
+      Equivalence_simulator (string_of (member "query_file" json), int_of (member "process_id" json))
+  | "select_trace" -> ESSelect_trace (int_of (member "process_id" json))
+  | "find_equivalent_trace" -> ESFind_equivalent_trace
+  | "next_step_attacked" -> ESNext_step (simulator_action_of (member "selected_action" json))
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> input_command_of] Unknown command."

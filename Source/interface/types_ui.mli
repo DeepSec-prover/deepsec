@@ -48,6 +48,15 @@ type json_attack_trace =
     transitions : json_transition list
   }
 
+type json_simulator_transition =
+  | JSAOutput of string * json_position
+  | JSAInput of string * string * json_position
+  | JSAEaves of string * json_position (* out *) * json_position (* in *)
+  | JSAComm of json_position (* out *) * json_position (* in *)
+  | JSABang of int * json_position
+  | JSATau of json_position
+  | JSAChoice of json_position * bool (* True when the left process is chosen *)
+
 (* Association table *)
 
 type association =
@@ -218,13 +227,18 @@ type input_command =
   | Get_config
   | Set_config of string
   | Die
+  (* Simulator generic command *)
+  | Goto_step of int option (* id process *) * int (* id step *)
   (* Simulator: Display of traces *)
   | Display_trace of string * int (* Json of query result *)
-  | DTGo_to of int
   (* Simulator: Attack_simulator *)
   | Attack_simulator of string (* Json of query result *)
-  | ASGo_to of int (* Id process *) * int (* Step *)
   | ASNext_step of json_transition
+  (* Simulator: Equivalence_simulator *)
+  | Equivalence_simulator of string * int (* process Id *)
+  | ESSelect_trace of int
+  | ESFind_equivalent_trace
+  | ESNext_step of json_simulator_transition
 
 type output_command =
   (* Errors *)
@@ -249,7 +263,6 @@ type output_command =
   | Run_canceled of string
   | Query_canceled of string
   | Batch_canceled
-  | ExitUi
   (* Progression *)
   | Progression of int (* Index of query *) * int (* execution time *) * query_progression
   (* Simulator: Display_of_traces *)
@@ -258,3 +271,6 @@ type output_command =
   | ASCurrent_step_attacked of full_association * configuration * int * int
   | ASCurrent_step_simulated of full_association * configuration * json_transition list * available_action list * available_action list * status_static_equivalence * int
   (* Simulator: Equivalence_simulator *)
+  | ESCurrent_step_phase_1 of full_association * configuration * json_transition list * available_action list * available_action list
+  | ESCurrent_step_phase_2 of full_association * configuration * int (* id action *) * int (* id_proc *)
+  | ESFound_equivalent_trace of full_association * json_transition list

@@ -12,7 +12,7 @@ module Symbol : sig
 
   val get_fresh_constant : int -> symbol
 
-  (** The list of all constructors (included the tupple function symbol) used in the algorithm.*)
+  (** The list of all constructors (included the tuple function symbol) used in the algorithm.*)
   val all_constructors : symbol list ref
 
   (** The number of constructors used in the algorithm. *)

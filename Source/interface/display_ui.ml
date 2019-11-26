@@ -720,7 +720,6 @@ let of_output_command = function
         | QWaiting -> JString "waiting"
       in
       JObject [ "command", JString "query_ended"; "file", JString str ; "status", status_str]
-  | ExitUi -> JObject [ "command", JString "exit"]
   | Progression(_,_,PNot_defined) -> Config.internal_error "[display_ui.ml >> of_output_command] Unexpected progression"
   | Progression(_,_,PSingleCore prog) ->
       let (label,obj) = match prog with
@@ -770,6 +769,35 @@ let of_output_command = function
       then JObject list1
       else JObject (("new_actions", JList (List.map (of_transition assoc) new_trans))::list1)
   (* Simulator: Equivalence simulator *)
+  | ESCurrent_step_phase_1(assoc,conf,new_trans,all_actions,default_actions) ->
+      let list1 =
+        [
+          "command", JString "current_step";
+          "process", of_json_process assoc conf.process;
+          "frame", JList (List.map (of_term assoc) conf.frame);
+          "all_available_actions", JList (List.map (of_available_action assoc) all_actions);
+          "default_available_actions", JList (List.map (of_available_action assoc) default_actions)
+        ]
+      in
+      if new_trans = []
+      then JObject list1
+      else JObject (("new_actions", JList (List.map (of_transition assoc) new_trans))::list1)
+  | ESCurrent_step_phase_2(assoc,conf,id_act,id_proc) ->
+      let list1 =
+        [
+          "command", JString "current_step";
+          "process_id", JInt id_proc;
+          "process", of_json_process assoc conf.process;
+          "frame", JList (List.map (of_term assoc) conf.frame);
+          "current_action_id", JInt id_act
+        ]
+      in
+      JObject list1
+  | ESFound_equivalent_trace(assoc,trans_list) ->
+      JObject [
+        "command", JString "found_equivalent_trace";
+        "action_sequence", JList (List.map (of_transition assoc) trans_list)
+      ]
 
 let print_output_command = function
   (* Errors *)
@@ -825,7 +853,6 @@ let print_output_command = function
         | QCompleted _, _ -> ()
         | _ -> ()
       end
-  | ExitUi -> ()
   | Progression(_,_,PNot_defined) -> Config.internal_error "[display_ui.ml >> print_output_command] Unexpected progression"
   | Progression(index,time,PSingleCore prog) ->
       begin match prog with
@@ -843,7 +870,9 @@ let print_output_command = function
   (* Simulator: Display_of_traces *)
   | DTCurrent_step _
   (* Simulator: Display_of_traces *)
-  | ASCurrent_step_attacked _ | ASCurrent_step_simulated _ -> Config.internal_error "[print_output_command] Should not occur in command mode."
+  | ASCurrent_step_attacked _ | ASCurrent_step_simulated _
+  (* Simulator: Equivalence simulator *)
+  | ESCurrent_step_phase_1 _ | ESCurrent_step_phase_2 _ | ESFound_equivalent_trace _ -> Config.internal_error "[print_output_command] Should not occur in command mode."
 
 (* Sending command *)
 

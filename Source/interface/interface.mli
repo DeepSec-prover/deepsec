@@ -37,3 +37,16 @@ val attack_simulator_apply_next_step :
   simulated_state list * json_transition list
 
 val find_equivalent_trace : semantics -> full_association -> json_process -> json_transition list -> json_process -> json_transition list
+
+type attacked_state =
+  {
+    att_csys : configuration Constraint_system.t;
+    att_assoc : full_association;
+    att_default_available_actions : available_action list;
+    att_all_available_actions : available_action list;
+    att_trace : json_transition list
+  }
+
+val initial_equivalence_simulator_state : semantics -> full_association -> json_process -> attacked_state
+
+val equivalence_simulator_apply_next_step : semantics -> attacked_state -> json_transition -> attacked_state list * json_transition list

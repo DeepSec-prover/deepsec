@@ -1,21 +1,35 @@
 
 (* Types *)
 
+type element_position =
+  {
+    line : int;
+    start_char : int;
+    end_char : int
+  }
+
 type setting =
   | Classic
   | Private
   | Eavesdrop
 
-type ident = string * int
+type ident = string * element_position
 
 type term =
   | Id of ident
   | FuncApp of ident * term list
   | Tuple of term list
 
+type recipe =
+  | RAxiom of int * element_position
+  | RAttacker of string
+  | RFuncApp of ident * recipe list
+  | RProj of int * int * recipe * element_position
+  | RTuple of recipe list
+
 type functions =
   | Constructor of ident * int * bool
-  | Destructor of (term * term) list * bool * int
+  | Destructor of (term * term) list * bool * element_position
 
 type pattern =
   | PVar of ident
@@ -38,7 +52,7 @@ type plain_process =
   | Call of ident * term list
   | Choice of plain_process * plain_process
   | Par of plain_process * plain_process
-  | Bang of int * plain_process * int
+  | Bang of int * plain_process * element_position
   | New of ident * plain_process
   | In of term * ident * plain_process
   | Out of term * term * plain_process
@@ -56,10 +70,10 @@ type query =
   | Sess_Incl of extended_process * extended_process
 
 type declaration =
-  | Setting of setting * int
+  | Setting of setting * element_position
   | FuncDecl of functions list
   | FreeName of (ident list * bool)
-  | Query of query * int
+  | Query of query * element_position
   | ExtendedProcess of ident * ident list * extended_process
 
 (**** Environement ****)
@@ -95,17 +109,35 @@ let display_env_elt_type = function
 
 (**** Error message ****)
 
+let get_element_position_in_grammar () =
+  let start_pos = Parsing.symbol_start_pos () in
+  let end_pos = Parsing.symbol_end_pos () in
+  {
+    line = start_pos.Lexing.pos_lnum;
+    start_char = start_pos.Lexing.pos_cnum - start_pos.Lexing.pos_bol;
+    end_char = end_pos.Lexing.pos_cnum - end_pos.Lexing.pos_bol;
+  }
+
+let get_element_position_in_lexer lexbuf =
+  let start_pos = Lexing.lexeme_start_p lexbuf in
+  let end_pos = Lexing.lexeme_end_p lexbuf in
+  {
+    line = start_pos.Lexing.pos_lnum;
+    start_char = start_pos.Lexing.pos_cnum - start_pos.Lexing.pos_bol;
+    end_char = end_pos.Lexing.pos_cnum - end_pos.Lexing.pos_bol;
+  }
+
 exception User_Error of string
 
-
-
-let error_message line str =
-  raise (User_Error (Printf.sprintf "Line %d : %s" line str))
+let error_message ?(with_line=true) pos str =
+  if with_line
+  then raise (User_Error (Printf.sprintf "Line %d, Characters %d-%d: %s" pos.line pos.start_char pos.end_char str))
+  else raise (User_Error (Printf.sprintf "Characters %d-%d: %s " pos.start_char pos.end_char str))
 
 let warnings = ref []
 
-let warning_message line str =
-  warnings := !warnings @ [ Printf.sprintf "Line %d : %s" line str]
+let warning_message pos str =
+  warnings := !warnings @ [ Printf.sprintf "Line %d, Characters %d-%d: %s" pos.line pos.start_char pos.end_char str]
 
 (******** Parse free names *******)
 
@@ -205,7 +237,7 @@ let rec parse_plain_process env = function
       end
   | Nil -> INil
   | Choice(p1,p2) -> IChoice(parse_plain_process env p1,parse_plain_process env p2,fresh_position ())
-  | Seq(_,_)-> error_message 0 "Sequence is not yet implemented."
+  | Seq(_,_)-> error_message { line = 0; start_char = 0; end_char = 0 } "Sequence is not yet implemented."
   | Par(p1,p2) ->
       begin match parse_plain_process env p1, parse_plain_process env p2 with
         | IPar l_1, IPar l_2 -> IPar (l_1@l_2)
@@ -323,7 +355,6 @@ let rec intermediate_process_of_process occurence_list = function
 
 let parse_intermediate_process env = function
   | EPlain proc -> parse_plain_process env proc
-
 
 (****** Process declaration ********)
 

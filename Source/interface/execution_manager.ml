@@ -278,8 +278,7 @@ let remove_current_query () =
 (* Dealing with errors *)
 
 let send_exit () =
-  Config.log (fun () -> "[execution_manager.ml >> send_exit] Sending exit command\n");
-  Display_ui.send_output_command ExitUi;
+  Config.log (fun () -> "[execution_manager.ml >> send_exit] Exiting\n");
   exit 0
 
 let catch_init_internal_error f =

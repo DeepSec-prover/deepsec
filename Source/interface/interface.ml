@@ -1095,3 +1095,60 @@ let find_equivalent_trace sem att_assoc att_js_proc att_trace sim_js_proc =
   let equiv_csys = List.hd equiv_sim_csys_list in
   let trace_list = equiv_csys.Constraint_system.additional_data.gen_trace in
   List.map json_transition_of_transition (translate_trace trace_list)
+
+(*** Equivalence simulator ***)
+
+type attacked_state =
+  {
+    att_csys : configuration Constraint_system.t;
+    att_assoc : full_association;
+    att_default_available_actions : available_action list;
+    att_all_available_actions : available_action list;
+    att_trace : json_transition list
+  }
+
+let initial_equivalence_simulator_state sem att_assoc att_process =
+  let init_conf = { size_frame = 0; frame = []; process = att_process } in
+  let init_csys = Constraint_system.prepare_for_solving_procedure_ground (Constraint_system.empty init_conf) in
+  let (default_trans,all_trans) = find_next_possible_transition sem All_transitions init_csys in
+
+  {
+    att_csys = init_csys;
+    att_assoc = att_assoc;
+    att_default_available_actions = default_trans;
+    att_all_available_actions = all_trans;
+    att_trace = []
+  }
+
+let equivalence_simulator_apply_next_step sem att_state att_transition =
+
+  let rec apply_all_transitions acc_att_csys acc_att_assoc acc_att_trace = function
+    | [] -> []
+    | trans::q ->
+        (* The main transition *)
+        let (att_csys_1,att_assoc_1) = apply_transition sem true acc_att_assoc acc_att_csys trans in
+        let (default_trans,all_trans) = find_next_possible_transition sem All_transitions att_csys_1 in
+        let att_trace = acc_att_trace @ [trans] in
+        let state =
+          {
+            att_csys = att_csys_1;
+            att_assoc = att_assoc_1;
+            att_default_available_actions = default_trans;
+            att_all_available_actions = all_trans;
+            att_trace = att_trace
+          }
+        in
+        state::(apply_all_transitions att_csys_1 att_assoc_1 att_trace q)
+  in
+
+  (* We first search the corresponding action in the simulated state. *)
+  let list_transitions =
+    try
+      find_prev_transitions att_state.att_all_available_actions att_transition
+    with Not_found ->
+      try
+        find_prev_transitions att_state.att_default_available_actions att_transition
+      with Not_found -> Config.internal_error "[interface.ml >> equivalence_simulator_apply_next_step] The transition should be either within all or default."
+  in
+
+  apply_all_transitions att_state.att_csys att_state.att_assoc att_state.att_trace list_transitions, list_transitions
