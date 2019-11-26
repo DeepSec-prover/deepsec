@@ -720,19 +720,19 @@ let of_output_command = function
         | QWaiting -> JString "waiting"
       in
       JObject [ "command", JString "query_ended"; "file", JString str ; "status", status_str]
-  | Progression(_,_,PNot_defined) -> Config.internal_error "[display_ui.ml >> of_output_command] Unexpected progression"
-  | Progression(_,_,PSingleCore prog) ->
+  | Progression(_,_,PNot_defined,_) -> Config.internal_error "[display_ui.ml >> of_output_command] Unexpected progression"
+  | Progression(_,_,PSingleCore prog,json) ->
       let (label,obj) = match prog with
         | PVerif(percent,jobs) -> ("verification",JObject [ "percent", JInt percent; "jobs_remaining", JInt jobs ])
         | PGeneration(jobs,min_jobs) -> ("generation", JObject [ "minimum_jobs", JInt min_jobs; "jobs_created", JInt jobs ])
       in
-      JObject [ "command", JString "query_progression"; "round", JInt 0; label,obj ]
-  | Progression(_,_,PDistributed(round,prog)) ->
+      JObject [ "command", JString "query_progression"; "round", JInt 0; label,obj; "file", JString json ]
+  | Progression(_,_,PDistributed(round,prog),json) ->
       let (label,obj) = match prog with
         | PVerif(percent,jobs) -> ("verification",JObject [ "percent", JInt percent; "jobs_remaining", JInt jobs ])
         | PGeneration(jobs,min_jobs) -> ("generation", JObject [ "minimum_jobs", JInt min_jobs; "jobs_created", JInt jobs ])
       in
-      JObject [ "command", JString "query_progression"; "round", JInt round; label,obj ]
+      JObject [ "command", JString "query_progression"; "round", JInt round; label,obj; "file", JString json ]
   | Query_canceled file -> JObject [ "command", JString "query_canceled"; "file", JString file ]
   | Run_canceled file -> JObject [ "command", JString "run_canceled"; "file", JString file ]
   | Batch_canceled -> JObject [ "command", JString "batch_canceled"]
@@ -798,6 +798,7 @@ let of_output_command = function
         "command", JString "found_equivalent_trace";
         "action_sequence", JList (List.map (of_transition assoc) trans_list)
       ]
+  | ESUser_error str -> JObject [ "command", JString "user_error"; "error_msg", JString str ]
 
 let print_output_command = function
   (* Errors *)
@@ -853,13 +854,13 @@ let print_output_command = function
         | QCompleted _, _ -> ()
         | _ -> ()
       end
-  | Progression(_,_,PNot_defined) -> Config.internal_error "[display_ui.ml >> print_output_command] Unexpected progression"
-  | Progression(index,time,PSingleCore prog) ->
+  | Progression(_,_,PNot_defined,_) -> Config.internal_error "[display_ui.ml >> print_output_command] Unexpected progression"
+  | Progression(index,time,PSingleCore prog,_) ->
       begin match prog with
         | PVerif(percent,jobs) -> Printf.printf "\x0dVerifying query %d... [jobs verification: %d%% (%d jobs remaning); run time: %s]                               %!" index percent jobs (Display.mkRuntime time)
         | PGeneration(jobs,min_jobs) -> Printf.printf "\x0dVerifying query %d... [jobs generation: %d; minimum nb of jobs required: %d;  run time: %s]                  %!" index jobs min_jobs (Display.mkRuntime time)
       end
-  | Progression(index,time,PDistributed(round, prog)) ->
+  | Progression(index,time,PDistributed(round, prog),_) ->
       begin match prog with
         | PVerif(percent,jobs) -> Printf.printf "\x0dVerifying query %d... [round %d jobs verification:: %d%% (%d jobs remaning); run time: %s]                              %!" index round percent jobs (Display.mkRuntime time)
         | PGeneration(jobs,min_jobs) -> Printf.printf "\x0dVerifying query %d... [round %d jobs generation: %d; minimum nb of jobs required: %d;  run time: %s]                  %!" index round jobs min_jobs (Display.mkRuntime time)
@@ -872,7 +873,7 @@ let print_output_command = function
   (* Simulator: Display_of_traces *)
   | ASCurrent_step_attacked _ | ASCurrent_step_simulated _
   (* Simulator: Equivalence simulator *)
-  | ESCurrent_step_phase_1 _ | ESCurrent_step_phase_2 _ | ESFound_equivalent_trace _ -> Config.internal_error "[print_output_command] Should not occur in command mode."
+  | ESCurrent_step_phase_1 _ | ESCurrent_step_phase_2 _ | ESFound_equivalent_trace _ | ESUser_error _ -> Config.internal_error "[print_output_command] Should not occur in command mode."
 
 (* Sending command *)
 

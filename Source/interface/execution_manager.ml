@@ -513,7 +513,7 @@ let apply_progress progress to_write =
   in
   computation_status := { !computation_status with cur_run = Some { cur_run with cur_query = Some (cur_query_1,in_ch,out_ch) } };
   Config.log (fun () -> "[execution_manager.ml >> apply_progress] Send Progression command\n");
-  Display_ui.send_output_command (Progression(cur_query_1.q_index,time,progress))
+  Display_ui.send_output_command (Progression(cur_query_1.q_index,time,progress,cur_query_1.name_query))
 
 (* Starting the computation *)
 

@@ -259,15 +259,28 @@ let equivalence_simulator json_file id =
               | Some i -> Display_ui.send_output_command (get_current_step_phase_2 id_action i)
             end
         | ESNext_step to_parse_trans ->
-            let last_state = List.hd (List.rev !attack_state_list) in
-            let max_axiom = last_state.Interface.att_csys.Constraint_system.additional_data.size_frame in
-            let trans = Parsing_functions_ui.parse_simulator_transition max_axiom to_parse_trans in
-            let (new_states, new_transitions) = Interface.equivalence_simulator_apply_next_step semantics last_state trans in
-            let new_last_state = List.hd (List.rev new_states) in
-            attack_state_list := !attack_state_list @ new_states;
-            current_id_action_attack := (List.length !attack_state_list) - 2;
+            begin try
+              let last_state = List.hd (List.rev !attack_state_list) in
+              let max_axiom = last_state.Interface.att_csys.Constraint_system.additional_data.size_frame in
+              let trans = Parsing_functions_ui.parse_simulator_transition max_axiom to_parse_trans in
+              let (new_states, new_transitions) = Interface.equivalence_simulator_apply_next_step semantics last_state trans in
+              let new_last_state = List.hd (List.rev new_states) in
+              attack_state_list := !attack_state_list @ new_states;
+              current_id_action_attack := (List.length !attack_state_list) - 2;
 
-            Display_ui.send_output_command (get_current_step_phase_1 new_last_state new_transitions)
+              Display_ui.send_output_command (get_current_step_phase_1 new_last_state new_transitions)
+            with
+              | Interface.Invalid_transition Interface.Position_not_found -> Display_ui.send_output_command (Init_internal_error ("Incorrect position.",true))
+              | Parser_functions.User_Error str -> Display_ui.send_output_command (ESUser_error str)
+              | Interface.Invalid_transition (Interface.Term_not_message term) -> Display_ui.send_output_command (Init_internal_error (Printf.sprintf "The term %s does not reduce as a message." (Term.Term.display Display.Terminal term),true))
+              | Interface.Invalid_transition (Interface.Recipe_not_message recipe) -> Display_ui.send_output_command (ESUser_error (Printf.sprintf "The application of the recipe %s does not reduce to a message." (Term.Recipe.display Display.Terminal recipe)))
+              | Interface.Invalid_transition (Interface.Axiom_out_of_bound i) -> Display_ui.send_output_command (Init_internal_error (Printf.sprintf "The axiom ax_%d is out of boud" i,true))
+              | Interface.Invalid_transition (Interface.Channel_not_equal(ch1,ch2)) -> Display_ui.send_output_command (Init_internal_error (Printf.sprintf "The channels %s and %s should be equal." (Term.Term.display Display.Terminal ch1) (Term.Term.display Display.Terminal ch2),true))
+              | Interface.Invalid_transition (Interface.Pattern_not_unifiable _) -> Display_ui.send_output_command (Init_internal_error (Printf.sprintf "Pattern should always be unifiable in the current implementation.",true))
+              | Interface.Invalid_transition (Interface.Channel_deducible ch) -> Display_ui.send_output_command (Init_internal_error (Printf.sprintf "Communication in classic semantics can only be done on non deducible terms: %s" (Term.Term.display Display.Terminal ch),true))
+              | Interface.Invalid_transition (Interface.Too_much_unfold n) -> Display_ui.send_output_command (Init_internal_error (Printf.sprintf "Too much unfolding: %d." n,true))
+
+            end
         | Die -> raise Exit
         | _ -> Display_ui.send_output_command (Init_internal_error ("Unexpected input command.",true))
     done

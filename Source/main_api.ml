@@ -39,5 +39,6 @@ let _ =
           )
       | Display_trace(json_file,id) -> Simulator.display_trace json_file id
       | Attack_simulator json_file -> Simulator.attack_simulator json_file
+      | Equivalence_simulator(json_file,id) -> Simulator.equivalence_simulator json_file id
       | _ -> Printf.printf "No other option available so far."
   )

@@ -264,7 +264,7 @@ type output_command =
   | Query_canceled of string
   | Batch_canceled
   (* Progression *)
-  | Progression of int (* Index of query *) * int (* execution time *) * query_progression
+  | Progression of int (* Index of query *) * int (* execution time *) * query_progression * string (* json_file *)
   (* Simulator: Display_of_traces *)
   | DTCurrent_step of full_association * configuration * int
   (* Simulator: Attack_simulator *)
@@ -274,3 +274,4 @@ type output_command =
   | ESCurrent_step_phase_1 of full_association * configuration * json_transition list * available_action list * available_action list
   | ESCurrent_step_phase_2 of full_association * configuration * int (* id action *) * int (* id_proc *)
   | ESFound_equivalent_trace of full_association * json_transition list
+  | ESUser_error of string

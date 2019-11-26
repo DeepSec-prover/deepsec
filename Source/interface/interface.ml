@@ -534,6 +534,8 @@ let execute_process semantics init_assoc js_init_proc js_trace =
   let rec explore_trace csys assoc = function
     | [] -> []
     | trans::q ->
+        Config.log (fun () -> Printf.sprintf "Explore trace: %s\n" (Display_ui.display_transition trans));
+        Config.log (fun () -> Printf.sprintf "Proces trace: %s\n" (Display_ui.display_process 1 csys.Constraint_system.additional_data.process));
         let (csys',assoc') = apply_transition semantics true assoc csys trans in
         (csys',assoc')::(explore_trace csys' assoc' q)
   in
@@ -649,34 +651,44 @@ let find_next_possible_transition semantics forced_transition conf_csys =
 
   let rec explore only_IO tau_actions = function
     | JNil -> ()
-    | JOutput(ch,_,_,pos) ->
-        let av_trans = get_available_transition true ch in
-        if av_trans <> []
-        then
-          begin
-            actions := AV_output(pos,ch,List.rev tau_actions,av_trans) :: !actions;
-            add_channel out_ch_default ch av_trans;
-            if not only_IO
-            then
-              begin
-                actions_all := AV_output(pos,ch,List.rev tau_actions,av_trans) :: !actions_all;
-                add_channel out_ch_all ch av_trans
-              end
-          end
+    | JOutput(ch,t,_,pos) ->
+        begin try
+          let ch' = Rewrite_rules.normalise ch in
+          ignore(Rewrite_rules.normalise t);
+
+          let av_trans = get_available_transition true ch' in
+          if av_trans <> []
+          then
+            begin
+              actions := AV_output(pos,ch',List.rev tau_actions,av_trans) :: !actions;
+              add_channel out_ch_default ch' av_trans;
+              if not only_IO
+              then
+                begin
+                  actions_all := AV_output(pos,ch',List.rev tau_actions,av_trans) :: !actions_all;
+                  add_channel out_ch_all ch' av_trans
+                end
+            end
+        with Rewrite_rules.Not_message -> ()
+        end
     | JInput(ch,_,_,pos) ->
-        let av_trans = get_available_transition false ch in
-        if av_trans <> []
-        then
-          begin
-            actions := AV_input(pos,ch,List.rev tau_actions,av_trans) :: !actions;
-            add_channel in_ch_default ch av_trans;
-            if not only_IO
-            then
-              begin
-                actions_all := AV_input(pos,ch,List.rev tau_actions,av_trans) :: !actions_all;
-                add_channel in_ch_all ch av_trans
-              end
-          end
+        begin try
+          let ch' = Rewrite_rules.normalise ch in
+          let av_trans = get_available_transition false ch in
+          if av_trans <> []
+          then
+            begin
+              actions := AV_input(pos,ch',List.rev tau_actions,av_trans) :: !actions;
+              add_channel in_ch_default ch' av_trans;
+              if not only_IO
+              then
+                begin
+                  actions_all := AV_input(pos,ch',List.rev tau_actions,av_trans) :: !actions_all;
+                  add_channel in_ch_all ch' av_trans
+                end
+            end
+        with Rewrite_rules.Not_message -> ()
+        end
     | JIfThenElse(t1,t2,p1,p2,pos) ->
         begin
           if not only_IO
@@ -978,22 +990,23 @@ let rec apply_attack_trace sem size_frame att_assoc att_trace att_csys sim_csys_
           List.iter (fun (x,t) -> Variable.link_term x t) csys.Constraint_system.original_substitution;
           List.iter (fun (x,n) -> Variable.link_term x (Name n)) csys.Constraint_system.original_names;
 
-          let ch = apply_recipe_on_frame r_ch conf.gen_frame in
+          try
+            let ch = apply_recipe_on_frame r_ch conf.gen_frame in
+            next_ground_output sem ch conf.gen_process csys.Constraint_system.original_substitution csys.Constraint_system.original_names conf.gen_trace (fun proc out_gathering ->
+              let csys_1 = Constraint_system.add_axiom csys axiom out_gathering.term in
+              let csys_2 =
+                { csys_1 with
+                  Constraint_system.additional_data = { gen_process = proc; gen_frame = conf.gen_frame @ [out_gathering.term]; gen_trace = AOutput(r_ch,out_gathering.position)::out_gathering.common_data.trace_transitions };
+                  Constraint_system.original_substitution = out_gathering.common_data.original_subst;
+                  Constraint_system.original_names = out_gathering.common_data.original_names
+                }
+              in
+              let csys_3 = Constraint_system.prepare_for_solving_procedure_with_additional_data true frame_rename csys_2 in
 
-          next_ground_output sem ch conf.gen_process csys.Constraint_system.original_substitution csys.Constraint_system.original_names conf.gen_trace (fun proc out_gathering ->
-            let csys_1 = Constraint_system.add_axiom csys axiom out_gathering.term in
-            let csys_2 =
-              { csys_1 with
-                Constraint_system.additional_data = { gen_process = proc; gen_frame = conf.gen_frame @ [out_gathering.term]; gen_trace = AOutput(r_ch,out_gathering.position)::out_gathering.common_data.trace_transitions };
-                Constraint_system.original_substitution = out_gathering.common_data.original_subst;
-                Constraint_system.original_names = out_gathering.common_data.original_names
-              }
-            in
-            let csys_3 = Constraint_system.prepare_for_solving_procedure_with_additional_data true frame_rename csys_2 in
-
-            if List.for_all (fun pch -> (Data_structure.IK.consequence_term csys_3.Constraint_system.knowledge csys_3.Constraint_system.incremented_knowledge csys_3.Constraint_system.deduction_facts pch) = None) out_gathering.private_channels
-            then sim_csys_list_ref := csys_3 :: !sim_csys_list_ref
-          )
+              if List.for_all (fun pch -> (Data_structure.IK.consequence_term csys_3.Constraint_system.knowledge csys_3.Constraint_system.incremented_knowledge csys_3.Constraint_system.deduction_facts pch) = None) out_gathering.private_channels
+              then sim_csys_list_ref := csys_3 :: !sim_csys_list_ref
+            )
+          with Invalid_transition (Recipe_not_message _) ->  ()
         )
       ) sim_csys_list;
 
@@ -1010,21 +1023,23 @@ let rec apply_attack_trace sem size_frame att_assoc att_trace att_csys sim_csys_
           List.iter (fun (x,t) -> Variable.link_term x t) csys.Constraint_system.original_substitution;
           List.iter (fun (x,n) -> Variable.link_term x (Name n)) csys.Constraint_system.original_names;
 
-          let ch = apply_recipe_on_frame r_ch conf.gen_frame in
-          let t = apply_recipe_on_frame r_t conf.gen_frame in
-          next_ground_input sem ch conf.gen_process csys.Constraint_system.original_substitution csys.Constraint_system.original_names conf.gen_trace (fun proc in_gathering ->
-            let csys_1 =
-              { csys with
-                Constraint_system.additional_data = { conf with gen_process = proc; gen_trace = AInput(r_ch,r_t,in_gathering.position)::in_gathering.common_data.trace_transitions };
-                Constraint_system.original_substitution = (Term.variable_of in_gathering.term, t)::in_gathering.common_data.original_subst;
-                Constraint_system.original_names = in_gathering.common_data.original_names;
-              }
-            in
-            let csys_2 = Constraint_system.prepare_for_solving_procedure_with_additional_data false frame_rename csys_1 in
+          try
+            let ch = apply_recipe_on_frame r_ch conf.gen_frame in
+            let t = apply_recipe_on_frame r_t conf.gen_frame in
+            next_ground_input sem ch conf.gen_process csys.Constraint_system.original_substitution csys.Constraint_system.original_names conf.gen_trace (fun proc in_gathering ->
+              let csys_1 =
+                { csys with
+                  Constraint_system.additional_data = { conf with gen_process = proc; gen_trace = AInput(r_ch,r_t,in_gathering.position)::in_gathering.common_data.trace_transitions };
+                  Constraint_system.original_substitution = (Term.variable_of in_gathering.term, t)::in_gathering.common_data.original_subst;
+                  Constraint_system.original_names = in_gathering.common_data.original_names;
+                }
+              in
+              let csys_2 = Constraint_system.prepare_for_solving_procedure_with_additional_data false frame_rename csys_1 in
 
-            if List.for_all (fun pch -> (Data_structure.IK.consequence_term csys_2.Constraint_system.knowledge csys_2.Constraint_system.incremented_knowledge csys_2.Constraint_system.deduction_facts pch) = None) in_gathering.private_channels
-            then sim_csys_list_ref := csys_2 :: !sim_csys_list_ref
-          )
+              if List.for_all (fun pch -> (Data_structure.IK.consequence_term csys_2.Constraint_system.knowledge csys_2.Constraint_system.incremented_knowledge csys_2.Constraint_system.deduction_facts pch) = None) in_gathering.private_channels
+              then sim_csys_list_ref := csys_2 :: !sim_csys_list_ref
+            )
+          with Invalid_transition (Recipe_not_message _) -> ()
         )
       ) sim_csys_list;
 
@@ -1043,22 +1058,23 @@ let rec apply_attack_trace sem size_frame att_assoc att_trace att_csys sim_csys_
           List.iter (fun (x,t) -> Variable.link_term x t) csys.Constraint_system.original_substitution;
           List.iter (fun (x,n) -> Variable.link_term x (Name n)) csys.Constraint_system.original_names;
 
-          let ch = apply_recipe_on_frame r_ch conf.gen_frame in
+          try
+            let ch = apply_recipe_on_frame r_ch conf.gen_frame in
+            next_ground_eavesdrop ch conf.gen_process csys.Constraint_system.original_substitution csys.Constraint_system.original_names conf.gen_trace (fun proc eav_gathering ->
+              let csys_1 = Constraint_system.add_axiom csys axiom eav_gathering.eav_term in
+              let csys_2 =
+                { csys_1 with
+                  Constraint_system.additional_data = { gen_process = proc; gen_frame = conf.gen_frame @ [eav_gathering.eav_term]; gen_trace = AEaves(r_ch,eav_gathering.eav_position_out,eav_gathering.eav_position_in)::eav_gathering.eav_common_data.trace_transitions };
+                  Constraint_system.original_substitution = eav_gathering.eav_common_data.original_subst;
+                  Constraint_system.original_names = eav_gathering.eav_common_data.original_names
+                }
+              in
+              let csys_3 = Constraint_system.prepare_for_solving_procedure_with_additional_data true frame_rename csys_2 in
 
-          next_ground_eavesdrop ch conf.gen_process csys.Constraint_system.original_substitution csys.Constraint_system.original_names conf.gen_trace (fun proc eav_gathering ->
-            let csys_1 = Constraint_system.add_axiom csys axiom eav_gathering.eav_term in
-            let csys_2 =
-              { csys_1 with
-                Constraint_system.additional_data = { gen_process = proc; gen_frame = conf.gen_frame @ [eav_gathering.eav_term]; gen_trace = AEaves(r_ch,eav_gathering.eav_position_out,eav_gathering.eav_position_in)::eav_gathering.eav_common_data.trace_transitions };
-                Constraint_system.original_substitution = eav_gathering.eav_common_data.original_subst;
-                Constraint_system.original_names = eav_gathering.eav_common_data.original_names
-              }
-            in
-            let csys_3 = Constraint_system.prepare_for_solving_procedure_with_additional_data true frame_rename csys_2 in
-
-            if List.for_all (fun pch -> (Data_structure.IK.consequence_term csys_3.Constraint_system.knowledge csys_3.Constraint_system.incremented_knowledge csys_3.Constraint_system.deduction_facts pch) = None) eav_gathering.eav_private_channels
-            then sim_csys_list_ref := csys_3 :: !sim_csys_list_ref
-          )
+              if List.for_all (fun pch -> (Data_structure.IK.consequence_term csys_3.Constraint_system.knowledge csys_3.Constraint_system.incremented_knowledge csys_3.Constraint_system.deduction_facts pch) = None) eav_gathering.eav_private_channels
+              then sim_csys_list_ref := csys_3 :: !sim_csys_list_ref
+            )
+          with Invalid_transition (Recipe_not_message _) -> ()
         )
       ) sim_csys_list;
 

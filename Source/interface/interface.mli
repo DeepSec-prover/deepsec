@@ -36,6 +36,18 @@ val attack_simulator_apply_next_step :
   semantics -> int -> term list -> json_transition list -> simulated_state -> json_transition ->
   simulated_state list * json_transition list
 
+type error_transition =
+  | Position_not_found
+  | Term_not_message of term
+  | Recipe_not_message of recipe
+  | Axiom_out_of_bound of int
+  | Channel_not_equal of term * term
+  | Pattern_not_unifiable of json_pattern * term
+  | Channel_deducible of term
+  | Too_much_unfold of int
+
+exception Invalid_transition of error_transition
+
 val find_equivalent_trace : semantics -> full_association -> json_process -> json_transition list -> json_process -> json_transition list
 
 type attacked_state =
