@@ -735,7 +735,7 @@ let of_output_command = function
       JObject [ "command", JString "query_progression"; "round", JInt round; label,obj; "file", JString json ]
   | Query_canceled file -> JObject [ "command", JString "query_ended"; "file", JString file ]
   | Run_canceled file -> JObject [ "command", JString "run_ended"; "file", JString file ]
-  | Batch_canceled -> JObject [ "command", JString "batch_ended"]
+  | Batch_canceled file -> JObject [ "command", JString "batch_ended"; "file", JString file ]
   (* Simulator: Display_of_traces *)
   | DTCurrent_step (assoc,conf,step) ->
       JObject [
@@ -867,7 +867,7 @@ let print_output_command = function
       end
   | Query_canceled _
   | Run_canceled _ -> Config.internal_error "[print_output_command] Should not occur"
-  | Batch_canceled -> Printf.printf "\n%s\n" (coloured_terminal_text Red [Bold] "Verification canceled !")
+  | Batch_canceled _ -> Printf.printf "\n%s\n" (coloured_terminal_text Red [Bold] "Verification canceled !")
   (* Simulator: Display_of_traces *)
   | DTCurrent_step _
   (* Simulator: Display_of_traces *)

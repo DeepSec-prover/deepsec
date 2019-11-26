@@ -389,7 +389,7 @@ let cancel_batch () =
     List.iter (fun query -> write_query { query with q_status = QCanceled; q_end_time = Some end_time }) qlist
   ) !computation_status.remaining_runs;
   Config.log (fun () -> "[execution_manager.ml >> Cancel_batch] Send Batch canceled command\n");
-  Display_ui.send_output_command Batch_canceled;
+  Display_ui.send_output_command (Batch_canceled !computation_status.batch.name_batch);
   send_exit ()
 
 exception Current_canceled

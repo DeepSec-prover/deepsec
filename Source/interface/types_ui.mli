@@ -262,7 +262,7 @@ type output_command =
   (* Exit *)
   | Run_canceled of string
   | Query_canceled of string
-  | Batch_canceled
+  | Batch_canceled of string
   (* Progression *)
   | Progression of int (* Index of query *) * int (* execution time *) * query_progression * string (* json_file *)
   (* Simulator: Display_of_traces *)
