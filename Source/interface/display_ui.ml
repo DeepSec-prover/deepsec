@@ -689,13 +689,6 @@ let of_status_static_equivalence assoc = function
 
 (* Output commands *)
 
-let of_run_batch_status_for_command = function
-  | RBInternal_error _ -> JString "internal_error"
-  | RBCompleted -> JString "completed"
-  | RBIn_progress -> JString "in_progress"
-  | RBCanceled -> JString "canceled"
-  | RBWaiting -> JString "waiting"
-
 let of_output_command = function
   (* Errors *)
   | Init_internal_error (err,b) -> JObject [ "command", JString "init_error"; "is_internal", JBool b; "error_msg", JString (String.escaped err) ]
@@ -707,10 +700,9 @@ let of_output_command = function
           JObject [ "error_msg", JString err_msg; "file", JString file; "warnings", JList (List.map of_string warnings)]
         ) err_list)
       ]
-  | Query_internal_error (err_msg,file) ->
+  | Query_internal_error (_,file) ->
       JObject [
         "command", JString "query_internal_error";
-        "error_msg", JString (String.escaped err_msg);
         "file", JString file
       ]
   (* Started *)
@@ -723,19 +715,11 @@ let of_output_command = function
   | Run_started(str,_) -> JObject [ "command", JString "run_started"; "file", JString str ]
   | Query_started(str,_) -> JObject [ "command", JString "query_started"; "file", JString str ]
   (* Ended *)
-  | Batch_ended (str,status) ->
-      JObject [ "command", JString "batch_ended"; "file", JString str ; "status", (of_run_batch_status_for_command status)  ]
-  | Run_ended(str,status) ->
-      JObject [ "command", JString "run_ended"; "file", JString str ; "status", (of_run_batch_status_for_command status) ]
-  | Query_ended(str,status,_,_,_) ->
-      let status_str = match status with
-        | QInternal_error _ -> JString "internal_error"
-        | QCompleted _ -> JString "completed"
-        | QIn_progress -> JString "in_progress"
-        | QCanceled -> JString "canceled"
-        | QWaiting -> JString "waiting"
-      in
-      JObject [ "command", JString "query_ended"; "file", JString str ; "status", status_str]
+  | Batch_ended (str,_) ->
+      JObject [ "command", JString "batch_ended"; "file", JString str ]
+  | Run_ended(str,_) ->
+      JObject [ "command", JString "run_ended"; "file", JString str ]
+  | Query_ended(str,_,_,_,_) -> JObject [ "command", JString "query_ended"; "file", JString str ]
   | Progression(_,_,PNot_defined,_) -> Config.internal_error "[display_ui.ml >> of_output_command] Unexpected progression"
   | Progression(_,_,PSingleCore prog,json) ->
       let (label,obj) = match prog with
@@ -749,9 +733,9 @@ let of_output_command = function
         | PGeneration(jobs,min_jobs) -> ("generation", JObject [ "minimum_jobs", JInt min_jobs; "jobs_created", JInt jobs ])
       in
       JObject [ "command", JString "query_progression"; "round", JInt round; label,obj; "file", JString json ]
-  | Query_canceled file -> JObject [ "command", JString "query_canceled"; "file", JString file ]
-  | Run_canceled file -> JObject [ "command", JString "run_canceled"; "file", JString file ]
-  | Batch_canceled -> JObject [ "command", JString "batch_canceled"]
+  | Query_canceled file -> JObject [ "command", JString "query_ended"; "file", JString file ]
+  | Run_canceled file -> JObject [ "command", JString "run_ended"; "file", JString file ]
+  | Batch_canceled -> JObject [ "command", JString "batch_ended"]
   (* Simulator: Display_of_traces *)
   | DTCurrent_step (assoc,conf,step) ->
       JObject [
