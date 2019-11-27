@@ -32,10 +32,7 @@ let _ =
 
             (* Batch started *)
             Execution_manager.start_batch input_files batch_options;
-
-            Execution_manager.catch_batch_internal_error (fun () ->
-              Execution_manager.execute_batch ()
-            )
+            Execution_manager.execute_batch ()
           )
       | Display_trace(json_file,id) -> Simulator.display_trace json_file id
       | Attack_simulator json_file -> Simulator.attack_simulator json_file

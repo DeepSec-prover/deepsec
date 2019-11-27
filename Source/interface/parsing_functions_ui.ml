@@ -97,14 +97,6 @@ let member_option f label = function
       end
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> member_opt] Expecting a json object."
 
-let iter_member_option f label = function
-  | JObject l ->
-      begin match List.assoc_opt label l with
-        | Some a -> f a
-        | None -> ()
-      end
-  | _ -> Config.internal_error "[parsing_functions_ui.ml >> member_opt] Expecting a json object."
-
 (*** Basic Convertor function ***)
 
 let int_of = function
@@ -638,38 +630,6 @@ let query_result_of file_name json =
   },
   assoc
 
-let run_batch_status_of json = match string_of (member "status" json) with
-  | "waiting" -> RBWaiting
-  | "in_progress" -> RBIn_progress
-  | "canceled" -> RBCanceled
-  | "completed" -> RBCompleted
-  | "internal_error" ->
-      let err = string_of (member "error_msg" json) in
-      RBInternal_error err
-  | _ -> Config.internal_error "[parsing_functions_ui.ml >> run_batch_status_of] Unexpected status."
-
-(* We assume that we do not parse run that contain query result as json data. *)
-let run_result_of file_name json =
-  let batch_file = string_of (member "batch_file" json) in
-  let status = run_batch_status_of json in
-  let start_time = member_option int_of "start_time" json in
-  let end_time = member_option int_of "end_time" json in
-  let input_file = member_option string_of "input_file" json in
-  let query_result_files = member_option (list_of string_of) "query_files" json in
-  let warnings = list_of string_of (member "warnings" json) in
-  {
-    name_run = file_name;
-    r_batch_file = batch_file;
-    r_status = status;
-    input_file = input_file;
-    input_str = None;
-    r_start_time = start_time;
-    r_end_time = end_time;
-    query_result_files = query_result_files;
-    query_results = None;
-    warnings = warnings
-  }
-
 let batch_options_of json =
   let options = ref [] in
 
@@ -695,44 +655,6 @@ let batch_options_of json =
   check_member (fun json' -> Title (String.escaped (string_of json'))) "title";
 
   !options
-
-(* We assume that we do not parse bacth that contain run result as json data. *)
-let batch_result_of file_name json =
-  let ocaml_version = string_of (member "ocaml_version" json) in
-  let version = string_of (member "deepsec_version" json) in
-  let git_branch = string_of (member "git_branch" json) in
-  let git_hash = string_of (member "git_hash" json) in
-  let run_result_files = member_option (list_of string_of) "run_files" json in
-  let import_date = member_option int_of "import_date" json in
-  let start_time = member_option int_of "start_time" json in
-  let end_time = member_option int_of "end_time" json in
-  let command_options = batch_options_of (member "command_options" json) in
-  let status = run_batch_status_of json in
-
-  {
-    name_batch = file_name;
-    b_status = status;
-    b_start_time = start_time;
-    b_end_time = end_time;
-    deepsec_version = version;
-    git_branch = git_branch;
-    git_hash = git_hash;
-    run_result_files = run_result_files;
-    run_results = None;
-    import_date = import_date;
-    command_options = command_options;
-    command_options_cmp = [];
-    ocaml_version = ocaml_version;
-    debug = Config.debug_activated
-  }
-
-(*** Simulator ***)
-
-let detail_of json = match string_of (member "detail" json) with
-  | "standard" -> DTStandard
-  | "io_only" -> DTIO_only
-  | "full" -> DTFull
-  | _ -> Config.internal_error "[parsing_functions_ui.ml >> detail_of] Unexpected argument."
 
 (*** Commands ***)
 
