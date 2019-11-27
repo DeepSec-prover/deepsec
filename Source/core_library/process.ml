@@ -196,9 +196,9 @@ let rec replace_name_in_pattern = function
 let rec replace_name_in_process = function
   | Nil -> Nil
   | Output(ch,t,p,pos) ->
-      Output(ch,replace_name_in_term t,replace_name_in_process p,pos)
+      Output(replace_name_in_term ch,replace_name_in_term t,replace_name_in_process p,pos)
   | Input(ch,x,p,pos) ->
-      Input(ch,x,replace_name_in_process p,pos)
+      Input(replace_name_in_term ch,x,replace_name_in_process p,pos)
   | IfThenElse(t1,t2,p1,p2,pos) ->
       IfThenElse(replace_name_in_term t1,replace_name_in_term t2,replace_name_in_process p1, replace_name_in_process p2,pos)
   | Let(pat,t,p1,p2,pos) ->
