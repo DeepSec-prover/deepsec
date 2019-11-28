@@ -173,7 +173,11 @@ let parse_dps_file batch_dir input_file =
   Parser_functions.reset_parser ();
 
   if not !Config.running_api && not !Config.quiet
-  then Printf.printf "Loading file %s...\n" input_file;
+  then
+    begin
+      Printf.printf "Loading file %s...\n" input_file;
+      flush stdout
+    end;
 
   (* We parse the file *)
   let (status_parse, warnings) = parse_file input_file in
@@ -365,32 +369,41 @@ let cancel_batch () =
   (* We put the status of the batch and current run to canceled as well as to remaing ones. *)
   let end_time = int_of_float (Unix.time ()) in
   let batch = { !computation_status.batch with b_status = RBCanceled; b_end_time = Some end_time } in
-  write_batch batch;
-  begin match !computation_status.cur_run with
-    | None -> ()
-    | Some run_comp ->
-        let run = { run_comp.ongoing_run with r_status = RBCanceled; r_end_time = Some end_time } in
-        write_run run;
-        List.iter (fun query -> write_query { query with q_status = QCanceled; q_end_time = Some end_time }) run_comp.remaining_queries;
-        match run_comp.cur_query with
-          | None -> ()
-          | Some (query_comp,in_ch,out_ch) ->
-              Unix.sleep 1;
-              Config.log (fun () -> "[execution_manager.ml >> Cancel_batch] Send die command\n");
-              Distribution.WLM.send_input_command out_ch Distribution.WLM.Die;
-              Config.log (fun () -> "[execution_manager.ml >> Cancel_batch] Wait for it to die\n");
-              ignore (Unix.close_process (in_ch,out_ch));
-              flush stdout;
-              write_query { query_comp with q_status = QCanceled; q_end_time = Some end_time }
-  end;
-  List.iter (fun (run,_,qlist) ->
-    let run' = { run with r_status = RBCanceled; r_end_time = Some end_time } in
-    write_run run';
-    List.iter (fun query -> write_query { query with q_status = QCanceled; q_end_time = Some end_time }) qlist
-  ) !computation_status.remaining_runs;
-  Config.log (fun () -> "[execution_manager.ml >> Cancel_batch] Send Batch canceled command\n");
-  Display_ui.send_output_command (Batch_canceled !computation_status.batch.name_batch);
-  send_exit ()
+  if batch.name_batch = ""
+  then
+    begin
+      Display_ui.send_output_command (Batch_canceled !computation_status.batch.name_batch);
+      send_exit ()
+    end
+  else
+    begin
+      write_batch batch;
+      begin match !computation_status.cur_run with
+        | None -> ()
+        | Some run_comp ->
+            let run = { run_comp.ongoing_run with r_status = RBCanceled; r_end_time = Some end_time } in
+            write_run run;
+            List.iter (fun query -> write_query { query with q_status = QCanceled; q_end_time = Some end_time }) run_comp.remaining_queries;
+            match run_comp.cur_query with
+              | None -> ()
+              | Some (query_comp,in_ch,out_ch) ->
+                  Unix.sleep 1;
+                  Config.log (fun () -> "[execution_manager.ml >> Cancel_batch] Send die command\n");
+                  Distribution.WLM.send_input_command out_ch Distribution.WLM.Die;
+                  Config.log (fun () -> "[execution_manager.ml >> Cancel_batch] Wait for it to die\n");
+                  ignore (Unix.close_process (in_ch,out_ch));
+                  flush stdout;
+                  write_query { query_comp with q_status = QCanceled; q_end_time = Some end_time }
+      end;
+      List.iter (fun (run,_,qlist) ->
+        let run' = { run with r_status = RBCanceled; r_end_time = Some end_time } in
+        write_run run';
+        List.iter (fun query -> write_query { query with q_status = QCanceled; q_end_time = Some end_time }) qlist
+      ) !computation_status.remaining_runs;
+      Config.log (fun () -> "[execution_manager.ml >> Cancel_batch] Send Batch canceled command\n");
+      Display_ui.send_output_command (Batch_canceled !computation_status.batch.name_batch);
+      send_exit ()
+    end
 
 exception Current_canceled
 

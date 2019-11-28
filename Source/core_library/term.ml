@@ -464,7 +464,8 @@ module Symbol = struct
     number_of_destructors := 0;
     number_of_attacker_name := 0;
     HashtblSymb.reset all_projection;
-    Hashtbl.reset special_constructor
+    Hashtbl.reset special_constructor;
+    Hashtbl.reset attacker_names
 
   type setting =
     {

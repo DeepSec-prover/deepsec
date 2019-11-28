@@ -521,6 +521,7 @@ let parse_one_declaration = function
   | ExtendedProcess(id,var_list,proc) -> environment := parse_process_declaration !environment id var_list proc
 
 let reset_parser () =
+  already_chosen_semantics := false;
   environment := (Env.empty:env_elt Env.t);
   Config.local_semantics := None;
   query_list := [];
