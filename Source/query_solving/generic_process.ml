@@ -717,8 +717,6 @@ let rec deducibility_status = function
   | _ -> Unknown
 
 type communication_type =
-  | SpecificPublic of symbol
-  | SpecificPublicName of variable
   | SpecificPrivate of variable
   | PublicComm
   | PrivateComm
@@ -729,7 +727,7 @@ let is_comm_type_private = function
   | _ -> false
 
 let is_comm_type_public = function
-  | PublicComm | SpecificPublic _ -> true
+  | PublicComm  -> true
   | _ -> false
 
 let get_intern_comm_type ch_data = match ch_data.channel_type with
@@ -742,8 +740,6 @@ let authorised_communication type_comm channel_occ = match type_comm, channel_oc
   | _, NoChannel -> false
   | PublicComm, Constant(symb_list,name_list) ->
       symb_list <> [] || List.exists (function { link = TLink (Name { deducible_n = Some _; _}); _} -> true | _ -> false) name_list
-  | SpecificPublic f, Constant(symb_list,_) -> List.memq f symb_list
-  | SpecificPublicName v, Constant(_,name_list) -> List.memq v name_list
   | PrivateComm, Constant(_,name_list) -> name_list <> []
   | SpecificPrivate v, Constant(_,name_list) -> List.memq v name_list
 
