@@ -1319,6 +1319,11 @@ module MGS = struct
                 Some new_csys
           else None
 
+  let rec get_linked_variable = function
+    | Var { link = TLink t; _} -> get_linked_variable t
+    | Var x -> x
+    | _ -> Config.internal_error "[constraint_system.ml >> MGS.get_linked_variable] The term should be a variable."
+
   let apply_mgs_on_different_solved_csys csys mgs_fresh_vars =
     Config.debug (fun () ->
       if List.exists (function { link_r = l; _} when l <> RNoLink -> true | _ -> false) mgs_fresh_vars
@@ -1343,10 +1348,7 @@ module MGS = struct
         Some (List.fold_left (fun (acc_eq,eq_uni) bfact -> match bfact.bf_var.link_r with
           | RLink r ->
               let (eq_uni',t,_) = K.consequence_uniform_recipe csys.knowledge eq_uni r in
-              let x_bfact = match bfact.bf_term with
-                | Var x -> x
-                | _ -> Config.internal_error "[constraint_system.ml >> MGS.apply_mgs_on_different_solved_csys] The term should be a variable."
-              in
+              let x_bfact = get_linked_variable bfact.bf_term in
               (x_bfact,t)::acc_eq , eq_uni'
           | _ -> Config.internal_error "[constraint_system.ml >> MGS.apply_mgs_on_different_solved_csys] The variables should be linked with a recipe."
         ) ([],csys.eq_uniformity) removed_bfacts)
@@ -1662,7 +1664,8 @@ module Rule = struct
   let sat_equality_formula ?(universal=true) (f_continuation_pos:'a set -> (unit -> unit) -> unit) f_continuation_neg csys_set f_next =
     Config.debug (fun () ->
       Config.print_in_log (Printf.sprintf "- Sat equality formula : Nb csys no_formula = %d, Nb csys solved = %d, Nb csys unsolved = %d\n"
-        (List.length csys_set.satf_no_formula) (List.length csys_set.satf_solved) (List.length csys_set.satf_unsolved));
+        (List.length csys_set.satf_no_formula) (List.length csys_set.satf_solved) (List.length csys_set.satf_unsolved)
+      );
       Set.debug_check_structure "[Sat equality_formula]" { set = csys_set.satf_no_formula @ csys_set.satf_solved @ csys_set.satf_unsolved; eq_recipe = csys_set.satf_eq_recipe };
 
     );
@@ -1706,7 +1709,6 @@ module Rule = struct
                     | Some csys' -> csys' :: set
                   ) []
                 in
-
                 let new_no_eq_csys = f_apply no_eq_csys_1 in
                 let new_eq_fact_csys = new_csys_2::(f_apply eq_fact_csys_1) in
                 let new_eq_form_csys = f_apply eq_form_csys_1 in

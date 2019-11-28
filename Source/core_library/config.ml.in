@@ -40,7 +40,7 @@ let debug =
   then fun f -> f ()
   else fun _ -> ()
 
-let display_in_log = false
+let display_in_log = true
 
 let print_in_log ?(always=false) s =
   if display_in_log || always
