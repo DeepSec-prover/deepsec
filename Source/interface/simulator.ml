@@ -38,7 +38,7 @@ let display_trace json_file id =
         let conf_list = List.map (fun (csys,assoc) -> csys.Constraint_system.additional_data,assoc) conf_csys_list in
 
         let (first_conf,first_assoc) = List.nth conf_list (id+1) in
-        Display_ui.send_output_command (SCurrent_step_displayed(first_assoc,first_conf,id,None));
+        Display_ui.send_output_command (SCurrent_step_displayed(first_assoc,first_conf,id,Some attack_trace.id_proc));
 
         begin try
           while true do
@@ -51,7 +51,7 @@ let display_trace json_file id =
                   Config.log (fun () -> Printf.sprintf "Go to Step %d\n" n);
                   let (conf,assoc) = List.nth conf_list (n+1) in
                   Config.log (fun () -> Printf.sprintf "Send command\n");
-                  Display_ui.send_output_command (SCurrent_step_displayed(assoc,conf,n,None))
+                  Display_ui.send_output_command (SCurrent_step_displayed(assoc,conf,n,Some attack_trace.id_proc))
               | Die -> raise Exit
               | _ -> Display_ui.send_output_command (Init_internal_error ("Unexpected input command.",true))
           done
