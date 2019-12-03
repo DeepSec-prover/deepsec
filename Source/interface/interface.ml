@@ -1296,7 +1296,6 @@ let find_prev_transitions_from_transtion trans_list trans =
 
   List.fold_right (fun pos acc -> (JATau pos) :: acc) pos_list [trans]
 
-
 let equivalence_simulator_apply_next_step sem att_state att_transition =
 
   let rec apply_all_transitions acc_att_csys acc_att_assoc acc_att_trace = function

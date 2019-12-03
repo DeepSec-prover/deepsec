@@ -627,9 +627,10 @@ let of_batch_result batch_res =
 
 (* Simulator *)
 
+(** TODO : Change w.r.t. doc *)
 let of_available_transition assoc = function
-  | AVDirect r -> JObject [ "type", JString "direct"; "recipe", of_recipe assoc r]
-  | AVEavesdrop r -> JObject [ "type", JString "eavesdrop"; "recipe", of_recipe assoc r]
+  | AVDirect r -> JObject [ "type", JString "direct"; "recipe_channel", of_recipe assoc r]
+  | AVEavesdrop r -> JObject [ "type", JString "eavesdrop"; "recipe_channel", of_recipe assoc r]
   | AVComm -> JObject [ "type", JString "comm" ]
 
 let of_available_action assoc = function
@@ -663,7 +664,7 @@ let of_available_action assoc = function
       ]
   | AV_tau pos ->
       JObject [
-        "type", JString "new";
+        "type", JString "tau";
         "position", of_position pos
       ]
 
