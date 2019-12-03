@@ -763,7 +763,7 @@ let find_next_possible_transition semantics forced_transition conf_csys =
 
   filter_action ch_default !actions, filter_action ch_all !actions_all
 
-let find_prev_transitions trans_list trans =
+let find_prev_transitions attacked_trace attacked_id_transition trans_list trans =
 
   let rec find_out_trans pos = function
     | [] -> raise Not_found
@@ -802,20 +802,44 @@ let find_prev_transitions trans_list trans =
         merge_tau_actions pos_list1' q2
   in
 
-  let pos_list = match trans with
-    | JAOutput(_,pos) -> find_out_trans pos trans_list
-    | JAInput(_,_,pos) -> find_in_trans pos trans_list
-    | JAEaves(_,pos_out,pos_in)
-    | JAComm(pos_out,pos_in) ->
-        let out_tau = find_out_trans pos_out trans_list in
-        let in_tau = find_in_trans pos_in trans_list in
-        merge_tau_actions out_tau in_tau
-    | JABang(_,pos) -> find_bang_trans pos trans_list
-    | JAChoice(pos,_) -> find_choice_trans pos trans_list
-    | JATau _ -> []
+  let rec find_next_output pos k = function
+    | [] -> Config.internal_error "[interface.ml >> find_prev_transitions] List should not be empty"
+    | _::q when k <= attacked_id_transition -> find_next_output pos (k+1) q
+    | JAOutput(r,_)::_ -> JAOutput(r,pos)
+    | _::q -> find_next_output pos (k+1) q
   in
 
-  List.fold_right (fun pos acc -> (JATau pos) :: acc) pos_list [trans]
+  let rec find_next_input pos k = function
+    | [] -> Config.internal_error "[interface.ml >> find_prev_transitions] List should not be empty"
+    | _::q when k <= attacked_id_transition -> find_next_input pos (k+1) q
+    | JAInput(r_ch,r,_)::_ -> JAInput(r_ch,r,pos)
+    | _::q -> find_next_input pos (k+1) q
+  in
+
+  let rec find_next_eavesdrop pos_out pos_in k = function
+    | [] -> Config.internal_error "[interface.ml >> find_prev_transitions] List should not be empty"
+    | _::q when k <= attacked_id_transition -> find_next_eavesdrop pos_out pos_in (k+1) q
+    | JAEaves(r,_,_)::_ -> JAEaves(r,pos_out,pos_in)
+    | _::q -> find_next_eavesdrop pos_out pos_in (k+1) q
+  in
+
+  let (pos_list,transition) = match trans with
+    | JSAOutput(_,pos) -> find_out_trans pos trans_list, find_next_output pos 0 attacked_trace
+    | JSAInput(_,_,pos) -> find_in_trans pos trans_list, find_next_input pos 0 attacked_trace
+    | JSAEaves(_,pos_out,pos_in) ->
+        let out_tau = find_out_trans pos_out trans_list in
+        let in_tau = find_in_trans pos_in trans_list in
+        merge_tau_actions out_tau in_tau, find_next_eavesdrop pos_out pos_in 0 attacked_trace
+    | JSAComm(pos_out,pos_in) ->
+        let out_tau = find_out_trans pos_out trans_list in
+        let in_tau = find_in_trans pos_in trans_list in
+        merge_tau_actions out_tau in_tau, JAComm(pos_out,pos_in)
+    | JSABang(i,pos) -> find_bang_trans pos trans_list, JABang(i,pos)
+    | JSAChoice(pos,b) -> find_choice_trans pos trans_list, JAChoice(pos,b)
+    | JSATau pos -> [], JATau pos
+  in
+
+  List.fold_right (fun pos acc -> (JATau pos) :: acc) pos_list [transition], transition
 
 let initial_attack_simulator_state semantics attacked_trace assoc_simulated process_simulated =
   let init_conf_simulated = { size_frame = 0; frame = []; process = process_simulated } in
@@ -845,7 +869,7 @@ let initial_attack_simulator_state semantics attacked_trace assoc_simulated proc
     status_equivalence = Static_equivalent
   }
 
-let attack_simulator_apply_next_step semantics id_attacked_proc full_attacked_frame attacked_trace simulated_state transition =
+let attack_simulator_apply_next_step_user semantics id_attacked_proc full_attacked_frame attacked_trace simulated_state transition =
 
   let equiv_status_of_message sim_csys r =
     try
@@ -868,17 +892,17 @@ let attack_simulator_apply_next_step semantics id_attacked_proc full_attacked_fr
   in
 
   (* We first search the corresponding action in the simulated state. *)
-  let list_transitions =
+  let list_transitions, real_transition =
     try
-      find_prev_transitions simulated_state.all_available_actions transition
+      find_prev_transitions attacked_trace simulated_state.attacked_id_transition simulated_state.all_available_actions transition
     with Not_found ->
       try
-        find_prev_transitions simulated_state.default_available_actions transition
+        find_prev_transitions attacked_trace simulated_state.attacked_id_transition simulated_state.default_available_actions transition
       with Not_found -> Config.internal_error "[interface.ml >> apply_next_step] The transition should be either within all or default."
   in
 
   let attacked_id_transition = match transition with
-    | JAOutput _ | JAEaves _ | JAInput _ ->
+    | JSAOutput _ | JSAEaves _ | JSAInput _ ->
         let rec explore k = function
           | [] -> Config.internal_error "[interface.ml >> attacker_simulator_apply_next_step] We should find an IO action in the attacked trace."
           | _ :: q when k <= simulated_state.attacked_id_transition -> explore (k+1) q
@@ -899,8 +923,8 @@ let attack_simulator_apply_next_step semantics id_attacked_proc full_attacked_fr
     explore 0 attacked_trace
   in
 
-  let tau_forced_transition = match transition with
-    | JAOutput _ | JAEaves _ | JAInput _ -> Transition transition
+  let tau_forced_transition = match real_transition with
+    | JAOutput _ | JAEaves _ | JAInput _ -> Transition real_transition
     | _ -> forced_transition
   in
 
@@ -917,7 +941,7 @@ let attack_simulator_apply_next_step semantics id_attacked_proc full_attacked_fr
               Constraint_system.add_axiom simulated_state.attacked_csys size_frame term
           | _ -> simulated_state.attacked_csys
         in
-        let (attacked_csys2,simulated_csys2,status_equiv) = match transition with
+        let (attacked_csys2,simulated_csys2,status_equiv) = match real_transition with
           | JAOutput _ | JAEaves _ ->
               begin match Constraint_system.Rule_ground.apply_rules_for_static_equivalence attacked_csys1 simulated_csys1 with
                 | Constraint_system.Rule_ground.Static_equivalent(att_csys,sim_csys) -> att_csys,sim_csys,Static_equivalent
@@ -955,6 +979,84 @@ let attack_simulator_apply_next_step semantics id_attacked_proc full_attacked_fr
   in
 
   apply_all_transitions simulated_state.simulated_csys simulated_state.simulated_assoc list_transitions, list_transitions
+
+let attack_simulator_apply_next_steps semantics id_attacked_proc full_attacked_frame attacked_trace simulated_state real_transition =
+  let equiv_status_of_message sim_csys r =
+    try
+      let t = apply_recipe_on_frame r full_attacked_frame in
+      Witness_message (r,t,id_attacked_proc)
+    with Invalid_transition _ ->
+      let t = apply_recipe_on_conf r sim_csys.Constraint_system.additional_data in
+      Witness_message (r,t,if id_attacked_proc = 1 then 2 else 1)
+  in
+
+  let equiv_status_of_equality sim_csys r1 r2 =
+    let t1_att = apply_recipe_on_frame r1 full_attacked_frame in
+    let t2_att = apply_recipe_on_frame r2 full_attacked_frame in
+    let t1_sim = apply_recipe_on_conf r1 sim_csys.Constraint_system.additional_data in
+    let t2_sim = apply_recipe_on_conf r2 sim_csys.Constraint_system.additional_data in
+
+    if Term.is_equal t1_att t2_att
+    then Witness_equality(r1,r2,t1_att,t1_sim,t2_sim,id_attacked_proc)
+    else Witness_equality(r1,r2,t1_sim,t1_att,t2_att,if id_attacked_proc = 1 then 2 else 1)
+  in
+
+  (* We first search the corresponding action in the simulated state. *)
+
+  let attacked_id_transition = match real_transition with
+    | JAOutput _ | JAEaves _ | JAInput _ ->
+        let rec explore k = function
+          | [] -> Config.internal_error "[interface.ml >> attacker_simulator_apply_next_step] We should find an IO action in the attacked trace."
+          | _ :: q when k <= simulated_state.attacked_id_transition -> explore (k+1) q
+          | (JAOutput _ | JAEaves _ | JAInput _) :: _ -> k
+          | _ :: q -> explore (k+1) q
+        in
+        explore 0 attacked_trace
+    | _ -> simulated_state.attacked_id_transition
+  in
+
+  let forced_transition =
+    let rec explore k = function
+      | [] -> Only_tau_transition
+      | _ :: q when k <= attacked_id_transition -> explore (k+1) q
+      | (JAOutput _ | JAEaves _ | JAInput _) as trans :: _ -> Transition trans
+      | _ :: q -> explore (k+1) q
+    in
+    explore 0 attacked_trace
+  in
+
+  (* The main transition *)
+  let (simulated_csys1,assoc1) = apply_transition semantics false simulated_state.simulated_assoc simulated_state.simulated_csys real_transition in
+
+  let attacked_csys1 = match real_transition with
+    | JAOutput _ | JAEaves _ ->
+        let size_frame = simulated_csys1.Constraint_system.additional_data.size_frame in
+        let term = List.nth full_attacked_frame (size_frame-1) in
+        Constraint_system.add_axiom simulated_state.attacked_csys size_frame term
+    | _ -> simulated_state.attacked_csys
+  in
+  let (attacked_csys2,simulated_csys2,status_equiv) = match real_transition with
+    | JAOutput _ | JAEaves _ ->
+        begin match Constraint_system.Rule_ground.apply_rules_for_static_equivalence attacked_csys1 simulated_csys1 with
+          | Constraint_system.Rule_ground.Static_equivalent(att_csys,sim_csys) -> att_csys,sim_csys,Static_equivalent
+          | Constraint_system.Rule_ground.Witness_message r -> attacked_csys1, simulated_csys1, equiv_status_of_message simulated_csys1 r
+          | Constraint_system.Rule_ground.Witness_equality(r1,r2) -> attacked_csys1, simulated_csys1, equiv_status_of_equality simulated_csys1 r1 r2
+        end
+    | _ -> attacked_csys1, simulated_csys1, Static_equivalent
+  in
+  let (default_trans,all_trans) = find_next_possible_transition semantics forced_transition simulated_csys2 in
+  let state =
+    {
+      attacked_id_transition = attacked_id_transition;
+      attacked_csys = attacked_csys2;
+      simulated_csys = simulated_csys2;
+      simulated_assoc = assoc1;
+      default_available_actions = default_trans;
+      all_available_actions = all_trans;
+      status_equivalence = status_equiv
+    }
+  in
+  state
 
 (*** Find equivalent trace ***)
 
@@ -1137,6 +1239,64 @@ let initial_equivalence_simulator_state sem att_assoc att_process =
     att_trace = []
   }
 
+let find_prev_transitions_from_transtion trans_list trans =
+
+  let rec find_out_trans pos = function
+    | [] -> raise Not_found
+    | AV_output(pos',_,tau_trans,_) :: _ when pos = pos' -> tau_trans
+    | _::q -> find_out_trans pos q
+  in
+
+  let rec find_in_trans pos = function
+    | [] -> raise Not_found
+    | AV_input(pos',_,tau_trans,_) :: _ when pos = pos' -> tau_trans
+    | _::q -> find_in_trans pos q
+  in
+
+  let rec find_bang_trans pos = function
+    | [] -> raise Not_found
+    | AV_bang(pos',tau_trans) :: _ when pos = pos' -> tau_trans
+    | _::q -> find_bang_trans pos q
+  in
+
+  let rec find_choice_trans pos = function
+    | [] -> raise Not_found
+    | AV_choice(pos',tau_trans) :: _ when pos = pos' -> tau_trans
+    | _::q -> find_choice_trans pos q
+  in
+
+  let rec add_tau_actions pos = function
+    | [] -> [pos]
+    | pos' :: q when pos = pos' -> pos' :: q
+    | pos'::q -> pos'::(add_tau_actions pos q)
+  in
+
+  let rec merge_tau_actions pos_list1 = function
+    | [] -> pos_list1
+    | pos2::q2 ->
+        let pos_list1' = add_tau_actions pos2 pos_list1 in
+        merge_tau_actions pos_list1' q2
+  in
+
+  let pos_list = match trans with
+    | JAOutput(_,pos) -> find_out_trans pos trans_list
+    | JAInput(_,_,pos) -> find_in_trans pos trans_list
+    | JAEaves(_,pos_out,pos_in) ->
+        let out_tau = find_out_trans pos_out trans_list in
+        let in_tau = find_in_trans pos_in trans_list in
+        merge_tau_actions out_tau in_tau
+    | JAComm(pos_out,pos_in) ->
+        let out_tau = find_out_trans pos_out trans_list in
+        let in_tau = find_in_trans pos_in trans_list in
+        merge_tau_actions out_tau in_tau
+    | JABang(_,pos) -> find_bang_trans pos trans_list
+    | JAChoice(pos,_) -> find_choice_trans pos trans_list
+    | JATau _ -> []
+  in
+
+  List.fold_right (fun pos acc -> (JATau pos) :: acc) pos_list [trans]
+
+
 let equivalence_simulator_apply_next_step sem att_state att_transition =
 
   let rec apply_all_transitions acc_att_csys acc_att_assoc acc_att_trace = function
@@ -1161,10 +1321,10 @@ let equivalence_simulator_apply_next_step sem att_state att_transition =
   (* We first search the corresponding action in the simulated state. *)
   let list_transitions =
     try
-      find_prev_transitions att_state.att_all_available_actions att_transition
+      find_prev_transitions_from_transtion att_state.att_all_available_actions att_transition
     with Not_found ->
       try
-        find_prev_transitions att_state.att_default_available_actions att_transition
+        find_prev_transitions_from_transtion att_state.att_default_available_actions att_transition
       with Not_found -> Config.internal_error "[interface.ml >> equivalence_simulator_apply_next_step] The transition should be either within all or default."
   in
 

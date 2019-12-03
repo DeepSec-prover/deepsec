@@ -6,7 +6,7 @@ val parse_json_from_file : string -> json
 
 val parse_json_from_string : string -> json
 
-val parse_simulator_transition : int -> json_simulator_transition -> json_transition
+val parse_selected_transition : int -> json_selected_transition -> json_transition
 
 (*** Parsing json to data structure ***)
 

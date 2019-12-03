@@ -38,7 +38,7 @@ let display_trace json_file id =
         let conf_list = List.map (fun (csys,assoc) -> csys.Constraint_system.additional_data,assoc) conf_csys_list in
 
         let (first_conf,first_assoc) = List.nth conf_list (id+1) in
-        Display_ui.send_output_command (DTCurrent_step(first_assoc,first_conf,id));
+        Display_ui.send_output_command (SCurrent_step_displayed(first_assoc,first_conf,id,None));
 
         begin try
           while true do
@@ -51,7 +51,7 @@ let display_trace json_file id =
                   Config.log (fun () -> Printf.sprintf "Go to Step %d\n" n);
                   let (conf,assoc) = List.nth conf_list (n+1) in
                   Config.log (fun () -> Printf.sprintf "Send command\n");
-                  Display_ui.send_output_command (DTCurrent_step(assoc,conf,n))
+                  Display_ui.send_output_command (SCurrent_step_displayed(assoc,conf,n,None))
               | Die -> raise Exit
               | _ -> Display_ui.send_output_command (Init_internal_error ("Unexpected input command.",true))
           done
@@ -94,13 +94,13 @@ let attack_simulator json_file =
         let simulated_states = ref [Interface.initial_attack_simulator_state semantics transitions full_assoc (List.nth query_result.processes (simulated_id_proc -1))] in
 
         let get_current_step_simulated state new_trans =
-          ASCurrent_step_simulated (
+          SCurrent_step_user (
             state.Interface.simulated_assoc,
             state.Interface.simulated_csys.Constraint_system.additional_data,
             new_trans,
             state.Interface.all_available_actions,
             state.Interface.default_available_actions,
-            state.Interface.status_equivalence,
+            Some (state.Interface.status_equivalence),
             simulated_id_proc
           )
         in
@@ -118,25 +118,29 @@ let attack_simulator json_file =
                   if id_proc = attacked_id_proc
                   then
                     let (conf,assoc) = List.nth conf_list (n+1) in
-                    Display_ui.send_output_command (ASCurrent_step_attacked(assoc,conf,n,id_proc))
+                    Display_ui.send_output_command (SCurrent_step_displayed(assoc,conf,n,Some id_proc))
                   else
                     begin
                       let (state,cut_state_list) = cut_list (n+1) !simulated_states in
                       simulated_states := cut_state_list;
                       Display_ui.send_output_command (get_current_step_simulated state [])
                     end
-              | ASNext_step trans ->
+              | Next_step_user trans ->
                   let last_state = List.hd (List.rev !simulated_states) in
-                  let (new_states, new_transitions) = Interface.attack_simulator_apply_next_step semantics attacked_id_proc full_frame transitions last_state trans in
+                  let (new_states, new_transitions) = Interface.attack_simulator_apply_next_step_user semantics attacked_id_proc full_frame transitions last_state trans in
                   let new_last_state = List.hd (List.rev new_states) in
                   simulated_states := !simulated_states @ new_states;
-                  Display_ui.send_output_command (get_current_step_simulated new_last_state new_transitions);
-                  if last_state.Interface.attacked_id_transition <> new_last_state.Interface.attacked_id_transition
-                  then
-                    begin
-                      let (conf,assoc) = List.nth conf_list (new_last_state.Interface.attacked_id_transition+1) in
-                      Display_ui.send_output_command (ASCurrent_step_attacked(assoc,conf,new_last_state.Interface.attacked_id_transition,attacked_id_proc))
-                    end
+                  Display_ui.send_output_command (get_current_step_simulated new_last_state new_transitions)
+              | Next_steps trans_list ->
+                  let rec explore last_state = function
+                    | [] -> ()
+                    | trans::q ->
+                        let new_last_state = Interface.attack_simulator_apply_next_steps semantics attacked_id_proc full_frame transitions last_state trans in
+                        simulated_states := !simulated_states @ [new_last_state];
+                        explore new_last_state q
+                  in
+                  explore (List.hd (List.rev !simulated_states)) trans_list
+
               | Die -> raise Exit
               | _ -> Display_ui.send_output_command (Init_internal_error ("Unexpected input command.",true))
           done
@@ -178,12 +182,14 @@ let equivalence_simulator json_file id =
   let simulated_conf_csys_list = ref [] in
 
   let get_current_step_phase_1 state new_trans =
-    ESCurrent_step_phase_1 (
+    SCurrent_step_user (
       state.Interface.att_assoc,
       state.Interface.att_csys.Constraint_system.additional_data,
       new_trans,
       state.Interface.att_all_available_actions,
-      state.Interface.att_default_available_actions
+      state.Interface.att_default_available_actions,
+      None,
+      !current_id_attack_process
     )
   in
 
@@ -193,11 +199,11 @@ let equivalence_simulator json_file id =
       begin
         let state = List.nth !attack_state_list (id_trans+1) in
         current_id_action_attack := id_trans;
-        ESCurrent_step_phase_2(state.Interface.att_assoc,state.Interface.att_csys.Constraint_system.additional_data,id_trans,id_proc)
+        SCurrent_step_displayed(state.Interface.att_assoc,state.Interface.att_csys.Constraint_system.additional_data,id_trans,Some id_proc)
       end
     else
       let (conf_csys,assoc) = List.nth !simulated_conf_csys_list (id_trans+1) in
-      ESCurrent_step_phase_2(assoc,conf_csys.Constraint_system.additional_data,id_trans,id_proc)
+      SCurrent_step_displayed(assoc,conf_csys.Constraint_system.additional_data,id_trans,Some id_proc)
   in
 
   (* Initial command output *)
@@ -247,7 +253,7 @@ let equivalence_simulator json_file id =
 
             simulated_conf_csys_list := Interface.execute_process semantics full_assoc sim_process equiv_trace;
 
-            Display_ui.send_output_command (ESFound_equivalent_trace(full_assoc,equiv_trace))
+            Display_ui.send_output_command (SFound_equivalent_trace(full_assoc,equiv_trace))
         | Goto_step(id_proc_opt,id_action) ->
             if (!phase = 1 && id_proc_opt <> None) || (!phase = 2 && id_proc_opt = None)
             then Config.internal_error "[simulator.ml >> equivalence_simulator] Goto step should not have a process id in phase 1 but should have one in phase 2.";
@@ -260,11 +266,11 @@ let equivalence_simulator json_file id =
                   Display_ui.send_output_command (get_current_step_phase_1 state [])
               | Some i -> Display_ui.send_output_command (get_current_step_phase_2 id_action i)
             end
-        | ESNext_step to_parse_trans ->
+        | Next_step_user to_parse_trans ->
             begin try
               let last_state = List.hd (List.rev !attack_state_list) in
               let max_axiom = last_state.Interface.att_csys.Constraint_system.additional_data.size_frame in
-              let trans = Parsing_functions_ui.parse_simulator_transition max_axiom to_parse_trans in
+              let trans = Parsing_functions_ui.parse_selected_transition max_axiom to_parse_trans in
               let (new_states, new_transitions) = Interface.equivalence_simulator_apply_next_step semantics last_state trans in
               let new_last_state = List.hd (List.rev new_states) in
               attack_state_list := !attack_state_list @ new_states;
@@ -273,9 +279,9 @@ let equivalence_simulator json_file id =
               Display_ui.send_output_command (get_current_step_phase_1 new_last_state new_transitions)
             with
               | Interface.Invalid_transition Interface.Position_not_found -> Display_ui.send_output_command (Init_internal_error ("Incorrect position.",true))
-              | Parser_functions.User_Error str -> Display_ui.send_output_command (ESUser_error str)
+              | Parser_functions.User_Error str -> Display_ui.send_output_command (SUser_error str)
               | Interface.Invalid_transition (Interface.Term_not_message term) -> Display_ui.send_output_command (Init_internal_error (Printf.sprintf "The term %s does not reduce as a message." (Term.Term.display Display.Terminal term),true))
-              | Interface.Invalid_transition (Interface.Recipe_not_message recipe) -> Display_ui.send_output_command (ESUser_error (Printf.sprintf "The application of the recipe %s does not reduce to a message." (Term.Recipe.display Display.Terminal recipe)))
+              | Interface.Invalid_transition (Interface.Recipe_not_message recipe) -> Display_ui.send_output_command (SUser_error (Printf.sprintf "The application of the recipe %s does not reduce to a message." (Term.Recipe.display Display.Terminal recipe)))
               | Interface.Invalid_transition (Interface.Axiom_out_of_bound i) -> Display_ui.send_output_command (Init_internal_error (Printf.sprintf "The axiom ax_%d is out of boud" i,true))
               | Interface.Invalid_transition (Interface.Channel_not_equal(ch1,ch2)) -> Display_ui.send_output_command (Init_internal_error (Printf.sprintf "The channels %s and %s should be equal." (Term.Term.display Display.Terminal ch1) (Term.Term.display Display.Terminal ch2),true))
               | Interface.Invalid_transition (Interface.Pattern_not_unifiable _) -> Display_ui.send_output_command (Init_internal_error (Printf.sprintf "Pattern should always be unifiable in the current implementation.",true))

@@ -47,10 +47,14 @@ let parse_recipe_from_string max_ax str_r =
   let parsed_r = Grammar.main_recipe Lexer.token lexbuf in
   recipe_of_parsed_recipe max_ax parsed_r
 
-let parse_simulator_transition max_ax = function
-  | JSAOutput(r_ch,pos) -> JAOutput(parse_recipe_from_string max_ax r_ch,pos)
-  | JSAInput(r_ch,r_t,pos) -> JAInput(parse_recipe_from_string max_ax r_ch,parse_recipe_from_string max_ax r_t,pos)
-  | JSAEaves(r_ch,pos_out,pos_in) -> JAEaves(parse_recipe_from_string max_ax r_ch,pos_out,pos_in)
+let parse_recipe_from_string_option max_ax = function
+  | None -> Config.internal_error "[parsing_functions_ui.ml >> parse_recipe_from_string_option] Should contain a string."
+  | Some str -> parse_recipe_from_string max_ax str
+
+let parse_selected_transition max_ax = function
+  | JSAOutput(r_ch,pos) -> JAOutput(parse_recipe_from_string_option max_ax r_ch,pos)
+  | JSAInput(r_ch,r_t,pos) -> JAInput(parse_recipe_from_string_option max_ax r_ch,parse_recipe_from_string_option max_ax r_t,pos)
+  | JSAEaves(r_ch,pos_out,pos_in) -> JAEaves(parse_recipe_from_string_option max_ax r_ch,pos_out,pos_in)
   | JSAComm(pos_out,pos_in) -> JAComm(pos_out,pos_in)
   | JSABang(n,pos) -> JABang(n,pos)
   | JSATau(pos) -> JATau(pos)
@@ -508,14 +512,14 @@ let attack_trace_of assoc json =
   let transitions = list_of (transition_of assoc) (member "action_sequence" json) in
   { id_proc = id_proc; transitions = transitions }
 
-let simulator_action_of json = match string_of (member "type" json) with
+let selected_action_of json = match string_of (member "type" json) with
   | "output" ->
-      let r_ch = string_of (member "channel" json) in
+      let r_ch = member_option string_of "channel" json in
       let pos = position_of (member "position" json) in
       JSAOutput(r_ch,pos)
   | "input" ->
-      let r_ch = string_of (member "channel" json) in
-      let r_t = string_of (member "term" json) in
+      let r_ch = member_option string_of "channel" json in
+      let r_t = member_option string_of "term" json in
       let pos = position_of (member "position" json) in
       JSAInput(r_ch,r_t,pos)
   | "comm" ->
@@ -523,7 +527,7 @@ let simulator_action_of json = match string_of (member "type" json) with
       let pos_in = position_of (member "input_position" json) in
       JSAComm(pos_out,pos_in)
   | "eavesdrop" ->
-      let r_ch = string_of (member "channel" json) in
+      let r_ch = member_option string_of "channel" json in
       let pos_out = position_of (member "output_position" json) in
       let pos_in = position_of (member "input_position" json) in
       JSAEaves(r_ch,pos_out,pos_in)
@@ -668,23 +672,27 @@ let input_command_of ?(assoc=None) json = match string_of (member "command" json
   | "cancel_batch" | "exit" -> Cancel_batch
   | "get_config" -> Get_config
   | "set_config" -> Set_config (string_of (member "output_dir" json))
-  | "start_display_trace" -> Display_trace (string_of (member "query_file" json), int_of (member "id" json))
+  (* **** Simulator commands **** *)
+
+  (* Generic commands *)
   | "die" -> Die
   | "goto_step" ->
       begin match member_opt "process_id" json with
         | None -> Goto_step(None,(int_of (member "id" json)))
         | Some pid -> Goto_step(Some (int_of pid),int_of (member "id" json))
       end
+  | "next_step_user" -> Next_step_user (selected_action_of (member "action" json))
+  | "next_steps" ->
+      begin match assoc with
+        | None -> Config.internal_error "[parsing_functions_ui.ml >> input_command_of] There should be an association array"
+        | Some association -> Next_steps (list_of (transition_of association) (member "actions" json))
+      end
+  (* Display Trace *)
+  | "start_display_trace" -> Display_trace (string_of (member "query_file" json), int_of (member "id" json))
+  (* Attack simulator *)
   | "start_attack_simulator" -> Attack_simulator (string_of (member "query_file" json))
-  | "next_step_simulated" ->
-      let assoc_tbl = match assoc with
-        | None -> Config.internal_error "[parsing_function.ml >> input_command_of] Expect an associtation table."
-        | Some assoc_tbl ->  assoc_tbl
-      in
-      ASNext_step (transition_of assoc_tbl (member "selected_action" json))
   | "start_equivalence_simulator" ->
       Equivalence_simulator (string_of (member "query_file" json), int_of (member "process_id" json))
   | "select_trace" -> ESSelect_trace (int_of (member "process_id" json))
   | "find_equivalent_trace" -> ESFind_equivalent_trace
-  | "next_step_attacked" -> ESNext_step (simulator_action_of (member "selected_action" json))
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> input_command_of] Unknown command."

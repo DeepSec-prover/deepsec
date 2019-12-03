@@ -32,9 +32,13 @@ type simulated_state =
 
 val initial_attack_simulator_state : semantics -> json_transition list -> full_association -> json_process -> simulated_state
 
-val attack_simulator_apply_next_step :
-  semantics -> int -> term list -> json_transition list -> simulated_state -> json_transition ->
+val attack_simulator_apply_next_step_user :
+  semantics -> int -> term list -> json_transition list -> simulated_state -> json_selected_transition ->
   simulated_state list * json_transition list
+
+val attack_simulator_apply_next_steps :
+  semantics -> int -> term list -> json_transition list -> simulated_state -> json_transition ->
+  simulated_state
 
 type error_transition =
   | Position_not_found

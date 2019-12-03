@@ -736,69 +736,36 @@ let of_output_command = function
   | Query_canceled file -> JObject [ "command", JString "query_ended"; "file", JString file ]
   | Run_canceled file -> JObject [ "command", JString "run_ended"; "file", JString file ]
   | Batch_canceled file -> JObject [ "command", JString "batch_ended"; "file", JString file ]
-  (* Simulator: Display_of_traces *)
-  | DTCurrent_step (assoc,conf,step) ->
-      JObject [
-        "command", JString "current_step";
+  (* Simulator: Generic command *)
+  | SCurrent_step_displayed (assoc,conf,step,id_proc_op) ->
+      let jlist = of_option [] of_int "process_id" id_proc_op in
+      JObject ([
+        "command", JString "current_step_displayed";
         "process", of_json_process assoc conf.process;
         "frame", JList (List.map (of_term assoc) conf.frame);
         "current_action_id", JInt step
-      ]
-  (* Simulator: Attack simulator *)
-  | ASCurrent_step_attacked(assoc,conf,step,id_proc) ->
-      JObject [
-        "command", JString "current_step_attacked";
-        "process_id", JInt id_proc;
-        "process", of_json_process assoc conf.process;
-        "frame", JList (List.map (of_term assoc) conf.frame);
-        "current_action_id", JInt step
-      ]
-  | ASCurrent_step_simulated(assoc,conf,new_trans,all_actions,default_actions,status_equiv,id_proc) ->
-      let list1 =
+      ] @ jlist)
+  | SCurrent_step_user(assoc,conf,new_trans,all_actions,default_actions,status_equiv_op,id_proc) ->
+      let jlist1 = of_option [] (of_status_static_equivalence assoc) "status_equiv" status_equiv_op in
+      let jlist2 =
         [
-          "command", JString "current_step_simulated";
+          "command", JString "current_step_user";
           "process_id", JInt id_proc;
           "process", of_json_process assoc conf.process;
           "frame", JList (List.map (of_term assoc) conf.frame);
           "all_available_actions", JList (List.map (of_available_action assoc) all_actions);
           "default_available_actions", JList (List.map (of_available_action assoc) default_actions);
-          "status_equiv", of_status_static_equivalence assoc status_equiv
-        ]
+        ] @ jlist1
       in
       if new_trans = []
-      then JObject list1
-      else JObject (("new_actions", JList (List.map (of_transition assoc) new_trans))::list1)
-  (* Simulator: Equivalence simulator *)
-  | ESCurrent_step_phase_1(assoc,conf,new_trans,all_actions,default_actions) ->
-      let list1 =
-        [
-          "command", JString "current_step";
-          "process", of_json_process assoc conf.process;
-          "frame", JList (List.map (of_term assoc) conf.frame);
-          "all_available_actions", JList (List.map (of_available_action assoc) all_actions);
-          "default_available_actions", JList (List.map (of_available_action assoc) default_actions)
-        ]
-      in
-      if new_trans = []
-      then JObject list1
-      else JObject (("new_actions", JList (List.map (of_transition assoc) new_trans))::list1)
-  | ESCurrent_step_phase_2(assoc,conf,id_act,id_proc) ->
-      let list1 =
-        [
-          "command", JString "current_step";
-          "process_id", JInt id_proc;
-          "process", of_json_process assoc conf.process;
-          "frame", JList (List.map (of_term assoc) conf.frame);
-          "current_action_id", JInt id_act
-        ]
-      in
-      JObject list1
-  | ESFound_equivalent_trace(assoc,trans_list) ->
+      then JObject jlist2
+      else JObject (("new_actions", JList (List.map (of_transition assoc) new_trans))::jlist2)
+  | SFound_equivalent_trace(assoc,trans_list) ->
       JObject [
         "command", JString "found_equivalent_trace";
         "action_sequence", JList (List.map (of_transition assoc) trans_list)
       ]
-  | ESUser_error str -> JObject [ "command", JString "user_error"; "error_msg", JString str ]
+  | SUser_error str -> JObject [ "command", JString "user_error"; "error_msg", JString str ]
 
 let print_output_command = function
   (* Errors *)
@@ -869,11 +836,7 @@ let print_output_command = function
   | Run_canceled _ -> Config.internal_error "[print_output_command] Should not occur"
   | Batch_canceled _ -> Printf.printf "\n%s\n" (coloured_terminal_text Red [Bold] "Verification canceled !")
   (* Simulator: Display_of_traces *)
-  | DTCurrent_step _
-  (* Simulator: Display_of_traces *)
-  | ASCurrent_step_attacked _ | ASCurrent_step_simulated _
-  (* Simulator: Equivalence simulator *)
-  | ESCurrent_step_phase_1 _ | ESCurrent_step_phase_2 _ | ESFound_equivalent_trace _ | ESUser_error _ -> Config.internal_error "[print_output_command] Should not occur in command mode."
+  | SCurrent_step_displayed _ | SCurrent_step_user _  | SFound_equivalent_trace _ | SUser_error _ -> Config.internal_error "[print_output_command] Should not occur in command mode."
 
 (* Sending command *)
 

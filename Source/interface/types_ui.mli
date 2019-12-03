@@ -48,10 +48,10 @@ type json_attack_trace =
     transitions : json_transition list
   }
 
-type json_simulator_transition =
-  | JSAOutput of string * json_position
-  | JSAInput of string * string * json_position
-  | JSAEaves of string * json_position (* out *) * json_position (* in *)
+type json_selected_transition =
+  | JSAOutput of string option * json_position
+  | JSAInput of string option * string option * json_position
+  | JSAEaves of string option * json_position (* out *) * json_position (* in *)
   | JSAComm of json_position (* out *) * json_position (* in *)
   | JSABang of int * json_position
   | JSATau of json_position
@@ -226,19 +226,19 @@ type input_command =
   | Cancel_batch
   | Get_config
   | Set_config of string
-  | Die
   (* Simulator generic command *)
+  | Die
   | Goto_step of int option (* id process *) * int (* id step *)
+  | Next_step_user of json_selected_transition
+  | Next_steps of json_transition list
   (* Simulator: Display of traces *)
   | Display_trace of string * int (* Json of query result *)
   (* Simulator: Attack_simulator *)
   | Attack_simulator of string (* Json of query result *)
-  | ASNext_step of json_transition
   (* Simulator: Equivalence_simulator *)
   | Equivalence_simulator of string * int (* process Id *)
   | ESSelect_trace of int
   | ESFind_equivalent_trace
-  | ESNext_step of json_simulator_transition
 
 type output_command =
   (* Errors *)
@@ -265,13 +265,8 @@ type output_command =
   | Batch_canceled of string
   (* Progression *)
   | Progression of int (* Index of query *) * int (* execution time *) * query_progression * string (* json_file *)
-  (* Simulator: Display_of_traces *)
-  | DTCurrent_step of full_association * configuration * int
-  (* Simulator: Attack_simulator *)
-  | ASCurrent_step_attacked of full_association * configuration * int * int
-  | ASCurrent_step_simulated of full_association * configuration * json_transition list * available_action list * available_action list * status_static_equivalence * int
-  (* Simulator: Equivalence_simulator *)
-  | ESCurrent_step_phase_1 of full_association * configuration * json_transition list * available_action list * available_action list
-  | ESCurrent_step_phase_2 of full_association * configuration * int (* id action *) * int (* id_proc *)
-  | ESFound_equivalent_trace of full_association * json_transition list
-  | ESUser_error of string
+  (* Simulator: Generic command *)
+  | SCurrent_step_displayed of full_association * configuration * int * int option (* Process id *)
+  | SCurrent_step_user of full_association * configuration * json_transition list (* New transitions *) * available_action list (* All *)* available_action list (* default *)* status_static_equivalence option * int (* Process id *)
+  | SFound_equivalent_trace of full_association * json_transition list
+  | SUser_error of string
