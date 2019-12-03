@@ -747,14 +747,19 @@ let of_output_command = function
       ] @ jlist)
   | SCurrent_step_user(assoc,conf,new_trans,all_actions,default_actions,status_equiv_op,id_proc) ->
       let jlist1 = of_option [] (of_status_static_equivalence assoc) "status_equiv" status_equiv_op in
+      let available_actions =
+        JObject [
+          "all", JList (List.map (of_available_action assoc) all_actions);
+          "default", JList (List.map (of_available_action assoc) default_actions)
+        ]
+      in
       let jlist2 =
         [
           "command", JString "current_step_user";
           "process_id", JInt id_proc;
           "process", of_json_process assoc conf.process;
           "frame", JList (List.map (of_term assoc) conf.frame);
-          "all_available_actions", JList (List.map (of_available_action assoc) all_actions);
-          "default_available_actions", JList (List.map (of_available_action assoc) default_actions);
+          "available_actions", available_actions
         ] @ jlist1
       in
       if new_trans = []
