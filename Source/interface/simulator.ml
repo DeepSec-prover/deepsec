@@ -133,14 +133,13 @@ let attack_simulator json_file =
                   Display_ui.send_output_command (get_current_step_simulated new_last_state new_transitions)
               | Next_steps trans_list ->
                   let rec explore last_state = function
-                    | [] -> ()
+                    | [] -> Display_ui.send_output_command (get_current_step_simulated last_state [])
                     | trans::q ->
                         let new_last_state = Interface.attack_simulator_apply_next_steps semantics attacked_id_proc full_frame transitions last_state trans in
                         simulated_states := !simulated_states @ [new_last_state];
                         explore new_last_state q
                   in
                   explore (List.hd (List.rev !simulated_states)) trans_list
-
               | Die -> raise Exit
               | _ -> Display_ui.send_output_command (Init_internal_error ("Unexpected input command.",true))
           done
