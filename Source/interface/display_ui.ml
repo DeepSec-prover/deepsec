@@ -629,7 +629,11 @@ let of_batch_result batch_res =
 
 (** TODO : Change w.r.t. doc *)
 let of_available_transition assoc = function
-  | AVDirect r -> JObject [ "type", JString "direct"; "recipe_channel", of_recipe assoc r]
+  | AVDirect(r_ch,r_t_op,lock) ->
+      let jlist1 = [ "locked", JBool lock ] in
+      let jlist2 = of_option jlist1 (of_recipe assoc) "recipe_term" r_t_op in
+      let jlist3 = ("type", JString "direct")::("recipe_channel", of_recipe assoc r_ch)::jlist2 in
+      JObject jlist3
   | AVEavesdrop r -> JObject [ "type", JString "eavesdrop"; "recipe_channel", of_recipe assoc r]
   | AVComm -> JObject [ "type", JString "comm" ]
 
@@ -650,9 +654,10 @@ let of_available_action assoc = function
         "tau_positions", JList (List.map of_position tau_pos);
         "transitions", JList (List.map (of_available_transition assoc) av_trans)
       ]
-  | AV_bang(pos,tau_pos) ->
+  | AV_bang(pos,n,tau_pos) ->
       JObject [
         "type", JString "bang";
+        "max_unfolding", JInt n;
         "position", of_position pos;
         "tau_positions", JList (List.map of_position tau_pos)
       ]

@@ -201,14 +201,14 @@ type detail_trace_display =
   | DTIO_only
 
 type available_transition =
-  | AVDirect of recipe
+  | AVDirect of recipe * recipe option * bool (* Indicate whether the recipes are lock or not. *)
   | AVComm
   | AVEavesdrop of recipe
 
 type available_action =
   | AV_output of json_position (* output *) * term * json_position list (* tau actions *) * available_transition list
   | AV_input of json_position (* input *) * term * json_position list (* tau actions *) * available_transition list
-  | AV_bang of json_position (* bang *) * json_position list (* tau actions *)
+  | AV_bang of json_position (* bang *) * int (* max nb of unfolding *) * json_position list (* tau actions *)
   | AV_choice of json_position (* choice *) * json_position list (* tau actions *)
   | AV_tau of json_position
 

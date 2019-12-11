@@ -573,7 +573,7 @@ type forced_transition =
 
 (* We assume that the constraint systen [conf_csys] is saturated. Hence no need to apply
    additional rules to determinate deducible terms. *)
-let find_next_possible_transition semantics forced_transition conf_csys =
+let find_next_possible_transition locked semantics forced_transition conf_csys =
   let actions = ref [] in
   let actions_all = ref [] in
 
@@ -588,25 +588,25 @@ let find_next_possible_transition semantics forced_transition conf_csys =
   in
 
   let get_available_transition = match forced_transition with
-    | Transition (JAOutput(r,_)) ->
-        let ch = apply_recipe_on_conf r conf_csys.Constraint_system.additional_data in
+    | Transition (JAOutput(r_ch,_)) ->
+        let ch = apply_recipe_on_conf r_ch conf_csys.Constraint_system.additional_data in
         begin match semantics with
-          | Classic -> (fun is_output ch' -> if is_output && Term.is_equal ch ch' then [AVDirect r;AVComm] else [AVComm])
+          | Classic -> (fun is_output ch' -> if is_output && Term.is_equal ch ch' then [AVDirect (r_ch,None,locked);AVComm] else [AVComm])
           | Private | Eavesdrop ->
               (fun is_output ch' ->
                 if is_output && Term.is_equal ch ch'
-                then [AVDirect r]
+                then [AVDirect (r_ch,None,locked)]
                 else if Constraint_system.Rule_ground.is_term_deducible conf_csys ch' then [] else [AVComm]
               )
         end
-    | Transition (JAInput(r,_,_)) ->
-        let ch = apply_recipe_on_conf r conf_csys.Constraint_system.additional_data in
+    | Transition (JAInput(r_ch,r_t,_)) ->
+        let ch = apply_recipe_on_conf r_ch conf_csys.Constraint_system.additional_data in
         begin match semantics with
-          | Classic -> (fun is_output ch' -> if not is_output && Term.is_equal ch ch' then [AVDirect r;AVComm] else [AVComm])
+          | Classic -> (fun is_output ch' -> if not is_output && Term.is_equal ch ch' then [AVDirect(r_ch,Some r_t,locked);AVComm] else [AVComm])
           | Private | Eavesdrop ->
               (fun is_output ch' ->
                 if not is_output && Term.is_equal ch ch'
-                then [AVDirect r]
+                then [AVDirect(r_ch,None,locked)]
                 else if Constraint_system.Rule_ground.is_term_deducible conf_csys ch' then [] else [AVComm]
               )
         end
@@ -627,16 +627,16 @@ let find_next_possible_transition semantics forced_transition conf_csys =
           | Classic ->
               (fun _ ch' -> match Constraint_system.Rule_ground.recipe_of_deducible_term conf_csys ch' with
                 | None -> [AVComm]
-                | Some r -> [AVDirect r;AVComm])
+                | Some r -> [AVDirect(r,None,locked);AVComm])
           | Private ->
               (fun _ ch' -> match Constraint_system.Rule_ground.recipe_of_deducible_term conf_csys ch' with
                 | None -> [AVComm]
-                | Some r -> [AVDirect r]
+                | Some r -> [AVDirect(r,None,locked)]
               )
           | Eavesdrop ->
               (fun _ ch' -> match Constraint_system.Rule_ground.recipe_of_deducible_term conf_csys ch' with
                 | None -> [AVComm]
-                | Some r -> [AVDirect r;AVEavesdrop r]
+                | Some r -> [AVDirect(r,None,locked);AVEavesdrop r]
               )
         end
     | Only_tau_transition ->
@@ -721,10 +721,10 @@ let find_next_possible_transition semantics forced_transition conf_csys =
         then actions_all := AV_tau pos :: !actions_all;
 
         explore true (pos::tau_actions) p
-    | JBang(_,_,pos) ->
-        actions := AV_bang (pos,List.rev tau_actions) :: !actions;
+    | JBang(n,_,pos) ->
+        actions := AV_bang (pos,n-1,List.rev tau_actions) :: !actions;
         if not only_IO
-        then actions_all := AV_bang (pos,List.rev tau_actions) :: !actions_all
+        then actions_all := AV_bang (pos,n-1,List.rev tau_actions) :: !actions_all
     | JChoice(_,_,pos) ->
         actions := AV_choice (pos,List.rev tau_actions) :: !actions;
         if not only_IO
@@ -779,7 +779,7 @@ let find_prev_transitions attacked_trace attacked_id_transition trans_list trans
 
   let rec find_bang_trans pos = function
     | [] -> raise Not_found
-    | AV_bang(pos',tau_trans) :: _ when pos = pos' -> tau_trans
+    | AV_bang(pos',_,tau_trans) :: _ when pos = pos' -> tau_trans
     | _::q -> find_bang_trans pos q
   in
 
@@ -857,7 +857,7 @@ let initial_attack_simulator_state semantics attacked_trace assoc_simulated proc
   let attacked_csys = Constraint_system.prepare_for_solving_procedure_ground (Constraint_system.empty init_conf_attacked) in
   let simulated_csys = Constraint_system.prepare_for_solving_procedure_ground (Constraint_system.empty init_conf_simulated) in
 
-  let (default_trans,all_trans) = find_next_possible_transition semantics forced_transition simulated_csys in
+  let (default_trans,all_trans) = find_next_possible_transition true semantics forced_transition simulated_csys in
 
   {
     attacked_id_transition = -1;
@@ -950,7 +950,7 @@ let attack_simulator_apply_next_step_user semantics id_attacked_proc full_attack
               end
           | _ -> attacked_csys1, simulated_csys1, Static_equivalent
         in
-        let (default_trans,all_trans) = find_next_possible_transition semantics forced_transition simulated_csys2 in
+        let (default_trans,all_trans) = find_next_possible_transition true semantics forced_transition simulated_csys2 in
         let state =
           {
             attacked_id_transition = attacked_id_transition;
@@ -965,7 +965,7 @@ let attack_simulator_apply_next_step_user semantics id_attacked_proc full_attack
         [state]
     | trans::q ->
         let (simulated_csys,simulated_assoc) = apply_transition semantics false acc_assoc acc_simul_csys trans in
-        let (default_trans,all_trans) = find_next_possible_transition semantics tau_forced_transition simulated_csys in
+        let (default_trans,all_trans) = find_next_possible_transition true semantics tau_forced_transition simulated_csys in
         let state =
           { simulated_state with
             simulated_csys = simulated_csys;
@@ -1044,7 +1044,7 @@ let attack_simulator_apply_next_steps semantics id_attacked_proc full_attacked_f
         end
     | _ -> attacked_csys1, simulated_csys1, Static_equivalent
   in
-  let (default_trans,all_trans) = find_next_possible_transition semantics forced_transition simulated_csys2 in
+  let (default_trans,all_trans) = find_next_possible_transition true semantics forced_transition simulated_csys2 in
   let state =
     {
       attacked_id_transition = attacked_id_transition;
@@ -1229,7 +1229,7 @@ type attacked_state =
 let initial_equivalence_simulator_state sem att_assoc att_process =
   let init_conf = { size_frame = 0; frame = []; process = att_process } in
   let init_csys = Constraint_system.prepare_for_solving_procedure_ground (Constraint_system.empty init_conf) in
-  let (default_trans,all_trans) = find_next_possible_transition sem All_transitions init_csys in
+  let (default_trans,all_trans) = find_next_possible_transition false sem All_transitions init_csys in
 
   {
     att_csys = init_csys;
@@ -1255,7 +1255,7 @@ let find_prev_transitions_from_transtion trans_list trans =
 
   let rec find_bang_trans pos = function
     | [] -> raise Not_found
-    | AV_bang(pos',tau_trans) :: _ when pos = pos' -> tau_trans
+    | AV_bang(pos',_,tau_trans) :: _ when pos = pos' -> tau_trans
     | _::q -> find_bang_trans pos q
   in
 
@@ -1303,7 +1303,7 @@ let equivalence_simulator_apply_next_step sem att_state att_transition =
     | trans::q ->
         (* The main transition *)
         let (att_csys_1,att_assoc_1) = apply_transition sem true acc_att_assoc acc_att_csys trans in
-        let (default_trans,all_trans) = find_next_possible_transition sem All_transitions att_csys_1 in
+        let (default_trans,all_trans) = find_next_possible_transition false sem All_transitions att_csys_1 in
         let att_trace = acc_att_trace @ [trans] in
         let state =
           {
