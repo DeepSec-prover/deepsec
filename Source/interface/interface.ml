@@ -606,7 +606,7 @@ let find_next_possible_transition locked semantics forced_transition conf_csys =
           | Private | Eavesdrop ->
               (fun is_output ch' ->
                 if not is_output && Term.is_equal ch ch'
-                then [AVDirect(r_ch,None,locked)]
+                then [AVDirect(r_ch,Some r_t,locked)]
                 else if Constraint_system.Rule_ground.is_term_deducible conf_csys ch' then [] else [AVComm]
               )
         end
