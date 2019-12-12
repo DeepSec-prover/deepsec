@@ -1,0 +1,13 @@
+free c.
+free d[private].
+const ok,ko.
+
+let A = (in(c,x); out(c,ok); in(c,y); out(c,ok)) |
+        !^2 in(d,x) |
+        !^2 (out(d,ok); out(c,ok)).
+
+let B = (in(c,x); out(c,ok); in(c,y); out(c,ko)) |
+        !^2 in(d,x) |
+        !^2 (out(d,ok); out(c,ok)).
+
+query session_equiv(A,B).

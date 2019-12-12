@@ -160,18 +160,19 @@ module Symbolic = struct
       Config.debug (fun () -> Config.print_in_log "Symbolic.Matching.add_match\n");
       (i,l) :: m
 
+
     (* removes the matching involving an index i. Also checks for attacks, returning a faulty index in case there is one. *)
     let remove (m:t) (to_remove:Index.t list) : t * Index.t option =
-      let rec update accu m =
+      let rec update accu atk m =
         match m with
-        | [] -> accu,None
+        | [] -> accu,atk
         | (cs_fa,cs_ex_list) :: t ->
-          if List.mem cs_fa to_remove then update accu t
+          if List.mem cs_fa to_remove then update accu atk t
           else
             match List.filter (fun (cs_ex,_) -> not (List.mem cs_ex to_remove)) cs_ex_list with
-            | [] -> [],Some cs_fa
-            | cs_ex_list_new -> update ((cs_fa,cs_ex_list_new)::accu) t in
-      update [] m
+            | [] -> update ((cs_fa,[])::accu) (Some cs_fa) t
+            | cs_ex_list_new -> update ((cs_fa,cs_ex_list_new)::accu) atk t in
+      update [] None m
 
     let clean m to_remove =
       if to_remove = [] then m
@@ -242,7 +243,7 @@ module Symbolic = struct
       Constraint_system.Set.of_list (elements (fun x cs -> Constraint_system.replace_additional_data cs x) csys_set)
 
     (* inverse operation: restrains a partition node based on the result of the constraint solver. Raises Attack_Witness if an attack is found. *)
-    let decast (baseline:t) (matching:Matching.t) (csys_set:Index.t Constraint_system.Set.t) : t * Matching.t =
+    let decast (baseline:t) (matching:Matching.t) (csys_set:Index.t Constraint_system.Set.t) : t * Matching.t * bool = (* bool=true indicates an attack *)
       let indexes_to_remove = ref [] in
       let new_procs =
         map_filter (fun i cs ->
@@ -255,10 +256,8 @@ module Symbolic = struct
             Some (Constraint_system.replace_additional_data cs_upd add_data)
         ) baseline in
       match Matching.remove matching !indexes_to_remove with
-      | _, Some index ->
-        (* Printf.printf "Oh, %s triggers an attack!\n" (Index.to_string index); *)
-        raise (Process.Attack_Witness (find new_procs index))
-      | cleared_matching, None -> new_procs,cleared_matching
+      | cleared_matching, Some _ -> new_procs,cleared_matching,true
+      | cleared_matching, None -> new_procs,cleared_matching,false
 
     (* removing useless constraint systems (exists-only matching no forall) *)
     let clean (csys_set:t) (m:Matching.t) : t =
@@ -607,6 +606,8 @@ module Graph = struct
     ) g []
 end
 
+let nb_false = ref 0 (* counting false attacks. Does not work distributed *)
+let incr_nb_false () = incr nb_false; print_endline (Printf.sprintf "bum! (%d)" !nb_false)
 
 (* Exploration of the partition tree *)
 module PartitionTree = struct
@@ -616,7 +617,8 @@ module PartitionTree = struct
       matching : Symbolic.Matching.t;
       size_frame : int;
       id : int; (* only for debugging purposes *)
-      improper : bool
+      improper : bool;
+      attack : bool; (* indicates if there is an attack in the node *)
     }
 
     let total_node = ref 0
@@ -815,7 +817,8 @@ module PartitionTree = struct
       matching = m;
       size_frame = 0;
       id = fresh_id ();
-      improper = false
+      improper = false;
+      attack = false
     }
     (* determines the type of the next transitions of a constraint system set, and generates the corresponding second-order variable or axiom. *)
     let data_next_transition (n:t) : Configuration.Transition.kind option * vars =
@@ -967,12 +970,13 @@ module PartitionTree = struct
 
     (* removes useless elements from the node after the constraint solving, and verify is the node is an attack node *)
     let decast (node:t) (csys_set:Symbolic.Index.t Constraint_system.Set.t) : t =
-      let (csys_set_decast,matching_decast) =
+      let (csys_set_decast,matching_decast,attack) =
         Symbolic.Set.decast node.csys_set node.matching csys_set in
       {node with
         csys_set = csys_set_decast;
         matching = matching_decast;
-        id = fresh_id()}
+        id = fresh_id();
+        attack = attack}
 
     (* removes (forall-quantified) constraint systems with unauthorised blocks *)
     let remove_unauthorised_blocks (node:t) (csys_set:Symbolic.Index.t Constraint_system.Set.t) : t =
@@ -1041,6 +1045,7 @@ module PartitionTree = struct
   NB. The continuations f_cont indicates what to do with the generated nodes, and f_next what to do once all nodes have been explored. *)
   let generate_successors (n:Node.t) (f_cont:Node.t->(unit->unit)->unit) (f_next:unit->unit) : unit =
     Config.debug (fun () -> Config.print_in_log "Starting generate_successors\n");
+    if n.Node.attack then incr_nb_false();
     if Symbolic.Set.is_empty n.Node.csys_set then f_next()
     else begin
       (* Printf.printf "\n==> EXPLORATION FROM %s\n" n.Node.id;
@@ -1279,7 +1284,7 @@ let string_of_result (goal:goal) (p1:Labelled_process.t) (p2:Labelled_process.t)
         | Some true ->
             if goal = Equivalence
             then "\nThe two processes are also not in trace equivalence as witnessed by the same attack trace."
-            else "\nThe trace-inclusion also does not hold as witness by the same attack trace."
+            else "\nThe trace-inclusion also does not hold as witnessed by the same attack trace."
         | Some false ->
             if goal = Equivalence
             then "\nThe two processes are also not in trace equivalence as witnessed by a similar attack trace."

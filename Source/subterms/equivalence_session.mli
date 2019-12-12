@@ -100,7 +100,7 @@ module Symbolic : sig
 
 
     val cast : t -> Index.t Constraint_system.Set.t (* cast into a usual constraint system set *)
-    val decast : t -> Matching.t -> Index.t Constraint_system.Set.t -> t * Matching.t (* restrict a set and a matching based on the indexes remaining in a Constraint_system.Set.t after calling the constraint solver.
+    val decast : t -> Matching.t -> Index.t Constraint_system.Set.t -> t * Matching.t * bool (* restrict a set and a matching based on the indexes remaining in a Constraint_system.Set.t after calling the constraint solver.
     NB. Performs an attack check at the same time, and raises Attack_Witness if one is found *)
     val clean : t -> Matching.t -> t (* removes the existential status of the processes of a set that are not used as matchers *)
     val remove_unauthorised_blocks : bool -> t -> Matching.t -> (snd_ord, axiom) Subst.t -> t * Matching.t (* removes the processes of a set that start faulty traces, and removes their universal status in the matching *)
