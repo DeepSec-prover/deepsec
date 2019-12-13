@@ -1,0 +1,21 @@
+free c.
+free d [private].
+const ok,boom.
+
+let A =
+  in(d,x) |
+  in(d,x) |
+  (out(d,ok); out(c,boom)) |
+  (out(d,ok); out(c,ok)) |
+  (in(c,x); out(c,ok); in(c,y); out(c,boom)).
+
+let B =
+  in(d,x) |
+  in(d,x) |
+  (out(d,ok); out(c,boom)) |
+  (out(d,ok); out(c,ok)) |
+  (in(c,x); out(c,ok); in(c,y); out(c,ok)).
+
+query session_equiv(A,B).
+
+// note: !^2 in(d,x) | out(d,boom) induces priority 4

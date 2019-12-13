@@ -262,6 +262,12 @@ module Block = struct
       in
       explore_block block_list_upd
 
+  let is_authorised bl cb s =
+    print_endline (Printf.sprintf "Checking whether block\n%s\nis authorised after blocks:\n%s" (print cb) (List.fold_left (fun ac b -> ac^print b) "" bl));
+    let (b,sl) = is_authorised bl cb s in
+    if b then let _ = print_endline "YES!" in b,sl
+    else let _ = print_endline "NO!" in b,sl
+
   let rec match_list f_next block_l1 block_l2 = match block_l1, block_l2 with
     | [], [] -> f_next ()
     | _, [] | [],_ -> Config.internal_error "[process_sessions.ml >> Block.match_list] Number of blocks should be equal."
@@ -582,8 +588,8 @@ module Labelled_process = struct
     | If _
     | Let _
     | New _ -> f_next imp_labels imp_procs proc
-    | Input(_,_,{ proc = Par []; _},_,_)
-    | Input(_,_,{ proc = Bang(_,[],[]); _},_,_) ->
+    | Input(c,_,{ proc = Par []; _},_,_)
+    | Input(c,_,{ proc = Bang(_,[],[]); _},_,_) when Channel.is_public c ->
         begin match proc.label with
           | None -> Config.internal_error "[process_session.ml] Should have a label"
           | Some lbl -> f_next (lbl::imp_labels) (proc::imp_procs) { proc = Par [] ; label = None }
@@ -1400,8 +1406,8 @@ module Labelled_process = struct
       match data.conflict_future, data.conflict_toplevel, data.optim with
       | true, _, false -> 0
       | true, _, true -> 1
-      | false, true, false -> 2
-      | false, true, true -> 3
+      | false, true, false -> (* 2 *) 0
+      | false, true, true -> (* 3 *) 1 (* removes priorities 2 and 3 as an overkill, temporary patch to a bug *)
       | false, false, _ -> 4
 
     (* decreasing order of priority *)
@@ -1410,6 +1416,7 @@ module Labelled_process = struct
 
     (* final operations on unfolded inputs and (sorted by decreasing priority) internal communication. Assigns the forall labels. *)
     let mark_forall optim l_in l_comm =
+      print_endline "call!";
       let rec mark i l =
         match l with
         | [] -> []
@@ -1419,9 +1426,10 @@ module Labelled_process = struct
           else if optim then []
           else List.rev_map (fun (p_in,p_out,data) -> (p_in,p_out,{data with optim = false})) t in
       match l_comm with
-      | [] -> l_in,[]
+      | [] -> print_endline "no comms..."; l_in,[]
       | h :: t ->
         let score = priority h in
+        print_endline (Printf.sprintf "priority %d!" score);
         let input_list =
           if score >= 2 then
             if optim then []
