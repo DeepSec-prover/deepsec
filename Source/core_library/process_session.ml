@@ -398,7 +398,7 @@ module Block = struct
     (lbrace out)^str_label_list^str_bound_axioms^str_recipes^(rbrace out)
 end
 
-(* multisets of unacessible private channels *)
+(* multisets of unaccessible private channels *)
 module Channel = struct
   type t =
     | Symbol of symbol
@@ -408,8 +408,8 @@ module Channel = struct
     match x,y with
     | Symbol f, Symbol g -> Symbol.order f g
     | Name n, Name m -> Name.order n m
-    | Symbol _, _ -> -1
-    | Name _, _ -> -1
+    | Symbol _, Name _ -> -1
+    | Name _, Symbol _ -> 1
 
   let equal (c:t) (d:t) : bool =
     match c,d with
