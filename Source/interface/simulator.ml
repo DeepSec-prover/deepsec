@@ -216,16 +216,11 @@ let equivalence_simulator json_file id =
 
       match in_cmd with
         | ESSelect_trace n ->
-            if n <> 0 || n <> 1 || n <> 2
-            then Config.internal_error "[simulator.ml >> equivalence_simulator] Argument should be 0, 1 or 2.";
+            if n <> 1 && n <> 2
+            then Config.internal_error "[simulator.ml >> equivalence_simulator] Argument should be 1 or 2.";
 
             phase := 1;
             begin match n with
-              | 0 ->
-                  let (state,cut_state_list) = cut_list (!current_id_action_attack+1) !attack_state_list in
-                  attack_state_list := cut_state_list;
-                  simulated_conf_csys_list := [];
-                  Display_ui.send_output_command (get_current_step_phase_1 state [])
               | 1 ->
                   current_id_attack_process := 1;
                   current_id_action_attack := -1;
