@@ -693,6 +693,6 @@ let input_command_of ?(assoc=None) json = match string_of (member "command" json
   | "start_attack_simulator" -> Attack_simulator (string_of (member "query_file" json))
   | "start_equivalence_simulator" ->
       Equivalence_simulator (string_of (member "query_file" json), int_of (member "process_id" json))
-  | "select_trace" -> ESSelect_trace (int_of (member "process_id" json))
+  | "reset_simulator" -> ESSelect_trace (int_of (member "process_id" json))
   | "find_equivalent_trace" -> ESFind_equivalent_trace
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> input_command_of] Unknown command."

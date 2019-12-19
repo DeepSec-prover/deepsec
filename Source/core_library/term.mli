@@ -252,6 +252,8 @@ module Name :  sig
 
   val link : name -> name -> unit
 
+  val link_search : name -> unit
+
   val auto_deducible_cleanup_with_reset : ((unit -> unit) -> unit) -> (unit -> unit) -> unit
 
   val auto_deducible_cleanup_with_reset_notail : (unit -> 'a) -> 'a

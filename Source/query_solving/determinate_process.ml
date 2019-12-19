@@ -1292,16 +1292,17 @@ let is_equal_skeleton_conf size_frame conf1 conf2 =
 
 (**** Blocks ****)
 
+let rec all_axiom_excluded min_ax max_ax = function
+  | [] -> true
+  | ax :: q -> (ax > max_ax) || (ax < min_ax && all_axiom_excluded min_ax min_ax q)
+
 let rec is_faulty_block block = function
   | [] -> false
   | b_i::q ->
       begin match compare_label block.label_b b_i.label_b with
         | -1 ->
-            if b_i.minimal_axiom = 0
-            then true
-            else
-              block.maximal_var < b_i.minimal_axiom &&
-                List.for_all (fun ax -> ax < b_i.minimal_axiom || ax > b_i.maximal_axiom) block.used_axioms
+            b_i.minimal_axiom = 0 ||
+            (block.maximal_var < b_i.minimal_axiom && all_axiom_excluded b_i.minimal_axiom b_i.maximal_axiom  block.used_axioms)
         | 1 -> is_faulty_block block q
         | _ -> false
       end
@@ -1336,8 +1337,7 @@ let is_block_list_authorized b_list cur_block = match b_list with
       in
 
       let rec explore_block = function
-        | [] -> true
-        | [_] -> true
+        | [] | [_] -> true
         | block::q when is_faulty_block block q -> false
         | _::q -> explore_block q
       in

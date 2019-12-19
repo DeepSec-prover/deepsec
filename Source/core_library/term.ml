@@ -346,6 +346,15 @@ module Name = struct
     n.link_n <- NLink n';
     currently_linked := n :: !currently_linked
 
+  let link_search n =
+    Config.debug (fun () ->
+      if n.link_n <> NNoLink
+      then Config.internal_error "[term.ml >> Name.link_search] The first name should not be already linked."
+    );
+
+    n.link_n <- NSLink;
+    currently_linked := n :: !currently_linked
+
   let currently_deducible : name list ref = ref []
 
   let auto_deducible_cleanup_with_reset (f_cont:(unit -> unit) -> unit) (f_next:unit -> unit) =
