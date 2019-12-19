@@ -231,7 +231,8 @@ let equivalence_simulator json_file id =
                   current_id_action_attack := -1;
                   simulated_conf_csys_list := [];
                   attack_state_list := [Interface.initial_equivalence_simulator_state semantics full_assoc process_2]
-            end
+            end;
+            Display_ui.send_output_command (get_current_step_phase_1 (List.hd !attack_state_list) [])
         | ESFind_equivalent_trace ->
             if !phase <> 1
             then Config.internal_error "[simulator.ml >> equivalence_simulator] Command find_equivalence_trace should only be launch in phase 1.";
