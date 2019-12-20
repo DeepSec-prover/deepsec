@@ -12,8 +12,7 @@
 }
 
 rule token = parse
-| "//" [^ '\n']* '\n' { newline lexbuf; token lexbuf } (* Line comment *)
-| '"' ((_#'"')* as id) '"'  { STRING id }
+| '"' ((('\\' _) | _#['"' '\\'])* as id) '"'  { STRING id }
 | [' ' '\t' ] { token lexbuf } (* Skip blanks *)
 | "\xC2\xA0" { token lexbuf }
 | ['\n'	'\r']	{ newline lexbuf; token lexbuf } (* New line *)
