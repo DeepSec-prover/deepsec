@@ -441,7 +441,7 @@ let apply_input ch t target_pos conf =
   let rec explore = function
     | JInput(ch',pat,p,pos) when is_equal_position pos target_pos ->
         let ch'' = try Rewrite_rules.normalise ch' with Rewrite_rules.Not_message -> raise (Invalid_transition (Term_not_message ch')) in
-        if not (Term.is_equal ch' ch'') then raise (Invalid_transition (Channel_not_equal (ch,ch'')));
+        if not (Term.is_equal ch ch'') then raise (Invalid_transition (Channel_not_equal (ch,ch'')));
 
         let pat' = try normalise_json_pattern pat with Rewrite_rules.Not_message -> raise (Invalid_transition (Pattern_not_unifiable(pat,t))) in
         begin try
