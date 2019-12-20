@@ -13,12 +13,12 @@ let find_function str pos =
           | Some f -> f
           | None -> Parser_functions.error_message ~with_line:false pos (Printf.sprintf "The function %s is not defined." str)
 
-let rec recipe_of_parsed_recipe max_ax = function
+let rec recipe_of_parsed_recipe ori_str max_ax = function
   | Parser_functions.RAxiom(id,pos) ->
       if id = 0
-      then Parser_functions.error_message ~with_line:false pos "Index of axioms should start at 1";
+      then Parser_functions.error_message ~with_line:false pos (Printf.sprintf "In recipe %%%s%%: index of axioms should start at 1" ori_str);
       if id > max_ax
-      then Parser_functions.error_message ~with_line:false pos (Printf.sprintf "The axiom has index %d but the maximal possible index of the current frame is %d" id max_ax);
+      then Parser_functions.error_message ~with_line:false pos (Printf.sprintf "In recipe %%%s%%: the axiom %%ax_%d%% has index %d but the maximal possible index of the current frame is %d" ori_str id id max_ax);
       Axiom id
   | Parser_functions.RAttacker id ->
       let c = Symbol.get_attacker_name id in
@@ -26,26 +26,31 @@ let rec recipe_of_parsed_recipe max_ax = function
   | Parser_functions.RFuncApp((f_str,pos),r_list) ->
       let f = find_function f_str pos in
       if List.length r_list <> f.arity
-      then Parser_functions.error_message ~with_line:false pos (Printf.sprintf "The functin %s has arity %d but is given %d arguments" f_str f.arity (List.length r_list));
-      RFunc(f,List.map (recipe_of_parsed_recipe max_ax) r_list)
+      then Parser_functions.error_message ~with_line:false pos (Printf.sprintf "In recipe %%%s%%: the function %%%s%% has arity %d but is given %d arguments" ori_str f_str f.arity (List.length r_list));
+      RFunc(f,List.map (recipe_of_parsed_recipe ori_str max_ax) r_list)
   | Parser_functions.RProj(i1,i2,r,pos) ->
       if i1 > i2
-      then Parser_functions.error_message ~with_line:false pos "The first argument of a projection should be smaller or equal to its second argument";
+      then Parser_functions.error_message ~with_line:false pos (Printf.sprintf "In recipe %%%s%%: the first argument of a projection should be smaller or equal to its second argument" ori_str);
       if i1 = 0 || i2 = 0
-      then Parser_functions.error_message ~with_line:false pos "Projection's arguments should not be 0";
+      then Parser_functions.error_message ~with_line:false pos (Printf.sprintf "In recipe %%%s%%: projection's arguments should not be 0" ori_str);
       let f_tuple = Symbol.get_tuple i2 in
       let f_projs = Symbol.get_projections f_tuple in
       let f = List.nth f_projs (i1-1) in
-      RFunc(f,[recipe_of_parsed_recipe max_ax r])
+      RFunc(f,[recipe_of_parsed_recipe ori_str max_ax r])
   | Parser_functions.RTuple r_list ->
       let n = List.length r_list in
       let f_tuple = Symbol.get_tuple n in
-      RFunc(f_tuple,List.map (recipe_of_parsed_recipe max_ax) r_list)
+      RFunc(f_tuple,List.map (recipe_of_parsed_recipe ori_str max_ax) r_list)
 
 let parse_recipe_from_string max_ax str_r =
-  let lexbuf = Lexing.from_string str_r in
-  let parsed_r = Grammar.main_recipe Lexer.token lexbuf in
-  recipe_of_parsed_recipe max_ax parsed_r
+
+  let parsed_r =
+    try
+      let lexbuf = Lexing.from_string str_r in
+      Grammar.main_recipe Lexer.token lexbuf
+    with Parser_functions.User_Error err -> raise (Parser_functions.User_Error (Printf.sprintf "In recipe %%%s%%: %s" str_r err))
+  in
+  recipe_of_parsed_recipe str_r max_ax parsed_r
 
 let parse_recipe_from_string_option max_ax = function
   | None -> Config.internal_error "[parsing_functions_ui.ml >> parse_recipe_from_string_option] Should contain a string."

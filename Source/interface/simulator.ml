@@ -273,10 +273,15 @@ let equivalence_simulator json_file id =
             with
               | Interface.Invalid_transition Interface.Position_not_found -> Display_ui.send_output_command (Init_internal_error ("Incorrect position.",true))
               | Parser_functions.User_Error str -> Display_ui.send_output_command (SUser_error str)
-              | Interface.Invalid_transition (Interface.Term_not_message term) -> Display_ui.send_output_command (Init_internal_error (Printf.sprintf "The term %s does not reduce as a message." (Term.Term.display Display.Terminal term),true))
-              | Interface.Invalid_transition (Interface.Recipe_not_message recipe) -> Display_ui.send_output_command (SUser_error (Printf.sprintf "The application of the recipe %s does not reduce to a message." (Term.Recipe.display Display.Terminal recipe)))
-              | Interface.Invalid_transition (Interface.Axiom_out_of_bound i) -> Display_ui.send_output_command (Init_internal_error (Printf.sprintf "The axiom ax_%d is out of boud" i,true))
-              | Interface.Invalid_transition (Interface.Channel_not_equal(ch1,ch2)) -> Display_ui.send_output_command (Init_internal_error (Printf.sprintf "The channels %s and %s should be equal." (Term.Term.display Display.Terminal ch1) (Term.Term.display Display.Terminal ch2),true))
+              | Interface.Invalid_transition (Interface.Term_not_message term) -> Display_ui.send_output_command (Init_internal_error (Printf.sprintf "The term %%%s%% does not reduce as a message." (Term.Term.display Display.Terminal term),true))
+              | Interface.Invalid_transition (Interface.Recipe_not_message recipe) -> Display_ui.send_output_command (SUser_error (Printf.sprintf "The application of the recipe %%%s%% does not reduce to a message." (Term.Recipe.display Display.Terminal recipe)))
+              | Interface.Invalid_transition (Interface.Axiom_out_of_bound i) -> Display_ui.send_output_command (Init_internal_error (Printf.sprintf "The axiom ax_%d is out of boud." i,true))
+              | Interface.Invalid_transition (Interface.Channel_not_equal(ch1,ch2)) ->
+                  begin match to_parse_trans with
+                    | JSAOutput(Some r_ch,_) | JSAInput(Some r_ch,_,_) | JSAEaves(Some r_ch,_,_) ->
+                        Display_ui.send_output_command (SUser_error (Printf.sprintf "The recipe for the channel is expected to reduce to %%%s%% by the given recipe %%%s%% reduces to %%%s%%" (Term.Term.display Display.Terminal ch1) r_ch (Term.Term.display Display.Terminal ch2)))
+                    | _ -> Display_ui.send_output_command (Init_internal_error (Printf.sprintf "The channels %s and %s should be equal." (Term.Term.display Display.Terminal ch1) (Term.Term.display Display.Terminal ch2),true))
+                  end
               | Interface.Invalid_transition (Interface.Pattern_not_unifiable _) -> Display_ui.send_output_command (Init_internal_error (Printf.sprintf "Pattern should always be unifiable in the current implementation.",true))
               | Interface.Invalid_transition (Interface.Channel_deducible ch) -> Display_ui.send_output_command (Init_internal_error (Printf.sprintf "Communication in classic semantics can only be done on non deducible terms: %s" (Term.Term.display Display.Terminal ch),true))
               | Interface.Invalid_transition (Interface.Too_much_unfold n) -> Display_ui.send_output_command (Init_internal_error (Printf.sprintf "Too much unfolding: %d." n,true))
