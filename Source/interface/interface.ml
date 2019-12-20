@@ -1191,7 +1191,6 @@ let rec apply_attack_trace sem size_frame att_assoc att_trace att_csys sim_csys_
       apply_attack_trace sem size_frame att_assoc_1 q_trans att_csys_1 sim_csys_list
 
 let find_equivalent_trace sem att_assoc att_js_proc att_trace sim_js_proc =
-
   (* We used json process for the att_process but we used
     generic process for the simulated process *)
   let sim_proc_1 = process_of_json_process sim_js_proc in
@@ -1213,7 +1212,7 @@ let find_equivalent_trace sem att_assoc att_js_proc att_trace sim_js_proc =
 
   let equiv_csys = List.hd equiv_sim_csys_list in
   let trace_list = equiv_csys.Constraint_system.additional_data.gen_trace in
-  List.map json_transition_of_transition (translate_trace trace_list)
+  List.map json_transition_of_transition (translate_trace (List.rev trace_list))
 
 (*** Equivalence simulator ***)
 
