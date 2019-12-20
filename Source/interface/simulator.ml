@@ -47,7 +47,7 @@ let display_trace json_file id =
             let in_cmd = Parsing_functions_ui.input_command_of in_cmd_json in
 
             match in_cmd with
-              | Goto_step(None,n) ->
+              | Goto_step(_,n) ->
                   Config.log (fun () -> Printf.sprintf "Go to Step %d\n" n);
                   let (conf,assoc) = List.nth conf_list (n+1) in
                   Config.log (fun () -> Printf.sprintf "Send command\n");
@@ -114,7 +114,7 @@ let attack_simulator json_file =
             let in_cmd = Parsing_functions_ui.input_command_of ~assoc:(Some assoc_tbl) in_cmd_json in
 
             match in_cmd with
-              | Goto_step(Some id_proc,n) ->
+              | Goto_step(id_proc,n) ->
                   if id_proc = attacked_id_proc
                   then
                     let (conf,assoc) = List.nth conf_list (n+1) in
@@ -249,18 +249,16 @@ let equivalence_simulator json_file id =
             simulated_conf_csys_list := Interface.execute_process semantics full_assoc sim_process equiv_trace;
 
             Display_ui.send_output_command (SFound_equivalent_trace(full_assoc,equiv_trace))
-        | Goto_step(id_proc_opt,id_action) ->
-            if (!phase = 1 && id_proc_opt <> None) || (!phase = 2 && id_proc_opt = None)
-            then Config.internal_error "[simulator.ml >> equivalence_simulator] Goto step should not have a process id in phase 1 but should have one in phase 2.";
-
-            begin match id_proc_opt with
-              | None ->
-                  let (state,cut_state_list) = cut_list (id_action+1) !attack_state_list in
-                  attack_state_list := cut_state_list;
-                  current_id_action_attack := id_action;
-                  Display_ui.send_output_command (get_current_step_phase_1 state [])
-              | Some i -> Display_ui.send_output_command (get_current_step_phase_2 id_action i)
-            end
+        | Goto_step(id_proc,id_action) ->
+            if !phase = 1
+            then
+              begin
+                let (state,cut_state_list) = cut_list (id_action+1) !attack_state_list in
+                attack_state_list := cut_state_list;
+                current_id_action_attack := id_action;
+                Display_ui.send_output_command (get_current_step_phase_1 state [])
+              end
+            else Display_ui.send_output_command (get_current_step_phase_2 id_action id_proc)
         | Next_step_user to_parse_trans ->
             begin try
               let last_state = List.hd (List.rev !attack_state_list) in

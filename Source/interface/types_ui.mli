@@ -228,7 +228,7 @@ type input_command =
   | Set_config of string
   (* Simulator generic command *)
   | Die
-  | Goto_step of int option (* id process *) * int (* id step *)
+  | Goto_step of int (* id process *) * int (* id step *)
   | Next_step_user of json_selected_transition
   | Next_steps of json_transition list
   (* Simulator: Display of traces *)

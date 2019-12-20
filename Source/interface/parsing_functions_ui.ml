@@ -676,11 +676,7 @@ let input_command_of ?(assoc=None) json = match string_of (member "command" json
 
   (* Generic commands *)
   | "die" -> Die
-  | "goto_step" ->
-      begin match member_opt "process_id" json with
-        | None -> Goto_step(None,(int_of (member "id" json)))
-        | Some pid -> Goto_step(Some (int_of pid),int_of (member "id" json))
-      end
+  | "goto_step" -> Goto_step(int_of (member "process_id" json),int_of (member "id" json))
   | "next_step_user" -> Next_step_user (selected_action_of (member "action" json))
   | "next_steps" ->
       begin match assoc with
