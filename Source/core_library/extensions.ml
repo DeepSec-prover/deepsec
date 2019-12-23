@@ -45,66 +45,47 @@ module List = struct
     in
     explore [] l
 
-  (* rev_map + filter (on the transformed elements) *)
-  let map_if pred f l =
-    let rec map_filter ac pred f l = match l with
-      | [] -> ac
-      | p :: t ->
-        let elt = f p in
-        if pred elt then map_filter (elt::ac) pred f t
-        else map_filter ac pred f t in
-    map_filter [] pred f l
+  module type OrderedType =
+  sig
+    type t
+    val compare: t -> t -> int
+  end
 
-  (* rev_map + filter (on the transformed elements, based on whether the
-  result of the transformation is None or not) *)
-  let map_if_opt f l =
-    List.fold_left (fun ac x ->
-      match f x with
-      | None -> ac
-      | Some y -> y :: ac
-    ) [] l
+  module Ordered(Ord: OrderedType) = struct
 
-  (* removes all elements of a list verifying a given predicate, and returns
-  one such element (if any). The ordering is not preserved. *)
-  let find_and_remove (f:'a->bool) (l:'a list) : 'a option * 'a list =
-    List.fold_left (fun (elt,accu) x ->
-      if elt = None && f x then (Some x,accu) else (elt,x::accu)
-    ) (None,[]) l
+    let rec diff (l1:Ord.t list) l2 = match l1,l2 with
+      | _, [] | [], _ -> l1
+      | t1::q1, t2::q2 ->
+          match Ord.compare t1 t2 with
+            | 0 -> diff q1 q2
+            | 1 -> diff l1 q2
+            | _ -> t1::(diff q1 l2)
 
-  (* finder in list *)
-  let rec assoc_opt (e:'a) (l:('a*'b) list) : 'b option =
-    match l with
-    | [] -> None
-    | (f,g) :: p -> if e = f then Some g else assoc_opt e p
+    let rec add e = function
+      | [] -> [e]
+      | (t::q) as l ->
+          match Ord.compare e t with
+            | -1 -> e::l
+            | 0 -> l
+            | _ -> t::(add e q)
 
-  (* a variant of the iterators where the remainder of the list can be taken
-  as an argument of the iterated function *)
-  let fold_left_with_memo (f:'a->'b->'b list->'b list->'a) (x:'a) (l:'b list) : 'a =
-    let rec browse memo ac l =
-      match l with
-      | [] -> ac
-      | h :: t -> browse (h::memo) (f ac h memo t) t in
-    browse [] x l
+    let rec union l1 l2 = match l1, l2 with
+      | [], l | l, [] -> l
+      | t1::q1, t2::q2 ->
+          match Ord.compare t1 t2 with
+            | -1 -> t1::(union q1 l2)
+            | 0 -> t1::(union q1 q2)
+            | _ -> t2::(union l1 q2)
 
-  let iter_with_memo (f:'a->'a list->'a list->unit) (l:'a list) : unit =
-    fold_left_with_memo (fun () -> f) () l
+    let rec remove e = function
+      | [] -> []
+      | (t::q) as l ->
+          match Ord.compare e t with
+            | -1 -> l
+            | 0 -> q
+            | _ -> t::(remove e q)
 
-  (* applies fold left while a given predicate is satisfied *)
-  let rec fold_left_while (pred:'b->bool) (f:'a->'b->'a) (accu:'a) (l:'b list) : 'a =
-    match l with
-    | [] -> accu
-    | h :: t ->
-      if pred h then fold_left_while pred f (f accu h) t
-      else accu
-
-  (* puts the elements of a list that verify a predicate in head *)
-  let filter_in_head (pred:'a->bool) (l:'a list) : 'a list =
-    let (yes,no) = partition_unordered pred l in
-    List.rev_append yes no
-
-  let pop = function
-    | [] -> raise Not_found
-    | t::q -> t, q
+  end
 end
 
 

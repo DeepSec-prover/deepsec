@@ -420,6 +420,8 @@ module Name = struct
     | _ -> Config.internal_error "[term.ml >> Name.rename_and_instantiat] Unexpected link of name."
 end
 
+
+
 (*************************************
 ***            Axioms              ***
 **************************************)

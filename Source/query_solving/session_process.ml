@@ -106,13 +106,7 @@ module Block = struct
       of the block for all traces in the set.
   *)
 
-  type local_label =
-    {
-      label_b : Label.complete;
-      improper : bool
-    }
-
-  type local_recipe =
+  type recipe_block =
     {
       variables : recipe_variable list;
       used_axioms : int list; (* Ordered from the smallest to the biggest axiom *)
@@ -120,20 +114,29 @@ module Block = struct
       maximal_var : int
     }
 
-  type general_recipe =
+  type local_blocks =
     {
-      recipe_blocks : local_recipe list; (* Ordered from the most recent to the oldest *)
-      current_recipe_block : local_recipe;
+      local_proper_blocks : Label.complete list;
+      local_improper_blocks : Label.complete list;
+    }
+
+  type general_blocks =
+    {
+      recipe_blocks : recipe_block list; (* Ordered from the most recent to the oldest *)
+      current_recipe_block : recipe_block option; (* = None only when we are on improper phase *)
+
       number_blocks : int; (* Kept as List.length recipe_block *)
       ground_index : int; (* Inverse index of recipe_block such that all recipe
         block with this index or below are ground.
         Inverse index of a list [ t1,...,t_n ] are n-1, ..., 0 *)
+
+      current_block_sure_proper : bool;
       last_added_axiom : int (* Last axiom that was added *)
     }
 
   (*** Creation ***)
 
-  let empty_local_recipe =
+  let empty_recipe_block =
     {
       variables = [];
       used_axioms = [];
@@ -144,13 +147,12 @@ module Block = struct
   let empty_general =
     {
       recipe_blocks = [];
-      current_recipe_block = empty_local_recipe;
+      current_recipe_block = Some empty_recipe_block ;
       number_blocks = 0;
       ground_index = -1;
+      current_block_sure_proper = false;
       last_added_axiom = 0
     }
-
-  let create_local_label llbl = { label_b = llbl; improper = false }
 
   (*** Update ***)
 
@@ -161,23 +163,47 @@ module Block = struct
         if it is after an output.)
       - If they are not the same then the current block will be updated.
     This function should only be applied after constraints resolution. *)
-  let check_and_update_axiom csys gen_block =
-    let max_type = Data_structure.IK.get_max_type_recipe csys.Constraint_system.knowledge csys.Constraint_system.incremented_knowledge in
+  let add_axiom_after_constraint_solving max_type gen_block =
     if gen_block.last_added_axiom = max_type
-    then gen_block
+    then
+      (* Axiom was not added in the knowledge base *)
+      Some gen_block
     else
-      let current_recipe_block' = match gen_block.current_recipe_block.bound_axioms with
-        | None -> { gen_block.current_recipe_block with bound_axioms = Some (max_type,max_type) }
-        | Some(ax1,_) -> { gen_block.current_recipe_block with bound_axioms = Some(ax1,max_type) }
-      in
-      { gen_block with last_added_axiom = max_type; current_recipe_block = current_recipe_block' }
+      (* Axiom was added in the knowledge base *)
+      match gen_block.current_recipe_block with
+        | None -> None
+        | Some r_block ->
+            let current_recipe_block' = match r_block.bound_axioms with
+              | None -> { r_block with bound_axioms = Some (max_type,max_type) }
+              | Some(ax1,_) -> { r_block with bound_axioms = Some(ax1,max_type) }
+            in
+            Some { gen_block with last_added_axiom = max_type; current_recipe_block = Some current_recipe_block'; current_block_sure_proper = true }
 
-  let add_new_current_recipe_block block gen_block =
-    { gen_block with
-      recipe_blocks = gen_block.current_recipe_block::gen_block.recipe_blocks;
-      current_recipe_block = block;
-      number_blocks = gen_block.number_blocks + 1
-    }
+  let add_input_variable x gen_block = match gen_block.current_recipe_block with
+    | None -> Config.internal_error "[session_process.ml >> add_input_variable] Should contain at least a current block."
+    | Some c_block ->
+        let c_block' = { c_block with variables = x::c_block.variables; maximal_var = max x.type_r c_block.maximal_var } in
+
+        { gen_block with current_recipe_block = Some c_block' }
+
+  let close_current_recipe_block gen_block = match gen_block.current_recipe_block with
+    | None -> Config.internal_error "[session_process.ml >> Block.add_new_current_recipe_block] Should not be used in improper phase."
+    | Some c_block ->
+        if gen_block.current_block_sure_proper
+        then
+          { gen_block with
+            recipe_blocks = c_block::gen_block.recipe_blocks;
+            current_recipe_block = Some empty_recipe_block;
+            number_blocks = gen_block.number_blocks + 1;
+            current_block_sure_proper = false
+          }
+        else
+          { gen_block with
+            current_recipe_block = None;
+            current_block_sure_proper = false
+          }
+
+  let is_improper_phase gen_block = gen_block.current_recipe_block = None
 
   let rec add_axiom_in_sorted_list (i:int) axiom_list = match axiom_list with
     | [] -> [i]
@@ -238,13 +264,23 @@ module Block = struct
     in
 
     let (recipe_blocks',_) = explore_blocks (gen_block.number_blocks-1) gen_block.recipe_blocks in
-    let (current_recipe_block',_) = update_recipe gen_block.current_recipe_block in
+    let current_recipe_block' = match gen_block.current_recipe_block with
+      | None -> None
+      | Some c_block -> Some (fst (update_recipe c_block))
+    in
 
     { gen_block with
       recipe_blocks = recipe_blocks';
       current_recipe_block = current_recipe_block';
       ground_index = !ground_index
     }
+
+  let tansition_proper_to_improper_phase local_blocks = match local_blocks.local_proper_blocks with
+    | [] -> Config.internal_error "[session_process.ml >> Block.transition_proper_to_improper_phase] The local block should contain at least the initial label."
+    | lbl :: q ->
+        match lbl with
+          | Label.LComm(_,_,_,true) -> { local_proper_blocks = q; local_improper_blocks = [] }
+          | _ -> { local_proper_blocks = q; local_improper_blocks = [lbl] }
 
   (*** Test for partial reduction ***)
 
@@ -256,7 +292,7 @@ module Block = struct
     | [],[] -> false
     | [], _ | _, [] -> Config.internal_error "[session_process.ml >> Block.is_faulty] The size of the lists should be equal."
     | lbl_b_i::q_lbl, r_b_i::q_r ->
-        match Label.independent_complete lbl_block.label_b lbl_b_i.label_b with
+        match Label.independent_complete lbl_block lbl_b_i with
           | -1 ->
               begin match r_b_i.bound_axioms with
                 | None -> true
@@ -265,26 +301,26 @@ module Block = struct
           | 1 -> is_faulty lbl_block r_block q_lbl q_r
           | _ -> false
 
-  let is_authorised previous_ground_index gen_block lbl_block_l lbl_cur_block = match lbl_block_l with
-    | [] -> true
-    | _ ->
-        let full_lbl_block_l = lbl_cur_block::lbl_block_l in
-        let full_r_block_l = gen_block.current_recipe_block :: gen_block.recipe_blocks in
+  let is_authorised previous_ground_index gen_block local_block =
+    let full_r_block_l = match gen_block.current_recipe_block with
+      | None -> gen_block.recipe_blocks
+      | Some r_block -> r_block :: gen_block.recipe_blocks
+    in
 
-        let rec explore_block index lbl_block_l r_block_l =
-          if index = previous_ground_index
-          then true
-          else
-            match lbl_block_l, r_block_l with
-              | [], _ | [_], _ -> true
-              | _, [] -> Config.internal_error "[session_process.ml >> Block.is_authorised] Lists shouls have the same size."
-              | lbl_block::q_lbl, r_block::q_r ->
-                  if is_faulty lbl_block r_block q_lbl q_r
-                  then false
-                  else explore_block (index-1) q_lbl q_r
-        in
+    let rec explore_block index lbl_block_l r_block_l =
+      if index = previous_ground_index
+      then true
+      else
+        match lbl_block_l, r_block_l with
+          | [], _ | [_], _ -> true
+          | _, [] -> Config.internal_error "[session_process.ml >> Block.is_authorised] Lists shouls have the same size."
+          | lbl_block::q_lbl, r_block::q_r ->
+              if is_faulty lbl_block r_block q_lbl q_r
+              then false
+              else explore_block (index-1) q_lbl q_r
+    in
 
-        explore_block gen_block.number_blocks full_lbl_block_l full_r_block_l
+    explore_block gen_block.number_blocks local_block.local_proper_blocks full_r_block_l
 end
 
 module Channel = struct
@@ -331,9 +367,11 @@ module Channel = struct
     | _ -> false
 end
 
+module NameList = List.Ordered(struct type t = name let compare n1 n2 = compare n1.index_n n2.index_n end)
+
 module Labelled_process = struct
 
-  module NameSet = Set.Make(struct type t = name let compare n1 n2 = compare n1.index_n n2.index_n end)
+  type channel_set = name list (* Always kept ordered. *)
 
   type equations = (variable * term) list
 
@@ -343,11 +381,14 @@ module Labelled_process = struct
       names : variable list
     }
 
+  (** TODO : In the precomputation of the labelled processes, make sure that the channel set of input and output
+     does not contain its channels if it is a private channel. *)
+
   type t =
     | PStart of t
     | PNil
-    | POutput of Channel.t * term * t * Label.t option * position * used_data * NameSet.t
-    | PInput of Channel.t * variable * t * Label.t option * position * used_data * NameSet.t
+    | POutput of Channel.t * term * t * Label.t option * position * used_data * channel_set
+    | PInput of Channel.t * variable * t * Label.t option * position * used_data * channel_set
     | PCondition of equations list * Formula.T.t * variable list (* fresh variables *) * t * t * used_data
     | PNew of variable * name * t * used_data
     | PPar of t list
@@ -571,9 +612,9 @@ module Labelled_process = struct
     let cells = find_cells proc in
 
     let rec explore assoc prev_data = function
-      | Nil -> PNil, NameSet.empty
+      | Nil -> PNil, []
       | Output(ch,t,p,pos) ->
-          let (p',ch_set') = explore assoc prev_data p in
+          let (p',under_ch_set) = explore assoc prev_data p in
 
           let used_data =
             auto_cleanup_all (fun () ->
@@ -583,18 +624,18 @@ module Labelled_process = struct
             )
           in
           let ch' = Channel.of_term cells ch in
-          let ch_set = match ch' with
-            | Channel.CPrivate(n,false) -> NameSet.add n ch_set'
-            | _ -> ch_set'
+          let (ch_set,under_ch_set') = match ch' with
+            | Channel.CPrivate(n,false) -> NameList.add n under_ch_set, NameList.remove n under_ch_set
+            | _ -> under_ch_set, under_ch_set
           in
-          POutput(ch',replace_name_by_variables assoc t,p',None,pos,used_data,ch_set'), ch_set
+          POutput(ch',replace_name_by_variables assoc t,p',None,pos,used_data,under_ch_set'), ch_set
       | Input(ch,PatVar v,p,pos) ->
           Config.debug (fun () ->
             if v.link <> NoLink
             then Config.internal_error "[session_process.ml >> of_process] Variables should not be linked (4)."
           );
 
-          let (p',ch_set') = explore assoc { prev_data with variables = v::prev_data.variables } p in
+          let (p',under_ch_set) = explore assoc { prev_data with variables = v::prev_data.variables } p in
 
           let used_data =
             auto_cleanup_all (fun () ->
@@ -603,11 +644,11 @@ module Labelled_process = struct
             )
           in
           let ch' = Channel.of_term cells ch in
-          let ch_set = match ch' with
-            | Channel.CPrivate(n,false) -> NameSet.add n ch_set'
-            | _ -> ch_set'
+          let (ch_set,under_ch_set') = match ch' with
+            | Channel.CPrivate(n,false) -> NameList.add n under_ch_set, NameList.remove n under_ch_set
+            | _ -> under_ch_set, under_ch_set
           in
-          PInput(ch',v,p',None,pos,used_data,ch_set'), ch_set
+          PInput(ch',v,p',None,pos,used_data,under_ch_set'), ch_set
       | Input _ -> Config.internal_error "[session_process.ml >> of_process] Input should only have variable as pattern at this stage."
       | IfThenElse(t1,t2,pthen,pelse,_) ->
           Config.debug (fun () ->
@@ -627,7 +668,7 @@ module Labelled_process = struct
               filter_used_data prev_data
             )
           in
-          let ch_set = NameSet.union ch_set_then ch_set_else in
+          let ch_set = NameList.union ch_set_then ch_set_else in
           let (equations_1,disequations_1) = Rewrite_rules.compute_equality_modulo_and_rewrite [(t1,t2)] in
           let equations_2 = List.map (replace_name_by_variables_equations assoc) equations_1 in
           let disequations_2 = replace_name_by_variables_formula assoc disequations_1 in
@@ -653,7 +694,7 @@ module Labelled_process = struct
             )
           in
 
-          let ch_set = NameSet.union ch_set_then ch_set_else in
+          let ch_set = NameList.union ch_set_then ch_set_else in
           let (equations_1,disequations_1) = Rewrite_rules.compute_equality_modulo_and_rewrite [(t,term_of_pattern pat)] in
           let disequations_2 = replace_fresh_vars_by_universal !fresh_vars disequations_1 in
           let disequations_3 = replace_name_by_variables_formula assoc disequations_2 in
@@ -673,18 +714,18 @@ module Labelled_process = struct
           let (p_list',ch_set) =
             List.fold_right (fun p (acc_p,acc_ch_set) ->
               let (p',ch_set') = explore assoc prev_data p in
-              let acc_ch_set' = NameSet.union ch_set' acc_ch_set in
+              let acc_ch_set' = NameList.union ch_set' acc_ch_set in
               (p'::acc_p,acc_ch_set')
-            ) p_list ([],NameSet.empty)
+            ) p_list ([],[])
           in
           PPar p_list' , ch_set
       | Bang(p_list,_) ->
           let (p_list',ch_set) =
             List.fold_right (fun p (acc_p,acc_ch_set) ->
               let (p',ch_set') = explore assoc prev_data p in
-              let acc_ch_set' = NameSet.union ch_set' acc_ch_set in
+              let acc_ch_set' = NameList.union ch_set' acc_ch_set in
               (p'::acc_p,acc_ch_set')
-            ) p_list ([],NameSet.empty)
+            ) p_list ([],[])
           in
           PBangStrong([],p_list'), ch_set
       | Choice _ -> Config.internal_error "[session_process.ml >> Labelled_process.of_process] Should not contain choice operator."
@@ -760,6 +801,11 @@ module Labelled_process = struct
 
 
   (*** Next transition ***)
+
+  type proper_status =
+    | Proper
+    | ImproperNegPhase
+    | ImproperPosFocusPhase
 
   type gathering_normalise =
     {
@@ -903,6 +949,127 @@ module Labelled_process = struct
         | _ -> f_continuation gather_norm_1 gather_skel_1 proc_1 f_next_1
     ) f_next
 
+  let rec normalise_process_improper_output prefix_label current_index gather_norm gather_skel proc f_continuation f_next = match proc with
+    | PStart _ -> Config.internal_error "[session_process.ml >> Labelled_process.normalise_process_improper_output] A start process should not be normalised."
+    | PNil -> f_continuation current_index gather_norm gather_skel proc f_next
+    | POutput(ch,t,p,None,pos,used_data,ch_set) ->
+        let gather_skel_1 = add_output_in_skeleton ch current_index gather_skel in
+        let proc1 = POutput(ch,t,p,Some (Label.add_position_from_prefix prefix_label current_index),pos,used_data,ch_set) in
+        f_continuation (current_index+1) gather_norm gather_skel_1 proc1 f_next
+    | PInput(ch,x,p,None,pos,used_data,ch_set) -> f_next ()
+    | PCondition(equation_list,diseq_form,fresh_vars,pthen,pelse,_) ->
+        let rec apply_positive f_next_1 = function
+          | [] -> f_next_1 ()
+          | equation::q ->
+              Variable.auto_cleanup_with_reset (fun f_next_2 ->
+                let orig_subst_1 =
+                  List.fold_left (fun acc v ->
+                    let v' = Variable.fresh Existential in
+                    Variable.link_term v (Var v');
+                    (v,Var v') :: acc
+                  ) gather_norm.original_subst fresh_vars
+                in
+
+                let is_unifiable =
+                  try
+                    List.iter (fun (v,t) -> Term.unify (Var v) t) equation;
+                    true
+                  with Term.Not_unifiable -> false
+                in
+
+                if is_unifiable
+                then
+                  let disequations_1 = Formula.T.instantiate_and_normalise gather_norm.disequations in
+                  if Formula.T.Bot = disequations_1
+                  then f_next_2 ()
+                  else normalise_process_improper_output prefix_label current_index { gather_norm with original_subst = orig_subst_1; disequations = disequations_1 } gather_skel pthen f_continuation f_next_2
+                else f_next_2 ()
+              ) (fun () -> apply_positive f_next_1 q)
+        in
+
+        let apply_negative f_next_1 =
+          let diseq_form_1 = Formula.T.instantiate_and_normalise_full diseq_form in
+          if Formula.T.Bot = diseq_form_1
+          then f_next_1 ()
+          else
+            let disequations_1 = Formula.T.wedge_formula diseq_form_1 gather_norm.disequations in
+            normalise_process_improper_output prefix_label current_index { gather_norm with disequations = disequations_1 } gather_skel pelse f_continuation f_next_1
+        in
+
+        apply_positive (fun () ->
+          apply_negative f_next
+        ) equation_list
+    | PNew(x,n,p,_) ->
+        Variable.auto_cleanup_with_reset (fun f_next_1 ->
+          Variable.link_term x (Name n);
+          normalise_process_improper_output prefix_label current_index { gather_norm with original_names = ((x,n)::gather_norm.original_names) } gather_skel p f_continuation f_next_1
+        ) f_next
+    | PPar p_list ->
+        normalise_process_improper_output_list ~split_par:true prefix_label current_index gather_norm gather_skel p_list (fun current_index_1 gather_norm_1 gather_skel_1 p_list_1 f_next_1 ->
+          match p_list_1 with
+            | [] -> f_continuation current_index_1 gather_norm_1 gather_skel_1 PNil f_next_1
+            | [p] -> f_continuation current_index_1 gather_norm_1 gather_skel_1 p f_next_1
+            | _ -> f_continuation current_index_1 gather_norm_1 gather_skel_1 (PPar p_list_1) f_next_1
+        ) f_next
+    | PBangStrong([],plist) ->
+        normalise_process_improper_output_list prefix_label current_index gather_norm gather_skel plist (fun current_index_1 gather_norm_1 gather_skel_1 plist_1 f_next_1 ->
+          match plist_1 with
+            | [] -> f_continuation current_index_1 gather_norm_1 gather_skel_1 PNil f_next_1
+            | [p] -> f_continuation current_index_1 gather_norm_1 gather_skel_1 p f_next_1
+            | _ -> f_continuation current_index_1 gather_norm_1 gather_skel_1 (PBangStrong([],plist_1)) f_next_1
+        ) f_next
+    | PBangStrong _ -> Config.internal_error "[session_process.ml >> normalise_process_improper_output] Normalisation should only be done on processes without broken symmetry"
+    | PBangPartial plist ->
+        normalise_process_improper_output_list prefix_label current_index gather_norm gather_skel plist (fun current_index_1 gather_norm_1 gather_skel_1 plist_1 f_next_1 ->
+          match plist_1 with
+            | [] -> f_continuation current_index_1 gather_norm_1 gather_skel_1 PNil f_next_1
+            | [p] -> f_continuation current_index_1 gather_norm_1 gather_skel_1 p f_next_1
+            | _ -> f_continuation current_index_1 gather_norm_1 gather_skel_1 (PBangPartial plist_1) f_next_1
+        ) f_next
+    | POutput _ | PInput _ -> Config.internal_error "[session_process.ml >> normalise_process_improper_output] The inputs and outputs should not be already labeled."
+
+  and normalise_process_improper_output_list ?(split_par=false) prefix_label current_index gather_norm gather_skel p_list f_continuation f_next = match p_list with
+    | [] -> f_continuation current_index gather_norm gather_skel [] f_next
+    | p::q ->
+        normalise_process_improper_output prefix_label current_index gather_norm gather_skel p (fun current_index_1 gather_norm_1 gather_skel_1 p_1 f_next_1 ->
+          normalise_process_improper_output_list ~split_par:split_par prefix_label current_index_1 gather_norm_1 gather_skel_1 q (fun current_index_2 gather_norm_2 gather_skel_2 q_2 f_next_2 ->
+            match p_1 with
+              | PNil -> f_continuation current_index_2 gather_norm_2 gather_skel_2 q_2 f_next_2
+              | PPar plist_1 when split_par -> f_continuation current_index_2 gather_norm_2 gather_skel_2  (List.rev_append plist_1 q_2) f_next_2
+              | _ -> f_continuation current_index_2 gather_norm_2 gather_skel_2  (p_1::q_2) f_next_2
+          ) f_next_1
+        ) f_next
+
+  let normalise_improper_output label gather_norm proc f_continuation f_next =
+    let prefix_label = label.Label.prefix @ [ label.Label.last_index ] in
+    let gather_skel =
+      {
+        input_skel = [];
+        output_skel = [];
+        private_input_skel = (0,[]);
+        private_output_skel = (0,[]);
+        private_channels = [];
+        label_prefix = prefix_label;
+        par_created = true
+
+      }
+    in
+    normalise_process_improper_output prefix_label 1 gather_norm gather_skel proc (fun _ gather_norm_1 gather_skel_1 proc_1 f_next_1 ->
+      match proc_1 with
+        | POutput(ch,t,p,_,pos,used_data,ch_set) ->
+            let gather_skel_2 =
+              if fst gather_skel_1.private_output_skel = 1
+              then { gather_skel_1 with private_output_skel = (1,[label.Label.last_index]); label_prefix = label.Label.prefix; par_created = false }
+              else
+                match gather_skel_1.output_skel with
+                  | [f,1,_] -> { gather_skel_1 with output_skel = [f,1,[label.Label.last_index]]; label_prefix = label.Label.prefix; par_created = false }
+                  | _ -> Config.internal_error "[session_process.ml >> normalise] There should be only one output."
+            in
+            let proc_2 = POutput(ch,t,p,Some label,pos,used_data,ch_set) in
+            f_continuation gather_norm_1 gather_skel_2 proc_2 f_next_1
+        | _ -> f_continuation gather_norm_1 gather_skel_1 proc_1 f_next_1
+    ) f_next
+
   (*** Testing ***)
 
   let rec exists_toplevel_public_output = function
@@ -956,16 +1123,13 @@ module Configuration = struct
       input_and_private_proc : Labelled_process.t list;
       output_proc : Labelled_process.t list;
       focused_proc : Labelled_process.t option;
+      pure_improper_proc : Labelled_process.t list;
 
       (* Blocks *)
-      previous_blocks : Block.local_label list;
-      ongoing_block : Block.local_label;
+      blocks : Block.local_blocks;
 
       (* Private channel *)
       private_channels : (Channel.t * int (* out *) * int (* in *)) list; (* Ordered by Channel.compare *)
-
-      (* Improper processes *)
-      improper_collector : Labelled_process.t list;
     }
 
   type output_transition =
@@ -983,6 +1147,19 @@ module Configuration = struct
     Thus we keep a list indicating the number of public channel.
       public_output_channels : (Channel.t * int) list (* Ordered by Channel.compare *)
   *)
+
+  (** Link of used data **)
+
+  let link_used_data f_next conf =
+    Labelled_process.auto_cleanup_all (fun () ->
+      List.iter Labelled_process.link_used_data_process conf.input_and_private_proc;
+      List.iter Labelled_process.link_used_data_process conf.output_proc;
+      begin match conf.focused_proc with
+        | None -> ()
+        | Some p -> Labelled_process.link_used_data_process p
+      end;
+      f_next ()
+    )
 
   (*** Public output utilities ***)
 
@@ -1045,6 +1222,156 @@ module Configuration = struct
     Config.debug (fun () ->
       if conf.focused_proc <> None
       then Config.internal_error "[session_process.ml >> Configuration.next_public_output] An output transition should not be computed when there are still a focused process."
+    );
+
+    let already_assigned_forall = ref false in
+    let only_forall = matching_status = ForAll in
+
+    let rec explore_process proc f_cont f_next = match proc with
+      | Labelled_process.POutput(c,t,p,Some label,pos,_,_) ->
+          if not (Channel.is_equal target_channel c) || (only_forall && !already_assigned_forall)
+          then f_next ()
+          else
+            let apply_normalisation matching_status_1 f_next_1 =
+              let gather_norm =
+                {
+                  Labelled_process.original_subst = original_subst;
+                  Labelled_process.original_names = original_names;
+                  Labelled_process.disequations = Formula.T.Top
+                }
+              in
+              Labelled_process.normalise label gather_norm p (fun gather_norm_1 gather_skel_1 p_1 f_next_2 ->
+                let transition =
+                  {
+                    out_label = label;
+                    out_term = t;
+                    out_position = pos;
+                    out_matching_status = matching_status_1;
+                    out_gathering_normalise = gather_norm_1;
+                    out_gathering_skeleton = gather_skel_1
+                  }
+                in
+                f_cont transition p_1 f_next_2
+              ) f_next_1
+            in
+
+            if !already_assigned_forall
+            then apply_normalisation Exists f_next
+            else apply_normalisation matching_status (fun () -> already_assigned_forall := true; f_next ())
+      | Labelled_process.PPar plist ->
+          explore_process_list ~split_par:true [] plist (fun transition plist_1 f_next_1 -> match plist_1 with
+            | [] -> f_cont transition Labelled_process.PNil f_next_1
+            | [p] -> f_cont transition p f_next_1
+            | _ -> f_cont transition (Labelled_process.PPar plist_1) f_next_1
+          ) f_next
+      | Labelled_process.PBangStrong(brok_plist,plist) ->
+          let nb_output = Labelled_process.count_toplevel_public_output [proc] in
+
+          if nb_output = 0
+          then f_next ()
+          else
+            (* Since the replication is strong, we need to tag one of [brok_plist] or one of [plist] as forall
+               and do all brok_plist and one of plist as an Exists transition. *)
+            explore_process_list [] brok_plist (fun transition brok_plist_1 f_next_1 ->
+              if brok_plist_1 = [] && plist = []
+              then f_cont transition Labelled_process.PNil f_next_1
+              else
+                if nb_output = 1 && transition.out_gathering_skeleton.Labelled_process.output_skel = []
+                then
+                  begin
+                    Config.debug (fun () ->
+                      if plist <> []
+                      then Config.internal_error "[session_process.ml >> Configuration.next_public_output] When there is no more output then plist should be empty."
+                    );
+                    f_cont transition (Labelled_process.PBangPartial brok_plist_1) f_next_1
+                  end
+                else f_cont transition (Labelled_process.PBangStrong(brok_plist_1,plist)) f_next_1
+            ) (fun () -> match plist with
+              | [] -> f_next ()
+              | p::q_list ->
+                  explore_process p (fun transition p_1 f_next_1 ->
+                    if p_1 = Labelled_process.PNil && q_list = [] && brok_plist = []
+                    then f_cont transition Labelled_process.PNil f_next_1
+                    else
+                      if nb_output = 1 && transition.out_gathering_skeleton.Labelled_process.output_skel = []
+                      then
+                        begin
+                          Config.debug (fun () ->
+                            if q_list <> []
+                            then Config.internal_error "[session_process.ml >> Configuration.next_public_output] When there is no more output then q_list should be empty."
+                          );
+                          f_cont transition (Labelled_process.PBangPartial(p_1::brok_plist)) f_next_1
+                        end
+                      else f_cont transition (Labelled_process.PBangStrong(p_1::brok_plist,q_list)) f_next_1
+                  ) f_next
+            )
+      | Labelled_process.PBangPartial plist ->
+          (* Since the replication is partial, we need to tag one of [plist] as forall
+             and all plist as an Exists transition. *)
+          explore_process_list [] plist (fun transition plist_1 f_next_1 -> match plist_1 with
+            | [] -> f_cont transition Labelled_process.PNil f_next_1
+            | [p] -> f_cont transition p f_next_1
+            | _ -> f_cont transition (Labelled_process.PBangPartial plist_1) f_next_1
+          ) f_next
+      | Labelled_process.PInput(_,_,_,Some _,_,_,_) -> f_next ()
+      | _ -> Config.internal_error "[session_process.ml >> Configuration.next_public_output] Should only find Input (with label), Output (with label), Par or Bang."
+
+    and explore_process_list ?(split_par=false) prev_plist plist f_cont f_next = match plist with
+      | [] -> f_next ()
+      | p::q ->
+          explore_process p (fun transition p_1 f_next_1 -> match p_1 with
+            | Labelled_process.PNil -> f_cont transition (List.rev_append prev_plist q) f_next_1
+            | Labelled_process.PPar plist' when split_par -> f_cont transition (List.rev_append prev_plist (plist'@q)) f_next_1
+            | _ -> f_cont transition (List.rev_append prev_plist (p_1::q)) f_next_1
+          ) (fun () ->
+            if only_forall && !already_assigned_forall
+            then f_next ()
+            else explore_process_list ~split_par:split_par (p::prev_plist) q f_cont f_next
+          )
+    in
+
+    let rec explore_output_processes prev_out_plist out_plist in_priv_plist f_cont f_next = match out_plist with
+      | [] -> f_next ()
+      | p::q ->
+          explore_process p (fun transition p_1 f_next_1 -> match p_1 with
+            | Labelled_process.PPar plist' ->
+                let (out_p,in_p) =
+                  List.fold_right (fun p' (acc_out,acc_in) ->
+                    if Labelled_process.exists_toplevel_public_output p'
+                    then (p'::acc_out,acc_in)
+                    else (acc_out,p'::acc_in)
+                  ) plist' (q,in_priv_plist)
+                in
+                f_cont transition (List.rev_append prev_out_plist out_p) in_p f_next_1
+            | Labelled_process.PNil -> f_cont transition (List.rev_append prev_out_plist q) in_priv_plist f_next_1
+            | _ ->
+                if transition.out_gathering_skeleton.Labelled_process.output_skel = [] && not (Labelled_process.exists_toplevel_public_output p_1)
+                then f_cont transition (List.rev_append prev_out_plist q) (p_1::in_priv_plist) f_next_1
+                else f_cont transition (List.rev_append prev_out_plist (p_1::q)) in_priv_plist f_next_1
+          ) (fun () ->
+            if only_forall && !already_assigned_forall
+            then f_next ()
+            else explore_output_processes (p::prev_out_plist) q in_priv_plist f_cont f_next
+          )
+    in
+
+    explore_output_processes [] conf.output_proc conf.input_and_private_proc (fun transition out_proc in_priv_proc f_next_1 ->
+      let private_channels = update_private_channels_from_output_transition conf transition in
+      let conf' =
+        { conf with
+          input_and_private_proc = in_priv_proc;
+          output_proc = out_proc;
+          private_channels = private_channels
+        }
+      in
+      f_continuation transition conf';
+      f_next_1 ()
+    ) (fun () -> ())
+
+  let next_public_output_improper_phase matching_status target_channel original_subst original_names conf (f_continuation : output_transition -> t -> unit) =
+    Config.debug (fun () ->
+      if conf.focused_proc <> None
+      then Config.internal_error "[session_process.ml >> Configuration.next_public_output_improper_phase] An output transition should not be computed when there are still a focused process."
     );
 
     let already_assigned_forall = ref false in
@@ -1424,6 +1751,49 @@ module Configuration = struct
       in_comm_gathering_normalise : Labelled_process.gathering_normalise
     }
 
+  (* Channel priority *)
+
+  let determine_channel_priority conf =
+
+    let rec filter_private_names_list main_ch_list = function
+      | [] -> main_ch_list
+      | p::q ->
+          let main_ch_list_1 = filter_private_name main_ch_list p in
+          if main_ch_list_1 = []
+          then []
+          else filter_private_names_list main_ch_list_1 q
+
+    and filter_private_name main_ch_list = function
+      | Labelled_process.PInput(_,_,_,_,_,_,ch_list)
+      | Labelled_process.POutput(_,_,_,_,_,_,ch_list) -> NameList.diff main_ch_list ch_list
+      | Labelled_process.PBangStrong([],p::_) -> filter_private_name main_ch_list p
+      | Labelled_process.PBangPartial plist
+      | Labelled_process.PPar plist -> filter_private_names_list main_ch_list plist
+      | _ -> Config.internal_error "[session_process.ml >> determine_channel_priority] Unexpected case."
+    in
+
+    let rec explore_private_channels = function
+      | [] -> None
+      | ((Channel.CPrivate(_,true)) as ch,i,j)::_ when i >= 1 && j >= 1 -> Some ch
+      | (Channel.CPrivate(_,true),_,_)::q -> explore_private_channels q
+      | ch_list ->
+          let channel_names =
+            List.map (fun (ch,_,_) -> match ch with
+              | Channel.CPrivate(n,false) -> n
+              | _ -> Config.internal_error "[session_process.ml >> determine_channel_priority] The rest of the list should only contain private name."
+            ) ch_list
+          in
+          if channel_names = []
+          then None
+          else
+            let channel_names' = filter_private_names_list channel_names conf.input_and_private_proc in
+            if channel_names' = []
+            then None
+            else Some (Channel.CPrivate(List.hd channel_names',false))
+    in
+
+    explore_private_channels conf.private_channels
+
   (* Handling of processes *)
 
   let process_list_of_par = function
@@ -1474,7 +1844,7 @@ module Configuration = struct
           end
     | _ -> Config.internal_error "[session_process.ml >> Configuration.generate_in_out_list] The skeleton and process lists should be of same size."
 
-  let next_input_and_private_comm matching_status channel_priority original_subst original_names conf f_continuation f_next =
+  let next_input_and_private_comm channel_priority matching_status original_subst original_names conf f_continuation =
 
     let is_applicable = match matching_status with
       | ForAll ->
@@ -1611,10 +1981,11 @@ module Configuration = struct
           private_channels = private_channels
         }
       in
-      f_continuation transition conf' f_next_1
-    ) f_next
+      f_continuation transition conf';
+      f_next_1 ()
+    ) (fun () -> ())
 
-  let next_focused_input matching_status original_subst original_names conf f_continuation f_next =
+  let next_pos_input matching_status original_subst original_names conf f_continuation f_next =
 
     match conf.focused_proc with
       | Some Labelled_process.PInput(_,x,p,Some label,pos,_,_) ->

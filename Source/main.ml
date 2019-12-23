@@ -1,7 +1,7 @@
 open Types
 open Types_ui
 open Display
-open Session_equivalence
+
 
 let string_of_string_list str_list = List.fold_right (fun str acc -> str^"\n"^acc) str_list ""
 
