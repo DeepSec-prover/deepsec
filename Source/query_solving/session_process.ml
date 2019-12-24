@@ -381,9 +381,6 @@ module Labelled_process = struct
       names : variable list
     }
 
-  (** TODO : In the precomputation of the labelled processes, make sure that the channel set of input and output
-     does not contain its channels if it is a private channel. *)
-
   type t =
     | PStart of t
     | PNil
@@ -814,101 +811,7 @@ module Labelled_process = struct
       disequations : Formula.T.t
     }
 
-  let rec normalise_process prefix_label current_index gather_norm gather_skel proc f_continuation f_next = match proc with
-    | PStart _ -> Config.internal_error "[session_process.ml >> Labelled_process.normalise] A start process should not be normalised."
-    | PNil -> f_continuation current_index gather_norm gather_skel proc f_next
-    | POutput(ch,t,p,None,pos,used_data,ch_set) ->
-        let gather_skel_1 = add_output_in_skeleton ch current_index gather_skel in
-        let proc1 = POutput(ch,t,p,Some (Label.add_position_from_prefix prefix_label current_index),pos,used_data,ch_set) in
-        f_continuation (current_index+1) gather_norm gather_skel_1 proc1 f_next
-    | PInput(ch,x,p,None,pos,used_data,ch_set) ->
-        let gather_skel_1 = add_input_in_skeleton ch current_index gather_skel in
-        let proc1 = PInput(ch,x,p,Some (Label.add_position_from_prefix prefix_label current_index), pos,used_data, ch_set) in
-        f_continuation (current_index+1) gather_norm gather_skel_1 proc1 f_next
-    | PCondition(equation_list,diseq_form,fresh_vars,pthen,pelse,_) ->
-        let rec apply_positive f_next_1 = function
-          | [] -> f_next_1 ()
-          | equation::q ->
-              Variable.auto_cleanup_with_reset (fun f_next_2 ->
-                let orig_subst_1 =
-                  List.fold_left (fun acc v ->
-                    let v' = Variable.fresh Existential in
-                    Variable.link_term v (Var v');
-                    (v,Var v') :: acc
-                  ) gather_norm.original_subst fresh_vars
-                in
-
-                let is_unifiable =
-                  try
-                    List.iter (fun (v,t) -> Term.unify (Var v) t) equation;
-                    true
-                  with Term.Not_unifiable -> false
-                in
-
-                if is_unifiable
-                then
-                  let disequations_1 = Formula.T.instantiate_and_normalise gather_norm.disequations in
-                  if Formula.T.Bot = disequations_1
-                  then f_next_2 ()
-                  else normalise_process prefix_label current_index { gather_norm with original_subst = orig_subst_1; disequations = disequations_1 } gather_skel pthen f_continuation f_next_2
-                else f_next_2 ()
-              ) (fun () -> apply_positive f_next_1 q)
-        in
-
-        let apply_negative f_next_1 =
-          let diseq_form_1 = Formula.T.instantiate_and_normalise_full diseq_form in
-          if Formula.T.Bot = diseq_form_1
-          then f_next_1 ()
-          else
-            let disequations_1 = Formula.T.wedge_formula diseq_form_1 gather_norm.disequations in
-            normalise_process prefix_label current_index { gather_norm with disequations = disequations_1 } gather_skel pelse f_continuation f_next_1
-        in
-
-        apply_positive (fun () ->
-          apply_negative f_next
-        ) equation_list
-    | PNew(x,n,p,_) ->
-        Variable.auto_cleanup_with_reset (fun f_next_1 ->
-          Variable.link_term x (Name n);
-          normalise_process prefix_label current_index { gather_norm with original_names = ((x,n)::gather_norm.original_names) } gather_skel p f_continuation f_next_1
-        ) f_next
-    | PPar p_list ->
-        normalise_process_list ~split_par:true prefix_label current_index gather_norm gather_skel p_list (fun current_index_1 gather_norm_1 gather_skel_1 p_list_1 f_next_1 ->
-          match p_list_1 with
-            | [] -> f_continuation current_index_1 gather_norm_1 gather_skel_1 PNil f_next_1
-            | [p] -> f_continuation current_index_1 gather_norm_1 gather_skel_1 p f_next_1
-            | _ -> f_continuation current_index_1 gather_norm_1 gather_skel_1 (PPar p_list_1) f_next_1
-        ) f_next
-    | PBangStrong([],plist) ->
-        normalise_process_list prefix_label current_index gather_norm gather_skel plist (fun current_index_1 gather_norm_1 gather_skel_1 plist_1 f_next_1 ->
-          match plist_1 with
-            | [] -> f_continuation current_index_1 gather_norm_1 gather_skel_1 PNil f_next_1
-            | [p] -> f_continuation current_index_1 gather_norm_1 gather_skel_1 p f_next_1
-            | _ -> f_continuation current_index_1 gather_norm_1 gather_skel_1 (PBangStrong([],plist_1)) f_next_1
-        ) f_next
-    | PBangStrong _ -> Config.internal_error "[session_process.ml >> normalise_process] Normalisation should only be done on processes without broken symmetry"
-    | PBangPartial plist ->
-        normalise_process_list prefix_label current_index gather_norm gather_skel plist (fun current_index_1 gather_norm_1 gather_skel_1 plist_1 f_next_1 ->
-          match plist_1 with
-            | [] -> f_continuation current_index_1 gather_norm_1 gather_skel_1 PNil f_next_1
-            | [p] -> f_continuation current_index_1 gather_norm_1 gather_skel_1 p f_next_1
-            | _ -> f_continuation current_index_1 gather_norm_1 gather_skel_1 (PBangPartial plist_1) f_next_1
-        ) f_next
-    | POutput _ | PInput _ -> Config.internal_error "[session_process.ml >> normalise_process] The inputs and outputs should not be already labeled."
-
-  and normalise_process_list ?(split_par=false) prefix_label current_index gather_norm gather_skel p_list f_continuation f_next = match p_list with
-    | [] -> f_continuation current_index gather_norm gather_skel [] f_next
-    | p::q ->
-        normalise_process prefix_label current_index gather_norm gather_skel p (fun current_index_1 gather_norm_1 gather_skel_1 p_1 f_next_1 ->
-          normalise_process_list ~split_par:split_par prefix_label current_index_1 gather_norm_1 gather_skel_1 q (fun current_index_2 gather_norm_2 gather_skel_2 q_2 f_next_2 ->
-            match p_1 with
-              | PNil -> f_continuation current_index_2 gather_norm_2 gather_skel_2 q_2 f_next_2
-              | PPar plist_1 when split_par -> f_continuation current_index_2 gather_norm_2 gather_skel_2  (List.rev_append plist_1 q_2) f_next_2
-              | _ -> f_continuation current_index_2 gather_norm_2 gather_skel_2  (p_1::q_2) f_next_2
-          ) f_next_1
-        ) f_next
-
-  let normalise label gather_norm proc f_continuation f_next =
+  let normalise proper_status label gather_norm proc f_continuation f_next =
     let prefix_label = label.Label.prefix @ [ label.Label.last_index ] in
     let gather_skel =
       {
@@ -922,7 +825,117 @@ module Labelled_process = struct
 
       }
     in
-    normalise_process prefix_label 1 gather_norm gather_skel proc (fun _ gather_norm_1 gather_skel_1 proc_1 f_next_1 ->
+
+    let rec normalise_process current_index gather_norm gather_skel proc f_continuation f_next = match proc with
+      | PStart _ -> Config.internal_error "[session_process.ml >> Labelled_process.normalise] A start process should not be normalised."
+      | PNil -> f_continuation current_index gather_norm gather_skel proc f_next
+      | POutput(ch,t,p,None,pos,used_data,ch_set) ->
+          let apply () =
+            let gather_skel_1 = add_output_in_skeleton ch current_index gather_skel in
+            let proc1 = POutput(ch,t,p,Some (Label.add_position_from_prefix prefix_label current_index),pos,used_data,ch_set) in
+            f_continuation (current_index+1) gather_norm gather_skel_1 proc1 f_next
+          in
+          begin match proper_status with
+            | Proper -> apply ()
+            | ImproperNegPhase -> if Channel.is_private ch then f_next () else apply ()
+            | _ -> if Channel.is_private ch || gather_skel.input_skel <> [] then f_next () else apply ()
+          end
+      | PInput(ch,x,p,None,pos,used_data,ch_set) ->
+          let apply () =
+            let gather_skel_1 = add_input_in_skeleton ch current_index gather_skel in
+            let proc1 = PInput(ch,x,p,Some (Label.add_position_from_prefix prefix_label current_index),pos,used_data,ch_set) in
+            f_continuation (current_index+1) gather_norm gather_skel_1 proc1 f_next
+          in
+          begin match proper_status with
+            | Proper -> apply ()
+            | ImproperNegPhase -> f_next ()
+            | ImproperPosFocusPhase -> if Channel.is_private ch || gather_skel.input_skel <> [] then f_next () else apply ()
+          end
+      | PCondition(equation_list,diseq_form,fresh_vars,pthen,pelse,_) ->
+          let rec apply_positive f_next_1 = function
+            | [] -> f_next_1 ()
+            | equation::q ->
+                Variable.auto_cleanup_with_reset (fun f_next_2 ->
+                  let orig_subst_1 =
+                    List.fold_left (fun acc v ->
+                      let v' = Variable.fresh Existential in
+                      Variable.link_term v (Var v');
+                      (v,Var v') :: acc
+                    ) gather_norm.original_subst fresh_vars
+                  in
+
+                  let is_unifiable =
+                    try
+                      List.iter (fun (v,t) -> Term.unify (Var v) t) equation;
+                      true
+                    with Term.Not_unifiable -> false
+                  in
+
+                  if is_unifiable
+                  then
+                    let disequations_1 = Formula.T.instantiate_and_normalise gather_norm.disequations in
+                    if Formula.T.Bot = disequations_1
+                    then f_next_2 ()
+                    else normalise_process current_index { gather_norm with original_subst = orig_subst_1; disequations = disequations_1 } gather_skel pthen f_continuation f_next_2
+                  else f_next_2 ()
+                ) (fun () -> apply_positive f_next_1 q)
+          in
+
+          let apply_negative f_next_1 =
+            let diseq_form_1 = Formula.T.instantiate_and_normalise_full diseq_form in
+            if Formula.T.Bot = diseq_form_1
+            then f_next_1 ()
+            else
+              let disequations_1 = Formula.T.wedge_formula diseq_form_1 gather_norm.disequations in
+              normalise_process current_index { gather_norm with disequations = disequations_1 } gather_skel pelse f_continuation f_next_1
+          in
+
+          apply_positive (fun () ->
+            apply_negative f_next
+          ) equation_list
+      | PNew(x,n,p,_) ->
+          Variable.auto_cleanup_with_reset (fun f_next_1 ->
+            Variable.link_term x (Name n);
+            normalise_process current_index { gather_norm with original_names = ((x,n)::gather_norm.original_names) } gather_skel p f_continuation f_next_1
+          ) f_next
+      | PPar p_list ->
+          normalise_process_list ~split_par:true current_index gather_norm gather_skel p_list (fun current_index_1 gather_norm_1 gather_skel_1 p_list_1 f_next_1 ->
+            match p_list_1 with
+              | [] -> f_continuation current_index_1 gather_norm_1 gather_skel_1 PNil f_next_1
+              | [p] -> f_continuation current_index_1 gather_norm_1 gather_skel_1 p f_next_1
+              | _ -> f_continuation current_index_1 gather_norm_1 gather_skel_1 (PPar p_list_1) f_next_1
+          ) f_next
+      | PBangStrong([],plist) ->
+          normalise_process_list current_index gather_norm gather_skel plist (fun current_index_1 gather_norm_1 gather_skel_1 plist_1 f_next_1 ->
+            match plist_1 with
+              | [] -> f_continuation current_index_1 gather_norm_1 gather_skel_1 PNil f_next_1
+              | [p] -> f_continuation current_index_1 gather_norm_1 gather_skel_1 p f_next_1
+              | _ -> f_continuation current_index_1 gather_norm_1 gather_skel_1 (PBangStrong([],plist_1)) f_next_1
+          ) f_next
+      | PBangStrong _ -> Config.internal_error "[session_process.ml >> normalise_process] Normalisation should only be done on processes without broken symmetry"
+      | PBangPartial plist ->
+          normalise_process_list current_index gather_norm gather_skel plist (fun current_index_1 gather_norm_1 gather_skel_1 plist_1 f_next_1 ->
+            match plist_1 with
+              | [] -> f_continuation current_index_1 gather_norm_1 gather_skel_1 PNil f_next_1
+              | [p] -> f_continuation current_index_1 gather_norm_1 gather_skel_1 p f_next_1
+              | _ -> f_continuation current_index_1 gather_norm_1 gather_skel_1 (PBangPartial plist_1) f_next_1
+          ) f_next
+      | POutput _ | PInput _ -> Config.internal_error "[session_process.ml >> normalise_process] The inputs and outputs should not be already labeled."
+
+    and normalise_process_list ?(split_par=false) current_index gather_norm gather_skel p_list f_continuation f_next = match p_list with
+      | [] -> f_continuation current_index gather_norm gather_skel [] f_next
+      | p::q ->
+          normalise_process current_index gather_norm gather_skel p (fun current_index_1 gather_norm_1 gather_skel_1 p_1 f_next_1 ->
+            normalise_process_list ~split_par:split_par current_index_1 gather_norm_1 gather_skel_1 q (fun current_index_2 gather_norm_2 gather_skel_2 q_2 f_next_2 ->
+              match p_1 with
+                | PNil -> f_continuation current_index_2 gather_norm_2 gather_skel_2 q_2 f_next_2
+                | PPar plist_1 when split_par -> f_continuation current_index_2 gather_norm_2 gather_skel_2  (List.rev_append plist_1 q_2) f_next_2
+                | _ -> f_continuation current_index_2 gather_norm_2 gather_skel_2  (p_1::q_2) f_next_2
+            ) f_next_1
+          ) f_next
+    in
+
+    normalise_process 1 gather_norm gather_skel proc (fun _ gather_norm_1 gather_skel_1 proc_1 f_next_1 ->
       match proc_1 with
         | POutput(ch,t,p,_,pos,used_data,ch_set) ->
             let gather_skel_2 =
@@ -945,127 +958,6 @@ module Labelled_process = struct
                   | _ -> Config.internal_error "[session_process.ml >> normalise] There should be only one output."
             in
             let proc_2 = PInput(ch,x,p,Some label,pos,used_data,ch_set) in
-            f_continuation gather_norm_1 gather_skel_2 proc_2 f_next_1
-        | _ -> f_continuation gather_norm_1 gather_skel_1 proc_1 f_next_1
-    ) f_next
-
-  let rec normalise_process_improper_output prefix_label current_index gather_norm gather_skel proc f_continuation f_next = match proc with
-    | PStart _ -> Config.internal_error "[session_process.ml >> Labelled_process.normalise_process_improper_output] A start process should not be normalised."
-    | PNil -> f_continuation current_index gather_norm gather_skel proc f_next
-    | POutput(ch,t,p,None,pos,used_data,ch_set) ->
-        let gather_skel_1 = add_output_in_skeleton ch current_index gather_skel in
-        let proc1 = POutput(ch,t,p,Some (Label.add_position_from_prefix prefix_label current_index),pos,used_data,ch_set) in
-        f_continuation (current_index+1) gather_norm gather_skel_1 proc1 f_next
-    | PInput(ch,x,p,None,pos,used_data,ch_set) -> f_next ()
-    | PCondition(equation_list,diseq_form,fresh_vars,pthen,pelse,_) ->
-        let rec apply_positive f_next_1 = function
-          | [] -> f_next_1 ()
-          | equation::q ->
-              Variable.auto_cleanup_with_reset (fun f_next_2 ->
-                let orig_subst_1 =
-                  List.fold_left (fun acc v ->
-                    let v' = Variable.fresh Existential in
-                    Variable.link_term v (Var v');
-                    (v,Var v') :: acc
-                  ) gather_norm.original_subst fresh_vars
-                in
-
-                let is_unifiable =
-                  try
-                    List.iter (fun (v,t) -> Term.unify (Var v) t) equation;
-                    true
-                  with Term.Not_unifiable -> false
-                in
-
-                if is_unifiable
-                then
-                  let disequations_1 = Formula.T.instantiate_and_normalise gather_norm.disequations in
-                  if Formula.T.Bot = disequations_1
-                  then f_next_2 ()
-                  else normalise_process_improper_output prefix_label current_index { gather_norm with original_subst = orig_subst_1; disequations = disequations_1 } gather_skel pthen f_continuation f_next_2
-                else f_next_2 ()
-              ) (fun () -> apply_positive f_next_1 q)
-        in
-
-        let apply_negative f_next_1 =
-          let diseq_form_1 = Formula.T.instantiate_and_normalise_full diseq_form in
-          if Formula.T.Bot = diseq_form_1
-          then f_next_1 ()
-          else
-            let disequations_1 = Formula.T.wedge_formula diseq_form_1 gather_norm.disequations in
-            normalise_process_improper_output prefix_label current_index { gather_norm with disequations = disequations_1 } gather_skel pelse f_continuation f_next_1
-        in
-
-        apply_positive (fun () ->
-          apply_negative f_next
-        ) equation_list
-    | PNew(x,n,p,_) ->
-        Variable.auto_cleanup_with_reset (fun f_next_1 ->
-          Variable.link_term x (Name n);
-          normalise_process_improper_output prefix_label current_index { gather_norm with original_names = ((x,n)::gather_norm.original_names) } gather_skel p f_continuation f_next_1
-        ) f_next
-    | PPar p_list ->
-        normalise_process_improper_output_list ~split_par:true prefix_label current_index gather_norm gather_skel p_list (fun current_index_1 gather_norm_1 gather_skel_1 p_list_1 f_next_1 ->
-          match p_list_1 with
-            | [] -> f_continuation current_index_1 gather_norm_1 gather_skel_1 PNil f_next_1
-            | [p] -> f_continuation current_index_1 gather_norm_1 gather_skel_1 p f_next_1
-            | _ -> f_continuation current_index_1 gather_norm_1 gather_skel_1 (PPar p_list_1) f_next_1
-        ) f_next
-    | PBangStrong([],plist) ->
-        normalise_process_improper_output_list prefix_label current_index gather_norm gather_skel plist (fun current_index_1 gather_norm_1 gather_skel_1 plist_1 f_next_1 ->
-          match plist_1 with
-            | [] -> f_continuation current_index_1 gather_norm_1 gather_skel_1 PNil f_next_1
-            | [p] -> f_continuation current_index_1 gather_norm_1 gather_skel_1 p f_next_1
-            | _ -> f_continuation current_index_1 gather_norm_1 gather_skel_1 (PBangStrong([],plist_1)) f_next_1
-        ) f_next
-    | PBangStrong _ -> Config.internal_error "[session_process.ml >> normalise_process_improper_output] Normalisation should only be done on processes without broken symmetry"
-    | PBangPartial plist ->
-        normalise_process_improper_output_list prefix_label current_index gather_norm gather_skel plist (fun current_index_1 gather_norm_1 gather_skel_1 plist_1 f_next_1 ->
-          match plist_1 with
-            | [] -> f_continuation current_index_1 gather_norm_1 gather_skel_1 PNil f_next_1
-            | [p] -> f_continuation current_index_1 gather_norm_1 gather_skel_1 p f_next_1
-            | _ -> f_continuation current_index_1 gather_norm_1 gather_skel_1 (PBangPartial plist_1) f_next_1
-        ) f_next
-    | POutput _ | PInput _ -> Config.internal_error "[session_process.ml >> normalise_process_improper_output] The inputs and outputs should not be already labeled."
-
-  and normalise_process_improper_output_list ?(split_par=false) prefix_label current_index gather_norm gather_skel p_list f_continuation f_next = match p_list with
-    | [] -> f_continuation current_index gather_norm gather_skel [] f_next
-    | p::q ->
-        normalise_process_improper_output prefix_label current_index gather_norm gather_skel p (fun current_index_1 gather_norm_1 gather_skel_1 p_1 f_next_1 ->
-          normalise_process_improper_output_list ~split_par:split_par prefix_label current_index_1 gather_norm_1 gather_skel_1 q (fun current_index_2 gather_norm_2 gather_skel_2 q_2 f_next_2 ->
-            match p_1 with
-              | PNil -> f_continuation current_index_2 gather_norm_2 gather_skel_2 q_2 f_next_2
-              | PPar plist_1 when split_par -> f_continuation current_index_2 gather_norm_2 gather_skel_2  (List.rev_append plist_1 q_2) f_next_2
-              | _ -> f_continuation current_index_2 gather_norm_2 gather_skel_2  (p_1::q_2) f_next_2
-          ) f_next_1
-        ) f_next
-
-  let normalise_improper_output label gather_norm proc f_continuation f_next =
-    let prefix_label = label.Label.prefix @ [ label.Label.last_index ] in
-    let gather_skel =
-      {
-        input_skel = [];
-        output_skel = [];
-        private_input_skel = (0,[]);
-        private_output_skel = (0,[]);
-        private_channels = [];
-        label_prefix = prefix_label;
-        par_created = true
-
-      }
-    in
-    normalise_process_improper_output prefix_label 1 gather_norm gather_skel proc (fun _ gather_norm_1 gather_skel_1 proc_1 f_next_1 ->
-      match proc_1 with
-        | POutput(ch,t,p,_,pos,used_data,ch_set) ->
-            let gather_skel_2 =
-              if fst gather_skel_1.private_output_skel = 1
-              then { gather_skel_1 with private_output_skel = (1,[label.Label.last_index]); label_prefix = label.Label.prefix; par_created = false }
-              else
-                match gather_skel_1.output_skel with
-                  | [f,1,_] -> { gather_skel_1 with output_skel = [f,1,[label.Label.last_index]]; label_prefix = label.Label.prefix; par_created = false }
-                  | _ -> Config.internal_error "[session_process.ml >> normalise] There should be only one output."
-            in
-            let proc_2 = POutput(ch,t,p,Some label,pos,used_data,ch_set) in
             f_continuation gather_norm_1 gather_skel_2 proc_2 f_next_1
         | _ -> f_continuation gather_norm_1 gather_skel_1 proc_1 f_next_1
     ) f_next
@@ -1218,7 +1110,7 @@ module Configuration = struct
   let update_private_channels_from_output_transition conf trans =
     merge_private_channels conf.private_channels trans.out_gathering_skeleton.Labelled_process.private_channels
 
-  let next_public_output matching_status target_channel original_subst original_names conf (f_continuation : output_transition -> t -> unit)=
+  let main_next_public_output proper_status matching_status target_channel original_subst original_names conf (f_continuation : output_transition -> t -> unit)=
     Config.debug (fun () ->
       if conf.focused_proc <> None
       then Config.internal_error "[session_process.ml >> Configuration.next_public_output] An output transition should not be computed when there are still a focused process."
@@ -1240,7 +1132,7 @@ module Configuration = struct
                   Labelled_process.disequations = Formula.T.Top
                 }
               in
-              Labelled_process.normalise label gather_norm p (fun gather_norm_1 gather_skel_1 p_1 f_next_2 ->
+              Labelled_process.normalise proper_status label gather_norm p (fun gather_norm_1 gather_skel_1 p_1 f_next_2 ->
                 let transition =
                   {
                     out_label = label;
@@ -1368,155 +1260,9 @@ module Configuration = struct
       f_next_1 ()
     ) (fun () -> ())
 
-  let next_public_output_improper_phase matching_status target_channel original_subst original_names conf (f_continuation : output_transition -> t -> unit) =
-    Config.debug (fun () ->
-      if conf.focused_proc <> None
-      then Config.internal_error "[session_process.ml >> Configuration.next_public_output_improper_phase] An output transition should not be computed when there are still a focused process."
-    );
+  let next_public_output = main_next_public_output Proper
 
-    let already_assigned_forall = ref false in
-    let only_forall = matching_status = ForAll in
-
-    let rec explore_process proc f_cont f_next = match proc with
-      | Labelled_process.POutput(c,t,p,Some label,pos,_,_) ->
-          if not (Channel.is_equal target_channel c) || (only_forall && !already_assigned_forall)
-          then f_next ()
-          else
-            let apply_normalisation matching_status_1 f_next_1 =
-              let gather_norm =
-                {
-                  Labelled_process.original_subst = original_subst;
-                  Labelled_process.original_names = original_names;
-                  Labelled_process.disequations = Formula.T.Top
-                }
-              in
-              Labelled_process.normalise label gather_norm p (fun gather_norm_1 gather_skel_1 p_1 f_next_2 ->
-                let transition =
-                  {
-                    out_label = label;
-                    out_term = t;
-                    out_position = pos;
-                    out_matching_status = matching_status_1;
-                    out_gathering_normalise = gather_norm_1;
-                    out_gathering_skeleton = gather_skel_1
-                  }
-                in
-                f_cont transition p_1 f_next_2
-              ) f_next_1
-            in
-
-            if !already_assigned_forall
-            then apply_normalisation Exists f_next
-            else apply_normalisation matching_status (fun () -> already_assigned_forall := true; f_next ())
-      | Labelled_process.PPar plist ->
-          explore_process_list ~split_par:true [] plist (fun transition plist_1 f_next_1 -> match plist_1 with
-            | [] -> f_cont transition Labelled_process.PNil f_next_1
-            | [p] -> f_cont transition p f_next_1
-            | _ -> f_cont transition (Labelled_process.PPar plist_1) f_next_1
-          ) f_next
-      | Labelled_process.PBangStrong(brok_plist,plist) ->
-          let nb_output = Labelled_process.count_toplevel_public_output [proc] in
-
-          if nb_output = 0
-          then f_next ()
-          else
-            (* Since the replication is strong, we need to tag one of [brok_plist] or one of [plist] as forall
-               and do all brok_plist and one of plist as an Exists transition. *)
-            explore_process_list [] brok_plist (fun transition brok_plist_1 f_next_1 ->
-              if brok_plist_1 = [] && plist = []
-              then f_cont transition Labelled_process.PNil f_next_1
-              else
-                if nb_output = 1 && transition.out_gathering_skeleton.Labelled_process.output_skel = []
-                then
-                  begin
-                    Config.debug (fun () ->
-                      if plist <> []
-                      then Config.internal_error "[session_process.ml >> Configuration.next_public_output] When there is no more output then plist should be empty."
-                    );
-                    f_cont transition (Labelled_process.PBangPartial brok_plist_1) f_next_1
-                  end
-                else f_cont transition (Labelled_process.PBangStrong(brok_plist_1,plist)) f_next_1
-            ) (fun () -> match plist with
-              | [] -> f_next ()
-              | p::q_list ->
-                  explore_process p (fun transition p_1 f_next_1 ->
-                    if p_1 = Labelled_process.PNil && q_list = [] && brok_plist = []
-                    then f_cont transition Labelled_process.PNil f_next_1
-                    else
-                      if nb_output = 1 && transition.out_gathering_skeleton.Labelled_process.output_skel = []
-                      then
-                        begin
-                          Config.debug (fun () ->
-                            if q_list <> []
-                            then Config.internal_error "[session_process.ml >> Configuration.next_public_output] When there is no more output then q_list should be empty."
-                          );
-                          f_cont transition (Labelled_process.PBangPartial(p_1::brok_plist)) f_next_1
-                        end
-                      else f_cont transition (Labelled_process.PBangStrong(p_1::brok_plist,q_list)) f_next_1
-                  ) f_next
-            )
-      | Labelled_process.PBangPartial plist ->
-          (* Since the replication is partial, we need to tag one of [plist] as forall
-             and all plist as an Exists transition. *)
-          explore_process_list [] plist (fun transition plist_1 f_next_1 -> match plist_1 with
-            | [] -> f_cont transition Labelled_process.PNil f_next_1
-            | [p] -> f_cont transition p f_next_1
-            | _ -> f_cont transition (Labelled_process.PBangPartial plist_1) f_next_1
-          ) f_next
-      | Labelled_process.PInput(_,_,_,Some _,_,_,_) -> f_next ()
-      | _ -> Config.internal_error "[session_process.ml >> Configuration.next_public_output] Should only find Input (with label), Output (with label), Par or Bang."
-
-    and explore_process_list ?(split_par=false) prev_plist plist f_cont f_next = match plist with
-      | [] -> f_next ()
-      | p::q ->
-          explore_process p (fun transition p_1 f_next_1 -> match p_1 with
-            | Labelled_process.PNil -> f_cont transition (List.rev_append prev_plist q) f_next_1
-            | Labelled_process.PPar plist' when split_par -> f_cont transition (List.rev_append prev_plist (plist'@q)) f_next_1
-            | _ -> f_cont transition (List.rev_append prev_plist (p_1::q)) f_next_1
-          ) (fun () ->
-            if only_forall && !already_assigned_forall
-            then f_next ()
-            else explore_process_list ~split_par:split_par (p::prev_plist) q f_cont f_next
-          )
-    in
-
-    let rec explore_output_processes prev_out_plist out_plist in_priv_plist f_cont f_next = match out_plist with
-      | [] -> f_next ()
-      | p::q ->
-          explore_process p (fun transition p_1 f_next_1 -> match p_1 with
-            | Labelled_process.PPar plist' ->
-                let (out_p,in_p) =
-                  List.fold_right (fun p' (acc_out,acc_in) ->
-                    if Labelled_process.exists_toplevel_public_output p'
-                    then (p'::acc_out,acc_in)
-                    else (acc_out,p'::acc_in)
-                  ) plist' (q,in_priv_plist)
-                in
-                f_cont transition (List.rev_append prev_out_plist out_p) in_p f_next_1
-            | Labelled_process.PNil -> f_cont transition (List.rev_append prev_out_plist q) in_priv_plist f_next_1
-            | _ ->
-                if transition.out_gathering_skeleton.Labelled_process.output_skel = [] && not (Labelled_process.exists_toplevel_public_output p_1)
-                then f_cont transition (List.rev_append prev_out_plist q) (p_1::in_priv_plist) f_next_1
-                else f_cont transition (List.rev_append prev_out_plist (p_1::q)) in_priv_plist f_next_1
-          ) (fun () ->
-            if only_forall && !already_assigned_forall
-            then f_next ()
-            else explore_output_processes (p::prev_out_plist) q in_priv_plist f_cont f_next
-          )
-    in
-
-    explore_output_processes [] conf.output_proc conf.input_and_private_proc (fun transition out_proc in_priv_proc f_next_1 ->
-      let private_channels = update_private_channels_from_output_transition conf transition in
-      let conf' =
-        { conf with
-          input_and_private_proc = in_priv_proc;
-          output_proc = out_proc;
-          private_channels = private_channels
-        }
-      in
-      f_continuation transition conf';
-      f_next_1 ()
-    ) (fun () -> ())
+  let next_public_output_improper_phase = main_next_public_output ImproperNegPhase
 
   (*** Input and private communication transition ***)
 
@@ -1554,7 +1300,7 @@ module Configuration = struct
       | Labelled_process.PNil
       | Labelled_process.POutput _ -> f_next ()
       | Labelled_process.PInput(ch,x,p,Some label,pos,_,_) ->
-          begin match is_applicable m_status ch with
+          begin match is_applicable m_status ch label with
             | None -> f_next ()
             | Some m_status' ->
                 let input_data =
@@ -1635,14 +1381,14 @@ module Configuration = struct
 
     explore_process matching_status proc f_continuation f_next
 
-  let next_output matching_status target_channel proc f_continuation f_next =
+  let next_output matching_status is_applicable target_channel proc f_continuation f_next =
     let only_forall = matching_status = ForAll in
 
     let rec explore_process m_status proc f_cont f_next = match proc with
       | Labelled_process.PNil
       | Labelled_process.PInput _ -> f_next ()
       | Labelled_process.POutput(ch,t,p,Some label,pos,_,_) ->
-          if Channel.is_equal ch target_channel
+          if Channel.is_equal ch target_channel && is_applicable label
           then
             let output_data =
               { out_data_label = label;
@@ -1844,14 +1590,20 @@ module Configuration = struct
           end
     | _ -> Config.internal_error "[session_process.ml >> Configuration.generate_in_out_list] The skeleton and process lists should be of same size."
 
-  let next_input_and_private_comm channel_priority matching_status original_subst original_names conf f_continuation =
+  let main_next_input_and_private_comm proper_status channel_priority matching_status original_subst original_names conf f_continuation =
 
-    let is_applicable = match matching_status with
+    let is_input_applicable = match matching_status with
       | ForAll ->
           begin match channel_priority with
-            | ChNone -> fun _ _ -> Some ForAll
+            | ChNone ->
+                begin match proper_status, conf.blocks.Block.local_improper_blocks with
+                  | Labelled_process.Proper, _
+                  | _, [] -> fun _ _ _ -> Some ForAll
+                  | _, LComm(lbl,_,_,_) :: _
+                  | _, LStd lbl :: _ -> (fun _ _ lbl' -> if Label.independent lbl' lbl > 0 then Some ForAll else None)
+                end
             | ChPriority(target_ch,_) ->
-                fun _ ch ->
+                fun _ ch _ ->
                   if Channel.is_equal ch target_ch
                   then Some ForAll
                   else None
@@ -1859,17 +1611,29 @@ module Configuration = struct
           end
       | Exists ->
           begin match channel_priority with
-            | ChNone -> fun _ _ -> Some Exists
-            | ChOnlyPrivate -> fun _ ch -> if Channel.is_public ch then None else Some Exists
+            | ChNone ->
+                begin match proper_status, conf.blocks.Block.local_improper_blocks with
+                  | Labelled_process.Proper, _
+                  | _, [] -> fun _ _ _ -> Some Exists
+                  | _, LComm(lbl,_,_,_) :: _
+                  | _, LStd lbl :: _ -> (fun _ _ lbl' -> if Label.independent lbl' lbl > 0 then Some Exists else None)
+                end
+            | ChOnlyPrivate -> fun _ ch _ -> if Channel.is_public ch then None else Some Exists
             | _ -> Config.internal_error "[session_process.ml >> Configuration.next_input] ChPriority should not be applied with an initial matching_status = Exists."
           end
       | Both ->
           begin match channel_priority with
-            | ChNone -> fun m_status _ -> Some m_status
+            | ChNone ->
+                begin match proper_status, conf.blocks.Block.local_improper_blocks with
+                  | Labelled_process.Proper, _
+                  | _, [] -> fun m_status _ _ -> Some m_status
+                  | _, LComm(lbl,_,_,_) :: _
+                  | _, LStd lbl :: _ -> (fun m_status _ lbl' -> if Label.independent lbl' lbl > 0 then Some m_status else None)
+                end
             | ChPriority(target_ch,false) ->
-                fun m_status ch -> if Channel.is_equal target_ch ch then Some m_status else Some Exists
+                fun m_status ch _ -> if Channel.is_equal target_ch ch then Some m_status else Some Exists
             | ChPriority(Channel.CPrivate(n_target_ch,_),true) ->
-                begin fun m_status ch -> match ch with
+                begin fun m_status ch _ -> match ch with
                   | Channel.CPublic _ -> None
                   | Channel.CPrivate(n,_) -> if n == n_target_ch then Some m_status else Some Exists
                 end
@@ -1878,10 +1642,17 @@ module Configuration = struct
           end
     in
 
+    let is_output_applicable = match proper_status, conf.blocks.Block.local_improper_blocks with
+      | Proper, _
+      | _, [] -> (fun _ -> true)
+      | _, LComm(lbl,_,_,_)::_
+      | _, LStd lbl :: _ -> (fun lbl' -> Label.independent lbl' lbl > 0)
+    in
+
     let rec explore_input_processes prev_in_plist in_plist f_cont f_next = match in_plist with
       | [] -> f_next ()
       | p::q ->
-          next_input matching_status is_applicable p (fun in_data p_rest f_next_1 ->
+          next_input matching_status is_input_applicable p (fun in_data p_rest f_next_1 ->
             if Channel.is_public in_data.in_data_channel
             then
               Variable.auto_cleanup_with_reset (fun f_next_2 ->
@@ -1895,7 +1666,7 @@ module Configuration = struct
                     Labelled_process.disequations = Formula.T.Top
                   }
                 in
-                Labelled_process.normalise in_data.in_data_label gather_norm in_data.in_data_process (fun gather_norm_1 gather_skel_1 p_in f_next_3 ->
+                Labelled_process.normalise proper_status in_data.in_data_label gather_norm in_data.in_data_process (fun gather_norm_1 gather_skel_1 p_in f_next_3 ->
                   let type_transition = TInput
                     {
                       in_complete_label = Label.LStd in_data.in_data_label;
@@ -1922,7 +1693,7 @@ module Configuration = struct
             else
               (* Corresponds to an private communication. Thus we need to search for an ouput *)
               let proc_for_output = Labelled_process.PPar (make_par_processes (List.rev_append prev_in_plist q) p_rest) in
-              next_output in_data.in_data_matching_status in_data.in_data_channel proc_for_output (fun out_data p_rest_out f_next_2 ->
+              next_output in_data.in_data_matching_status is_output_applicable in_data.in_data_channel proc_for_output (fun out_data p_rest_out f_next_2 ->
                 let n = match in_data.in_data_channel with
                   | Channel.CPrivate(n,_) -> n
                   | _ -> Config.internal_error "[session_process.ml >> next_input_and_private_comm] Should be a private channel."
@@ -1942,8 +1713,8 @@ module Configuration = struct
                       Labelled_process.disequations = Formula.T.Top
                     }
                   in
-                  Labelled_process.normalise in_data.in_data_label gather_norm in_data.in_data_process (fun gather_norm_1 in_gather_skel p_in f_next_4 ->
-                    Labelled_process.normalise out_data.out_data_label gather_norm_1 out_data.out_data_process (fun gather_norm_2 out_gather_skel p_out f_next_5 ->
+                  Labelled_process.normalise proper_status in_data.in_data_label gather_norm in_data.in_data_process (fun gather_norm_1 in_gather_skel p_in f_next_4 ->
+                    Labelled_process.normalise proper_status out_data.out_data_label gather_norm_1 out_data.out_data_process (fun gather_norm_2 out_gather_skel p_out f_next_5 ->
                       let type_transition = TComm
                         {
                           comm_complete_label = complete_label;
@@ -1985,53 +1756,59 @@ module Configuration = struct
       f_next_1 ()
     ) (fun () -> ())
 
-  let next_pos_input matching_status original_subst original_names conf f_continuation f_next =
+  let next_input_and_private_comm = main_next_input_and_private_comm Labelled_process.Proper
 
-    match conf.focused_proc with
-      | Some Labelled_process.PInput(_,x,p,Some label,pos,_,_) ->
-          Variable.auto_cleanup_with_reset (fun f_next_1 ->
-            (* Corresponds to an input transition on a public channel. We thus need to normalise. *)
-            let x_fresh = Var (Variable.fresh Existential) in
-            Variable.link_term x x_fresh;
-            let gather_norm =
+  let next_input_and_private_comm_improper_phase = main_next_input_and_private_comm Labelled_process.ImproperPosFocusPhase ChNone
+
+  let main_next_pos_input proper_status matching_status original_subst original_names conf f_continuation f_next = match conf.focused_proc with
+    | Some Labelled_process.PInput(_,x,p,Some label,pos,_,_) ->
+        Variable.auto_cleanup_with_reset (fun f_next_1 ->
+          (* Corresponds to an input transition on a public channel. We thus need to normalise. *)
+          let x_fresh = Var (Variable.fresh Existential) in
+          Variable.link_term x x_fresh;
+          let gather_norm =
+            {
+              Labelled_process.original_subst = (x,x_fresh) :: original_subst;
+              Labelled_process.original_names = original_names;
+              Labelled_process.disequations = Formula.T.Top
+            }
+          in
+          Labelled_process.normalise proper_status label gather_norm p (fun gather_norm_1 gather_skel_1 p_in f_next_2 ->
+            let type_transition = TInput
               {
-                Labelled_process.original_subst = (x,x_fresh) :: original_subst;
-                Labelled_process.original_names = original_names;
-                Labelled_process.disequations = Formula.T.Top
+                in_complete_label = Label.LStd label;
+                in_term = x_fresh;
+                in_position = pos;
+                in_skeletons = gather_skel_1
               }
             in
-            Labelled_process.normalise label gather_norm p (fun gather_norm_1 gather_skel_1 p_in f_next_2 ->
-              let type_transition = TInput
-                {
-                  in_complete_label = Label.LStd label;
-                  in_term = x_fresh;
-                  in_position = pos;
-                  in_skeletons = gather_skel_1
-                }
-              in
-              let transition =
-                {
-                  in_comm_type = type_transition;
-                  in_comm_matching_status = matching_status;
-                  in_comm_gathering_normalise = gather_norm_1
-                }
-              in
-              match p_in with
-                | Labelled_process.PInput(ch,_,_,_,_,_,_) when Channel.is_public ch -> (* We keep the process focused *)
-                    f_continuation transition { conf with focused_proc = Some p_in } f_next_2
-                | _ -> (* We release the process *)
-                    let (in_plist,out_plist) = generate_in_out_list conf.input_and_private_proc [] [gather_skel_1] [p_in] in
-                    let private_channels = update_private_channels_from_in_comm_transition conf transition in
-                    let conf' =
-                      { conf with
-                        input_and_private_proc = in_plist;
-                        output_proc = out_plist;
-                        focused_proc = None;
-                        private_channels = private_channels
-                      }
-                    in
-                    f_continuation transition conf' f_next_2
-            ) f_next_1
-          ) f_next
-      | _ -> Config.internal_error "[session_process.ml >> Configuration.next_focused_input] The configuration should be focused with a labeled public input."
+            let transition =
+              {
+                in_comm_type = type_transition;
+                in_comm_matching_status = matching_status;
+                in_comm_gathering_normalise = gather_norm_1
+              }
+            in
+            match p_in with
+              | Labelled_process.PInput(ch,_,_,_,_,_,_) when Channel.is_public ch -> (* We keep the process focused *)
+                  f_continuation transition { conf with focused_proc = Some p_in } f_next_2
+              | _ -> (* We release the process *)
+                  let (in_plist,out_plist) = generate_in_out_list conf.input_and_private_proc [] [gather_skel_1] [p_in] in
+                  let private_channels = update_private_channels_from_in_comm_transition conf transition in
+                  let conf' =
+                    { conf with
+                      input_and_private_proc = in_plist;
+                      output_proc = out_plist;
+                      focused_proc = None;
+                      private_channels = private_channels
+                    }
+                  in
+                  f_continuation transition conf' f_next_2
+          ) f_next_1
+        ) f_next
+    | _ -> Config.internal_error "[session_process.ml >> Configuration.next_focused_input] The configuration should be focused with a labeled public input."
+
+  let next_pos_input = main_next_pos_input Labelled_process.Proper
+
+  let next_pos_input_improper_phase = main_next_pos_input Labelled_process.ImproperPosFocusPhase
 end

@@ -2,7 +2,6 @@ open Types
 open Types_ui
 open Display
 
-
 let string_of_string_list str_list = List.fold_right (fun str acc -> str^"\n"^acc) str_list ""
 
 let display_with_tab i str =

@@ -41,9 +41,9 @@ config:
 # configures and compiles
 compil:
 	@ocamlbuild $(PACKAGES) main.$(EXTENSION) worker.$(EXTENSION) main_api.$(EXTENSION)
-	@mv `ls -l main.$(EXTENSION) | sed 's/^.* -> //'` deepsec
-	@mv `ls -l main_api.$(EXTENSION) | sed 's/^.* -> //'` deepsec_api
-	@mv `ls -l worker.$(EXTENSION) | sed 's/^.* -> //'` deepsec_worker
+	@mv _build/Source/main.$(EXTENSION)  deepsec
+	@mv _build/Source/main_api.$(EXTENSION) deepsec_api
+	@mv _build/Source/distributed/worker.$(EXTENSION) deepsec_worker
 	rm main.$(EXTENSION) main_api.$(EXTENSION) worker.$(EXTENSION)
 	@printf "\033[1mBuild successful!\033[0m You can invoke ./deepsec alone to display version data, or ./deepsec -help for usage information.\n\033[1mNumber of lines in the source code: $(NBLINE)\033[0m\n"
 

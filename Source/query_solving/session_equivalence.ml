@@ -575,7 +575,6 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
               if eq_uniformity = Formula.T.Bot
               then ()
               else
-                let c
                 let symb_conf_1 =
                   { symb_conf with
                     configuration = conf_1;
