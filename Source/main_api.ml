@@ -11,10 +11,11 @@ let _ =
     Random.init (int_of_float (Unix.time ()));
 
     (* Retrieve deepsec path *)
-    let exe_path = Filename.dirname Sys.executable_name in
-    Config.path_deepsec := String.escaped exe_path;
+    let exe_path = Filename.dirname (String.escaped Sys.executable_name) in
+    Config.log (fun () -> Printf.sprintf "Exe path : %s\n" exe_path);
+    Config.path_deepsec := exe_path;
     let database_path = Filename.concat exe_path "database" in
-    Config.path_database := String.escaped database_path;
+    Config.path_database := database_path;
 
     (* Retrieve the command *)
     let in_cmd_str = read_line () in

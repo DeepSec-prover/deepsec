@@ -356,7 +356,10 @@ let trace_equivalence_determinate proc1 proc2 =
   (**** Launch the local manager ****)
 
   let path_name = Filename.concat !Config.path_deepsec "deepsec_worker" in
-  let (in_ch,out_ch) = Unix.open_process path_name in
+  let (in_ch,out_ch) = Unix.open_process ("'"^path_name^"'") in
+
+  Config.log (fun () -> "[distributed_equivalence >> trace_equivalence_determinate] Process worker opened.\n");
+
   output_value out_ch Distrib.Local_manager;
   flush out_ch;
 
@@ -458,7 +461,7 @@ let trace_equivalence_generic semantics proc1 proc2 =
   (**** Launch the local manager ****)
 
   let path_name = Filename.concat !Config.path_deepsec "deepsec_worker" in
-  let (in_ch,out_ch) = Unix.open_process path_name in
+  let (in_ch,out_ch) = Unix.open_process ("'"^path_name^"'") in
   output_value out_ch Distrib.Local_manager;
   flush out_ch;
 

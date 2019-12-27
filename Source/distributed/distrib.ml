@@ -341,10 +341,10 @@ module Distrib = functor (Task:Evaluator_task) -> struct
 
       nb_total_evaluators := nb_local_evaluators;
 
-      let path_name = Filename.concat !Config.path_deepsec "deepsec_worker" in
+      let path_name_with_quote = "'"^(Filename.concat !Config.path_deepsec "deepsec_worker")^"'" in
       iter_n (fun () ->
         Config.log (fun () -> "[distrib.ml >> WLM.initialisation] Create worker\n");
-        let (in_ch,out_ch) = Unix.open_process path_name in
+        let (in_ch,out_ch) = Unix.open_process path_name_with_quote in
         let fd_in_ch = Unix.descr_of_in_channel in_ch in
         Config.log (fun () -> "[distrib.ml >> WLM.initialisation] Sending role\n");
         send out_ch Evaluator;
@@ -363,11 +363,11 @@ module Distrib = functor (Task:Evaluator_task) -> struct
 
       List.iter (fun (host,path,n_op) ->
         let full_name = Filename.concat path "deepsec_worker" in
-        let path_name_worker = Printf.sprintf "ssh %s %s" host full_name in
-        Config.log (fun () -> Printf.sprintf "[distrib.ml >> WLM >> initialisation] Open connexion to %s\n" path_name_worker);
-        let (in_ch,out_ch) = Unix.open_process path_name_worker in
+        let path_name_worker_ssh = Printf.sprintf "ssh '%s' '%s'" host full_name in
+        Config.log (fun () -> Printf.sprintf "[distrib.ml >> WLM >> initialisation] Open connexion to %s\n" path_name_worker_ssh);
+        let (in_ch,out_ch) = Unix.open_process path_name_worker_ssh in
         let fd_in_ch = Unix.descr_of_in_channel in_ch in
-        let dist_m = { in_ch = in_ch; fd_in_ch = fd_in_ch; out_ch = out_ch; path = path_name_worker } in
+        let dist_m = { in_ch = in_ch; fd_in_ch = fd_in_ch; out_ch = out_ch; path = path_name_worker_ssh } in
         Config.log (fun () -> "[distrib.ml >> WLM.initialisation] Sending role\n");
         send out_ch Distant_manager;
 
@@ -385,8 +385,8 @@ module Distrib = functor (Task:Evaluator_task) -> struct
 
         (* Generate the evaluators *)
         iter_n (fun () ->
-          Config.log (fun () -> Printf.sprintf "[distrib.ml >> WLM >> initialisation] Open connexion to %s\n" path_name_worker);
-          let (in_ch,out_ch) = Unix.open_process path_name_worker in
+          Config.log (fun () -> Printf.sprintf "[distrib.ml >> WLM >> initialisation] Open connexion to %s\n" path_name_worker_ssh);
+          let (in_ch,out_ch) = Unix.open_process path_name_worker_ssh in
           let fd_in_ch = Unix.descr_of_in_channel in_ch in
           Config.log (fun () -> "[distrib.ml >> WLM.initialisation] Sending role\n");
           send out_ch Evaluator;
@@ -517,7 +517,7 @@ module Distrib = functor (Task:Evaluator_task) -> struct
       List.iter (fun (_,eval,man_op) ->
         remove_evaluators eval man_op;
         let path = match man_op with
-          | None -> local_path
+          | None -> ("'"^local_path^"'")
           | Some manager -> manager.path
         in
         Config.log (fun () -> "[distrib.ml >> WLM.kill_and_replace_active_evaluators] Create new process\n");

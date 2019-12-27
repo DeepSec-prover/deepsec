@@ -2,7 +2,7 @@ open Distributed_equivalence
 
 let _ =
   Config.log (fun () -> "[worker.ml] Starting process\n");
-  let exe_path = Filename.dirname Sys.executable_name in
+  let exe_path = Filename.dirname (String.escaped Sys.executable_name) in
   Config.path_deepsec := exe_path;
   Config.log (fun () -> (Printf.sprintf "[worker.ml] Executable path = %s; pid = %d\n" exe_path (Unix.getpid ())));
 

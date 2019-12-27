@@ -9,7 +9,7 @@ let log_file =
   if debug_activated || record_time
   then
     begin
-      let exe_path = Filename.dirname Sys.executable_name in
+      let exe_path = Filename.dirname (String.escaped Sys.executable_name) in
       let log_dir = Filename.concat exe_path "log" in
       if not (Sys.file_exists log_dir)
       then Unix.mkdir log_dir 0o770;
