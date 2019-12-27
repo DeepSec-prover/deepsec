@@ -5,7 +5,7 @@ open Term
 open Formula
 open Session_process
 
-type bijection_permutation =
+type permutation =
   {
     prefix_forall : int list;
     prefix_exists : int list;
@@ -13,7 +13,7 @@ type bijection_permutation =
       (* The lists inside the perm_matching are ordered *)
   }
 
-type bijection_set = bijection_permutation list
+type bijection_set = permutation list
 
 type symbolic_configuration =
   {
@@ -145,6 +145,148 @@ module Bijection_set = struct
         else None
       in
       gen_bset
+
+  let rec extract_one_permutation prefix prev_list = function
+    | [] -> Config.internal_error "[session_equivalence.ml >> Bijection_set.extract_one_permutation] The label should occurs."
+    | perm::q ->
+        if prefix = perm.prefix_forall
+        then perm, List.rev_append prev_list q
+        else extract_one_permutation prefix (perm::prev_list) q
+
+  let generate_for_comm forall_comm_trans bset =
+
+    let (forall_label_out,forall_label_in) = forall_comm_trans.Configuration.comm_out_label, forall_comm_trans.Configuration.comm_in_label in
+    let (forall_skel_out,forall_skel_in) = forall_comm_trans.Configuration.comm_out_skeletons, forall_comm_trans.Configuration.comm_in_skeletons in
+
+    if forall_label_out.Label.prefix = forall_label_in.Label.prefix
+    then
+      let (perm,bset1) = extract_one_permutation forall_label_out.Label.prefix [] bset in
+      let (forall_out',exists_out,perm_matching_1) = extract_matching forall_label_out.Label.last_index [] perm.perm_matching in
+      let (forall_in',exists_in,per_matching_2) = extract_matching forall_label_in.Label.last_index [] perm_matching_1 in
+
+      let gen_bset exists_comm_trans =
+        let (exists_label_out,exists_label_in) = exists_comm_trans.Configuration.comm_out_label, exists_comm_trans.Configuration.comm_in_label in
+        let (exists_skel_out,exists_skel_in) = exists_comm_trans.Configuration.comm_out_skeletons, exists_comm_trans.Configuration.comm_in_skeletons in
+
+        if exists_label_out.Label.prefix = exists_label_in.Label.prefix && exists_label_out.Label.prefix = perm.prefix_exists
+        then
+          match extract_sub_matching exists_label_out.Label.last_index [] exists_out with
+            | None -> None
+            | Some exists_out' ->
+                match extract_sub_matching exists_label_in.Label.last_index [] exists_in with
+                  | None -> None
+                  | Some exists_in' ->
+                      if Labelled_process.is_equal_skeletons forall_skel_out exists_skel_out &&
+                        Labelled_process.is_equal_skeletons forall_skel_in exists_skel_in
+                      then
+                        match forall_skel_out.Labelled_process.par_created, forall_skel_in.Labelled_process.par_created with
+                          | true,true ->
+                              let old_perm = { perm with perm_matching = (forall_out',exists_out')::(forall_in',exists_in') :: perm_matching_2 } in
+                              let new_perm_out =
+                                {
+                                  prefix_forall = forall_skel_out.Labelled_process.label_prefix;
+                                  prefix_exists = exists_skel_out.Labelled_process.label_prefix;
+                                  perm_matching = perm_matching_of_skeleton forall_skel_out exists_skel_out
+                                }
+                              in
+                              let new_perm_in =
+                                {
+                                  prefix_forall = forall_skel_in.Labelled_process.label_prefix;
+                                  prefix_exists = exists_skel_in.Labelled_process.label_prefix;
+                                  perm_matching = perm_matching_of_skeleton forall_skel_in exists_skel_in
+                                }
+                              in
+                              Some(new_perm_in::new_perm_out::old_perm::bset1)
+                          | true,_ ->
+                              let new_perm = { perm with perm_matching = ([forall_label.Label.last_index],[exists_label.Label.last_index])::(forall_m',exists_m')::perm_matching } in
+                              Some (new_perm::bset1)
+
+
+
+                      else None
+        else None
+
+
+
+
+    let rec explore prev_list = function
+      | [] -> Config.internal_error "[session_equivalence.ml >> Bijection_set.extract_permutation] The label should occurs."
+      | perm::q ->
+          if forall_label.Label.prefix = perm.prefix_forall
+          then perm, List.rev_append prev_list q
+          else explore (perm::prev_list) q
+    in
+
+    let (perm,bset1) = explore [] bset in
+    let (forall_m',exists_m,perm_matching) = extract_matching [] perm.perm_matching in
+
+    if forall_skel.Labelled_process.par_created
+    then
+      let gen_bset exists_label exists_skel =
+        if exists_skel.Labelled_process.par_created && exists_label.Label.prefix = perm.prefix_exists
+        then
+          match extract_sub_matching exists_label.Label.last_index [] exists_m with
+            | None -> None
+            | Some exists_m' ->
+                if Labelled_process.is_equal_skeletons forall_skel exists_skel
+                then
+                  let old_perm = { perm with perm_matching = (forall_m',exists_m')::perm_matching } in
+                  let new_perm =
+                    {
+                      prefix_forall = forall_skel.Labelled_process.label_prefix;
+                      prefix_exists = exists_skel.Labelled_process.label_prefix;
+                      perm_matching = perm_matching_of_skeleton forall_skel exists_skel
+                    }
+                  in
+                  Some (new_perm::old_perm::bset1)
+                else None
+        else None
+      in
+      gen_bset
+    else
+      let gen_bset exists_label exists_skel =
+        if not (exists_skel.Labelled_process.par_created) && exists_label.Label.prefix = perm.prefix_exists
+        then
+          match extract_sub_matching exists_label.Label.last_index [] exists_m with
+            | None -> None
+            | Some exists_m' ->
+                if Labelled_process.is_equal_skeletons forall_skel exists_skel
+                then
+                  let new_perm = { perm with perm_matching = ([forall_label.Label.last_index],[exists_label.Label.last_index])::(forall_m',exists_m')::perm_matching } in
+                  Some (new_perm::bset1)
+                else None
+        else None
+      in
+      gen_bset
+
+  (*** Utilities ***)
+
+  let rec extract_permutation forall_label prev_bset = function
+    | [] -> Config.internal_error "[session_equivalence.ml >> Bijection_set.extract_permuation] The label should occurs."
+    | perm::q ->
+        if forall_label.Label.prefix = perm.prefix_forall
+        then perm, List.rev_append prev_bset q
+        else extract_permutation forall_label (perm::prev_bset) q
+
+  let rec extract_sub_matching (i_target:int) prev_list = function
+    | [] -> None
+    | i::q ->
+        match compare i i_target with
+          | 0 -> Some (List.rev_append prev_list q)
+          | 1 -> None
+          | _ -> extract_sub_matching i_target (i::prev_list) q
+
+  let rec extract_matching i_target (prev_matching:(int list * int list) list) = function
+    | [] -> Config.internal_error "[session_equivalence.ml >> Bijection_set.extract_matching] Unexpected case."
+    | (forall_m,exists_m) as t::q ->
+        match extract_sub_matching i_target [] forall_m with
+          | None -> extract_matching i_target (t::prev_list) q
+          | Some forall_m' -> forall_m', exists_m, List.rev_append prev_list q
+
+  let rec update_from_extract forall_skel_matching_list exists_skel_matching_list bset perm_matching = match forall_skel_matching_list,exists_skel_matching_list with
+    | [], [] ->
+
+
 end
 
 let iter_forall_both f gen_trans =
@@ -438,14 +580,14 @@ let apply_neg_phase equiv_pbl f_continuation f_next =
         let gen_exists_transitions = generate_transitions exists_csys in
 
         (* Generate the matching *)
-        iter_forall_both (fun (forall_sess_trans,forall_csys_1) ->
-          let forall_trans = match forall_sess_trans with
+        iter_forall_both (fun forall_csys_1 ->
+          let forall_trans = match forall_csys_1.Constraint_system.additional_data.transition_data with
             | TransOutput trans -> trans
             | _ -> Config.internal_error "[session_equivalence.ml >> apply_public_out] Expecting an output transition."
           in
           let generate_bset = Bijection_set.generate forall_trans.Configuration.out_label forall_trans.Configuration.out_gathering_skeleton bset in
-          iter_exists_both (fun (exists_sess_trans,exists_csys_1) ->
-            let exists_trans = match exists_sess_trans with
+          iter_exists_both (fun exists_csys_1 ->
+            let exists_trans = match exists_csys_1.Constraint_system.additional_data.transition_data with
               | TransOutput trans -> trans
               | _ -> Config.internal_error "[session_equivalence.ml >> apply_public_out] Expecting an output transition (2)."
             in
@@ -469,13 +611,13 @@ let apply_neg_phase equiv_pbl f_continuation f_next =
     let (public_output_channels,general_blocks_1) =
       let csys = List.hd forall_set_2 in
       match csys.Constraint_system.additional_data.transition_data with
-        | TOutput skel ->
+        | TransOutput trans ->
             let general_blocks =
-              if skel.Labelled_process.input_skel = [] && skel.Labelled_process.private_channels = []
+              if trans.Configuration.out_gathering_skeleton.Labelled_process.input_skel = [] && trans.Configuration.out_gathering_skeleton.Labelled_process.private_channels = []
               then equiv_pbl.general_blocks
               else { equiv_pbl.general_blocks with Block.current_block_sure_proper = true }
             in
-            let pub_output = Configuration.update_public_output_channel_from_output_transition target_ch equiv_pbl.public_output_channels skel in
+            let pub_output = Configuration.update_public_output_channel_from_output_transition target_ch equiv_pbl.public_output_channels trans.Configuration.out_gathering_skeleton in
             (pub_output,general_blocks)
         | _ -> Config.internal_error "[session_equivalence.ml >> apply_public_output] Output transition data expected."
     in
@@ -543,7 +685,7 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
     else determine_channel_priority equiv_pbl.forall_set
   in
 
-  let generate_next_public_input_nolink =
+  let generate_next_public_input_comm_nolink  =
     if is_in_improper_phase
     then Configuration.next_input_and_private_comm_improper_phase
     else
@@ -560,8 +702,12 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
 
   let generate_transitions csys =
     let symb_conf = csys.Constraint_system.additional_data in
+    let generate_next_public_input_comm = match symb_conf.link_c with
+      | CChannelPriority ch -> Configuration.next_input_and_private_comm ch
+      | _ -> generate_next_public_input_comm_nolink
+    in
     match symb_conf.link_c with
-      | CNoLink ->
+      | CNoLink | CChannelPriority _ ->
           let transitions_forall = ref [] in
           let transitions_exists = ref [] in
           let transitions_both = ref [] in
@@ -570,39 +716,70 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
             List.iter (fun (x,t) -> Variable.link_term x t) csys.Constraint_system.original_substitution;
             List.iter (fun (x,n) -> Variable.link_term x (Name n)) csys.Constraint_system.original_names;
 
-            generate_next_public_input_nolink symb_conf.matching_status csys.Constraint_system.original_substitution csys.Constraint_system.original_names symb_conf.configuration (fun in_comm_trans conf_1 ->
+            generate_next_public_input_comm symb_conf.matching_status csys.Constraint_system.original_substitution csys.Constraint_system.original_names symb_conf.configuration (fun in_comm_trans conf_1 ->
               let eq_uniformity = Formula.T.instantiate_and_normalise_full csys.Constraint_system.eq_uniformity in
               if eq_uniformity = Formula.T.Bot
               then ()
               else
-                let symb_conf_1 =
-                  { symb_conf with
-                    configuration = conf_1;
-                    matching_status = in_comm_trans.Configuration.in_comm_matching_status;
-                    trace = AOutput(target_ch_recipe,out_trans.Configuration.out_position) :: symb_conf.trace;
-                    transition_data = TOutput out_trans.Configuration.out_gathering_skeleton;
-                    link_c = CNoLink;
-                    forall_matched = [];
-                    exists_matched = []
-                  }
-                in
-                let csys_2 =
-                  { csys_1 with
-                    Constraint_system.eq_term = out_trans.Configuration.out_gathering_normalise.Labelled_process.disequations;
-                    Constraint_system.original_substitution = out_trans.Configuration.out_gathering_normalise.Labelled_process.original_subst;
-                    Constraint_system.original_names = out_trans.Configuration.out_gathering_normalise.Labelled_process.original_names;
-                    Constraint_system.eq_uniformity = eq_uniformity;
-                    Constraint_system.additional_data = symb_conf_1
-                  }
-                in
-                let csys_3 = Constraint_system.prepare_for_solving_procedure true csys_2 in
+                match in_comm_trans.Configuration.in_comm_type with
+                  | TInput in_trans ->
+                      let symb_conf_1 =
+                        { symb_conf with
+                          configuration = conf_1;
+                          matching_status = in_comm_trans.Configuration.in_comm_matching_status;
+                          trace = AInput(in_trans.Configuration.in_channel,RVar var_X_t,in_trans.Configuration.in_position) :: symb_conf.trace;
+                          transition_data = TransInComm in_comm_trans;
+                          link_c = CNoLink;
+                          forall_matched = [];
+                          exists_matched = []
+                        }
+                      in
+                      let dfact_t = { Data_structure.bf_var = var_X_t; Data_structure.bf_term = in_trans.Configuration.in_term  } in
+                      let csys_1 =
+                        { csys with
+                          Constraint_system.deduction_facts = Data_structure.DF.add_multiple_max_type csys.Constraint_system.deduction_facts [dfact_t];
+                          Constraint_system.eq_term = in_comm_trans.Configuration.in_comm_gathering_normalise.Labelled_process.disequations;
+                          Constraint_system.original_substitution =in_comm_trans.Configuration.in_comm_gathering_normalise.Labelled_process.original_subst;
+                          Constraint_system.original_names = in_comm_trans.Configuration.in_comm_gathering_normalise.Labelled_process.original_names;
+                          Constraint_system.eq_uniformity = eq_uniformity;
+                          Constraint_system.additional_data = symb_conf_1
+                        }
+                      in
+                      let csys_2 = Constraint_system.prepare_for_solving_procedure true csys_1 in
 
-                let session_transition = TransOutput out_trans in
+                      begin match in_comm_trans.Configuration.in_comm_matching_status with
+                        | Configuration.Exists -> transitions_exists := csys_2::!transitions_exists
+                        | Configuration.ForAll -> transitions_forall := csys_2::!transitions_forall
+                        | Configuration.Both -> transitions_both := csys_2::!transitions_both
+                      end
+                  | TComm comm_trans ->
+                      let symb_conf_1 =
+                        { symb_conf with
+                          configuration = conf_1;
+                          matching_status = in_comm_trans.Configuration.in_comm_matching_status;
+                          trace = AComm(comm_trans.Configuration.comm_out_position,comm_trans.Configuration.comm_in_position) :: symb_conf.trace;
+                          transition_data = TransInComm in_comm_trans;
+                          link_c = CNoLink;
+                          forall_matched = [];
+                          exists_matched = []
+                        }
+                      in
+                      let csys_1 =
+                        { csys with
+                          Constraint_system.eq_term = in_comm_trans.Configuration.in_comm_gathering_normalise.Labelled_process.disequations;
+                          Constraint_system.original_substitution = in_comm_trans.Configuration.in_comm_gathering_normalise.Labelled_process.original_subst;
+                          Constraint_system.original_names = in_comm_trans.Configuration.in_comm_gathering_normalise.Labelled_process.original_names;
+                          Constraint_system.eq_uniformity = eq_uniformity;
+                          Constraint_system.additional_data = symb_conf_1
+                        }
+                      in
+                      let csys_2 = Constraint_system.prepare_for_solving_procedure true csys_1 in
 
-                match out_trans.Configuration.out_matching_status with
-                  | Configuration.Exists -> transitions_exists := (session_transition,csys_3)::!transitions_exists
-                  | Configuration.ForAll -> transitions_forall := (session_transition,csys_3)::!transitions_forall
-                  | Configuration.Both -> transitions_both := (session_transition,csys_3)::!transitions_both
+                      begin match in_comm_trans.Configuration.in_comm_matching_status with
+                        | Configuration.Exists -> transitions_exists := csys_2::!transitions_exists
+                        | Configuration.ForAll -> transitions_forall := csys_2::!transitions_forall
+                        | Configuration.Both -> transitions_both := csys_2::!transitions_both
+                      end
             )
           );
 
@@ -618,5 +795,39 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
       | CTransition gen_trans -> gen_trans
       | _ -> Config.internal_error "[session_equivalence.ml >> apply_public_output] Unexpected link during generation of transitions."
   in
+
+  (* Generate the new matching set *)
+
+  let forall_set_1 = ref [] in
+
+  auto_cleanup_symbolic_configuration (fun () ->
+    List.iter (fun forall_csys ->
+      let gen_forall_transitions = generate_transitions forall_csys in
+      List.iter (fun (exists_csys,bset) ->
+        let gen_exists_transitions = generate_transitions exists_csys in
+
+        (* Generate the matching *)
+        iter_forall_both (fun forall_csys_1 ->
+          let forall_trans = match forall_csys_1.Constraint_system.additional_data.transition_data with
+            | TransInComm trans -> trans
+            | _ -> Config.internal_error "[session_equivalence.ml >> apply_focus_phase] Expecting an output transition."
+          in
+          let generate_bset = Bijection_set.generate forall_trans.Configuration.in_comm_label forall_trans.Configuration.out_gathering_skeleton bset in
+          iter_exists_both (fun exists_csys_1 ->
+            let exists_trans = match exists_csys_1.Constraint_system.additional_data.transition_data with
+              | TransOutput trans -> trans
+              | _ -> Config.internal_error "[session_equivalence.ml >> apply_focus_phase] Expecting an output transition (2)."
+            in
+            match generate_bset exists_trans.Configuration.out_label exists_trans.Configuration.out_gathering_skeleton with
+              | None -> ()
+              | Some bset1 ->
+                  exists_csys_1.Constraint_system.additional_data.forall_matched <- forall_csys_1 :: exists_csys_1.Constraint_system.additional_data.forall_matched;
+                  forall_csys_1.Constraint_system.additional_data.exists_matched <- (exists_csys_1,bset1) :: forall_csys_1.Constraint_system.additional_data.exists_matched
+          ) gen_exists_transitions;
+          forall_set_1 := forall_csys_1 :: !forall_set_1
+        ) gen_forall_transitions
+      ) forall_csys.Constraint_system.additional_data.exists_matched;
+    ) equiv_pbl.forall_set;
+  );
 
   ()

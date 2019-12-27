@@ -1260,9 +1260,9 @@ module Configuration = struct
       f_next_1 ()
     ) (fun () -> ())
 
-  let next_public_output = main_next_public_output Proper
+  let next_public_output = main_next_public_output Labelled_process.Proper
 
-  let next_public_output_improper_phase = main_next_public_output ImproperNegPhase
+  let next_public_output_improper_phase = main_next_public_output Labelled_process.ImproperNegPhase
 
   (*** Input and private communication transition ***)
 
@@ -1470,6 +1470,7 @@ module Configuration = struct
   type input_transition =
     {
       in_complete_label : Label.complete;
+      in_channel : recipe;
       in_term : term;
       in_position : position;
       in_skeletons : Labelled_process.gathering_skeletons
@@ -1590,7 +1591,7 @@ module Configuration = struct
           end
     | _ -> Config.internal_error "[session_process.ml >> Configuration.generate_in_out_list] The skeleton and process lists should be of same size."
 
-  let main_next_input_and_private_comm proper_status channel_priority matching_status original_subst original_names conf f_continuation =
+  let main_next_input_and_private_comm proper_status channel_priority matching_status original_subst original_names conf (f_continuation:input_and_comm_transition -> t -> unit) =
 
     let is_input_applicable = match matching_status with
       | ForAll ->
@@ -1599,8 +1600,8 @@ module Configuration = struct
                 begin match proper_status, conf.blocks.Block.local_improper_blocks with
                   | Labelled_process.Proper, _
                   | _, [] -> fun _ _ _ -> Some ForAll
-                  | _, LComm(lbl,_,_,_) :: _
-                  | _, LStd lbl :: _ -> (fun _ _ lbl' -> if Label.independent lbl' lbl > 0 then Some ForAll else None)
+                  | _, Label.LComm(lbl,_,_,_) :: _
+                  | _, Label.LStd lbl :: _ -> (fun _ _ lbl' -> if Label.independent lbl' lbl > 0 then Some ForAll else None)
                 end
             | ChPriority(target_ch,_) ->
                 fun _ ch _ ->
@@ -1615,8 +1616,8 @@ module Configuration = struct
                 begin match proper_status, conf.blocks.Block.local_improper_blocks with
                   | Labelled_process.Proper, _
                   | _, [] -> fun _ _ _ -> Some Exists
-                  | _, LComm(lbl,_,_,_) :: _
-                  | _, LStd lbl :: _ -> (fun _ _ lbl' -> if Label.independent lbl' lbl > 0 then Some Exists else None)
+                  | _, Label.LComm(lbl,_,_,_) :: _
+                  | _, Label.LStd lbl :: _ -> (fun _ _ lbl' -> if Label.independent lbl' lbl > 0 then Some Exists else None)
                 end
             | ChOnlyPrivate -> fun _ ch _ -> if Channel.is_public ch then None else Some Exists
             | _ -> Config.internal_error "[session_process.ml >> Configuration.next_input] ChPriority should not be applied with an initial matching_status = Exists."
@@ -1627,8 +1628,8 @@ module Configuration = struct
                 begin match proper_status, conf.blocks.Block.local_improper_blocks with
                   | Labelled_process.Proper, _
                   | _, [] -> fun m_status _ _ -> Some m_status
-                  | _, LComm(lbl,_,_,_) :: _
-                  | _, LStd lbl :: _ -> (fun m_status _ lbl' -> if Label.independent lbl' lbl > 0 then Some m_status else None)
+                  | _, Label.LComm(lbl,_,_,_) :: _
+                  | _, Label.LStd lbl :: _ -> (fun m_status _ lbl' -> if Label.independent lbl' lbl > 0 then Some m_status else None)
                 end
             | ChPriority(target_ch,false) ->
                 fun m_status ch _ -> if Channel.is_equal target_ch ch then Some m_status else Some Exists
@@ -1643,10 +1644,10 @@ module Configuration = struct
     in
 
     let is_output_applicable = match proper_status, conf.blocks.Block.local_improper_blocks with
-      | Proper, _
+      | Labelled_process.Proper, _
       | _, [] -> (fun _ -> true)
-      | _, LComm(lbl,_,_,_)::_
-      | _, LStd lbl :: _ -> (fun lbl' -> Label.independent lbl' lbl > 0)
+      | _, Label.LComm(lbl,_,_,_)::_
+      | _, Label.LStd lbl :: _ -> (fun lbl' -> Label.independent lbl' lbl > 0)
     in
 
     let rec explore_input_processes prev_in_plist in_plist f_cont f_next = match in_plist with
@@ -1760,7 +1761,7 @@ module Configuration = struct
 
   let next_input_and_private_comm_improper_phase = main_next_input_and_private_comm Labelled_process.ImproperPosFocusPhase ChNone
 
-  let main_next_pos_input proper_status matching_status original_subst original_names conf f_continuation f_next = match conf.focused_proc with
+  let main_next_pos_input proper_status matching_status original_subst original_names conf f_continuation = match conf.focused_proc with
     | Some Labelled_process.PInput(_,x,p,Some label,pos,_,_) ->
         Variable.auto_cleanup_with_reset (fun f_next_1 ->
           (* Corresponds to an input transition on a public channel. We thus need to normalise. *)
@@ -1805,7 +1806,7 @@ module Configuration = struct
                   in
                   f_continuation transition conf' f_next_2
           ) f_next_1
-        ) f_next
+        ) (fun () -> ())
     | _ -> Config.internal_error "[session_process.ml >> Configuration.next_focused_input] The configuration should be focused with a labeled public input."
 
   let next_pos_input = main_next_pos_input Labelled_process.Proper
