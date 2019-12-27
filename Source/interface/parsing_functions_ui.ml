@@ -134,6 +134,10 @@ let string_of = function
   | JString s -> s
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> string_of] Wrong structure."
 
+let escaped_string_of = function
+  | JString s -> String.escaped s
+  | _ -> Config.internal_error "[parsing_functions_ui.ml >> escaped_string_of] Wrong structure."
+
 let list_of f_parse = function
   | JList l -> List.map f_parse l
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> list_of] Wrong structure."
@@ -643,8 +647,8 @@ let batch_options_of json =
   let options = ref [] in
 
   let distant_of json' =
-    let host = string_of (member "host" json') in
-    let path = string_of (member "path" json') in
+    let host = escaped_string_of (member "host" json') in
+    let path = escaped_string_of (member "path" json') in
     let nb_workers = int_auto_of (member "workers" json') in
     (host,path,nb_workers)
   in
@@ -661,7 +665,7 @@ let batch_options_of json =
   check_member (fun json' -> Local_workers (int_auto_of json')) "local_workers";
   check_member (fun json' -> Distributed (bool_auto_of json')) "distributed";
   check_member (fun json' -> POR (bool_of json')) "por";
-  check_member (fun json' -> Title (String.escaped (string_of json'))) "title";
+  check_member (fun json' -> Title (escaped_string_of json')) "title";
 
   !options
 
@@ -669,14 +673,14 @@ let batch_options_of json =
 
 let input_command_of ?(assoc=None) json = match string_of (member "command" json) with
   | "start_run" ->
-      let input_files = list_of string_of (member "input_files" json) in
+      let input_files = list_of escaped_string_of (member "input_files" json) in
       let command_options = batch_options_of (member "command_options" json) in
       Start_run(input_files,command_options)
-  | "cancel_run" -> Cancel_run (string_of (member "result_file" json))
-  | "cancel_query" -> Cancel_query (string_of (member "result_file" json))
+  | "cancel_run" -> Cancel_run (escaped_string_of (member "result_file" json))
+  | "cancel_query" -> Cancel_query (escaped_string_of (member "result_file" json))
   | "cancel_batch" | "exit" -> Cancel_batch
   | "get_config" -> Get_config
-  | "set_config" -> Set_config (string_of (member "output_dir" json))
+  | "set_config" -> Set_config (escaped_string_of (member "output_dir" json))
   (* **** Simulator commands **** *)
 
   (* Generic commands *)
@@ -689,11 +693,11 @@ let input_command_of ?(assoc=None) json = match string_of (member "command" json
         | Some association -> Next_steps (list_of (transition_of association) (member "actions" json))
       end
   (* Display Trace *)
-  | "start_display_trace" -> Display_trace (string_of (member "query_file" json), int_of (member "id" json))
+  | "start_display_trace" -> Display_trace (escaped_string_of (member "query_file" json), int_of (member "id" json))
   (* Attack simulator *)
-  | "start_attack_simulator" -> Attack_simulator (string_of (member "query_file" json))
+  | "start_attack_simulator" -> Attack_simulator (escaped_string_of (member "query_file" json))
   | "start_equivalence_simulator" ->
-      Equivalence_simulator (string_of (member "query_file" json), int_of (member "process_id" json))
+      Equivalence_simulator (escaped_string_of (member "query_file" json), int_of (member "process_id" json))
   | "reset_simulator" -> ESSelect_trace (int_of (member "process_id" json))
   | "find_equivalent_trace" -> ESFind_equivalent_trace
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> input_command_of] Unknown command."
