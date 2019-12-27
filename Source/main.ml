@@ -271,7 +271,7 @@ let parse_distributed op_str = function
       ))
 
 let parse_distant_workers op_str host path = function
-  | "auto" -> add_and_verify_option (Distant_workers [!host,!path, None])
+  | "auto" -> add_and_verify_option (Distant_workers [String.escaped !host,String.escaped !path, None])
   | str ->
       let i =
         try
@@ -286,7 +286,7 @@ let parse_distant_workers op_str host path = function
             (coloured_terminal_text Black [Bold] op_str)
           ))
       in
-      add_and_verify_option (Distant_workers [!host,!path, Some i])
+      add_and_verify_option (Distant_workers [String.escaped !host,String.escaped !path, Some i])
 
 let _ =
   Config.running_api := false;
@@ -296,9 +296,9 @@ let _ =
 
   (* Retrieve deepsec path *)
   let exe_path = Filename.dirname Sys.executable_name in
-  Config.path_deepsec := exe_path;
+  Config.path_deepsec := String.escaped exe_path;
   let database_path = Filename.concat exe_path "database" in
-  Config.path_database := database_path;
+  Config.path_database := String.escaped database_path;
 
   (* Retrieve the command *)
 
