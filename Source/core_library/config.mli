@@ -15,9 +15,20 @@ val debug_activated : bool
 
 val record_time : bool
 
-val print_in_log : ?always:bool -> string -> unit
+type log_level =
+  | Always
+  | Record_time
+  | Core
+  | Constraint_solving
+  | Constraint_systems
+  | Process
+  | Distribution
 
-val log : (unit -> string) -> unit
+val log_level_to_print : log_level list ref
+
+val log_in_debug : log_level -> string -> unit
+
+val log : log_level -> (unit -> string) -> unit
 
 (** The current version *)
 val version : string ref

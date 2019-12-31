@@ -173,9 +173,7 @@ let rec trace_of_determinate_trace acc = function
   | TrInput(f,r_x,pos)::q -> trace_of_determinate_trace (AInput(RFunc(f,[]),Recipe.instantiate (RVar r_x),pos)::acc) q
 
 let get_instantiated_trace conf =
-  Config.debug (fun () ->
-    Config.print_in_log (Printf.sprintf "Found trace = %s\n" (display_list display_trace  "; " (List.rev conf.trace)))
-  );
+  Config.log Config.Process (fun () -> Printf.sprintf "Found trace = %s\n" (display_list display_trace  "; " (List.rev conf.trace)));
   trace_of_determinate_trace [] conf.trace
 
 (*** Transformation from processes to determinate processes ***)
@@ -927,8 +925,8 @@ let generate_initial_configurations proc1 proc2 =
     let display_list_symb l = Printf.sprintf "[%s]" (display_list (Symbol.display Display.Terminal) "; " l) in
     let display_list_list_symb l = Printf.sprintf "[%s]" (display_list display_list_symb "; " l) in
     let display_list_list_list_symb l = Printf.sprintf "[%s]" (display_list display_list_list_symb "; " l) in
-    Config.print_in_log (Printf.sprintf "Extracted1 = %s\n" (display_list_list_list_symb extracted_ch1));
-    Config.print_in_log (Printf.sprintf "Extracted2 = %s\n" (display_list_list_list_symb extracted_ch2))
+    Config.log_in_debug Config.Process (Printf.sprintf "Extracted1 = %s" (display_list_list_list_symb extracted_ch1));
+    Config.log_in_debug Config.Process (Printf.sprintf "Extracted2 = %s" (display_list_list_list_symb extracted_ch2))
   );
 
   let inter_channel = inter_mult_channels extracted_ch1 extracted_ch2 in
@@ -937,15 +935,12 @@ let generate_initial_configurations proc1 proc2 =
     let display_list_symb l = Printf.sprintf "[%s]" (display_list (Symbol.display Display.Terminal) "; " l) in
     let display_list_list_symb l = Printf.sprintf "[%s]" (display_list display_list_symb "; " l) in
     let display_list_list_list_symb l = Printf.sprintf "[%s]" (display_list display_list_list_symb "; " l) in
-    Config.print_in_log (Printf.sprintf "Inter_channel = %s\n" (display_list_list_list_symb inter_channel));
+    Config.log_in_debug Config.Process (Printf.sprintf "Inter_channel = %s" (display_list_list_list_symb inter_channel));
 
     let sp1 = simple_process_of_intermediate_process comp_p1 in
     let sp2 = simple_process_of_intermediate_process comp_p2 in
-    Config.print_in_log "Compressed simple processes:\n";
-    Config.print_in_log "--Process 1:\n";
-    Config.print_in_log (display_simple_process 0 sp1);
-    Config.print_in_log "--Process 2:\n";
-    Config.print_in_log (display_simple_process 0 sp2)
+    let str = Printf.sprintf "Compressed simple processes:\n--Process 1:\n%s--Process 2:\n%s" (display_simple_process 1 sp1) (display_simple_process 1 sp2) in
+    Config.log_in_debug Config.Process str
   );
 
 
@@ -959,18 +954,13 @@ let generate_initial_configurations proc1 proc2 =
   let sp2 = simple_process_of_intermediate_process comp_p2' in
 
   Config.debug (fun () ->
-    Config.print_in_log "Initial simple processes:\n";
-    Config.print_in_log "--Process 1:\n";
-    Config.print_in_log (display_simple_process 0 sp1);
-    Config.print_in_log "--Process 2:\n";
-    Config.print_in_log (display_simple_process 0 sp2)
+    let str = Printf.sprintf "Initial simple processes:\n--Process 1:\n%s--Process 2:\n%s" (display_simple_process 1 sp1) (display_simple_process 1 sp2) in
+    Config.log_in_debug Config.Process str
   );
 
   let execute_else_branchs = not (do_else_branches_lead_to_improper_block true sp1 && do_else_branches_lead_to_improper_block true sp2) in
 
-  Config.debug (fun () ->
-    Config.print_in_log (Printf.sprintf "Else branch executed = %b" execute_else_branchs)
-  );
+  Config.log Config.Process (fun () -> Printf.sprintf "Else branch executed = %b" execute_else_branchs);
 
   let det1 = { label_p = [0]; proc = sp1 } in
   let det2 = { label_p = [0]; proc = sp2 } in

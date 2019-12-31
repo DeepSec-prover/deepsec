@@ -80,3 +80,5 @@ end
 val trace_equivalence_determinate : Types.process -> Types.process -> in_channel * out_channel * (verification_result -> verification_result)
 
 val trace_equivalence_generic : Types.semantics -> Types.process -> Types.process -> in_channel * out_channel * (verification_result -> verification_result)
+
+val session_equivalence : bool -> Types.process -> Types.process -> in_channel * out_channel * (verification_result -> verification_result)

@@ -4,6 +4,8 @@ open Types
 open Term
 open Formula
 
+module IntList = List.Ordered(struct type t = int let compare (n1:int) (n2:int) = compare n1 n2 end)
+
 module Label = struct
 
   type t =
@@ -187,7 +189,7 @@ module Block = struct
         { gen_block with current_recipe_block = Some c_block' }
 
   let close_current_recipe_block gen_block = match gen_block.current_recipe_block with
-    | None -> Config.internal_error "[session_process.ml >> Block.add_new_current_recipe_block] Should not be used in improper phase."
+    | None -> gen_block
     | Some c_block ->
         if gen_block.current_block_sure_proper
         then
@@ -202,8 +204,6 @@ module Block = struct
             current_recipe_block = None;
             current_block_sure_proper = false
           }
-
-  let is_improper_phase gen_block = gen_block.current_recipe_block = None
 
   let rec add_axiom_in_sorted_list (i:int) axiom_list = match axiom_list with
     | [] -> [i]
@@ -275,7 +275,7 @@ module Block = struct
       ground_index = !ground_index
     }
 
-  let tansition_proper_to_improper_phase local_blocks = match local_blocks.local_proper_blocks with
+  let transition_proper_to_improper_phase local_blocks = match local_blocks.local_proper_blocks with
     | [] -> Config.internal_error "[session_process.ml >> Block.transition_proper_to_improper_phase] The local block should contain at least the initial label."
     | lbl :: q ->
         match lbl with
@@ -301,10 +301,14 @@ module Block = struct
           | 1 -> is_faulty lbl_block r_block q_lbl q_r
           | _ -> false
 
-  let is_authorised previous_ground_index gen_block local_block =
-    let full_r_block_l = match gen_block.current_recipe_block with
-      | None -> gen_block.recipe_blocks
-      | Some r_block -> r_block :: gen_block.recipe_blocks
+  let is_authorised check_current previous_ground_index gen_block local_block =
+    let full_r_block_l =
+      if check_current
+      then
+        match gen_block.current_recipe_block with
+        | None -> gen_block.recipe_blocks
+        | Some r_block -> r_block :: gen_block.recipe_blocks
+      else gen_block.recipe_blocks
     in
 
     let rec explore_block index lbl_block_l r_block_l =
@@ -796,7 +800,6 @@ module Labelled_process = struct
     is_equal_input_output skel1.input_skel skel2.input_skel &&
     is_equal_input_output skel1.output_skel skel2.output_skel
 
-
   (*** Next transition ***)
 
   type proper_status =
@@ -999,7 +1002,6 @@ module Labelled_process = struct
     in
 
     explore_process 0 plist
-
 end
 
 module Configuration = struct
@@ -1024,6 +1026,8 @@ module Configuration = struct
       private_channels : (Channel.t * int (* out *) * int (* in *)) list; (* Ordered by Channel.compare *)
     }
 
+  (* Transition types *)
+
   type output_transition =
     {
       out_label : Label.t;
@@ -1031,7 +1035,45 @@ module Configuration = struct
       out_position : position;
       out_matching_status : matching_status;
       out_gathering_normalise : Labelled_process.gathering_normalise;
-      out_gathering_skeleton : Labelled_process.gathering_skeletons
+      out_skeletons : Labelled_process.gathering_skeletons
+    }
+
+  type input_transition =
+    {
+      in_label : Label.t;
+      in_channel : recipe;
+      in_term : term;
+      in_position : position;
+      in_skeletons : Labelled_process.gathering_skeletons
+    }
+
+  type comm_transition =
+    {
+      comm_in_position : position;
+      comm_out_position : position;
+      comm_in_label : Label.t;
+      comm_out_label : Label.t;
+      comm_in_skeletons : Labelled_process.gathering_skeletons;
+      comm_out_skeletons : Labelled_process.gathering_skeletons
+    }
+
+  type type_transition =
+    | TInput of input_transition
+    | TComm of comm_transition
+
+  type input_and_comm_transition =
+    {
+      in_comm_complete_label : Label.complete;
+      in_comm_type : type_transition;
+      in_comm_matching_status : matching_status;
+      in_comm_gathering_normalise : Labelled_process.gathering_normalise
+    }
+
+  type start_transition =
+    {
+      start_skeletons : Labelled_process.gathering_skeletons;
+      start_gathering_normalise : Labelled_process.gathering_normalise;
+      start_matching_status : matching_status
     }
 
   (* Invariant:
@@ -1052,6 +1094,51 @@ module Configuration = struct
       end;
       f_next ()
     )
+
+  (*** Get improper inputs ***)
+
+  type improper_data =
+    {
+      nb_labels : int;
+      nb_prefix : int;
+      imp_labels : (int list (* prefix *) * int (* number of index *) * int list (* ordered index *)) list
+    }
+
+
+  let add_label_in_imp_label lbl nb_prefix lbl_l =
+    let nb_prefix_ref = ref nb_prefix in
+    let rec explore = function
+      | [] ->
+          incr nb_prefix_ref;
+          [lbl.Label.prefix,1,[lbl.Label.last_index]]
+      | (prefix,i_nb,i_list)::q when prefix = lbl.Label.prefix ->
+          (prefix,i_nb+1,IntList.add lbl.Label.last_index i_list)::q
+      | t::q -> t::(explore q)
+    in
+    let lbl_l' = explore lbl_l in
+    (!nb_prefix_ref,lbl_l')
+
+  (* Raise Not_found when there are no improper input *)
+  let get_improper_inputs conf =
+
+    let rec explore imp_proc nb_imp nb_prefix imp_lbl prev_in = function
+      | [] -> imp_proc,{ nb_labels = nb_imp; nb_prefix = nb_prefix; imp_labels = imp_lbl },prev_in
+      | (Labelled_process.PInput(Channel.CPublic _,_,Labelled_process.PNil,Some lbl,_,_,_) as p) :: q ->
+          (* Improper input *)
+          let (nb_prefix',imp_lbl') = add_label_in_imp_label lbl nb_prefix imp_lbl in
+          explore (p::imp_proc) (nb_imp+1) nb_prefix' imp_lbl' prev_in q
+      | p::q -> explore imp_proc nb_imp nb_prefix imp_lbl (p::prev_in) q
+    in
+    let (pure_imp,imp_data,in_proc) = explore conf.pure_improper_proc 0 0 [] [] conf.input_and_private_proc in
+
+    if imp_data.nb_labels = 0
+    then raise Not_found
+    else
+      imp_data,
+      { conf with
+        input_and_private_proc = in_proc;
+        pure_improper_proc = pure_imp
+      }
 
   (*** Public output utilities ***)
 
@@ -1103,14 +1190,10 @@ module Configuration = struct
 
   (*** Output transition ***)
 
-  let update_public_output_channel_from_output_transition ch out_chlist skel =
-    let out_chlist_1 = remove_ch_from_public_output_channels ch out_chlist in
-    merge_public_output_channels_from_one_skel skel.Labelled_process.output_skel out_chlist_1
-
   let update_private_channels_from_output_transition conf trans =
-    merge_private_channels conf.private_channels trans.out_gathering_skeleton.Labelled_process.private_channels
+    merge_private_channels conf.private_channels trans.out_skeletons.Labelled_process.private_channels
 
-  let main_next_public_output proper_status matching_status target_channel original_subst original_names conf (f_continuation : output_transition -> t -> unit)=
+  let main_neg_phase proper_status matching_status target_channel original_subst original_names conf (f_continuation : output_transition -> t -> unit)=
     Config.debug (fun () ->
       if conf.focused_proc <> None
       then Config.internal_error "[session_process.ml >> Configuration.next_public_output] An output transition should not be computed when there are still a focused process."
@@ -1140,7 +1223,7 @@ module Configuration = struct
                     out_position = pos;
                     out_matching_status = matching_status_1;
                     out_gathering_normalise = gather_norm_1;
-                    out_gathering_skeleton = gather_skel_1
+                    out_skeletons = gather_skel_1
                   }
                 in
                 f_cont transition p_1 f_next_2
@@ -1168,7 +1251,7 @@ module Configuration = struct
               if brok_plist_1 = [] && plist = []
               then f_cont transition Labelled_process.PNil f_next_1
               else
-                if nb_output = 1 && transition.out_gathering_skeleton.Labelled_process.output_skel = []
+                if nb_output = 1 && transition.out_skeletons.Labelled_process.output_skel = []
                 then
                   begin
                     Config.debug (fun () ->
@@ -1185,7 +1268,7 @@ module Configuration = struct
                     if p_1 = Labelled_process.PNil && q_list = [] && brok_plist = []
                     then f_cont transition Labelled_process.PNil f_next_1
                     else
-                      if nb_output = 1 && transition.out_gathering_skeleton.Labelled_process.output_skel = []
+                      if nb_output = 1 && transition.out_skeletons.Labelled_process.output_skel = []
                       then
                         begin
                           Config.debug (fun () ->
@@ -1237,7 +1320,7 @@ module Configuration = struct
                 f_cont transition (List.rev_append prev_out_plist out_p) in_p f_next_1
             | Labelled_process.PNil -> f_cont transition (List.rev_append prev_out_plist q) in_priv_plist f_next_1
             | _ ->
-                if transition.out_gathering_skeleton.Labelled_process.output_skel = [] && not (Labelled_process.exists_toplevel_public_output p_1)
+                if transition.out_skeletons.Labelled_process.output_skel = [] && not (Labelled_process.exists_toplevel_public_output p_1)
                 then f_cont transition (List.rev_append prev_out_plist q) (p_1::in_priv_plist) f_next_1
                 else f_cont transition (List.rev_append prev_out_plist (p_1::q)) in_priv_plist f_next_1
           ) (fun () ->
@@ -1260,9 +1343,9 @@ module Configuration = struct
       f_next_1 ()
     ) (fun () -> ())
 
-  let next_public_output = main_next_public_output Labelled_process.Proper
+  let next_neg_phase = main_neg_phase Labelled_process.Proper
 
-  let next_public_output_improper_phase = main_next_public_output Labelled_process.ImproperNegPhase
+  let next_neg_improper_phase = main_neg_phase Labelled_process.ImproperNegPhase
 
   (*** Input and private communication transition ***)
 
@@ -1467,37 +1550,6 @@ module Configuration = struct
 
     explore_process matching_status proc f_continuation f_next
 
-  type input_transition =
-    {
-      in_complete_label : Label.complete;
-      in_channel : recipe;
-      in_term : term;
-      in_position : position;
-      in_skeletons : Labelled_process.gathering_skeletons
-    }
-
-  type comm_transition =
-    {
-      comm_complete_label : Label.complete;
-      comm_in_position : position;
-      comm_out_position : position;
-      comm_in_label : Label.t;
-      comm_out_label : Label.t;
-      comm_in_skeletons : Labelled_process.gathering_skeletons;
-      comm_out_skeletons : Labelled_process.gathering_skeletons
-    }
-
-  type type_transition =
-    | TInput of input_transition
-    | TComm of comm_transition
-
-  type input_and_comm_transition =
-    {
-      in_comm_type : type_transition;
-      in_comm_matching_status : matching_status;
-      in_comm_gathering_normalise : Labelled_process.gathering_normalise
-    }
-
   (* Channel priority *)
 
   let determine_channel_priority conf =
@@ -1557,19 +1609,38 @@ module Configuration = struct
     | [] -> []
     | p :: q -> make_par_processes_list (make_par_processes plist p) q
 
-  (* Updating private channels and output_channel collector *)
+  (* Update public output channel collecor *)
+
+  let update_public_output_channel_out_transition ch out_trans out_chlist =
+    let out_chlist_1 = remove_ch_from_public_output_channels ch out_chlist in
+    merge_public_output_channels_from_one_skel out_trans.out_skeletons.Labelled_process.output_skel out_chlist_1
+
+  let update_public_output_channel_in_transition in_trans out_chlist =
+    merge_public_output_channels_from_one_skel in_trans.in_skeletons.Labelled_process.output_skel out_chlist
+
+  let update_public_output_channel_comm_transition comm_trans out_chlist =
+    let out_chlist_1 = merge_public_output_channels_from_two_skel comm_trans.comm_in_skeletons.Labelled_process.output_skel comm_trans.comm_out_skeletons.Labelled_process.output_skel in
+    merge_public_output_channels out_chlist_1 out_chlist
+
+  let update_public_output_channel_start_transition start_trans out_chlist =
+    merge_public_output_channels_from_one_skel start_trans.start_skeletons.Labelled_process.output_skel out_chlist
+
+  (* Updating private channels collector *)
 
   let update_private_channels_from_in_comm_transition conf trans = match trans.in_comm_type with
     | TInput in_trans ->
         merge_private_channels conf.private_channels in_trans.in_skeletons.Labelled_process.private_channels
     | TComm comm_trans ->
-        let ch = match comm_trans.comm_complete_label with
+        let ch = match trans.in_comm_complete_label with
           | Label.LComm(_,_,n,_) -> Channel.CPrivate(n,false) (* The false value does not matter as we only use this for equality *)
           | _ -> Config.internal_error "[session_process.ml >> Configuration.update_private_channels_from_in_comm_transition] We should have found a private channel."
         in
         let priv_ch_list = remove_ch_from_private_channels ch conf.private_channels in
         let sub_priv_ch_list = merge_private_channels comm_trans.comm_in_skeletons.Labelled_process.private_channels comm_trans.comm_out_skeletons.Labelled_process.private_channels in
         merge_private_channels priv_ch_list sub_priv_ch_list
+
+  let update_private_channels_from_start_transition conf start_trans =
+    merge_private_channels conf.private_channels start_trans.start_skeletons.Labelled_process.private_channels
 
   let rec generate_in_out_list in_plist out_plist skel_list plist = match skel_list, plist with
     | [],[] -> in_plist, out_plist
@@ -1591,7 +1662,9 @@ module Configuration = struct
           end
     | _ -> Config.internal_error "[session_process.ml >> Configuration.generate_in_out_list] The skeleton and process lists should be of same size."
 
-  let main_next_input_and_private_comm proper_status channel_priority matching_status original_subst original_names conf (f_continuation:input_and_comm_transition -> t -> unit) =
+  (* Next focus phase *)
+
+  let main_next_focus_phase proper_status channel_priority matching_status original_subst original_names conf (f_continuation:input_and_comm_transition -> t -> unit) =
 
     let is_input_applicable = match matching_status with
       | ForAll ->
@@ -1670,14 +1743,16 @@ module Configuration = struct
                 Labelled_process.normalise proper_status in_data.in_data_label gather_norm in_data.in_data_process (fun gather_norm_1 gather_skel_1 p_in f_next_3 ->
                   let type_transition = TInput
                     {
-                      in_complete_label = Label.LStd in_data.in_data_label;
+                      in_label = in_data.in_data_label;
                       in_term = x_fresh;
+                      in_channel = Channel.recipe_of in_data.in_data_channel;
                       in_position = in_data.in_data_position;
                       in_skeletons = gather_skel_1
                     }
                   in
                   let transition =
                     {
+                      in_comm_complete_label = Label.LStd in_data.in_data_label;
                       in_comm_type = type_transition;
                       in_comm_matching_status = in_data.in_data_matching_status;
                       in_comm_gathering_normalise = gather_norm_1
@@ -1718,7 +1793,6 @@ module Configuration = struct
                     Labelled_process.normalise proper_status out_data.out_data_label gather_norm_1 out_data.out_data_process (fun gather_norm_2 out_gather_skel p_out f_next_5 ->
                       let type_transition = TComm
                         {
-                          comm_complete_label = complete_label;
                           comm_in_position = in_data.in_data_position;
                           comm_out_position = out_data.out_data_position;
                           comm_in_label = in_data.in_data_label;
@@ -1729,6 +1803,7 @@ module Configuration = struct
                       in
                       let transition =
                         {
+                          in_comm_complete_label = complete_label;
                           in_comm_type = type_transition;
                           in_comm_matching_status = out_data.out_data_matching_status;
                           in_comm_gathering_normalise = gather_norm_2
@@ -1745,8 +1820,14 @@ module Configuration = struct
 
     explore_input_processes [] conf.input_and_private_proc (fun transition in_plist out_plist focus f_next_1 ->
       let private_channels = update_private_channels_from_in_comm_transition conf transition in
+      let local_blocks =
+        if proper_status = Labelled_process.Proper
+        then { conf.blocks with Block.local_proper_blocks = transition.in_comm_complete_label :: conf.blocks.Block.local_proper_blocks }
+        else { conf.blocks with Block.local_improper_blocks = transition.in_comm_complete_label :: conf.blocks.Block.local_improper_blocks }
+      in
       let conf' =
         { conf with
+          blocks = local_blocks;
           input_and_private_proc = in_plist;
           output_proc = out_plist;
           focused_proc = focus;
@@ -1757,12 +1838,14 @@ module Configuration = struct
       f_next_1 ()
     ) (fun () -> ())
 
-  let next_input_and_private_comm = main_next_input_and_private_comm Labelled_process.Proper
+  let next_focus_phase = main_next_focus_phase Labelled_process.Proper
 
-  let next_input_and_private_comm_improper_phase = main_next_input_and_private_comm Labelled_process.ImproperPosFocusPhase ChNone
+  let next_focus_improper_phase = main_next_focus_phase Labelled_process.ImproperPosFocusPhase ChNone
 
-  let main_next_pos_input proper_status matching_status original_subst original_names conf f_continuation = match conf.focused_proc with
-    | Some Labelled_process.PInput(_,x,p,Some label,pos,_,_) ->
+  (* Next positive phase *)
+
+  let main_next_pos_input proper_status matching_status original_subst original_names conf (f_continuation:input_and_comm_transition -> t -> unit) = match conf.focused_proc with
+    | Some Labelled_process.PInput(ch,x,p,Some label,pos,_,_) ->
         Variable.auto_cleanup_with_reset (fun f_next_1 ->
           (* Corresponds to an input transition on a public channel. We thus need to normalise. *)
           let x_fresh = Var (Variable.fresh Existential) in
@@ -1777,7 +1860,8 @@ module Configuration = struct
           Labelled_process.normalise proper_status label gather_norm p (fun gather_norm_1 gather_skel_1 p_in f_next_2 ->
             let type_transition = TInput
               {
-                in_complete_label = Label.LStd label;
+                in_label = label;
+                in_channel = Channel.recipe_of ch;
                 in_term = x_fresh;
                 in_position = pos;
                 in_skeletons = gather_skel_1
@@ -1785,6 +1869,7 @@ module Configuration = struct
             in
             let transition =
               {
+                in_comm_complete_label = Label.LStd label;
                 in_comm_type = type_transition;
                 in_comm_matching_status = matching_status;
                 in_comm_gathering_normalise = gather_norm_1
@@ -1792,7 +1877,8 @@ module Configuration = struct
             in
             match p_in with
               | Labelled_process.PInput(ch,_,_,_,_,_,_) when Channel.is_public ch -> (* We keep the process focused *)
-                  f_continuation transition { conf with focused_proc = Some p_in } f_next_2
+                  f_continuation transition { conf with focused_proc = Some p_in };
+                  f_next_2 ()
               | _ -> (* We release the process *)
                   let (in_plist,out_plist) = generate_in_out_list conf.input_and_private_proc [] [gather_skel_1] [p_in] in
                   let private_channels = update_private_channels_from_in_comm_transition conf transition in
@@ -1804,7 +1890,8 @@ module Configuration = struct
                       private_channels = private_channels
                     }
                   in
-                  f_continuation transition conf' f_next_2
+                  f_continuation transition conf';
+                  f_next_2 ()
           ) f_next_1
         ) (fun () -> ())
     | _ -> Config.internal_error "[session_process.ml >> Configuration.next_focused_input] The configuration should be focused with a labeled public input."
@@ -1812,4 +1899,45 @@ module Configuration = struct
   let next_pos_input = main_next_pos_input Labelled_process.Proper
 
   let next_pos_input_improper_phase = main_next_pos_input Labelled_process.ImproperPosFocusPhase
+
+  (* Start phase *)
+
+  let next_start_phase matching_status original_subst original_names conf (f_continuation:start_transition -> t -> unit) = match conf.input_and_private_proc with
+    | [Labelled_process.PStart p] ->
+        Variable.auto_cleanup_with_reset (fun f_next_1 ->
+          let gather_norm =
+            {
+              Labelled_process.original_subst = original_subst;
+              Labelled_process.original_names = original_names;
+              Labelled_process.disequations = Formula.T.Top
+            }
+          in
+          Labelled_process.normalise Labelled_process.Proper Label.initial gather_norm p (fun gather_norm_1 gather_skel_1 p' f_next_2 ->
+            let transition =
+              {
+                start_skeletons = gather_skel_1;
+                start_matching_status = matching_status;
+                start_gathering_normalise = gather_norm_1
+              }
+            in
+            match p' with
+              | Labelled_process.PInput(ch,_,_,_,_,_,_) when Channel.is_public ch -> (* We keep the process focused *)
+                  f_continuation transition { conf with focused_proc = Some p' };
+                  f_next_2 ()
+              | _ -> (* We release the process *)
+                  let (in_plist,out_plist) = generate_in_out_list conf.input_and_private_proc [] [gather_skel_1] [p'] in
+                  let private_channels = update_private_channels_from_start_transition conf transition in
+                  let conf' =
+                    { conf with
+                      input_and_private_proc = in_plist;
+                      output_proc = out_plist;
+                      focused_proc = None;
+                      private_channels = private_channels
+                    }
+                  in
+                  f_continuation transition conf';
+                  f_next_2 ()
+          ) f_next_1
+        ) (fun () -> ())
+    | _ -> Config.internal_error "[session_process.ml >> Configuration.next_start_phase] The configuration should contain a start process."
 end

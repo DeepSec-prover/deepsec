@@ -133,13 +133,11 @@ let apply_faulty (csys_left,symb_left) (csys_right,symb_right) is_left f_conf f_
     | FOutput(ax,t) ->
         let wit_csys_1 = Constraint_system.add_axiom wit_csys ax t in
         let wit_csys_2 = { wit_csys_1 with Constraint_system.additional_data = { symb_proc with configuration = f_conf } } in
-        Config.debug (fun () -> Config.print_in_log "Not equivalent : Skelet output\n");
         raise (Not_Trace_Equivalent (generate_attack_trace wit_csys_2))
     | FInput(var_X,t) ->
         let ded_fact_term = { Data_structure.bf_var = var_X; Data_structure.bf_term = t } in
         let wit_csys_1 = Constraint_system.add_basic_facts wit_csys [ded_fact_term] in
         let wit_csys_2 = { wit_csys_1 with Constraint_system.additional_data = { symb_proc with configuration = f_conf } } in
-        Config.debug (fun () -> Config.print_in_log "Not equivalent : Skelet input\n");
         raise (Not_Trace_Equivalent (generate_attack_trace wit_csys_2))
 
 let nb_apply_one_transition_and_rules = ref 0
@@ -158,7 +156,7 @@ let is_current_block_proper csys equiv_pbl =
       let current_max_type_recipe = Data_structure.IK.get_max_type_recipe csys.Constraint_system.knowledge csys.Constraint_system.incremented_knowledge in
       Config.debug (fun () ->
         if minimal_axiom > current_max_type_recipe
-        then Config.print_in_log "Found an improper block !\n"
+        then Config.log_in_debug Config.Process "Found an improper block !"
       );
       minimal_axiom <= current_max_type_recipe
     end
@@ -172,12 +170,12 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           (csys_1.Constraint_system.additional_data.origin_process = Left && csys_2.Constraint_system.additional_data.origin_process = Right) ||
           (csys_1.Constraint_system.additional_data.origin_process = Right && csys_2.Constraint_system.additional_data.origin_process = Left)
           ->
-            Config.print_in_log (Printf.sprintf "\n\n====Application of one transtion rule : (%d)=======\n" !nb_apply_one_transition_and_rules);
-            Config.print_in_log (display_symbolic_process csys_1.Constraint_system.additional_data);
-            Config.print_in_log (display_symbolic_process csys_2.Constraint_system.additional_data);
-            Config.print_in_log ("Eq recipe = "^(Formula.R.display Display.Terminal equiv_pbl.csys_set.Constraint_system.eq_recipe));
-            Config.print_in_log (Constraint_system.display_constraint_system csys_1);
-            Config.print_in_log (Constraint_system.display_constraint_system csys_2);
+            Config.log_in_debug Config.Process (Printf.sprintf "\n\n====Application of one transtion rule : (%d)=======" !nb_apply_one_transition_and_rules);
+            Config.log_in_debug Config.Process (display_symbolic_process csys_1.Constraint_system.additional_data);
+            Config.log_in_debug Config.Process (display_symbolic_process csys_2.Constraint_system.additional_data);
+            Config.log_in_debug Config.Process ("Eq recipe = "^(Formula.R.display Display.Terminal equiv_pbl.csys_set.Constraint_system.eq_recipe));
+            Config.log_in_debug Config.Process (Constraint_system.display_constraint_system csys_1);
+            Config.log_in_debug Config.Process (Constraint_system.display_constraint_system csys_2);
             if csys_1.Constraint_system.eq_term <> Formula.T.Top || csys_2.Constraint_system.eq_term <> Formula.T.Top
             then Config.internal_error "[determinate_equivalence.ml >> apply_one_transition_and_rules] The disequations in the constraint systems should have been solved."
       | _ -> Config.internal_error "[determinate_equivalence >> apply_one_transition_and_rules] There should be only two constraint systems: one left, one right."
@@ -190,7 +188,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
   match search_next_rule symb_proc.configuration with
     | RStart ->
-        Config.debug (fun () -> Config.print_in_log "Apply Start\n");
+        Config.log Config.Process (fun () -> "Apply Start");
         let csys_list_for_start = ref [] in
 
         let else_branch =
@@ -310,7 +308,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
         Constraint_system.Rule.apply_rules_after_input false in_apply_final_test csys_set_for_start f_next
     | RStartIn ->
-        Config.debug (fun () -> Config.print_in_log "apply Start In\n");
+        Config.log Config.Process (fun () -> "apply Start In");
         if is_current_block_proper csys equiv_pbl && is_block_list_authorized equiv_pbl.complete_blocks equiv_pbl.ongoing_block
         then
           begin
@@ -336,8 +334,6 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                 then not (List.for_all (fun (csys,_) -> do_else_branches_lead_to_improper_block_conf csys.Constraint_system.additional_data.configuration) csys_var_list)
                 else false
               in
-
-              Config.debug (fun () -> Config.print_in_log (Printf.sprintf "Local value else_branh = %b\n" else_branch));
 
               List.iter (fun (csys,x) ->
                 let symb_proc = csys.Constraint_system.additional_data in
@@ -468,7 +464,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           end
         else f_next ()
     | RPosIn ->
-        Config.debug (fun () -> Config.print_in_log "apply PosIn\n");
+        Config.log Config.Process (fun () -> "apply PosIn");
         let var_X = Recipe_Variable.fresh Free (Data_structure.IK.get_max_type_recipe csys.Constraint_system.knowledge csys.Constraint_system.incremented_knowledge) in
 
         let csys_list_for_input = ref [] in
@@ -479,8 +475,6 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
             (acc_else || not (do_else_branches_lead_to_improper_block_conf conf), (csys,conf,x)::acc_conf)
           ) (false,[]) equiv_pbl.csys_set.Constraint_system.set
         in
-
-        Config.debug (fun () -> Config.print_in_log (Printf.sprintf "Local value else_branh = %b\n" else_branch));
 
         List.iter (fun (csys,conf,x) ->
           let symb_proc = csys.Constraint_system.additional_data in
@@ -529,14 +523,6 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
         let csys_set_for_input = { equiv_pbl.csys_set with Constraint_system.set = !csys_list_for_input } in
 
-        Config.debug (fun () ->
-          Config.print_in_log "Generated Pos In csys:\n";
-          List.iter (fun csys ->
-            Config.print_in_log (Constraint_system.display_constraint_system csys);
-            Config.print_in_log (display_symbolic_process csys.Constraint_system.additional_data)
-          ) !csys_list_for_input;
-        );
-
         let in_apply_final_test csys_set f_next =
           Config.debug (fun () ->
             Constraint_system.Set.debug_check_structure "[Determinate_process >> apply_one_transition_and_rules >> RPosIn >> final_test]" csys_set
@@ -550,9 +536,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
             if List.for_all (fun csys -> csys.Constraint_system.additional_data.origin_process = origin_process) csys_list
             then
               begin
-                Config.debug (fun () ->
-                  Config.print_in_log "Attack trace found due not deepsec solving\n";
-                );
+                Config.log Config.Process  (fun () -> "Attack trace found due not deepsec solving");
                 raise (Not_Trace_Equivalent (generate_attack_trace csys))
               end
             else
@@ -614,7 +598,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
         Constraint_system.Rule.apply_rules_after_input false in_apply_final_test csys_set_for_input f_next
     | RNegOut ->
-        Config.debug (fun () -> Config.print_in_log "apply neg out\n");
+        Config.log Config.Process (fun () -> "apply neg out");
         if is_block_list_authorized equiv_pbl.complete_blocks equiv_pbl.ongoing_block
         then
           begin
@@ -743,7 +727,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           end
         else f_next ()
     | RNothing ->
-        Config.debug (fun () -> Config.print_in_log "apply RNothing\n");
+        Config.log Config.Process  (fun () -> "apply RNothing");
         let csys_list = equiv_pbl.csys_set.Constraint_system.set in
         if csys_list = []
         then f_next ()

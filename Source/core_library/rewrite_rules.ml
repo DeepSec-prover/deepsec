@@ -504,9 +504,7 @@ let initialise_skeletons_destructor () =
         ) skel.lhs
       then
         let stored_skel =
-          Config.debug (fun () ->
-            Config.print_in_log (Printf.sprintf "Function symbol with a skeleton that has removal allowed: %s\n" (Symbol.display Latex f))
-          );
+          Config.log Config.Core (fun () -> Printf.sprintf "Function symbol with a skeleton that has removal allowed: %s\n" (Symbol.display Latex f));
           { skeleton = { skel with removal_allowed = true }; compatible_rewrite_rules = compa_rw_rules } in
         skeleton_storage.(i) <- stored_skel
       else
@@ -695,10 +693,10 @@ let initialise_skeletons_constructor () =
 
     Config.debug (fun () ->
       if Formula.M.Bot = diseq_form
-      then Config.print_in_log (Printf.sprintf "Function symbol on which we do not apply equality constructor : %s\n" (Symbol.display Latex f));
+      then Config.log_in_debug Config.Always (Printf.sprintf "Function symbol on which we do not apply equality constructor : %s" (Symbol.display Latex f));
 
       if not (Formula.M.Bot = diseq_form) && not (Formula.M.Top = diseq_form)
-      then Config.print_in_log (Printf.sprintf "Function symbol with special mixed formula for the application of equality constructor : %s\n" (Symbol.display Latex f));
+      then Config.log_in_debug Config.Always (Printf.sprintf "Function symbol with special mixed formula for the application of equality constructor : %s" (Symbol.display Latex f));
     );
 
     new_storage_skeletons_constructor.(f.index_s) <- { recipe_vars = snd_vars; term_vars = fst_vars ; formula = diseq_form }

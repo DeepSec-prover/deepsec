@@ -344,9 +344,7 @@ let apply_tau_transition target_pos conf =
             let t1' = Rewrite_rules.normalise t1 in
             let t2' = Rewrite_rules.normalise t2 in
             if Term.is_equal t1' t2' then p1 else p2
-          with Rewrite_rules.Not_message ->
-            Config.log (fun () -> Printf.sprintf "Else\n");
-            p2
+          with Rewrite_rules.Not_message -> p2
         end
     | JNew(_,_,p,pos) when is_equal_position pos target_pos -> p
     | JLet(pat,t,pthen,pelse,pos) when is_equal_position pos target_pos ->

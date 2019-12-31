@@ -11,6 +11,13 @@ struct
       det_recipe_substitution : (recipe_variable * recipe) list
     }
 
+  type data_session =
+    {
+      session_equiv_problem : Session_equivalence.equivalence_problem;
+      session_recipe_substitution : (recipe_variable * recipe) list;
+      session_eq_query : bool
+    }
+
   type data_generic =
     {
       gen_equiv_problem : Generic_equivalence.equivalence_problem;
@@ -21,6 +28,8 @@ struct
   type data_equivalence =
     | DDeterminate of data_determinate
     | DGeneric of data_generic
+    | DSession of data_session
+
 
   type job =
     {
@@ -86,9 +95,25 @@ struct
                 ) data.gen_equiv_problem data.gen_recipe_substitution
               )
             in
-            Config.log (fun () -> Printf.sprintf "[distributed_equivalence.ml >> evaluate] Statistic: %s\n" (Statistic.display_statistic ()));
+            Config.log Config.Distribution (fun () -> Printf.sprintf "[distributed_equivalence.ml >> evaluate] Statistic: %s\n" (Statistic.display_statistic ()));
             res
           with Generic_equivalence.Not_Trace_Equivalent attack -> RTrace_Equivalence (Some attack)
+          end
+      | DSession data ->
+          let rec apply_rules equiv_pbl f_next = Session_equivalence.apply_one_step equiv_pbl apply_rules f_next in
+
+          begin try
+            Session_equivalence.import_equivalence_problem (fun () ->
+              apply_rules data.session_equiv_problem (fun () -> ());
+              if data.session_eq_query
+              then RSession_Equivalence None
+              else RSession_Inclusion None
+            ) data.session_equiv_problem data.session_recipe_substitution
+          with
+            | Session_equivalence.Not_Session_Equivalent(is_left,attack) ->
+                if data.session_eq_query
+                then RSession_Equivalence (Some (is_left,attack))
+                else RSession_Inclusion (Some attack)
           end
 
   type result_generation =
@@ -151,13 +176,43 @@ struct
                 (fun () -> ());
             );
 
-            Config.log (fun () -> Printf.sprintf "[distributed_equivalence.ml >> generate] Statistic: %s\n" (Statistic.display_statistic ()));
+            Config.log Config.Distribution  (fun () -> Printf.sprintf "[distributed_equivalence.ml >> generate] Statistic: %s\n" (Statistic.display_statistic ()));
 
             if !job_list = []
             then Completed (RTrace_Equivalence None)
             else Job_list !job_list
           ) data.gen_equiv_problem data.gen_recipe_substitution
         with Generic_equivalence.Not_Trace_Equivalent attack -> Completed (RTrace_Equivalence (Some attack))
+        end
+    | DSession data ->
+        begin try
+          Session_equivalence.import_equivalence_problem (fun () ->
+            let job_list = ref [] in
+            Session_equivalence.apply_one_step data.session_equiv_problem (fun equiv_pbl_1 f_next_1 ->
+              let (equiv_pbl_2,recipe_subst) = Session_equivalence.export_equivalence_problem equiv_pbl_1 in
+              let new_job =
+                { job with
+                  data_equiv = DSession { data with session_equiv_problem = equiv_pbl_2; session_recipe_substitution = recipe_subst};
+                  variable_counter = Variable.get_counter ();
+                  name_counter = Name.get_counter ();
+                  number_of_attacker_name = Symbol.get_number_of_attacker_name ()
+                }
+              in
+              job_list := new_job :: !job_list;
+              f_next_1 ()
+            ) (fun () -> ());
+
+            if !job_list = []
+            then
+              if data.session_eq_query
+              then Completed (RSession_Equivalence None)
+              else Completed (RSession_Inclusion None)
+            else Job_list !job_list
+          ) data.session_equiv_problem data.session_recipe_substitution
+        with Session_equivalence.Not_Session_Equivalent(is_left,attack) ->
+          if data.session_eq_query
+          then Completed (RSession_Equivalence (Some (is_left,attack)))
+          else Completed (RSession_Inclusion (Some attack))
         end
 
   exception Completed_execution of verification_result
@@ -205,6 +260,8 @@ struct
       match job.data_equiv with
         | DDeterminate _
         | DGeneric _ -> RTrace_Equivalence None
+        | DSession data when data.session_eq_query -> RSession_Equivalence None
+        | DSession _ -> RSession_Inclusion None
       )
     in
 
@@ -351,14 +408,14 @@ let trace_equivalence_determinate proc1 proc2 =
     }
   in
 
-  Config.log (fun () -> "[distributed_equivalence >> trace_equivalence_determinate] Starting computation.\n");
+  Config.log Config.Distribution (fun () -> "[distributed_equivalence >> trace_equivalence_determinate] Starting computation.\n");
 
   (**** Launch the local manager ****)
 
   let path_name = Filename.concat !Config.path_deepsec "deepsec_worker" in
   let (in_ch,out_ch) = Unix.open_process ("'"^path_name^"'") in
 
-  Config.log (fun () -> "[distributed_equivalence >> trace_equivalence_determinate] Process worker opened.\n");
+  Config.log Config.Distribution (fun () -> "[distributed_equivalence >> trace_equivalence_determinate] Process worker opened.\n");
 
   output_value out_ch Distrib.Local_manager;
   flush out_ch;
@@ -456,7 +513,7 @@ let trace_equivalence_generic semantics proc1 proc2 =
     }
   in
 
-  Config.log (fun () -> "[distributed_equivalence >> trace_equivalence_determinate] Starting computation.\n");
+  Config.log Config.Distribution (fun () -> "[distributed_equivalence >> trace_equivalence_determinate] Starting computation.\n");
 
   (**** Launch the local manager ****)
 
@@ -487,6 +544,95 @@ let trace_equivalence_generic semantics proc1 proc2 =
           else translate_trace2 (convert_trace_to_original_symbols trans_list)
         in
         RTrace_Equivalence (Some (is_left,trans_list'))
+    | r -> r
+  in
+
+  (in_ch,out_ch,convert_result)
+
+let session_equivalence is_equiv_query proc1 proc2 =
+
+  let equiv_type = if is_equiv_query then Session_Equivalence else Session_Inclusion in
+
+  (*** Initialise skeletons ***)
+
+  Rewrite_rules.initialise_all_skeletons ();
+
+  (*** Generate the initial equivalence problem ***)
+
+  let (proc1', translate_trace1) = Process.simplify_for_session proc1 in
+  let (proc2', translate_trace2) = Process.simplify_for_session proc2 in
+
+  let equiv_pbl = Session_equivalence.generate_initial_equivalence_problem is_equiv_query proc1' proc2' in
+
+  (*** Initial job ***)
+
+  let setting = Symbol.get_settings () in
+  let v_counter = Variable.get_counter () in
+  let n_counter = Name.get_counter () in
+
+  let data : EquivJob.data_session =
+    {
+      EquivJob.session_equiv_problem = equiv_pbl;
+      EquivJob.session_recipe_substitution = [];
+      EquivJob.session_eq_query = is_equiv_query
+    }
+  in
+
+  let job =
+    {
+      EquivJob.variable_counter = v_counter;
+      EquivJob.name_counter = n_counter;
+      EquivJob.all_tuples = setting.Symbol.all_t;
+      EquivJob.all_projections = setting.Symbol.all_p;
+      EquivJob.all_constructors = setting.Symbol.all_c;
+      EquivJob.all_destructors = setting.Symbol.all_d;
+      EquivJob.number_of_constructors = setting.Symbol.nb_c;
+      EquivJob.number_of_destructors = setting.Symbol.nb_d;
+      EquivJob.number_of_symbols = setting.Symbol.nb_symb;
+      EquivJob.skeleton_settings = Rewrite_rules.get_skeleton_settings ();
+      EquivJob.number_of_attacker_name = setting.Symbol.nb_a;
+
+      EquivJob.data_equiv = EquivJob.DSession data
+    }
+  in
+
+  Config.log Config.Distribution  (fun () -> "[distributed_equivalence >> session_equivalence] Starting computation.\n");
+
+  (**** Launch the local manager ****)
+
+  let path_name = Filename.concat !Config.path_deepsec "deepsec_worker" in
+  let (in_ch,out_ch) = Unix.open_process ("'"^path_name^"'") in
+
+  Config.log Config.Distribution  (fun () -> "[distributed_equivalence >> trace_equivalence_determinate] Process worker opened.\n");
+
+  output_value out_ch Distrib.Local_manager;
+  flush out_ch;
+
+  let distrib_job =
+    {
+      Distribution.WLM.distributed = !Config.distributed;
+      Distribution.WLM.local_workers = !Config.local_workers;
+      Distribution.WLM.distant_workers = !Config.distant_workers;
+      Distribution.WLM.nb_jobs = !Config.number_of_jobs;
+      Distribution.WLM.time_between_round = !Config.round_timer;
+      Distribution.WLM.equivalence_type = equiv_type;
+      Distribution.WLM.initial_job = job
+    }
+  in
+
+  Distribution.WLM.send_input_command out_ch (Distribution.WLM.Execute_query distrib_job);
+
+  let convert_result = function
+    | RSession_Equivalence (Some (is_left,trans_list)) ->
+        let trans_list' =
+          if is_left
+          then translate_trace1 (convert_trace_to_original_symbols trans_list)
+          else translate_trace2 (convert_trace_to_original_symbols trans_list)
+        in
+        RSession_Equivalence (Some (is_left,trans_list'))
+    | RSession_Inclusion (Some trans_list) ->
+        let trans_list' = translate_trace1 (convert_trace_to_original_symbols trans_list) in
+        RSession_Inclusion (Some trans_list')
     | r -> r
   in
 

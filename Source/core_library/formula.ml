@@ -174,10 +174,10 @@ module Diseq = struct
       | Var v ->
           begin match v.link with
             | NoLink -> true
-            | TLink _ -> Config.print_in_log "[debug_no_linked_variables_term] TLink in term"; false
-            | VLink _ -> Config.print_in_log "[debug_no_linked_variables_term] VLink in term"; false
-            | SLink -> Config.print_in_log "[debug_no_linked_variables_term] SLink in term"; false
-            | XLink _ -> Config.print_in_log "[debug_no_linked_variables_term] XLink in term"; false
+            | TLink _ -> Config.log_in_debug Config.Always "[debug_no_linked_variables_term] TLink in term"; false
+            | VLink _ -> Config.log_in_debug Config.Always "[debug_no_linked_variables_term] VLink in term"; false
+            | SLink -> Config.log_in_debug Config.Always "[debug_no_linked_variables_term] SLink in term"; false
+            | XLink _ -> Config.log_in_debug Config.Always "[debug_no_linked_variables_term] XLink in term"; false
           end
       | Func(_,args) -> List.for_all debug_no_linked_variables_term args
       | _ -> true
@@ -188,10 +188,10 @@ module Diseq = struct
       | Disj vlist -> List.for_all (fun (v,t) ->
           begin match v.link with
             | NoLink ->  debug_no_linked_variables_term t
-            | TLink _ -> Config.print_in_log "[debug_no_linked_variables_term] TLink in variable"; false
-            | VLink _ -> Config.print_in_log "[debug_no_linked_variables_term] VLink in variable"; false
-            | SLink -> Config.print_in_log "[debug_no_linked_variables_term] SLink in variable"; false
-            | XLink _ -> Config.print_in_log "[debug_no_linked_variables_term] XLink in variable"; false
+            | TLink _ -> Config.log_in_debug Config.Always "[debug_no_linked_variables_term] TLink in variable"; false
+            | VLink _ -> Config.log_in_debug Config.Always "[debug_no_linked_variables_term] VLink in variable"; false
+            | SLink -> Config.log_in_debug Config.Always "[debug_no_linked_variables_term] SLink in variable"; false
+            | XLink _ -> Config.log_in_debug Config.Always "[debug_no_linked_variables_term] XLink in variable"; false
           end
           ) vlist
 

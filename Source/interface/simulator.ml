@@ -48,9 +48,7 @@ let display_trace json_file id =
 
             match in_cmd with
               | Goto_step(_,n) ->
-                  Config.log (fun () -> Printf.sprintf "Go to Step %d\n" n);
                   let (conf,assoc) = List.nth conf_list (n+1) in
-                  Config.log (fun () -> Printf.sprintf "Send command\n");
                   Display_ui.send_output_command (SCurrent_step_displayed(assoc,conf,n,Some attack_trace.id_proc))
               | Die -> raise Exit
               | _ -> Display_ui.send_output_command (Init_internal_error ("Unexpected input command.",true))

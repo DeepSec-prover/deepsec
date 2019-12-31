@@ -318,40 +318,40 @@ let rec apply_renaming_pat = function
   | Types.PatEquality t -> Types.PatEquality (apply_renaming t)
   | Types.PatTuple(f,args) -> Types.PatTuple(f,List.map apply_renaming_pat args)
 
-let rec intermediate_process_of_process occurence_list = function
+let rec process_of_intermediate_process occurence_list = function
   | INil -> Types.Nil
-  | IOutput(t1,t2,p,pos) -> Types.Output(apply_renaming t1, apply_renaming t2, intermediate_process_of_process occurence_list p, (pos,occurence_list))
+  | IOutput(t1,t2,p,pos) -> Types.Output(apply_renaming t1, apply_renaming t2, process_of_intermediate_process occurence_list p, (pos,occurence_list))
   | IInput(ch,pat,p,pos) ->
       let ch' = apply_renaming ch in
       Term.Variable.auto_cleanup_with_reset_notail (fun () ->
         let pat' = apply_renaming_pat pat in
-        Types.Input(ch',pat',intermediate_process_of_process occurence_list p,(pos,occurence_list))
+        Types.Input(ch',pat',process_of_intermediate_process occurence_list p,(pos,occurence_list))
       )
   | IIfThenElse(t1,t2,p1,p2,pos) ->
-      Types.IfThenElse(apply_renaming t1,apply_renaming t2, intermediate_process_of_process occurence_list p1, intermediate_process_of_process occurence_list p2,(pos,occurence_list))
+      Types.IfThenElse(apply_renaming t1,apply_renaming t2, process_of_intermediate_process occurence_list p1, process_of_intermediate_process occurence_list p2,(pos,occurence_list))
   | ILet(pat,t,p1,p2,pos) ->
       let t' = apply_renaming t in
-      let p2' = intermediate_process_of_process occurence_list p2 in
+      let p2' = process_of_intermediate_process occurence_list p2 in
       Term.Variable.auto_cleanup_with_reset_notail (fun () ->
         let pat' = apply_renaming_pat pat in
-        let p1' = intermediate_process_of_process occurence_list p1 in
+        let p1' = process_of_intermediate_process occurence_list p1 in
         Types.Let(pat',t',p1',p2',(pos,occurence_list))
       )
   | INew(n,p,pos) ->
       Term.Name.auto_cleanup_with_reset_notail (fun () ->
         let n' = Term.Name.fresh_from n in
         Term.Name.link n n';
-        Types.New(n',intermediate_process_of_process occurence_list p,(pos,occurence_list))
+        Types.New(n',process_of_intermediate_process occurence_list p,(pos,occurence_list))
       )
   | IPar p_list ->
-      Types.Par (List.map (intermediate_process_of_process occurence_list) p_list)
+      Types.Par (List.map (process_of_intermediate_process occurence_list) p_list)
   | IBang(n,p,pos) ->
       let rec explore = function
         | 0 -> []
-        | n -> (intermediate_process_of_process (occurence_list @ [n]) p)::(explore (n-1))
+        | n -> (process_of_intermediate_process (occurence_list @ [n]) p)::(explore (n-1))
       in
       Types.Bang(explore n,(pos,occurence_list))
-  | IChoice(p1,p2,pos) -> Types.Choice(intermediate_process_of_process occurence_list p1,intermediate_process_of_process occurence_list p2, (pos,occurence_list))
+  | IChoice(p1,p2,pos) -> Types.Choice(process_of_intermediate_process occurence_list p1,process_of_intermediate_process occurence_list p2, (pos,occurence_list))
 
 let parse_intermediate_process env = function
   | EPlain proc -> parse_plain_process env proc
@@ -506,9 +506,27 @@ let parse_setting line sem =
 let query_list = ref []
 
 let parse_query env line = function
-  | Trace_Eq(proc_1,proc_2) -> query_list := (Types.Trace_Equivalence,intermediate_process_of_process [] (parse_intermediate_process env proc_1), intermediate_process_of_process [] (parse_intermediate_process env proc_2))::!query_list
-  | Sess_Eq(proc_1,proc_2) -> query_list := (Types.Session_Equivalence,intermediate_process_of_process [] (parse_intermediate_process env proc_1), intermediate_process_of_process [] (parse_intermediate_process env proc_2))::!query_list
-  | Sess_Incl(proc_1,proc_2) -> query_list := (Types.Session_Inclusion,intermediate_process_of_process [] (parse_intermediate_process env proc_1), intermediate_process_of_process [] (parse_intermediate_process env proc_2))::!query_list
+  | Trace_Eq(proc_1,proc_2) -> query_list := (Types.Trace_Equivalence,process_of_intermediate_process [] (parse_intermediate_process env proc_1), process_of_intermediate_process [] (parse_intermediate_process env proc_2))::!query_list
+  | Sess_Eq(proc_1,proc_2) ->
+      let proc_1' = process_of_intermediate_process [] (parse_intermediate_process env proc_1) in
+      let proc_2' = process_of_intermediate_process [] (parse_intermediate_process env proc_2) in
+      begin
+        try
+          Process.check_process_for_session proc_1';
+          Process.check_process_for_session proc_2'
+        with Process.Session_error err -> error_message line err
+      end;
+      query_list := (Types.Session_Equivalence,proc_1',proc_2')::!query_list
+  | Sess_Incl(proc_1,proc_2) ->
+      let proc_1' = process_of_intermediate_process [] (parse_intermediate_process env proc_1) in
+      let proc_2' = process_of_intermediate_process [] (parse_intermediate_process env proc_2) in
+      begin
+        try
+          Process.check_process_for_session proc_1';
+          Process.check_process_for_session proc_2'
+        with Process.Session_error err -> error_message line err
+      end;
+      query_list := (Types.Session_Inclusion,proc_1',proc_2')::!query_list
   | Obs_Eq(_,_) -> error_message line "Observational equivalence not implemented yet"
 
 (****** Parse declaration *******)

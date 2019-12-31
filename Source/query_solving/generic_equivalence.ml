@@ -261,9 +261,9 @@ let apply_one_transition_and_rules_classic equiv_pbl f_continuation f_next =
   Config.debug (fun () ->
     incr nb_apply_one_transition_and_rules;
     Constraint_system.Set.debug_check_structure "[generic_equivalence >> apply_one_transition_and_rules_classic]" equiv_pbl.csys_set;
-    Config.print_in_log (Printf.sprintf "\n\n====Application of one transtion rule : (%d)=======\n" !nb_apply_one_transition_and_rules);
-    Config.print_in_log ("Eq recipe = "^(Formula.R.display Display.Terminal equiv_pbl.csys_set.Constraint_system.eq_recipe)^"\n");
-    Config.print_in_log (display_list display_symbolic_constraint "" equiv_pbl.csys_set.Constraint_system.set);
+    Config.log_in_debug Config.Process (Printf.sprintf "[generic_equivalence.ml] ====Application of one transtion rule : (%d)=======" !nb_apply_one_transition_and_rules);
+    Config.log_in_debug Config.Process ("Eq recipe = "^(Formula.R.display Display.Terminal equiv_pbl.csys_set.Constraint_system.eq_recipe)^"\n");
+    Config.log_in_debug Config.Process  (display_list display_symbolic_constraint "" equiv_pbl.csys_set.Constraint_system.set);
     List.iter (fun csys ->
       if csys.Constraint_system.eq_term <> Formula.T.Top
       then Config.internal_error "[generic_equivalence.ml >> apply_one_transition_and_rules_classic] The disequations in the constraint systems should have been solved."
@@ -428,9 +428,9 @@ let apply_one_transition_and_rules_private equiv_pbl f_continuation f_next =
   Config.debug (fun () ->
     incr nb_apply_one_transition_and_rules;
     Constraint_system.Set.debug_check_structure "[generic_equivalence >> apply_one_transition_and_rules_private]" equiv_pbl.csys_set;
-    Config.print_in_log (Printf.sprintf "\n\n====Application of one transtion rule : (%d)=======\n" !nb_apply_one_transition_and_rules);
-    Config.print_in_log ("Eq recipe = "^(Formula.R.display Display.Terminal equiv_pbl.csys_set.Constraint_system.eq_recipe));
-    Config.print_in_log (display_list display_symbolic_constraint "" equiv_pbl.csys_set.Constraint_system.set);
+    Config.log_in_debug Config.Process (Printf.sprintf "[generic_equivalence.ml] ====Application of one transtion rule : (%d)=======" !nb_apply_one_transition_and_rules);
+    Config.log_in_debug Config.Process ("Eq recipe = "^(Formula.R.display Display.Terminal equiv_pbl.csys_set.Constraint_system.eq_recipe));
+    Config.log_in_debug Config.Process (display_list display_symbolic_constraint "" equiv_pbl.csys_set.Constraint_system.set);
     List.iter (fun csys ->
       if csys.Constraint_system.eq_term <> Formula.T.Top
       then Config.internal_error "[generic_equivalence.ml >> apply_one_transition_and_rules_private] The disequations in the constraint systems should have been solved."
@@ -521,9 +521,9 @@ let apply_one_transition_and_rules_eavesdrop equiv_pbl f_continuation f_next =
   Config.debug (fun () ->
     incr nb_apply_one_transition_and_rules;
     Constraint_system.Set.debug_check_structure "[generic_equivalence >> apply_one_transition_and_rules_eavesdrop]" equiv_pbl.csys_set;
-    Config.print_in_log (Printf.sprintf "\n\n====Application of one transtion rule : (%d)=======\n" !nb_apply_one_transition_and_rules);
-    Config.print_in_log ("Eq recipe = "^(Formula.R.display Display.Terminal equiv_pbl.csys_set.Constraint_system.eq_recipe));
-    Config.print_in_log (display_list display_symbolic_constraint "" equiv_pbl.csys_set.Constraint_system.set);
+    Config.log_in_debug Config.Process (Printf.sprintf "[generic_equivalence.ml] ====Application of one transtion rule : (%d)=======" !nb_apply_one_transition_and_rules);
+    Config.log_in_debug Config.Process ("Eq recipe = "^(Formula.R.display Display.Terminal equiv_pbl.csys_set.Constraint_system.eq_recipe));
+    Config.log_in_debug Config.Process (display_list display_symbolic_constraint "" equiv_pbl.csys_set.Constraint_system.set);
     List.iter (fun csys ->
       if csys.Constraint_system.eq_term <> Formula.T.Top
       then Config.internal_error "[generic_equivalence.ml >> apply_one_transition_and_rules_eavesdrop] The disequations in the constraint systems should have been solved."

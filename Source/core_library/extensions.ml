@@ -45,6 +45,14 @@ module List = struct
     in
     explore [] l
 
+  let extract f l =
+    let rec explore prev = function
+      | [] -> raise Not_found
+      | t::q when f t -> t, rev_append prev q
+      | t::q -> explore (t::prev) q
+    in
+    explore [] l
+
   module type OrderedType =
   sig
     type t
@@ -53,13 +61,47 @@ module List = struct
 
   module Ordered(Ord: OrderedType) = struct
 
-    let rec diff (l1:Ord.t list) l2 = match l1,l2 with
+    let rec diff l1 l2 = match l1,l2 with
       | _, [] | [], _ -> l1
       | t1::q1, t2::q2 ->
           match Ord.compare t1 t2 with
             | 0 -> diff q1 q2
             | 1 -> diff l1 q2
             | _ -> t1::(diff q1 l2)
+
+    exception Not_included
+
+    let rec disjoint l1 l2 = match l1,l2 with
+      | [],_ | _, [] -> true
+      | t1::q1, t2::q2 ->
+          match Ord.compare t1 t2 with
+            | 0 -> false
+            | 1 -> disjoint l1 q2
+            | _ -> disjoint q1 l2
+
+    (* Returns l1 \ l2 when l2 is included in l1
+       or l1 when l1 and l2 are disjoint.
+       @raise Not_included when l1 and l2 not disjoint but
+       l2 not included in l1 *)
+    let included_diff l1 l2 =
+      let rec explore not_disjoint l1 l2 = match l1,l2 with
+        | _, [] -> l1
+        | [], _ ->
+            if not_disjoint
+            then raise Not_included
+            else l1
+        | t1::q1, t2::q2 ->
+            match Ord.compare t1 t2 with
+              | 0 -> explore true q1 q2
+              | 1 ->
+                  if not_disjoint || not (disjoint l1 q2)
+                  then raise Not_included
+                  else raise Not_found
+              | _ -> t1::(explore not_disjoint q1 l2)
+      in
+      try
+        explore false l1 l2
+      with Not_found -> l1
 
     let rec add e = function
       | [] -> [e]
@@ -84,6 +126,7 @@ module List = struct
             | -1 -> l
             | 0 -> q
             | _ -> t::(remove e q)
+
 
   end
 end

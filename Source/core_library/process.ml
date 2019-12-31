@@ -242,7 +242,7 @@ let detect_and_replace_pure_fresh_name p =
       then "None"
       else Display.display_list (Name.display Display.Terminal) ", " !acc_pure_fresh_name
     in
-    Config.print_in_log (Printf.sprintf "Pure fresh name detected: %s\n" str)
+    Config.log_in_debug Config.Process (Printf.sprintf "Pure fresh name detected: %s\n" str)
   );
 
   Name.auto_cleanup_with_reset_notail (fun () ->
@@ -997,20 +997,14 @@ let is_pos_in_process pos_match pos proc =
   explore proc
 
 let instantiate_term t =
-  Config.debug (fun () -> Config.print_in_log (Printf.sprintf "Instantiate_term %s\n" (Term.display Terminal t)));
-  let r = Variable.auto_cleanup_with_exception (fun () ->
+  Variable.auto_cleanup_with_exception (fun () ->
     Rewrite_rules.normalise (Term.instantiate t)
-  ) in
-  Config.debug (fun () -> Config.print_in_log "End instantiate_term\n");
-  r
+  )
 
 let instantiate_pattern pat =
-  Config.debug (fun () -> Config.print_in_log (Printf.sprintf "Instantiate_pattern %s\n" (Term.display_pattern Terminal pat)));
-  let r = Variable.auto_cleanup_with_exception (fun () ->
+  Variable.auto_cleanup_with_exception (fun () ->
     Rewrite_rules.normalise_pattern (Term.instantiate_pattern pat)
-  ) in
-  Config.debug (fun () -> Config.print_in_log "End instantiate_pattern\n");
-  r
+  )
 
 let apply_ground_recipe_on_frame frame r =
 
@@ -1028,9 +1022,6 @@ let rec retrieve_transition_list f_next pos_match act conf = match conf.process,
   | Output(_,t,p,pos), AOutput(_,pos') when is_equal_pos pos_match pos pos' ->
       f_next pos [] { frame = conf.frame@[Term.instantiate t]; process = p }
   | Input(_,pat,p,pos), AInput(_,r_t,pos') when is_equal_pos pos_match pos pos' ->
-      Config.debug (fun () ->
-        Config.print_in_log (Printf.sprintf "Input at position %s : Recipe = %s; Frame = [ %s ]\n" (display_position pos) (Recipe.display Terminal r_t) (display_list (Term.display Terminal) "; " conf.frame))
-      );
       let t = apply_ground_recipe_on_frame conf.frame r_t in
       begin try
         let pat' = instantiate_pattern pat in
@@ -1158,16 +1149,16 @@ let simplify_for_determinate p =
   let (p6,pos_match) = regroup_else_branches p5 in
   let pos_match_normalised =  normalise_pos_match [] pos_match in
   Config.debug (fun () ->
-    Config.print_in_log (Printf.sprintf "Before simplification :\n %s" (display 1 p));
-    Config.print_in_log (Printf.sprintf "After simplification :\n %s" (display 1 p6));
+    Config.log_in_debug Config.Process (Printf.sprintf "Before simplification :\n %s" (display 1 p));
+    Config.log_in_debug Config.Process (Printf.sprintf "After simplification :\n %s" (display 1 p6));
   );
   let retrieve_trace trans_list =
     Config.debug (fun () ->
-      Config.print_in_log (Printf.sprintf "Input retrieve_trace = %s\n" (display_list display_transition  "; " trans_list))
+      Config.log_in_debug Config.Process (Printf.sprintf "Input retrieve_trace = %s\n" (display_list display_transition  "; " trans_list))
     );
     let result = retrieve_trace (fun x -> x) pos_match_normalised { frame = []; process = p } trans_list in
     Config.debug (fun () ->
-      Config.print_in_log (Printf.sprintf "Output retrieve_trace = %s\n" (display_list display_transition  "; " result))
+      Config.log_in_debug Config.Process (Printf.sprintf "Output retrieve_trace = %s\n" (display_list display_transition  "; " result))
     );
     result
   in
@@ -1183,17 +1174,168 @@ let simplify_for_generic p =
   let p6 = regroup_equal_par_processes p5 in
   let pos_match_normalised =  normalise_pos_match [] pos_match in
   Config.debug (fun () ->
-    Config.print_in_log (Printf.sprintf "Before simplification :\n %s" (display 1 p));
-    Config.print_in_log (Printf.sprintf "After simplification :\n %s" (display 1 p6));
+    Config.log_in_debug Config.Process (Printf.sprintf "Before simplification :\n %s" (display 1 p));
+    Config.log_in_debug Config.Process (Printf.sprintf "After simplification :\n %s" (display 1 p6));
   );
   let retrieve_trace trans_list =
     Config.debug (fun () ->
-      Config.print_in_log (Printf.sprintf "Input retrieve_trace = %s\n" (display_list display_transition  "; " trans_list))
+      Config.log_in_debug Config.Process (Printf.sprintf "Input retrieve_trace = %s\n" (display_list display_transition  "; " trans_list))
     );
     let result = retrieve_trace (fun x -> x) pos_match_normalised { frame = []; process = p } trans_list in
     Config.debug (fun () ->
-      Config.print_in_log (Printf.sprintf "Output retrieve_trace = %s\n" (display_list display_transition  "; " result))
+      Config.log_in_debug Config.Process (Printf.sprintf "Output retrieve_trace = %s\n" (display_list display_transition  "; " result))
     );
     result
   in
   p6, retrieve_trace
+
+(*** Simplication for session equivalence ***)
+
+exception Session_error of string
+
+let check_process_for_session proc =
+
+  let priv_symbol_channels = ref [] in
+
+  let rec mark_channels = function
+    | Nil -> ()
+    | Output(Func(f,[]),_,p,_)
+    | Input(Func(f,[]),_,p,_) ->
+        if not f.public && not (List.memq f !priv_symbol_channels)
+        then priv_symbol_channels := f :: !priv_symbol_channels;
+
+        mark_channels p
+    | Output(Name n,_,p,_)
+    | Input(Name n,_,p,_) ->
+        Name.link_search n;
+        mark_channels p
+    | Output(ch,_,_,_) ->
+        let err_msg =
+          Printf.sprintf
+            "The term %s was used as a channel for an output. However for session equivalence and session inclusion, only public/private names/constants are allowed."
+            (Term.display Terminal ch)
+        in
+        raise (Session_error err_msg)
+    | Input(ch,_,_,_) ->
+        let err_msg =
+          Printf.sprintf
+            "The term %s was used as a channel for an input. However for session equivalence and session inclusion, only public/private names/constants are allowed."
+            (Term.display Terminal ch)
+        in
+        raise (Session_error err_msg)
+    | IfThenElse(_,_,p1,p2,_)
+    | Let(_,_,p1,p2,_) ->
+        mark_channels p1;
+        mark_channels p2
+    | New(_,p,_) -> mark_channels p
+    | Par p_list
+    | Bang (p_list,_) -> List.iter mark_channels p_list
+    | Choice _ ->
+        let err_msg = "Choice operator is not allowed for session equivalence and session inclusion." in
+        raise (Session_error err_msg)
+  in
+
+  let rec check_channels_in_term = function
+    | Var _ -> ()
+    | Func(f,args) ->
+        if not f.public && List.memq f !priv_symbol_channels
+        then
+          begin
+            let err_msg =
+              Printf.sprintf
+                "The private name %s is used as a channel and within a message. In session equivalence and session inclusion, private names used as channels cannot be used within messages."
+                (Symbol.display Terminal f)
+            in
+            raise (Session_error err_msg)
+          end;
+
+        List.iter check_channels_in_term args
+    | Name n ->
+        match n.link_n with
+          | NNoLink -> ()
+          | NSLink ->
+              let err_msg =
+                Printf.sprintf
+                  "The private name %s is used as a channel and within a message. In session equivalence and session inclusion, private names used as channels cannot be used within messages."
+                  (Name.display Terminal n)
+              in
+              raise (Session_error err_msg)
+          | _ -> Config.internal_error "[process.ml >> check_process_for_session] Unexpected link."
+  in
+
+  let rec check_channels_in_pattern = function
+    | PatVar _ -> ()
+    | PatTuple(_,args) -> List.iter check_channels_in_pattern args
+    | PatEquality t -> check_channels_in_term t
+  in
+
+  let rec check_channels = function
+    | Nil -> ()
+    | Output(_,t,p,_) ->
+        check_channels_in_term t;
+        check_channels p
+    | Input(_,pat,p,_) ->
+        check_channels_in_pattern pat;
+        check_channels p
+    | IfThenElse(t1,t2,p1,p2,_) ->
+        check_channels_in_term t1;
+        check_channels_in_term t2;
+        check_channels p1;
+        check_channels p2
+    | Let(pat,t,p1,p2,_) ->
+        check_channels_in_term t;
+        check_channels_in_pattern pat;
+        check_channels p1;
+        check_channels p2
+    | New(_,p,_) -> check_channels p
+    | Par plist
+    | Bang (plist,_) -> List.iter check_channels plist
+    | Choice _ -> Config.internal_error "[process.ml >> check_process_for_session] Choice operator should have been catched before applying this function."
+  in
+
+  Name.auto_cleanup_with_exception (fun () ->
+    mark_channels proc;
+    check_channels proc
+  )
+
+let rec only_public_channel = function
+  | Nil -> true
+  | Output(Func(f,[]),_,p,_)
+  | Input(Func(f,[]),_,p,_) when f.public -> only_public_channel p
+  | IfThenElse(_,_,p1,p2,_)
+  | Let(_,_,p1,p2,_)
+  | Choice(p1,p2,_) -> only_public_channel p1 && only_public_channel p2
+  | New(_,p,_) -> only_public_channel p
+  | Par p_list
+  | Bang(p_list,_) -> List.for_all only_public_channel p_list
+  | _ -> false
+
+let simplify_for_session p =
+  let p0 = replace_private_name p in
+  let p1 = clean p0 in
+  let p2 = add_let_for_output_input p1 in
+  let p3 = apply_trivial_let p2 in
+  let p4 =
+    if only_public_channel p
+    then detect_and_replace_pure_fresh_name p3
+    else p3
+  in
+  let p5 = move_new_name p4 in
+  let (p6,pos_match) = regroup_else_branches p5 in
+  let p7 = regroup_equal_par_processes p6 in
+  let pos_match_normalised =  normalise_pos_match [] pos_match in
+  Config.debug (fun () ->
+    Config.log_in_debug Config.Process (Printf.sprintf "Before simplification :\n %s" (display 1 p));
+    Config.log_in_debug Config.Process (Printf.sprintf "After simplification :\n %s" (display 1 p7));
+  );
+  let retrieve_trace trans_list =
+    Config.debug (fun () ->
+      Config.log_in_debug Config.Process (Printf.sprintf "Input retrieve_trace = %s\n" (display_list display_transition  "; " trans_list))
+    );
+    let result = retrieve_trace (fun x -> x) pos_match_normalised { frame = []; process = p } trans_list in
+    Config.debug (fun () ->
+      Config.log_in_debug Config.Process (Printf.sprintf "Output retrieve_trace = %s\n" (display_list display_transition  "; " result))
+    );
+    result
+  in
+  p7, retrieve_trace

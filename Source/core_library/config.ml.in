@@ -40,30 +40,35 @@ let debug =
   then fun f -> f ()
   else fun _ -> ()
 
-let display_in_log = true
+type log_level =
+  | Always
+  | Record_time
+  | Core
+  | Constraint_solving
+  | Constraint_systems
+  | Process
+  | Distribution
 
-let print_in_log ?(always=false) s =
-  if display_in_log || always
+let log_level_to_print = ref [Always;Distribution;Process]
+
+let log_in_debug log_level s =
+  if List.mem log_level !log_level_to_print
   then
     begin
-      Printf.fprintf log_file "%s" s;
+      let local_time = Unix.localtime(Unix.time ()) in
+      let time =
+        Unix.(Printf.sprintf "%dh%dm%ds"
+          local_time.tm_hour local_time.tm_min local_time.tm_sec
+          )
+      in
+      Printf.fprintf log_file "%s %s\n" time s;
       flush log_file
     end
 
 let log =
   if debug_activated || record_time
-  then
-    (fun f ->
-        let local_time = Unix.localtime(Unix.time ()) in
-        let time =
-          Unix.(Printf.sprintf "%dh%dm%ds"
-            local_time.tm_hour local_time.tm_min local_time.tm_sec
-            )
-        in
-        Printf.fprintf log_file "%s %s" time (f());
-        flush log_file
-    )
-  else fun _ -> ()
+  then (fun log_level f -> log_in_debug log_level (f ()))
+  else fun _ _ -> ()
 
 (**** Version ****)
 
