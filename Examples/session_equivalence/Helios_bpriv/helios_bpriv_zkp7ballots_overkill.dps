@@ -18,26 +18,26 @@ const zero. // blank vote
 
 // voting process
 let HonestReal(id,pkE) =
+  in(internal,state);
+  let (vote1,vote2,vote3) = state in
   in(c,v); // receives voting instructions from the attacker
   let (v0,v1) = v in
   new r0;
   let b0 = aenc(v0,r0,pkE) in
   let zk0 = zkp(r0,id,v0,b0) in
-  in(internal,state);
-  let (vote1,vote2,vote3) = state in
   out(c, (id,(b0,zk0))); // gives the real vote to the attacker
   if id = alice then out(internal,(b0,vote2,vote3))
   else out(internal,(vote1,b0,vote3)).
 
 let HonestFake(id,pkE) =
+  in(internal,state);
+  let (vote1,vote2,vote3) = state in
   in(c,v); // receives voting instructions from the attacker
   let (v0,v1) = v in
   new r0; new r1;
   let b0 = aenc(v0,r0,pkE) in
   let b1 = aenc(v1,r1,pkE) in
   let zk1 = zkp(r1,id,v1,b1) in
-  in(internal,state);
-  let (vote1,vote2,vote3) = state in
   out(c, (id,(b1,zk1))); // gives the fake vote to the attacker
   if id = alice then out(internal,(b0,vote2,vote3))
   else out(internal,(vote1,b0,vote3)).
