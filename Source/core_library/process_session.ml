@@ -263,10 +263,8 @@ module Block = struct
       explore_block block_list_upd
 
   let is_authorised bl cb s =
-    print_endline (Printf.sprintf "Checking whether block\n%s\nis authorised after blocks:\n%s" (print cb) (List.fold_left (fun ac b -> ac^print b) "" bl));
     let (b,sl) = is_authorised bl cb s in
-    if b then let _ = print_endline "YES!" in b,sl
-    else let _ = print_endline "NO!" in b,sl
+    b,sl
 
   let rec match_list f_next block_l1 block_l2 = match block_l1, block_l2 with
     | [], [] -> f_next ()
@@ -1416,7 +1414,6 @@ module Labelled_process = struct
 
     (* final operations on unfolded inputs and (sorted by decreasing priority) internal communication. Assigns the forall labels. *)
     let mark_forall optim l_in l_comm =
-      print_endline "call!";
       let rec mark i l =
         match l with
         | [] -> []
@@ -1426,10 +1423,9 @@ module Labelled_process = struct
           else if optim then []
           else List.rev_map (fun (p_in,p_out,data) -> (p_in,p_out,{data with optim = false})) t in
       match l_comm with
-      | [] -> print_endline "no comms..."; l_in,[]
+      | [] -> l_in,[]
       | h :: t ->
         let score = priority h in
-        print_endline (Printf.sprintf "priority %d!" score);
         let input_list =
           if score >= 2 then
             if optim then []
