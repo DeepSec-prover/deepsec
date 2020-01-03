@@ -826,10 +826,12 @@ let print_output_command = function
       begin match status, qtype with
         | QCompleted None, Trace_Equivalence -> Printf.printf "%sResult query %d: The two processes are %s. Verified in %s                                          \n%!" return index (Display.coloured_terminal_text Green [Bold] "trace equivalent") (Display.mkRuntime time)
         | QCompleted None, Trace_Inclusion -> Printf.printf "%sResult query %d: Process 1 is %s in process 2. Verified in %s                                        \n%!" return index (Display.coloured_terminal_text Green [Bold] "trace included") (Display.mkRuntime time)
-        | QCompleted None, _ -> ()
+        | QCompleted None, Session_Equivalence -> Printf.printf "%sResult query %d: The two processes are %s. Verified in %s                                          \n%!" return index (Display.coloured_terminal_text Green [Bold] "session equivalent") (Display.mkRuntime time)
+        | QCompleted None, Session_Inclusion -> Printf.printf "%sResult query %d: Process 1 is %s in process 2. Verified in %s                                        \n%!" return index (Display.coloured_terminal_text Green [Bold] "session included") (Display.mkRuntime time)
         | QCompleted _, Trace_Equivalence -> Printf.printf "%sResult query %d: The two processes are %s. Verified in %s                                             \n%!" return index (Display.coloured_terminal_text Red [Bold] "not trace equivalent") (Display.mkRuntime time)
         | QCompleted _, Trace_Inclusion -> Printf.printf "%sResult query %d: Process 1 is %s in process 2. Verified in %s                                           \n%!" return index (Display.coloured_terminal_text Red [Bold] "not trace included") (Display.mkRuntime time)
-        | QCompleted _, _ -> ()
+        | QCompleted _, Session_Equivalence -> Printf.printf "%sResult query %d: The two processes are %s. Verified in %s                                             \n%!" return index (Display.coloured_terminal_text Red [Bold] "not session equivalent") (Display.mkRuntime time)
+        | QCompleted _, Session_Inclusion -> Printf.printf "%sResult query %d: Process 1 is %s in process 2. Verified in %s                                           \n%!" return index (Display.coloured_terminal_text Red [Bold] "not session included") (Display.mkRuntime time)
         | _ -> ()
       end
   | Progression(_,_,PNot_defined,_) -> Config.internal_error "[display_ui.ml >> print_output_command] Unexpected progression"

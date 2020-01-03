@@ -179,18 +179,34 @@ let replace_structural_transition assoc = function
   | trans -> trans
 
 let query_result_of_equivalence_result query_result result end_time = match result with
-  | RTrace_Equivalence None ->
+  | RTrace_Equivalence None | RSession_Equivalence None | RSession_Inclusion None ->
       { query_result with
         q_status = QCompleted None;
         q_end_time = Some end_time;
         progression = PNot_defined
       }
-  | RTrace_Equivalence (Some (is_left_proc,trans_list)) ->
+  | RTrace_Equivalence (Some (is_left_proc,trans_list))
+  | RSession_Equivalence (Some (is_left_proc,trans_list)) ->
       let trans_list' = List.map (replace_structural_transition query_result.association) trans_list in
 
       let json_attack =
         {
           Types_ui.id_proc = if is_left_proc then 1 else 2;
+          Types_ui.transitions = List.map json_transition_of_transition trans_list'
+        }
+      in
+      { query_result with
+        q_status = QCompleted (Some json_attack);
+        q_end_time = Some end_time;
+        settings = { query_result.settings with symbol_set = Symbol.get_settings () };
+        progression = PNot_defined
+      }
+  | RSession_Inclusion (Some trans_list) ->
+      let trans_list' = List.map (replace_structural_transition query_result.association) trans_list in
+
+      let json_attack =
+        {
+          Types_ui.id_proc = 1;
           Types_ui.transitions = List.map json_transition_of_transition trans_list'
         }
       in

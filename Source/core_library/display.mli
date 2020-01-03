@@ -41,6 +41,12 @@ val display_identifier : output -> string -> string
 (** [create_tab k] generates a string of [k] tabulations, each tabulation being the string ["  "], i.e., 2 space bars).*)
 val create_tab : int -> string
 
+(** [display_with_tab k str] displays the string [str] with a tab of size [k]. Adds a line return after. *)
+val display_with_tab : int -> string -> string
+
+(** [display_object k title data] display the [data] titled [title] with a tab of size [k]. *)
+val display_object : int -> string option -> (string * string) list -> string
+
 (** Display of the symbol {% $\neqi$ %} *)
 val neqi : output -> string
 

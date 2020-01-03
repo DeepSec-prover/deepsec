@@ -3,6 +3,7 @@ open Extensions
 open Types
 open Term
 open Formula
+open Display
 
 module IntList = List.Ordered(struct type t = int let compare (n1:int) (n2:int) = compare n1 n2 end)
 
@@ -22,6 +23,16 @@ module Label = struct
             - [d] is the private channel on which the communication occur
             - [prio] indicate if the communication was done with priority. *)
 
+  (*** Display ***)
+
+  let display lbl = display_list string_of_int "." (lbl.prefix@[lbl.last_index])
+
+  let display_complete = function
+    | LStd lbl -> Printf.sprintf "Std(%s)" (display lbl)
+    | LComm(lbl1,lbl2,n,b) -> Printf.sprintf "Comm(%s,%s,%s,%b)" (display lbl1) (display lbl2) (Name.display Terminal n) b
+
+  (*** Creation ***)
+
   let initial = { prefix = []; last_index = 0 }
 
   let add_position (lbl:t) pos = { prefix = lbl.prefix @ [lbl.last_index]; last_index = pos }
@@ -30,19 +41,11 @@ module Label = struct
 
   (*** Order relation ***)
 
-  let rec independent_prefix (prefix1:int list) (prefix2:int list) = match prefix1, prefix2 with
-    | [], _
-    | _, [] -> 0
-    | pos1::q1, pos2::q2 ->
-        match compare pos1 pos2 with
-          | 0 -> independent_prefix q1 q2
-          | i -> i
-
   let independent lbl1 lbl2 =
     let rec independent_prefix (prefix1:int list) prefix2 = match prefix1, prefix2 with
       | [], [] -> compare lbl1.last_index lbl2.last_index
-      | [], _
-      | _, [] -> 0
+      | [], pos2::_ -> compare lbl1.last_index pos2
+      | pos1::_, [] -> compare pos1 lbl2.last_index
       | pos1::q1, pos2::q2 ->
           match compare pos1 pos2 with
             | 0 -> independent_prefix q1 q2
@@ -50,46 +53,16 @@ module Label = struct
     in
     independent_prefix lbl1.prefix lbl2.prefix
 
-
-  (* We assume that the second and third argument are sorted *)
-  let all_independant lbl1 lbl2_1 lbl2_2 = match independent lbl1 lbl2_1 with
-    | -1 -> true
-    | 0 -> false
-    | _ -> independent lbl1 lbl2_2 <> 0
-
-  (** Does take into account the priority status of private communication.
-      When there is a LComm with priority, it always returs one unless
-      the other label is also a LComm with priority on same channel. In
-      that case, a normal check of independence is done. *)
-  let independent_complete clbl1 clbl2 = match clbl1, clbl2 with
-    | LComm(lbl1_1,lbl1_2,c1,prio1), LComm(lbl2_1,lbl2_2,c2,prio2) ->
-        if (prio1 && prio2 && c1 == c2) || not (prio1 || prio2)
-        then
-          begin match independent lbl1_1 lbl2_1 with
-            | 0 -> 0
-            | -1 -> if all_independant lbl1_2 lbl2_1 lbl2_2 then -1 else 0
-            | _ -> if all_independant lbl2_2  lbl1_1 lbl1_2 then 1 else 0
-          end
-        else 1
-    | LComm(_,_,_,true), _ | _, LComm(_,_,_,true) -> 1
-    | LStd lbl1, LStd lbl2 -> independent lbl1 lbl2
-    | LStd lbl1, LComm(lbl2_1,lbl2_2,_,_) ->
-        begin match independent lbl1 lbl2_1 with
-          | 1 -> if independent lbl1 lbl2_2 = 0 then 0 else 1
-          | i -> i
-        end
-    | LComm(lbl1_1,lbl1_2,_,_), LStd lbl2 ->
-        begin match independent lbl1_1 lbl2 with
-          | -1 -> if independent lbl1_2 lbl2 = 0 then 0 else -1
-          | i -> i
-        end
-
   (*** Creation of complete ***)
 
   let create_complete_comm lbl1 lbl2 ch prio =
     Config.debug (fun () ->
       if independent lbl1 lbl2 = 0
-      then Config.internal_error "[session_process.ml >> Label.create_complete_comm] Labels should be independent."
+      then
+        begin
+          Config.log_in_debug Config.Always (Printf.sprintf "Label 1 = %s; Label 2 = %s" (display lbl1) (display lbl2));
+          Config.internal_error "[session_process.ml >> Label.create_complete_comm] Labels should be independent."
+        end
     );
     if independent lbl1 lbl2 = -1
     then LComm(lbl1,lbl2,ch,prio)
@@ -98,7 +71,7 @@ end
 
 module Block = struct
 
-  (** Contrary to previous previous version of the session. We split the notion of
+  (** We split the notion of
       block in two;
         - One part only contain labels and improper status.
         - The second part contains the recipes, axioms and max var.
@@ -125,7 +98,7 @@ module Block = struct
   type general_blocks =
     {
       recipe_blocks : recipe_block list; (* Ordered from the most recent to the oldest *)
-      current_recipe_block : recipe_block option; (* = None only when we are on improper phase *)
+      current_recipe_block : recipe_block option; (* = None only when we are on a global improper phase *)
 
       number_blocks : int; (* Kept as List.length recipe_block *)
       ground_index : int; (* Inverse index of recipe_block such that all recipe
@@ -135,6 +108,47 @@ module Block = struct
       current_block_sure_proper : bool;
       last_added_axiom : int (* Last axiom that was added *)
     }
+
+  (*** Display ***)
+
+  let display_local_blocks tab local =
+    display_object tab (Some "Local blocks") [
+      "proper", display_list Label.display_complete "; " local.local_proper_blocks;
+      "improper", display_list Label.display_complete "; " local.local_improper_blocks
+    ]
+
+  let display_recipe_block tab block =
+    let bound_axioms = match block.bound_axioms with
+      | None -> "none"
+      | Some (ax_min,ax_max) -> (Axiom.display Terminal ax_min)^"->"^(Axiom.display Terminal ax_max)
+    in
+    display_object tab None [
+      "vars", display_list (fun v -> Recipe_Variable.display Terminal v) ", " block.variables;
+      "axioms", display_list (Axiom.display Terminal) ", " block.used_axioms;
+      "bound_axioms", bound_axioms;
+      "maximal_var", string_of_int block.maximal_var
+    ]
+
+  let display_general_blocks tab gen =
+    let recipe_blocks =
+      if gen.recipe_blocks = []
+      then "[]"
+      else
+        "\n"^(display_list (display_recipe_block (tab+2)) "" gen.recipe_blocks)
+    in
+    let current_recipe_block = match gen.current_recipe_block with
+      | None -> "None"
+      | Some b -> "\n"^(display_recipe_block (tab+2) b)
+    in
+
+    display_object tab (Some "General blocks") [
+      "recipe_blocks", recipe_blocks;
+      "current_recipe_block", current_recipe_block;
+      "number_blocks", string_of_int gen.number_blocks;
+      "ground_index", string_of_int gen.ground_index;
+      "current_block_sure_proper", string_of_bool gen.current_block_sure_proper;
+      "last_added_axiom", Axiom.display Terminal gen.last_added_axiom
+    ]
 
   (*** Creation ***)
 
@@ -202,16 +216,14 @@ module Block = struct
         else
           { gen_block with
             current_recipe_block = None;
+            number_blocks = gen_block.number_blocks;
             current_block_sure_proper = false
           }
 
-  let rec add_axiom_in_sorted_list (i:int) axiom_list = match axiom_list with
-    | [] -> [i]
-    | j::q when j < i -> j::(add_axiom_in_sorted_list i q)
-    | j::_ when j = i -> axiom_list
-    | _ -> i::axiom_list
-
+  (** [update_recipe block] instantiate the variables in the blocks. Returns [(block',is_ground,was_modified)]
+      where [was_modified] is true when some variables were instantiated. *)
   let update_recipe block =
+    let was_modified = ref false in
     let used_axioms_ref = ref block.used_axioms in
     let max_var = ref 0 in
     let used_vars = ref [] in
@@ -220,24 +232,39 @@ module Block = struct
       | RVar { link_r = RLink r; _ }
       | CRFunc(_,r) -> explore_recipe r
       | RVar x ->
+          Config.debug (fun () ->
+            if x.link_r <> RNoLink
+            then Config.internal_error "[session_process.ml >> update_recipe] Unexpected link."
+          );
           max_var := max !max_var x.type_r;
           if not (List.memq x !used_vars)
           then used_vars := x :: !used_vars
       | RFunc(_,args) -> List.iter explore_recipe args
-      | Axiom i -> used_axioms_ref := add_axiom_in_sorted_list i !used_axioms_ref
+      | Axiom i -> used_axioms_ref := IntList.add i !used_axioms_ref
     in
 
-    List.iter (fun x -> explore_recipe (RVar x)) block.variables;
+    List.iter (fun x -> match x.link_r with
+      | RNoLink ->
+          max_var := max !max_var x.type_r;
+          if not (List.memq x !used_vars)
+          then used_vars := x :: !used_vars
+      | RLink r ->
+          was_modified := true;
+          explore_recipe r
+      | _ -> Config.internal_error "[session_process.ml >> update_recipe] Unexpected link (2)."
+    ) block.variables;
 
-    let block' = { block with variables = !used_vars; used_axioms = !used_axioms_ref; maximal_var = !max_var } in
-    if !used_vars = []
-    then (block',true)
-    else (block',false)
+    if !was_modified
+    then
+      let block' = { block with variables = !used_vars; used_axioms = !used_axioms_ref; maximal_var = !max_var } in
+      (block',!used_vars = [],true)
+    else (block,!used_vars = [],false)
 
   (** [update_recipes_in_general_block gen_block] update all the blocks in [gen_block]
       by instantiating the variables and gathering the remaning variables and axioms.
       This function should only be applied after constraints resolution. *)
-  let update_recipes_in_general_block gen_block =
+  let update_recipes_in_general_block is_pos_next_phase gen_block =
+    let was_modified = ref false in
     let ground_index = ref gen_block.ground_index in
 
     let rec explore_blocks index blocks =
@@ -251,12 +278,13 @@ module Block = struct
               if block.variables = []
               then
                 begin
-                  ground_index := index;
-                  (block::q_b',true)
+                  if all_ground then ground_index := index;
+                  (block::q_b',all_ground)
                 end
               else
                 begin
-                  let (block',is_ground) = update_recipe block in
+                  let (block',is_ground,was_modified') = update_recipe block in
+                  was_modified := !was_modified || was_modified';
                   let all_ground' = is_ground && all_ground in
                   if all_ground' then ground_index := index;
                   (block'::q_b',all_ground')
@@ -264,93 +292,136 @@ module Block = struct
     in
 
     let (recipe_blocks',_) = explore_blocks (gen_block.number_blocks-1) gen_block.recipe_blocks in
-    let current_recipe_block' = match gen_block.current_recipe_block with
-      | None -> None
-      | Some c_block -> Some (fst (update_recipe c_block))
+    let (current_recipe_block',cur_was_modified) =
+      if is_pos_next_phase
+      then gen_block.current_recipe_block, false
+      else
+        match gen_block.current_recipe_block with
+        | None -> None, false
+        | Some c_block ->
+            let (c_block',_,was_modified') = update_recipe c_block in
+            Some c_block', was_modified'
     in
 
     { gen_block with
       recipe_blocks = recipe_blocks';
       current_recipe_block = current_recipe_block';
       ground_index = !ground_index
-    }
+    }, !was_modified, cur_was_modified
 
   let transition_proper_to_improper_phase local_blocks = match local_blocks.local_proper_blocks with
     | [] -> Config.internal_error "[session_process.ml >> Block.transition_proper_to_improper_phase] The local block should contain at least the initial label."
-    | lbl :: q ->
-        match lbl with
-          | Label.LComm(_,_,_,true) -> { local_proper_blocks = q; local_improper_blocks = [] }
-          | _ -> { local_proper_blocks = q; local_improper_blocks = [lbl] }
+    | lbl :: q -> { local_proper_blocks = q; local_improper_blocks = [lbl] }
 
   (*** Test for partial reduction ***)
 
-  let rec all_axiom_excluded (min_ax:int) max_ax = function
+  let rec one_axiom_included (min_ax:int) max_ax = function
     | [] -> true
-    | ax :: q -> (ax > max_ax) || (ax < min_ax && all_axiom_excluded min_ax min_ax q)
+    | ax :: q -> (ax <= max_ax) && (ax >= min_ax || one_axiom_included min_ax max_ax q)
 
-  let rec is_faulty lbl_block r_block lbl_block_l r_block_l = match lbl_block_l, r_block_l with
-    | [],[] -> false
-    | [], _ | _, [] -> Config.internal_error "[session_process.ml >> Block.is_faulty] The size of the lists should be equal."
+  (* We assume that the second and third argument are sorted *)
+  let all_independent lbl1 lbl2_1 lbl2_2 = match Label.independent lbl1 lbl2_1 with
+    | -1 -> true
+    | 0 -> false
+    | _ -> Label.independent lbl1 lbl2_2 <> 0
+
+  (** Does take into account the priority status of private communication.
+      When there is a LComm with priority, it always returs one unless
+      the other label is also a LComm with priority on same channel. In
+      that case, a normal check of independence is done. *)
+  let block_can_follow clbl1 clbl2 = match clbl1, clbl2 with
+    | Label.LComm(lbl1_1,lbl1_2,c1,prio1), Label.LComm(lbl2_1,lbl2_2,c2,prio2) ->
+        begin match Label.independent lbl1_1 lbl2_1 with
+          | 0 -> 0
+          | -1 -> if all_independent lbl1_2 lbl2_1 lbl2_2 then -1 else 0
+          | _ ->
+              if all_independent lbl2_2  lbl1_1 lbl1_2
+              then
+                if ((prio1 && prio2 && c1 != c2) || (prio1 && not prio2))
+                then -1
+                else 1
+              else 0
+        end
+    | Label.LStd lbl1, Label.LStd lbl2 -> Label.independent lbl1 lbl2
+    | Label.LStd lbl1, Label.LComm(lbl2_1,lbl2_2,_,_) ->
+        begin match Label.independent lbl1 lbl2_1 with
+          | 1 -> if Label.independent lbl1 lbl2_2 = 0 then 0 else 1
+          | i -> i
+        end
+    | Label.LComm(lbl1_1,lbl1_2,_,prio), Label.LStd lbl2 ->
+        begin match Label.independent lbl1_1 lbl2 with
+          | -1 -> if Label.independent lbl1_2 lbl2 = 0 then 0 else -1
+          | 0 -> 0
+          | _ -> if prio then -1 else 1
+        end
+
+  let rec is_block_minimal lbl_block r_block lbl_block_l r_block_l = match lbl_block_l, r_block_l with
+    | [], [] -> true
+    | [], _ | _, [] -> Config.internal_error "[session_process.ml >> Block.is_block_minimal] The size of the lists should be equal."
     | lbl_b_i::q_lbl, r_b_i::q_r ->
-        match Label.independent_complete lbl_block lbl_b_i with
+        match block_can_follow lbl_b_i lbl_block with
+          | 0 -> true
           | -1 ->
               begin match r_b_i.bound_axioms with
-                | None -> true
-                | Some(min_ax,max_ax) -> r_block.maximal_var < min_ax && all_axiom_excluded min_ax max_ax r_block.used_axioms
+                | None -> is_block_minimal lbl_block r_block q_lbl q_r
+                | Some(min_ax,max_ax) -> r_block.maximal_var >= min_ax || one_axiom_included min_ax max_ax r_block.used_axioms || is_block_minimal lbl_block r_block q_lbl q_r
               end
-          | 1 -> is_faulty lbl_block r_block q_lbl q_r
-          | _ -> false
+          | _ ->
+              begin match r_b_i.bound_axioms with
+                | None -> false
+                | Some(min_ax,max_ax) -> r_block.maximal_var >= min_ax || one_axiom_included min_ax max_ax r_block.used_axioms
+              end
 
-  let is_authorised check_current previous_ground_index gen_block local_block =
-    let full_r_block_l =
-      if check_current
-      then
-        match gen_block.current_recipe_block with
-        | None -> gen_block.recipe_blocks
-        | Some r_block -> r_block :: gen_block.recipe_blocks
-      else gen_block.recipe_blocks
-    in
-
-    let rec explore_block index lbl_block_l r_block_l =
+  let is_authorised current_to_check was_modified previous_ground_index gen_block local_block =
+    let rec are_all_block_minimal index lbl_block_l r_block_l =
       if index = previous_ground_index
       then true
       else
         match lbl_block_l, r_block_l with
           | [], _ | [_], _ -> true
           | _, [] -> Config.internal_error "[session_process.ml >> Block.is_authorised] Lists shouls have the same size."
-          | lbl_block::q_lbl, r_block::q_r ->
-              if is_faulty lbl_block r_block q_lbl q_r
-              then false
-              else explore_block (index-1) q_lbl q_r
+          | lbl_block::q_lbl, r_block::q_r -> is_block_minimal lbl_block r_block q_lbl q_r &&  are_all_block_minimal (index-1) q_lbl q_r
     in
 
-    explore_block gen_block.number_blocks local_block.local_proper_blocks full_r_block_l
+    match current_to_check,was_modified with
+      | false, false -> true
+      | true, false ->
+          begin match gen_block.current_recipe_block with
+            | Some r_block ->
+                begin match local_block.local_proper_blocks with
+                  | l_block::q_local -> is_block_minimal l_block r_block q_local gen_block.recipe_blocks
+                  | _ -> Config.internal_error "[session_process.ml >> is_authorised] The proper local blocks should not be empty."
+                end
+            | _ -> Config.internal_error "[session_process.ml >> is_authorised] The current block should exists."
+          end
+      | false, true ->
+          if gen_block.current_recipe_block = None
+          then are_all_block_minimal (gen_block.number_blocks-1) local_block.local_proper_blocks gen_block.recipe_blocks
+          else are_all_block_minimal (gen_block.number_blocks-1) (List.tl local_block.local_proper_blocks) gen_block.recipe_blocks
+      | true, true ->
+          match gen_block.current_recipe_block with
+            | Some r_block -> are_all_block_minimal gen_block.number_blocks local_block.local_proper_blocks (r_block::gen_block.recipe_blocks)
+            | _ -> Config.internal_error "[session_process.ml >> is_authorised] The current block should exists (2)."
 end
 
 module Channel = struct
 
   type t =
     | CPublic of symbol
-    | CPrivate of name * bool
-        (* Indicates whether the internal communication on this channel can
-           never have a conflict in the future.*)
+    | CPrivate of name
 
   let compare ch1 ch2 = match ch1,ch2 with
     | CPublic f1, CPublic f2 -> compare f1.index_s f2.index_s
-    | CPrivate(n1,prio1), CPrivate(n2,prio2) ->
-        begin match compare prio1 prio2 with
-          | 0 -> compare n1.index_n n2.index_n
-          | i -> - i
-        end
+    | CPrivate n1, CPrivate n2 -> compare n1.index_n n2.index_n
     | CPrivate _, _ -> -1
     | _ -> 1
 
-  let of_term no_conflict_names = function
+  let of_term = function
     | Func(f,_) ->
         if not f.public || f.arity <> 0
         then Config.internal_error "[session_process.ml >> Channel.of_term] The symbol should be of arity 0 and public.";
         CPublic f
-    | Name n -> CPrivate(n,(List.memq n no_conflict_names))
+    | Name n -> CPrivate n
     | _ -> Config.internal_error "[session_process.ml >> Channel.of_term] The channel should not be a variable."
 
   let recipe_of = function
@@ -367,8 +438,12 @@ module Channel = struct
 
   let is_equal ch1 ch2 = match ch1, ch2 with
     | CPublic f1, CPublic f2 -> f1 == f2
-    | CPrivate(n1,_), CPrivate(n2,_) -> n1 == n2
+    | CPrivate n1, CPrivate n2 -> n1 == n2
     | _ -> false
+
+  let display = function
+    | CPublic f -> Symbol.display Terminal f
+    | CPrivate n -> Name.display Terminal n
 end
 
 module NameList = List.Ordered(struct type t = name let compare n1 n2 = compare n1.index_n n2.index_n end)
@@ -395,83 +470,6 @@ module Labelled_process = struct
     | PPar of t list
     | PBangStrong of t list (* Broken *) * t list (* Standard *)
     | PBangPartial of t list
-
-  (*** Find cells ***)
-
-  let find_cells proc =
-    let cells = ref [] in
-
-    let rec explore = function
-      | Nil -> []
-      | Output(Func _,_,p,_)
-      | Input(Func _,_,p,_) -> explore p
-      | Output(Name n,_,p,_) ->
-          let out_ch = explore p in
-
-          if n.link_n <> NNoLink
-          then out_ch (* Already detected as not a cell *)
-          else
-            if List.memq n out_ch
-            then
-              begin
-                List.iter Name.link_search out_ch;
-                List.filter (fun n' -> n != n') out_ch
-              end
-            else n::out_ch
-      | Input(Name n,_,p,_) ->
-          let out_ch = explore p in
-
-          if n.link_n <> NNoLink
-          then out_ch (* Already detected as not a cell *)
-          else List.filter (fun n' -> n != n') out_ch
-      | Output _ | Input _ -> Config.internal_error "[session_process.ml >> find_cells] Wrong format of channels"
-      | IfThenElse(_,_,p1,p2,_)
-      | Let (_,_,p1,p2,_) ->
-          let out_ch1 = explore p1 in
-          let out_ch2 = explore p2 in
-
-          List.fold_left (fun acc n ->
-            if n.link_n = NNoLink
-            then
-              if List.memq n out_ch2
-              then acc
-              else n::acc
-            else acc
-          ) out_ch2 out_ch1
-      | New(n,p,_) ->
-          let out_ch = explore p in
-          if n.link_n = NNoLink
-          then cells := n :: !cells;
-          List.filter (fun n' -> n != n') out_ch
-      | Par p_list -> explore_list p_list
-      | Bang ([],_) -> Config.internal_error "[session_process.ml >> find_cells] Bang should contain at least 2 processes."
-      | Bang (p::_,_) ->
-          let out_ch = explore p in
-          List.iter Name.link_search out_ch;
-          []
-      | Choice _ -> Config.internal_error "[session_process.ml >> find_cells] Processes should not contain any choice."
-
-    and explore_list = function
-      | [] -> []
-      | p::q ->
-          let out_ch = explore p in
-          let out_ch_q = explore_list q in
-
-          List.iter (fun n ->
-            if List.memq n out_ch
-            then Name.link_search n
-          ) out_ch_q;
-
-          let l1 = List.fold_left (fun acc n -> if n.link_n = NNoLink then n::acc else acc) [] out_ch in
-          List.fold_left (fun acc n -> if n.link_n = NNoLink then n::acc else acc) l1 out_ch_q
-    in
-
-    Name.auto_cleanup_with_reset_notail (fun () ->
-      let l = explore proc in
-      if l <> []
-      then Config.internal_error "[session_process.ml >> find_cells] Explore proc should always return an empty list.";
-      !cells
-    )
 
   (*** Transformation from a process to labelled process ***)
 
@@ -610,8 +608,6 @@ module Labelled_process = struct
       | PatEquality t -> t
     in
 
-    let cells = find_cells proc in
-
     let rec explore assoc prev_data = function
       | Nil -> PNil, []
       | Output(ch,t,p,pos) ->
@@ -624,9 +620,9 @@ module Labelled_process = struct
               filter_used_data prev_data
             )
           in
-          let ch' = Channel.of_term cells ch in
+          let ch' = Channel.of_term ch in
           let (ch_set,under_ch_set') = match ch' with
-            | Channel.CPrivate(n,false) -> NameList.add n under_ch_set, NameList.remove n under_ch_set
+            | Channel.CPrivate n -> NameList.add n under_ch_set, NameList.remove n under_ch_set
             | _ -> under_ch_set, under_ch_set
           in
           POutput(ch',replace_name_by_variables assoc t,p',None,pos,used_data,under_ch_set'), ch_set
@@ -644,9 +640,9 @@ module Labelled_process = struct
               filter_used_data prev_data
             )
           in
-          let ch' = Channel.of_term cells ch in
+          let ch' = Channel.of_term ch in
           let (ch_set,under_ch_set') = match ch' with
-            | Channel.CPrivate(n,false) -> NameList.add n under_ch_set, NameList.remove n under_ch_set
+            | Channel.CPrivate n -> NameList.add n under_ch_set, NameList.remove n under_ch_set
             | _ -> under_ch_set, under_ch_set
           in
           PInput(ch',v,p',None,pos,used_data,under_ch_set'), ch_set
@@ -754,6 +750,17 @@ module Labelled_process = struct
       par_created : bool
     }
 
+  let display_skeletons tab skel =
+    display_object tab None [
+      "input", display_list (fun (ch,i,il) -> Printf.sprintf "(%s,%d,[%s])" (Channel.display ch) i (display_list string_of_int ";" il)) "; " skel.input_skel;
+      "output", display_list (fun (ch,i,il) -> Printf.sprintf "(%s,%d,[%s])" (Channel.display ch) i (display_list string_of_int ";" il)) "; " skel.output_skel;
+      "private_input", (Printf.sprintf "%d,[%s]" (fst skel.private_input_skel) (display_list string_of_int ";" (snd skel.private_input_skel)));
+      "private_output", (Printf.sprintf "%d,[%s]" (fst skel.private_output_skel) (display_list string_of_int ";" (snd skel.private_output_skel)));
+      "private_channels", display_list (fun (ch,i_out,i_in) -> Printf.sprintf "%s[out=%d,in=%d]" (Channel.display ch) i_out i_in) "; " skel.private_channels;
+      "label_prefix", display_list string_of_int "." skel.label_prefix;
+      "par_create", string_of_bool skel.par_created
+    ]
+
   let rec add_private_channel is_output ch priv_list = match priv_list with
     | [] -> if is_output then [ ch, 1, 0 ] else [ ch, 0, 1 ]
     | ((ch',nb_out,nb_in) as t)::q ->
@@ -767,7 +774,7 @@ module Labelled_process = struct
     | ((ch',n,inter_list) as t)::q ->
         match Channel.compare ch' ch with
           | -1 -> t :: (add_channel_occurrence ch pos q)
-          | 0 -> (ch',n+1,pos::inter_list)::q
+          | 0 -> (ch',n+1,IntList.add pos inter_list)::q
           | _ -> (ch,1,[pos]) :: occ_list
 
   let add_output_in_skeleton ch pos skeletons = match ch with
@@ -775,7 +782,7 @@ module Labelled_process = struct
     | _ ->
         let (occ,inter_list) = skeletons.private_output_skel in
         { skeletons with
-          private_output_skel = occ+1,pos::inter_list;
+          private_output_skel = occ+1,IntList.add pos inter_list;
           private_channels = add_private_channel true ch skeletons.private_channels
         }
 
@@ -784,7 +791,7 @@ module Labelled_process = struct
     | _ ->
         let (occ,inter_list) = skeletons.private_input_skel in
         { skeletons with
-          private_input_skel = occ+1,pos::inter_list;
+          private_input_skel = occ+1,IntList.add pos inter_list;
           private_channels = add_private_channel false ch skeletons.private_channels
         }
 
@@ -938,7 +945,7 @@ module Labelled_process = struct
           ) f_next
     in
 
-    normalise_process 1 gather_norm gather_skel proc (fun _ gather_norm_1 gather_skel_1 proc_1 f_next_1 ->
+    normalise_process 0 gather_norm gather_skel proc (fun _ gather_norm_1 gather_skel_1 proc_1 f_next_1 ->
       match proc_1 with
         | POutput(ch,t,p,_,pos,used_data,ch_set) ->
             let gather_skel_2 =
@@ -954,14 +961,15 @@ module Labelled_process = struct
         | PInput(ch,x,p,_,pos,used_data,ch_set) ->
             let gather_skel_2 =
               if fst gather_skel_1.private_input_skel = 1
-              then { gather_skel_1 with private_input_skel = (1,[label.Label.last_index]); label_prefix = label.Label.prefix }
+              then { gather_skel_1 with private_input_skel = (1,[label.Label.last_index]); label_prefix = label.Label.prefix; par_created = false }
               else
                 match gather_skel_1.input_skel with
-                  | [f,1,_] -> { gather_skel_1 with input_skel = [f,1,[label.Label.last_index]]; label_prefix = label.Label.prefix }
+                  | [f,1,_] -> { gather_skel_1 with input_skel = [f,1,[label.Label.last_index]]; label_prefix = label.Label.prefix; par_created = false }
                   | _ -> Config.internal_error "[session_process.ml >> normalise] There should be only one output."
             in
             let proc_2 = PInput(ch,x,p,Some label,pos,used_data,ch_set) in
             f_continuation gather_norm_1 gather_skel_2 proc_2 f_next_1
+        | PNil -> f_continuation gather_norm_1 { gather_skel_1 with par_created = false; label_prefix = label.Label.prefix } proc_1 f_next_1
         | _ -> f_continuation gather_norm_1 gather_skel_1 proc_1 f_next_1
     ) f_next
 
@@ -1002,6 +1010,93 @@ module Labelled_process = struct
     in
 
     explore_process 0 plist
+
+  (*** Display ***)
+
+  let display_used_data d =
+    Printf.sprintf "[Vars = %s] [Names = %s]"
+      (display_list (Variable.display Terminal) "," d.variables)
+      (display_list (Variable.display Terminal) "," d.names)
+
+  let display_equations = function
+    | [] -> Display.bot Terminal
+    | [v,t] -> (Variable.display Terminal v) ^ "=" ^ (Term.display ~follow_link:false Terminal t)
+    | eq_list ->
+        let left = display_list (fun (v,_) -> Variable.display Terminal v) "," eq_list in
+        let right = display_list (fun (_,t) -> Term.display ~follow_link:false Terminal t) "," eq_list in
+        Printf.sprintf "(%s) = (%s)" left right
+
+  let display_position (i,args) =
+    if args = []
+    then string_of_int i
+    else Printf.sprintf "%d[%s]" i (display_list string_of_int "," args)
+
+  let rec display tab = function
+    | PStart p -> (display_with_tab tab "Start") ^ (display tab p)
+    | PNil -> (display_with_tab tab "Nil")
+    | POutput(ch,t,p,lbl_op,pos,used_data,ch_set) ->
+        let str =
+          Printf.sprintf "{%s} out(%s,%s); %s %s [Channels = %s]"
+            (display_position pos)
+            (Channel.display ch)
+            (Term.display ~follow_link:false Terminal t)
+            (match lbl_op with None -> "" | Some lbl -> Printf.sprintf "[Label = %s]" (Label.display lbl))
+            (display_used_data used_data)
+            (display_list (Name.display Terminal) "," ch_set)
+        in
+        (display_with_tab tab str) ^ (display tab p)
+    | PInput(ch,x,p,lbl_op,pos,used_data,ch_set) ->
+        let str =
+          Printf.sprintf "{%s} in(%s,%s); %s %s [Channels = %s]"
+            (display_position pos)
+            (Channel.display ch)
+            (Variable.display Terminal x)
+            (match lbl_op with None -> "" | Some lbl -> Printf.sprintf "[Label = %s]" (Label.display lbl))
+            (display_used_data used_data)
+            (display_list (Name.display Terminal) "," ch_set)
+        in
+        (display_with_tab tab str) ^ (display tab p)
+    | PCondition(eq_list,Formula.T.Bot,_,pthen,PNil,used_data) ->
+        let str_eq = display_list display_equations (vee Terminal) eq_list in
+        let str = Printf.sprintf "condition [%s] %s" str_eq (display_used_data used_data) in
+        let str_then = display tab pthen in
+        (display_with_tab tab str) ^ str_then
+    | PCondition(eq_list,neg_formula,_,pthen,pelse,used_data) ->
+        let str_eq = display_list display_equations (vee Terminal) eq_list in
+        let str = Printf.sprintf "condition [%s] %s" str_eq (display_used_data used_data) in
+        let str_then = display (tab+1) pthen in
+        let str_else = display (tab+1) pelse in
+        let str_neg = "Else "^(Formula.T.display ~follow_link:false  Terminal neg_formula) in
+        (display_with_tab tab str) ^ str_then ^ (display_with_tab tab str_neg) ^ str_else
+    | PNew(x,n,p,used_data) ->
+        let str = Printf.sprintf "new %s -> %s; %s" (Variable.display Terminal x) (Name.display Terminal n) (display_used_data used_data) in
+        (display_with_tab tab str) ^ (display tab p)
+    | PPar p_list ->
+        (display_with_tab tab "(") ^
+        (display_list (display (tab+1)) (display_with_tab tab ") | (") p_list) ^
+        (display_with_tab tab ")")
+    | PBangStrong (p_broken,p_list) ->
+        begin match p_broken, p_list with
+          | [], [] -> Config.internal_error "[session_process.ml >> Labelled_process.display] Bang should not be empty."
+          | [], _ ->
+            (display_with_tab tab "!S[") ^
+            (display_list (display (tab+1)) (display_with_tab tab "] | [") p_list) ^
+            (display_with_tab tab "]")
+          | _, [] ->
+            (display_with_tab tab "!S[ B") ^
+            (display_list (display (tab+1)) (display_with_tab tab "] | [ B") p_broken) ^
+            (display_with_tab tab "]")
+          | _,_ ->
+            (display_with_tab tab "!S[ B") ^
+            (display_list (display (tab+1)) (display_with_tab tab "] | [ B") p_broken) ^
+            (display_with_tab tab "] | [ ") ^
+            (display_list (display (tab+1)) (display_with_tab tab "] | [") p_list) ^
+            (display_with_tab tab "]")
+        end
+    | PBangPartial p_list ->
+        (display_with_tab tab "!P[") ^
+        (display_list (display (tab+1)) (display_with_tab tab "] | [") p_list) ^
+        (display_with_tab tab "]")
 end
 
 module Configuration = struct
@@ -1076,6 +1171,33 @@ module Configuration = struct
       start_matching_status : matching_status
     }
 
+  (*** Display ***)
+
+  let display tab conf =
+    let display_plist = function
+      | [] -> emptyset Terminal
+      | plist ->
+          "\n"^
+          (display_list (fun p ->
+              (display_with_tab (tab+2) "Process :")^
+              (Labelled_process.display (tab+3) p)
+          ) "" plist)
+    in
+
+    let focused_proc = match conf.focused_proc with
+      | None -> "None"
+      | Some p -> "\n"^(Labelled_process.display (tab+2) p)
+    in
+
+    display_object tab (Some "Configuration") [
+      "input_and_private_proc", display_plist conf.input_and_private_proc;
+      "output_proc", display_plist conf.output_proc;
+      "focused_proc", focused_proc;
+      "pure_improper_proc", display_plist conf.pure_improper_proc;
+      "blocks", Block.display_local_blocks (tab+2) conf.blocks;
+      "private_channels", display_list (fun (ch,i_out,i_in) -> Printf.sprintf "%s[out=%d,in=%d]" (Channel.display ch) i_out i_in) "; " conf.private_channels
+    ]
+
   (* Invariant:
     In the set of configuration, the skeletons of the processes are all the same.
     Thus we keep a list indicating the number of public channel.
@@ -1104,6 +1226,17 @@ module Configuration = struct
       imp_labels : (int list (* prefix *) * int (* number of index *) * int list (* ordered index *)) list
     }
 
+  let display_improper_data tab data =
+    display_object tab (Some "improper_data") [
+      "nb_labels", string_of_int data.nb_labels;
+      "nb_prefix", string_of_int data.nb_prefix;
+      "imp_labels", display_list (fun (pre,n,ids) ->
+        Printf.sprintf "(%s,%d,[%s])"
+          (display_list string_of_int "." pre)
+          n
+          (display_list string_of_int ";" ids)
+      ) "; " data.imp_labels
+    ]
 
   let add_label_in_imp_label lbl nb_prefix lbl_l =
     let nb_prefix_ref = ref nb_prefix in
@@ -1196,7 +1329,7 @@ module Configuration = struct
   let main_neg_phase proper_status matching_status target_channel original_subst original_names conf (f_continuation : output_transition -> t -> unit)=
     Config.debug (fun () ->
       if conf.focused_proc <> None
-      then Config.internal_error "[session_process.ml >> Configuration.next_public_output] An output transition should not be computed when there are still a focused process."
+      then Config.internal_error "[session_process.ml >> Configuration.next_public_output] An output transition should not be computed when there are still a focused process.";
     );
 
     let already_assigned_forall = ref false in
@@ -1256,7 +1389,7 @@ module Configuration = struct
                   begin
                     Config.debug (fun () ->
                       if plist <> []
-                      then Config.internal_error "[session_process.ml >> Configuration.next_public_output] When there is no more output then plist should be empty."
+                      then Config.internal_error "[session_process.ml >> Configuration.next_public_output] When there is no more output then plist should be empty (1)."
                     );
                     f_cont transition (Labelled_process.PBangPartial brok_plist_1) f_next_1
                   end
@@ -1265,19 +1398,31 @@ module Configuration = struct
               | [] -> f_next ()
               | p::q_list ->
                   explore_process p (fun transition p_1 f_next_1 ->
-                    if p_1 = Labelled_process.PNil && q_list = [] && brok_plist = []
-                    then f_cont transition Labelled_process.PNil f_next_1
+                    if p_1 = Labelled_process.PNil
+                    then
+                      if q_list = [] && brok_plist = []
+                      then f_cont transition Labelled_process.PNil f_next_1
+                      else if nb_output = 1 && transition.out_skeletons.Labelled_process.output_skel = []
+                      then
+                        begin
+                          Config.debug (fun () ->
+                            if q_list <> []
+                            then Config.internal_error "[session_process.ml >> Configuration.next_public_output] When there is no more output then q_list should be empty (2)."
+                          );
+                          f_cont transition (Labelled_process.PBangPartial brok_plist) f_next_1
+                        end
+                      else f_cont transition (Labelled_process.PBangStrong(brok_plist,q_list)) f_next_1
                     else
                       if nb_output = 1 && transition.out_skeletons.Labelled_process.output_skel = []
                       then
                         begin
                           Config.debug (fun () ->
                             if q_list <> []
-                            then Config.internal_error "[session_process.ml >> Configuration.next_public_output] When there is no more output then q_list should be empty."
+                            then Config.internal_error "[session_process.ml >> Configuration.next_public_output] When there is no more output then q_list should be empty (3)."
                           );
-                          f_cont transition (Labelled_process.PBangPartial(p_1::brok_plist)) f_next_1
+                          f_cont transition (Labelled_process.PBangPartial(brok_plist@[p_1])) f_next_1
                         end
-                      else f_cont transition (Labelled_process.PBangStrong(p_1::brok_plist,q_list)) f_next_1
+                      else f_cont transition (Labelled_process.PBangStrong(brok_plist@[p_1],q_list)) f_next_1
                   ) f_next
             )
       | Labelled_process.PBangPartial plist ->
@@ -1395,13 +1540,13 @@ module Configuration = struct
                     in_data_matching_status = m_status'
                   }
                 in
-                f_continuation input_data Labelled_process.PNil f_next
+                f_cont input_data Labelled_process.PNil f_next
           end
       | Labelled_process.PPar plist ->
           explore_process_list m_status [] plist (fun input_data rest_plist f_next_1 -> match rest_plist with
-            | [] -> f_continuation input_data Labelled_process.PNil f_next_1
-            | [p] -> f_continuation input_data p f_next_1
-            | _ -> f_continuation input_data (Labelled_process.PPar rest_plist) f_next_1
+            | [] -> f_cont input_data Labelled_process.PNil f_next_1
+            | [p] -> f_cont input_data p f_next_1
+            | _ -> f_cont input_data (Labelled_process.PPar rest_plist) f_next_1
           ) f_next
       | Labelled_process.PBangStrong([],[p])
       | Labelled_process.PBangPartial [p] -> explore_process m_status p f_cont f_next
@@ -1417,18 +1562,6 @@ module Configuration = struct
             | Labelled_process.PPar plist' -> f_cont input_data (Labelled_process.PPar(Labelled_process.PBangStrong([],plist)::plist')) f_next_1
             | _ -> f_cont input_data (Labelled_process.PPar [p';Labelled_process.PBangStrong([],plist)]) f_next_1
           ) f_next
-      | Labelled_process.PBangPartial [p1;p2] ->
-          explore_process m_status p1 (fun input_data p1' f_next_1 -> match p1' with
-            | Labelled_process.PNil -> f_cont input_data p2 f_next_1
-            | Labelled_process.PPar plist1' -> f_cont input_data (Labelled_process.PPar(p2::plist1')) f_next_1
-            | _ -> f_cont input_data (Labelled_process.PPar [p1;p2]) f_next_1
-          ) (fun () ->
-            explore_process Exists p2 (fun input_data p2' f_next_1 -> match p2' with
-              | Labelled_process.PNil -> f_cont input_data p1 f_next_1
-              | Labelled_process.PPar plist_2' -> f_cont input_data (Labelled_process.PPar(p1::plist_2')) f_next_1
-              | _ -> f_cont input_data (Labelled_process.PPar[p2';p1]) f_next_1
-            ) f_next
-          )
       | Labelled_process.PBangPartial (p::plist) ->
           explore_process m_status p (fun input_data p' f_next_1 -> match p' with
             | Labelled_process.PNil -> f_cont input_data (Labelled_process.PBangPartial plist) f_next_1
@@ -1437,20 +1570,15 @@ module Configuration = struct
           ) (fun () ->
             if only_forall
             then f_next ()
-            else explore_bang_partial [p] plist f_cont f_next
+            else
+              (* Since it's a Exists for the rest, we can transform them into Par *)
+              explore_process_list Exists [p] plist (fun input_data rest_plist f_next_1 -> match rest_plist with
+                | [] -> Config.internal_error "[session_process.ml >> Configuration.next_input] There cannot be an empty list since there is at least [p]"
+                | [p'] -> f_cont input_data p' f_next_1
+                | _ -> f_cont input_data (Labelled_process.PPar rest_plist) f_next_1
+              ) f_next
           )
       | _ -> Config.internal_error "[session_process.ml >> Configuration.next_input] Unexpected process."
-
-    and explore_bang_partial prev_plist plist f_cont f_next = match plist with
-      | [] -> f_next ()
-      | p::q ->
-          explore_process Exists p (fun input_data p' f_next_1 ->
-            let bang_partial = Labelled_process.PBangPartial (List.rev_append prev_plist q) in
-            match p' with
-              | Labelled_process.PNil -> f_cont input_data bang_partial f_next_1
-              | Labelled_process.PPar plist' -> f_cont input_data (Labelled_process.PPar (bang_partial::plist')) f_next_1
-              | _ -> f_cont input_data (Labelled_process.PPar [p';bang_partial]) f_next_1
-          ) (fun () -> explore_bang_partial (p::prev_plist) q f_cont f_next)
 
     and explore_process_list m_status prev_plist plist f_cont f_next = match plist with
       | [] -> f_next ()
@@ -1464,14 +1592,14 @@ module Configuration = struct
 
     explore_process matching_status proc f_continuation f_next
 
-  let next_output matching_status is_applicable target_channel proc f_continuation f_next =
+  let next_output matching_status target_channel proc f_continuation f_next =
     let only_forall = matching_status = ForAll in
 
     let rec explore_process m_status proc f_cont f_next = match proc with
       | Labelled_process.PNil
       | Labelled_process.PInput _ -> f_next ()
       | Labelled_process.POutput(ch,t,p,Some label,pos,_,_) ->
-          if Channel.is_equal ch target_channel && is_applicable label
+          if Channel.is_equal ch target_channel
           then
             let output_data =
               { out_data_label = label;
@@ -1481,13 +1609,13 @@ module Configuration = struct
                 out_data_matching_status = m_status
               }
             in
-            f_continuation output_data Labelled_process.PNil f_next
+            f_cont output_data Labelled_process.PNil f_next
           else f_next ()
       | Labelled_process.PPar plist ->
           explore_process_list m_status [] plist (fun output_data rest_plist f_next_1 -> match rest_plist with
-            | [] -> f_continuation output_data Labelled_process.PNil f_next_1
-            | [p] -> f_continuation output_data p f_next_1
-            | _ -> f_continuation output_data (Labelled_process.PPar rest_plist) f_next_1
+            | [] -> f_cont output_data Labelled_process.PNil f_next_1
+            | [p] -> f_cont output_data p f_next_1
+            | _ -> f_cont output_data (Labelled_process.PPar rest_plist) f_next_1
           ) f_next
       | Labelled_process.PBangStrong([],[p])
       | Labelled_process.PBangPartial [p] -> explore_process m_status p f_cont f_next
@@ -1507,7 +1635,7 @@ module Configuration = struct
           explore_process m_status p1 (fun output_data p1' f_next_1 -> match p1' with
             | Labelled_process.PNil -> f_cont output_data p2 f_next_1
             | Labelled_process.PPar plist1' -> f_cont output_data (Labelled_process.PPar(p2::plist1')) f_next_1
-            | _ -> f_cont output_data (Labelled_process.PPar [p1;p2]) f_next_1
+            | _ -> f_cont output_data (Labelled_process.PPar [p1';p2]) f_next_1
           ) (fun () ->
             explore_process Exists p2 (fun output_data p2' f_next_1 -> match p2' with
               | Labelled_process.PNil -> f_cont output_data p1 f_next_1
@@ -1523,20 +1651,13 @@ module Configuration = struct
           ) (fun () ->
             if only_forall
             then f_next ()
-            else explore_bang_partial [p] plist f_cont f_next
+            else explore_process_list Exists [p] plist (fun output_data rest_plist f_next_1 -> match rest_plist with
+              | [] -> Config.internal_error "[session_process.ml >> next_output] The list should not be empty since there is at least [p]."
+              | [p] -> f_cont output_data p f_next_1
+              | _ -> f_cont output_data (Labelled_process.PPar rest_plist) f_next_1
+            ) f_next
           )
       | _ -> Config.internal_error "[session_process.ml >> Configuration.next_input] Unexpected process."
-
-    and explore_bang_partial prev_plist plist f_cont f_next = match plist with
-      | [] -> f_next ()
-      | p::q ->
-          explore_process Exists p (fun output_data p' f_next_1 ->
-            let bang_partial = Labelled_process.PBangPartial (List.rev_append prev_plist q) in
-            match p' with
-              | Labelled_process.PNil -> f_cont output_data bang_partial f_next_1
-              | Labelled_process.PPar plist' -> f_cont output_data (Labelled_process.PPar (bang_partial::plist')) f_next_1
-              | _ -> f_cont output_data (Labelled_process.PPar [p';bang_partial]) f_next_1
-          ) (fun () -> explore_bang_partial (p::prev_plist) q f_cont f_next)
 
     and explore_process_list m_status prev_plist plist f_cont f_next = match plist with
       | [] -> f_next ()
@@ -1571,27 +1692,20 @@ module Configuration = struct
       | _ -> Config.internal_error "[session_process.ml >> determine_channel_priority] Unexpected case."
     in
 
-    let rec explore_private_channels = function
-      | [] -> None
-      | ((Channel.CPrivate(_,true)) as ch,i,j)::_ when i >= 1 && j >= 1 -> Some ch
-      | (Channel.CPrivate(_,true),_,_)::q -> explore_private_channels q
-      | ch_list ->
-          let channel_names =
-            List.map (fun (ch,_,_) -> match ch with
-              | Channel.CPrivate(n,false) -> n
-              | _ -> Config.internal_error "[session_process.ml >> determine_channel_priority] The rest of the list should only contain private name."
-            ) ch_list
-          in
-          if channel_names = []
-          then None
-          else
-            let channel_names' = filter_private_names_list channel_names conf.input_and_private_proc in
-            if channel_names' = []
-            then None
-            else Some (Channel.CPrivate(List.hd channel_names',false))
+    let channel_names =
+      List.fold_right (fun (ch,i,j) acc -> match ch with
+        | Channel.CPrivate n -> if i >= 1 && j >= 1 then n::acc else acc
+        | _ -> Config.internal_error "[session_process.ml >> determine_channel_priority] The rest of the list should only contain private name."
+      ) conf.private_channels []
     in
 
-    explore_private_channels conf.private_channels
+    if channel_names = []
+    then None
+    else
+      let channel_names' = filter_private_names_list channel_names conf.input_and_private_proc in
+      if channel_names' = []
+      then None
+      else Some (Channel.CPrivate (List.hd channel_names'))
 
   (* Handling of processes *)
 
@@ -1632,7 +1746,7 @@ module Configuration = struct
         merge_private_channels conf.private_channels in_trans.in_skeletons.Labelled_process.private_channels
     | TComm comm_trans ->
         let ch = match trans.in_comm_complete_label with
-          | Label.LComm(_,_,n,_) -> Channel.CPrivate(n,false) (* The false value does not matter as we only use this for equality *)
+          | Label.LComm(_,_,n,_) -> Channel.CPrivate n
           | _ -> Config.internal_error "[session_process.ml >> Configuration.update_private_channels_from_in_comm_transition] We should have found a private channel."
         in
         let priv_ch_list = remove_ch_from_private_channels ch conf.private_channels in
@@ -1671,10 +1785,9 @@ module Configuration = struct
           begin match channel_priority with
             | ChNone ->
                 begin match proper_status, conf.blocks.Block.local_improper_blocks with
-                  | Labelled_process.Proper, _
-                  | _, [] -> fun _ _ _ -> Some ForAll
-                  | _, Label.LComm(lbl,_,_,_) :: _
-                  | _, Label.LStd lbl :: _ -> (fun _ _ lbl' -> if Label.independent lbl' lbl > 0 then Some ForAll else None)
+                  | Labelled_process.Proper, _ -> fun _ _ _ -> Some ForAll
+                  | _, Label.LStd lbl :: _ -> (fun _ ch lbl' -> if Channel.is_public ch && Label.independent lbl' lbl > 0 then Some ForAll else None)
+                  | _ -> Config.internal_error "[session_process.ml >> main_next_focus_phase] Unexpected case (1)"
                 end
             | ChPriority(target_ch,_) ->
                 fun _ ch _ ->
@@ -1686,12 +1799,9 @@ module Configuration = struct
       | Exists ->
           begin match channel_priority with
             | ChNone ->
-                begin match proper_status, conf.blocks.Block.local_improper_blocks with
-                  | Labelled_process.Proper, _
-                  | _, [] -> fun _ _ _ -> Some Exists
-                  | _, Label.LComm(lbl,_,_,_) :: _
-                  | _, Label.LStd lbl :: _ -> (fun _ _ lbl' -> if Label.independent lbl' lbl > 0 then Some Exists else None)
-                end
+                if Labelled_process.Proper = proper_status
+                then fun _ _ _ -> Some Exists
+                else (fun _ ch _ -> if Channel.is_public ch then Some Exists else None)
             | ChOnlyPrivate -> fun _ ch _ -> if Channel.is_public ch then None else Some Exists
             | _ -> Config.internal_error "[session_process.ml >> Configuration.next_input] ChPriority should not be applied with an initial matching_status = Exists."
           end
@@ -1699,29 +1809,30 @@ module Configuration = struct
           begin match channel_priority with
             | ChNone ->
                 begin match proper_status, conf.blocks.Block.local_improper_blocks with
-                  | Labelled_process.Proper, _
-                  | _, [] -> fun m_status _ _ -> Some m_status
-                  | _, Label.LComm(lbl,_,_,_) :: _
-                  | _, Label.LStd lbl :: _ -> (fun m_status _ lbl' -> if Label.independent lbl' lbl > 0 then Some m_status else None)
+                  | Labelled_process.Proper, _ -> fun m_status _ _ -> Some m_status
+                  | _, Label.LStd lbl :: _ ->
+                      (fun m_status ch lbl' ->
+                        if Channel.is_public ch
+                        then
+                          if m_status = Exists
+                          then Some Exists
+                          else if Label.independent lbl' lbl > 0 then Some Both else Some Exists
+                        else None)
+                  | _ -> Config.internal_error "[session_process.ml >> main_next_focus_phase] Unexpected case (3)"
                 end
             | ChPriority(target_ch,false) ->
                 fun m_status ch _ -> if Channel.is_equal target_ch ch then Some m_status else Some Exists
-            | ChPriority(Channel.CPrivate(n_target_ch,_),true) ->
+            | ChPriority(Channel.CPrivate n_target_ch,true) ->
                 begin fun m_status ch _ -> match ch with
                   | Channel.CPublic _ -> None
-                  | Channel.CPrivate(n,_) -> if n == n_target_ch then Some m_status else Some Exists
+                  | Channel.CPrivate n -> if n == n_target_ch then Some m_status else Some Exists
                 end
             | ChPriority _ -> Config.internal_error "[session_process.ml >> Configuration.next_input] A private channel is expected in ChPriority."
             | _ -> Config.internal_error "[session_process.ml >> Configuration.next_input] ChOnlyPrivate should only be applied with an initial matching_status = Exists."
           end
     in
 
-    let is_output_applicable = match proper_status, conf.blocks.Block.local_improper_blocks with
-      | Labelled_process.Proper, _
-      | _, [] -> (fun _ -> true)
-      | _, Label.LComm(lbl,_,_,_)::_
-      | _, Label.LStd lbl :: _ -> (fun lbl' -> Label.independent lbl' lbl > 0)
-    in
+    let is_output_applicable = proper_status = Labelled_process.Proper in
 
     let rec explore_input_processes prev_in_plist in_plist f_cont f_next = match in_plist with
       | [] -> f_next ()
@@ -1767,54 +1878,57 @@ module Configuration = struct
                 ) f_next_2
               ) f_next_1
             else
-              (* Corresponds to an private communication. Thus we need to search for an ouput *)
-              let proc_for_output = Labelled_process.PPar (make_par_processes (List.rev_append prev_in_plist q) p_rest) in
-              next_output in_data.in_data_matching_status is_output_applicable in_data.in_data_channel proc_for_output (fun out_data p_rest_out f_next_2 ->
-                let n = match in_data.in_data_channel with
-                  | Channel.CPrivate(n,_) -> n
-                  | _ -> Config.internal_error "[session_process.ml >> next_input_and_private_comm] Should be a private channel."
-                in
-
-                let complete_label = match out_data.out_data_matching_status, channel_priority with
-                  | (ForAll | Both), ChPriority _ -> Label.create_complete_comm in_data.in_data_label out_data.out_data_label n true
-                  | _ -> Label.create_complete_comm in_data.in_data_label out_data.out_data_label n false
-                in
-
-                Variable.auto_cleanup_with_reset (fun f_next_3 ->
-                  Variable.link_term in_data.in_data_var out_data.out_data_term;
-                  let gather_norm =
-                    {
-                      Labelled_process.original_subst = (in_data.in_data_var,out_data.out_data_term) :: original_subst;
-                      Labelled_process.original_names = original_names;
-                      Labelled_process.disequations = Formula.T.Top
-                    }
+              if is_output_applicable
+              then
+                (* Corresponds to an private communication. Thus we need to search for an ouput *)
+                let proc_for_output = Labelled_process.PPar (make_par_processes (List.rev_append prev_in_plist q) p_rest) in
+                next_output in_data.in_data_matching_status in_data.in_data_channel proc_for_output (fun out_data p_rest_out f_next_2 ->
+                  let n = match in_data.in_data_channel with
+                    | Channel.CPrivate n -> n
+                    | _ -> Config.internal_error "[session_process.ml >> next_input_and_private_comm] Should be a private channel."
                   in
-                  Labelled_process.normalise proper_status in_data.in_data_label gather_norm in_data.in_data_process (fun gather_norm_1 in_gather_skel p_in f_next_4 ->
-                    Labelled_process.normalise proper_status out_data.out_data_label gather_norm_1 out_data.out_data_process (fun gather_norm_2 out_gather_skel p_out f_next_5 ->
-                      let type_transition = TComm
-                        {
-                          comm_in_position = in_data.in_data_position;
-                          comm_out_position = out_data.out_data_position;
-                          comm_in_label = in_data.in_data_label;
-                          comm_out_label = out_data.out_data_label;
-                          comm_in_skeletons = in_gather_skel;
-                          comm_out_skeletons = out_gather_skel
-                        }
-                      in
-                      let transition =
-                        {
-                          in_comm_complete_label = complete_label;
-                          in_comm_type = type_transition;
-                          in_comm_matching_status = out_data.out_data_matching_status;
-                          in_comm_gathering_normalise = gather_norm_2
-                        }
-                      in
-                      let (in_plist_1,out_plist_1) = generate_in_out_list (process_list_of_par p_rest_out) [] [in_gather_skel;out_gather_skel] [p_in;p_out] in
-                      f_cont transition in_plist_1 out_plist_1 None f_next_5
-                    ) f_next_4
-                  ) f_next_3
-                ) f_next_2
-              ) f_next_1
+
+                  let complete_label = match out_data.out_data_matching_status, channel_priority with
+                    | (ForAll | Both), ChPriority _ -> Label.create_complete_comm in_data.in_data_label out_data.out_data_label n true
+                    | _ -> Label.create_complete_comm in_data.in_data_label out_data.out_data_label n false
+                  in
+
+                  Variable.auto_cleanup_with_reset (fun f_next_3 ->
+                    Variable.link_term in_data.in_data_var out_data.out_data_term;
+                    let gather_norm =
+                      {
+                        Labelled_process.original_subst = (in_data.in_data_var,out_data.out_data_term) :: original_subst;
+                        Labelled_process.original_names = original_names;
+                        Labelled_process.disequations = Formula.T.Top
+                      }
+                    in
+                    Labelled_process.normalise proper_status in_data.in_data_label gather_norm in_data.in_data_process (fun gather_norm_1 in_gather_skel p_in f_next_4 ->
+                      Labelled_process.normalise proper_status out_data.out_data_label gather_norm_1 out_data.out_data_process (fun gather_norm_2 out_gather_skel p_out f_next_5 ->
+                        let type_transition = TComm
+                          {
+                            comm_in_position = in_data.in_data_position;
+                            comm_out_position = out_data.out_data_position;
+                            comm_in_label = in_data.in_data_label;
+                            comm_out_label = out_data.out_data_label;
+                            comm_in_skeletons = in_gather_skel;
+                            comm_out_skeletons = out_gather_skel
+                          }
+                        in
+                        let transition =
+                          {
+                            in_comm_complete_label = complete_label;
+                            in_comm_type = type_transition;
+                            in_comm_matching_status = out_data.out_data_matching_status;
+                            in_comm_gathering_normalise = gather_norm_2
+                          }
+                        in
+                        let (in_plist_1,out_plist_1) = generate_in_out_list (process_list_of_par p_rest_out) [] [in_gather_skel;out_gather_skel] [p_in;p_out] in
+                        f_cont transition in_plist_1 out_plist_1 None f_next_5
+                      ) f_next_4
+                    ) f_next_3
+                  ) f_next_2
+                ) f_next_1
+              else f_next_1 ()
           ) (fun () -> explore_input_processes (p::prev_in_plist) q f_cont f_next)
     in
 
@@ -1922,10 +2036,10 @@ module Configuration = struct
             in
             match p' with
               | Labelled_process.PInput(ch,_,_,_,_,_,_) when Channel.is_public ch -> (* We keep the process focused *)
-                  f_continuation transition { conf with focused_proc = Some p' };
+                  f_continuation transition { conf with focused_proc = Some p'; input_and_private_proc = [] };
                   f_next_2 ()
               | _ -> (* We release the process *)
-                  let (in_plist,out_plist) = generate_in_out_list conf.input_and_private_proc [] [gather_skel_1] [p'] in
+                  let (in_plist,out_plist) = generate_in_out_list [] [] [gather_skel_1] [p'] in
                   let private_channels = update_private_channels_from_start_transition conf transition in
                   let conf' =
                     { conf with

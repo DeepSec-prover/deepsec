@@ -22,7 +22,7 @@ module Diseq : sig
 
     (* Display *)
 
-    val display : output -> t -> string
+    val display : ?follow_link:bool -> output -> t -> string
   end
 
   module R : sig
@@ -79,7 +79,7 @@ module Formula : sig
 
     val debug_no_linked_variables : t -> bool
 
-    val display : output -> t -> string
+    val display : ?follow_link:bool -> output -> t -> string
   end
 
   module R : sig
@@ -99,7 +99,7 @@ module Formula : sig
 
     val instantiate_and_normalise_one_variable : recipe_variable -> recipe -> t -> t
 
-    val display : output -> t -> string
+    val display : ?follow_link:bool -> output -> t -> string
   end
 
   module M : sig

@@ -853,22 +853,22 @@ module Term = struct
 
   (********** Display **********)
 
-  let rec display out = function
-    | Var { link = TLink t; _ } -> display out t
+  let rec display ?(follow_link=true) out = function
+    | Var { link = TLink t; _ } when follow_link -> display out t
     | Var v -> Variable.display out v
     | Name n -> Name.display out n
     | Func(f_symb,_) when f_symb.arity = 0 ->
         Printf.sprintf "%s" (Symbol.display out f_symb)
     | Func(f_symb,args) when f_symb.cat = Tuple ->
-        Printf.sprintf "(%s)" (display_list (display out) "," args)
+        Printf.sprintf "(%s)" (display_list (display ~follow_link:follow_link out) "," args)
     | Func(f_symb,args) ->
-        Printf.sprintf "%s(%s)" (Symbol.display out f_symb) (display_list (display out) "," args)
+        Printf.sprintf "%s(%s)" (Symbol.display out f_symb) (display_list (display ~follow_link:follow_link out) "," args)
 
-  let rec display_pattern out = function
-    | PatVar { link = TLink t; _} -> display out t
+  let rec display_pattern ?(follow_link=true) out = function
+    | PatVar { link = TLink t; _} when follow_link -> display ~follow_link:follow_link out t
     | PatVar v -> Variable.display out v
-    | PatEquality t -> display out t
-    | PatTuple(_,args) -> Printf.sprintf "%s%s%s" (langle out) (display_list (display_pattern out) "," args) (rangle out)
+    | PatEquality t -> display ~follow_link:follow_link out t
+    | PatTuple(_,args) -> Printf.sprintf "%s%s%s" (langle out) (display_list (display_pattern ~follow_link:follow_link out) "," args) (rangle out)
 
   (*********** Debug ************)
 
@@ -934,7 +934,8 @@ module Recipe = struct
     else
       let rec explore_recipe = function
         | RVar v when v == var -> true
-        | RVar {link_r = RLink r; _} -> explore_recipe r
+        | RVar {link_r = RLink r; _}
+        | CRFunc(_,r)-> explore_recipe r
         | RVar v when v.type_r > var.type_r -> true
         | Axiom ax when ax > var.type_r -> true
         | RFunc(_,args) -> List.exists explore_recipe args
@@ -1001,15 +1002,15 @@ module Recipe = struct
 
   (********** Display **********)
 
-  let rec display out = function
-    | RVar { link_r = RLink r; _ } -> display out r
+  let rec display ?(follow_link=true) out = function
+    | RVar { link_r = RLink r; _ } when follow_link -> display out r
     | CRFunc(i,r) -> Printf.sprintf "CR[%d,%s]" i (display out r)
     | RVar v -> Recipe_Variable.display out v
     | Axiom ax -> Axiom.display out ax
     | RFunc(f_symb,_) when f_symb.arity = 0 ->
         Printf.sprintf "%s" (Symbol.display out f_symb)
     | RFunc(f_symb,args) when f_symb.cat = Tuple ->
-        Printf.sprintf "(%s)" (display_list (display out) "," args)
+        Printf.sprintf "(%s)" (display_list (display ~follow_link:follow_link out) "," args)
     | RFunc(f_symb,args) ->
-        Printf.sprintf "%s(%s)" (Symbol.display out f_symb) (display_list (display out) "," args)
+        Printf.sprintf "%s(%s)" (Symbol.display out f_symb) (display_list (display ~follow_link:follow_link out) "," args)
 end

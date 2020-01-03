@@ -53,6 +53,14 @@ module List = struct
     in
     explore [] l
 
+  let rec remove_first_n n l =
+    if n = 0
+    then l
+    else
+      match l with
+        | [] -> invalid_arg "List.remove_first_n"
+        | _::q -> remove_first_n (n-1) q
+
   module type OrderedType =
   sig
     type t
@@ -89,7 +97,7 @@ module List = struct
         | [], _ ->
             if not_disjoint
             then raise Not_included
-            else l1
+            else raise Not_found
         | t1::q1, t2::q2 ->
             match Ord.compare t1 t2 with
               | 0 -> explore true q1 q2

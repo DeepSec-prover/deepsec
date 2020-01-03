@@ -136,7 +136,7 @@ module Diseq = struct
 
     (* Display *)
 
-    let display out = function
+    let display ?(follow_link=true) out = function
       | Top -> top out
       | Bot -> bot out
       | Disj diseq_list ->
@@ -144,29 +144,19 @@ module Diseq = struct
 
           let rec find_univ_var = function
             | Var v ->
-                begin match v.link with
-                  | SLink -> ()
-                  | NoLink when v.quantifier = Universal ->
-                      v.link <- SLink;
-                      univ_vars := v :: !univ_vars
-                  | NoLink -> ()
-                  | _ ->Config.internal_error "[formula.ml >> Diseq.T.display] The variables in the disequality should not be linked."
-                end
+                if v.quantifier = Universal && not (List.memq v !univ_vars)
+                then univ_vars := v :: !univ_vars
             | Func(_,args) -> List.iter find_univ_var args
             | Name _ -> ()
           in
 
-          let display_single (v,t) = Printf.sprintf "%s %s %s" (Variable.display out v) (neqs out) (Term.display out t) in
+          let display_single (v,t) = Printf.sprintf "%s %s %s" (Variable.display out v) (neqs out) (Term.display ~follow_link:follow_link out t) in
 
           List.iter (fun (_,t2) -> find_univ_var t2) diseq_list;
 
           if !univ_vars = []
           then Printf.sprintf "%s" (display_list display_single (Printf.sprintf " %s " (vee out)) diseq_list)
-          else
-            begin
-              List.iter (fun v -> v.link <- NoLink) !univ_vars;
-              Printf.sprintf "%s %s.%s" (forall out) (display_list (Variable.display out) "," !univ_vars) (display_list display_single (Printf.sprintf " %s " (vee out)) diseq_list)
-            end
+          else Printf.sprintf "%s %s.%s" (forall out) (display_list (Variable.display out) "," !univ_vars) (display_list display_single (Printf.sprintf " %s " (vee out)) diseq_list)
 
     (* Debug function *)
 
@@ -417,7 +407,7 @@ module Diseq = struct
 
     (* Display *)
 
-    let display out = function
+    let display ?(follow_link=true) out = function
       | Top -> top out
       | Bot -> bot out
       | Disj diseq_list ->
@@ -438,7 +428,7 @@ module Diseq = struct
             | Axiom _ -> ()
           in
 
-          let display_single (v,t) = Printf.sprintf "%s %s %s" (Recipe_Variable.display out v) (neqs out) (Recipe.display out t) in
+          let display_single (v,t) = Printf.sprintf "%s %s %s" (Recipe_Variable.display out v) (neqs out) (Recipe.display ~follow_link:follow_link out t) in
 
           List.iter (fun (_,t2) -> find_univ_var t2) diseq_list;
 
@@ -506,7 +496,6 @@ module Diseq = struct
       | Disj(disj_t,disj_r) -> Disj(List.map (fun (v,t) -> Variable.rename v, Term.rename_and_instantiate t) disj_t, disj_r)
   end
 end
-
 
 module Formula = struct
 
@@ -601,11 +590,11 @@ module Formula = struct
       | Bot -> true
       | Conj conj -> List.for_all Diseq.T.debug_no_linked_variables conj
 
-    let display out = function
+    let display ?(follow_link=true) out = function
       | Top -> top out
       | Bot -> bot out
       | Conj conj ->
-          display_list (Diseq.T.display out) (Display.wedge out) conj
+          display_list (Diseq.T.display ~follow_link:follow_link out) (Display.wedge out) conj
 
   end
 
@@ -666,11 +655,11 @@ module Formula = struct
       );
       intern_instantiate_and_normalise (Diseq.R.instantiate_and_normalise_one_variable x r)
 
-    let display out = function
+    let display ?(follow_link=true) out = function
       | Top -> top out
       | Bot -> bot out
       | Conj conj ->
-          display_list (Diseq.R.display out) (Display.wedge out) conj
+          display_list (Diseq.R.display ~follow_link:follow_link out) (Display.wedge out) conj
   end
 
   module M = struct

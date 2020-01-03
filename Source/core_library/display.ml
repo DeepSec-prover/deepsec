@@ -81,6 +81,17 @@ let create_tab k =
   );
   internal_create_tab k
 
+let display_with_tab n str = (create_tab n) ^ str ^"\n"
+
+let display_object n title data =
+  let str_title = match title with
+    | None -> ""
+    | Some str -> str^": "
+  in
+  (display_with_tab n (str_title^"{"))^
+  (display_list (fun (lbl,str) -> display_with_tab (n+1) (lbl^" = "^str)) "" data)^
+  (display_with_tab n "}")
+
 let mkRuntime rt =
   if rt = 0
   then "< 1s"

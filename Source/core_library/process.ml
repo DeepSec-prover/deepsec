@@ -1207,7 +1207,7 @@ let check_process_for_session proc =
         mark_channels p
     | Output(Name n,_,p,_)
     | Input(Name n,_,p,_) ->
-        Name.link_search n;
+        if n.link_n = NNoLink then Name.link_search n;
         mark_channels p
     | Output(ch,_,_,_) ->
         let err_msg =
@@ -1330,7 +1330,8 @@ let simplify_for_session p =
   );
   let retrieve_trace trans_list =
     Config.debug (fun () ->
-      Config.log_in_debug Config.Process (Printf.sprintf "Input retrieve_trace = %s\n" (display_list display_transition  "; " trans_list))
+      Config.log_in_debug Config.Process (Printf.sprintf "[process.ml >> simplify_for_session] Input retrieve_trace = %s\n" (display_list display_transition  "; " trans_list));
+      Config.log_in_debug Config.Process (Printf.sprintf "[process.ml >> simplify_for_session] Process =\n%s" (display 2 p))
     );
     let result = retrieve_trace (fun x -> x) pos_match_normalised { frame = []; process = p } trans_list in
     Config.debug (fun () ->

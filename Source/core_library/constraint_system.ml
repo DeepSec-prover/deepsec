@@ -729,15 +729,20 @@ module MGS = struct
                         | CRFunc _ -> ()
                         | _ -> Config.internal_error "[constraint_system.ml >> MGS.compute_all] Deducible names should be linked to a context"
                     );
-                    Recipe_Variable.link_recipe x r;
-                    let eq_rec' =
-                      if unif
-                      then Formula.R.instantiate_and_normalise eq_rec
-                      else Formula.R.instantiate_and_normalise_one_variable_constructor x r eq_rec
-                    in
-                    if eq_rec' = Formula.R.Bot
+                    if Recipe.var_occurs_or_strictly_greater_type x r
                     then f_next_1 ()
-                    else apply_rules df' eq_term eq_rec' eq_uni exist_vars f_next_1
+                    else
+                      begin
+                        Recipe_Variable.link_recipe x r;
+                        let eq_rec' =
+                          if unif
+                          then Formula.R.instantiate_and_normalise eq_rec
+                          else Formula.R.instantiate_and_normalise_one_variable_constructor x r eq_rec
+                        in
+                        if eq_rec' = Formula.R.Bot
+                        then f_next_1 ()
+                        else apply_rules df' eq_term eq_rec' eq_uni exist_vars f_next_1
+                      end
                 | Func(f,args) ->
                     (* Compute_all is only used for the rule [sat],
                        in which case incremented knowledge is empty. *)
@@ -908,15 +913,20 @@ module MGS = struct
                 | Name { deducible_n = Some r; _ } ->
                     (* It indicates that the name occurs directly in the knowledge base or
                        the incremented knowledge base. *)
-                    Recipe_Variable.link_recipe x r;
-                    let eq_rec' =
-                      if unif
-                      then Formula.R.instantiate_and_normalise eq_rec
-                      else Formula.R.instantiate_and_normalise_one_variable_constructor x r eq_rec
-                    in
-                    if eq_rec' = Formula.R.Bot
+                    if Recipe.var_occurs_or_strictly_greater_type x r
                     then f_next_1 ()
-                    else apply_rules df' eq_term eq_rec' eq_uni exist_vars f_next_1
+                    else
+                      begin
+                        Recipe_Variable.link_recipe x r;
+                        let eq_rec' =
+                          if unif
+                          then Formula.R.instantiate_and_normalise eq_rec
+                          else Formula.R.instantiate_and_normalise_one_variable_constructor x r eq_rec
+                        in
+                        if eq_rec' = Formula.R.Bot
+                        then f_next_1 ()
+                        else apply_rules df' eq_term eq_rec' eq_uni exist_vars f_next_1
+                      end
                 | Func(f,args) ->
                     (* Compute_all is only used for the rule [sat],
                        in which case incremented knowledge is empty. *)
@@ -1102,26 +1112,32 @@ module MGS = struct
                 | Name { deducible_n = Some r; _ } ->
                     (* It indicates that the name occurs directly in the knowledge base or
                        the incremented knowledge base. *)
-                    Recipe_Variable.link_recipe x r;
-                    let eq_rec' =
-                      if unif
-                      then Formula.R.instantiate_and_normalise eq_rec
-                      else
-                        if x.type_r = Recipe_Variable.infinite_type
-                        then eq_rec
-                        else Formula.R.instantiate_and_normalise_one_variable_constructor x r eq_rec
-                    in
-                    if eq_rec' = Formula.R.Bot
+
+                    if Recipe.var_occurs_or_strictly_greater_type x r
                     then f_next_1 ()
                     else
-                      let eq_skel' =
-                        if unif
-                        then Formula.M.instantiate_and_normalise eq_skel
-                        else Formula.M.instantiate_and_normalise_one_variable_constructor x r eq_skel
-                      in
-                      if eq_skel' = Formula.M.Bot
-                      then f_next_1 ()
-                      else apply_rules df' eq_term eq_rec' eq_uni eq_skel' exist_vars f_next_1
+                      begin
+                        Recipe_Variable.link_recipe x r;
+                        let eq_rec' =
+                          if unif
+                          then Formula.R.instantiate_and_normalise eq_rec
+                          else
+                            if x.type_r = Recipe_Variable.infinite_type
+                            then eq_rec
+                            else Formula.R.instantiate_and_normalise_one_variable_constructor x r eq_rec
+                        in
+                        if eq_rec' = Formula.R.Bot
+                        then f_next_1 ()
+                        else
+                          let eq_skel' =
+                            if unif
+                            then Formula.M.instantiate_and_normalise eq_skel
+                            else Formula.M.instantiate_and_normalise_one_variable_constructor x r eq_skel
+                          in
+                          if eq_skel' = Formula.M.Bot
+                          then f_next_1 ()
+                          else apply_rules df' eq_term eq_rec' eq_uni eq_skel' exist_vars f_next_1
+                      end
                 | Func(f,args) ->
                     (* Compute_all is only used for the rule [sat],
                        in which case incremented knowledge is empty. *)

@@ -360,9 +360,9 @@ module Term : sig
 
   (** {3 Display} *)
 
-  val display : Display.output -> term -> string
+  val display : ?follow_link:bool -> Display.output -> term -> string
 
-  val display_pattern : Display.output -> pattern -> string
+  val display_pattern : ?follow_link:bool -> Display.output -> pattern -> string
 
   (** {3 Debug} *)
 
@@ -406,6 +406,8 @@ module Recipe : sig
 
   exception Not_unifiable
 
+  val var_occurs_or_strictly_greater_type : recipe_variable -> recipe -> bool
+
   (** [unify r1 r2] unifies the recipes [r1] and [r2]. The function likes the variables with [RLink].
       @raise Not_unifiable when [r1] and [r2] are not unifiable. *)
   val unify : recipe -> recipe -> unit
@@ -414,5 +416,5 @@ module Recipe : sig
 
   val matching : recipe -> recipe -> unit
 
-  val display : Display.output -> recipe -> string
+  val display : ?follow_link:bool -> Display.output -> recipe -> string
 end

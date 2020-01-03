@@ -23,6 +23,7 @@ type log_level =
   | Constraint_systems
   | Process
   | Distribution
+  | Debug
 
 val log_level_to_print : log_level list ref
 
