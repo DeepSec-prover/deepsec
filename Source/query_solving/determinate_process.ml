@@ -1293,7 +1293,10 @@ let rec is_faulty_block block = function
         | -1 ->
             b_i.minimal_axiom = 0 ||
             (block.maximal_var < b_i.minimal_axiom && all_axiom_excluded b_i.minimal_axiom b_i.maximal_axiom  block.used_axioms)
-        | 1 -> is_faulty_block block q
+        | 1 ->
+            (b_i.minimal_axiom = 0 ||
+            (block.maximal_var < b_i.minimal_axiom && all_axiom_excluded b_i.minimal_axiom b_i.maximal_axiom  block.used_axioms)) &&
+            is_faulty_block block q
         | _ -> false
       end
 
