@@ -1,0 +1,16 @@
+free c.
+free d [private].
+const ok,boom.
+
+let A = out(d,ok) | (in(d,x); out(c,ok)).
+let B = out(d,ok) | (in(d,x); out(c,boom)).
+
+let C = in(d,x) | (out(d,ok); out(c,ok)).
+let D = in(d,x) | (out(d,ok); out(c,boom)).
+
+let E = (in(d,x); out(c,ok)) | (out(d,ok); out(c,ok)).
+let F = (in(d,x); out(c,ok)) | (out(d,ok); out(c,boom)).
+
+query session_equiv(A,B). // attack found
+query session_equiv(C,D). // equivalent? wut?
+query session_equiv(E,F). // and attack found again. Problem of improper blocks?

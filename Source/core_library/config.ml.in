@@ -50,7 +50,7 @@ type log_level =
   | Distribution
   | Debug
 
-let log_level_to_print = ref [Always;Distribution;Process;Debug]
+let log_level_to_print = ref [Always;Distribution;Debug]
 
 let log_in_debug log_level s =
   if List.mem log_level !log_level_to_print

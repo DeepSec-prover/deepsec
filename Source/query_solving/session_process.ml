@@ -263,7 +263,7 @@ module Block = struct
   (** [update_recipes_in_general_block gen_block] update all the blocks in [gen_block]
       by instantiating the variables and gathering the remaning variables and axioms.
       This function should only be applied after constraints resolution. *)
-  let update_recipes_in_general_block is_pos_next_phase gen_block =
+  let update_recipes_in_general_block gen_block =
     let was_modified = ref false in
     let ground_index = ref gen_block.ground_index in
 
@@ -293,14 +293,14 @@ module Block = struct
 
     let (recipe_blocks',_) = explore_blocks (gen_block.number_blocks-1) gen_block.recipe_blocks in
     let (current_recipe_block',cur_was_modified) =
-      if is_pos_next_phase
-      then gen_block.current_recipe_block, false
-      else
+      if gen_block.current_block_sure_proper
+      then
         match gen_block.current_recipe_block with
         | None -> None, false
         | Some c_block ->
             let (c_block',_,was_modified') = update_recipe c_block in
             Some c_block', was_modified'
+      else gen_block.current_recipe_block, false
     in
 
     { gen_block with
@@ -316,7 +316,7 @@ module Block = struct
   (*** Test for partial reduction ***)
 
   let rec one_axiom_included (min_ax:int) max_ax = function
-    | [] -> true
+    | [] -> false
     | ax :: q -> (ax <= max_ax) && (ax >= min_ax || one_axiom_included min_ax max_ax q)
 
   (* We assume that the second and third argument are sorted *)

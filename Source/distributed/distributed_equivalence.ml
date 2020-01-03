@@ -309,7 +309,9 @@ struct
       done;
 
       evaluate_jobs !current_nb_jobs !current_jobs
-    with Completed_execution result -> result
+    with Completed_execution result ->
+      Config.log Config.Debug (fun () -> "Number of session node = "^(string_of_int !Session_equivalence.nb_equiv_problem));
+      result
 end
 
 module Distribution = Distrib.Distrib(EquivJob)

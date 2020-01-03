@@ -343,6 +343,69 @@ let display_matching_status = function
   | Configuration.Exists -> "Exists"
   | Configuration.Both -> "Both"
 
+let display_constraint_system_set csys_set =
+  display_list (fun csys ->
+    display_object 2 (Some "Symbolic Csys") [
+      "origin", string_of_bool csys.Constraint_system.additional_data.origin;
+      "configuration", Configuration.display 3 csys.Constraint_system.additional_data.configuration;
+      "trace", display_list Process.display_transition "." csys.Constraint_system.additional_data.trace;
+      "constraint_system", Constraint_system.display_constraint_system csys;
+      "matching_status", display_matching_status csys.Constraint_system.additional_data.matching_status
+    ]
+  ) "" csys_set.Constraint_system.set
+
+let display_forall_set forall_set =
+  let csys_ref = ref [] in
+  let counter = ref 1 in
+
+  let add_csys csys =
+    if not (List.mem_assq csys !csys_ref)
+    then
+      begin
+        csys_ref := (csys,!counter)::!csys_ref;
+        incr counter
+      end
+  in
+
+  List.iter (fun csys ->
+    add_csys csys;
+    List.iter (fun (csys',_) -> add_csys csys') csys.Constraint_system.additional_data.exists_matched
+  ) forall_set;
+
+  let str = ref "" in
+  str := !str^"Forall set\n";
+
+  str := !str^(display_with_tab 1 "Matching = ");
+
+  List.iter (fun f_csys ->
+    let f_i = List.assq f_csys !csys_ref in
+    str := !str ^ display_with_tab 2 (Printf.sprintf "Forall %d -> " f_i);
+    List.iter (fun (e_csys,bset) ->
+      let e_i = List.assq e_csys !csys_ref in
+      str := !str ^ display_with_tab 3 (Printf.sprintf "Exists %d with bset = %s" e_i (Bijection_set.display bset));
+    ) f_csys.Constraint_system.additional_data.exists_matched
+  ) forall_set;
+
+  (*** Display the constraint system ***)
+
+  str := !str^(display_with_tab 1 "All the constraint systems with configuration = ");
+
+  List.iter (fun (csys,i) ->
+    let csys_str =
+      display_object 2 (Some "Symbolic Csys") [
+        "Identifier", string_of_int i;
+        "origin", string_of_bool csys.Constraint_system.additional_data.origin;
+        "configuration", Configuration.display 3 csys.Constraint_system.additional_data.configuration;
+        "trace", display_list Process.display_transition "." csys.Constraint_system.additional_data.trace;
+        "constraint_system", Constraint_system.display_constraint_system csys;
+        "matching_status", display_matching_status csys.Constraint_system.additional_data.matching_status
+      ]
+    in
+    str := !str ^ csys_str
+  ) !csys_ref;
+
+  !str
+
 let display_equivalence_problem equiv_pbl =
 
   let csys_ref = ref [] in
@@ -380,7 +443,7 @@ let display_equivalence_problem equiv_pbl =
     ) f_csys.Constraint_system.additional_data.exists_matched
   ) equiv_pbl.forall_set;
 
-  (** Display the constraint system **)
+  (*** Display the constraint system ***)
 
   str := !str^(display_with_tab 1 "All the constraint systems with configuration = ");
 
@@ -399,6 +462,117 @@ let display_equivalence_problem equiv_pbl =
   ) !csys_ref;
 
   !str
+
+(** Linking symbolic configuration **)
+
+let linked_symbolic_configuration = ref []
+
+let auto_cleanup_symbolic_configuration f =
+  Config.debug (fun () ->
+    if !linked_symbolic_configuration <> []
+    then Config.internal_error "[session_equivalence.ml >> auto_cleanup_symbolic_configuration] No configuration should be linked."
+  );
+  let r = f () in
+  List.iter (fun symb -> symb.link_c <- CNoLink) !linked_symbolic_configuration;
+  linked_symbolic_configuration := [];
+  r
+
+let link_symbolic_configuration symb link =
+  Config.debug (fun () ->
+    if symb.link_c <> CNoLink
+    then Config.internal_error "[session_equivalence.ml >> link_symbolic_configuration] The symbolic configuration is already linked."
+  );
+  symb.link_c <- link;
+  linked_symbolic_configuration := symb :: !linked_symbolic_configuration
+
+let link_constraint_systems csys_solved =
+  List.iter (fun csys ->
+    let symb_conf = csys.Constraint_system.additional_data in
+    let symb_conf' =
+      { symb_conf with
+        forall_matched = [];
+        exists_matched = [];
+        link_c = CNoLink
+      }
+    in
+    let csys' = { csys with Constraint_system.additional_data = symb_conf' } in
+    link_symbolic_configuration symb_conf (CCsys csys')
+  ) csys_solved.Constraint_system.set
+
+(** Debug checking **)
+
+type select_trace =
+  | SIn of position
+  | SOut of position
+
+let select_specified_trace equiv_pbl =
+  let selected_trace =
+    [
+      SOut((100,[3]));
+      SOut((100,[2]));
+      SOut((100,[1]));
+      SIn((83,[3]));
+      SOut((92,[3]));
+      SIn((83,[2]));
+      SOut((92,[2]));
+      SIn((94,[3]));
+      SOut((98,[3]));
+      SIn((94,[1]));
+      SOut((98,[1]));
+      SIn((83,[1]));
+      SOut((92,[1]));
+      SIn((94,[2]));
+      SOut((98,[2]))
+    ]
+  in
+  let rec select_specified_trace target_trace_list trace_list = match target_trace_list, trace_list with
+    | [], _ -> true
+    | SIn pos :: qtt, AInput(_,_,pos') :: qt
+    | SOut pos :: qtt, AOutput(_,pos') :: qt when pos = pos' -> select_specified_trace qtt qt
+    | _ -> false
+  in
+  List.exists (fun csys ->
+    select_specified_trace selected_trace (List.rev csys.Constraint_system.additional_data.trace)
+  ) equiv_pbl.forall_set
+
+(** Check that the forall_matched and exists_matched are properly formed *)
+let debug_forall_exists_matched msg forall_set =
+
+  let rec check_on_csys csys =
+    let symb_conf = csys.Constraint_system.additional_data in
+    match symb_conf.link_c with
+      | CSearch -> ()
+      | CNoLink ->
+          link_symbolic_configuration symb_conf CSearch;
+          if symb_conf.exists_matched <> [] && List.for_all (fun csys' -> csys != csys') forall_set
+          then Config.internal_error (msg^": All constraint system with existential matching should occur in forall_set.");
+          List.iter (fun (e_csys,_) ->
+            check_on_csys e_csys;
+            if List.for_all (fun f_csys' -> f_csys' != csys) e_csys.Constraint_system.additional_data.forall_matched
+            then Config.internal_error (msg^": A constraint system csys1 has a csys2 in its exists_matched but csys2 does not have csys1 in its forall_matched.");
+          ) symb_conf.exists_matched;
+
+          List.iter (fun f_csys' ->
+            check_on_csys f_csys';
+            if List.for_all (fun f_csys'' -> f_csys'' != f_csys') forall_set
+            then Config.internal_error (msg^": All constraint system occuring in a forall_matched field should appear in the forall_set.");
+            if List.for_all (fun (e_csys,_) -> csys != e_csys) f_csys'.Constraint_system.additional_data.exists_matched
+            then Config.internal_error (msg^": A constraint system csys1 has a csys2 in its forall_matched but csys2 does not have csys1 in its exists_matched.")
+          ) symb_conf.forall_matched
+    | _ -> Config.internal_error (msg^": The constraint systems should not have been linked.")
+  in
+
+  auto_cleanup_symbolic_configuration (fun () ->
+    List.iter (fun f_csys ->
+      let symb_conf = f_csys.Constraint_system.additional_data in
+      if symb_conf.matching_status = Configuration.Exists
+      then Config.internal_error (msg^": Constraint system in forall_set should not have Exists as matching status.");
+      check_on_csys f_csys
+    ) forall_set
+  )
+
+let debug_equivalence_problem msg equiv_pbl =
+  debug_forall_exists_matched msg equiv_pbl.forall_set
 
 (** Initialisation **)
 
@@ -554,48 +728,14 @@ let add_axiom_in_blocks blocks csys_set =
   let type_max = Data_structure.IK.get_max_type_recipe csys.Constraint_system.knowledge csys.Constraint_system.incremented_knowledge in
   Block.add_axiom_after_constraint_solving type_max blocks
 
-(** Linking symbolic configuration **)
-
-let linked_symbolic_configuration = ref []
-
-let auto_cleanup_symbolic_configuration f =
-  Config.debug (fun () ->
-    if !linked_symbolic_configuration <> []
-    then Config.internal_error "[session_equivalence.ml >> auto_cleanup_symbolic_configuration] No configuration should be linked."
-  );
-  let r = f () in
-  List.iter (fun symb -> symb.link_c <- CNoLink) !linked_symbolic_configuration;
-  linked_symbolic_configuration := [];
-  r
-
-let link_symbolic_configuration symb link =
-  Config.debug (fun () ->
-    if symb.link_c <> CNoLink
-    then Config.internal_error "[session_equivalence.ml >> link_symbolic_configuration] The symbolic configuration is already linked."
-  );
-  symb.link_c <- link;
-  linked_symbolic_configuration := symb :: !linked_symbolic_configuration
-
-let link_constraint_systems csys_solved =
-  List.iter (fun csys ->
-    let symb_conf = csys.Constraint_system.additional_data in
-    let symb_conf' =
-      { symb_conf with
-        forall_matched = [];
-        exists_matched = [];
-        link_c = CNoLink
-      }
-    in
-    let csys' = { csys with Constraint_system.additional_data = symb_conf' } in
-    link_symbolic_configuration symb_conf (CCsys csys')
-  ) csys_solved.Constraint_system.set
+(** Cleaning constraint systems **)
 
 let generate_matching_status forall_matched exists_match = match forall_matched, exists_match with
   | [],_ -> Configuration.ForAll
   | _,[] -> Configuration.Exists
   | _ -> Configuration.Both
 
-let instantiate_clean_generate_forall_set current_to_check was_modified last_ground_index general_blocks csys_solved =
+(*let instantiate_clean_generate_forall_set current_to_check was_modified last_ground_index general_blocks csys_solved =
   List.fold_left (fun acc old_csys -> match old_csys.Constraint_system.additional_data.link_c with
     | CCsys new_csys ->
         let new_symb_conf = new_csys.Constraint_system.additional_data in
@@ -640,6 +780,63 @@ let instantiate_clean_generate_forall_set current_to_check was_modified last_gro
         else new_csys::acc
     | _ -> Config.internal_error "[session_equivalence.ml >> instantiate_clean_generate_forall_set] All constraint system should be linked."
   ) [] csys_solved.Constraint_system.set
+*)
+let instantiate_clean_generate_forall_set current_to_check was_modified last_ground_index general_blocks csys_solved =
+  let forall_set_1 =
+    List.fold_left (fun acc old_csys -> match old_csys.Constraint_system.additional_data.link_c with
+      | CCsys new_csys ->
+          let new_symb_conf = new_csys.Constraint_system.additional_data in
+          let old_symb_conf = old_csys.Constraint_system.additional_data in
+
+          begin if old_symb_conf.exists_matched <> [] && Block.is_authorised current_to_check was_modified last_ground_index general_blocks new_symb_conf.configuration.Configuration.blocks
+          then
+              begin
+                (* Must find forall *)
+                let new_exists_matched_1 =
+                  List.fold_left (fun acc' (old_csys',bset) -> match old_csys'.Constraint_system.additional_data.link_c with
+                    | CCsys new_csys' -> (new_csys',bset)::acc'
+                    | _ -> acc'
+                  ) [] old_symb_conf.exists_matched
+                in
+                if new_exists_matched_1 = []
+                then raise (Not_Session_Equivalent (generate_attack_trace new_csys));
+                new_symb_conf.exists_matched <- new_exists_matched_1;
+              end
+          end;
+
+          if new_symb_conf.exists_matched = []
+          then acc
+          else new_csys::acc
+      | _ -> Config.internal_error "[session_equivalence.ml >> instantiate_clean_generate_forall_set] All constraint system should be linked."
+    ) [] csys_solved.Constraint_system.set
+  in
+
+  List.iter (fun old_csys -> match old_csys.Constraint_system.additional_data.link_c with
+    | CCsys new_csys ->
+        let new_symb_conf = new_csys.Constraint_system.additional_data in
+        let old_symb_conf = old_csys.Constraint_system.additional_data in
+        let new_forall_matched =
+          List.fold_left (fun acc' old_csys' -> match old_csys'.Constraint_system.additional_data.link_c with
+            | CCsys new_csys' ->
+                if new_csys'.Constraint_system.additional_data.exists_matched = []
+                then acc'
+                else
+                  begin
+                    Config.debug (fun () ->
+                      if List.for_all (fun (csys,_) -> csys != new_csys) new_csys'.Constraint_system.additional_data.exists_matched
+                      then Config.internal_error "[session_equivalence.ml >> instantiate_clean_generate_forall_set] If new_csys has not been downgraded by Block.is_authorised then the constraint system should occur."
+                    );
+                    new_csys'::acc'
+                  end
+            | _ -> acc'
+          ) [] old_symb_conf.forall_matched
+        in
+        new_symb_conf.forall_matched <- new_forall_matched;
+        new_symb_conf.matching_status <- generate_matching_status new_forall_matched new_symb_conf.exists_matched
+    | _ -> Config.internal_error "[session_equivalence.ml >> instantiate_clean_generate_forall_set] All constraint system should be linked (2)."
+  ) csys_solved.Constraint_system.set;
+
+  forall_set_1
 
 (** Computing channel priority **)
 
@@ -703,9 +900,6 @@ let is_proper_block_start_phase start_trans =
 let get_improper_inputs symb = match symb.link_c with
   | CNoLink ->
       let (imp_data, conf) = Configuration.get_improper_inputs symb.configuration in
-      Config.log Config.Process (fun () ->
-        "[session_equivalence.ml >> get_improper_inputs] "^(Configuration.display_improper_data 1 imp_data)
-      );
       let old_conf = symb.configuration in
       symb.configuration <- conf;
       link_symbolic_configuration symb (CImproperInputs(imp_data,old_conf));
@@ -749,6 +943,33 @@ let compute_before_focus_phase equiv_pbl =
     linked_symbolic_configuration := [];
     List.iter (fun (symb,exists_matched) -> symb.exists_matched <- exists_matched) !record_improper_conf
 
+(** Generate the transition and matching **)
+
+let generate_transitions_and_forall_set generate_transitions get_resulting_transition forall_set =
+  let forall_set_1 = ref [] in
+
+  List.iter (fun forall_csys ->
+    let gen_forall_transitions = generate_transitions forall_csys in
+    iter_forall_both (fun forall_csys_1 ->
+      let forall_trans = get_resulting_transition forall_csys_1.Constraint_system.additional_data.transition_data in
+      List.iter (fun (exists_csys,bset) ->
+        let generate_bset = Bijection_set.generate_in_comm forall_trans bset in
+        let gen_exists_transitions = generate_transitions exists_csys in
+        iter_exists_both (fun exists_csys_1 ->
+          let exists_trans = get_resulting_transition exists_csys_1.Constraint_system.additional_data.transition_data in
+          match generate_bset exists_trans with
+            | None -> ()
+            | Some bset1 ->
+                exists_csys_1.Constraint_system.additional_data.forall_matched <- forall_csys_1 :: exists_csys_1.Constraint_system.additional_data.forall_matched;
+                forall_csys_1.Constraint_system.additional_data.exists_matched <- (exists_csys_1,bset1) :: forall_csys_1.Constraint_system.additional_data.exists_matched
+        ) gen_exists_transitions;
+      ) forall_csys.Constraint_system.additional_data.exists_matched;
+      forall_set_1 := forall_csys_1 :: !forall_set_1
+    ) gen_forall_transitions
+  ) forall_set;
+
+  !forall_set_1
+
 (** Application of transitions **)
 
 let apply_neg_phase equiv_pbl f_continuation f_next =
@@ -759,8 +980,10 @@ let apply_neg_phase equiv_pbl f_continuation f_next =
     then Config.internal_error "[session_equivalence.ml >> apply_neg_phase] The function should only be applied when there are public channels.";
     if !linked_symbolic_configuration <> []
     then Config.internal_error "[session_equivalence.ml >> apply_neg_phase] No symbolic configuration should be linked.";
+    debug_equivalence_problem "[session_equivalence.ml >> apply_neg_phase]" equiv_pbl;
 
-    Config.log_in_debug Config.Process "[session_equivalence.ml] Apply neg phase"
+    if select_specified_trace equiv_pbl
+    then Config.log_in_debug Config.Process "[session_equivalence.ml] Apply neg phase"
   );
 
   let is_in_improper_phase = equiv_pbl.general_blocks.Block.current_recipe_block = None in
@@ -842,16 +1065,14 @@ let apply_neg_phase equiv_pbl f_continuation f_next =
   auto_cleanup_symbolic_configuration (fun () ->
     List.iter (fun forall_csys ->
       let gen_forall_transitions = generate_transitions forall_csys in
-      List.iter (fun (exists_csys,bset) ->
-        let gen_exists_transitions = generate_transitions exists_csys in
-
-        (* Generate the matching *)
-        iter_forall_both (fun forall_csys_1 ->
-          let forall_trans = match forall_csys_1.Constraint_system.additional_data.transition_data with
-            | TransOutput trans -> trans
-            | _ -> Config.internal_error "[session_equivalence.ml >> apply_public_out] Expecting an output transition."
-          in
+      iter_forall_both (fun forall_csys_1 ->
+        let forall_trans = match forall_csys_1.Constraint_system.additional_data.transition_data with
+          | TransOutput trans -> trans
+          | _ -> Config.internal_error "[session_equivalence.ml >> apply_public_out] Expecting an output transition."
+        in
+        List.iter (fun (exists_csys,bset) ->
           let generate_bset = Bijection_set.generate forall_trans.Configuration.out_label forall_trans.Configuration.out_skeletons bset in
+          let gen_exists_transitions = generate_transitions exists_csys in
           iter_exists_both (fun exists_csys_1 ->
             let exists_trans = match exists_csys_1.Constraint_system.additional_data.transition_data with
               | TransOutput trans -> trans
@@ -863,9 +1084,9 @@ let apply_neg_phase equiv_pbl f_continuation f_next =
                   exists_csys_1.Constraint_system.additional_data.forall_matched <- forall_csys_1 :: exists_csys_1.Constraint_system.additional_data.forall_matched;
                   forall_csys_1.Constraint_system.additional_data.exists_matched <- (exists_csys_1,bset1) :: forall_csys_1.Constraint_system.additional_data.exists_matched
           ) gen_exists_transitions;
-          forall_set_1 := forall_csys_1 :: !forall_set_1
-        ) gen_forall_transitions
-      ) forall_csys.Constraint_system.additional_data.exists_matched;
+        ) forall_csys.Constraint_system.additional_data.exists_matched;
+        forall_set_1 := forall_csys_1 :: !forall_set_1
+      ) gen_forall_transitions
     ) equiv_pbl.forall_set;
   );
 
@@ -908,7 +1129,7 @@ let apply_neg_phase equiv_pbl f_continuation f_next =
             | Some general_blocks_2 ->
                 (* We update the recipes of general blocks *)
                 let last_ground_index = general_blocks_2.Block.ground_index in
-                let (general_blocks_3,was_modified,cur_was_modified) = Block.update_recipes_in_general_block false general_blocks_2 in
+                let (general_blocks_3,was_modified,cur_was_modified) = Block.update_recipes_in_general_block general_blocks_2 in
                 let current_to_check = not is_in_improper_phase && cur_was_modified in
 
                 (* We remove the constraint systems that are not authorised and
@@ -946,6 +1167,7 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
     then Config.internal_error "[session_equivalence.ml >> apply_focus_phase] The function should only be applied when there are no public channels.";
     if !linked_symbolic_configuration <> []
     then Config.internal_error "[session_equivalence.ml >> apply_focus_phase] No symbolic configuration should be linked.";
+    debug_equivalence_problem "[session_equivalence.ml >> apply_focus_phase]" equiv_pbl;
 
     Config.log_in_debug Config.Process "[session_equivalence.ml] Apply focus phase"
   );
@@ -1094,16 +1316,14 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
 
     List.iter (fun forall_csys ->
       let gen_forall_transitions = generate_transitions forall_csys in
-      List.iter (fun (exists_csys,bset) ->
-        let gen_exists_transitions = generate_transitions exists_csys in
-
-        (* Generate the matching *)
-        iter_forall_both (fun forall_csys_1 ->
-          let forall_trans = match forall_csys_1.Constraint_system.additional_data.transition_data with
-            | TransInComm trans -> trans
-            | _ -> Config.internal_error "[session_equivalence.ml >> apply_focus_phase] Expecting an in/comm transition."
-          in
+      iter_forall_both (fun forall_csys_1 ->
+        let forall_trans = match forall_csys_1.Constraint_system.additional_data.transition_data with
+          | TransInComm trans -> trans
+          | _ -> Config.internal_error "[session_equivalence.ml >> apply_focus_phase] Expecting an in/comm transition."
+        in
+        List.iter (fun (exists_csys,bset) ->
           let generate_bset = Bijection_set.generate_in_comm forall_trans bset in
+          let gen_exists_transitions = generate_transitions exists_csys in
           iter_exists_both (fun exists_csys_1 ->
             let exists_trans = match exists_csys_1.Constraint_system.additional_data.transition_data with
               | TransInComm trans -> trans
@@ -1115,20 +1335,26 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
                   exists_csys_1.Constraint_system.additional_data.forall_matched <- forall_csys_1 :: exists_csys_1.Constraint_system.additional_data.forall_matched;
                   forall_csys_1.Constraint_system.additional_data.exists_matched <- (exists_csys_1,bset1) :: forall_csys_1.Constraint_system.additional_data.exists_matched
           ) gen_exists_transitions;
-          forall_set_1 := forall_csys_1 :: !forall_set_1
-        ) gen_forall_transitions
-      ) forall_csys.Constraint_system.additional_data.exists_matched;
+        ) forall_csys.Constraint_system.additional_data.exists_matched;
+        forall_set_1 := forall_csys_1 :: !forall_set_1
+      ) gen_forall_transitions
     ) equiv_pbl.forall_set;
   );
 
-  Config.log Config.Process (fun () -> "[session_equivalence.ml] Transition generated");
+  Config.debug (fun () ->
+    debug_forall_exists_matched "[session_equivalence.ml >> apply_focus_phase >> After transition generated]" !forall_set_1;
+  );
 
   (* Apply the first split *)
 
   split_forall_set !forall_set_1 (fun forall_set_2 csys_to_solve f_next_1 ->
     (* We first calculate the new public_output_channels and we check if we can determine whether
        the current block is surely proper. *)
-    let (public_output_channels,general_blocks_1,is_pos_next_phase) =
+     Config.debug (fun () ->
+       debug_forall_exists_matched "[session_equivalence.ml >> apply_focus_phase >> After first split]" forall_set_2;
+     );
+
+    let (public_output_channels,general_blocks_1) =
       let csys = List.hd forall_set_2 in
       match csys.Constraint_system.additional_data.transition_data with
         | TransInComm { Configuration.in_comm_type = Configuration.TInput in_trans; _ } ->
@@ -1142,7 +1368,7 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
             in
 
             let pub_output = Configuration.update_public_output_channel_in_transition in_trans equiv_pbl.public_output_channels in
-            (pub_output,general_blocks,csys.Constraint_system.additional_data.configuration.Configuration.focused_proc <> None)
+            (pub_output,general_blocks)
         | TransInComm { Configuration.in_comm_type = Configuration.TComm comm_trans; _ } ->
             let general_blocks =
               if is_in_improper_phase
@@ -1151,7 +1377,7 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
             in
 
             let pub_output = Configuration.update_public_output_channel_comm_transition comm_trans equiv_pbl.public_output_channels in
-            (pub_output,general_blocks,false)
+            (pub_output,general_blocks)
         | _ -> Config.internal_error "[session_equivalence.ml >> apply_focus_phase] In/comm transition is expected."
     in
 
@@ -1161,13 +1387,7 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
         Constraint_system.set = csys_to_solve
       }
     in
-    Config.log Config.Debug (fun () ->
-      "[session_equivalence.ml >> apply_focus_phase] Before solving\n"^
-      (display_list (fun csys ->
-        "trace = "^(display_list Process.display_transition "." csys.Constraint_system.additional_data.trace)^"\n"^
-        Constraint_system.display_constraint_system csys
-      ) "\n" csys_set.Constraint_system.set)
-    );
+
     Constraint_system.Rule.apply_rules_after_input false (fun csys_solved_1 f_next_2 ->
       if csys_solved_1.Constraint_system.set = []
       then f_next_2 ()
@@ -1175,8 +1395,8 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
         Constraint_system.Rule.instantiate_useless_deduction_facts (fun csys_solved_2 f_next_3 ->
           (* We update the recipes of general blocks *)
           let last_ground_index = general_blocks_1.Block.ground_index in
-          let (general_blocks_2,was_modified,_) = Block.update_recipes_in_general_block is_pos_next_phase general_blocks_1 in
-          let current_to_check = not is_in_improper_phase && not is_pos_next_phase in
+          let (general_blocks_2,was_modified,cur_was_modified) = Block.update_recipes_in_general_block general_blocks_1 in
+          let current_to_check = not is_in_improper_phase && cur_was_modified in
 
           (* We remove the constraint systems that are not authorised and
              we link the authorised one with fresh copy *)
@@ -1187,7 +1407,15 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
             )
           in
 
+          Config.debug (fun () ->
+            debug_forall_exists_matched "[session_equivalence.ml >> apply_focus_phase >> After cleaning]" forall_set_3;
+          );
+
           split_forall_set forall_set_3 (fun forall_set_4 _ f_next_4 ->
+            Config.debug (fun () ->
+              debug_forall_exists_matched "[session_equivalence.ml >> apply_focus_phase >> After second split]" forall_set_4;
+            );
+
             let equiv_pbl_1 =
               { equiv_pbl with
                 forall_set = forall_set_4;
@@ -1210,6 +1438,7 @@ let apply_pos_phase equiv_pbl f_continuation f_next =
     then Config.internal_error "[session_equivalence.ml >> apply_pos_phase] The function should only be applied when there are no public channels.";
     if !linked_symbolic_configuration <> []
     then Config.internal_error "[session_equivalence.ml >> apply_pos_phase] No symbolic configuration should be linked.";
+    debug_equivalence_problem "[session_equivalence.ml >> apply_pos_phase]" equiv_pbl;
 
     Config.log_in_debug Config.Process "[session_equivalence.ml] Apply Pos Phase"
   );
@@ -1299,16 +1528,14 @@ let apply_pos_phase equiv_pbl f_continuation f_next =
   auto_cleanup_symbolic_configuration (fun () ->
     List.iter (fun forall_csys ->
       let gen_forall_transitions = generate_transitions forall_csys in
-      List.iter (fun (exists_csys,bset) ->
-        let gen_exists_transitions = generate_transitions exists_csys in
-
-        (* Generate the matching *)
-        iter_forall_both (fun forall_csys_1 ->
-          let forall_trans = match forall_csys_1.Constraint_system.additional_data.transition_data with
-            | TransInComm trans -> trans
-            | _ -> Config.internal_error "[session_equivalence.ml >> apply_pos_phase] Expecting an in/comm transition."
-          in
+      iter_forall_both (fun forall_csys_1 ->
+        let forall_trans = match forall_csys_1.Constraint_system.additional_data.transition_data with
+          | TransInComm trans -> trans
+          | _ -> Config.internal_error "[session_equivalence.ml >> apply_pos_phase] Expecting an in/comm transition."
+        in
+        List.iter (fun (exists_csys,bset) ->
           let generate_bset = Bijection_set.generate_in_comm forall_trans bset in
+          let gen_exists_transitions = generate_transitions exists_csys in
           iter_exists_both (fun exists_csys_1 ->
             let exists_trans = match exists_csys_1.Constraint_system.additional_data.transition_data with
               | TransInComm trans -> trans
@@ -1320,9 +1547,9 @@ let apply_pos_phase equiv_pbl f_continuation f_next =
                   exists_csys_1.Constraint_system.additional_data.forall_matched <- forall_csys_1 :: exists_csys_1.Constraint_system.additional_data.forall_matched;
                   forall_csys_1.Constraint_system.additional_data.exists_matched <- (exists_csys_1,bset1) :: forall_csys_1.Constraint_system.additional_data.exists_matched
           ) gen_exists_transitions;
-          forall_set_1 := forall_csys_1 :: !forall_set_1
-        ) gen_forall_transitions
-      ) forall_csys.Constraint_system.additional_data.exists_matched;
+        ) forall_csys.Constraint_system.additional_data.exists_matched;
+        forall_set_1 := forall_csys_1 :: !forall_set_1
+      ) gen_forall_transitions
     ) equiv_pbl.forall_set;
   );
 
@@ -1331,7 +1558,7 @@ let apply_pos_phase equiv_pbl f_continuation f_next =
   split_forall_set !forall_set_1 (fun forall_set_2 csys_to_solve f_next_1 ->
     (* We first calculate the new public_output_channels and we check if we can determine whether
        the current block is surely proper. *)
-    let (public_output_channels,general_blocks_1,is_pos_next_phase) =
+    let (public_output_channels,general_blocks_1) =
       let csys = List.hd forall_set_2 in
       match csys.Constraint_system.additional_data.transition_data with
         | TransInComm { Configuration.in_comm_type = Configuration.TInput in_trans; _ } ->
@@ -1345,7 +1572,7 @@ let apply_pos_phase equiv_pbl f_continuation f_next =
             in
 
             let pub_output = Configuration.update_public_output_channel_in_transition in_trans equiv_pbl.public_output_channels in
-            (pub_output,general_blocks,csys.Constraint_system.additional_data.configuration.Configuration.focused_proc <> None)
+            (pub_output,general_blocks)
         | _ -> Config.internal_error "[session_equivalence.ml >> apply_pos_phase] Input transition is expected."
     in
 
@@ -1363,8 +1590,8 @@ let apply_pos_phase equiv_pbl f_continuation f_next =
         Constraint_system.Rule.instantiate_useless_deduction_facts (fun csys_solved_2 f_next_3 ->
           (* We update the recipes of general blocks *)
           let last_ground_index = general_blocks_1.Block.ground_index in
-          let (general_blocks_2,was_modified,_) = Block.update_recipes_in_general_block is_pos_next_phase general_blocks_1 in
-          let current_to_check = not is_in_improper_phase && not is_pos_next_phase in
+          let (general_blocks_2,was_modified,cur_was_modified) = Block.update_recipes_in_general_block general_blocks_1 in
+          let current_to_check = not is_in_improper_phase && cur_was_modified in
 
           (* We remove the constraint systems that are not authorised and
              we link the authorised one with fresh copy *)
@@ -1394,6 +1621,8 @@ let apply_start equiv_pbl f_continuation f_next =
   Config.debug (fun () ->
     if !linked_symbolic_configuration <> []
     then Config.internal_error "[session_equivalence.ml >> apply_start] No symbolic configuration should be linked.";
+    debug_equivalence_problem "[session_equivalence.ml >> apply_start]" equiv_pbl;
+
     Config.log_in_debug Config.Process "[session_equivalence.ml] Apply start";
   );
 
@@ -1463,16 +1692,14 @@ let apply_start equiv_pbl f_continuation f_next =
   auto_cleanup_symbolic_configuration (fun () ->
     List.iter (fun forall_csys ->
       let gen_forall_transitions = generate_transitions forall_csys in
-      List.iter (fun (exists_csys,bset) ->
-        let gen_exists_transitions = generate_transitions exists_csys in
-
-        (* Generate the matching *)
-        iter_forall_both (fun forall_csys_1 ->
-          let forall_trans = match forall_csys_1.Constraint_system.additional_data.transition_data with
-            | TransStart trans -> trans
-            | _ -> Config.internal_error "[session_equivalence.ml >> apply_pos_phase] Expecting an in/comm transition."
-          in
+      iter_forall_both (fun forall_csys_1 ->
+        let forall_trans = match forall_csys_1.Constraint_system.additional_data.transition_data with
+          | TransStart trans -> trans
+          | _ -> Config.internal_error "[session_equivalence.ml >> apply_pos_phase] Expecting an in/comm transition."
+        in
+        List.iter (fun (exists_csys,bset) ->
           let generate_bset = Bijection_set.generate Label.initial forall_trans.Configuration.start_skeletons bset in
+          let gen_exists_transitions = generate_transitions exists_csys in
           iter_exists_both (fun exists_csys_1 ->
             let exists_trans = match exists_csys_1.Constraint_system.additional_data.transition_data with
               | TransStart trans -> trans
@@ -1484,9 +1711,9 @@ let apply_start equiv_pbl f_continuation f_next =
                   exists_csys_1.Constraint_system.additional_data.forall_matched <- forall_csys_1 :: exists_csys_1.Constraint_system.additional_data.forall_matched;
                   forall_csys_1.Constraint_system.additional_data.exists_matched <- (exists_csys_1,bset1) :: forall_csys_1.Constraint_system.additional_data.exists_matched
           ) gen_exists_transitions;
-          forall_set_1 := forall_csys_1 :: !forall_set_1
-        ) gen_forall_transitions
-      ) forall_csys.Constraint_system.additional_data.exists_matched;
+        ) forall_csys.Constraint_system.additional_data.exists_matched;
+        forall_set_1 := forall_csys_1 :: !forall_set_1
+      ) gen_forall_transitions
     ) equiv_pbl.forall_set;
   );
 
@@ -1495,7 +1722,7 @@ let apply_start equiv_pbl f_continuation f_next =
   split_forall_set !forall_set_1 (fun forall_set_2 csys_to_solve f_next_1 ->
     (* We first calculate the new public_output_channels and we check if we can determine whether
        the current block is surely proper. *)
-    let (public_output_channels,general_blocks_1,is_pos_next_phase) =
+    let (public_output_channels,general_blocks_1) =
       let csys = List.hd forall_set_2 in
       match csys.Constraint_system.additional_data.transition_data with
         | TransStart start_trans ->
@@ -1506,7 +1733,7 @@ let apply_start equiv_pbl f_continuation f_next =
             in
 
             let pub_output = Configuration.update_public_output_channel_start_transition start_trans equiv_pbl.public_output_channels in
-            (pub_output,general_blocks,csys.Constraint_system.additional_data.configuration.Configuration.focused_proc <> None)
+            (pub_output,general_blocks)
         | _ -> Config.internal_error "[session_equivalence.ml >> apply_pos_phase] Input transition is expected."
     in
 
@@ -1524,8 +1751,8 @@ let apply_start equiv_pbl f_continuation f_next =
         Constraint_system.Rule.instantiate_useless_deduction_facts (fun csys_solved_2 f_next_3 ->
           (* We update the recipes of general blocks *)
           let last_ground_index = general_blocks_1.Block.ground_index in
-          let (general_blocks_2,_,_) = Block.update_recipes_in_general_block is_pos_next_phase general_blocks_1 in
-          let current_to_check = not is_pos_next_phase in
+          let (general_blocks_2,_,cur_was_modified) = Block.update_recipes_in_general_block general_blocks_1 in
+          let current_to_check = cur_was_modified in
           (* We remove the constraint systems that are not authorised and
              we link the authorised one with fresh copy *)
           let forall_set_3 =
@@ -1552,14 +1779,21 @@ let apply_start equiv_pbl f_continuation f_next =
 
 (** Apply all transitions **)
 
+let nb_equiv_problem = ref 0
+
 let apply_one_step equiv_pbl f_continuation f_next =
+  incr nb_equiv_problem;
 
   Config.debug (fun () ->
     if equiv_pbl.forall_set = []
     then Config.internal_error "[session_equivalence.ml >> apply_one_step] The equivalence problem should not be empty.";
 
-    Config.log_in_debug Config.Process "[session_equivalence.ml] Apply one step";
-    Config.log_in_debug Config.Process ("[session_equivalence.ml] "^(display_equivalence_problem equiv_pbl))
+    if select_specified_trace equiv_pbl
+    then
+      begin
+        Config.log_in_debug Config.Process "[session_equivalence.ml] Apply one step";
+        Config.log_in_debug Config.Process ("[session_equivalence.ml] "^(display_equivalence_problem equiv_pbl))
+      end
   );
 
   let one_csys = List.hd equiv_pbl.forall_set in
@@ -1581,6 +1815,8 @@ let apply_one_step equiv_pbl f_continuation f_next =
 
 (* The general block and eq_recipe should been fully instantiated when applying this function. *)
 let export_equivalence_problem equiv_pbl =
+  Config.debug (fun () -> debug_equivalence_problem "[session_equivalence.ml >> export_equivalence_problem]" equiv_pbl);
+
   let symb_conf_to_update = ref [] in
 
   let instantiate_csys csys = match csys.Constraint_system.additional_data.link_c with
@@ -1635,6 +1871,7 @@ let export_equivalence_problem equiv_pbl =
   equiv_pbl', recipe_subst
 
 let import_equivalence_problem f_next equiv_pbl recipe_subst =
+  Config.debug (fun () ->  debug_equivalence_problem "[session_equivalence.ml >> import_equivalence_problem]" equiv_pbl);
 
   let set_up_deducible_name i r t = match t with
     | Name ({ deducible_n = None; _} as n) ->

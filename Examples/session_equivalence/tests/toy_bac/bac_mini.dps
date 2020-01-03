@@ -55,12 +55,13 @@ let process21_no_challenge =
 // BAC 2 (equivalence by session)
 query session_equiv(process2,process11). // true attack
 query session_equiv(process2_no_challenge,process11_no_challenge). // false attack and heuristic fails to reconstruct true attack (August 2019)
+query trace_equiv(process2,process11). // not equivalent
 query trace_equiv(process2_no_challenge,process11_no_challenge). // not equivalent
 
 // BAC 3 (equivalence by session)
 query session_equiv(process21,process111). // false attack + true attack reconstructed
-query session_equiv(process21_no_challenge,process111_no_challenge). // false attack
-query trace_equiv(process21_no_challenge,process111_no_challenge). // proof?
+query session_equiv(process21_no_challenge,process111_no_challenge). // false attack and trace equivalent (see query below). True attack reconstructed if the reader and the passport are put on different channels.
+query trace_equiv(process21_no_challenge,process111_no_challenge). // proof (~8 days on 20 cores)
 
 // BAC 2 (inclusion by session)
 query session_incl(process2,process11). // proof
