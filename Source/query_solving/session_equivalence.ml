@@ -345,13 +345,16 @@ let display_matching_status = function
 
 let display_constraint_system_set csys_set =
   display_list (fun csys ->
+    if csys.Constraint_system.additional_data.matching_status <> Configuration.Exists
+    then
     display_object 2 (Some "Symbolic Csys") [
       "origin", string_of_bool csys.Constraint_system.additional_data.origin;
       "configuration", Configuration.display 3 csys.Constraint_system.additional_data.configuration;
       "trace", display_list Process.display_transition "." csys.Constraint_system.additional_data.trace;
-      "constraint_system", Constraint_system.display_constraint_system csys;
+      "constraint_system", Constraint_system.display_constraint_system 3 csys;
       "matching_status", display_matching_status csys.Constraint_system.additional_data.matching_status
     ]
+    else ""
   ) "" csys_set.Constraint_system.set
 
 let display_forall_set forall_set =
@@ -397,11 +400,12 @@ let display_forall_set forall_set =
         "origin", string_of_bool csys.Constraint_system.additional_data.origin;
         "configuration", Configuration.display 3 csys.Constraint_system.additional_data.configuration;
         "trace", display_list Process.display_transition "." csys.Constraint_system.additional_data.trace;
-        "constraint_system", Constraint_system.display_constraint_system csys;
+        "constraint_system", Constraint_system.display_constraint_system 3 csys;
         "matching_status", display_matching_status csys.Constraint_system.additional_data.matching_status
       ]
     in
-    str := !str ^ csys_str
+    if csys.Constraint_system.additional_data.matching_status <> Configuration.Exists
+    then str := !str ^ csys_str
   ) !csys_ref;
 
   !str
@@ -454,11 +458,13 @@ let display_equivalence_problem equiv_pbl =
         "origin", string_of_bool csys.Constraint_system.additional_data.origin;
         "configuration", Configuration.display 3 csys.Constraint_system.additional_data.configuration;
         "trace", display_list Process.display_transition "." csys.Constraint_system.additional_data.trace;
-        "constraint_system", Constraint_system.display_constraint_system csys;
+        "constraint_system", Constraint_system.display_constraint_system 3 csys;
         "matching_status", display_matching_status csys.Constraint_system.additional_data.matching_status
       ]
     in
-    str := !str ^ csys_str
+    if csys.Constraint_system.additional_data.matching_status <> Configuration.Exists
+    then
+      str := !str ^ csys_str
   ) !csys_ref;
 
   !str
@@ -506,24 +512,14 @@ type select_trace =
   | SOut of position
 
 let select_specified_trace equiv_pbl =
-  let selected_trace =
-    [
-      SOut((100,[3]));
-      SOut((100,[2]));
-      SOut((100,[1]));
-      SIn((83,[3]));
-      SOut((92,[3]));
-      SIn((83,[2]));
-      SOut((92,[2]));
-      SIn((94,[3]));
-      SOut((98,[3]));
-      SIn((94,[1]));
-      SOut((98,[1]));
-      SIn((83,[1]));
-      SOut((92,[1]));
-      SIn((94,[2]));
-      SOut((98,[2]))
-    ]
+  let selected_trace = []
+    (*[
+      SOut((295,[4]));
+      SOut((295,[3]));
+      SOut((295,[2]));
+      SOut((295,[1]));
+      SIn((276,[4]))
+    ]*)
   in
   let rec select_specified_trace target_trace_list trace_list = match target_trace_list, trace_list with
     | [], _ -> true
@@ -1343,6 +1339,8 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
 
   Config.debug (fun () ->
     debug_forall_exists_matched "[session_equivalence.ml >> apply_focus_phase >> After transition generated]" !forall_set_1;
+    if select_specified_trace equiv_pbl
+    then Config.log_in_debug Config.Process ("After transisition generated "^(display_forall_set !forall_set_1))
   );
 
   (* Apply the first split *)
@@ -1352,6 +1350,8 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
        the current block is surely proper. *)
      Config.debug (fun () ->
        debug_forall_exists_matched "[session_equivalence.ml >> apply_focus_phase >> After first split]" forall_set_2;
+       if select_specified_trace equiv_pbl
+       then Config.log_in_debug Config.Process ("After first split "^(display_forall_set forall_set_2))
      );
 
     let (public_output_channels,general_blocks_1) =
@@ -1398,6 +1398,11 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
           let (general_blocks_2,was_modified,cur_was_modified) = Block.update_recipes_in_general_block general_blocks_1 in
           let current_to_check = not is_in_improper_phase && cur_was_modified in
 
+          Config.debug (fun () ->
+            if select_specified_trace equiv_pbl
+            then Config.log_in_debug Config.Process ("After solving "^(display_constraint_system_set csys_solved_2))
+          );
+
           (* We remove the constraint systems that are not authorised and
              we link the authorised one with fresh copy *)
           let forall_set_3 =
@@ -1409,10 +1414,14 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
 
           Config.debug (fun () ->
             debug_forall_exists_matched "[session_equivalence.ml >> apply_focus_phase >> After cleaning]" forall_set_3;
+            if select_specified_trace equiv_pbl
+            then Config.log_in_debug Config.Process ("After cleaning"^(display_forall_set forall_set_3))
           );
 
           split_forall_set forall_set_3 (fun forall_set_4 _ f_next_4 ->
             Config.debug (fun () ->
+              if select_specified_trace equiv_pbl
+              then Config.log_in_debug Config.Process ("After second split"^(display_forall_set forall_set_4));
               debug_forall_exists_matched "[session_equivalence.ml >> apply_focus_phase >> After second split]" forall_set_4;
             );
 
@@ -1793,7 +1802,16 @@ let apply_one_step equiv_pbl f_continuation f_next =
       begin
         Config.log_in_debug Config.Process "[session_equivalence.ml] Apply one step";
         Config.log_in_debug Config.Process ("[session_equivalence.ml] "^(display_equivalence_problem equiv_pbl))
-      end
+      end;
+
+    Config.log_in_debug Config.Debug (
+      display_list (fun csys ->
+        display_object 1 None [
+          "trace", display_list Process.display_transition "." csys.Constraint_system.additional_data.trace;
+          "local_block", Block.display_local_blocks 3 (csys.Constraint_system.additional_data.configuration.Configuration.blocks)
+        ]
+      ) "" equiv_pbl.forall_set
+    )
   );
 
   let one_csys = List.hd equiv_pbl.forall_set in

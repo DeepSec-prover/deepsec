@@ -34,7 +34,7 @@ let display_configuration symb =
 let display_symbolic_constraint csys =
   "----- Symbolic configuration ----\n" ^
   (display_configuration csys.Constraint_system.additional_data)^
-  (Constraint_system.display_constraint_system csys)
+  (Constraint_system.display_constraint_system 1 csys)
 
 (*** Equivalence problem ***)
 

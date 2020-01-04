@@ -89,7 +89,7 @@ val instantiate : 'a t -> 'a t
 
 val debug_on_constraint_system : string -> 'a t -> unit
 
-val display_constraint_system : 'a t -> string
+val display_constraint_system : int -> 'a t -> string
 
 module Set : sig
 

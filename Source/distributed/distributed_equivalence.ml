@@ -566,6 +566,8 @@ let session_equivalence is_equiv_query proc1 proc2 =
 
   let equiv_pbl = Session_equivalence.generate_initial_equivalence_problem is_equiv_query proc1' proc2' in
 
+  Config.log Config.Always (fun () -> "Initial equivalence problem\n"^(Session_equivalence.display_equivalence_problem equiv_pbl));
+
   (*** Initial job ***)
 
   let setting = Symbol.get_settings () in

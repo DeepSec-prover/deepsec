@@ -2,6 +2,7 @@ open Types
 open Term
 open Formula
 open Extensions
+open Display
 
 (***********************
 ***       Facts      ***
@@ -67,7 +68,7 @@ module DF = struct
   let empty : t = []
 
   let display df =
-    let acc = ref "\nDF: " in
+    let acc = ref "" in
 
     List.iter (fun (_,bfact_l) ->
       List.iter (fun bfact ->
@@ -75,7 +76,7 @@ module DF = struct
       ) bfact_l
     ) df;
 
-    !acc ^ "\n"
+    !acc
 
   let add (df:t) bfact =
     let type_r = bfact.bf_var.type_r in
@@ -736,20 +737,20 @@ module IK = struct
       data : entry list (* To be always kept ordered. The first element is the last added. *)
     }
 
-  let display kb ikb =
-    let acc = ref "KB : " in
+  let display tab kb ikb =
+    let accK = ref "" in
 
     for i = 0 to kb.K.size - 1 do
-      acc := !acc ^ (Printf.sprintf "%s,%d |-%d %s, " (Recipe.display Display.Terminal kb.K.data.(i).K.recipe) kb.K.data.(i).K.type_rec i (Term.display Display.Terminal kb.K.data.(i).K.term))
+      accK := !accK ^ (Printf.sprintf "%s,%d |-%d %s, " (Recipe.display Display.Terminal kb.K.data.(i).K.recipe) kb.K.data.(i).K.type_rec i (Term.display Display.Terminal kb.K.data.(i).K.term))
     done;
 
-    acc := !acc ^ "\nIK: ";
+    let accIK = ref "" in
 
     List.iter (fun elt ->
-      acc := !acc ^ (Printf.sprintf "%s,%d |-%d %s, " (Recipe.display Display.Terminal elt.recipe) ikb.type_rec elt.id (Term.display Display.Terminal elt.term))
+      accIK := !accIK ^ (Printf.sprintf "%s,%d |-%d %s, " (Recipe.display Display.Terminal elt.recipe) ikb.type_rec elt.id (Term.display Display.Terminal elt.term))
     ) ikb.data;
 
-    !acc ^ "\n"
+    display_object tab None [ "K", !accK ; "IK", !accIK]
 
   let empty = { index_counter = 0; type_rec = 0; data = []}
 
@@ -1229,10 +1230,11 @@ module UF = struct
         Printf.sprintf "Unsolved: %s" (Display.display_list display_deduction_formula "; " dforml)
     | DedNone -> Display.emptyset Display.Terminal
 
-  let display  uf =
-    Printf.sprintf "UF :\n- Ded: %s\n- Eq: %s\n"
-      (display_state_ded_form uf.ded_formula)
-      (display_state_eq_formula uf.eq_formula)
+  let display tab uf =
+    display_object tab None [
+      "Ded", display_state_ded_form uf.ded_formula;
+      "Eq", display_state_eq_formula uf.eq_formula
+    ]
 
   (******** Generation ********)
 

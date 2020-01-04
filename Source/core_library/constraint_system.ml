@@ -3,6 +3,7 @@ open Term
 open Formula
 open Data_structure
 open Extensions
+open Display
 
 (*************************************
 ***       Constraint systems       ***
@@ -225,7 +226,6 @@ let prepare_for_solving_procedure_with_additional_data after_output additional_r
     )
   )
 
-
 let prepare_for_solving_procedure after_output csys =
   Variable.auto_cleanup_with_reset_notail (fun () ->
     Name.auto_cleanup_with_reset_notail (fun () ->
@@ -373,21 +373,20 @@ let instantiate csys =
     original_substitution = List.map (fun (v,t) -> (v,Term.instantiate t)) csys.original_substitution
   }
 
-let display_constraint_system csys =
-  let acc = ref "\n-- Constraint system:\n" in
-  acc := !acc ^ (Printf.sprintf "Size frame: %d\n" csys.size_frame);
-  acc := !acc ^ (Printf.sprintf "%s" (DF.display csys.deduction_facts));
-  acc := !acc ^ (Printf.sprintf "%s" (IK.display csys.knowledge csys.incremented_knowledge));
-  acc := !acc ^ (Printf.sprintf "%s" (UF.display csys.unsolved_facts));
-  acc := !acc ^ (Printf.sprintf "Eq_term = %s\n" (Formula.T.display Display.Terminal csys.eq_term));
-  acc := !acc ^ (Printf.sprintf "Eq_uni = %s\n" (Formula.T.display Display.Terminal csys.eq_uniformity));
-  acc := !acc ^ (Printf.sprintf "Orig_subst = %s\n" (Display.display_list (fun (x,t) ->
-      Printf.sprintf "%s -> %s" (Variable.display Display.Terminal x) (Term.display Display.Terminal t)
-    ) "; " csys.original_substitution));
-  acc := !acc ^ (Printf.sprintf "Orig_names = %s\n" (Display.display_list (fun (x,n) ->
-      Printf.sprintf "%s -> %s" (Variable.display Display.Terminal x) (Name.display Display.Terminal n)
-    ) "; " csys.original_names));
-  !acc
+let display_constraint_system tab csys =
+  display_object tab (Some "Constraint system") [
+    "size frame", string_of_int csys.size_frame;
+    "DF", DF.display csys.deduction_facts;
+    "K_IK", IK.display (tab+1) csys.knowledge csys.incremented_knowledge;
+    "UF", UF.display (tab+1) csys.unsolved_facts;
+    "Eq_term", Formula.T.display Display.Terminal csys.eq_term;
+    "Orig_subst", (Display.display_list (fun (x,t) ->
+        Printf.sprintf "%s -> %s" (Variable.display Display.Terminal x) (Term.display Display.Terminal t)
+      ) "; " csys.original_substitution);
+    "Orig_names", (Display.display_list (fun (x,n) ->
+        Printf.sprintf "%s -> %s" (Variable.display Display.Terminal x) (Name.display Display.Terminal n)
+      ) "; " csys.original_names)
+  ]
 
 let debug_check_origination msg csys =
   try
@@ -1474,7 +1473,7 @@ module Rule = struct
         then Config.internal_error "[constraint_system.ml >> sat] Variables in eq_term should not be linked.";
         if not (Formula.T.debug_no_linked_variables csys.eq_uniformity)
         then Config.internal_error "[constraint_system.ml >> sat] Variables in eq_uniformity should not be linked.";
-        Config.log_in_debug Config.Constraint_systems (display_constraint_system csys)
+        Config.log_in_debug Config.Constraint_systems (display_constraint_system 1 csys)
       ) csys_set.set
     );
 
@@ -1912,7 +1911,7 @@ module Rule = struct
     Config.debug (fun () ->
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Rule split data constructor : Nb csys = %d" (List.length csys_set.set));
       Set.debug_check_structure "[Split data constructor]" csys_set;
-      List.iter (fun csys -> Config.log_in_debug Config.Constraint_systems (display_constraint_system csys)) csys_set.set
+      List.iter (fun csys -> Config.log_in_debug Config.Constraint_systems (display_constraint_system 1 csys)) csys_set.set
     );
     match csys_set.set with
     | [] -> f_next ()
@@ -1987,7 +1986,7 @@ module Rule = struct
       Set.debug_check_structure "[Equality knowledge base]" csys_set;
       List.iter (fun csys ->
         debug_on_constraint_system "[equality_knowledge_base]" csys;
-        Config.log_in_debug Config.Constraint_systems (display_constraint_system csys)
+        Config.log_in_debug Config.Constraint_systems (display_constraint_system 1 csys)
       ) csys_set.set
     );
     match csys_set.set with
@@ -2993,9 +2992,9 @@ module Rule_ground = struct
   let rec split_data_constructor (f_continuation:'a t -> 'b t list -> 'c) target_csys csys_list =
     Config.debug (fun () ->
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Rule split data constructor : Nb csys = %d" (List.length csys_list));
-      Config.log_in_debug Config.Constraint_systems (Printf.sprintf "Target constraint system:%s" (display_constraint_system target_csys));
+      Config.log_in_debug Config.Constraint_systems (Printf.sprintf "Target constraint system:%s" (display_constraint_system 1 target_csys));
       Config.log_in_debug Config.Constraint_systems "Other constraint systems:";
-      List.iter (fun csys -> Config.log_in_debug Config.Constraint_systems (display_constraint_system csys)) csys_list
+      List.iter (fun csys -> Config.log_in_debug Config.Constraint_systems (display_constraint_system 1 csys)) csys_list
     );
     match UF.pop_deduction_fact_to_check_for_pattern target_csys.unsolved_facts with
       | None -> f_continuation target_csys csys_list
@@ -3087,9 +3086,9 @@ module Rule_ground = struct
   let rec normalisation_deduction_consequence f_continuation (target_csys:'a t) (csys_list:'b t list) =
     Config.debug (fun () ->
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Rule normalisation_deduction_consequence : Nb csys = %d" (List.length csys_list));
-      Config.log_in_debug Config.Constraint_systems (Printf.sprintf "Target constraint system:%s" (display_constraint_system target_csys));
+      Config.log_in_debug Config.Constraint_systems (Printf.sprintf "Target constraint system:%s" (display_constraint_system 1 target_csys));
       Config.log_in_debug Config.Constraint_systems "Other constraint systems:";
-      List.iter (fun csys -> Config.log_in_debug Config.Constraint_systems (display_constraint_system csys)) csys_list
+      List.iter (fun csys -> Config.log_in_debug Config.Constraint_systems (display_constraint_system 1 csys)) csys_list
     );
     if UF.exists_deduction_fact target_csys.unsolved_facts
     then
@@ -3136,9 +3135,9 @@ module Rule_ground = struct
   let rewrite (f_continuation:'a t -> 'b t list -> 'c) (target_csys:'a t) (csys_list:'b t list) =
     Config.debug (fun () ->
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Rule rewrite : Nb csys = %d" (List.length csys_list));
-      Config.log_in_debug Config.Constraint_systems (Printf.sprintf "Target constraint system:%s" (display_constraint_system target_csys));
+      Config.log_in_debug Config.Constraint_systems (Printf.sprintf "Target constraint system:%s" (display_constraint_system 1 target_csys));
       Config.log_in_debug Config.Constraint_systems "Other constraint systems:";
-      List.iter (fun csys -> Config.log_in_debug Config.Constraint_systems (display_constraint_system csys)) csys_list
+      List.iter (fun csys -> Config.log_in_debug Config.Constraint_systems (display_constraint_system 1 csys)) csys_list
     );
 
     let rec internal target_csys checked_csys to_check_csys = match Rule.exploration_rewrite Formula.R.Top (ref None) checked_csys to_check_csys with
@@ -3209,9 +3208,9 @@ module Rule_ground = struct
   let internal_equality_constructor f_continuation (target_csys:'a t) (csys_list:'b t list) =
     Config.debug (fun () ->
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Rule equality_constructor : Nb csys = %d" (List.length csys_list));
-      Config.log_in_debug Config.Constraint_systems (Printf.sprintf "Target constraint system:%s\n" (display_constraint_system target_csys));
+      Config.log_in_debug Config.Constraint_systems (Printf.sprintf "Target constraint system:%s\n" (display_constraint_system 1 target_csys));
       Config.log_in_debug Config.Constraint_systems "Other constraint systems:\n";
-      List.iter (fun csys -> Config.log_in_debug Config.Constraint_systems (display_constraint_system csys)) csys_list
+      List.iter (fun csys -> Config.log_in_debug Config.Constraint_systems (display_constraint_system 1 csys)) csys_list
     );
 
     let rec internal target_csys checked_csys to_check_csys = match Rule.exploration_equality_constructor Formula.R.Top (ref None) checked_csys to_check_csys with

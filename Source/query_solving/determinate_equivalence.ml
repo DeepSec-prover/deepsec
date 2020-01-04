@@ -174,8 +174,8 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
             Config.log_in_debug Config.Process (display_symbolic_process csys_1.Constraint_system.additional_data);
             Config.log_in_debug Config.Process (display_symbolic_process csys_2.Constraint_system.additional_data);
             Config.log_in_debug Config.Process ("Eq recipe = "^(Formula.R.display Display.Terminal equiv_pbl.csys_set.Constraint_system.eq_recipe));
-            Config.log_in_debug Config.Process (Constraint_system.display_constraint_system csys_1);
-            Config.log_in_debug Config.Process (Constraint_system.display_constraint_system csys_2);
+            Config.log_in_debug Config.Process (Constraint_system.display_constraint_system 1 csys_1);
+            Config.log_in_debug Config.Process (Constraint_system.display_constraint_system 1 csys_2);
             if csys_1.Constraint_system.eq_term <> Formula.T.Top || csys_2.Constraint_system.eq_term <> Formula.T.Top
             then Config.internal_error "[determinate_equivalence.ml >> apply_one_transition_and_rules] The disequations in the constraint systems should have been solved."
       | _ -> Config.internal_error "[determinate_equivalence >> apply_one_transition_and_rules] There should be only two constraint systems: one left, one right."

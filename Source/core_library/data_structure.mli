@@ -162,7 +162,7 @@ module IK : sig
   (** The type represents the set of solved deduction formulas that will be used in constraint systems, {% i.e. $\Solved$. %} *)
   type t
 
-  val display : K.t -> t -> string
+  val display : int -> K.t -> t -> string
 
   (** The empty set *)
   val empty : t
@@ -280,7 +280,7 @@ module UF : sig
 
   (** {3 Display} *)
 
-  val display : t -> string
+  val display : int -> t -> string
 
   val debug_check_link_with_SLink : t -> unit
 end

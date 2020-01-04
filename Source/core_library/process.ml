@@ -242,7 +242,7 @@ let detect_and_replace_pure_fresh_name p =
       then "None"
       else Display.display_list (Name.display Display.Terminal) ", " !acc_pure_fresh_name
     in
-    Config.log_in_debug Config.Process (Printf.sprintf "Pure fresh name detected: %s\n" str)
+    Config.log_in_debug Config.Always (Printf.sprintf "Pure fresh name detected: %s" str)
   );
 
   Name.auto_cleanup_with_reset_notail (fun () ->
@@ -1325,17 +1325,17 @@ let simplify_for_session p =
   let p7 = regroup_equal_par_processes p6 in
   let pos_match_normalised =  normalise_pos_match [] pos_match in
   Config.debug (fun () ->
-    Config.log_in_debug Config.Process (Printf.sprintf "Before simplification :\n %s" (display 1 p));
-    Config.log_in_debug Config.Process (Printf.sprintf "After simplification :\n %s" (display 1 p7));
+    Config.log_in_debug Config.Always (Printf.sprintf "Before simplification :\n %s" (display 1 p));
+    Config.log_in_debug Config.Always (Printf.sprintf "After simplification :\n %s" (display 1 p7));
   );
   let retrieve_trace trans_list =
     Config.debug (fun () ->
-      Config.log_in_debug Config.Process (Printf.sprintf "[process.ml >> simplify_for_session] Input retrieve_trace = %s\n" (display_list display_transition  "; " trans_list));
-      Config.log_in_debug Config.Process (Printf.sprintf "[process.ml >> simplify_for_session] Process =\n%s" (display 2 p))
+      Config.log_in_debug Config.Always (Printf.sprintf "[process.ml >> simplify_for_session] Input retrieve_trace = %s\n" (display_list display_transition  "; " trans_list));
+      Config.log_in_debug Config.Always (Printf.sprintf "[process.ml >> simplify_for_session] Process =\n%s" (display 2 p))
     );
     let result = retrieve_trace (fun x -> x) pos_match_normalised { frame = []; process = p } trans_list in
     Config.debug (fun () ->
-      Config.log_in_debug Config.Process (Printf.sprintf "Output retrieve_trace = %s\n" (display_list display_transition  "; " result))
+      Config.log_in_debug Config.Always (Printf.sprintf "Output retrieve_trace = %s\n" (display_list display_transition  "; " result))
     );
     result
   in
