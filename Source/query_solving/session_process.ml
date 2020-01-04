@@ -807,6 +807,9 @@ module Labelled_process = struct
     is_equal_input_output skel1.input_skel skel2.input_skel &&
     is_equal_input_output skel1.output_skel skel2.output_skel
 
+  let is_skeleton_empty skel =
+    skel.input_skel = [] && skel.output_skel = [] && skel.private_channels = []
+
   (*** Next transition ***)
 
   type proper_status =

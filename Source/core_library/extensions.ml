@@ -53,6 +53,14 @@ module List = struct
     in
     explore [] l
 
+  let extract_nth n l =
+    let rec explore n prev = function
+      | [] -> raise Not_found
+      | t::q when n = 0 -> t, rev_append prev q
+      | t::q -> explore (n-1) (t::prev) q
+    in
+    explore n [] l
+
   let rec remove_first_n n l =
     if n = 0
     then l
