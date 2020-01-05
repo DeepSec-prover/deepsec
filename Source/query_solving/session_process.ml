@@ -463,7 +463,7 @@ module Labelled_process = struct
   type t =
     | PStart of t
     | PNil
-    | POutput of Channel.t * term * t * Label.t option * position * used_data * channel_set
+    | POutput of Channel.t * term * t * Label.t option * position * bool * used_data * channel_set
     | PInput of Channel.t * variable * t * Label.t option * position * used_data * channel_set
     | PCondition of equations list * Formula.T.t * variable list (* fresh variables *) * t * t * used_data
     | PNew of variable * name * t * used_data
@@ -512,7 +512,7 @@ module Labelled_process = struct
   let rec link_used_data_process = function
     | PStart p -> link_used_data_process p
     | PNil -> ()
-    | POutput(_,_,_,_,_,data,_)
+    | POutput(_,_,_,_,_,_,data,_)
     | PInput(_,_,_,_,_,data,_)
     | PCondition(_,_,_,_,_,data)
     | PNew(_,_,_,data) -> link_used_data data
@@ -609,9 +609,9 @@ module Labelled_process = struct
     in
 
     let rec explore assoc prev_data = function
-      | Nil -> PNil, []
+      | Nil -> PNil, [], false
       | Output(ch,t,p,pos) ->
-          let (p',under_ch_set) = explore assoc prev_data p in
+          let (p',under_ch_set,is_sure_proper) = explore assoc prev_data p in
 
           let used_data =
             auto_cleanup_all (fun () ->
@@ -625,14 +625,14 @@ module Labelled_process = struct
             | Channel.CPrivate n -> NameList.add n under_ch_set, NameList.remove n under_ch_set
             | _ -> under_ch_set, under_ch_set
           in
-          POutput(ch',replace_name_by_variables assoc t,p',None,pos,used_data,under_ch_set'), ch_set
+          POutput(ch',replace_name_by_variables assoc t,p',None,pos,is_sure_proper,used_data,under_ch_set'), ch_set, (is_sure_proper || Channel.is_private ch')
       | Input(ch,PatVar v,p,pos) ->
           Config.debug (fun () ->
             if v.link <> NoLink
             then Config.internal_error "[session_process.ml >> of_process] Variables should not be linked (4)."
           );
 
-          let (p',under_ch_set) = explore assoc { prev_data with variables = v::prev_data.variables } p in
+          let (p',under_ch_set,_) = explore assoc { prev_data with variables = v::prev_data.variables } p in
 
           let used_data =
             auto_cleanup_all (fun () ->
@@ -645,7 +645,7 @@ module Labelled_process = struct
             | Channel.CPrivate n -> NameList.add n under_ch_set, NameList.remove n under_ch_set
             | _ -> under_ch_set, under_ch_set
           in
-          PInput(ch',v,p',None,pos,used_data,under_ch_set'), ch_set
+          PInput(ch',v,p',None,pos,used_data,under_ch_set'), ch_set, true
       | Input _ -> Config.internal_error "[session_process.ml >> of_process] Input should only have variable as pattern at this stage."
       | IfThenElse(t1,t2,pthen,pelse,_) ->
           Config.debug (fun () ->
@@ -653,8 +653,8 @@ module Labelled_process = struct
             then Config.internal_error "[generic_process.ml >> generic_process_of_process] No variables or names should be linked."
           );
 
-          let (pthen',ch_set_then) = explore assoc prev_data pthen in
-          let (pelse',ch_set_else) = explore assoc prev_data pelse in
+          let (pthen',ch_set_then,is_sure_proper_then) = explore assoc prev_data pthen in
+          let (pelse',ch_set_else,is_sure_proper_else) = explore assoc prev_data pelse in
 
           let used_data =
             auto_cleanup_all (fun () ->
@@ -669,7 +669,7 @@ module Labelled_process = struct
           let (equations_1,disequations_1) = Rewrite_rules.compute_equality_modulo_and_rewrite [(t1,t2)] in
           let equations_2 = List.map (replace_name_by_variables_equations assoc) equations_1 in
           let disequations_2 = replace_name_by_variables_formula assoc disequations_1 in
-          PCondition(equations_2,disequations_2,[],pthen',pelse',used_data), ch_set
+          PCondition(equations_2,disequations_2,[],pthen',pelse',used_data), ch_set, is_sure_proper_then && is_sure_proper_else
       | Let(pat,t,pthen,pelse,_) ->
           Config.debug (fun () ->
             if !Variable.currently_linked <> []
@@ -678,8 +678,8 @@ module Labelled_process = struct
           let fresh_vars = ref [] in
           get_pattern_vars fresh_vars pat;
 
-          let (pthen',ch_set_then) = explore assoc { prev_data with variables = !fresh_vars @ prev_data.variables } pthen in
-          let (pelse',ch_set_else) = explore assoc prev_data pelse in
+          let (pthen',ch_set_then,is_sure_proper_then) = explore assoc { prev_data with variables = !fresh_vars @ prev_data.variables } pthen in
+          let (pelse',ch_set_else,is_sure_proper_else) = explore assoc prev_data pelse in
 
           let used_data =
             auto_cleanup_all (fun () ->
@@ -696,39 +696,39 @@ module Labelled_process = struct
           let disequations_2 = replace_fresh_vars_by_universal !fresh_vars disequations_1 in
           let disequations_3 = replace_name_by_variables_formula assoc disequations_2 in
           let equations_2 = List.map (replace_name_by_variables_equations assoc) equations_1 in
-          PCondition(equations_2,disequations_3,!fresh_vars,pthen',pelse',used_data) ,ch_set
+          PCondition(equations_2,disequations_3,!fresh_vars,pthen',pelse',used_data) ,ch_set, is_sure_proper_then && is_sure_proper_else
       | New(n,p,_) ->
           let x = Variable.fresh Free in
-          let (p',ch_set) = explore ((n,x)::assoc) { prev_data with names = x::prev_data.names } p in
+          let (p',ch_set,is_sure_proper) = explore ((n,x)::assoc) { prev_data with names = x::prev_data.names } p in
           let used_data =
             auto_cleanup_all (fun () ->
               link_used_data_process p';
               filter_used_data prev_data
             )
           in
-          PNew(x,n,p',used_data), ch_set
+          PNew(x,n,p',used_data), ch_set,is_sure_proper
       | Par p_list ->
-          let (p_list',ch_set) =
-            List.fold_right (fun p (acc_p,acc_ch_set) ->
-              let (p',ch_set') = explore assoc prev_data p in
+          let (p_list',ch_set,is_sure_proper) =
+            List.fold_right (fun p (acc_p,acc_ch_set,acc_proper) ->
+              let (p',ch_set',is_sure_proper) = explore assoc prev_data p in
               let acc_ch_set' = NameList.union ch_set' acc_ch_set in
-              (p'::acc_p,acc_ch_set')
-            ) p_list ([],[])
+              (p'::acc_p,acc_ch_set',is_sure_proper || acc_proper)
+            ) p_list ([],[],false)
           in
-          PPar p_list' , ch_set
+          PPar p_list' , ch_set, is_sure_proper
       | Bang(p_list,_) ->
-          let (p_list',ch_set) =
-            List.fold_right (fun p (acc_p,acc_ch_set) ->
-              let (p',ch_set') = explore assoc prev_data p in
+          let (p_list',ch_set, is_sure_proper) =
+            List.fold_right (fun p (acc_p,acc_ch_set,acc_proper) ->
+              let (p',ch_set',is_sure_proper) = explore assoc prev_data p in
               let acc_ch_set' = NameList.union ch_set' acc_ch_set in
-              (p'::acc_p,acc_ch_set')
-            ) p_list ([],[])
+              (p'::acc_p,acc_ch_set',is_sure_proper || acc_proper)
+            ) p_list ([],[],false)
           in
-          PBangStrong([],p_list'), ch_set
+          PBangStrong([],p_list'), ch_set, is_sure_proper
       | Choice _ -> Config.internal_error "[session_process.ml >> Labelled_process.of_process] Should not contain choice operator."
     in
 
-    let (p,_) = explore [] { variables = []; names = [] } proc in
+    let (p,_,_) = explore [] { variables = []; names = [] } proc in
     PStart p
 
   (*** Skeletons gathering ***)
@@ -747,7 +747,8 @@ module Labelled_process = struct
         The list is sorted by Channel.compare. *)
 
       label_prefix : int list;
-      par_created : bool
+      par_created : bool;
+      sure_proper : bool
     }
 
   let display_skeletons tab skel =
@@ -834,19 +835,19 @@ module Labelled_process = struct
         private_output_skel = (0,[]);
         private_channels = [];
         label_prefix = prefix_label;
-        par_created = true
-
+        par_created = true;
+        sure_proper = false
       }
     in
 
     let rec normalise_process current_index gather_norm gather_skel proc f_continuation f_next = match proc with
       | PStart _ -> Config.internal_error "[session_process.ml >> Labelled_process.normalise] A start process should not be normalised."
       | PNil -> f_continuation current_index gather_norm gather_skel proc f_next
-      | POutput(ch,t,p,None,pos,used_data,ch_set) ->
+      | POutput(ch,t,p,None,pos,is_sure_proper,used_data,ch_set) ->
           let apply () =
             let gather_skel_1 = add_output_in_skeleton ch current_index gather_skel in
-            let proc1 = POutput(ch,t,p,Some (Label.add_position_from_prefix prefix_label current_index),pos,used_data,ch_set) in
-            f_continuation (current_index+1) gather_norm gather_skel_1 proc1 f_next
+            let proc1 = POutput(ch,t,p,Some (Label.add_position_from_prefix prefix_label current_index),pos,is_sure_proper,used_data,ch_set) in
+            f_continuation (current_index+1) gather_norm { gather_skel_1 with sure_proper = is_sure_proper || gather_skel_1.sure_proper } proc1 f_next
           in
           begin match proper_status with
             | Proper -> apply ()
@@ -950,7 +951,7 @@ module Labelled_process = struct
 
     normalise_process 0 gather_norm gather_skel proc (fun _ gather_norm_1 gather_skel_1 proc_1 f_next_1 ->
       match proc_1 with
-        | POutput(ch,t,p,_,pos,used_data,ch_set) ->
+        | POutput(ch,t,p,_,pos,sure_proper,used_data,ch_set) ->
             let gather_skel_2 =
               if fst gather_skel_1.private_output_skel = 1
               then { gather_skel_1 with private_output_skel = (1,[label.Label.last_index]); label_prefix = label.Label.prefix; par_created = false }
@@ -959,7 +960,7 @@ module Labelled_process = struct
                   | [f,1,_] -> { gather_skel_1 with output_skel = [f,1,[label.Label.last_index]]; label_prefix = label.Label.prefix; par_created = false }
                   | _ -> Config.internal_error "[session_process.ml >> normalise] There should be only one output."
             in
-            let proc_2 = POutput(ch,t,p,Some label,pos,used_data,ch_set) in
+            let proc_2 = POutput(ch,t,p,Some label,pos,sure_proper,used_data,ch_set) in
             f_continuation gather_norm_1 gather_skel_2 proc_2 f_next_1
         | PInput(ch,x,p,_,pos,used_data,ch_set) ->
             let gather_skel_2 =
@@ -981,7 +982,7 @@ module Labelled_process = struct
   let rec exists_toplevel_public_output = function
     | PNil
     | PInput _ -> false
-    | POutput(c,_,_,_,_,_,_) ->  Channel.is_public c
+    | POutput(c,_,_,_,_,_,_,_) ->  Channel.is_public c
     | PPar plist
     | PBangPartial plist
     | PBangStrong(plist,[]) -> List.exists exists_toplevel_public_output plist
@@ -994,7 +995,7 @@ module Labelled_process = struct
       | [] -> n
       | PInput _ ::q
       | PNil :: q -> explore_process n q
-      | POutput(c,_,_,_,_,_,_)::q when Channel.is_public c ->
+      | POutput(c,_,_,_,_,_,_,_)::q when Channel.is_public c ->
           if Channel.is_public c
           then if n = 1 then 2 else explore_process 1 q
           else n
@@ -1037,15 +1038,16 @@ module Labelled_process = struct
   let rec display tab = function
     | PStart p -> (display_with_tab tab "Start") ^ (display tab p)
     | PNil -> (display_with_tab tab "Nil")
-    | POutput(ch,t,p,lbl_op,pos,used_data,ch_set) ->
+    | POutput(ch,t,p,lbl_op,pos,is_sure_proper,used_data,ch_set) ->
         let str =
-          Printf.sprintf "{%s} out(%s,%s); %s %s [Channels = %s]"
+          Printf.sprintf "{%s} out(%s,%s); %s %s [Channels = %s] [Sure_proper = %b]"
             (display_position pos)
             (Channel.display ch)
             (Term.display ~follow_link:false Terminal t)
             (match lbl_op with None -> "" | Some lbl -> Printf.sprintf "[Label = %s]" (Label.display lbl))
             (display_used_data used_data)
             (display_list (Name.display Terminal) "," ch_set)
+            is_sure_proper
         in
         (display_with_tab tab str) ^ (display tab p)
     | PInput(ch,x,p,lbl_op,pos,used_data,ch_set) ->
@@ -1339,7 +1341,7 @@ module Configuration = struct
     let only_forall = matching_status = ForAll in
 
     let rec explore_process proc f_cont f_next = match proc with
-      | Labelled_process.POutput(c,t,p,Some label,pos,_,_) ->
+      | Labelled_process.POutput(c,t,p,Some label,pos,_,_,_) ->
           if not (Channel.is_equal target_channel c) || (only_forall && !already_assigned_forall)
           then f_next ()
           else
@@ -1601,7 +1603,7 @@ module Configuration = struct
     let rec explore_process m_status proc f_cont f_next = match proc with
       | Labelled_process.PNil
       | Labelled_process.PInput _ -> f_next ()
-      | Labelled_process.POutput(ch,t,p,Some label,pos,_,_) ->
+      | Labelled_process.POutput(ch,t,p,Some label,pos,_,_,_) ->
           if Channel.is_equal ch target_channel
           then
             let output_data =
@@ -1688,7 +1690,7 @@ module Configuration = struct
 
     and filter_private_name main_ch_list = function
       | Labelled_process.PInput(_,_,_,_,_,_,ch_list)
-      | Labelled_process.POutput(_,_,_,_,_,_,ch_list) -> NameList.diff main_ch_list ch_list
+      | Labelled_process.POutput(_,_,_,_,_,_,_,ch_list) -> NameList.diff main_ch_list ch_list
       | Labelled_process.PBangStrong([],p::_) -> filter_private_name main_ch_list p
       | Labelled_process.PBangPartial plist
       | Labelled_process.PPar plist -> filter_private_names_list main_ch_list plist

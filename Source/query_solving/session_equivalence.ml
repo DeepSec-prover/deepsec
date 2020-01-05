@@ -753,7 +753,52 @@ let generate_matching_status forall_matched exists_match = match forall_matched,
   | _,[] -> Configuration.Exists
   | _ -> Configuration.Both
 
-let instantiate_clean_generate_forall_set current_to_check was_modified last_ground_index general_blocks csys_solved =
+let get_sure_proper_from_transition symb_conf = match symb_conf.transition_data with
+  | TransOutput trans -> trans.Configuration.out_skeletons.Labelled_process.sure_proper
+  | TransInComm { Configuration.in_comm_type = Configuration.TInput trans; _ } -> trans.Configuration.in_skeletons.Labelled_process.sure_proper
+  | TransInComm { Configuration.in_comm_type = Configuration.TComm trans; _ } -> trans.Configuration.comm_out_skeletons.Labelled_process.sure_proper || trans.Configuration.comm_in_skeletons.Labelled_process.sure_proper
+  | TransStart trans -> trans.Configuration.start_skeletons.Labelled_process.sure_proper
+  | _ -> false
+
+let instantiate_clean_generate_forall_set is_proper_phase cur_was_modified was_modified last_ground_index general_blocks csys_solved =
+  let updated_current_block = ref None in
+  let all_sure_proper = ref true in
+
+  let get_update_current_block () = match !updated_current_block with
+    | Some (gen_block,cur_modified) -> gen_block,cur_modified
+    | None ->
+        match general_blocks.Block.current_recipe_block with
+          | None -> Config.internal_error "[session_equivalence.ml >> instantiate_clean_generate_forall_set] We should be in proper phase."
+          | Some c_block ->
+              let (c_block',_,cur_modified) = Block.update_recipe c_block in
+              let gen_block = { general_blocks with Block.current_recipe_block = Some c_block' } in
+              updated_current_block := Some (gen_block,cur_modified);
+              gen_block,cur_modified
+  in
+
+
+  let (gen_current_to_check_and_general_block,may_modify) =
+    if general_blocks.Block.current_block_sure_proper
+    then
+      let current_to_check = is_proper_phase && cur_was_modified in
+      (fun _ -> current_to_check,general_blocks),false
+    else
+      if is_proper_phase
+      then
+        (fun symb ->
+          if get_sure_proper_from_transition symb
+          then
+            let (gen_block,cur_modified) = get_update_current_block () in
+            (cur_modified,gen_block)
+          else
+            begin
+              all_sure_proper := false;
+              false,general_blocks
+            end
+        ),true
+      else (fun _ -> false,general_blocks),false
+  in
+
   let forall_set_1 =
     List.fold_left (fun acc old_csys -> match old_csys.Constraint_system.additional_data.link_c with
       | CCsys new_csys ->
@@ -762,7 +807,8 @@ let instantiate_clean_generate_forall_set current_to_check was_modified last_gro
 
           if old_symb_conf.exists_matched <> []
           then
-            if Block.is_authorised current_to_check was_modified last_ground_index general_blocks new_symb_conf.configuration.Configuration.blocks
+            let (current_to_check,gen_blocks) = gen_current_to_check_and_general_block old_symb_conf in
+            if Block.is_authorised current_to_check was_modified last_ground_index gen_blocks new_symb_conf.configuration.Configuration.blocks
             then
               begin
                 (* Must find forall *)
@@ -809,7 +855,12 @@ let instantiate_clean_generate_forall_set current_to_check was_modified last_gro
     | _ -> Config.internal_error "[session_equivalence.ml >> instantiate_clean_generate_forall_set] All constraint system should be linked (2)."
   ) csys_solved.Constraint_system.set;
 
-  forall_set_1
+  if may_modify && !all_sure_proper
+  then
+    match !updated_current_block with
+      | Some(gen_block,_) -> forall_set_1,gen_block
+      | _ -> forall_set_1, general_blocks
+  else forall_set_1, general_blocks
 
 (** Computing channel priority **)
 
@@ -1103,15 +1154,14 @@ let apply_neg_phase equiv_pbl f_continuation f_next =
             | Some general_blocks_2 ->
                 (* We update the recipes of general blocks *)
                 let last_ground_index = general_blocks_2.Block.ground_index in
-                let (general_blocks_3,was_modified,cur_was_modified) = Block.update_recipes_in_general_block general_blocks_2 in
-                let current_to_check = not is_in_improper_phase && cur_was_modified in
 
+                let (general_blocks_3,was_modified,cur_was_modified) = Block.update_recipes_in_general_block general_blocks_2 in
                 (* We remove the constraint systems that are not authorised and
                    we link the authorised one with fresh copy *)
-                let forall_set_3 =
+                let (forall_set_3,general_blocks_4) =
                   auto_cleanup_symbolic_configuration (fun () ->
                     link_constraint_systems csys_solved_2;
-                    instantiate_clean_generate_forall_set current_to_check was_modified last_ground_index general_blocks_3 csys_solved_2
+                    instantiate_clean_generate_forall_set (not is_in_improper_phase) cur_was_modified was_modified last_ground_index general_blocks_3 csys_solved_2
                   )
                 in
 
@@ -1121,7 +1171,7 @@ let apply_neg_phase equiv_pbl f_continuation f_next =
                       size_frame = equiv_pbl.size_frame + 1;
                       forall_set = forall_set_4;
                       eq_recipe = csys_solved_2.Constraint_system.eq_recipe;
-                      general_blocks = general_blocks_3;
+                      general_blocks = general_blocks_4;
                       public_output_channels = public_output_channels
                     }
                   in
@@ -1371,14 +1421,13 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
           (* We update the recipes of general blocks *)
           let last_ground_index = general_blocks_1.Block.ground_index in
           let (general_blocks_2,was_modified,cur_was_modified) = Block.update_recipes_in_general_block general_blocks_1 in
-          let current_to_check = not is_in_improper_phase && cur_was_modified in
 
           (* We remove the constraint systems that are not authorised and
              we link the authorised one with fresh copy *)
-          let forall_set_3 =
+          let (forall_set_3,general_blocks_3) =
             auto_cleanup_symbolic_configuration (fun () ->
               link_constraint_systems csys_solved_2;
-              instantiate_clean_generate_forall_set current_to_check was_modified last_ground_index general_blocks_2 csys_solved_2
+              instantiate_clean_generate_forall_set (not is_in_improper_phase) cur_was_modified was_modified last_ground_index general_blocks_2 csys_solved_2
             )
           in
 
@@ -1395,7 +1444,7 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
               { equiv_pbl with
                 forall_set = forall_set_4;
                 eq_recipe = csys_solved_2.Constraint_system.eq_recipe;
-                general_blocks = general_blocks_2;
+                general_blocks = general_blocks_3;
                 public_output_channels = public_output_channels
               }
             in
@@ -1568,14 +1617,13 @@ let apply_pos_phase equiv_pbl f_continuation f_next =
           (* We update the recipes of general blocks *)
           let last_ground_index = general_blocks_1.Block.ground_index in
           let (general_blocks_2,was_modified,cur_was_modified) = Block.update_recipes_in_general_block general_blocks_1 in
-          let current_to_check = not is_in_improper_phase && cur_was_modified in
 
           (* We remove the constraint systems that are not authorised and
              we link the authorised one with fresh copy *)
-          let forall_set_3 =
+          let (forall_set_3,general_blocks_3) =
             auto_cleanup_symbolic_configuration (fun () ->
               link_constraint_systems csys_solved_2;
-              instantiate_clean_generate_forall_set current_to_check was_modified last_ground_index general_blocks_2 csys_solved_2
+              instantiate_clean_generate_forall_set (not is_in_improper_phase) cur_was_modified was_modified last_ground_index general_blocks_2 csys_solved_2
             )
           in
 
@@ -1584,7 +1632,7 @@ let apply_pos_phase equiv_pbl f_continuation f_next =
               { equiv_pbl with
                 forall_set = forall_set_4;
                 eq_recipe = csys_solved_2.Constraint_system.eq_recipe;
-                general_blocks = general_blocks_2;
+                general_blocks = general_blocks_3;
                 public_output_channels = public_output_channels
               }
             in
@@ -1730,13 +1778,12 @@ let apply_start equiv_pbl f_continuation f_next =
           (* We update the recipes of general blocks *)
           let last_ground_index = general_blocks_1.Block.ground_index in
           let (general_blocks_2,_,cur_was_modified) = Block.update_recipes_in_general_block general_blocks_1 in
-          let current_to_check = cur_was_modified in
           (* We remove the constraint systems that are not authorised and
              we link the authorised one with fresh copy *)
-          let forall_set_3 =
+          let (forall_set_3,general_blocks_3) =
             auto_cleanup_symbolic_configuration (fun () ->
               link_constraint_systems csys_solved_2;
-              instantiate_clean_generate_forall_set current_to_check true last_ground_index general_blocks_2 csys_solved_2
+              instantiate_clean_generate_forall_set true cur_was_modified true last_ground_index general_blocks_2 csys_solved_2
             )
           in
 
@@ -1745,7 +1792,7 @@ let apply_start equiv_pbl f_continuation f_next =
               { equiv_pbl with
                 forall_set = forall_set_4;
                 eq_recipe = csys_solved_2.Constraint_system.eq_recipe;
-                general_blocks = general_blocks_2;
+                general_blocks = general_blocks_3;
                 public_output_channels = public_output_channels
               }
             in
