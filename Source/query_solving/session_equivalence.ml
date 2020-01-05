@@ -788,8 +788,11 @@ let instantiate_clean_generate_forall_set is_proper_phase cur_was_modified was_m
         (fun symb ->
           if get_sure_proper_from_transition symb
           then
-            let (gen_block,cur_modified) = get_update_current_block () in
-            (cur_modified,gen_block)
+            begin
+              Config.log Config.Debug (fun () -> "Block tested earlier");
+              let (gen_block,cur_modified) = get_update_current_block () in
+              (cur_modified,gen_block)
+            end
           else
             begin
               all_sure_proper := false;
@@ -995,6 +998,8 @@ let compute_before_focus_phase equiv_pbl =
 
 (** Application of transitions **)
 
+let nb_improper_problem = ref 0
+
 let apply_neg_phase equiv_pbl f_continuation f_next =
   Config.debug (fun () ->
     if equiv_pbl.forall_set = []
@@ -1010,6 +1015,9 @@ let apply_neg_phase equiv_pbl f_continuation f_next =
   );
 
   let is_in_improper_phase = equiv_pbl.general_blocks.Block.current_recipe_block = None in
+  if is_in_improper_phase
+  then incr nb_improper_problem;
+
   let generate_next_public_output =
     if is_in_improper_phase
     then Configuration.next_neg_improper_phase
@@ -1200,6 +1208,8 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
     equiv_pbl.general_blocks.Block.current_recipe_block = None ||
     not equiv_pbl.general_blocks.Block.current_block_sure_proper
   in
+  if is_in_improper_phase
+  then incr nb_improper_problem;
   let is_transition_from_proper_to_improper =
     equiv_pbl.general_blocks.Block.current_recipe_block <> None &&
     not equiv_pbl.general_blocks.Block.current_block_sure_proper
@@ -1468,6 +1478,8 @@ let apply_pos_phase equiv_pbl f_continuation f_next =
   );
 
   let is_in_improper_phase = equiv_pbl.general_blocks.Block.current_recipe_block = None in
+  if is_in_improper_phase
+  then incr nb_improper_problem;
   let generate_next_public_input =
     if is_in_improper_phase
     then Configuration.next_pos_input
@@ -1820,14 +1832,56 @@ let apply_one_step equiv_pbl f_continuation f_next =
         Config.log_in_debug Config.Process ("[session_equivalence.ml] "^(display_equivalence_problem equiv_pbl))
       end;
 
-    (*Config.log_in_debug Config.Debug (
-      display_list (fun csys ->
-        display_object 1 None [
-          "trace", display_list Process.display_transition "." csys.Constraint_system.additional_data.trace;
-          "local_block", Block.display_local_blocks 3 (csys.Constraint_system.additional_data.configuration.Configuration.blocks)
-        ]
-      ) "" equiv_pbl.forall_set
-    )*)
+    let one_csys = List.hd equiv_pbl.forall_set in
+    let conf = one_csys.Constraint_system.additional_data.configuration in
+
+    if equiv_pbl.general_blocks.Block.current_recipe_block = None || (conf.Configuration.output_proc = [] && not equiv_pbl.general_blocks.Block.current_block_sure_proper)
+    then
+      begin
+        Config.log_in_debug Config.Debug (
+          let csys_ref = ref [] in
+          let counter = ref 1 in
+
+          let add_csys csys =
+            if not (List.mem_assq csys !csys_ref)
+            then
+              begin
+                csys_ref := (csys,!counter)::!csys_ref;
+                incr counter
+              end
+          in
+
+          List.iter (fun csys ->
+            add_csys csys;
+            List.iter (fun (csys',_) -> add_csys csys') csys.Constraint_system.additional_data.exists_matched
+          ) equiv_pbl.forall_set;
+
+          csys_ref := List.rev !csys_ref;
+          let str = ref "" in
+          str := !str^(display_with_tab 1 "Matching = ");
+
+          List.iter (fun f_csys ->
+            let f_i = List.assq f_csys !csys_ref in
+            str := !str ^ display_with_tab 2 (Printf.sprintf "Forall %d with bset = %s" f_i (Bijection_set.display f_csys.Constraint_system.additional_data.forall_bset));
+            List.iter (fun (e_csys,bset) ->
+              let e_i = List.assq e_csys !csys_ref in
+              str := !str ^ display_with_tab 3 (Printf.sprintf "Exists %d with bset = %s" e_i (Bijection_set.display bset));
+            ) f_csys.Constraint_system.additional_data.exists_matched
+          ) equiv_pbl.forall_set;
+          str := !str^(display_with_tab 1 "All the forall constraint systems = ");
+          !str^
+            (display_list (fun (csys,i) ->
+              if csys.Constraint_system.additional_data.matching_status <> Configuration.Exists
+              then
+                display_object 1 None [
+                  "Identifier", string_of_int i;
+                  "trace", display_list Process.display_transition "." csys.Constraint_system.additional_data.trace;
+                  "local_block", Block.display_local_blocks 3 (csys.Constraint_system.additional_data.configuration.Configuration.blocks)
+                ]
+              else ""
+            ) "" !csys_ref)
+        )
+      end
   );
 
   let one_csys = List.hd equiv_pbl.forall_set in

@@ -608,10 +608,22 @@ module Labelled_process = struct
       | PatEquality t -> t
     in
 
-    let rec explore assoc prev_data = function
+    let rec filter_names name_not_outputed = function
+      | Var _ -> name_not_outputed
+      | Name n -> List.removeq n name_not_outputed
+      | Func(_,args) ->
+          List.fold_left (fun acc_name t ->
+            filter_names acc_name t
+          ) name_not_outputed args
+    in
+
+    let rec explore name_not_outputed assoc prev_data = function
       | Nil -> PNil, [], false
       | Output(ch,t,p,pos) ->
-          let (p',under_ch_set,is_sure_proper) = explore assoc prev_data p in
+          let name_not_outputed' = filter_names name_not_outputed t in
+          let name_occured = name_not_outputed != name_not_outputed' in
+
+          let (p',under_ch_set,is_sure_proper) = explore name_not_outputed' assoc prev_data p in
 
           let used_data =
             auto_cleanup_all (fun () ->
@@ -621,18 +633,19 @@ module Labelled_process = struct
             )
           in
           let ch' = Channel.of_term ch in
+          let is_sure_proper' = is_sure_proper || Channel.is_private ch' || name_occured in
           let (ch_set,under_ch_set') = match ch' with
             | Channel.CPrivate n -> NameList.add n under_ch_set, NameList.remove n under_ch_set
             | _ -> under_ch_set, under_ch_set
           in
-          POutput(ch',replace_name_by_variables assoc t,p',None,pos,is_sure_proper,used_data,under_ch_set'), ch_set, (is_sure_proper || Channel.is_private ch')
+          POutput(ch',replace_name_by_variables assoc t,p',None,pos,is_sure_proper',used_data,under_ch_set'), ch_set, is_sure_proper'
       | Input(ch,PatVar v,p,pos) ->
           Config.debug (fun () ->
             if v.link <> NoLink
             then Config.internal_error "[session_process.ml >> of_process] Variables should not be linked (4)."
           );
 
-          let (p',under_ch_set,_) = explore assoc { prev_data with variables = v::prev_data.variables } p in
+          let (p',under_ch_set,_) = explore name_not_outputed assoc { prev_data with variables = v::prev_data.variables } p in
 
           let used_data =
             auto_cleanup_all (fun () ->
@@ -653,8 +666,8 @@ module Labelled_process = struct
             then Config.internal_error "[generic_process.ml >> generic_process_of_process] No variables or names should be linked."
           );
 
-          let (pthen',ch_set_then,is_sure_proper_then) = explore assoc prev_data pthen in
-          let (pelse',ch_set_else,is_sure_proper_else) = explore assoc prev_data pelse in
+          let (pthen',ch_set_then,is_sure_proper_then) = explore name_not_outputed assoc prev_data pthen in
+          let (pelse',ch_set_else,is_sure_proper_else) = explore name_not_outputed assoc prev_data pelse in
 
           let used_data =
             auto_cleanup_all (fun () ->
@@ -675,11 +688,12 @@ module Labelled_process = struct
             if !Variable.currently_linked <> []
             then Config.internal_error "[determinate_process.ml >> generic_process_of_intermediate_process] No variables should be linked."
           );
+          let name_not_outputed' = filter_names name_not_outputed t in
           let fresh_vars = ref [] in
           get_pattern_vars fresh_vars pat;
 
-          let (pthen',ch_set_then,is_sure_proper_then) = explore assoc { prev_data with variables = !fresh_vars @ prev_data.variables } pthen in
-          let (pelse',ch_set_else,is_sure_proper_else) = explore assoc prev_data pelse in
+          let (pthen',ch_set_then,is_sure_proper_then) = explore name_not_outputed' assoc { prev_data with variables = !fresh_vars @ prev_data.variables } pthen in
+          let (pelse',ch_set_else,is_sure_proper_else) = explore name_not_outputed assoc prev_data pelse in
 
           let used_data =
             auto_cleanup_all (fun () ->
@@ -699,7 +713,7 @@ module Labelled_process = struct
           PCondition(equations_2,disequations_3,!fresh_vars,pthen',pelse',used_data) ,ch_set, is_sure_proper_then && is_sure_proper_else
       | New(n,p,_) ->
           let x = Variable.fresh Free in
-          let (p',ch_set,is_sure_proper) = explore ((n,x)::assoc) { prev_data with names = x::prev_data.names } p in
+          let (p',ch_set,is_sure_proper) = explore (n::name_not_outputed) ((n,x)::assoc) { prev_data with names = x::prev_data.names } p in
           let used_data =
             auto_cleanup_all (fun () ->
               link_used_data_process p';
@@ -710,7 +724,7 @@ module Labelled_process = struct
       | Par p_list ->
           let (p_list',ch_set,is_sure_proper) =
             List.fold_right (fun p (acc_p,acc_ch_set,acc_proper) ->
-              let (p',ch_set',is_sure_proper) = explore assoc prev_data p in
+              let (p',ch_set',is_sure_proper) = explore [] assoc prev_data p in
               let acc_ch_set' = NameList.union ch_set' acc_ch_set in
               (p'::acc_p,acc_ch_set',is_sure_proper || acc_proper)
             ) p_list ([],[],false)
@@ -719,7 +733,7 @@ module Labelled_process = struct
       | Bang(p_list,_) ->
           let (p_list',ch_set, is_sure_proper) =
             List.fold_right (fun p (acc_p,acc_ch_set,acc_proper) ->
-              let (p',ch_set',is_sure_proper) = explore assoc prev_data p in
+              let (p',ch_set',is_sure_proper) = explore [] assoc prev_data p in
               let acc_ch_set' = NameList.union ch_set' acc_ch_set in
               (p'::acc_p,acc_ch_set',is_sure_proper || acc_proper)
             ) p_list ([],[],false)
@@ -728,7 +742,7 @@ module Labelled_process = struct
       | Choice _ -> Config.internal_error "[session_process.ml >> Labelled_process.of_process] Should not contain choice operator."
     in
 
-    let (p,_,_) = explore [] { variables = []; names = [] } proc in
+    let (p,_,_) = explore [] [] { variables = []; names = [] } proc in
     PStart p
 
   (*** Skeletons gathering ***)
@@ -851,8 +865,8 @@ module Labelled_process = struct
           in
           begin match proper_status with
             | Proper -> apply ()
-            | ImproperNegPhase -> if Channel.is_private ch then f_next () else apply ()
-            | _ -> if Channel.is_private ch || gather_skel.input_skel <> [] then f_next () else apply ()
+            | ImproperNegPhase -> if is_sure_proper || Channel.is_private ch then f_next () else apply ()
+            | _ -> if is_sure_proper || Channel.is_private ch || gather_skel.input_skel <> [] then f_next () else apply ()
           end
       | PInput(ch,x,p,None,pos,used_data,ch_set) ->
           let apply () =

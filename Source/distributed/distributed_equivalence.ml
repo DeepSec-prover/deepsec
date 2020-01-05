@@ -312,6 +312,7 @@ struct
     with Completed_execution result ->
       Config.log Config.Debug (fun () -> "Number of session node = "^(string_of_int !Session_equivalence.nb_equiv_problem));
       Config.log_in_debug Config.Debug ("Number of session node = "^(string_of_int !Session_equivalence.nb_equiv_problem));
+      Config.log_in_debug Config.Debug ("Number of improper session node = "^(string_of_int !Session_equivalence.nb_improper_problem));
       result
 end
 

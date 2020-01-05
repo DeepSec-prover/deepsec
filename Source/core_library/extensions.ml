@@ -24,6 +24,14 @@ module List = struct
     in
     explore (fun x -> x)
 
+  let removeq x l =
+    let rec explore prev = function
+      | [] -> raise Not_found
+      | t::q when t == x -> rev_append prev q
+      | t::q -> explore (t::prev) q
+    in
+    try explore [] l with Not_found -> l
+
   let unionq l1 l2 = match l1,l2 with
     | [],l
     | l, [] -> l
