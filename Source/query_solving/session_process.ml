@@ -67,6 +67,12 @@ module Label = struct
     if independent lbl1 lbl2 = -1
     then LComm(lbl1,lbl2,ch,prio)
     else LComm(lbl2,lbl1,ch,prio)
+
+  (*** Access ***)
+
+  let get_label_of_standard_complete = function
+    | LStd lbl -> lbl
+    | _ -> Config.internal_error "[session_process.ml >> Label.get_label_of_standard_complete] The complete label should be standard"
 end
 
 module Block = struct

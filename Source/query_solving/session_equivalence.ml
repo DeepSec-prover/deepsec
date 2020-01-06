@@ -48,9 +48,9 @@ and configuration_link =
 
 and session_transition =
   | TransNone
-  | TransOutput of Configuration.output_transition
-  | TransInComm of Configuration.input_and_comm_transition
-  | TransStart of Configuration.start_transition
+  | TransOutput of Configuration.output_transition * Label.t option ref
+  | TransInComm of Configuration.input_and_comm_transition * Label.t option ref
+  | TransStart of Configuration.start_transition * Label.t option ref
 
 and generate_transition =
   {
@@ -754,11 +754,53 @@ let generate_matching_status forall_matched exists_match = match forall_matched,
   | _ -> Configuration.Both
 
 let get_sure_proper_from_transition symb_conf = match symb_conf.transition_data with
-  | TransOutput trans -> trans.Configuration.out_skeletons.Labelled_process.sure_proper
-  | TransInComm { Configuration.in_comm_type = Configuration.TInput trans; _ } -> trans.Configuration.in_skeletons.Labelled_process.sure_proper
-  | TransInComm { Configuration.in_comm_type = Configuration.TComm trans; _ } -> trans.Configuration.comm_out_skeletons.Labelled_process.sure_proper || trans.Configuration.comm_in_skeletons.Labelled_process.sure_proper
-  | TransStart trans -> trans.Configuration.start_skeletons.Labelled_process.sure_proper
-  | _ -> false
+  | TransOutput (trans,_) -> trans.Configuration.out_skeletons.Labelled_process.sure_proper
+  | TransInComm ({ Configuration.in_comm_type = Configuration.TInput trans; _ },_) -> trans.Configuration.in_skeletons.Labelled_process.sure_proper
+  | TransInComm ({ Configuration.in_comm_type = Configuration.TComm trans; _ },_) -> trans.Configuration.comm_out_skeletons.Labelled_process.sure_proper || trans.Configuration.comm_in_skeletons.Labelled_process.sure_proper
+  | TransStart (trans,_) -> trans.Configuration.start_skeletons.Labelled_process.sure_proper
+  | _ -> Config.internal_error "[session_equivalence.ml >> get_sure_proper_from_transition] There should be a transition."
+
+let get_improper_reference symb_conf = match symb_conf.transition_data with
+  | TransOutput (_,imp_ref)
+  | TransInComm (_,imp_ref)
+  | TransStart (_,imp_ref) -> imp_ref
+  | _ -> Config.internal_error "[session_equivalence.ml >> get_improper_reference] There should be a transition."
+
+let linked_improper_reference = ref []
+
+let update_improper_reference symb_conf =
+  let imp_ref = get_improper_reference symb_conf in
+  let last_improper_label = match symb_conf.configuration.Configuration.blocks.Block.local_improper_blocks with
+    | [] ->
+        (* The improper block hasn't been transfered yet *)
+        Label.get_label_of_standard_complete (List.hd symb_conf.configuration.Configuration.blocks.Block.local_proper_blocks)
+    | clbl::_ -> Label.get_label_of_standard_complete clbl
+  in
+  match !imp_ref with
+    | None ->
+        imp_ref := Some last_improper_label;
+        linked_improper_reference := imp_ref :: !linked_improper_reference;
+        true
+    | Some label' ->
+        if Label.independent last_improper_label label' < 0
+        then
+          begin
+            imp_ref := Some last_improper_label;
+            true
+          end
+        else false
+
+let check_improper_reference symb_conf =
+  let imp_ref = get_improper_reference symb_conf in
+  let last_improper_label = match symb_conf.configuration.Configuration.blocks.Block.local_improper_blocks with
+    | [] ->
+        (* The improper block hasn't been transfered yet *)
+        Label.get_label_of_standard_complete (List.hd symb_conf.configuration.Configuration.blocks.Block.local_proper_blocks)
+    | clbl::_ -> Label.get_label_of_standard_complete clbl
+  in
+  match !imp_ref with
+    | None -> Config.internal_error "[session_equivalence >> check_improper_reference] The reference should have been instantiate."
+    | Some complete' -> last_improper_label = complete'
 
 let instantiate_clean_generate_forall_set is_proper_phase cur_was_modified was_modified last_ground_index general_blocks csys_solved =
   let updated_current_block = ref None in
@@ -776,6 +818,13 @@ let instantiate_clean_generate_forall_set is_proper_phase cur_was_modified was_m
               gen_block,cur_modified
   in
 
+  let is_next_phase_improper_focus =
+    let one_csys = List.hd csys_solved.Constraint_system.set in
+    let conf = one_csys.Constraint_system.additional_data.configuration in
+    conf.Configuration.output_proc = [] &&
+    conf.Configuration.focused_proc = None &&
+    (general_blocks.Block.current_recipe_block = None || not general_blocks.Block.current_block_sure_proper)
+  in
 
   let (gen_current_to_check_and_general_block,may_modify) =
     if general_blocks.Block.current_block_sure_proper
@@ -788,11 +837,8 @@ let instantiate_clean_generate_forall_set is_proper_phase cur_was_modified was_m
         (fun symb ->
           if get_sure_proper_from_transition symb
           then
-            begin
-              Config.log Config.Debug (fun () -> "Block tested earlier");
-              let (gen_block,cur_modified) = get_update_current_block () in
-              (cur_modified,gen_block)
-            end
+            let (gen_block,cur_modified) = get_update_current_block () in
+            (cur_modified,gen_block)
           else
             begin
               all_sure_proper := false;
@@ -800,6 +846,12 @@ let instantiate_clean_generate_forall_set is_proper_phase cur_was_modified was_m
             end
         ),true
       else (fun _ -> false,general_blocks),false
+  in
+
+  let (update_improper_block, check_smallest) =
+    if is_next_phase_improper_focus
+    then update_improper_reference, check_improper_reference
+    else (fun _ -> true), (fun _ -> true)
   in
 
   let forall_set_1 =
@@ -811,7 +863,8 @@ let instantiate_clean_generate_forall_set is_proper_phase cur_was_modified was_m
           if old_symb_conf.exists_matched <> []
           then
             let (current_to_check,gen_blocks) = gen_current_to_check_and_general_block old_symb_conf in
-            if Block.is_authorised current_to_check was_modified last_ground_index gen_blocks new_symb_conf.configuration.Configuration.blocks
+            (* Important : Block.is_authorised must be done before update_improper_block *)
+            if Block.is_authorised current_to_check was_modified last_ground_index gen_blocks new_symb_conf.configuration.Configuration.blocks && update_improper_block new_symb_conf
             then
               begin
                 (* Must find forall *)
@@ -832,6 +885,26 @@ let instantiate_clean_generate_forall_set is_proper_phase cur_was_modified was_m
       | _ -> Config.internal_error "[session_equivalence.ml >> instantiate_clean_generate_forall_set] All constraint system should be linked."
     ) [] csys_solved.Constraint_system.set
   in
+
+  let forall_set_2 =
+    if is_next_phase_improper_focus
+    then
+      List.fold_left (fun acc new_csys ->
+        let new_symb_conf = new_csys.Constraint_system.additional_data in
+        if check_smallest new_csys.Constraint_system.additional_data
+        then new_csys::acc
+        else
+          begin
+            new_symb_conf.exists_matched <- [];
+            new_symb_conf.forall_bset <- [];
+            acc
+          end
+      ) [] forall_set_1
+    else forall_set_1
+  in
+
+  List.iter (fun imp_ref -> imp_ref := None) !linked_improper_reference;
+  linked_improper_reference := [];
 
   List.iter (fun old_csys -> match old_csys.Constraint_system.additional_data.link_c with
     | CCsys new_csys ->
@@ -861,9 +934,9 @@ let instantiate_clean_generate_forall_set is_proper_phase cur_was_modified was_m
   if may_modify && !all_sure_proper
   then
     match !updated_current_block with
-      | Some(gen_block,_) -> forall_set_1,gen_block
-      | _ -> forall_set_1, general_blocks
-  else forall_set_1, general_blocks
+      | Some(gen_block,_) -> forall_set_2,gen_block
+      | _ -> forall_set_2, general_blocks
+  else forall_set_2, general_blocks
 
 (** Computing channel priority **)
 
@@ -899,7 +972,7 @@ let is_proper_block_neg_phase out_trans =
 let is_proper_block_pos_focus_phase_in in_trans =
   let skel = in_trans.Configuration.in_skeletons in
   match skel.Labelled_process.input_skel with
-    | [_] -> skel.Labelled_process.output_skel <> [] || skel.Labelled_process.private_channels <> []
+    | [(_,1,_)] -> skel.Labelled_process.output_skel <> [] || skel.Labelled_process.private_channels <> []
     | [] -> skel.Labelled_process.private_channels <> []
     | _ -> true
 
@@ -915,7 +988,7 @@ let is_proper_block_pos_focus_phase_comm comm_trans =
 let is_proper_block_start_phase start_trans =
   let skel = start_trans.Configuration.start_skeletons in
   match skel.Labelled_process.input_skel with
-    | [_] -> skel.Labelled_process.output_skel <> [] || skel.Labelled_process.private_channels <> []
+    | [(_,1,_)] -> skel.Labelled_process.output_skel <> [] || skel.Labelled_process.private_channels <> []
     | [] -> skel.Labelled_process.private_channels <> []
     | _ -> true
 
@@ -949,13 +1022,6 @@ let compute_before_focus_phase equiv_pbl =
         let exists_matched_1 = forall_symb_conf.exists_matched in
         let forall_bset = forall_symb_conf.forall_bset in
         let (id_bset_l,forall_bset') = Bijection_set.check_and_remove_forall 0 forall_imp_data.Configuration.imp_labels forall_bset in
-        Config.log Config.Debug (fun () ->
-          display_object 1 (Some "Check_and_remove_forall") [
-            "forall_bset", Bijection_set.display forall_bset;
-            "forall_bset'", Bijection_set.display forall_bset';
-            "id_bset_l", display_list (fun (i1,i2,l) -> Printf.sprintf "(%d,%d,[%s])" i1 i2 (display_list string_of_int ";" l)) "; " id_bset_l
-          ]
-        );
 
         let exists_matched_2 =
           List.rev_map (fun (exists_csys,bset_exists) ->
@@ -963,16 +1029,8 @@ let compute_before_focus_phase equiv_pbl =
             if forall_imp_data.Configuration.nb_labels = exists_imp_data.Configuration.nb_labels &&
               forall_imp_data.Configuration.nb_prefix = exists_imp_data.Configuration.nb_prefix
             then
-              begin
-                let bset_exists' = Bijection_set.check_and_remove_exists 0 id_bset_l exists_imp_data.Configuration.imp_labels bset_exists in
-                Config.log Config.Debug (fun () ->
-                  display_object 1 (Some "Check_and_remove_forall_within_exists") [
-                    "exists_bset", Bijection_set.display bset_exists;
-                    "exists_bset'", Bijection_set.display bset_exists';
-                  ]
-                );
-                (exists_csys,bset_exists')
-              end
+              let bset_exists' = Bijection_set.check_and_remove_exists 0 id_bset_l exists_imp_data.Configuration.imp_labels bset_exists in
+              (exists_csys,bset_exists')
             else raise Not_found
           ) exists_matched_1
         in
@@ -998,8 +1056,6 @@ let compute_before_focus_phase equiv_pbl =
 
 (** Application of transitions **)
 
-let nb_improper_problem = ref 0
-
 let apply_neg_phase equiv_pbl f_continuation f_next =
   Config.debug (fun () ->
     if equiv_pbl.forall_set = []
@@ -1015,8 +1071,6 @@ let apply_neg_phase equiv_pbl f_continuation f_next =
   );
 
   let is_in_improper_phase = equiv_pbl.general_blocks.Block.current_recipe_block = None in
-  if is_in_improper_phase
-  then incr nb_improper_problem;
 
   let generate_next_public_output =
     if is_in_improper_phase
@@ -1033,6 +1087,8 @@ let apply_neg_phase equiv_pbl f_continuation f_next =
     let symb_conf = csys.Constraint_system.additional_data in
     match symb_conf.link_c with
       | CNoLink ->
+          let improper_ref = get_improper_reference symb_conf in
+
           let transitions_forall = ref [] in
           let transitions_exists = ref [] in
           let transitions_both = ref [] in
@@ -1051,7 +1107,7 @@ let apply_neg_phase equiv_pbl f_continuation f_next =
                     configuration = conf_1;
                     matching_status = out_trans.Configuration.out_matching_status;
                     trace = AOutput(target_ch_recipe,out_trans.Configuration.out_position) :: symb_conf.trace;
-                    transition_data = TransOutput out_trans;
+                    transition_data = TransOutput (out_trans,improper_ref);
                     link_c = CNoLink;
                     forall_matched = [];
                     exists_matched = []
@@ -1098,7 +1154,7 @@ let apply_neg_phase equiv_pbl f_continuation f_next =
       let gen_forall_transitions = generate_transitions forall_csys in
       iter_forall_both (fun forall_csys_1 ->
         let forall_trans = match forall_csys_1.Constraint_system.additional_data.transition_data with
-          | TransOutput trans -> trans
+          | TransOutput(trans,_) -> trans
           | _ -> Config.internal_error "[session_equivalence.ml >> apply_public_out] Expecting an output transition."
         in
         let (generate_bset_exists,forall_bset) = Bijection_set.generate_forall forall_trans.Configuration.out_label forall_trans.Configuration.out_skeletons forall_csys.Constraint_system.additional_data.forall_bset in
@@ -1107,7 +1163,7 @@ let apply_neg_phase equiv_pbl f_continuation f_next =
           let gen_exists_transitions = generate_transitions exists_csys in
           iter_exists_both (fun exists_csys_1 ->
             let exists_trans = match exists_csys_1.Constraint_system.additional_data.transition_data with
-              | TransOutput trans -> trans
+              | TransOutput(trans,_) -> trans
               | _ -> Config.internal_error "[session_equivalence.ml >> apply_public_out] Expecting an output transition (2)."
             in
             match generate_bset_exists exists_trans.Configuration.out_label exists_trans.Configuration.out_skeletons exists_bset with
@@ -1131,7 +1187,7 @@ let apply_neg_phase equiv_pbl f_continuation f_next =
     let (public_output_channels,general_blocks_1) =
       let csys = List.hd forall_set_2 in
       match csys.Constraint_system.additional_data.transition_data with
-        | TransOutput out_trans ->
+        | TransOutput(out_trans,_) ->
             let general_blocks =
               if is_proper_block_neg_phase out_trans
               then { equiv_pbl.general_blocks with Block.current_block_sure_proper = true }
@@ -1208,8 +1264,7 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
     equiv_pbl.general_blocks.Block.current_recipe_block = None ||
     not equiv_pbl.general_blocks.Block.current_block_sure_proper
   in
-  if is_in_improper_phase
-  then incr nb_improper_problem;
+
   let is_transition_from_proper_to_improper =
     equiv_pbl.general_blocks.Block.current_recipe_block <> None &&
     not equiv_pbl.general_blocks.Block.current_block_sure_proper
@@ -1251,6 +1306,8 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
       in
       match symb_conf.link_c with
         | CNoLink | CChannelPriority _ ->
+            let improper_ref = ref None in
+
             let transitions_forall = ref [] in
             let transitions_exists = ref [] in
             let transitions_both = ref [] in
@@ -1277,7 +1334,7 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
                             configuration = conf_1;
                             matching_status = in_comm_trans.Configuration.in_comm_matching_status;
                             trace = AInput(in_trans.Configuration.in_channel,RVar var_X_t,in_trans.Configuration.in_position) :: symb_conf.trace;
-                            transition_data = TransInComm in_comm_trans;
+                            transition_data = TransInComm(in_comm_trans,improper_ref);
                             link_c = CNoLink;
                             forall_matched = [];
                             exists_matched = []
@@ -1307,7 +1364,7 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
                             configuration = conf_1;
                             matching_status = in_comm_trans.Configuration.in_comm_matching_status;
                             trace = AComm(comm_trans.Configuration.comm_out_position,comm_trans.Configuration.comm_in_position) :: symb_conf.trace;
-                            transition_data = TransInComm in_comm_trans;
+                            transition_data = TransInComm(in_comm_trans,improper_ref);
                             link_c = CNoLink;
                             forall_matched = [];
                             exists_matched = []
@@ -1352,7 +1409,7 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
       let gen_forall_transitions = generate_transitions forall_csys in
       iter_forall_both (fun forall_csys_1 ->
         let forall_trans = match forall_csys_1.Constraint_system.additional_data.transition_data with
-          | TransInComm trans -> trans
+          | TransInComm(trans,_) -> trans
           | _ -> Config.internal_error "[session_equivalence.ml >> apply_focus_phase] Expecting an in/comm transition."
         in
         let (generate_bset_exists,forall_bset) = Bijection_set.generate_in_comm forall_trans forall_csys.Constraint_system.additional_data.forall_bset in
@@ -1360,7 +1417,7 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
           let gen_exists_transitions = generate_transitions exists_csys in
           iter_exists_both (fun exists_csys_1 ->
             let exists_trans = match exists_csys_1.Constraint_system.additional_data.transition_data with
-              | TransInComm trans -> trans
+              | TransInComm(trans,_) -> trans
               | _ -> Config.internal_error "[session_equivalence.ml >> apply_focus_phase] Expecting an in/comm transition (2)."
             in
             match generate_bset_exists exists_trans exists_bset with
@@ -1392,7 +1449,7 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
     let (public_output_channels,general_blocks_1) =
       let csys = List.hd forall_set_2 in
       match csys.Constraint_system.additional_data.transition_data with
-        | TransInComm { Configuration.in_comm_type = Configuration.TInput in_trans; _ } ->
+        | TransInComm({ Configuration.in_comm_type = Configuration.TInput in_trans; _ },_) ->
             let general_blocks =
               if is_in_improper_phase
               then general_blocks_0
@@ -1404,7 +1461,7 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
 
             let pub_output = Configuration.update_public_output_channel_in_transition in_trans equiv_pbl.public_output_channels in
             (pub_output,general_blocks)
-        | TransInComm { Configuration.in_comm_type = Configuration.TComm comm_trans; _ } ->
+        | TransInComm({ Configuration.in_comm_type = Configuration.TComm comm_trans; _ },_) ->
             let general_blocks =
               if is_in_improper_phase
               then general_blocks_0
@@ -1478,12 +1535,11 @@ let apply_pos_phase equiv_pbl f_continuation f_next =
   );
 
   let is_in_improper_phase = equiv_pbl.general_blocks.Block.current_recipe_block = None in
-  if is_in_improper_phase
-  then incr nb_improper_problem;
+
   let generate_next_public_input =
     if is_in_improper_phase
-    then Configuration.next_pos_input
-    else Configuration.next_pos_input_improper_phase
+    then Configuration.next_pos_input_improper_phase
+    else Configuration.next_pos_input
   in
 
   let type_max =
@@ -1496,6 +1552,7 @@ let apply_pos_phase equiv_pbl f_continuation f_next =
     let symb_conf = csys.Constraint_system.additional_data in
     match symb_conf.link_c with
       | CNoLink ->
+          let improper_ref = get_improper_reference symb_conf in
           let transitions_forall = ref [] in
           let transitions_exists = ref [] in
           let transitions_both = ref [] in
@@ -1516,7 +1573,7 @@ let apply_pos_phase equiv_pbl f_continuation f_next =
                           configuration = conf_1;
                           matching_status = in_comm_trans.Configuration.in_comm_matching_status;
                           trace = AInput(in_trans.Configuration.in_channel,RVar var_X_t,in_trans.Configuration.in_position) :: symb_conf.trace;
-                          transition_data = TransInComm in_comm_trans;
+                          transition_data = TransInComm(in_comm_trans,improper_ref);
                           link_c = CNoLink;
                           forall_matched = [];
                           exists_matched = []
@@ -1566,7 +1623,7 @@ let apply_pos_phase equiv_pbl f_continuation f_next =
       let gen_forall_transitions = generate_transitions forall_csys in
       iter_forall_both (fun forall_csys_1 ->
         let forall_trans = match forall_csys_1.Constraint_system.additional_data.transition_data with
-          | TransInComm trans -> trans
+          | TransInComm(trans,_) -> trans
           | _ -> Config.internal_error "[session_equivalence.ml >> apply_pos_phase] Expecting an in/comm transition."
         in
         let (generate_bset_exists,forall_bset) = Bijection_set.generate_in_comm forall_trans forall_csys.Constraint_system.additional_data.forall_bset in
@@ -1575,7 +1632,7 @@ let apply_pos_phase equiv_pbl f_continuation f_next =
           let gen_exists_transitions = generate_transitions exists_csys in
           iter_exists_both (fun exists_csys_1 ->
             let exists_trans = match exists_csys_1.Constraint_system.additional_data.transition_data with
-              | TransInComm trans -> trans
+              | TransInComm(trans,_) -> trans
               | _ -> Config.internal_error "[session_equivalence.ml >> apply_pos_phase] Expecting an in/comm transition (2)."
             in
             match generate_bset_exists exists_trans exists_bset with
@@ -1599,7 +1656,7 @@ let apply_pos_phase equiv_pbl f_continuation f_next =
     let (public_output_channels,general_blocks_1) =
       let csys = List.hd forall_set_2 in
       match csys.Constraint_system.additional_data.transition_data with
-        | TransInComm { Configuration.in_comm_type = Configuration.TInput in_trans; _ } ->
+        | TransInComm({ Configuration.in_comm_type = Configuration.TInput in_trans; _ },_) ->
             let general_blocks =
               if is_in_improper_phase
               then equiv_pbl.general_blocks
@@ -1667,6 +1724,7 @@ let apply_start equiv_pbl f_continuation f_next =
     let symb_conf = csys.Constraint_system.additional_data in
     match symb_conf.link_c with
       | CNoLink ->
+          let improper_ref = ref None in
           let transitions_forall = ref [] in
           let transitions_exists = ref [] in
           let transitions_both = ref [] in
@@ -1684,7 +1742,7 @@ let apply_start equiv_pbl f_continuation f_next =
                   { symb_conf with
                     configuration = conf_1;
                     matching_status = start_trans.Configuration.start_matching_status;
-                    transition_data = TransStart start_trans;
+                    transition_data = TransStart(start_trans,improper_ref);
                     link_c = CNoLink;
                     forall_matched = [];
                     exists_matched = []
@@ -1731,7 +1789,7 @@ let apply_start equiv_pbl f_continuation f_next =
       let gen_forall_transitions = generate_transitions forall_csys in
       iter_forall_both (fun forall_csys_1 ->
         let forall_trans = match forall_csys_1.Constraint_system.additional_data.transition_data with
-          | TransStart trans -> trans
+          | TransStart(trans,_) -> trans
           | _ -> Config.internal_error "[session_equivalence.ml >> apply_pos_phase] Expecting an in/comm transition."
         in
         let (generate_bset_exists, forall_bset) = Bijection_set.generate_forall Label.initial forall_trans.Configuration.start_skeletons forall_csys.Constraint_system.additional_data.forall_bset in
@@ -1739,7 +1797,7 @@ let apply_start equiv_pbl f_continuation f_next =
           let gen_exists_transitions = generate_transitions exists_csys in
           iter_exists_both (fun exists_csys_1 ->
             let exists_trans = match exists_csys_1.Constraint_system.additional_data.transition_data with
-              | TransStart trans -> trans
+              | TransStart(trans,_) -> trans
               | _ -> Config.internal_error "[session_equivalence.ml >> apply_pos_phase] Expecting an in/comm transition (2)."
             in
             match generate_bset_exists Label.initial exists_trans.Configuration.start_skeletons exists_bset with
@@ -1763,7 +1821,7 @@ let apply_start equiv_pbl f_continuation f_next =
     let (public_output_channels,general_blocks_1) =
       let csys = List.hd forall_set_2 in
       match csys.Constraint_system.additional_data.transition_data with
-        | TransStart start_trans ->
+        | TransStart(start_trans,_) ->
             let general_blocks =
               if is_proper_block_start_phase start_trans
               then { equiv_pbl.general_blocks with Block.current_block_sure_proper = true }
@@ -1816,10 +1874,7 @@ let apply_start equiv_pbl f_continuation f_next =
 
 (** Apply all transitions **)
 
-let nb_equiv_problem = ref 0
-
 let apply_one_step equiv_pbl f_continuation f_next =
-  incr nb_equiv_problem;
 
   Config.debug (fun () ->
     if equiv_pbl.forall_set = []
@@ -1831,57 +1886,6 @@ let apply_one_step equiv_pbl f_continuation f_next =
         Config.log_in_debug Config.Process "[session_equivalence.ml] Apply one step";
         Config.log_in_debug Config.Process ("[session_equivalence.ml] "^(display_equivalence_problem equiv_pbl))
       end;
-
-    let one_csys = List.hd equiv_pbl.forall_set in
-    let conf = one_csys.Constraint_system.additional_data.configuration in
-
-    if equiv_pbl.general_blocks.Block.current_recipe_block = None || (conf.Configuration.output_proc = [] && not equiv_pbl.general_blocks.Block.current_block_sure_proper)
-    then
-      begin
-        Config.log_in_debug Config.Debug (
-          let csys_ref = ref [] in
-          let counter = ref 1 in
-
-          let add_csys csys =
-            if not (List.mem_assq csys !csys_ref)
-            then
-              begin
-                csys_ref := (csys,!counter)::!csys_ref;
-                incr counter
-              end
-          in
-
-          List.iter (fun csys ->
-            add_csys csys;
-            List.iter (fun (csys',_) -> add_csys csys') csys.Constraint_system.additional_data.exists_matched
-          ) equiv_pbl.forall_set;
-
-          csys_ref := List.rev !csys_ref;
-          let str = ref "" in
-          str := !str^(display_with_tab 1 "Matching = ");
-
-          List.iter (fun f_csys ->
-            let f_i = List.assq f_csys !csys_ref in
-            str := !str ^ display_with_tab 2 (Printf.sprintf "Forall %d with bset = %s" f_i (Bijection_set.display f_csys.Constraint_system.additional_data.forall_bset));
-            List.iter (fun (e_csys,bset) ->
-              let e_i = List.assq e_csys !csys_ref in
-              str := !str ^ display_with_tab 3 (Printf.sprintf "Exists %d with bset = %s" e_i (Bijection_set.display bset));
-            ) f_csys.Constraint_system.additional_data.exists_matched
-          ) equiv_pbl.forall_set;
-          str := !str^(display_with_tab 1 "All the forall constraint systems = ");
-          !str^
-            (display_list (fun (csys,i) ->
-              if csys.Constraint_system.additional_data.matching_status <> Configuration.Exists
-              then
-                display_object 1 None [
-                  "Identifier", string_of_int i;
-                  "trace", display_list Process.display_transition "." csys.Constraint_system.additional_data.trace;
-                  "local_block", Block.display_local_blocks 3 (csys.Constraint_system.additional_data.configuration.Configuration.blocks)
-                ]
-              else ""
-            ) "" !csys_ref)
-        )
-      end
   );
 
   let one_csys = List.hd equiv_pbl.forall_set in
