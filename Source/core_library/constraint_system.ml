@@ -3232,8 +3232,7 @@ module Rule_ground = struct
 
     let rec internal target_csys checked_csys to_check_csys =
       match Rule.exploration_equality_constructor Formula.R.Top (ref None) checked_csys to_check_csys with
-      | None, checked_csys_1 ->
-          f_continuation target_csys checked_csys_1
+      | None, checked_csys_1 -> f_continuation target_csys checked_csys_1
       | Some(recipe,_,index_kb,csys,to_check_csys_1), checked_csys_1 ->
           (* We found an application of a destructor that is not applicable to the target csys. *)
           if !find_witness
@@ -3244,7 +3243,6 @@ module Rule_ground = struct
 
     let rec internal_target target_csys csys_list  =
       Config.debug (fun () ->
-        Config.log_in_debug Config.Debug "Internal target";
         List.iter (fun csys -> IK.iter_term check_linked_names csys.incremented_knowledge; K.iter_term check_linked_names csys.knowledge) csys_list;
         IK.iter_term check_linked_names target_csys.incremented_knowledge; K.iter_term check_linked_names target_csys.knowledge
       );
@@ -3397,17 +3395,10 @@ module Rule_ground = struct
 
   let solve csys =
     Name.auto_deducible_cleanup_with_reset_notail (fun () ->
-      Config.debug (fun () ->
-        Config.log_in_debug Config.Debug (display_constraint_system 1 csys)
-      );
       setup_deducible_names csys;
 
       let csys_ref = ref csys in
       apply_rules (fun csys' _ ->
-        Config.debug (fun () ->
-          Config.log_in_debug Config.Debug (display_constraint_system 1 csys');
-          IK.iter_term check_linked_names csys'.incremented_knowledge; K.iter_term check_linked_names csys'.knowledge
-        );
         csys_ref := prepare_for_solving_procedure_ground csys';
       ) csys [];
       !csys_ref

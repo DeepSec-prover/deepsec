@@ -225,7 +225,6 @@ type input_command =
   | Cancel_query of string
   | Cancel_batch
   | Get_config
-  | Set_config of string
   (* Simulator generic command *)
   | Die
   | Goto_step of int (* id process *) * int (* id step *)

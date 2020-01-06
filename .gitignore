@@ -24,7 +24,7 @@ log
 *.DS_Store
 *.native
 
-database
+results_files
 
 Source/interface/grammar_ui.ml
 Source/interface/grammar_ui.mli

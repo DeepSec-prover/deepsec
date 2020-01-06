@@ -750,7 +750,6 @@ let input_command_of ?(assoc=None) json = match string_of (member "command" json
   | "cancel_query" -> Cancel_query (escaped_string_of (member "result_file" json))
   | "cancel_batch" | "exit" -> Cancel_batch
   | "get_config" -> Get_config
-  | "set_config" -> Set_config (escaped_string_of (member "output_dir" json))
   (* **** Simulator commands **** *)
 
   (* Generic commands *)

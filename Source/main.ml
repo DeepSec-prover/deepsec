@@ -297,7 +297,7 @@ let _ =
   (* Retrieve deepsec path *)
   let exe_path = Filename.dirname (String.escaped Sys.executable_name) in
   Config.path_deepsec := exe_path;
-  let database_path = Filename.concat exe_path "database" in
+  let database_path = Filename.concat exe_path "results_files" in
   Config.path_database := database_path;
 
   (* Retrieve the command *)
