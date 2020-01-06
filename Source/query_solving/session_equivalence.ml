@@ -1877,20 +1877,9 @@ let apply_start equiv_pbl f_continuation f_next =
 
 (** Apply all transitions **)
 
-let clean_memory =
-  let acc = ref 0 in
-  let f () =
-    incr acc;
-    if !acc mod 1000 = 0
-    then Gc.full_major ()
-  in
-  f
-
 let apply_one_step equiv_pbl f_continuation f_next =
 
   (*** Cleaning of memory ***)
-
-  clean_memory ();
 
   Config.debug (fun () ->
     if equiv_pbl.forall_set = []
