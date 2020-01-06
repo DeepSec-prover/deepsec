@@ -622,6 +622,12 @@ let of_batch_result batch_res =
     | Title str -> title := Some str
     | _ -> ()
   ) batch_res.command_options;
+  if !title = None
+  then
+    List.iter (function
+      | Title str -> title := Some str
+      | _ -> ()
+    ) batch_res.command_options_cmp;
 
   let jlist1 = [
     "ocaml_version", JString batch_res.ocaml_version;

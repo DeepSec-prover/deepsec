@@ -505,6 +505,24 @@ let cancel_query file =
     Display_ui.send_output_command (Query_canceled file);
   with Found_query -> ()
 
+(* Replace title *)
+
+let replace_title input_files batch_options =
+
+  let new_title = match input_files with
+    | [] -> Config.internal_error "[execution_manager.ml >> replace_title] There should be at least one input file."
+    | [str] -> Filename.remove_extension (Filename.basename str)
+    | _ -> Printf.sprintf "Batch of %d input files" (List.length input_files)
+  in
+
+  let rec explore l = match l with
+    | [] -> [ Title new_title ]
+    | Title _ :: _ -> l
+    | t :: q -> t::(explore q)
+  in
+
+  explore batch_options
+
 (* Progress *)
 
 let apply_progress progress to_write =
@@ -547,6 +565,7 @@ let start_batch input_files batch_options =
           | _ -> Config.internal_error "[main_ui.ml >> start_batch] Unexpected case"
         ) parsing_results
       in
+
       let batch_result =
         {
           name_batch = batch_dir^".json";
@@ -560,7 +579,7 @@ let start_batch input_files batch_options =
           b_status = RBIn_progress;
           b_start_time = Some (int_of_float (Unix.time ()));
           b_end_time = None;
-          command_options_cmp = [];
+          command_options_cmp = replace_title input_files batch_options;
           ocaml_version = Sys.ocaml_version;
           debug = Config.debug_activated
         }
@@ -768,7 +787,7 @@ let listen_to_command_api in_ch out_ch translation_result =
                       in
                       Some { run with cur_query = cur_query }
                 in
-                let cur_batch_1 = { cur_batch with command_options_cmp = command_options_of_distrib_settings distrib_settings cur_batch.command_options } in
+                let cur_batch_1 = { cur_batch with command_options_cmp = command_options_of_distrib_settings distrib_settings cur_batch.command_options_cmp } in
                 write_batch cur_batch_1;
                 computation_status := { !computation_status with batch = cur_batch_1; cur_run = cur_run};
                 Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Send Acknowledgement command\n");
@@ -828,7 +847,7 @@ let listen_to_command_generic in_ch out_ch translation_result =
                   in
                   Some { run with cur_query = cur_query }
             in
-            let cur_batch_1 = { cur_batch with command_options_cmp = command_options_of_distrib_settings distrib_settings cur_batch.command_options } in
+            let cur_batch_1 = { cur_batch with command_options_cmp = command_options_of_distrib_settings distrib_settings cur_batch.command_options_cmp } in
             write_batch cur_batch_1;
             computation_status := { !computation_status with batch = cur_batch_1; cur_run = cur_run};
             Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Send Acknowledgement command\n");

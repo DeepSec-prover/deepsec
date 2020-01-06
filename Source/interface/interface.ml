@@ -964,7 +964,12 @@ let attack_simulator_apply_next_step_user semantics id_attacked_proc full_attack
               end
           | _ -> attacked_csys1, simulated_csys1, Static_equivalent
         in
-        let (default_trans,all_trans) = find_next_possible_transition true semantics forced_transition simulated_csys2 in
+        let (default_trans,all_trans) =
+          if status_equiv = Static_equivalent
+          then find_next_possible_transition true semantics forced_transition simulated_csys2
+          else ([],[])
+        in
+
         let state =
           {
             attacked_id_transition = attacked_id_transition;

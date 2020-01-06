@@ -198,7 +198,6 @@ let rec term_of assoc json = match string_of (member "type" json) with
         try
           Func(find_tuple ar assoc,args)
         with Not_found ->
-          Config.log Config.Debug (fun () -> "New tuple (Term)");
           let args = list_of (term_of assoc) (member "args" json) in
           let f = Symbol.get_tuple ar in
           Func(f,args)
@@ -231,7 +230,6 @@ let rec pattern_of assoc json = match string_of (member "type" json) with
         try
           JPTuple(find_tuple ar assoc,args)
         with Not_found ->
-          Config.log Config.Debug (fun () -> "New tuple (Pattern)");
           let args = list_of (pattern_of assoc) (member "args" json) in
           let f = Symbol.get_tuple (List.length args) in
           JPTuple(f,args)
@@ -261,7 +259,6 @@ let rec recipe_of assoc json = match string_of (member "type" json) with
         try
           RFunc(find_tuple ar assoc,args)
         with Not_found ->
-          Config.log Config.Debug (fun () -> "New tuple (Recipe)");
           let f = Symbol.get_tuple (List.length args) in
           RFunc(f,args)
       end
@@ -272,7 +269,6 @@ let rec recipe_of assoc json = match string_of (member "type" json) with
         try
           RFunc(find_projection ith ar assoc,[recipe_of assoc (member "arg" json)])
         with Not_found ->
-          Config.log Config.Debug (fun () -> "New proj (Recipe)");
           let f_tuple = Symbol.get_tuple ar in
           let f = List.nth (Symbol.get_projections f_tuple) (ith-1) in
           RFunc(f,[recipe_of assoc (member "arg" json)])

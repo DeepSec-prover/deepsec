@@ -3231,18 +3231,8 @@ module Rule_ground = struct
     );
 
     let rec internal target_csys checked_csys to_check_csys =
-      Config.debug (fun () ->
-        Config.log_in_debug Config.Debug "Internal";
-        List.iter (fun csys -> IK.iter_term check_linked_names csys.incremented_knowledge; K.iter_term check_linked_names csys.knowledge) csys_list;
-        IK.iter_term check_linked_names target_csys.incremented_knowledge; K.iter_term check_linked_names target_csys.knowledge
-      );
       match Rule.exploration_equality_constructor Formula.R.Top (ref None) checked_csys to_check_csys with
       | None, checked_csys_1 ->
-          Config.debug (fun () ->
-            Config.log_in_debug Config.Debug "Internal";
-            List.iter (fun csys -> IK.iter_term check_linked_names csys.incremented_knowledge; K.iter_term check_linked_names csys.knowledge) checked_csys_1;
-            IK.iter_term check_linked_names target_csys.incremented_knowledge; K.iter_term check_linked_names target_csys.knowledge
-          );
           f_continuation target_csys checked_csys_1
       | Some(recipe,_,index_kb,csys,to_check_csys_1), checked_csys_1 ->
           (* We found an application of a destructor that is not applicable to the target csys. *)
