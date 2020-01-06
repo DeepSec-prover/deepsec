@@ -214,6 +214,8 @@ let of_string str = JString str
 
 (* Basic types *)
 
+let reg_proj = Str.regexp "proj_{\\([0-9]+\\),\\([0-9]+\\)}"
+
 let rec of_term assoc = function
   | Var v ->
       let (id,args)  = get_variable_id assoc v in
@@ -230,6 +232,11 @@ let rec of_term assoc = function
   | Func(f,[]) ->
       let id = get_symbol_id assoc f in
       JObject [ "type", JString "Function"; "symbol", JInt id ]
+  | Func(f,args) when f.cat = Tuple ->
+      JObject [
+        "type", JString "Tuple";
+        "args", JList (List.map (of_term assoc) args)
+      ]
   | Func(f,args) ->
       let id = get_symbol_id assoc f in
       JObject [
@@ -245,6 +252,20 @@ let rec of_recipe assoc = function
   | RFunc(f,[]) ->
       let id = get_symbol_id assoc f in
       JObject [ "type", JString "Function"; "symbol", JInt id ]
+  | RFunc(f,[r]) when Str.string_match reg_proj f.label_s 0 ->
+      let i1 = Str.matched_group 1 f.label_s in
+      let i2 = Str.matched_group 2 f.label_s in
+      JObject [
+        "type", JString "Proj";
+        "ith", JInt (int_of_string i1);
+        "arity_tuple", JInt (int_of_string i2);
+        "arg", of_recipe assoc r
+      ]
+  | RFunc(f,args) when f.cat = Tuple ->
+      JObject [
+        "type", JString "Tuple";
+        "args", JList (List.map (of_recipe assoc) args)
+      ]
   | RFunc(f,args) ->
       let id = get_symbol_id assoc f in
       JObject [
@@ -266,11 +287,9 @@ let rec of_json_pattern assoc = function
       else JObject [ "type", JString "Atomic"; "id", JInt id; "bang", JList (List.map of_int args)]
   | JPEquality t -> JObject [ "type", JString "Equality"; "term", of_term assoc t]
   | JPTuple(_,[]) -> Config.internal_error "[display_ui.ml >> of_json_pattern] Tuples cannot be of arity 0."
-  | JPTuple(f,args) ->
-      let id = get_symbol_id assoc f in
+  | JPTuple(_,args) ->
       JObject [
-        "type", JString "Function";
-        "symbol", JInt id;
+        "type", JString "Tuple";
         "args", JList (List.map (of_json_pattern assoc) args)
       ]
 
@@ -627,7 +646,6 @@ let of_batch_result batch_res =
 
 (* Simulator *)
 
-(** TODO : Change w.r.t. doc *)
 let of_available_transition assoc = function
   | AVDirect(r_ch,r_t_op,lock) ->
       let jlist1 = [ "locked", JBool lock ] in

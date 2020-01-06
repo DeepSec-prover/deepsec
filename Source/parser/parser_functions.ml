@@ -94,6 +94,8 @@ end
 
 module Env = Map.Make(StringComp)
 
+let parsing_file = ref true
+
 let environment = ref (Env.empty:env_elt Env.t)
 
 let display_env_elt_type = function

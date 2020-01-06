@@ -43,13 +43,15 @@ let rec recipe_of_parsed_recipe ori_str max_ax = function
       RFunc(f_tuple,List.map (recipe_of_parsed_recipe ori_str max_ax) r_list)
 
 let parse_recipe_from_string max_ax str_r =
-
+  Parser_functions.parsing_file := false;
   let parsed_r =
     try
+
       let lexbuf = Lexing.from_string str_r in
       Grammar.main_recipe Lexer.token lexbuf
     with Parser_functions.User_Error err -> raise (Parser_functions.User_Error (Printf.sprintf "In recipe %%%s%%: %s" str_r err))
   in
+  Parser_functions.parsing_file := true;
   recipe_of_parsed_recipe str_r max_ax parsed_r
 
 let parse_recipe_from_string_option max_ax = function
@@ -142,6 +144,31 @@ let list_of f_parse = function
   | JList l -> List.map f_parse l
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> list_of] Wrong structure."
 
+exception Found_symbol of symbol
+
+let find_tuple ar assoc =
+  try
+    Array.iter (function
+      | JAtomSymbol f ->
+          if f.cat = Tuple && f.arity = ar
+          then raise (Found_symbol f)
+      | _ -> ()
+    ) assoc;
+    raise Not_found
+  with Found_symbol f -> f
+
+let find_projection ith ar assoc =
+  let lbl = Printf.sprintf "proj_{%d,%d}" ith ar in
+  try
+    Array.iter (function
+      | JAtomSymbol f ->
+          if f.label_s = lbl
+          then raise (Found_symbol f)
+      | _ -> ()
+    ) assoc;
+    raise Not_found
+  with Found_symbol f -> f
+
 let rec term_of assoc json = match string_of (member "type" json) with
   | "Atomic" ->
       let id = int_of (member "id" json) in
@@ -164,6 +191,18 @@ let rec term_of assoc json = match string_of (member "type" json) with
   | "Attacker" ->
       let label = string_of (member "label" json) in
       Func(Symbol.get_attacker_name label,[])
+  | "Tuple" ->
+      let args = list_of (term_of assoc) (member "args" json) in
+      let ar = List.length args in
+      begin
+        try
+          Func(find_tuple ar assoc,args)
+        with Not_found ->
+          Config.log Config.Debug (fun () -> "New tuple (Term)");
+          let args = list_of (term_of assoc) (member "args" json) in
+          let f = Symbol.get_tuple ar in
+          Func(f,args)
+      end
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> term_of] Wrong value for type label."
 
 let rec pattern_of assoc json = match string_of (member "type" json) with
@@ -185,6 +224,18 @@ let rec pattern_of assoc json = match string_of (member "type" json) with
         | _ -> Config.internal_error "[parsing_functions_ui.ml >> pattern_of] Should be a function symbol."
       in
       JPTuple(symbol,args)
+  | "Tuple" ->
+      let args = list_of (pattern_of assoc) (member "args" json) in
+      let ar = List.length args in
+      begin
+        try
+          JPTuple(find_tuple ar assoc,args)
+        with Not_found ->
+          Config.log Config.Debug (fun () -> "New tuple (Pattern)");
+          let args = list_of (pattern_of assoc) (member "args" json) in
+          let f = Symbol.get_tuple (List.length args) in
+          JPTuple(f,args)
+      end
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> pattern_of] Wrong value for type label."
 
 let rec recipe_of assoc json = match string_of (member "type" json) with
@@ -203,6 +254,29 @@ let rec recipe_of assoc json = match string_of (member "type" json) with
   | "Attacker" ->
       let label = string_of (member "label" json) in
       RFunc(Symbol.get_attacker_name label,[])
+  | "Tuple" ->
+      let args = list_of (recipe_of assoc) (member "args" json) in
+      let ar = List.length args in
+      begin
+        try
+          RFunc(find_tuple ar assoc,args)
+        with Not_found ->
+          Config.log Config.Debug (fun () -> "New tuple (Recipe)");
+          let f = Symbol.get_tuple (List.length args) in
+          RFunc(f,args)
+      end
+  | "Proj" ->
+      let ith = int_of (member "ith" json) in
+      let ar = int_of (member "arity_tuple" json) in
+      begin
+        try
+          RFunc(find_projection ith ar assoc,[recipe_of assoc (member "arg" json)])
+        with Not_found ->
+          Config.log Config.Debug (fun () -> "New proj (Recipe)");
+          let f_tuple = Symbol.get_tuple ar in
+          let f = List.nth (Symbol.get_projections f_tuple) (ith-1) in
+          RFunc(f,[recipe_of assoc (member "arg" json)])
+      end
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> recipe_of] Wrong value for type label."
 
 (*** Atomic and association data ***)

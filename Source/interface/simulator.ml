@@ -37,9 +37,10 @@ let display_trace json_file id =
         let conf_csys_list = Interface.execute_process semantics full_assoc process transitions in
         let conf_list = List.map (fun (csys,assoc) -> csys.Constraint_system.additional_data,assoc) conf_csys_list in
 
+        Config.log Config.Debug (fun () -> "Before sending command");
         let (first_conf,first_assoc) = List.nth conf_list (id+1) in
         Display_ui.send_output_command (SCurrent_step_displayed(first_assoc,first_conf,id,Some attack_trace.id_proc));
-
+        Config.log Config.Debug (fun () -> "After sending command");
         begin try
           while true do
             let in_cmd_str = read_line () in

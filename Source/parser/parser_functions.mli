@@ -65,6 +65,8 @@ type declaration =
   | Query of query * element_position
   | ExtendedProcess of ident * ident list * extended_process
 
+val parsing_file : bool ref
+
 val get_element_position_in_grammar : unit -> element_position
 
 val get_element_position_in_lexer : Lexing.lexbuf -> element_position
