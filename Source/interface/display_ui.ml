@@ -746,7 +746,7 @@ let of_output_command = function
       JObject [
         "command", JString "batch_started";
         "file", JString str;
-        "warning_runs", JList (List.map (fun (file,warns) -> JObject [ "file", JString file; "warnings", JList (List.map of_string warns)]) warnings)
+        "warning_runs", JList (List.map (fun (file,_,warns) -> JObject [ "file", JString file; "warnings", JList (List.map of_string warns)]) warnings)
       ]
   | Run_started(str,_) -> JObject [ "command", JString "run_started"; "file", JString str ]
   | Query_started(str,_) -> JObject [ "command", JString "query_started"; "file", JString str ]
@@ -832,7 +832,7 @@ let print_output_command = function
   | Batch_started(_,warning_runs) ->
       Printf.printf "\nStarting verification...\n";
 
-      List.iter (fun (file,warnings) ->
+      List.iter (fun (_,file,warnings) ->
         if warnings <> []
         then
           begin

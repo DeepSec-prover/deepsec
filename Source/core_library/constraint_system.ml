@@ -479,9 +479,6 @@ module MGS = struct
     | SFSolved
     | SFSome of (variable * term) list * simplified_constraint_system
 
-  (** TODO : Add a flag when we know that the formula is already normalised (avoid unification).
-     Moreover, possible that there are never universal variable *)
-
   let simple_of_equality_formula ?(universal=true) csys eq_recipe form =
     let tmp = !Variable.currently_linked in
     Variable.currently_linked := [];

@@ -248,7 +248,7 @@ type output_command =
   (* Config *)
   | Send_Configuration
   (* Started *)
-  | Batch_started of string * (string * string list) list
+  | Batch_started of string * (string * string * string list) list
   | Run_started of string * string (* Dps file *)
   | Query_started of string * int (* Index of query *)
   (* Ended *)

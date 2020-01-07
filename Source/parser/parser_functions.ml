@@ -139,7 +139,9 @@ let error_message ?(with_line=true) pos str =
 let warnings = ref []
 
 let warning_message pos str =
-  warnings := !warnings @ [ Printf.sprintf "Line %d, Characters %d-%d: %s" pos.line pos.start_char pos.end_char str]
+  let err_msg = Printf.sprintf "Line %d, Characters %d-%d: %s" pos.line pos.start_char pos.end_char str in
+  if not (List.mem err_msg !warnings)
+  then warnings := !warnings @ [ err_msg ]
 
 (******** Parse free names *******)
 
@@ -486,7 +488,6 @@ let parse_functions env = function
         ) [lhs,rhs] (List.tl rw_rules)
       in
       let f = Term.Symbol.new_destructor ar public symb rw_rules' in
-      (** TODO : Add again the testing of subterm convergence later *)
       (*Term.Rewrite_rules.is_subterm_convergent_symbol line f;*)
       Env.add symb (Func f) env
 

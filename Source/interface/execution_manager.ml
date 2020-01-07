@@ -623,13 +623,14 @@ let start_batch input_files batch_options =
 
       (* Sending command *)
       let warning_runs =
-        List.fold_right (fun status_parse acc -> match status_parse with
+        List.fold_right2 (fun input_file status_parse acc -> match status_parse with
           | IRSuccess (run_result,_,warnings) ->
               if warnings = []
               then acc
-              else (run_result.name_run, warnings)::acc
+              else
+                (run_result.name_run,input_file,warnings)::acc
           | IRUser_error _ -> Config.internal_error "[main_ui.ml >> start_batch] There should not be any user error."
-        ) parsing_results []
+        ) input_files parsing_results []
       in
       Config.log Config.Distribution (fun () -> "[execution_manager.ml >> start_batch] Sending Batch_started command\n");
       Display_ui.send_output_command (Batch_started(batch_result.name_batch,warning_runs))
