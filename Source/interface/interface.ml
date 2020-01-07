@@ -1146,8 +1146,8 @@ let rec apply_attack_trace sem size_frame att_assoc att_trace att_csys sim_csys_
       sim_csys_list_ref := clean_variables_names !sim_csys_list_ref;
 
       let (att_csys_1,att_assoc_1) = apply_transition sem false att_assoc att_csys (JAOutput(r_ch,pos)) in
-
-      Constraint_system.Rule_ground.apply_rules (apply_attack_trace sem (size_frame+1) att_assoc_1 q_trans) att_csys_1 !sim_csys_list_ref
+      let att_csys_2 = Constraint_system.prepare_for_solving_procedure_ground att_csys_1 in
+      Constraint_system.Rule_ground.apply_rules (apply_attack_trace sem (size_frame+1) att_assoc_1 q_trans) att_csys_2 !sim_csys_list_ref
   | JAInput(r_ch,r_t,pos) :: q_trans ->
       let sim_csys_list_ref = ref [] in
       List.iter (fun csys ->
@@ -1214,8 +1214,8 @@ let rec apply_attack_trace sem size_frame att_assoc att_trace att_csys sim_csys_
       sim_csys_list_ref := clean_variables_names !sim_csys_list_ref;
 
       let (att_csys_1,att_assoc_1) = apply_transition sem false att_assoc att_csys (JAEaves(r_ch,out_pos,in_pos)) in
-
-      Constraint_system.Rule_ground.apply_rules (apply_attack_trace sem (size_frame+1) att_assoc_1 q_trans) att_csys_1 !sim_csys_list_ref
+      let att_csys_2 = Constraint_system.prepare_for_solving_procedure_ground att_csys_1 in
+      Constraint_system.Rule_ground.apply_rules (apply_attack_trace sem (size_frame+1) att_assoc_1 q_trans) att_csys_2 !sim_csys_list_ref
   | trans :: q_trans ->
       let (att_csys_1,att_assoc_1) = apply_transition sem false att_assoc att_csys trans in
       apply_attack_trace sem size_frame att_assoc_1 q_trans att_csys_1 sim_csys_list
