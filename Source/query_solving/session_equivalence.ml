@@ -605,7 +605,6 @@ let generate_initial_equivalence_problem is_equiv_query proc1 proc2 =
       Configuration.input_and_private_proc = [p];
       Configuration.output_proc = [];
       Configuration.focused_proc = None;
-      Configuration.pure_improper_proc = [];
       Configuration.blocks = blocks;
       private_channels = []
     }

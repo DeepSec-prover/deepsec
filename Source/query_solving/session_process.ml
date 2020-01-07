@@ -1137,7 +1137,6 @@ module Configuration = struct
       input_and_private_proc : Labelled_process.t list;
       output_proc : Labelled_process.t list;
       focused_proc : Labelled_process.t option;
-      pure_improper_proc : Labelled_process.t list;
 
       (* Blocks *)
       blocks : Block.local_blocks;
@@ -1218,7 +1217,6 @@ module Configuration = struct
       "input_and_private_proc", display_plist conf.input_and_private_proc;
       "output_proc", display_plist conf.output_proc;
       "focused_proc", focused_proc;
-      "pure_improper_proc", display_plist conf.pure_improper_proc;
       "blocks", Block.display_local_blocks (tab+2) conf.blocks;
       "private_channels", display_list (fun (ch,i_out,i_in) -> Printf.sprintf "%s[out=%d,in=%d]" (Channel.display ch) i_out i_in) "; " conf.private_channels
     ]
@@ -1279,24 +1277,19 @@ module Configuration = struct
   (* Raise Not_found when there are no improper input *)
   let get_improper_inputs conf =
 
-    let rec explore imp_proc nb_imp nb_prefix imp_lbl prev_in = function
-      | [] -> imp_proc,{ nb_labels = nb_imp; nb_prefix = nb_prefix; imp_labels = imp_lbl },prev_in
-      | (Labelled_process.PInput(Channel.CPublic _,_,Labelled_process.PNil,Some lbl,_,_,_) as p) :: q ->
+    let rec explore nb_imp nb_prefix imp_lbl prev_in = function
+      | [] -> { nb_labels = nb_imp; nb_prefix = nb_prefix; imp_labels = imp_lbl },prev_in
+      | Labelled_process.PInput(Channel.CPublic _,_,Labelled_process.PNil,Some lbl,_,_,_) :: q ->
           (* Improper input *)
           let (nb_prefix',imp_lbl') = add_label_in_imp_label lbl nb_prefix imp_lbl in
-          explore (p::imp_proc) (nb_imp+1) nb_prefix' imp_lbl' prev_in q
-      | p::q -> explore imp_proc nb_imp nb_prefix imp_lbl (p::prev_in) q
+          explore (nb_imp+1) nb_prefix' imp_lbl' prev_in q
+      | p::q -> explore nb_imp nb_prefix imp_lbl (p::prev_in) q
     in
-    let (pure_imp,imp_data,in_proc) = explore conf.pure_improper_proc 0 0 [] [] conf.input_and_private_proc in
+    let (imp_data,in_proc) = explore 0 0 [] [] conf.input_and_private_proc in
 
     if imp_data.nb_labels = 0
     then raise Not_found
-    else
-      imp_data,
-      { conf with
-        input_and_private_proc = in_proc;
-        pure_improper_proc = pure_imp
-      }
+    else imp_data, { conf with input_and_private_proc = in_proc }
 
   (*** Public output utilities ***)
 
@@ -1547,7 +1540,6 @@ module Configuration = struct
            Cannot be used with matching statys = Exists *)
 
   let next_input matching_status is_applicable proc f_continuation (f_next:unit -> unit) =
-    let only_forall = matching_status = ForAll in
 
     let rec explore_process m_status proc f_cont f_next = match proc with
       | Labelled_process.PNil
@@ -1593,7 +1585,7 @@ module Configuration = struct
             | Labelled_process.PPar plist' -> f_cont input_data (Labelled_process.PPar((Labelled_process.PBangPartial plist)::plist')) f_next_1
             | _ -> f_cont input_data (Labelled_process.PPar [p';Labelled_process.PBangPartial plist]) f_next_1
           ) (fun () ->
-            if only_forall
+            if matching_status = ForAll
             then f_next ()
             else
               (* Since it's a Exists for the rest, we can transform them into Par *)
@@ -1618,7 +1610,6 @@ module Configuration = struct
     explore_process matching_status proc f_continuation f_next
 
   let next_output matching_status target_channel proc f_continuation f_next =
-    let only_forall = matching_status = ForAll in
 
     let rec explore_process m_status proc f_cont f_next = match proc with
       | Labelled_process.PNil
@@ -1674,7 +1665,7 @@ module Configuration = struct
             | Labelled_process.PPar plist' -> f_cont output_data (Labelled_process.PPar((Labelled_process.PBangPartial plist)::plist')) f_next_1
             | _ -> f_cont output_data (Labelled_process.PPar [p';Labelled_process.PBangPartial plist]) f_next_1
           ) (fun () ->
-            if only_forall
+            if matching_status = ForAll
             then f_next ()
             else explore_process_list Exists [p] plist (fun output_data rest_plist f_next_1 -> match rest_plist with
               | [] -> Config.internal_error "[session_process.ml >> next_output] The list should not be empty since there is at least [p]."
@@ -1965,7 +1956,7 @@ module Configuration = struct
         else { conf.blocks with Block.local_improper_blocks = transition.in_comm_complete_label :: conf.blocks.Block.local_improper_blocks }
       in
       let conf' =
-        { conf with
+        {
           blocks = local_blocks;
           input_and_private_proc = in_plist;
           output_proc = out_plist;

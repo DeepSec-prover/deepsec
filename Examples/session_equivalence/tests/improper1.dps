@@ -1,0 +1,13 @@
+free c.
+fun mac/2.
+free a,b.
+
+let A =
+  in(c,x);
+  (
+    !^2 in(c,y); if y = x then out(c,a) else out(c,b)
+  ).
+
+let sys = A.
+
+query session_equiv(sys,sys). // equivalent
