@@ -735,6 +735,12 @@ let of_output_command = function
         "command", JString "query_internal_error";
         "file", JString file
       ]
+  | Send_Configuration ->
+      JObject [
+        "command", JString "config";
+        "version", JString !Config.version;
+        "result_files_path", JString !Config.path_database
+      ]
   (* Started *)
   | Batch_started(str,warnings) ->
       JObject [
@@ -873,7 +879,11 @@ let print_output_command = function
   | Run_canceled _ -> Config.internal_error "[print_output_command] Should not occur"
   | Batch_canceled _ -> Printf.printf "\n%s\n" (coloured_terminal_text Red [Bold] "Verification canceled !")
   (* Simulator: Display_of_traces *)
-  | SCurrent_step_displayed _ | SCurrent_step_user _  | SFound_equivalent_trace _ | SUser_error _ -> Config.internal_error "[print_output_command] Should not occur in command mode."
+  | SCurrent_step_displayed _
+  | SCurrent_step_user _
+  | SFound_equivalent_trace _
+  | SUser_error _
+  | Send_Configuration -> Config.internal_error "[print_output_command] Should not occur in command mode."
 
 (* Sending command *)
 

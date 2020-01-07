@@ -5,14 +5,15 @@ let _ =
 
   Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
 
-
   Execution_manager.catch_init_internal_error (fun () ->
     (* Initialisation of random generator *)
     Random.init (int_of_float (Unix.time ()));
 
     (* Retrieve deepsec path *)
     let exe_path = Filename.dirname (String.escaped Sys.executable_name) in
-    Config.log Config.Distribution (fun () -> Printf.sprintf "Exe path : %s\n" exe_path);
+    Config.log Config.Distribution (fun () -> Printf.sprintf "executable name : %s" Sys.executable_name);
+    Config.log Config.Distribution (fun () -> Printf.sprintf "executable name escaped : %s" (String.escaped Sys.executable_name));
+    Config.log Config.Distribution (fun () -> Printf.sprintf "Exe path : %s" exe_path);
     Config.path_deepsec := exe_path;
     let database_path = Filename.concat exe_path "results_files" in
     Config.path_database := database_path;
@@ -38,5 +39,6 @@ let _ =
       | Display_trace(json_file,id) -> Simulator.display_trace json_file id
       | Attack_simulator json_file -> Simulator.attack_simulator json_file
       | Equivalence_simulator(json_file,id) -> Simulator.equivalence_simulator json_file id
+      | Get_config -> Display_ui.send_output_command Send_Configuration
       | _ -> Printf.printf "No other option available so far."
   )

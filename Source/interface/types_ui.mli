@@ -245,6 +245,8 @@ type output_command =
   | Batch_internal_error of string
   | User_error of (string (* Error msg*) * string (* file *) * string list (* warnings *)) list
   | Query_internal_error of string (* Error msg*) * string (* file *)
+  (* Config *)
+  | Send_Configuration
   (* Started *)
   | Batch_started of string * (string * string list) list
   | Run_started of string * string (* Dps file *)
