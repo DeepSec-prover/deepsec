@@ -206,6 +206,8 @@ module Recipe_Variable : sig
   val auto_cleanup_with_reset : ((unit -> unit) -> unit) -> (unit -> unit) -> unit
 
   val auto_cleanup_with_reset_notail : (unit -> 'a) -> 'a
+
+  val auto_cleanup_with_exception : (unit -> 'a) -> 'a
 end
 
 (** {3 Axioms} *)
@@ -257,6 +259,8 @@ module Name :  sig
   val auto_deducible_cleanup_with_reset : ((unit -> unit) -> unit) -> (unit -> unit) -> unit
 
   val auto_deducible_cleanup_with_reset_notail : (unit -> 'a) -> 'a
+
+  val auto_deducible_cleanup_with_exception : (unit -> 'a) -> 'a
 
   val auto_cleanup_with_reset_notail : (unit -> 'a) -> 'a
 

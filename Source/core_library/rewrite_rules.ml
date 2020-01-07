@@ -186,16 +186,13 @@ let rec normalise_recipe = function
             begin try
               List.iter (fun (lhs,rhs) ->
                 let (lhs',rhs') = rewrite_rule_recipe (lhs,rhs) in
-
-                try
-                  List.iter2 Recipe.matching lhs' args';
-                  let rhs'' = Recipe.instantiate rhs' in
-                  List.iter (fun v -> v.link_r <- RNoLink) !Recipe_Variable.currently_linked;
-                  Recipe_Variable.currently_linked := [];
-                  raise (Found_normalise_recipe rhs'')
-                with Recipe.No_match ->
-                  List.iter (fun v -> v.link_r <- RNoLink) !Recipe_Variable.currently_linked;
-                  Recipe_Variable.currently_linked := [];
+                Recipe_Variable.auto_cleanup_with_exception (fun () ->
+                  try
+                    List.iter2 Recipe.matching lhs' args';
+                    let rhs'' = Recipe.instantiate rhs' in
+                    raise (Found_normalise_recipe rhs'')
+                  with Recipe.No_match -> ()
+                )
               ) rw_rules;
               RFunc(f1, args')
             with Found_normalise_recipe r' -> r'
@@ -825,7 +822,6 @@ exception Found_normalise of term
 
 exception Not_message
 
-(* We assume that no links exist *)
 let rec normalise = function
   | Func(f1,args) ->
       begin match f1.cat with
@@ -846,15 +842,13 @@ let rec normalise = function
             in
             begin try
               List.iter (fun (lhs,rhs) ->
-                try
-                  List.iter2 Term.matching lhs args';
-                  let rhs' = Term.instantiate rhs in
-                  List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
-                  Variable.currently_linked := [];
-                  raise (Found_normalise rhs')
-                with Term.No_match ->
-                  List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
-                  Variable.currently_linked := [];
+                Variable.auto_cleanup_with_exception (fun () ->
+                  try
+                    List.iter2 Term.matching lhs args';
+                    let rhs' = Term.instantiate rhs in
+                    raise (Found_normalise rhs')
+                  with Term.No_match -> ()
+                )
               ) rw_rules;
               raise Not_message
             with Found_normalise t' -> t'

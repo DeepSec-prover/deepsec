@@ -266,6 +266,19 @@ module Recipe_Variable = struct
 
     r
 
+  let auto_cleanup_with_exception (f_cont:unit -> 'a) =
+    let tmp = !currently_linked in
+    currently_linked := [];
+    try
+      let r = f_cont () in
+      List.iter (fun v -> v.link_r <- RNoLink) !currently_linked;
+      currently_linked := tmp;
+      r
+    with e ->
+      List.iter (fun v -> v.link_r <- RNoLink) !currently_linked;
+      currently_linked := tmp;
+      raise e
+
   (******* Renaming *******)
 
   (** [rename_term q r] renames the variables in [t] by fresh variables with quantifier [q].
@@ -377,6 +390,21 @@ module Name = struct
     currently_deducible := tmp;
     r
 
+  let auto_deducible_cleanup_with_exception (f_cont:unit -> 'a) =
+    let tmp = !currently_deducible in
+    currently_deducible := [];
+
+    try
+      let r = f_cont () in
+
+      List.iter (fun n -> n.deducible_n <- None) !currently_deducible;
+      currently_deducible := tmp;
+      r
+    with e ->
+      List.iter (fun n -> n.deducible_n <- None) !currently_deducible;
+      currently_deducible := tmp;
+      raise e
+
   let auto_cleanup_with_reset_notail (f_cont:unit -> 'a) =
     let tmp = !currently_linked in
     currently_linked := [];
@@ -419,8 +447,6 @@ module Name = struct
         n'
     | _ -> Config.internal_error "[term.ml >> Name.rename_and_instantiat] Unexpected link of name."
 end
-
-
 
 (*************************************
 ***            Axioms              ***
@@ -676,6 +702,26 @@ end
 
 module Term = struct
 
+  (********** Display **********)
+
+  let rec display ?(follow_link=true) out = function
+    | Var { link = TLink t; _ } when follow_link -> display out t
+    | Var v -> Variable.display out v
+    | Name n -> Name.display out n
+    | Func(f_symb,_) when f_symb.arity = 0 ->
+        Printf.sprintf "%s" (Symbol.display out f_symb)
+    | Func(f_symb,args) when f_symb.cat = Tuple ->
+        Printf.sprintf "(%s)" (display_list (display ~follow_link:follow_link out) "," args)
+    | Func(f_symb,args) ->
+        Printf.sprintf "%s(%s)" (Symbol.display out f_symb) (display_list (display ~follow_link:follow_link out) "," args)
+
+  let rec display_pattern ?(follow_link=true) out = function
+    | PatVar { link = TLink t; _} when follow_link -> display ~follow_link:follow_link out t
+    | PatVar v -> Variable.display out v
+    | PatEquality t -> display ~follow_link:follow_link out t
+    | PatTuple(_,args) -> Printf.sprintf "%s%s%s" (langle out) (display_list (display_pattern ~follow_link:follow_link out) "," args) (rangle out)
+
+
   (********* Access *********)
 
   let variable_of = function
@@ -799,6 +845,7 @@ module Term = struct
   exception No_match
 
   let rec matching t1 t2 = match t1,t2 with
+    | _, Var { link = TLink t2'; _ } -> matching t1 t2'
     | Var {link = TLink t ; _}, _ ->
         if not (is_equal t t2)
         then raise No_match
@@ -850,25 +897,6 @@ module Term = struct
               Name.link n n';
               Name n'
           | _ -> Config.internal_error "[term.ml >> Term.rename_and_instantiate] Unexpected link of name."
-
-  (********** Display **********)
-
-  let rec display ?(follow_link=true) out = function
-    | Var { link = TLink t; _ } when follow_link -> display out t
-    | Var v -> Variable.display out v
-    | Name n -> Name.display out n
-    | Func(f_symb,_) when f_symb.arity = 0 ->
-        Printf.sprintf "%s" (Symbol.display out f_symb)
-    | Func(f_symb,args) when f_symb.cat = Tuple ->
-        Printf.sprintf "(%s)" (display_list (display ~follow_link:follow_link out) "," args)
-    | Func(f_symb,args) ->
-        Printf.sprintf "%s(%s)" (Symbol.display out f_symb) (display_list (display ~follow_link:follow_link out) "," args)
-
-  let rec display_pattern ?(follow_link=true) out = function
-    | PatVar { link = TLink t; _} when follow_link -> display ~follow_link:follow_link out t
-    | PatVar v -> Variable.display out v
-    | PatEquality t -> display ~follow_link:follow_link out t
-    | PatTuple(_,args) -> Printf.sprintf "%s%s%s" (langle out) (display_list (display_pattern ~follow_link:follow_link out) "," args) (rangle out)
 
   (*********** Debug ************)
 
@@ -979,6 +1007,7 @@ module Recipe = struct
   exception No_match
 
   let rec matching r1 r2 = match r1,r2 with
+    | _, RVar { link_r = RLink r2'; _ } -> matching r1 r2'
     | RVar { link_r = RLink r ; _ }, _ ->
         if not (is_equal r r2)
         then raise No_match

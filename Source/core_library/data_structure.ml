@@ -762,6 +762,10 @@ module IK = struct
               begin match n.deducible_n with
                 | None -> Config.internal_error "[data_structure.ml >> IK.prepare_names_for_transfer] A name in incremented_knowledge is deducible."
                 | Some (CRFunc(i,r)) ->
+                    Config.debug (fun () ->
+                      if List.exists (fun (n',_) -> n == n') !cleanup_name
+                      then Config.internal_error "[data_structure.ml >> IK.prepare_for_transfer] The name already occurs in the cleanup list." 
+                    );
                     cleanup_name := (n,n.deducible_n)::!cleanup_name;
                     Config.debug (fun () ->
                       if i <> elt.id

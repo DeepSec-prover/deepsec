@@ -3359,7 +3359,7 @@ module Rule_ground = struct
 
     find_witness := true;
     try
-      Name.auto_cleanup_with_exception (fun () ->
+      Name.auto_deducible_cleanup_with_exception (fun () ->
         setup_deducible_names csys_1;
         setup_deducible_names csys_2;
         split_data_constructor (normalisation_deduction_consequence (rewrite (equality_constructor f_continuation))) csys_1 [csys_2]

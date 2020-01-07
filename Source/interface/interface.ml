@@ -364,14 +364,16 @@ let apply_tau_transition target_pos conf =
         end
     | JNew(_,_,p,pos) when is_equal_position pos target_pos -> p
     | JLet(pat,t,pthen,pelse,pos) when is_equal_position pos target_pos ->
-        Variable.auto_cleanup_with_reset_notail (fun () ->
+        begin
           try
+            Variable.auto_cleanup_with_exception (fun () ->
               let t' = Rewrite_rules.normalise t in
               let pat' = normalise_json_pattern pat in
               Term.unify pat' t';
               instantiate_process pthen
+            )
           with Term.Not_unifiable | Rewrite_rules.Not_message -> pelse
-        )
+        end
     | JPar p_list ->
         let p_list' = apply_transition_list explore p_list in
         if p_list' = [] then JNil else JPar p_list'
@@ -552,6 +554,13 @@ let execute_process semantics init_assoc js_init_proc js_trace =
     | [] -> []
     | trans::q ->
         let (csys',assoc') = apply_transition semantics true assoc csys trans in
+        Config.debug (fun () ->
+          Data_structure.K.iter_term (function
+            | Name { deducible_n = None; _ } -> ()
+            | Name _ -> Config.internal_error "[interface.ml >> execute_process] All names should have been unlinked."
+            | _ -> ()
+          ) csys'.Constraint_system.knowledge
+        );
         (csys',assoc')::(explore_trace csys' assoc' q)
   in
 
@@ -721,15 +730,17 @@ let find_next_possible_transition locked semantics forced_transition conf_csys =
         if not only_IO
         then actions_all := AV_tau pos :: !actions_all;
 
-        Variable.auto_cleanup_with_reset_notail (fun () ->
+        begin
           try
-            let t' = Rewrite_rules.normalise t in
-            let pat' = normalise_json_pattern pat in
-            Term.unify pat' t';
-            explore true (pos::tau_actions) p1
+            Variable.auto_cleanup_with_exception (fun () ->
+              let t' = Rewrite_rules.normalise t in
+              let pat' = normalise_json_pattern pat in
+              Term.unify pat' t';
+              explore true (pos::tau_actions) p1
+            )
           with Term.Not_unifiable | Rewrite_rules.Not_message ->
             explore true (pos::tau_actions) p2
-        )
+        end
     | JNew(_,_,p,pos) ->
         if not only_IO
         then actions_all := AV_tau pos :: !actions_all;
