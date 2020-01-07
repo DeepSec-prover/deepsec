@@ -511,6 +511,11 @@ let query_list = ref []
 let parse_query env line = function
   | Trace_Eq(proc_1,proc_2) -> query_list := (Types.Trace_Equivalence,process_of_intermediate_process [] (parse_intermediate_process env proc_1), process_of_intermediate_process [] (parse_intermediate_process env proc_2))::!query_list
   | Sess_Eq(proc_1,proc_2) ->
+      if !Config.local_semantics = Some Types.Classic || (!Config.default_semantics = Types.Classic && !Config.local_semantics = None)
+      then warning_message line "The Classic semantics have been set but a session equivalence query can only be verified in the Private semantics. The semantics have been modified accordingly for this query.";
+      if !Config.local_semantics = Some Types.Eavesdrop || (!Config.default_semantics = Types.Eavesdrop && !Config.local_semantics = None)
+      then warning_message line "The Eavesdrop semantics have been set but a session equivalence query can only be verified in the Private semantics. The semantics have been modified accordingly for this query.";
+
       let proc_1' = process_of_intermediate_process [] (parse_intermediate_process env proc_1) in
       let proc_2' = process_of_intermediate_process [] (parse_intermediate_process env proc_2) in
       begin
@@ -521,6 +526,11 @@ let parse_query env line = function
       end;
       query_list := (Types.Session_Equivalence,proc_1',proc_2')::!query_list
   | Sess_Incl(proc_1,proc_2) ->
+      if !Config.local_semantics = Some Types.Classic || (!Config.default_semantics = Types.Classic && !Config.local_semantics = None)
+      then warning_message line "The Classic semantics have been set but a session inclusion query can only be verified in the Private semantics. The semantics have been modified accordingly for this query.";
+      if !Config.local_semantics = Some Types.Eavesdrop || (!Config.default_semantics = Types.Eavesdrop && !Config.local_semantics = None)
+      then warning_message line "The Eavesdrop semantics have been set but a session inclusion query can only be verified in the Private semantics. The semantics have been modified accordingly for this query.";
+
       let proc_1' = process_of_intermediate_process [] (parse_intermediate_process env proc_1) in
       let proc_2' = process_of_intermediate_process [] (parse_intermediate_process env proc_2) in
       begin

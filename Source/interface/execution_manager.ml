@@ -130,9 +130,11 @@ let generate_initial_query_result batch_dir run_dir i (equiv,proc1,proc2) =
   let json_proc1 = Interface.json_process_of_process full_assoc proc1 in
   let json_proc2 = Interface.json_process_of_process full_assoc proc2 in
 
-  let semantics = match !Config.local_semantics with
-    | Some sem -> sem
-    | None -> !Config.default_semantics
+  let semantics = match !Config.local_semantics, equiv with
+    | _, Session_Equivalence
+    | _, Session_Inclusion -> Private
+    | Some sem, _ -> sem
+    | None, _ -> !Config.default_semantics
   in
 
   {
