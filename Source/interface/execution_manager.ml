@@ -155,7 +155,8 @@ let generate_initial_query_result batch_dir run_dir i (equiv,proc1,proc2) =
         name_set = Term.Name.get_counter () ;
         symbol_set = Term.Symbol.get_settings ()
       };
-    progression = PNot_defined
+    progression = PNot_defined;
+    memory = 0
   }
 
 type initial_run =
@@ -748,12 +749,12 @@ let listen_to_command_api in_ch out_ch translation_result =
           (* Message from the local manager *)
           let _ = Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Reading command from local manager\n") in
           match Distribution.WLM.get_output_command in_ch with
-            | Distribution.WLM.Completed verif_result ->
+            | Distribution.WLM.Completed(verif_result,memory) ->
                 Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Received Completed command\n");
                 (* The query was completed *)
                 let end_time = int_of_float (Unix.time ()) in
                 let cur_query = remove_current_query () in
-                let cur_query_0 = { cur_query with progression = PNot_defined } in
+                let cur_query_0 = { cur_query with progression = PNot_defined; memory = memory } in
                 let cur_query_1 = Interface.query_result_of_equivalence_result cur_query_0 (translation_result verif_result) end_time in
                 write_query cur_query_1;
                 let running_time = match cur_query_1.q_end_time, cur_query_1.q_start_time with
@@ -761,7 +762,7 @@ let listen_to_command_api in_ch out_ch translation_result =
                   | _ -> Config.internal_error "[execution_manager.ml >> execute_query] The query result should have a start and end time."
                 in
                 Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Send Query_ended command\n");
-                Display_ui.send_output_command (Query_ended(cur_query_1.name_query,cur_query_1.q_status,cur_query_1.q_index,running_time,cur_query_1.query_type));
+                Display_ui.send_output_command (Query_ended(cur_query_1.name_query,cur_query_1.q_status,cur_query_1.q_index,running_time,memory,cur_query_1.query_type));
                 do_listen := false
             | Distribution.WLM.Error_msg (err_msg,progress) ->
                 Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Received error message\n");
@@ -808,12 +809,12 @@ let listen_to_command_generic in_ch out_ch translation_result =
       (* Message from the local manager *)
       let _ = Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Reading command from local manager\n") in
       match Distribution.WLM.get_output_command in_ch with
-        | Distribution.WLM.Completed verif_result ->
+        | Distribution.WLM.Completed(verif_result,memory) ->
             Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Received Completed command\n");
             (* The query was completed *)
             let end_time = int_of_float (Unix.time ()) in
             let cur_query = remove_current_query () in
-            let cur_query_0 = { cur_query with progression = PNot_defined } in
+            let cur_query_0 = { cur_query with progression = PNot_defined; memory = memory } in
             let cur_query_1 = Interface.query_result_of_equivalence_result cur_query_0 (translation_result verif_result) end_time in
             write_query cur_query_1;
             let running_time = match cur_query_1.q_end_time, cur_query_1.q_start_time with
@@ -821,7 +822,7 @@ let listen_to_command_generic in_ch out_ch translation_result =
               | _ -> Config.internal_error "[execution_manager.ml >> execute_query] The query result should have a start and end time."
             in
             Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Send Query_ended command\n");
-            Display_ui.send_output_command (Query_ended(cur_query_1.name_query,cur_query_1.q_status,cur_query_1.q_index,running_time,cur_query_1.query_type));
+            Display_ui.send_output_command (Query_ended(cur_query_1.name_query,cur_query_1.q_status,cur_query_1.q_index,running_time,memory,cur_query_1.query_type));
             do_listen := false
         | Distribution.WLM.Error_msg (err_msg,progress) ->
             Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Received error message\n");

@@ -649,6 +649,10 @@ let query_result_of file_name json =
   let index = int_of (member "index" json) in
   let start_time = member_option int_of "start_time" json in
   let end_time = member_option int_of "end_time" json in
+  let memory = match member_option int_of "memory" json with
+    | None -> 0
+    | Some m -> m
+  in
   let proc_l = list_of (process_of assoc) (member "processes" json) in
   let sem = semantics_of (member "semantics" json) in
   let status = match string_of (member "status" json) with
@@ -709,7 +713,8 @@ let query_result_of file_name json =
     semantics = sem;
     processes = proc_l;
     settings = setting;
-    progression = progression
+    progression = progression;
+    memory = memory
   },
   assoc
 

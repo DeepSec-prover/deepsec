@@ -1880,22 +1880,6 @@ let apply_start equiv_pbl f_continuation f_next =
 
 (** Apply all transitions **)
 
-(*let clean_memory =
-  let acc = ref 0 in
-  let f () =
-    incr acc;
-
-    if !acc mod 1000000 = 0
-    then
-      begin
-        Config.log_in_debug Config.Debug (Printf.sprintf "Node generate = %dM" (!acc/1000000));
-        Gc.print_stat Config.log_file;
-        flush Config.log_file
-      end;
-
-  in
-  f*)
-
 let apply_one_step equiv_pbl f_continuation f_next =
 
   (*** Cleaning of memory ***)

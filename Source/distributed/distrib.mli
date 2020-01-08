@@ -68,7 +68,7 @@ sig
         | Acknowledge
 
       type output_command =
-        | Completed of verification_result
+        | Completed of verification_result * int
         | Error_msg of string * query_progression
         | Progress of query_progression * bool (* To write *)
         | Computed_settings of distributed_settings option

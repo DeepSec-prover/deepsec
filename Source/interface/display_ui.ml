@@ -509,6 +509,15 @@ let of_atomic_data assoc =
 
 (* Query result *)
 
+let string_of_memory mem =
+  if mem / 1000000000 <> 0
+  then (string_of_int (mem / 1000000000))^"GB"
+  else if mem / 1000000 <> 0
+  then (string_of_int (mem / 1000000))^"MB"
+  else if mem / 1000 <> 0
+  then (string_of_int (mem / 1000))^"KB"
+  else (string_of_int mem)^" B"
+
 let of_semantics = function
   | Private -> JString "private"
   | Eavesdrop -> JString "eavesdrop"
@@ -565,8 +574,13 @@ let of_query_result query_res =
   in
 
   let jlist5 = of_progression jlist4 query_res.progression in
+  let jlist6 =
+    if query_res.memory = 0
+    then jlist5
+    else ("memory",JInt query_res.memory)::jlist5
+  in
 
-  JObject jlist5
+  JObject jlist6
 
 (* Run result *)
 
@@ -759,7 +773,7 @@ let of_output_command = function
       JObject [ "command", JString "batch_ended"; "file", JString str ]
   | Run_ended(str,_) ->
       JObject [ "command", JString "run_ended"; "file", JString str ]
-  | Query_ended(str,_,_,_,_) -> JObject [ "command", JString "query_ended"; "file", JString str ]
+  | Query_ended(str,_,_,_,_,_) -> JObject [ "command", JString "query_ended"; "file", JString str ]
   | Progression(_,_,PNot_defined,_) -> Config.internal_error "[display_ui.ml >> of_output_command] Unexpected progression"
   | Progression(_,_,PSingleCore prog,json) ->
       let (label,obj) = match prog with
@@ -812,6 +826,31 @@ let of_output_command = function
       ]
   | SUser_error str -> JObject [ "command", JString "user_error"; "error_msg", JString str ]
 
+let print_text =
+  let previous_size = ref 0 in
+
+  let f return newline str =
+    let size = String.length str in
+
+    if return
+    then
+      let diff = !previous_size - size in
+      if diff > 0
+      then print_string ("\x0d"^str^(String.make diff ' '))
+      else print_string ("\x0d"^str)
+    else print_string str;
+
+    if newline
+    then print_string "\n";
+
+    if newline
+    then previous_size := 0
+    else previous_size := size;
+
+    flush stdout
+  in
+  f
+
 let print_output_command = function
   (* Errors *)
   | Init_internal_error (err,false) ->
@@ -847,7 +886,7 @@ let print_output_command = function
   | Run_started(_,name_dps) -> Printf.printf "\nStarting verification of %s...\n%!" name_dps
   | Query_started(_,index) ->
       if not !Config.quiet
-      then Printf.printf "Verifying query %d...%!" index
+      then print_text false false (Printf.sprintf "Verifying query %d..." index)
   (* Ended *)
   | Batch_ended (_,status) ->
       if status = RBCompleted
@@ -855,30 +894,46 @@ let print_output_command = function
       else if status = RBCanceled
       then Printf.printf "\n%s\n%!" (coloured_terminal_text Red [Bold] "Verification canceled !")
   | Run_ended _ -> ()
-  | Query_ended(_,status,index,time,qtype) ->
-      let return = if !Config.quiet then "" else "\x0d" in
+  | Query_ended(_,status,index,time,memory,qtype) ->
+      let display_result text =
+        print_text true true (Printf.sprintf "Result query %d: %s. Verified in %s using %s of memory." index text (Display.mkRuntime time) (string_of_memory memory))
+      in
+
       begin match status, qtype with
-        | QCompleted None, Trace_Equivalence -> Printf.printf "%sResult query %d: The two processes are %s. Verified in %s                                          \n%!" return index (Display.coloured_terminal_text Green [Bold] "trace equivalent") (Display.mkRuntime time)
-        | QCompleted None, Trace_Inclusion -> Printf.printf "%sResult query %d: Process 1 is %s in process 2. Verified in %s                                        \n%!" return index (Display.coloured_terminal_text Green [Bold] "trace included") (Display.mkRuntime time)
-        | QCompleted None, Session_Equivalence -> Printf.printf "%sResult query %d: The two processes are %s. Verified in %s                                          \n%!" return index (Display.coloured_terminal_text Green [Bold] "session equivalent") (Display.mkRuntime time)
-        | QCompleted None, Session_Inclusion -> Printf.printf "%sResult query %d: Process 1 is %s in process 2. Verified in %s                                        \n%!" return index (Display.coloured_terminal_text Green [Bold] "session included") (Display.mkRuntime time)
-        | QCompleted _, Trace_Equivalence -> Printf.printf "%sResult query %d: The two processes are %s. Verified in %s                                             \n%!" return index (Display.coloured_terminal_text Red [Bold] "not trace equivalent") (Display.mkRuntime time)
-        | QCompleted _, Trace_Inclusion -> Printf.printf "%sResult query %d: Process 1 is %s in process 2. Verified in %s                                           \n%!" return index (Display.coloured_terminal_text Red [Bold] "not trace included") (Display.mkRuntime time)
-        | QCompleted _, Session_Equivalence -> Printf.printf "%sResult query %d: The two processes are %s. Verified in %s                                             \n%!" return index (Display.coloured_terminal_text Red [Bold] "not session equivalent") (Display.mkRuntime time)
-        | QCompleted _, Session_Inclusion -> Printf.printf "%sResult query %d: Process 1 is %s in process 2. Verified in %s                                           \n%!" return index (Display.coloured_terminal_text Red [Bold] "not session included") (Display.mkRuntime time)
+        | QCompleted None, Trace_Equivalence -> display_result (Printf.sprintf "The two processes are %s" (Display.coloured_terminal_text Green [Bold] "trace equivalent"))
+        | QCompleted None, Trace_Inclusion -> display_result (Printf.sprintf "Process 1 is %s in process 2" (Display.coloured_terminal_text Green [Bold] "trace included"))
+        | QCompleted None, Session_Equivalence -> display_result (Printf.sprintf "The two processes are %s" (Display.coloured_terminal_text Green [Bold] "session equivalent"))
+        | QCompleted None, Session_Inclusion -> display_result (Printf.sprintf "Process 1 is %s in process 2" (Display.coloured_terminal_text Green [Bold] "session included"))
+        | QCompleted _, Trace_Equivalence -> display_result (Printf.sprintf "The two processes are %s" (Display.coloured_terminal_text Red [Bold] "not trace equivalent"))
+        | QCompleted _, Trace_Inclusion -> display_result (Printf.sprintf "Process 1 is %s in process 2" (Display.coloured_terminal_text Red [Bold] "not trace included"))
+        | QCompleted _, Session_Equivalence -> display_result (Printf.sprintf "The two processes are %s" (Display.coloured_terminal_text Red [Bold] "not session equivalent"))
+        | QCompleted _, Session_Inclusion -> display_result (Printf.sprintf "Process 1 is %s in process 2" (Display.coloured_terminal_text Red [Bold] "not session included"))
         | _ -> ()
       end
   | Progression(_,_,PNot_defined,_) -> Config.internal_error "[display_ui.ml >> print_output_command] Unexpected progression"
   | Progression(index,time,PSingleCore prog,_) ->
-      begin match prog with
-        | PVerif(percent,jobs) -> Printf.printf "\x0dVerifying query %d... [jobs verification: %d%% (%d jobs remaning); run time: %s]                               %!" index percent jobs (Display.mkRuntime time)
-        | PGeneration(jobs,min_jobs) -> Printf.printf "\x0dVerifying query %d... [jobs generation: %d; minimum nb of jobs required: %d;  run time: %s]                  %!" index jobs min_jobs (Display.mkRuntime time)
-      end
+      if not !Config.quiet
+      then
+        begin match prog with
+          | PVerif(percent,jobs) ->
+              let text = Printf.sprintf "Verifying query %d... [jobs verification: %d%% (%d jobs remaning); run time: %s]" index percent jobs (Display.mkRuntime time) in
+              print_text true false text
+          | PGeneration(jobs,min_jobs) ->
+              let text = Printf.sprintf "Verifying query %d... [jobs generation: %d; minimum nb of jobs required: %d;  run time: %s]" index jobs min_jobs (Display.mkRuntime time) in
+              print_text true false text
+        end
   | Progression(index,time,PDistributed(round, prog),_) ->
-      begin match prog with
-        | PVerif(percent,jobs) -> Printf.printf "\x0dVerifying query %d... [round %d jobs verification:: %d%% (%d jobs remaning); run time: %s]                              %!" index round percent jobs (Display.mkRuntime time)
-        | PGeneration(jobs,min_jobs) -> Printf.printf "\x0dVerifying query %d... [round %d jobs generation: %d; minimum nb of jobs required: %d;  run time: %s]                  %!" index round jobs min_jobs (Display.mkRuntime time)
-      end
+      if not !Config.quiet
+      then
+        begin
+          match prog with
+            | PVerif(percent,jobs) ->
+                let text = Printf.sprintf "Verifying query %d... [round %d jobs verification:: %d%% (%d jobs remaning); run time: %s]" index round percent jobs (Display.mkRuntime time) in
+                print_text true false text
+            | PGeneration(jobs,min_jobs) ->
+                let text = Printf.sprintf "Verifying query %d... [round %d jobs generation: %d; minimum nb of jobs required: %d;  run time: %s]" index round jobs min_jobs (Display.mkRuntime time) in
+                print_text true false text
+        end
   | Query_canceled _
   | Run_canceled _ -> Config.internal_error "[print_output_command] Should not occur"
   | Batch_canceled _ -> Printf.printf "\n%s\n" (coloured_terminal_text Red [Bold] "Verification canceled !")

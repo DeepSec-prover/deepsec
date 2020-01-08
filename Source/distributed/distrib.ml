@@ -2,7 +2,8 @@ open Extensions
 open Types
 open Types_ui
 
-let kill_signal = Sys.sigterm
+let kill_signal = Sys.sigusr1
+let interupt_signal = Sys.sigusr2
 
 let send out_ch a =
   output_value out_ch a;
@@ -52,6 +53,8 @@ module Distrib = functor (Task:Evaluator_task) -> struct
     type output_command =
       | Pid of int
       | Completed of verification_result
+      | Interupted
+      | Killed of int
       | Job_list of Task.job list
       | Progress of progression * bool
       | Error_msg of string
@@ -64,6 +67,7 @@ module Distrib = functor (Task:Evaluator_task) -> struct
         out_ch : out_channel
       }
 
+    exception Interupt
 
     let get_input_command : unit -> input_command = fun () -> input_value stdin
 
@@ -83,47 +87,69 @@ module Distrib = functor (Task:Evaluator_task) -> struct
       send_output_command (Pid (Unix.getpid ()));
 
       (* Signal handling *)
-      Sys.set_signal kill_signal (Sys.Signal_handle (fun _ -> Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Kill signal received"); exit 0));
+      Sys.set_signal kill_signal (Sys.Signal_handle (fun _ ->
+        Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Kill signal received");
+        raise Exit
+      ));
+
+      Sys.set_signal interupt_signal (Sys.Signal_handle (fun _ ->
+        Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Interupt signal received");
+        raise Interupt
+      ));
 
       (* Sending the progress command *)
       let send_progress (prog,to_write) = send_output_command (Progress (prog,to_write)) in
 
+      let rec run_execution () =
+        try
+          while true do
+            Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Waiting for command");
+            match get_input_command () with
+              | Evaluate job ->
+                  Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Evaluate job");
+                  let result = Task.evaluation job in
+                  Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Sending result");
+                  send_output_command (Completed result)
+              | Generate job ->
+                  Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Generate job");
+                  begin match Task.generate job with
+                    | Task.Job_list job_list ->
+                        Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WE] Sending job list of %d jobs" (List.length job_list));
+                        send_output_command (Job_list job_list)
+                    | Task.Completed result ->
+                        Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Sending result");
+                        send_output_command (Completed result)
+                  end
+              | Evaluate_single_core job ->
+                  Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Evaluation single core");
+                  let result = Task.evaluation_single_core send_progress job in
+                  Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Sending result");
+                  send_output_command (Completed result);
+                  raise Exit
+          done
+        with
+          | Interupt ->
+              Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Interupted");
+              send_output_command Interupted;
+              run_execution ()
+          | Config.Internal_error err_msg ->
+              Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WE] Internal error = %s" err_msg);
+              send_output_command (Error_msg err_msg);
+              run_execution ()
+          | Exit -> raise Exit
+          | ex ->
+              Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WE] Other error : %s" (Printexc.to_string ex));
+              send_output_command (Error_msg (Printexc.to_string ex));
+              run_execution ()
+      in
+
       try
-        while true do
-          Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Waiting for command");
-          match get_input_command () with
-            | Evaluate job ->
-                Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Evaluate job");
-                let result = Task.evaluation job in
-                Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Sending result");
-                send_output_command (Completed result)
-            | Generate job ->
-                Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Generate job");
-                begin match Task.generate job with
-                  | Task.Job_list job_list ->
-                      Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WE] Sending job list of %d jobs" (List.length job_list));
-                      send_output_command (Job_list job_list)
-                  | Task.Completed result ->
-                      Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Sending result");
-                      send_output_command (Completed result)
-                end
-            | Evaluate_single_core job ->
-                Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Evaluation single core");
-                let result = Task.evaluation_single_core send_progress job in
-                Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Sending result");
-                send_output_command (Completed result);
-                raise Exit
-        done
+        run_execution ()
       with
         | Exit ->
             Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Exit");
-            exit 0
-        | Config.Internal_error err_msg ->
-            Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WE] Internal error = %s" err_msg);
-            send_output_command (Error_msg err_msg)
-        | ex ->
-            Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WE] Other error : %s" (Printexc.to_string ex));
-            send_output_command (Error_msg (Printexc.to_string ex))
+            let memory = (Gc.quick_stat ()).Gc.top_heap_words * (Sys.word_size / 8) in
+            send_output_command (Killed memory)
   end
 
   module WDM = struct
@@ -139,6 +165,7 @@ module Distrib = functor (Task:Evaluator_task) -> struct
 
     type input_command =
       | Kill_evaluator of int (* pid *)
+      | Interupt_evaluator of int (* pid *)
       | Die
 
     type output_command =
@@ -161,6 +188,10 @@ module Distrib = functor (Task:Evaluator_task) -> struct
       Config.log Config.Distribution (fun () -> "[distrib.ml >> WDM >> kill_evaluators] Send kill signal");
       Unix.kill pid kill_signal
 
+    let interupt_evaluators pid =
+      Config.log Config.Distribution (fun () -> "[distrib.ml >> WDM >> interupt_evaluators] Send interupt signal");
+      Unix.kill pid interupt_signal
+
     let main () =
       try
         Config.log Config.Distribution (fun () -> "[distrib.ml >> WDM] Sending physical core");
@@ -173,6 +204,9 @@ module Distrib = functor (Task:Evaluator_task) -> struct
             | Kill_evaluator pid ->
                 Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WDM] Kill pid %d" pid);
                 kill_evaluators pid
+            | Interupt_evaluator pid ->
+                Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WDM] Interupt pid %d" pid);
+                interupt_evaluators pid
             | Die -> raise Exit
         done
       with
@@ -223,7 +257,7 @@ module Distrib = functor (Task:Evaluator_task) -> struct
       | Acknowledge
 
     type output_command =
-      | Completed of verification_result
+      | Completed of verification_result * int
       | Error_msg of string * query_progression
       | Progress of query_progression * bool (* To write *)
       | Computed_settings of distributed_settings option
@@ -420,18 +454,30 @@ module Distrib = functor (Task:Evaluator_task) -> struct
         send_output_command_ack (Computed_settings (Some distributed_settings))
       else send_output_command_ack (Computed_settings None)
 
+    let rec receive_kill_message eval = match WE.get_output_command eval.WE.in_ch with
+      | WE.Killed m ->
+          Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.receive_kill_message] Received kill confirmation");
+          m
+      | WE.Error_msg str -> Config.internal_error str
+      | _ -> receive_kill_message eval
+
     let kill_all () =
       (* Killing evaluators *)
-      List.iter (fun (eval,man_op) -> match man_op with
-        | None ->
-            Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WLM.kill_all] Sending kill signal: %d" eval.WE.pid);
-            Unix.kill eval.WE.pid kill_signal
-            (* The following is removed for now as it seems to block from time to time. *)
-            (*ignore (Unix.close_process (eval.WE.in_ch,eval.WE.out_ch))*)
-        | Some manager ->
-            Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WLM.kill_all] Sending kill evaluator command: %d" eval.WE.pid);
-            WDM.send_input_command manager.out_ch (WDM.Kill_evaluator eval.WE.pid)
-      ) !evaluators;
+      let memory_used =
+        List.fold_left (fun acc_mem (eval,man_op) -> match man_op with
+          | None ->
+              Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WLM.kill_all] Sending kill signal: %d" eval.WE.pid);
+              Unix.kill eval.WE.pid kill_signal;
+              (* The following is removed for now as it seems to block from time to time. *)
+              let memory_worker = receive_kill_message eval in
+              acc_mem + memory_worker
+          | Some manager ->
+              Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WLM.kill_all] Sending kill evaluator command: %d" eval.WE.pid);
+              WDM.send_input_command manager.out_ch (WDM.Kill_evaluator eval.WE.pid);
+              let memory_worker = receive_kill_message eval in
+              acc_mem + memory_worker
+        ) 0 !evaluators
+      in
 
       (* Kill managers *)
       List.iter (fun manager ->
@@ -439,7 +485,9 @@ module Distrib = functor (Task:Evaluator_task) -> struct
         WDM.send_input_command manager.out_ch WDM.Die
         (* The following is removed for now as it seems to block from time to time. *)
         (*ignore (Unix.close_process (manager.in_ch,manager.out_ch))*)
-      ) !distant_managers
+      ) !distant_managers;
+
+      memory_used
 
     let die_command () =
       Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.die_command] Waiting for input command");
@@ -466,7 +514,6 @@ module Distrib = functor (Task:Evaluator_task) -> struct
             f_prog false
           end
         else ()
-
 
     let progression_distributed_verification ?(forced=false) round nb_job nb_job_remain =
       send_progression ~forced:forced (fun to_write ->
@@ -496,46 +543,27 @@ module Distrib = functor (Task:Evaluator_task) -> struct
       | RSession_Inclusion None -> ()
       | res -> raise (Completed_execution res)
 
-    let kill_and_replace_active_evaluators active_jobs =
-      let remove_evaluators eval man_op =
-        evaluators := List.remove (fun (eval',man_op') -> eval = eval' && man_op = man_op') !evaluators;
-        fd_in_ch_evaluators := List.remove (fun fd_in_ch -> eval.WE.fd_in_ch = fd_in_ch) !fd_in_ch_evaluators;
-        (* Killing evaluators *)
+    let rec receive_interuption_message eval = match WE.get_output_command eval.WE.in_ch with
+      | WE.Interupted ->
+          Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.receive_interuption_message] Received interuption confirmation")
+      | WE.Error_msg str -> Config.internal_error str
+      | _ -> receive_interuption_message eval
+
+    let interupt_and_replace_active_evaluators active_jobs =
+      let interupt_evaluator eval man_op =
+        (* Interupting one evaluator *)
         match man_op with
           | None ->
-              Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WLM.kill_and_replace_active_evaluators] Sending kill signal: %d" eval.WE.pid);
-              Unix.kill eval.WE.pid kill_signal
-              (* The following is removed for now as it seems to block from time to time. *)
-              (*ignore (Unix.close_process (eval.WE.in_ch,eval.WE.out_ch))*)
+              Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WLM.interupt_and_replace_active_evaluators] Sending interupt signal: %d" eval.WE.pid);
+              Unix.kill eval.WE.pid interupt_signal;
+              receive_interuption_message eval
           | Some manager ->
-              Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WLM.kill_and_replace_active_evaluators] Sending kill evaluator command: %d" eval.WE.pid);
-              WDM.send_input_command manager.out_ch (WDM.Kill_evaluator eval.WE.pid)
+              Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WLM.interupt_and_replace_active_evaluators] Sending interupt evaluator command: %d" eval.WE.pid);
+              WDM.send_input_command manager.out_ch (WDM.Interupt_evaluator eval.WE.pid);
+              receive_interuption_message eval
       in
 
-      let local_path = Filename.concat !Config.path_deepsec "deepsec_worker" in
-
-      List.iter (fun (_,eval,man_op) ->
-        remove_evaluators eval man_op;
-        let path = match man_op with
-          | None -> ("'"^local_path^"'")
-          | Some manager -> manager.path
-        in
-        Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.kill_and_replace_active_evaluators] Create new process");
-        let (in_ch,out_ch) = Unix.open_process path in
-        let fd_in_ch = Unix.descr_of_in_channel in_ch in
-        Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.kill_and_replace_active_evaluators] Send role");
-        send out_ch Evaluator;
-        Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.kill_and_replace_active_evaluators] Waiting for pid");
-        let pid = match WE.get_output_command in_ch with
-          | WE.Pid n -> n
-          | _ -> Config.internal_error "[distrib.ml >> WLM.kill_and_replace_active_evaluators] Unexpected output command from evaluators"
-        in
-        Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WLM.kill_and_replace_active_evaluators] Pid received %d" pid);
-
-        let eval = { WE.pid = pid; WE.in_ch = in_ch; WE.fd_in_ch = fd_in_ch; WE.out_ch = out_ch } in
-        evaluators := (eval,man_op) :: !evaluators;
-        fd_in_ch_evaluators := fd_in_ch :: !fd_in_ch_evaluators
-      ) active_jobs
+      List.iter (fun (_,eval,man_op) -> interupt_evaluator eval man_op) active_jobs
 
     let generate_jobs round job_list =
 
@@ -616,7 +644,7 @@ module Distrib = functor (Task:Evaluator_task) -> struct
                   | WE.Error_msg err ->
                       Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.generate_jobs] Received error message");
                       send_error err
-                  | WE.Progress _| WE.Pid _ ->
+                  | WE.Progress _| WE.Pid _ | WE.Killed _ | WE.Interupted ->
                       Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.generate_jobs] Received progress or pid");
                       send_error "[distrib.ml >> generate_jobs] Unexpected output command from evaluator"
           ) available_fd_in_ch
@@ -738,7 +766,7 @@ module Distrib = functor (Task:Evaluator_task) -> struct
       if jobs = []
       then raise (Completed_execution !main_verification_result);
 
-      kill_and_replace_active_evaluators !active_jobs;
+      interupt_and_replace_active_evaluators !active_jobs;
 
       jobs
 
@@ -748,9 +776,9 @@ module Distrib = functor (Task:Evaluator_task) -> struct
         let remain_job_list_next_round = evaluate_jobs round jobs_created_data in
         evaluate_distributed (round+1) remain_job_list_next_round
       with Completed_execution result ->
-        kill_all ();
+        let memory = kill_all () in
         Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.evaluate_distributed] Send completed command");
-        send_output_command (Completed result)
+        send_output_command (Completed(result,memory))
 
     let evaluate_single_core job =
       let (eval,_) = List.hd !evaluators in
@@ -784,9 +812,9 @@ module Distrib = functor (Task:Evaluator_task) -> struct
           ) available_fd_in_ch
         done
       with Completed_execution result ->
-        kill_all ();
+        let memory = kill_all () in
         Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.evaluate_single_core] Send completed command");
-        send_output_command (Completed result)
+        send_output_command (Completed (result,memory))
 
     let main () =
       try
@@ -800,9 +828,9 @@ module Distrib = functor (Task:Evaluator_task) -> struct
           | _ -> send_error "[distrib.ml >> main] Unexpected input command"
         end
       with
-        | Exit -> kill_all ()
+        | Exit -> ignore (kill_all ())
         | ex ->
-            kill_all ();
+            ignore (kill_all ());
             Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.main] Send error command");
             send_output_command (Error_msg ((Printexc.to_string ex),!current_progression))
   end

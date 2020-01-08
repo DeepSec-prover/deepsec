@@ -135,7 +135,8 @@ type query_result =
     query_type : equivalence;
     processes : json_process list;
     settings : query_settings;
-    progression : query_progression
+    progression : query_progression;
+    memory : int
   }
 
 (* Run result *)
@@ -259,6 +260,7 @@ type output_command =
       query_status *
       int (* Index of query *) *
       int (* Running time *) *
+      int (* Memory used. = 0 when not defined *) *
       equivalence
   (* Exit *)
   | Run_canceled of string
