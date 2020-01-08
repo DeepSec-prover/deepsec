@@ -94,7 +94,7 @@ let generate_mixed_formulas_for_skeletons kb ikb df term_vars recipe_vars recipe
         );
         if f.arity = 0
         then
-          if f.represents = AttackerPublicName
+          if Symbol.is_attacker_name f
           then
             let y_fst = Variable.fresh Universal
             and y_snd = Recipe_Variable.fresh Universal Recipe_Variable.infinite_type in

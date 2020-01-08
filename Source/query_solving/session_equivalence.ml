@@ -1101,7 +1101,7 @@ let apply_neg_phase equiv_pbl f_continuation f_next =
                   { symb_conf with
                     configuration = conf_1;
                     matching_status = out_trans.Configuration.out_matching_status;
-                    trace = AOutput(target_ch_recipe,out_trans.Configuration.out_position) :: symb_conf.trace;
+                    trace = if out_trans.Configuration.out_matching_status = Configuration.Exists then [] else AOutput(target_ch_recipe,out_trans.Configuration.out_position) :: symb_conf.trace;
                     transition_data = TransOutput out_trans;
                     link_c = CNoLink;
                     forall_matched = [];
@@ -1329,7 +1329,7 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
                           { symb_conf with
                             configuration = conf_1;
                             matching_status = in_comm_trans.Configuration.in_comm_matching_status;
-                            trace = AInput(in_trans.Configuration.in_channel,RVar var_X_t,in_trans.Configuration.in_position) :: symb_conf.trace;
+                            trace = if in_comm_trans.Configuration.in_comm_matching_status = Configuration.Exists then [] else AInput(in_trans.Configuration.in_channel,RVar var_X_t,in_trans.Configuration.in_position) :: symb_conf.trace;
                             transition_data = TransInComm in_comm_trans;
                             link_c = CNoLink;
                             forall_matched = [];
@@ -1343,7 +1343,7 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
                           { csys with
                             Constraint_system.deduction_facts = Data_structure.DF.add_multiple_max_type csys.Constraint_system.deduction_facts [dfact_t];
                             Constraint_system.eq_term = in_comm_trans.Configuration.in_comm_gathering_normalise.Labelled_process.disequations;
-                            Constraint_system.original_substitution =in_comm_trans.Configuration.in_comm_gathering_normalise.Labelled_process.original_subst;
+                            Constraint_system.original_substitution = in_comm_trans.Configuration.in_comm_gathering_normalise.Labelled_process.original_subst;
                             Constraint_system.original_names = in_comm_trans.Configuration.in_comm_gathering_normalise.Labelled_process.original_names;
                             Constraint_system.eq_uniformity = eq_uniformity;
                             Constraint_system.additional_data = symb_conf_1
@@ -1361,7 +1361,7 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
                           { symb_conf with
                             configuration = conf_1;
                             matching_status = in_comm_trans.Configuration.in_comm_matching_status;
-                            trace = AComm(comm_trans.Configuration.comm_out_position,comm_trans.Configuration.comm_in_position) :: symb_conf.trace;
+                            trace = if in_comm_trans.Configuration.in_comm_matching_status = Configuration.Exists then [] else AComm(comm_trans.Configuration.comm_out_position,comm_trans.Configuration.comm_in_position) :: symb_conf.trace;
                             transition_data = TransInComm in_comm_trans;
                             link_c = CNoLink;
                             forall_matched = [];
@@ -1571,7 +1571,7 @@ let apply_pos_phase equiv_pbl f_continuation f_next =
                         { symb_conf with
                           configuration = conf_1;
                           matching_status = in_comm_trans.Configuration.in_comm_matching_status;
-                          trace = AInput(in_trans.Configuration.in_channel,RVar var_X_t,in_trans.Configuration.in_position) :: symb_conf.trace;
+                          trace = if in_comm_trans.Configuration.in_comm_matching_status = Configuration.Exists then [] else AInput(in_trans.Configuration.in_channel,RVar var_X_t,in_trans.Configuration.in_position) :: symb_conf.trace;
                           transition_data = TransInComm in_comm_trans;
                           link_c = CNoLink;
                           forall_matched = [];
@@ -1616,41 +1616,45 @@ let apply_pos_phase equiv_pbl f_continuation f_next =
 
   (* Generate the new matching set *)
 
-  let forall_set_1 = ref [] in
+  let forall_set_1 =
+    let forall_set_ref = ref [] in
 
-  auto_cleanup_symbolic_configuration (fun () ->
-    List.iter (fun forall_csys ->
-      let gen_forall_transitions = generate_transitions forall_csys in
-      iter_forall_both (fun forall_csys_1 ->
-        let forall_trans = match forall_csys_1.Constraint_system.additional_data.transition_data with
-          | TransInComm trans -> trans
-          | _ -> Config.internal_error "[session_equivalence.ml >> apply_pos_phase] Expecting an in/comm transition."
-        in
-        let (generate_bset_exists,forall_bset) = Bijection_set.generate_in_comm forall_trans forall_csys.Constraint_system.additional_data.forall_bset in
+    auto_cleanup_symbolic_configuration (fun () ->
+      List.iter (fun forall_csys ->
+        let gen_forall_transitions = generate_transitions forall_csys in
+        iter_forall_both (fun forall_csys_1 ->
+          let forall_trans = match forall_csys_1.Constraint_system.additional_data.transition_data with
+            | TransInComm trans -> trans
+            | _ -> Config.internal_error "[session_equivalence.ml >> apply_pos_phase] Expecting an in/comm transition."
+          in
+          let (generate_bset_exists,forall_bset) = Bijection_set.generate_in_comm forall_trans forall_csys.Constraint_system.additional_data.forall_bset in
 
-        List.iter (fun (exists_csys,exists_bset) ->
-          let gen_exists_transitions = generate_transitions exists_csys in
-          iter_exists_both (fun exists_csys_1 ->
-            let exists_trans = match exists_csys_1.Constraint_system.additional_data.transition_data with
-              | TransInComm trans -> trans
-              | _ -> Config.internal_error "[session_equivalence.ml >> apply_pos_phase] Expecting an in/comm transition (2)."
-            in
-            match generate_bset_exists exists_trans exists_bset with
-              | None -> ()
-              | Some exists_bset1 ->
-                  exists_csys_1.Constraint_system.additional_data.forall_matched <- forall_csys_1 :: exists_csys_1.Constraint_system.additional_data.forall_matched;
-                  forall_csys_1.Constraint_system.additional_data.exists_matched <- (exists_csys_1,exists_bset1) :: forall_csys_1.Constraint_system.additional_data.exists_matched;
-                  forall_csys_1.Constraint_system.additional_data.forall_bset <- forall_bset
-          ) gen_exists_transitions;
-        ) forall_csys.Constraint_system.additional_data.exists_matched;
-        forall_set_1 := forall_csys_1 :: !forall_set_1
-      ) gen_forall_transitions
-    ) equiv_pbl.forall_set;
-  );
+          List.iter (fun (exists_csys,exists_bset) ->
+            let gen_exists_transitions = generate_transitions exists_csys in
+            iter_exists_both (fun exists_csys_1 ->
+              let exists_trans = match exists_csys_1.Constraint_system.additional_data.transition_data with
+                | TransInComm trans -> trans
+                | _ -> Config.internal_error "[session_equivalence.ml >> apply_pos_phase] Expecting an in/comm transition (2)."
+              in
+              match generate_bset_exists exists_trans exists_bset with
+                | None -> ()
+                | Some exists_bset1 ->
+                    exists_csys_1.Constraint_system.additional_data.forall_matched <- forall_csys_1 :: exists_csys_1.Constraint_system.additional_data.forall_matched;
+                    forall_csys_1.Constraint_system.additional_data.exists_matched <- (exists_csys_1,exists_bset1) :: forall_csys_1.Constraint_system.additional_data.exists_matched;
+                    forall_csys_1.Constraint_system.additional_data.forall_bset <- forall_bset
+            ) gen_exists_transitions;
+          ) forall_csys.Constraint_system.additional_data.exists_matched;
+          forall_set_ref := forall_csys_1 :: !forall_set_ref
+        ) gen_forall_transitions
+      ) equiv_pbl.forall_set;
+    );
+
+    !forall_set_ref
+  in
 
   (* Apply the first split *)
 
-  split_forall_set !forall_set_1 (fun forall_set_2 csys_to_solve f_next_1 ->
+  split_forall_set forall_set_1 (fun forall_set_2 csys_to_solve f_next_1 ->
     (* We first calculate the new public_output_channels and we check if we can determine whether
        the current block is surely proper. *)
     let (public_output_channels,general_blocks_1) =

@@ -227,8 +227,10 @@ let rec of_term assoc = function
       if args = []
       then JObject [ "type", JString "Atomic"; "id", JInt id]
       else JObject [ "type", JString "Atomic"; "id", JInt id; "bang", JList (List.map of_int args)]
-  | Func(f,[]) when f.represents = AttackerPublicName ->
-      JObject [ "type", JString "Attacker"; "label", JString f.label_s ]
+  | Func({ represents = AttackerPublicName i; _},[]) when i >= 0 ->
+      JObject [ "type", JString "Attacker"; "label", JString ("#n_"^(string_of_int i)) ]
+  | Func({ represents = AttackerPublicName _; label_s = str; _},[])  ->
+      JObject [ "type", JString "Attacker"; "label", JString str ]
   | Func(f,[]) ->
       let id = get_symbol_id assoc f in
       JObject [ "type", JString "Function"; "symbol", JInt id ]
@@ -247,8 +249,10 @@ let rec of_term assoc = function
 
 let rec of_recipe assoc = function
   | CRFunc(_,r) -> of_recipe assoc r
-  | RFunc(f,[]) when f.represents = AttackerPublicName ->
-      JObject [ "type", JString "Attacker"; "label", JString f.label_s ]
+  | RFunc({ represents = AttackerPublicName i; _},[]) when i >= 0 ->
+      JObject [ "type", JString "Attacker"; "label", JString ("#n_"^(string_of_int i)) ]
+  | RFunc({ represents = AttackerPublicName _; label_s = str; _},[])  ->
+      JObject [ "type", JString "Attacker"; "label", JString str ]
   | RFunc(f,[]) ->
       let id = get_symbol_id assoc f in
       JObject [ "type", JString "Function"; "symbol", JInt id ]

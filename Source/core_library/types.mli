@@ -29,7 +29,7 @@ and link_n =
 
 (** The type [representation] indicates how the symbol was defined. *)
 and representation =
-  | AttackerPublicName
+  | AttackerPublicName of int
   | UserName
       (** Was originally a public name that has been transform into a
         public constant. *)

@@ -552,6 +552,10 @@ module Symbol = struct
     | Constructor | Tuple -> true
     | _ -> false
 
+  let is_attacker_name sym = match sym.represents with
+    | AttackerPublicName _ -> true
+    | _ -> false
+
   let get_arity sym = sym.arity
 
   let order sym_1 sym_2 = compare sym_1.index_s sym_2.index_s
@@ -613,61 +617,56 @@ module Symbol = struct
         symb
       end
 
-  (* Used to instantiate recipe variable when applying the rewrite rules on the knowledge base. *)
-  let get_fresh_constant (n:int) =
-    try
-      Hashtbl.find special_constructor n
-    with
-    | Not_found ->
-        let c = { label_s = "_c"; arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
-        Hashtbl.add special_constructor n c;
-        incr accumulator_nb_symb;
-        c
-
   (* Used to instantiate the variables of a solved constraint system. *)
+
+  let auto_cleanup_attacker_name (f_cont:(unit -> unit) -> unit) (f_next:unit -> unit) =
+    let tmp = !number_of_attacker_name in
+
+    f_cont (fun () ->
+      number_of_attacker_name := tmp;
+      f_next ()
+    )
+
+  (* Only be used in the constraint solving *)
   let fresh_attacker_name () =
-    let symb = { label_s = (Printf.sprintf "#n_%d" !number_of_attacker_name); arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
+    let symb = { label_s = "#n"; arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName !number_of_attacker_name } in
     incr number_of_attacker_name;
     incr accumulator_nb_symb;
-    all_constructors := symb :: !all_constructors;
-    incr number_of_constructors;
     symb
 
+  (* Only be used in the simulator *)
   let get_attacker_name str =
     try
       Hashtbl.find attacker_names str
     with Not_found ->
-      let c = { label_s = str; arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName } in
+      let c = { label_s = str; arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName (-1) } in
       Hashtbl.add attacker_names str c;
       incr accumulator_nb_symb;
       c
 
+  (* Only be used in the simulator *)
+  let rec fresh_attacker_name_ground () =
+    let str = "#n_"^(string_of_int !number_of_attacker_name) in
+    if Hashtbl.mem attacker_names str
+    then
+      begin
+        incr number_of_attacker_name;
+        fresh_attacker_name_ground ()
+      end
+    else
+      begin
+        let symb = { label_s = str; arity = 0; cat = Constructor; index_s = !accumulator_nb_symb; public = true; represents = AttackerPublicName (-1) } in
+        incr number_of_attacker_name;
+        incr accumulator_nb_symb;
+        Hashtbl.add attacker_names str symb;
+        symb
+      end
+
   (******** Display function *******)
 
-  let reg_proj = Str.regexp "proj_{\\([0-9]+\\),\\([0-9]+\\)}"
-  let reg_latex_1 = Str.regexp "\\([a-zA-Z0-9_]+\\)_\\([0-9]+\\)"
-  let reg_latex_2 = Str.regexp "_"
-
-  let display out f =
-    if Str.string_match reg_proj f.label_s 0
-    then
-      match out with
-        | HTML ->
-            let i1 = Str.matched_group 1 f.label_s in
-            let i2 = Str.matched_group 2 f.label_s in
-            Printf.sprintf "proj<sub>%s,%s</sub>" i1 i2
-        | _ -> f.label_s
-    else
-      match out with
-        | Latex ->
-            if Str.string_match reg_latex_1 f.label_s 0
-            then
-              let body = Str.matched_group 1 f.label_s in
-              let number = Str.matched_group 2 f.label_s in
-              let body' = Str.global_replace reg_latex_2 "\\_" body in
-              Printf.sprintf "%s_{%s}" body' number
-            else Str.global_replace reg_latex_2 "\\_" f.label_s
-        | _ -> f.label_s
+  let display _ f = match f.represents with
+    | AttackerPublicName i when i >= 0 -> "#n_"^(string_of_int i)
+    | _ -> f.label_s
 
   let display_with_arity out f =
     if f.public

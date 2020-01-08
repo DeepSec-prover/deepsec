@@ -165,7 +165,7 @@ let rec replace_structural_recipe assoc = function
         try
           fst (List.find (fun (f',_) -> f'.label_s = f.label_s && f'.index_s = f.index_s) assoc.symbols)
         with Not_found ->
-          if f.represents <> AttackerPublicName
+          if not (Symbol.is_attacker_name f)
           then Config.internal_error "[interface.ml >> replace_structural_recipe] The symbol should have been recorded.";
           f
       in

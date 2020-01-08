@@ -10,8 +10,6 @@ open Types
 module Symbol : sig
   (** A symbol can be a destructor or a constructor.*)
 
-  val get_fresh_constant : int -> symbol
-
   (** The list of all constructors (included the tuple function symbol) used in the algorithm.*)
   val all_constructors : symbol list ref
 
@@ -82,7 +80,11 @@ module Symbol : sig
       @raise Not_found if [f] was not previously introduced by [get_tuple].*)
   val get_projections : symbol -> symbol list
 
+  val auto_cleanup_attacker_name : ((unit -> unit) -> unit) -> (unit -> unit) -> unit
+
   val fresh_attacker_name : unit -> symbol
+
+  val fresh_attacker_name_ground : unit -> symbol
 
   val get_attacker_name : string -> symbol
 
@@ -93,6 +95,9 @@ module Symbol : sig
 
   (** [is_destructor f] returns true iff [f] is a constructor. *)
   val is_constructor : symbol -> bool
+
+  (** [is_attacker_name f] returns true iff [f] is an attacker name. *)
+  val is_attacker_name : symbol -> bool
 
   val order : symbol -> symbol -> int
 

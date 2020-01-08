@@ -285,7 +285,7 @@ let rewrite_rule_of assoc json =
 let representation_of json = match string_of json with
   | "UserName" -> UserName
   | "UserDefined" -> UserDefined
-  | "Attacker" -> AttackerPublicName
+  | "Attacker" -> Config.internal_error "[parsing_functions_ui.ml >> representation_of] Attacker name should not occur in the atomic data."
   | _ -> Config.internal_error "[parsing_functions_ui.ml >> representation_of] Wrong value."
 
 let tuple_constructor_of all_t all_c all_p nb_c cat json =

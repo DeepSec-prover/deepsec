@@ -321,7 +321,7 @@ let convert_trace_to_original_symbols trace =
   let all_symb = List.fold_left (fun acc (_,f_p) -> f_p @ acc) (setting.Symbol.all_t @ setting.Symbol.all_c @ setting.Symbol.all_d) setting.Symbol.all_p in
 
   let find_symbol f =
-    if f.represents = AttackerPublicName
+    if Symbol.is_attacker_name f
     then f
     else
       let equal_index f' = f.index_s = f'.index_s in
