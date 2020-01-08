@@ -882,3 +882,60 @@ let set_up_skeleton_settings settings =
   storage_skeletons := Array.of_list settings.storage_skeletons;
   skeletons_index_by_symbol := Array.of_list settings.skeletons_index_by_symbol;
   storage_skeletons_constructor := Array.of_list settings.storage_skeletons_constructor
+
+(***** Checking of subterm convergence *****)
+
+exception Not_subterm of term * term
+
+(* checks whether t1 is a syntactic subterm of t2. Assumes that rewrite
+rules do not contain names. *)
+let rec is_subterm t1 t2 = match t1, t2 with
+  | Var x, Var y -> x == y
+  | Var _, Func(_,l) -> List.exists (is_subterm t1) l
+  | Func _, Var _ -> false
+  | _, Func(_,l2) -> Term.is_equal t1 t2 || List.exists (is_subterm t1) l2
+  | Name _, _
+  | _, Name _ -> Config.internal_error "[rewrite_rules.ml >> is_subterm] rewrite rules should not contain names"
+
+(* checks whether a rewrite rule satisfies the subterm property *)
+let check_subterm_rule f (lhs,rhs) =
+  if not (Term.is_ground rhs || List.exists (is_subterm rhs) lhs)
+  then raise (Not_subterm (Func(f,lhs),rhs))
+
+(* checks whether a pair of constructor-destructor rules (with same root)
+verifies the local-convergence property (critical pair---which, if any,
+needs be at the root---joinable). Left-hand sides are represented as the
+list of direct subterms of the root.
+returns a witness of non convergence (that is a term + 2 normal
+forms) when the critical pair is joinable. *)
+exception Non_convergence_witness of term * term * term
+
+let check_critical_pair_not_joinable f (lhs1,rhs1) (lhs2,rhs2) =
+  try
+    Variable.auto_cleanup_with_exception (fun () ->
+      List.iter2 Term.unify lhs1 lhs2;
+      if Term.is_equal rhs1 rhs2
+      then ()
+      else
+        let t = Func(f,List.map Term.instantiate lhs1) in
+        let rhs1' = Term.instantiate rhs1 in
+        let rhs2' = Term.instantiate rhs2 in
+        raise (Non_convergence_witness (t,rhs1',rhs2'))
+    )
+  with Term.Not_unifiable -> ()
+
+(* verifies that the reduction rules of a given destructor are subterm
+convergent *)
+let check_subterm_convergent_symbol f = match f.cat with
+  | Tuple
+  | Constructor -> Config.internal_error "[rewrite_rules.ml >> check_subterm_convergent_symbol] only destructor symbols should be considered."
+  | Destructor rw_rules ->
+
+      let rec check_all_pairs = function
+        | [] -> ()
+        | r :: rl ->
+            List.iter (check_critical_pair_not_joinable f r) rl;
+            check_all_pairs rl in
+
+      List.iter (check_subterm_rule f) rw_rules;
+      check_all_pairs rw_rules

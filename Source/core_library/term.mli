@@ -336,6 +336,9 @@ module Term : sig
       Warning: The function does not follow through the links. *)
   val is_constructor : term -> bool
 
+  (** [is_ground t] returns [true] iff [term] is a ground term, i.e. does not contain variables. *)
+  val is_ground : term -> bool
+
   (** {3 Main functions} *)
 
   (** [instantiate t] returns the term [t] in which the variables linked with [TLink] are replaced

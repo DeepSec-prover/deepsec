@@ -488,8 +488,18 @@ let parse_functions env = function
         ) [lhs,rhs] (List.tl rw_rules)
       in
       let f = Term.Symbol.new_destructor ar public symb rw_rules' in
-      (*Term.Rewrite_rules.is_subterm_convergent_symbol line f;*)
-      Env.add symb (Func f) env
+      try
+        Rewrite_rules.check_subterm_convergent_symbol f;
+        Env.add symb (Func f) env
+      with
+        | Rewrite_rules.Not_subterm(l,r) ->
+            error_message line (Printf.sprintf "The rewrite rule %s -> %s is not subterm."
+              (Term.Term.display Display.Terminal l) (Term.Term.display Display.Terminal r)
+            )
+        | Rewrite_rules.Non_convergence_witness(t,t1,t2) ->
+            error_message line (Printf.sprintf "The rewrite rules are not convergent. The term %s has two normal forms %s and %s."
+              (Term.Term.display Display.Terminal t) (Term.Term.display Display.Terminal t1) (Term.Term.display Display.Terminal t2)
+            )
 
 (****** Parse setting *******)
 

@@ -61,3 +61,10 @@ type skeleton_settings
 val get_skeleton_settings : unit -> skeleton_settings
 
 val set_up_skeleton_settings : skeleton_settings -> unit
+
+(** {2 Checking of subterm convergent system} *)
+
+exception Not_subterm of term * term
+exception Non_convergence_witness of term * term * term
+
+val check_subterm_convergent_symbol : symbol -> unit

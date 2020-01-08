@@ -813,6 +813,12 @@ module Term = struct
     | Func(_,args) -> List.for_all is_constructor args
     | _ -> true
 
+  let rec is_ground = function
+    | Var { link = TLink t; _ } -> is_ground t
+    | Name _ -> true
+    | Var _ -> false
+    | Func(_,args) -> List.for_all is_ground args
+
   (********* Renaming *********)
 
   let rec apply_renamings = function
