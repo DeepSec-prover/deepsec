@@ -2,7 +2,7 @@ open Extensions
 open Types
 open Types_ui
 
-let kill_signal = Sys.sigkill
+let kill_signal = Sys.sigterm
 
 let send out_ch a =
   output_value out_ch a;
