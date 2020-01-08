@@ -2,7 +2,7 @@ open Extensions
 open Types
 open Types_ui
 
-let kill_signal = Sys.sigterm
+let kill_signal = Sys.sigkill
 
 let send out_ch a =
   output_value out_ch a;
@@ -81,6 +81,9 @@ module Distrib = functor (Task:Evaluator_task) -> struct
       Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Sending pid");
       (* The worker starts by output his pid *)
       send_output_command (Pid (Unix.getpid ()));
+
+      (* Signal handling *)
+      Sys.set_signal kill_signal (Sys.Signal_handle (fun _ -> Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Kill signal received"); exit 0));
 
       (* Sending the progress command *)
       let send_progress (prog,to_write) = send_output_command (Progress (prog,to_write)) in
