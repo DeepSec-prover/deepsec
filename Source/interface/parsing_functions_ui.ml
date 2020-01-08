@@ -11,7 +11,7 @@ let find_function str pos =
     | None ->
         match List.find_opt (fun f -> f.label_s = str) !Symbol.all_destructors with
           | Some f -> f
-          | None -> Parser_functions.error_message ~with_line:false pos (Printf.sprintf "The function %s is not defined." str)
+          | None -> Parser_functions.error_message ~with_line:false pos (Printf.sprintf "The function %%%s%% is not defined." str)
 
 let rec recipe_of_parsed_recipe ori_str max_ax = function
   | Parser_functions.RAxiom(id,pos) ->
