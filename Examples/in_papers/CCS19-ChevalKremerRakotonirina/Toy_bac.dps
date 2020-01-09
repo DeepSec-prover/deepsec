@@ -1,0 +1,72 @@
+free c, ok, error, get_challenge.
+
+fun enc/3.
+reduc dec(enc(x,y,z),z) -> x.
+
+// definition of the reader and passport
+let passport(k) =
+  new n;
+  out(c,n);
+  in(c,x);
+  if dec(x,k) = n then out(c,ok)
+  else out(c,error).
+
+let reader(k) =
+  in(c,n);
+  new r;
+  out(c,enc(n,r,k)).
+
+
+// definition of the systems passport/reader
+let system(k) =
+  (out(c,get_challenge); reader(k)) |
+  (in(c,x); if x = get_challenge then passport(k)).
+
+let system_no_challenge(k) =
+  reader(k) | passport(k).
+
+// processes to check equivalence
+let process11 =
+  !^2 new k; system(k).
+
+let process2 =
+  new k; !^2 system(k).
+
+let process111 =
+  !^3 new k; system(k).
+
+let process21 =
+  new k; !^2 system(k) | new k; system(k).
+
+// processes to check equivalence (without get_challenge)
+let process11_no_challenge =
+  !^2 new k; system_no_challenge(k).
+
+let process2_no_challenge =
+  new k; !^2 system_no_challenge(k).
+
+let process111_no_challenge =
+  !^3 new k; system_no_challenge(k).
+
+let process21_no_challenge =
+  new k; !^2 system_no_challenge(k) | new k; system_no_challenge(k).
+
+
+// BAC 2 (equivalence by session)
+query session_equiv(process2,process11). // true attack
+query session_equiv(process2_no_challenge,process11_no_challenge). // false attack and heuristic fails to reconstruct true attack (August 2019)
+query trace_equiv(process2,process11). // not equivalent
+query trace_equiv(process2_no_challenge,process11_no_challenge). // not equivalent
+
+// BAC 3 (equivalence by session)
+query session_equiv(process21,process111). // false attack + true attack reconstructed
+query session_equiv(process21_no_challenge,process111_no_challenge). // false attack and trace equivalent (see query below). True attack reconstructed if the reader and the passport are put on different channels.
+query trace_equiv(process21_no_challenge,process111_no_challenge). // proof (~8 days on 20 cores)
+
+// BAC 2 (inclusion by session)
+query session_incl(process2,process11). // proof
+query session_incl(process2_no_challenge,process11_no_challenge). // proof
+
+// BAC 3 (inclusion by session)
+query session_incl(process21,process111). // proof
+query session_incl(process21_no_challenge,process111_no_challenge). // proof

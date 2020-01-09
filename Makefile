@@ -4,7 +4,7 @@ SOURCE = Source/
 SCRIPTS = script/
 
 PACKAGES = -package str -package unix
-TEMP = *.native *.p.native *.d.byte index.html result
+TEMP = *.native *.p.native *.d.byte result
 
 # for profiling or advanced debugging, set the variables below to 1
 PROFILE= # seems broken on OSX 10.9 or later

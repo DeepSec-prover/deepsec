@@ -20,6 +20,7 @@ let header =
     2, Printf.sprintf "Version: %s" Config.version;
     2, Printf.sprintf "Git hash: %s" Config.git_commit;
     2, Printf.sprintf "Git branch: %s" Config.git_branch;
+    2, Printf.sprintf "Website: https://deepsec-prover.github.io\n"
   ]
 
 let help =
