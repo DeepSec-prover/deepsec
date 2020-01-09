@@ -1,88 +1,84 @@
-(** *)
+open Types
+open Types_ui
 
 module EquivJob : sig
-
-  (** [shareddata] is a type for data needed by all the computation*)
-  type shareddata
-
-  (** This is the type of a job *)
+  (** The type of a job *)
   type job
 
-  (** This is the type for the result of one job computation*)
-  type result
+  (** Standard evaluationn of a job for distributed computationn *)
+  val evaluation : job -> verification_result
 
-  (** This is the type return by the digest function. Typically, [Kill] indicates that an attack has been found and
-      so the worker can be killed whereas [Continue] indicates otherwise. *)
-  type command =
-    | Kill
-    | Continue
+  (** This is the type for the result of generation of jobs *)
+  type result_generation =
+    | Job_list of job list
+    | Completed of verification_result
 
-  (** The function [initialise] will be run only once by the child processes when they are created. *)
-  val initialise : shareddata -> unit
+  val generate : job -> result_generation
 
-  (** The function [evaluation job] will be run the child processes. The argument [job] is read from the standard input channel, i.e., [stdin]
-      of the child process and the result is output on its standard channel, i.e. [stdout]. Note that for this reasons, it is important
-      that the function [evaluation] never write or read anything respectively on its standard output channel and from its standard input channel. *)
-  val evaluation : job -> result
-
-  (** Upon receiving a result [r] from a child process, the master process will run [digest r job_l] where [job_l] is the reference toward the list of jobs.
-      The purpose of this function is to allow the master process to update the job lists depending of the result it received from the child processes. *)
-  val digest : result -> command
-
-  (** When a worker is tasked to generate new jobs, it is possible that it already discovers an attack or that it already proved that
-      the sub processes it took as argument are equivalent. In such a case, the worker returns the type [Result res] where [res] is
-      the corresponding result. Otherwise, it returns [Jobs jl] where [jl] is the list of jobs genereated. *)
-  type generated_jobs =
-    | Jobs of job list
-    | Result of result
-
-  (** The function that a worker executes when it is tasked to generate new jobs. *)
-  val generate_jobs : job -> generated_jobs
+  (** Evaluation of a job for single core *)
+  val evaluation_single_core : (progression * bool -> unit) -> job -> verification_result
 end
 
-module DistribEquivalence : sig
+module Distribution : sig
 
-  val display_workers : unit -> string
+  (* Evaluator main function *)
+  module WE : sig
+    val main : unit -> unit
+  end
 
-  val nb_workers : int ref
+  (* Distant manager main function *)
+  module WDM : sig
+    val main : unit -> unit
+  end
 
-  (** Corresponds to the minimum number of jobs initially generated before distribution. Note that this number is necessarily bigger than
-      the number of workers launched. Its initial value is 100. *)
-  val minimum_nb_of_jobs : int ref
+  (* Local manager main functions *)
+  module WLM : sig
+    (* The main manager handles single core and multiple core *)
+    type job =
+      {
+        distributed : bool option;
+        local_workers : int option;
+        distant_workers : (string * string * int option) list;
+        nb_jobs : int option;
+        time_between_round : int;
 
-  (** [local_workers n] sets up the number of workers that will be run on the local in parallel on the local machine.
-      More specifically, the executable of the worker will be taken in the DeepSec distribution on which the server
-      is run. Note that executing [local_workers] multiple times adds up the values, i.e. [local_workers 2; local_workers 5] is
-      equivalent to [local_workers 7]. *)
-  val local_workers : int -> unit
+        equivalence_type : equivalence;
+        initial_job : EquivJob.job;
+      }
 
-  (** [add_distant_worker machine path n] allows you to specify additional worker that are not located in the DeepSec distribution
-      of the server and that will be accessed through and ssh connexion. In particular, [machine] should correspond to the adress
-      of the distant machine, and [path] should be the path of the folder in which the DeepSec distribution is located on [machine].
-      Note that it is CRUCIAL that both the local machine and the distant machine have the distribution of DeepSec and Ocaml.
-      The argument [n] corresponds to the number of worker that will be launch on [machine].
+      type distributed_settings =
+        {
+          comp_local_workers : int;
+          comp_distant_workers : (string * string * int) list;
+          comp_nb_jobs : int
+        }
 
-      Example : [add_distant_worker "my_login\@my_distant_server" "path_to_deepsec_on_my_distant_server/deepsec" 3] will run 3 workers on the
-      machine that be accessed via [ssh my_login\@my_distant_server] and on which the folder [deepsec] containing the distribution of DeepSec is located at
-      [path_to_deepsec_on_my_distant_server/deepsec/]. *)
-  val add_distant_worker : string -> string -> int -> unit
+      type input_command =
+        | Execute_query of job
+        | Die
+        | Acknowledge
 
-  (** [worker_main ()] is the only function run on child processes. This is an infinite loop and never returns. *)
-  val worker_main : unit -> unit
+      type output_command =
+        | Completed of verification_result * int
+        | Error_msg of string * query_progression
+        | Progress of query_progression * bool (* To write *)
+        | Computed_settings of distributed_settings option
 
-  (** [compute_job shared job_l] launch [!number_of_workers] child processes send them the shared data and distribute the jobs in [job_l].
-      When the computation is finished, the server close the child processes. *)
-  val compute_job : EquivJob.shareddata -> EquivJob.job -> unit
+      val get_output_command : in_channel -> output_command
 
-  val time_between_round : float ref
+      val send_input_command : out_channel -> input_command -> unit
+
+      val main : unit -> unit
+  end
 end
 
 (** [trace_equivalence sem proc1 proc2] decide whether the processes [proc1] and [proc2] are in trace equivalence depending on the semantics
     [sem]. The function returns a triple [(res,proc1',proc')] where [proc1'] and [proc2'] are typically the processes [proc1] and [proc2] respectively.
     Due to the marshalling, the initial processes are given in each job and returned by each worker to ensure that physical equality within the processes
     are preserved. As such, when displaying an attack trace given by [res], one should use the processes [proc1'] and [proc2'] instead of [proc1] and [proc2]. *)
-val trace_equivalence : Process.semantics -> Process.process -> Process.process -> Equivalence.result_trace_equivalence * Process.process * Process.process
 
-val trace_equivalence_determinate : Process_determinate.configuration -> Process_determinate.configuration -> Equivalence_determinate.result_trace_equivalence * Process_determinate.configuration * Process_determinate.configuration
+val trace_equivalence_determinate : Types.process -> Types.process -> in_channel * out_channel * (verification_result -> verification_result)
 
-val session : Equivalence_session.goal -> Process_session.Configuration.t -> Process_session.Configuration.t -> Equivalence_session.result_analysis * Process_session.Configuration.t * Process_session.Configuration.t
+val trace_equivalence_generic : Types.semantics -> Types.process -> Types.process -> in_channel * out_channel * (verification_result -> verification_result)
+
+val session_equivalence : bool -> Types.process -> Types.process -> in_channel * out_channel * (verification_result -> verification_result)

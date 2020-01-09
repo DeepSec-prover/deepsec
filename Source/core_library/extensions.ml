@@ -15,11 +15,35 @@ module List = struct
     | x :: l -> if p x then find (x :: accu) l else find accu l in
     find []
 
-  (* overwriting some functions with tail-recursive versions *)
-  let rec fold_right ?f_cont:(k=fun x->x) f l a =
-    match l with
-    | [] -> k a
-    | h :: t -> fold_right f t a ~f_cont:(fun res -> k (f h res))
+  let map_tail f =
+    let rec explore f_cont = function
+      | [] -> f_cont []
+      | t::q ->
+          let t' = f t in
+          explore (fun q' -> f_cont (t'::q')) q
+    in
+    explore (fun x -> x)
+
+  let removeq x l =
+    let rec explore prev = function
+      | [] -> raise Not_found
+      | t::q when t == x -> rev_append prev q
+      | t::q -> explore (t::prev) q
+    in
+    try explore [] l with Not_found -> l
+
+  let unionq l1 l2 = match l1,l2 with
+    | [],l
+    | l, [] -> l
+    | _,_ ->
+        let rec add acc = function
+          | [] -> acc
+          | t::q ->
+              if List.memq t l2
+              then acc
+              else add (t::acc) q
+        in
+        add l2 l1
 
   let remove f l =
     let rec explore prev = function
@@ -29,67 +53,106 @@ module List = struct
     in
     explore [] l
 
-  let map f l = fold_right (fun x ac -> f x :: ac) l []
-  let (@) l1 l2 = fold_right (fun a ac -> a :: ac) l1 l2
-  (* fold_left with arguments in the same order as fold_right *)
-  let foldl f l a = fold_left (fun a x -> f x a) a l
+  let extract f l =
+    let rec explore prev = function
+      | [] -> raise Not_found
+      | t::q when f t -> t, rev_append prev q
+      | t::q -> explore (t::prev) q
+    in
+    explore [] l
 
-  (* rev_map + filter (on the transformed elements) *)
-  let map_if pred f l =
-    let rec map_filter ac pred f l = match l with
-      | [] -> ac
-      | p :: t ->
-        let elt = f p in
-        if pred elt then map_filter (elt::ac) pred f t
-        else map_filter ac pred f t in
-    map_filter [] pred f l
+  let extract_nth n l =
+    let rec explore n prev = function
+      | [] -> raise Not_found
+      | t::q when n = 0 -> t, rev_append prev q
+      | t::q -> explore (n-1) (t::prev) q
+    in
+    explore n [] l
 
-  (* rev_map + filter (on the transformed elements, based on whether the
-  result of the transformation is None or not) *)
-  let map_if_opt f l =
-    List.fold_left (fun ac x ->
-      match f x with
-      | None -> ac
-      | Some y -> y :: ac
-    ) [] l
-
-  (* removes all elements of a list verifying a given predicate, and returns
-  one such element (if any). The ordering is not preserved. *)
-  let find_and_remove (f:'a->bool) (l:'a list) : 'a option * 'a list =
-    List.fold_left (fun (elt,accu) x ->
-      if elt = None && f x then (Some x,accu) else (elt,x::accu)
-    ) (None,[]) l
-
-  (* finder in list *)
-  let rec assoc_opt (e:'a) (l:('a*'b) list) : 'b option =
-    match l with
-    | [] -> None
-    | (f,g) :: p -> if e = f then Some g else assoc_opt e p
-
-  (* a variant of the iterators where the remainder of the list can be taken
-  as an argument of the iterated function *)
-  let fold_left_with_memo (f:'a->'b->'b list->'b list->'a) (x:'a) (l:'b list) : 'a =
-    let rec browse memo ac l =
+  let rec remove_first_n n l =
+    if n = 0
+    then l
+    else
       match l with
-      | [] -> ac
-      | h :: t -> browse (h::memo) (f ac h memo t) t in
-    browse [] x l
+        | [] -> invalid_arg "List.remove_first_n"
+        | _::q -> remove_first_n (n-1) q
 
-  let iter_with_memo (f:'a->'a list->'a list->unit) (l:'a list) : unit =
-    fold_left_with_memo (fun () -> f) () l
+  module type OrderedType =
+  sig
+    type t
+    val compare: t -> t -> int
+  end
 
-  (* applies fold left while a given predicate is satisfied *)
-  let rec fold_left_while (pred:'b->bool) (f:'a->'b->'a) (accu:'a) (l:'b list) : 'a =
-    match l with
-    | [] -> accu
-    | h :: t ->
-      if pred h then fold_left_while pred f (f accu h) t
-      else accu
+  module Ordered(Ord: OrderedType) = struct
 
-  (* puts the elements of a list that verify a predicate in head *)
-  let filter_in_head (pred:'a->bool) (l:'a list) : 'a list =
-    let (yes,no) = partition_unordered pred l in
-    List.rev_append yes no
+    let rec diff l1 l2 = match l1,l2 with
+      | _, [] | [], _ -> l1
+      | t1::q1, t2::q2 ->
+          match Ord.compare t1 t2 with
+            | 0 -> diff q1 q2
+            | 1 -> diff l1 q2
+            | _ -> t1::(diff q1 l2)
+
+    exception Not_included
+
+    let rec disjoint l1 l2 = match l1,l2 with
+      | [],_ | _, [] -> true
+      | t1::q1, t2::q2 ->
+          match Ord.compare t1 t2 with
+            | 0 -> false
+            | 1 -> disjoint l1 q2
+            | _ -> disjoint q1 l2
+
+    (* Returns l1 \ l2 when l2 is included in l1
+       or l1 when l1 and l2 are disjoint.
+       @raise Not_included when l1 and l2 not disjoint but
+       l2 not included in l1 *)
+    let included_diff l1 l2 =
+      let rec explore not_disjoint l1 l2 = match l1,l2 with
+        | _, [] -> l1
+        | [], _ ->
+            if not_disjoint
+            then raise Not_included
+            else raise Not_found
+        | t1::q1, t2::q2 ->
+            match Ord.compare t1 t2 with
+              | 0 -> explore true q1 q2
+              | 1 ->
+                  if not_disjoint || not (disjoint l1 q2)
+                  then raise Not_included
+                  else raise Not_found
+              | _ -> t1::(explore not_disjoint q1 l2)
+      in
+      try
+        explore false l1 l2
+      with Not_found -> l1
+
+    let rec add e = function
+      | [] -> [e]
+      | (t::q) as l ->
+          match Ord.compare e t with
+            | -1 -> e::l
+            | 0 -> l
+            | _ -> t::(add e q)
+
+    let rec union l1 l2 = match l1, l2 with
+      | [], l | l, [] -> l
+      | t1::q1, t2::q2 ->
+          match Ord.compare t1 t2 with
+            | -1 -> t1::(union q1 l2)
+            | 0 -> t1::(union q1 q2)
+            | _ -> t2::(union l1 q2)
+
+    let rec remove e = function
+      | [] -> []
+      | (t::q) as l ->
+          match Ord.compare e t with
+            | -1 -> l
+            | 0 -> q
+            | _ -> t::(remove e q)
+
+
+  end
 end
 
 
@@ -1332,74 +1395,10 @@ module Set = struct
 end
 
 
-(* sets modelled as maps with implicit integer keys. Useful on types where the comparison function is not available *)
-module IndexedSet = struct
-  module type S = sig
-    type t
-    type elt
-    val empty : t (* creates an empty data structure. *)
-    val is_empty : t -> bool (* checks the emptiness of the table *)
-    val choose : t -> elt (* returns an element of the table, and raises Internal_error if it is empty *)
-    val add_new_elt : t -> elt -> t * int (* adds a new element and returns the corresponding fresh index. *)
-    val find : t -> int -> elt (* same as find_opt but raises Internal_error if not found *)
-    val remove : t -> int -> t (* removes an element at a given index *)
-    val replace : t -> int -> elt -> t (* replaces an element at an index *)
-    val map : (int -> elt -> elt) -> t -> t (* applies a function on each element *)
-    val filter : (int -> elt -> bool) -> t -> t (* removes all elements whose index do not satisfy a given predicate *)
-    val map_filter : (int -> elt -> elt option) -> t -> t (* applies map but removes elements if the transformation returns None. *)
-    val iter : (int -> elt -> unit) -> t -> unit (* iterates an operation. NB. This operation should *not* modify the table itself. *)
-    (* val copy : t -> t (* creates a static copy of the table *) *)
-    val elements : (int -> elt -> 'a) -> t -> 'a list (* computes the list of binders (index,element) of the table and stores them in a list, after applying a transformation to them. For example, elements (fun x _ -> x) set returns the list of indexes of set. *)
-  end
+(* Additional exception *)
 
-  module Make(O:sig type elt end) : S with type elt = O.elt = struct
-    type index = int
-    type elt = O.elt
+type standard_error =
+  | File_Not_Found of string
+  | Distant_Worker_Not_Accessible of string
 
-    module M = Map.Make(struct type t = index let compare = compare end)
-    type t = elt M.t * index
-    let empty : t = M.empty, 0
-    let is_empty (set,_) = M.is_empty set
-    let choose (set,_) = snd (M.choose set)
-    let add_new_elt (set,ind) x = (M.add ind x set,ind+1),ind
-    let replace (set,im) i x =  (M.replace i (fun _ -> x) set,im)
-    let find_opt (set,_) i = M.find_opt i set
-    let find set i =
-      match find_opt set i with
-      | None ->
-        Config.internal_error (Printf.sprintf "[equivalence_session.ml >> IndexedSet.find] Constraint system %d not found in table." i)
-      | Some x -> x
-    let remove (set,im) i = (M.remove i set,im)
-    let map f (set,i) = (M.mapi f set,i)
-    let filter f (set,im) =  (M.filter f set,im)
-    let map_filter f (set,i) = M.map_filter f set,i
-    let iter f (set,_) = M.iter f set
-    let elements f (set,_) =
-      M.fold (fun index elt accu -> f index elt::accu) set []
-  end
-end
-
-
-(* functional loops over integers *)
-module Func = struct
-  let rec loop f x i n = if i > n then x else loop f (f i x) (i+1) n
-  let rec downloop f x i n = if i < n then x else downloop f (f i x) (i-1) n
-  let iter f i n = loop (fun i () -> f i) () i n
-  let downiter f i n = downloop (fun i () -> f i) () i n
-  let rec find f i n =
-    if i > n then raise Not_found
-    else if f i then i
-    else find f (i+1) n
-  let rec downfind f i n =
-    if i < n then raise Not_found
-    else if f i then i
-    else downfind f (i-1) n
-  let rec find_opt f i n =
-    if i > n then None
-    else if f i then Some i
-    else find_opt f (i+1) n
-  let rec downfind_opt f i n =
-    if i < n then None
-    else if f i then Some i
-    else downfind_opt f (i-1) n
-end
+exception Standard_error of standard_error

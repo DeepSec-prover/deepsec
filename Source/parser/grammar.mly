@@ -20,9 +20,14 @@ open Parser_functions
 %token LPAR RPAR LBRACE RBRACE
 %token RIGHTARROW
 
+%token SHARP
+%token <int>AXIOM
+%token <int*int> PROJ
+
 %token EOF
 
 %start main
+%start main_recipe
 
 %left QUADDOT
 %left MID PLUS
@@ -32,13 +37,14 @@ open Parser_functions
 %left SEMI
 
 %type <Parser_functions.declaration> main
+%type <Parser_functions.recipe> main_recipe
 %%
 
 /****** Main entry *********/
 
 main:
   | option_setting
-      { Setting ($1,(Parsing.symbol_start_pos ()).Lexing.pos_lnum) }
+      { Setting ($1,get_element_position_in_grammar ()) }
   | function_symbol_declaration
       { FuncDecl $1 }
   | free_name_declaration
@@ -46,11 +52,15 @@ main:
   | extended_process_declaration
       { $1 }
   | query_declaration
-      { Query ($1,(Parsing.symbol_start_pos ()).Lexing.pos_lnum) }
+      { Query ($1,get_element_position_in_grammar ()) }
   | EOF
       { raise End_of_file }
   | error
-      { error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
+      { error_message (get_element_position_in_grammar ()) "Syntax Error" }
+
+main_recipe :
+  | recipe { $1 }
+  | error { error_message ~with_line:false (get_element_position_in_grammar ()) "Syntax Error" }
 
 /****** Option setting *******/
 
@@ -80,9 +90,9 @@ function_symbol_declaration:
   | FUN ident SLASH INT LBRACE PRIVATE RBRACE DOT
       { [Constructor ($2,$4,false)] }
   | REDUC rewrite_rule_list DOT
-      { [Destructor ($2,true,(Parsing.symbol_start_pos ()).Lexing.pos_lnum)] }
+      { [Destructor ($2,true,get_element_position_in_grammar ())] }
   | REDUC rewrite_rule_list LBRACE PRIVATE RBRACE DOT
-      { [Destructor ($2,false,(Parsing.symbol_start_pos ()).Lexing.pos_lnum)] }
+      { [Destructor ($2,false,get_element_position_in_grammar ())] }
 
 rewrite_rule_list:
   | rewrite_rule
@@ -132,7 +142,7 @@ extended_process:
 
 plain_process:
   | INT
-      { if $1 = 0 then Nil else error_message (Parsing.symbol_start_pos ()).Lexing.pos_lnum "Syntax Error" }
+      { if $1 = 0 then Nil else error_message (get_element_position_in_grammar ()) "Syntax Error" }
   | ident
       { Call($1,[]) }
   | ident LPAR RPAR
@@ -142,7 +152,7 @@ plain_process:
   | LPAR plain_process RPAR
       { $2 }
   | BANG INT plain_process %prec BANG
-      { Bang($2,$3,(Parsing.symbol_start_pos ()).Lexing.pos_lnum) }
+      { Bang($2,$3,get_element_position_in_grammar ()) }
   | plain_process MID plain_process
       { Par($1,$3) }
   | plain_process PLUS plain_process
@@ -184,11 +194,11 @@ pattern_list :
   | pattern COMMA pattern_list
       { $1 :: $3 }
 
-/****** Term ******/
+/****** Term and recipe ******/
 
 ident:
   | STRING
-      { ($1,(Parsing.symbol_start_pos ()).Lexing.pos_lnum) }
+      { ($1,get_element_position_in_grammar ()) }
 
 term:
   | ident
@@ -202,6 +212,32 @@ term_list:
   | term
       { [$1] }
   | term COMMA term_list
+      { $1::$3 }
+
+recipe_ident:
+  | STRING
+      { ($1,get_element_position_in_grammar ()) }
+
+recipe:
+  | recipe_ident
+      { RFuncApp($1,[]) }
+  | SHARP STRING
+      { RAttacker ("#"^$2) }
+  | AXIOM { RAxiom($1,get_element_position_in_grammar ()) }
+  | PROJ LPAR recipe RPAR
+      {
+        let (id1,id2) = $1 in
+        RProj(id1,id2,$3,get_element_position_in_grammar ())
+      }
+  | recipe_ident LPAR recipe_list RPAR
+      { RFuncApp($1,$3) }
+  | LPAR recipe_list RPAR
+      { if List.length $2 = 1 then List.hd $2 else RTuple($2) }
+
+recipe_list:
+  | recipe
+      { [$1] }
+  | recipe COMMA recipe_list
       { $1::$3 }
 
 var_list:

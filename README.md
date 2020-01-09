@@ -4,24 +4,31 @@ Automated verification has become an essential part in the security evaluation o
 
 ## How to install DeepSec?
 
-**DeepSec** has been successfully tested on Linux and MacOSX (Windows is currently not supported). **DeepSec** requires **OCaml > 4.03**.  It is highly recommended to install **OCaml** through `opam` instead of a native package manager, such as `apt-get` (the latest version on `apt-get` may not be the latest release of OCaml). `opam` itself may however be safely installed using your favorite package manager (see instructions for installing `opam`).
+**DeepSec** has been successfully tested on Linux and MacOSX (Windows is currently not supported). **DeepSec** requires **OCaml > 4.05**.  It is highly recommended to install **OCaml** through `opam` instead of a native package manager, such as `apt-get` (the latest version on `apt-get may` not be the latest release of OCaml). `opam` itself may however be safely installed using your favorite package manager (see instructions for installing `opam`).
 
-### Upgrading Ocaml using OPAM
+### Upgrading Ocaml using OPAM 1.x.x
 
 1. Run `opam switch list` (The version 4.05.0 should be displayed in the list. Otherwise run first `opam update`)
 2. Run `opam switch 4.05.0` (or a more recent version)
 3. Follow the instructions (at the end do not forget to set the environment by running ``eval `opam config env` ``)
 
-### Installation of DeepSec
+### Upgrading Ocaml using OPAM 2.x.x
 
-1. Run `git clone https://github.com/DeepSec-prover/deepsec.git` (with a HTTPS connexion) or `git clone git@github.com:DeepSec-prover/deepsec.git` (with a SSH connexion)
-2. Inside the directory `deepsec`, run `make`
-3. The executable program `deepsec` has been built.
-4. Add the `deepsec` executable to your path, e.g. if your shell is bash, add the line `export DEEPSEC_DIR=<path_to_the_deepsec_folder>/deepsec` to the .bash_profile file
+1. Run `opam switch list-available` (The version `ocaml-base-compiler 4.05.0` should be displayed in the list. Otherwise run first `opam update`)
+2. Run `opam switch create 4.05.0` (or a more recent version)
+3. Follow the instructions
 
-The fourth step is not mandatory but highly recommended. If the variable `DEEPSEC_DIR` is not defined, `deepsec` can only be used with the option `-deepsec_dir <path to the deepsec folder>/deepsec`.
+### Installation of DeepSec from source
 
-Note that two executable programs are compile at the same time as `deepsec`: `worker_deepsec` and `manager_deepsec`. These executables are used by DeepSec to distribute the computation through multi-core architectures and clusters of computers. They should note be used manually nor should they be moved from the `deepsec` folder.
+**Deepsec** requires the package **ocamlbuild** to compile which itself requires **ocamlfind**. It is important that both ocamlbuild and ocamlfind are compiled with the same version of Ocaml. Running `opam install ocamlbuild` may not install ocamlfind if an instance of ocamlfind was installed on a different installation of Ocaml (which sometimes happen on MacOsX). It's safer to run `opam install ocamlfind` before.
+
+1. Run `opam install ocamlfind` (Optional if already installed)
+2. Run `opam install ocamlbuild` (Optional if already installed)
+3. Run `git clone https://github.com/DeepSec-prover/deepsec.git` (with a HTTPS connexion) or `git clone git@github.com:DeepSec-prover/deepsec.git` (with a SSH connexion)
+4. Inside the directory `deepsec`, run `make`
+5. The executable program `deepsec` has been built.
+
+Note that two executable programs are compile at the same time as `deepsec`: `deepsec_worker` and `deepsec_api`. The former is used by **DeepSec** to distribute the computation through multi-core architectures and clusters of computers. The latter is used to communicate with the UI (available at https://github.com/DeepSec-prover/deepsec_ui). Both should not be used manually nor should they be moved from the `deepsec` folder.
 
 ## How to use DeepSec?
 
@@ -118,23 +125,45 @@ Finally, trace equivalence queries are declared using the keyword `query`.
 query trace_equiv(ProcessAB,ProcessCB).
 ```
 
-An input file can contain several queries.
-Executing the input file
+Currently there are three possible types of query: **trace equivalence** (`query trace_equiv(A,B).`), **session equivalence** (`query session_equiv(A,B).`) and **session inclusion** (`query session_incl(A,B).`).  Trace equivalence is the standard equivalence. Session equivalence is stronger than trace equivalence and requires some light syntactic restriction (ex: syntactic channel). However, the verification of session equivalence is much faster generally (except in the case whether the processes are determinate).
 
-To run the input file, the simplest way is to run `deepsec <name of the file>`. Once the computation is completed, **DeepSec** generates a HTML page, `index.html`, in the current directory containing a summary of the queries, the computation time and the results of each query. Additional files are generated for each query displaying the input processes, the summary of the declared name, function symbols and rewrite rules. Moreover, in case the equivalence does not hold, DeepSec also displays the corresponding attack trace.
+An input file can contain several queries.
+
+### Executing the input file
+
+To run the input file, the simplest way is to run `deepsec <name of the file>`. Once the computation is completed, **DeepSec** displays the result.
+
+For example, running `deepsec Examples/trace_equivalence/Private_authentication/PrivateAuthentication-1session.dps` would output the following.
+
+```
+DeepSec - DEciding Equivalence Properties for SECurity protocols
+    Version: 2.0.0
+    Git hash: 33e38cfd1c33f47bf3e2b678559bd4286be373c0
+    Git branch: master
+
+Loading file Examples/trace_equivalence/Private_authentication/PrivateAuthentication-1session.dps...
+
+Starting verification...
+
+Starting verification of PrivateAuthentication-1session.dps...
+Result query 1: The two processes are trace equivalent. Verified in < 1s                                          
+Verification complete.
+```
+
+To see more information, it is highly recommended to use **[DeepSec UI](https://github.com/DeepSec-prover/deepsec_ui)**. With the user interface, you can see the input processes, the summary of the declared name, function symbols and rewrite rules for each query. Moreover when an attack is found on one process of the query, **DeepSec UI** can show you step-by-step the attack trace on this process and it is possible to also simulate the other process to better understand why this trace is an attack trace. Similarly, when the two processes are equivalent, an **equivalence simulator** is available in which one can select a trace of one of the processes and request from the UI an equivalent trace on the other process.
 
 Note that **DeepSec** can take several files as input. Ex: `deepsec file1 file2 file3`
 
 ### Distributed computation
 
-By default, **DeepSec** does not distribute the computation. To activate the distributed computation, `deepsec` should be run with the option `-distributed n` where `n` is the number of available local cores. It is also possible to distribute computation through several computers. To do so, deepsec requires an ssh connexion between the localhost and the distant machine. The computation on distant machine must be configured with the option `-distant_workers <host> <path> <n>`. The parameter `<host>` is the ssh login and address (e.g my_login@my_host). The parameter `<path>` should indicate the path on the distant machine the deepsec directory. Finally the parameter `<n>` represents the number of cores that should be dedicated by this distant machine to the computation of the input file. As connections to distant machines are performed through ssh we recommend to configure a passwordless authentication, e.g., using ssh keys.
+By default, **DeepSec** checks how many physical core your machine have and distribute the computation on these core by creating the same amount of workers. To activate the distributed computation with a different number of workers, `deepsec` should be run with the option `-l n` (or `--local_workers n`) where `n` is the number of desired local workers. It is also possible to distribute computation through several computers. To do so, deepsec requires an ssh connexion between the localhost and the distant machine. The computation on distant machine must be configured with the option `-w <host> <path> <n>` (or `--distant_workers <host> <path> <n>`). The parameter `<host>` is the ssh login and address (e.g my_login@my_host). The parameter `<path>` should indicate the path on the distant machine the deepsec directory. Finally the parameter `<n>` represents the number of cores that should be dedicated by this distant machine to the computation of the input file. As connections to distant machines are performed through ssh we recommend to configure a passwordless authentication, e.g., using ssh keys.
 
 Note that that the option `-distant_workers` should be used for each distant machine.
 
 ```
-deepsec -distributed 20 -distant_workers login1@host1 tools/deepsec 15 -distant_workers login2@host2 deepsec 35 my_file.dps
+deepsec -w login1@host1 tools/deepsec 15 -w login2@host2 deepsec 35 my_file.dps
 ```
 
 In this command line, the first machine should be accessible with `ssh login1@host1` and the **DeepSec** directory should be located at `~/tools/deepsec` on this machine. Similarly, the second machine should be accessible with `ssh login2@host1` and the **DeepSec** directory should be located at `~/deepsec`. If the connexions to both machines are successful, **DeepSec** will distribute the computation of the file `my_file.dps` between 20 local cores, 15 cores on the first machine and 35 on the second machine.
 
-**_IMPORTANT_**: The localhost and distant machines should have exactly the same version of **DeepSec** (The Git hash is displayed when running `deepsec` without parameters or with the option `-help`) compiled with the same version of **OCaml**.
+**_IMPORTANT_**: The localhost and distant machines should have exactly the same version of **DeepSec** (The Git hash is displayed when running `deepsec` without parameters or with the option `--help`) compiled with the same version of **OCaml**.

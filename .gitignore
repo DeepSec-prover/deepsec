@@ -1,8 +1,13 @@
 .depend
 deepsec
+deepsec_api
+deepsec_worker
 test_deepsec
 index_old.html
 
+log
+
+*.js
 *.cmi
 *.cmt
 *.cmti
@@ -19,6 +24,12 @@ index_old.html
 *.DS_Store
 *.native
 
+result_files
+
+Source/interface/grammar_ui.ml
+Source/interface/grammar_ui.mli
+Source/interface/grammar_ui.output
+Source/interface/lexer_ui.ml
 Source/parser/grammar.ml
 Source/parser/grammar.mli
 Source/parser/grammar.output

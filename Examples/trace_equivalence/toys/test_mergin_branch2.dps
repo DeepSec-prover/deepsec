@@ -1,0 +1,23 @@
+free c,a,b,ok,ko.
+
+fun senc/2.
+fun pk/1.
+
+reduc sdec(senc(x,y),y) -> x.
+
+fun h/2.
+
+let process_1 =
+  in(c,x);
+  if x = a
+  then
+    if x = b
+    then 0
+    else out(c,ko)
+  else out(c,ko).
+
+let process_2 =
+  in(c,x);
+  out(c,ok).
+
+query trace_equiv(process_1,process_2).

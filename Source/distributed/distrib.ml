@@ -1,385 +1,880 @@
 open Extensions
+open Types
+open Types_ui
 
-(** This is the module type for a task that need to be computed *)
-module type TASK =
-  sig
-    (** [shareddata] is a type for data needed by all the computation*)
-    type shareddata
+let kill_signal = Sys.sigusr1
+let interupt_signal = Sys.sigusr2
 
-    (** This is the type of a job *)
-    type job
+let send out_ch a =
+  output_value out_ch a;
+  flush out_ch
 
-    (** This is the type for the result of one job computation*)
-    type result
+let rec iter_n f = function
+  | 0 -> ()
+  | n -> f (); iter_n f (n-1)
 
-    type command =
-      | Kill
-      | Continue
+type worker =
+  | Evaluator
+  | Local_manager
+  | Distant_manager
 
-    (** The function [initialise] will be run only once by the child processes when they are created. *)
-    val initialise : shareddata -> unit
+let verify_distant_workers () =
+  let (major,minor) = match String.split_on_char '.' Config.version with
+    | [major;minor;_] -> major,minor
+    | _ -> Config.internal_error "[distrib.ml >> verify_distant_workers] Unexpected format"
+  in
 
-    (** The function [evaluation job] will be run the child processes. The argument [job] is read from the standard input channel, i.e., [stdin]
-        of the child process and the result is output on its standard channel, i.e. [stdout]. Note that for this reasons, it is important
-        that the function [evaluation] never write or read anything respectively on its standard output channel and from its standard input channel. *)
-    val evaluation : job -> result
+  List.fold_left (fun acc (host,path,_) ->
+    let full_name = Filename.concat path "deepsec_worker -v" in
+    let path_name_worker_ssh = Printf.sprintf "ssh '%s' '%s'" host full_name in
+    let (in_ch,out_ch,err_ch) = Unix.open_process_full path_name_worker_ssh [||] in
+    let fd_in_ch = Unix.descr_of_in_channel in_ch in
+    let fd_err_ch = Unix.descr_of_in_channel err_ch in
 
-    (** Upon receiving a result [r] from a child process, the master process will run [digest r job_l] where [job_l] is the reference toward the list of jobs.
-        The purpose of this function is to allow the master process to update the job lists depending of the result it received from the child processes. *)
-    val digest : result -> command
+    let (av_fd_in,_,av_err) = Unix.select [fd_in_ch;fd_err_ch] [] [fd_err_ch] 2. in
+    match av_fd_in,av_err with
+      | [],[] ->  (host,["The distant deepsec does not seem responsive to version checking. Maybe it's an older version or wrong path ?"])::acc
+      | [], _ ->
+          let err = input_line err_ch in
+          ignore (Unix.close_process_full (in_ch,out_ch,err_ch));
+          (host,[String.escaped err])::acc;
+      | in_fd::_,_ ->
+          let data = input_line (Unix.in_channel_of_descr in_fd) in
+          ignore (Unix.close_process_full (in_ch,out_ch,err_ch));
+          begin
+            match String.split_on_char '%' data with
+              | ["deepsec";ocaml_version;deepsec_version] ->
+                  let errors =
+                    match String.split_on_char '.' deepsec_version with
+                      | [major_dist;minor_dist;_] when major_dist = major && minor = minor_dist -> []
+                      | _ -> [Printf.sprintf "The version of the local deepsec is %s whereas the version of the distant deepsec is %s. Version of distant deepsec should be %s.%s.x" Config.version deepsec_version major minor]
+                  in
+                  let errors' =
+                    if ocaml_version <> Sys.ocaml_version
+                    then (Printf.sprintf "The local deepsec was compiled with Ocaml %s whereas the distant deepsec was compiled with Ocaml %s. Distributed computation requires same version." Sys.ocaml_version ocaml_version)::errors
+                    else errors
+                  in
+                  if errors' = []
+                  then acc
+                  else (host,errors')::acc
+              | _ -> (host,[Printf.sprintf "Version verification of distant deepsec failed. Message received: %s" (String.escaped data)])::acc
+          end
+  ) [] !Config.distant_workers
 
-    type generated_jobs =
-      | Jobs of job list
-      | Result of result
+module type Evaluator_task = sig
+  (** The type of a job *)
+  type job
 
-    val generate_jobs : job -> generated_jobs
+  (** Standard evaluationn of a job for distributed computationn *)
+  val evaluation : job -> verification_result
+
+  (** This is the type for the result of generation of jobs *)
+  type result_generation =
+    | Job_list of job list
+    | Completed of verification_result
+
+  val generate : job -> result_generation
+
+  (** Evaluation of a job for single core *)
+  val evaluation_single_core : (progression * bool -> unit) -> job -> verification_result
+end
+
+module Distrib = functor (Task:Evaluator_task) -> struct
+
+  module WE = struct
+    (** When the input command is the evaluation on a single core, the worker
+        terminates after finishes its evaluation. Hence it does not wait for new
+        input commands. *)
+    type input_command =
+      | Evaluate of Task.job
+      | Generate of Task.job
+      | Evaluate_single_core of Task.job
+
+    (** When the error command is sent, the worker terminates.
+        When the completed or job_list command is sent, the worker waits for a new
+        input command. *)
+    type output_command =
+      | Pid of int
+      | Completed of verification_result
+      | Interupted
+      | Killed of int
+      | Job_list of Task.job list
+      | Progress of progression * bool
+      | Error_msg of string
+
+    type evaluator_data =
+      {
+        pid : int;
+        in_ch : in_channel;
+        fd_in_ch : Unix.file_descr;
+        out_ch : out_channel
+      }
+
+    exception Interupt
+
+    let get_input_command : unit -> input_command = fun () -> input_value stdin
+
+    let send_input_command : out_channel -> input_command -> unit = fun ch in_cmd ->
+      output_value ch in_cmd;
+      flush ch
+
+    let get_output_command : in_channel -> output_command = input_value
+
+    let send_output_command : output_command -> unit = fun out_cmd ->
+      output_value stdout out_cmd;
+      flush stdout
+
+    let main () =
+      Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Sending pid");
+      (* The worker starts by output his pid *)
+      send_output_command (Pid (Unix.getpid ()));
+
+      (* Signal handling *)
+      Sys.set_signal kill_signal (Sys.Signal_handle (fun _ ->
+        Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Kill signal received");
+        raise Exit
+      ));
+
+      Sys.set_signal interupt_signal (Sys.Signal_handle (fun _ ->
+        Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Interupt signal received");
+        raise Interupt
+      ));
+
+      (* Sending the progress command *)
+      let send_progress (prog,to_write) = send_output_command (Progress (prog,to_write)) in
+
+      let rec run_execution () =
+        try
+          while true do
+            Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Waiting for command");
+            match get_input_command () with
+              | Evaluate job ->
+                  Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Evaluate job");
+                  let result = Task.evaluation job in
+                  Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Sending result");
+                  send_output_command (Completed result)
+              | Generate job ->
+                  Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Generate job");
+                  begin match Task.generate job with
+                    | Task.Job_list job_list ->
+                        Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WE] Sending job list of %d jobs" (List.length job_list));
+                        send_output_command (Job_list job_list)
+                    | Task.Completed result ->
+                        Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Sending result");
+                        send_output_command (Completed result)
+                  end
+              | Evaluate_single_core job ->
+                  Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Evaluation single core");
+                  let result = Task.evaluation_single_core send_progress job in
+                  Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Sending result");
+                  send_output_command (Completed result);
+                  raise Exit
+          done
+        with
+          | Interupt ->
+              Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Interupted");
+              send_output_command Interupted;
+              run_execution ()
+          | Config.Internal_error err_msg ->
+              Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WE] Internal error = %s" err_msg);
+              send_output_command (Error_msg err_msg);
+              run_execution ()
+          | Exit -> raise Exit
+          | ex ->
+              Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WE] Other error : %s" (Printexc.to_string ex));
+              send_output_command (Error_msg (Printexc.to_string ex));
+              run_execution ()
+      in
+
+      try
+        run_execution ()
+      with
+        | Exit ->
+            Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Exit");
+            let memory = (Gc.quick_stat ()).Gc.top_heap_words * (Sys.word_size / 8) in
+            send_output_command (Killed memory)
   end
 
-module Distrib = functor (Task:TASK) ->
+  module WDM = struct
+    (* The distant manager acts as a bridge between the localhost and the distant
+       server. All communications go through him hence requiring only one single
+       ssh connexion.
 
+       The distant manager proceed as follows :
+          1) Output the number of physical core on the distant server
+          2) Input the number of evaluators it must create
+          3) Enter a loop waiting for an input command
+    *)
 
-struct
-    type request =
-      | Compute of Task.job
-      | Generate of Task.job
+    type input_command =
+      | Kill_evaluator of int (* pid *)
+      | Interupt_evaluator of int (* pid *)
+      | Die
 
-    type reply =
-      | Completed of Task.result
-      | JobList of Task.job list
+    type output_command =
+      | Error_msg of string
+      | Physical_core of int
 
-    type host =
-    | Local
-    | Distant of (string * string)
+    let get_input_command : unit -> input_command = fun () -> input_value stdin
 
-    let jobs_between_compact_memory = ref 500
+    let send_input_command : out_channel -> input_command -> unit = fun ch in_cmd ->
+      output_value ch in_cmd;
+      flush ch
 
-    let time_between_round = ref 120.
+    let get_output_command : in_channel -> output_command = input_value
 
-    let _ =
-      let sig_handle = Sys.Signal_handle (fun _ -> ignore (exit 0)) in
-    	Sys.set_signal Sys.sigterm sig_handle
+    let send_output_command : output_command -> unit = fun out_cmd ->
+      output_value stdout out_cmd;
+      flush stdout
 
-    (****** Setting up the workers *******)
+    let kill_evaluators pid =
+      Config.log Config.Distribution (fun () -> "[distrib.ml >> WDM >> kill_evaluators] Send kill signal");
+      Unix.kill pid kill_signal
 
-    let workers = ref []
-    let nb_workers = ref 0
+    let interupt_evaluators pid =
+      Config.log Config.Distribution (fun () -> "[distrib.ml >> WDM >> interupt_evaluators] Send interupt signal");
+      Unix.kill pid interupt_signal
 
-    let local_workers n = workers := (Local,n) :: !workers; nb_workers := !nb_workers + n
-    let add_distant_worker machine path n = workers := (Distant(machine,path),n) :: !workers; nb_workers := !nb_workers + n
-
-    let display_workers () =
-      let display_worker (h,n) =
-      	let m =
-      	  match h with
-      	  | Local -> "localhost"
-      	  | Distant(mach, _) -> mach
-      	in
-      	(string_of_int n)^(" on "^m)
-      in
-      if (List.length !workers) = 0
-      then
-	      "not distributed"
-      else
-        List.fold_left (fun a h -> a^(", "^(display_worker h)) ) (display_worker (List.hd !workers)) (List.tl !workers)
-
-    (****** The manager main function ******)
-
-    let manager_main () =
-      let pid_list = ((input_value stdin): int list) in
-
+    let main () =
       try
+        Config.log Config.Distribution (fun () -> "[distrib.ml >> WDM] Sending physical core");
+        (* Output of the number of physical core *)
+        send_output_command (Physical_core Config.physical_core);
+
         while true do
-          let kill_signal = ((input_value stdin): bool) in
-          if kill_signal
-          then List.iter (fun pid -> ignore (Unix.kill pid Sys.sigterm)) pid_list
-          else Config.internal_error "[Distrib.ml] Should receive a true value."
+          Config.log Config.Distribution (fun () -> "[distrib.ml >> WDM] Waiting for command");
+          match get_input_command () with
+            | Kill_evaluator pid ->
+                Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WDM] Kill pid %d" pid);
+                kill_evaluators pid
+            | Interupt_evaluator pid ->
+                Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WDM] Interupt pid %d" pid);
+                interupt_evaluators pid
+            | Die -> raise Exit
         done
       with
-        | End_of_file -> ()
-        | x -> raise x
+        | Exit ->
+            Config.log Config.Distribution (fun () -> "[distrib.ml >> WDM] Exit");
+            ()
+        | ex ->
+            Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WDM] Sending error message %s" (Printexc.to_string ex));
+            send_output_command (Error_msg(Printexc.to_string ex))
+  end
 
-    (****** The workers' main function ******)
+  module WLM = struct
+    (* The local manager handle the execution of the query in both distributed
+       or single core computation. The manager acts differently with local
+       evaluators and distant evaluators. For instance, the local manager will
+       directly talk to local evaluators whereas he will discuss to the distant
+       evaluators through the distant managers.
 
-    let worker_main () =
-      let shared = ((input_value stdin):Task.shareddata) in
-      Task.initialise shared;
-      output_value stdout (Unix.getpid ());
+       The distant manager proceed as follows :
+          1) Output the number of physical core on the distant server
+          2) Input the number of evaluators it must create
+          3) Enter a loop waiting for an input command
+    *)
+
+    (* The main manager handles single core and multiple core *)
+    type job =
+      {
+        distributed : bool option;
+        local_workers : int option;
+        distant_workers : (string * string * int option) list;
+        nb_jobs : int option;
+        time_between_round : int;
+
+        equivalence_type : equivalence;
+        initial_job : Task.job;
+      }
+
+    type distributed_settings =
+      {
+        comp_local_workers : int;
+        comp_distant_workers : (string * string * int) list;
+        comp_nb_jobs : int
+      }
+
+    type input_command =
+      | Execute_query of job
+      | Die
+      | Acknowledge
+
+    type output_command =
+      | Completed of verification_result * int
+      | Error_msg of string * query_progression
+      | Progress of query_progression * bool (* To write *)
+      | Computed_settings of distributed_settings option
+
+    let get_input_command : unit -> input_command = fun () -> input_value stdin
+
+    let send_input_command : out_channel -> input_command -> unit = fun ch in_cmd ->
+      output_value ch in_cmd;
+      flush ch
+
+    let get_output_command : in_channel -> output_command = input_value
+
+    let send_output_command : output_command -> unit = fun out_cmd ->
+      output_value stdout out_cmd;
+      flush stdout
+
+    let send_output_command_ack : output_command -> unit = fun out_cmd ->
+      output_value stdout out_cmd;
       flush stdout;
+      Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM] Waiting for acknowledgement");
+      match get_input_command () with
+        | Acknowledge -> Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM] Ack received")
+        | Die -> raise Exit
+        | _ -> Config.internal_error "[distrib.ml >> WLM.send_output_command_ack] Was expecting an acknowledgement."
 
-      try
-        while true do
-          match ((input_value stdin):request) with
-            | Compute job ->
-                let result = Task.evaluation job in
-                output_value stdout (Completed result);
-                flush stdout
-            | Generate job ->
-                begin match Task.generate_jobs job with
-                  | Task.Jobs job_list ->
-                      output_value stdout (JobList job_list);
-                      flush stdout
-                  | Task.Result result ->
-                      output_value stdout (Completed result);
-                      flush stdout
-                end
-        done
-      with
-        | End_of_file -> ()
-        | x -> raise x
+    type distant_manager_data =
+      {
+        path : string;
+        in_ch : in_channel;
+        fd_in_ch : Unix.file_descr;
+        out_ch : out_channel
+      }
 
-    (****** The server main function *******)
+    (* Global references *)
+
+    let distributed = ref true
+
+    let nb_total_evaluators = ref 0
+
+    let evaluators = ref ([]:(WE.evaluator_data * distant_manager_data option) list)
+    let distant_managers = ref []
+
+    let fd_in_ch_evaluators = ref ([]:Unix.file_descr list)
+
+    let time_between_round = ref 0.
+
+    let last_progression_timer = ref 0.
+    let last_write_progression_timer = ref 0.
 
     let minimum_nb_of_jobs = ref 0
 
-    let rec replace_job in_ch job acc = function
-      | [] -> Config.internal_error "[distrib.ml] There should be an entry in the list"
-      | (in_ch',_)::q when in_ch = in_ch' -> List.rev_append ((in_ch,job)::q) acc
-      | t::q -> replace_job in_ch job (t::acc) q
+    let main_verification_result = ref (RTrace_Equivalence None)
 
-    let rec remove_job in_ch acc = function
-      | [] -> Config.internal_error "[distrib.ml] There should be an entry in the list"
-      | (in_ch',_)::q when in_ch = in_ch' -> List.rev_append q acc
-      | t::q -> remove_job in_ch (t::acc) q
+    (* Dummy progression *)
+    let current_progression = ref PNot_defined
 
-    let kill_workers managers =
-      List.iter (fun (_,out_ch) ->
-        output_value out_ch true;
-        flush out_ch
-      ) managers
+    let send_error err =
+      send_output_command (Error_msg (err,!current_progression));
+      raise Exit
 
-    type completion =
-      | EndRound
-      | EndCompute
+    type file_descr_type =
+      | FStdin
+      | FEvaluator of WE.evaluator_data * distant_manager_data option
 
-    let rec one_round_compute_job shared job_list =
+    let get_type_file_descr fd =
+      if fd = Unix.stdin
+      then FStdin
+      else
+        match List.find_opt (fun (eval,_) -> eval.WE.fd_in_ch = fd) !evaluators with
+          | Some (eval,man_op) -> FEvaluator (eval,man_op)
+          | None ->
+              Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM >> get_type_file_desc] Did not find the type of File descriptor");
+              send_error "[distrib.ml >> get_type_file_desc] The file descriptor should belong to one of the created workers."
 
-      let job_list_ref = ref job_list in
-      let managers = ref [] in
+    (* Initialisation. The function does the followings actions
+        - create the local evaluators
+        - create the distant manager and send him the command to generate evaluators
+        - compute the distributed settings and send the associated command.
+        - instantiate the references [evaluators], [distant_managers] and [minimum_nb_of_jobs]
+    *)
+    let initialisation job =
+      Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM >> initialisation] Initialisation");
+      time_between_round := float_of_int (job.time_between_round);
 
-      let rec create_processes pid_list = function
-        | [] -> []
-        | (host,0)::q ->
-        	  let manager = match host with
-        	    | Local -> Filename.concat !Config.path_deepsec "manager_deepsec"
-        	    | Distant(machine,path) ->  Printf.sprintf "ssh %s %s%smanager_deepsec" machine path (if path.[(String.length path) - 1] = '/' then "" else "/")
-        	  (* Printf.sprintf "ssh %s %s" machine (Filename.concat path "manager_deepsec") *)
-        	  in
-            let (in_ch,out_ch) = Unix.open_process manager in
-            output_value out_ch pid_list;
-            flush out_ch;
-            managers := (in_ch,out_ch) :: !managers;
-            create_processes [] q
-        | (host,n)::q ->
-        	  let worker =
-        	    match host with
-        	    | Local -> Filename.concat !Config.path_deepsec "worker_deepsec"
-        	    | Distant(machine, path) ->
-        	      Printf.sprintf "ssh %s %s%sworker_deepsec" machine path (if path.[(String.length path) - 1] = '/' then "" else "/")
-        	  (* Printf.sprintf "ssh %s %s" machine (Filename.concat path "worker_deepsec") *)
-        	  in
-            let (in_ch,out_ch) = Unix.open_process worker in
-            output_value out_ch shared;
-            flush out_ch;
-            let pid = ((input_value in_ch):int) in
-            (in_ch,out_ch)::(create_processes (pid::pid_list) ((host,n-1)::q))
+      evaluators := [];
+      distant_managers := [];
+      fd_in_ch_evaluators := [];
+      minimum_nb_of_jobs := 0;
+      current_progression := PNot_defined;
+
+      begin match job.equivalence_type with
+        | Trace_Equivalence -> main_verification_result := RTrace_Equivalence None
+        | Trace_Inclusion ->  main_verification_result := RTrace_Inclusion None
+        | Session_Inclusion -> main_verification_result := RSession_Inclusion None
+        | Session_Equivalence -> main_verification_result := RSession_Equivalence None
+      end;
+
+      last_progression_timer := Unix.time ();
+      last_write_progression_timer := Unix.time ();
+
+      let distrib = match job.distributed with
+        | Some b -> b
+        | None -> not (Config.physical_core = 1)
+      in
+      distributed := distrib;
+
+      let nb_local_evaluators =
+        if distrib
+        then
+          match job.local_workers with
+            | None -> Config.physical_core
+            | Some n -> n
+        else 1
       in
 
-      let processes_in_out_ch = create_processes [] !workers in
-      let nb_processes = List.length processes_in_out_ch in
+      nb_total_evaluators := nb_local_evaluators;
 
-      if !minimum_nb_of_jobs <= nb_processes
-      then minimum_nb_of_jobs := nb_processes + 1;
+      let path_name_with_quote = "'"^(Filename.concat !Config.path_deepsec "deepsec_worker")^"'" in
+      iter_n (fun () ->
+        Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.initialisation] Create worker");
+        let (in_ch,out_ch) = Unix.open_process path_name_with_quote in
+        let fd_in_ch = Unix.descr_of_in_channel in_ch in
+        Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.initialisation] Sending role");
+        send out_ch Evaluator;
+        Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.initialisation] Waiting for pid");
+        let pid = match WE.get_output_command in_ch with
+          | WE.Pid n -> n
+          | _ -> Config.internal_error "[distrib.ml >> WLM.initialisation] Unexpected output command from evaluators"
+        in
+        Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WLM.initialisation] Pid received %d" pid);
+        let eval = { WE.pid = pid; WE.in_ch = in_ch; WE.fd_in_ch = fd_in_ch; WE.out_ch = out_ch } in
+        evaluators := (eval,None) :: !evaluators;
+        fd_in_ch_evaluators := fd_in_ch :: !fd_in_ch_evaluators
+      ) !nb_total_evaluators;
 
-      let processes_in_Unix_out_ch = List.map (fun (x,y) -> Unix.descr_of_in_channel x,y) processes_in_out_ch in
+      let dist_setting = ref [] in
 
-      let processes_in_Unix_ch = ref (List.map fst processes_in_Unix_out_ch) in
+      List.iter (fun (host,path,n_op) ->
+        let full_name = Filename.concat path "deepsec_worker" in
+        let path_name_worker_ssh = Printf.sprintf "ssh '%s' '%s'" host full_name in
+        Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WLM >> initialisation] Open connexion to %s" path_name_worker_ssh);
+        let (in_ch,out_ch) = Unix.open_process path_name_worker_ssh in
+        let fd_in_ch = Unix.descr_of_in_channel in_ch in
+        let dist_m = { in_ch = in_ch; fd_in_ch = fd_in_ch; out_ch = out_ch; path = path_name_worker_ssh } in
+        Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.initialisation] Sending role");
+        send out_ch Distant_manager;
 
-      let active_jobs = ref [] in
+        Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.initialisation] Waiting for physical core");
+        let physical_core = match WDM.get_output_command in_ch with
+          | WDM.Physical_core n -> n
+          | _ -> Config.internal_error "[distrib.ml >> WLM.initialisation] Unexpected output command from distant manager"
+        in
+        Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WLM.initialisation] Physical core received %d" physical_core);
 
-      let continue_computing = ref true in
+        let nb_eval = match n_op with
+          | None -> physical_core
+          | Some n -> n
+        in
 
-      let completion =
-        (*** Generation of jobs ****)
+        (* Generate the evaluators *)
+        iter_n (fun () ->
+          Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WLM >> initialisation] Open connexion to %s" path_name_worker_ssh);
+          let (in_ch,out_ch) = Unix.open_process path_name_worker_ssh in
+          let fd_in_ch = Unix.descr_of_in_channel in_ch in
+          Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.initialisation] Sending role");
+          send out_ch Evaluator;
+          Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.initialisation] Waiting for pid");
+          let pid = match WE.get_output_command in_ch with
+            | WE.Pid n -> n
+            | _ -> Config.internal_error "[distrib.ml >> WLM.initialisation] Unexpected output command from evaluators"
+          in
+          Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WLM.initialisation] Pid received %d" pid);
+          let eval = { WE.pid = pid; WE.in_ch = in_ch; WE.fd_in_ch = fd_in_ch; WE.out_ch = out_ch } in
+          evaluators := (eval,Some dist_m) :: !evaluators;
+          fd_in_ch_evaluators := fd_in_ch :: !fd_in_ch_evaluators
+        ) nb_eval;
 
-        Printf.printf "Generation of sets of constraint systems...\n%!";
+        dist_setting := (host,path,nb_eval):: !dist_setting;
+        nb_total_evaluators := nb_eval + !nb_total_evaluators;
+        distant_managers := dist_m :: !distant_managers
+      ) job.distant_workers;
 
-        while !continue_computing && List.length !job_list_ref < !minimum_nb_of_jobs do
 
-          let tmp_job_list = ref [] in
-          let idle_process = ref processes_in_Unix_out_ch in
-          let active_process = ref [] in
+      let nb_jobs = match job.nb_jobs with
+        | None -> !nb_total_evaluators * !Config.core_factor
+        | Some nb_jobs -> max nb_jobs (!nb_total_evaluators + 1)
+      in
 
-          while !job_list_ref <> [] && !idle_process <> [] do
-            let (in_Unix_ch,out_ch) = List.hd !idle_process in
-            let job = List.hd !job_list_ref in
-            output_value out_ch (Generate job);
-            flush out_ch;
-            job_list_ref := List.tl !job_list_ref;
-            idle_process := List.tl !idle_process;
-            active_process := in_Unix_ch :: !active_process
-          done;
+      minimum_nb_of_jobs := nb_jobs;
+      Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.initialisation] Sending Computed settings");
+      if distrib
+      then
+        let distributed_settings = { comp_local_workers = nb_local_evaluators; comp_distant_workers = !dist_setting; comp_nb_jobs = nb_jobs } in
+        send_output_command_ack (Computed_settings (Some distributed_settings))
+      else send_output_command_ack (Computed_settings None)
 
-          while !continue_computing && !active_process <> [] do
-            let (available_in_Unix_ch,_,_) = Unix.select !active_process [] [] (-1.) in
-            List.iter (fun in_Unix_ch ->
-          	  let in_ch = Unix.in_channel_of_descr in_Unix_ch in
-          	  match input_value in_ch with
-                | Completed result ->
-                    begin match Task.digest result with
-                      | Task.Kill -> continue_computing := false
-                      | Task.Continue ->
-                          if !job_list_ref = []
-                          then active_process := List.filter_unordered (fun x -> x <> in_Unix_ch) !active_process
-                          else
-                            begin
-                              let out_ch = List.assoc in_Unix_ch processes_in_Unix_out_ch in
-                              output_value out_ch (Generate (List.hd !job_list_ref));
-                              flush out_ch;
-                              job_list_ref := List.tl !job_list_ref
-                            end
-                    end
-                | JobList job_list ->
-                    tmp_job_list := List.rev_append job_list !tmp_job_list;
-                    if ((List.length !job_list_ref) + (List.length !tmp_job_list)) >= !minimum_nb_of_jobs || !job_list_ref = []
-                    then active_process := List.filter_unordered (fun x -> x <> in_Unix_ch) !active_process
-                    else
-                      begin
-                        let out_ch = List.assoc in_Unix_ch processes_in_Unix_out_ch in
-                        output_value out_ch (Generate (List.hd !job_list_ref));
-                        flush out_ch;
-                        job_list_ref := List.tl !job_list_ref
-                      end
-            ) available_in_Unix_ch
-          done;
-          if !tmp_job_list = []
-          then continue_computing := false;
+    let rec receive_kill_message eval = match WE.get_output_command eval.WE.in_ch with
+      | WE.Killed m ->
+          Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.receive_kill_message] Received kill confirmation");
+          m
+      | WE.Error_msg str -> Config.internal_error str
+      | _ -> receive_kill_message eval
 
-          job_list_ref := List.rev_append !tmp_job_list !job_list_ref
-        done;
+    let kill_all () =
+      (* Killing evaluators *)
+      let memory_used =
+        List.fold_left (fun acc_mem (eval,man_op) -> match man_op with
+          | None ->
+              Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WLM.kill_all] Sending kill signal: %d" eval.WE.pid);
+              Unix.kill eval.WE.pid kill_signal;
+              (* The following is removed for now as it seems to block from time to time. *)
+              let memory_worker = receive_kill_message eval in
+              acc_mem + memory_worker
+          | Some manager ->
+              Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WLM.kill_all] Sending kill evaluator command: %d" eval.WE.pid);
+              WDM.send_input_command manager.out_ch (WDM.Kill_evaluator eval.WE.pid);
+              let memory_worker = receive_kill_message eval in
+              acc_mem + memory_worker
+        ) 0 !evaluators
+      in
 
-        if !continue_computing
+      (* Kill managers *)
+      List.iter (fun manager ->
+        Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.kill_all] Sending kill manager command");
+        WDM.send_input_command manager.out_ch WDM.Die
+        (* The following is removed for now as it seems to block from time to time. *)
+        (*ignore (Unix.close_process (manager.in_ch,manager.out_ch))*)
+      ) !distant_managers;
+
+      memory_used
+
+    let die_command () =
+      Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.die_command] Waiting for input command");
+      match get_input_command () with
+      | Die -> raise Exit
+      | _ -> send_error "[distrib.ml >> die_command] Unexpected input command."
+
+    (* Progression management *)
+
+    let send_progression ?(forced=false) f_prog =
+      let time = Unix.time () in
+      if forced || time -. !last_write_progression_timer >= 60.
+      then
+        begin
+          last_write_progression_timer := time;
+          last_progression_timer := time;
+          f_prog true
+        end
+      else
+        if time -. !last_progression_timer >= 1.
         then
           begin
-            let nb_of_jobs_created = List.length !job_list_ref in
-            let nb_of_jobs = ref nb_of_jobs_created in
-            Printf.printf "Number of sets of constraint systems generated: %d\n%!" !nb_of_jobs;
-
-            (**** Compute the first jobs ****)
-
-            List.iter (fun (in_Unix_ch,out_ch) ->
-              let job = List.hd !job_list_ref in
-              output_value out_ch (Compute job);
-              flush out_ch;
-              active_jobs := (in_Unix_ch,job)::!active_jobs;
-              job_list_ref := List.tl !job_list_ref;
-            ) processes_in_Unix_out_ch;
-
-            (**** Compute the rest of the jobs ****)
-
-            while !continue_computing && !job_list_ref <> [] do
-              if ((nb_of_jobs_created - !nb_of_jobs) / !jobs_between_compact_memory) * !jobs_between_compact_memory = (nb_of_jobs_created - !nb_of_jobs)
-              then Gc.compact ();
-
-              Printf.printf "\x0dSets of constraint systems remaining: %d                                      %!" !nb_of_jobs;
-
-              let (available_in_Unix_ch,_,_) = Unix.select !processes_in_Unix_ch [] [] (-1.) in
-
-              List.iter (fun in_Unix_ch ->
-            	  let in_ch = Unix.in_channel_of_descr in_Unix_ch in
-                match input_value in_ch with
-                  | JobList _ -> Config.internal_error "[distrib.ml] Should not receive a job list"
-                  | Completed result ->
-                  	  begin match Task.digest result with
-                        | Task.Kill -> continue_computing := false
-                        | Task.Continue ->
-                            if !job_list_ref = []
-                            then
-                              begin
-                                processes_in_Unix_ch := List.filter_unordered (fun x -> x <> in_Unix_ch) !processes_in_Unix_ch;
-                                active_jobs := remove_job in_Unix_ch [] !active_jobs;
-                                decr nb_of_jobs;
-                              end
-                            else
-                              begin
-                                let next_job = List.hd !job_list_ref in
-                            	  let out_ch = List.assoc in_Unix_ch processes_in_Unix_out_ch in
-                            	  output_value out_ch (Compute next_job);
-                            	  flush out_ch;
-                                active_jobs := replace_job in_Unix_ch next_job [] !active_jobs;
-                                decr nb_of_jobs;
-                            	  job_list_ref := List.tl !job_list_ref
-                              end
-                      end
-            	) available_in_Unix_ch
-            done;
-
-            if !continue_computing
-            then
-              begin
-                (*** No more job available but potentially active jobs ***)
-
-                let init_timer = Unix.time () in
-
-                while !continue_computing && !processes_in_Unix_ch <> [] && Unix.time () -. init_timer < !time_between_round do
-                  let waiting_time = !time_between_round +. init_timer -. Unix.time () in
-                  Printf.printf "\x0dSets of constraint systems remaining: %d, time before next round: %ds        %!" !nb_of_jobs (int_of_float waiting_time);
-                  if waiting_time > 0.
-                  then
-                    let (available_in_Unix_ch,_,_) = Unix.select !processes_in_Unix_ch [] [] waiting_time in
-
-                    List.iter (fun in_Unix_ch ->
-                  	  let in_ch = Unix.in_channel_of_descr in_Unix_ch in
-                      match input_value in_ch with
-                        | JobList _ -> Config.internal_error "[distrib.ml] Should not receive a job list"
-                        | Completed result ->
-                        	  begin match Task.digest result with
-                              | Task.Kill -> continue_computing := false
-                              | Task.Continue ->
-                                  processes_in_Unix_ch := List.filter_unordered (fun x -> x <> in_Unix_ch) !processes_in_Unix_ch;
-                                  active_jobs := remove_job in_Unix_ch [] !active_jobs;
-                                  decr nb_of_jobs
-                            end
-                  	) available_in_Unix_ch
-                  else ()
-                done;
-
-                kill_workers !managers;
-                List.iter (fun x -> ignore (Unix.close_process x)) processes_in_out_ch;
-                List.iter (fun x -> ignore (Unix.close_process x)) !managers;
-                if not !continue_computing || !processes_in_Unix_ch = []
-                then
-                  begin
-                    Printf.printf "\x0dComputation completed                                                      \n%!";
-                    EndCompute
-                  end
-                else
-                  begin
-                    Printf.printf "\x0dEnd of a round                                                              \n%!";
-                    EndRound
-                  end
-              end
-            else
-              begin
-                Printf.printf "\x0dComputation completed                                                           \n%!";
-                kill_workers !managers;
-                List.iter (fun x -> ignore (Unix.close_process x)) !managers;
-                List.iter (fun x -> ignore (Unix.close_process x)) processes_in_out_ch;
-                EndCompute
-              end
+            last_progression_timer := time;
+            f_prog false
           end
-        else
-          begin
-            Printf.printf "\x0dComputation completed                                                           \n%!";
-            kill_workers !managers;
-            List.iter (fun x -> ignore (Unix.close_process x)) !managers;
-            List.iter (fun x -> ignore (Unix.close_process x)) processes_in_out_ch;
-            EndCompute
-          end
+        else ()
+
+    let progression_distributed_verification ?(forced=false) round nb_job nb_job_remain =
+      send_progression ~forced:forced (fun to_write ->
+        let percent = ((nb_job - nb_job_remain) * 100) / nb_job in
+        let progression = PDistributed(round,PVerif(percent,nb_job_remain)) in
+        current_progression := progression;
+        Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.progression_distributed_verification] Send command");
+        send_output_command_ack (Progress (progression,to_write))
+      )
+
+    let progression_distributed_generation round nb_job minimum_nb_of_jobs =
+      send_progression (fun to_write ->
+        let progression = PDistributed(round,PGeneration(nb_job,minimum_nb_of_jobs)) in
+        current_progression := progression;
+        Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.progression_distributed_generation] Send command");
+        send_output_command_ack (Progress(progression,to_write))
+      )
+
+    (* Main functions *)
+
+    exception Completed_execution of verification_result
+
+    let disgest_completed_result = function
+      | RTrace_Equivalence None
+      | RTrace_Inclusion None
+      | RSession_Equivalence None
+      | RSession_Inclusion None -> ()
+      | res -> raise (Completed_execution res)
+
+    let rec receive_interuption_message eval = match WE.get_output_command eval.WE.in_ch with
+      | WE.Interupted ->
+          Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.receive_interuption_message] Received interuption confirmation")
+      | WE.Error_msg str -> Config.internal_error str
+      | _ -> receive_interuption_message eval
+
+    let interupt_and_replace_active_evaluators active_jobs =
+      let interupt_evaluator eval man_op =
+        (* Interupting one evaluator *)
+        match man_op with
+          | None ->
+              Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WLM.interupt_and_replace_active_evaluators] Sending interupt signal: %d" eval.WE.pid);
+              Unix.kill eval.WE.pid interupt_signal;
+              receive_interuption_message eval
+          | Some manager ->
+              Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WLM.interupt_and_replace_active_evaluators] Sending interupt evaluator command: %d" eval.WE.pid);
+              WDM.send_input_command manager.out_ch (WDM.Interupt_evaluator eval.WE.pid);
+              receive_interuption_message eval
       in
 
-      match completion with
-        | EndCompute -> ()
-        | EndRound -> one_round_compute_job shared (List.rev_map (fun (_,job) -> job) !active_jobs)
+      List.iter (fun (_,eval,man_op) -> interupt_evaluator eval man_op) active_jobs
 
-  let compute_job shared job = one_round_compute_job shared [job]
+    let generate_jobs round job_list =
+
+      let current_job_list = ref job_list in
+      let current_nb_job_list = ref (List.length job_list) in
+      let active_evaluators = ref 0 in
+
+      let pop_job () = match !current_job_list with
+        | [] -> None
+        | job::q ->
+            decr current_nb_job_list;
+            current_job_list := q;
+            Some job
+      in
+
+      let first_generation_of_jobs () =
+        let rec explore_local = function
+          | [] -> ()
+          | (eval,_)::q ->
+              match pop_job () with
+                | None -> ()
+                | Some job ->
+                    Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WLM.generate_jobs >> first_generation_of_jobs] Send generate command to evaluator %d" eval.WE.pid);
+                    WE.send_input_command eval.WE.out_ch (WE.Generate job);
+                    incr active_evaluators;
+                    explore_local q
+        in
+        explore_local !evaluators
+      in
+
+      while !current_nb_job_list < !minimum_nb_of_jobs  do
+        progression_distributed_generation round !current_nb_job_list !minimum_nb_of_jobs;
+        let tmp_job_list = ref [] in
+        let tmp_nb_job_list = ref 0 in
+
+        let handle_complete_command gen_next_job verif_result =
+          disgest_completed_result verif_result;
+          match pop_job () with
+            | None -> decr active_evaluators
+            | Some job -> gen_next_job job
+        in
+
+        let handle_job_list_command gen_next_job job_list =
+          let size = List.length job_list in
+          tmp_job_list := List.rev_append job_list !tmp_job_list;
+          tmp_nb_job_list := size + !tmp_nb_job_list;
+          if !tmp_nb_job_list + !current_nb_job_list >= !minimum_nb_of_jobs
+          then decr active_evaluators
+          else
+            begin match pop_job () with
+              | None -> decr active_evaluators
+              | Some job -> gen_next_job job
+            end
+        in
+
+        first_generation_of_jobs ();
+
+        while !active_evaluators <> 0 do
+          Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.generate_jobs] Waiting on Unix.select");
+          let (available_fd_in_ch,_,_) = Unix.select (Unix.stdin :: !fd_in_ch_evaluators) [] [] (-1.) in
+          List.iter (fun fd_in_ch -> match get_type_file_descr fd_in_ch with
+            | FStdin -> die_command ()
+            | FEvaluator(eval,_) ->
+                Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WLM.generate_jobs] Reading output command from evaluator %d" eval.WE.pid);
+                match WE.get_output_command eval.WE.in_ch with
+                  | WE.Completed verif_result ->
+                      Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.generate_jobs] Received complete");
+                      handle_complete_command (fun job ->
+                        Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.generate_jobs] Sending generate command");
+                        WE.send_input_command eval.WE.out_ch (WE.Generate job)
+                      ) verif_result
+                  | WE.Job_list job_list ->
+                      Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.generate_jobs] Received job list");
+                      handle_job_list_command (fun job ->
+                        Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.generate_jobs] Sending generate command");
+                        WE.send_input_command eval.WE.out_ch (WE.Generate job)
+                      ) job_list
+                  | WE.Error_msg err ->
+                      Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.generate_jobs] Received error message");
+                      send_error err
+                  | WE.Progress _| WE.Pid _ | WE.Killed _ | WE.Interupted ->
+                      Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.generate_jobs] Received progress or pid");
+                      send_error "[distrib.ml >> generate_jobs] Unexpected output command from evaluator"
+          ) available_fd_in_ch
+        done;
+
+        if !tmp_nb_job_list = 0 then raise (Completed_execution !main_verification_result);
+
+        current_job_list := List.rev_append !tmp_job_list !current_job_list;
+        current_nb_job_list := !tmp_nb_job_list + !current_nb_job_list
+      done;
+
+      (!current_job_list,!current_nb_job_list)
+
+    let evaluate_jobs round (jobs_created,nb_jobs_created) =
+      let current_job_list = ref jobs_created in
+      let current_nb_job_list = ref nb_jobs_created in
+      let active_jobs = ref [] in
+
+      progression_distributed_verification ~forced:true round nb_jobs_created !current_nb_job_list;
+
+      (* Compute the first jobds *)
+
+      let pop_job () = match !current_job_list with
+        | [] -> None
+        | job::q ->
+            current_job_list := q;
+            Some job
+      in
+
+      let first_evaluation_of_jobs () =
+        let rec explore_local = function
+          | [] -> ()
+          | (eval,man_op)::q ->
+              let job = List.hd !current_job_list in
+              Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WLM.evaluate_jobs >> first_evaluation_of_jobs] Send evaluate command to evaluator %d" eval.WE.pid);
+              WE.send_input_command eval.WE.out_ch (WE.Evaluate job);
+              active_jobs := (job,eval,man_op) :: !active_jobs;
+              current_job_list := List.tl !current_job_list;
+              explore_local q
+        in
+        explore_local !evaluators
+      in
+
+      let remove_active eval man_op = active_jobs := List.remove (fun (_,eval',man_op') -> eval = eval' && man_op = man_op') !active_jobs in
+
+      let handle_complete_command send_next_job verif_result =
+        disgest_completed_result verif_result;
+        decr current_nb_job_list;
+        match pop_job () with
+          | None -> ()
+          | Some job -> send_next_job job
+      in
+
+      first_evaluation_of_jobs ();
+
+      (**** Verification of the rest of the jobs ****)
+
+      while !current_job_list <> [] do
+        progression_distributed_verification round nb_jobs_created !current_nb_job_list;
+        Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.evaluate_jobs] Waiting on Unix.select");
+        let (available_fd_in_ch,_,_) = Unix.select (Unix.stdin :: !fd_in_ch_evaluators) [] [] (-1.) in
+        List.iter (fun fd_in_ch -> match get_type_file_descr fd_in_ch with
+          | FStdin -> die_command ()
+          | FEvaluator(eval,man_op) ->
+              Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WLM.evaluate_jobs] Reading output command from evaluator %d" eval.WE.pid);
+              match WE.get_output_command eval.WE.in_ch with
+                | WE.Completed verif_result ->
+                    Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.evaluate_jobs] Received completed");
+                    remove_active eval man_op;
+                    handle_complete_command (fun job ->
+                      active_jobs := (job,eval,man_op) :: !active_jobs;
+                      Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.evaluate_jobs] Send job to be evaluated");
+                      WE.send_input_command eval.WE.out_ch (WE.Evaluate job);
+                    ) verif_result
+                | WE.Error_msg err ->
+                    Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.evaluate_jobs] Received error message");
+                    send_error err
+                | _ ->
+                    Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.evaluate_jobs] Received other output command");
+                    send_error "[distrib.ml >> evaluate_jobs] Unexpected output command from evaluator"
+        ) available_fd_in_ch
+      done;
+
+      (*** No more job available but potentially active jobs ***)
+
+      let init_timer = Unix.time () in
+
+      while !active_jobs <> [] && Unix.time () -. init_timer < !time_between_round do
+        let waiting_time = !time_between_round +. init_timer -. Unix.time () in
+
+        progression_distributed_verification round nb_jobs_created !current_nb_job_list;
+
+        if waiting_time > 0.
+        then
+          begin
+            Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.evaluate_jobs >> End of round phase] Waiting on Unix.select");
+            let (available_fd_in_ch,_,_) = Unix.select (Unix.stdin :: !fd_in_ch_evaluators) [] [] waiting_time in
+            List.iter (fun fd_in_ch -> match get_type_file_descr fd_in_ch with
+              | FStdin -> die_command ()
+              | FEvaluator(eval,man_op) ->
+                  Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WLM.evaluate_jobs >> End of round phase] Reading output command from evaluator %d" eval.WE.pid);
+                  match WE.get_output_command eval.WE.in_ch with
+                    | WE.Completed verif_result ->
+                        Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.evaluate_jobs >> End of round phase] Received completed");
+                        remove_active eval man_op;
+                        disgest_completed_result verif_result;
+                        decr current_nb_job_list
+                    | WE.Error_msg err ->
+                        Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.evaluate_jobs >> End of round phase] Received error message");
+                        send_error err
+                    | _ ->
+                        Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.evaluate_jobs >> End of round phase] Received other output command");
+                        send_error "[distrib.ml >> evaluate_jobs] Unexpected output command from evaluator"
+            ) available_fd_in_ch
+          end
+      done;
+
+      let jobs = List.map (fun (job,_,_) -> job) !active_jobs in
+      if jobs = []
+      then raise (Completed_execution !main_verification_result);
+
+      interupt_and_replace_active_evaluators !active_jobs;
+
+      jobs
+
+    let rec evaluate_distributed round job_list =
+      try
+        let jobs_created_data = generate_jobs round job_list in
+        let remain_job_list_next_round = evaluate_jobs round jobs_created_data in
+        evaluate_distributed (round+1) remain_job_list_next_round
+      with Completed_execution result ->
+        let memory = kill_all () in
+        Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.evaluate_distributed] Send completed command");
+        send_output_command (Completed(result,memory))
+
+    let evaluate_single_core job =
+      let (eval,_) = List.hd !evaluators in
+
+      (* The send the command to the worker *)
+      Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WLM.evaluate_single_core] Send the single core command to evaluator %d" eval.WE.pid);
+      WE.send_input_command eval.WE.out_ch (WE.Evaluate_single_core job);
+
+      try
+        while true do
+          Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.evaluate_single_core] Waiting for Unix.select");
+          let (available_fd_in_ch,_,_) = Unix.select [Unix.stdin;eval.WE.fd_in_ch] [] [] (1.) in
+          List.iter (fun fd_in_ch -> match get_type_file_descr fd_in_ch with
+            | FStdin -> die_command ()
+            | FEvaluator(eval,_) ->
+                Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WLM.evaluate_single_core] Reading output command from evaluator %d" eval.WE.pid);
+                match WE.get_output_command eval.WE.in_ch with
+                  | WE.Completed verif_result ->
+                      Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.evaluate_single_core] Received Completed");
+                      raise (Completed_execution verif_result)
+                  | WE.Error_msg err ->
+                      Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.evaluate_single_core] Received error message");
+                      send_error err
+                  | WE.Progress(prog,to_write) ->
+                      Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.evaluate_single_core] Received progression");
+                      current_progression := PSingleCore prog;
+                      send_output_command_ack (Progress(PSingleCore prog,to_write))
+                  | _ ->
+                      Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.evaluate_single_core] Received other input command");
+                      send_error "[distrib.ml >> evaluate_jobs] Unexpected output command from evaluator"
+          ) available_fd_in_ch
+        done
+      with Completed_execution result ->
+        let memory = kill_all () in
+        Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.evaluate_single_core] Send completed command");
+        send_output_command (Completed (result,memory))
+
+    let main () =
+      try
+        begin match get_input_command () with
+          | Die -> raise Exit
+          | Execute_query job ->
+              initialisation job;
+              if !distributed
+              then evaluate_distributed 1 [job.initial_job]
+              else evaluate_single_core job.initial_job
+          | _ -> send_error "[distrib.ml >> main] Unexpected input command"
+        end
+      with
+        | Exit -> ignore (kill_all ())
+        | ex ->
+            ignore (kill_all ());
+            Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.main] Send error command");
+            send_output_command (Error_msg ((Printexc.to_string ex),!current_progression))
+  end
 end

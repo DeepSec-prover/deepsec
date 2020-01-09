@@ -1,10 +1,29 @@
 exception Internal_error of string
 
+let running_api = ref false
+
 let debug_activated = false
+let record_time = false
 
 let log_file =
-  if debug_activated
-  then open_out "debug_log.txt"
+  if debug_activated || record_time
+  then
+    begin
+      let exe_path = Filename.dirname (String.escaped Sys.executable_name) in
+      let log_dir = Filename.concat exe_path "log" in
+      if not (Sys.file_exists log_dir)
+      then Unix.mkdir log_dir 0o770;
+      let pid = Unix.getpid () in
+      let local_time = Unix.localtime (Unix.time()) in
+      let path =
+        Unix.(Printf.sprintf "log/log_%d_%d_%d_%dh%dm%ds_%d.txt"
+        local_time.tm_year local_time.tm_mon local_time.tm_mday
+        local_time.tm_hour local_time.tm_min local_time.tm_sec
+        pid)
+      in
+      let file = Filename.concat exe_path path in
+      open_out file
+    end
   else stdout
 
 let internal_error msg =
@@ -14,45 +33,73 @@ let internal_error msg =
       Printf.fprintf log_file "Internal error : %s\nPlease report the bug to vincent.cheval@loria.fr with the input file and output\n" msg;
       flush log_file
     end;
-  Printf.printf "Internal error : %s\nPlease report the bug to vincent.cheval@loria.fr with the input file and output\n" msg;
-  exit 0
+  raise (Internal_error msg)
 
 let debug =
   if debug_activated
   then fun f -> f ()
   else fun _ -> ()
 
-let print_in_log s =
-  Printf.fprintf log_file "%s" s;
-  flush log_file
+type log_level =
+  | Always
+  | Record_time
+  | Core
+  | Constraint_solving
+  | Constraint_systems
+  | Process
+  | Distribution
+  | Debug
 
-(**** Testing *****)
+let log_level_to_print = ref [Always;Distribution;Debug]
 
-let test_activated = false
+let log_in_debug log_level s =
+  if List.mem log_level !log_level_to_print
+  then
+    begin
+      let local_time = Unix.localtime(Unix.time ()) in
+      let time =
+        Unix.(Printf.sprintf "%dh%dm%ds"
+          local_time.tm_hour local_time.tm_min local_time.tm_sec
+          )
+      in
+      Printf.fprintf log_file "%s %s\n" time s;
+      flush log_file
+    end
 
-let test =
-  if test_activated
-  then fun f -> f ()
-  else fun _ -> ()
+let log =
+  if debug_activated || record_time
+  then (fun log_level f -> log_in_debug log_level (f ()))
+  else fun _ _ -> ()
 
 (**** Version ****)
 
-let version = ref "VERSION"
-let git_commit = ref "GITCOMMIT"
-let git_branch = ref "GITBRANCH"
+let version = "VERSION"
+let git_commit = "GITCOMMIT"
+let git_branch = "GITBRANCH"
 
 (**** Paths ****)
 
 let path_deepsec = ref ""
-let path_html_template = ref ""
-let path_index = ref (Filename.current_dir_name)
-let tmp_file = ref ""
+let path_database = ref ""
 
 (**** Trace display ****)
 
-let display_trace = ref true
+let display_trace = ref false
+let quiet = ref false
 
 (**** Distribution ****)
 
-let distributed = ref false
-let core_factor = ref 30
+let physical_core = PHYSICALCORE
+
+let distributed = ref None
+let local_workers = ref None
+let distant_workers = ref ([]:(string*string*int option) list)
+let number_of_jobs = ref None
+let round_timer = ref 120
+let core_factor = ref 100
+
+(**** Semantics ****)
+
+let default_semantics = ref Types.Private
+let local_semantics = ref None
+let por = ref true
