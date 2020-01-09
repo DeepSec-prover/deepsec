@@ -245,7 +245,8 @@ type output_command =
   | Init_internal_error of string * bool
   | Batch_internal_error of string
   | User_error of
-      (string (* Error msg*) * string (* file *) * string list (* warnings *) * bool (* Is server error *)) list
+      (string (* Error msg*) * string (* file *) * string list (* warnings *)) list *
+      (string (* host *) * string (* Error msg *) list) list
   | Query_internal_error of string (* Error msg*) * string (* file *)
   (* Config *)
   | Send_Configuration

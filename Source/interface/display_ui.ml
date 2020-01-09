@@ -741,14 +741,15 @@ let of_output_command = function
   (* Errors *)
   | Init_internal_error (err,b) -> JObject [ "command", JString "init_error"; "is_internal", JBool b; "error_msg", JString (String.escaped err) ]
   | Batch_internal_error err -> JObject [ "command", JString "batch_internal_error"; "error_msg", JString (String.escaped err) ]
-  | User_error err_list ->
+  | User_error (err_list,host_err) ->
       JObject [
         "command", JString "user_error";
-        "error_runs", JList (List.map (fun (err_msg,file,warnings,is_server) ->
-          if is_server
-          then JObject [ "error_msg", JString err_msg; "file", JString file; "warnings", JList (List.map of_string warnings)]
-          else JObject [ "error_msg", JString err_msg; "file", JString file; "warnings", JList (List.map of_string warnings); "host", JBool true]
-        ) err_list)
+        "error_runs", JList (List.map (fun (err_msg,file,warnings) ->
+          JObject [ "error_msg", JString err_msg; "file", JString file; "warnings", JList (List.map of_string warnings) ]
+        ) err_list);
+        "error_hosts", JList (List.map (fun (host,err_msgs) ->
+          JObject [ "host", JString host; "error_msgs", JList (List.map of_string err_msgs)]
+          ) host_err)
       ]
   | Query_internal_error (_,file) ->
       JObject [
@@ -861,11 +862,9 @@ let print_output_command = function
   | Batch_internal_error err
   | Query_internal_error (err,_)->
       Printf.printf "\n%s: %s\nPlease report the bug to vincent.cheval@loria.fr with the input file and output\n%!" (Display.coloured_terminal_text Red [Underline;Bold] "Internal Error") err
-  | User_error err_list ->
-      List.iter (fun (err_msg,file,warnings,host) ->
-        if host
-        then Printf.printf "\n%s with distant server %s:\n%!" (Display.coloured_terminal_text Red [Underline;Bold] "Error") file
-        else Printf.printf "\n%s on file %s:\n%!" (Display.coloured_terminal_text Red [Underline;Bold] "Error") file;
+  | User_error (err_list,host_err) ->
+      List.iter (fun (err_msg,file,warnings) ->
+        Printf.printf "\n%s on file %s:\n%!" (Display.coloured_terminal_text Red [Underline;Bold] "Error") file;
 
         Printf.printf "   %s\n" err_msg;
 
@@ -875,7 +874,13 @@ let print_output_command = function
             Printf.printf "\n%s on file %s:\n%!" (Display.coloured_terminal_text Yellow [Bold] "Warnings") file;
             List.iter (fun str -> Printf.printf "   %s\n%!" str) warnings
           end
-      ) err_list
+      ) err_list;
+    List.iter (fun (host,err_msgs) ->
+      Printf.printf "\n%s with distant server %s:\n%!" (Display.coloured_terminal_text Red [Underline;Bold] "Error") host;
+      List.iter (fun err ->
+        Printf.printf "   %s\n%!" err
+      ) err_msgs
+    ) host_err
   (* Started *)
   | Batch_started(_,warning_runs) ->
       Printf.printf "\nStarting verification...\n";

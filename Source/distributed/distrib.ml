@@ -31,28 +31,33 @@ let verify_distant_workers () =
     let fd_in_ch = Unix.descr_of_in_channel in_ch in
     let fd_err_ch = Unix.descr_of_in_channel err_ch in
 
-    let (av_fd_in,_,av_err) = Unix.select [fd_in_ch;fd_err_ch] [] [fd_err_ch] 5. in
+    let (av_fd_in,_,av_err) = Unix.select [fd_in_ch;fd_err_ch] [] [fd_err_ch] 2. in
     match av_fd_in,av_err with
-      | [],[] ->  (host,"The distant deepsec does not seem responsive to version checking. Maybe it's an older version or wrong path ?")::acc
+      | [],[] ->  (host,["The distant deepsec does not seem responsive to version checking. Maybe it's an older version or wrong path ?"])::acc
       | [], _ ->
           let err = input_line err_ch in
           ignore (Unix.close_process_full (in_ch,out_ch,err_ch));
-          (host,String.escaped err)::acc;
+          (host,[String.escaped err])::acc;
       | in_fd::_,_ ->
           let data = input_line (Unix.in_channel_of_descr in_fd) in
           ignore (Unix.close_process_full (in_ch,out_ch,err_ch));
           begin
             match String.split_on_char '%' data with
               | ["deepsec";ocaml_version;deepsec_version] ->
-                  let acc1 =
+                  let errors =
                     match String.split_on_char '.' deepsec_version with
-                      | [major_dist;minor_dist;_] when major_dist = major && minor = minor_dist -> acc
-                      | _ -> (host,Printf.sprintf "The version of the local deepsec is %s whereas the version of the distant deepsec is %s. Version of distant deepsec should be %s.%s.x" Config.version deepsec_version major minor)::acc
+                      | [major_dist;minor_dist;_] when major_dist = major && minor = minor_dist -> []
+                      | _ -> [Printf.sprintf "The version of the local deepsec is %s whereas the version of the distant deepsec is %s. Version of distant deepsec should be %s.%s.x" Config.version deepsec_version major minor]
                   in
-                  if ocaml_version <> Sys.ocaml_version
-                  then (host,Printf.sprintf "The local deepsec was compiled with Ocaml %s whereas the distant deepsec was compiled with Ocaml %s. Distributed computation requires same version." Sys.ocaml_version ocaml_version)::acc1
-                  else acc1
-              | _ -> (host,Printf.sprintf "Version verification of distant deepsec failed. Message received: %s" data)::acc
+                  let errors' =
+                    if ocaml_version <> Sys.ocaml_version
+                    then (Printf.sprintf "The local deepsec was compiled with Ocaml %s whereas the distant deepsec was compiled with Ocaml %s. Distributed computation requires same version." Sys.ocaml_version ocaml_version)::errors
+                    else errors
+                  in
+                  if errors' = []
+                  then acc
+                  else (host,errors')::acc
+              | _ -> (host,[Printf.sprintf "Version verification of distant deepsec failed. Message received: %s" (String.escaped data)])::acc
           end
   ) [] !Config.distant_workers
 
