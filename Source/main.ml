@@ -17,9 +17,9 @@ let display_string_list str_list =
 let header =
   display_string_list [
     0, coloured_terminal_text Black [Bold] "DeepSec - DEciding Equivalence Properties for SECurity protocols";
-    2, Printf.sprintf "Version: %s" !Config.version;
-    2, Printf.sprintf "Git hash: %s" !Config.git_commit;
-    2, Printf.sprintf "Git branch: %s" !Config.git_branch;
+    2, Printf.sprintf "Version: %s" Config.version;
+    2, Printf.sprintf "Git hash: %s" Config.git_commit;
+    2, Printf.sprintf "Git branch: %s" Config.git_branch;
   ]
 
 let help =

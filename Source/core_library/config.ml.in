@@ -73,16 +73,13 @@ let log =
 
 (**** Version ****)
 
-let version = ref "VERSION"
-let git_commit = ref "GITCOMMIT"
-let git_branch = ref "GITBRANCH"
+let version = "VERSION"
+let git_commit = "GITCOMMIT"
+let git_branch = "GITBRANCH"
 
 (**** Paths ****)
 
 let path_deepsec = ref ""
-let path_html_template = ref ""
-let path_index = ref (Filename.current_dir_name)
-let tmp_file = ref ""
 let path_database = ref ""
 
 (**** Trace display ****)

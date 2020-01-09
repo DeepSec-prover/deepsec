@@ -9,13 +9,16 @@ let _ =
   Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
   Sys.set_signal Sys.sigint Sys.Signal_ignore;
 
-  match ((input_value stdin): Distrib.worker) with
-    | Distrib.Evaluator ->
-        Config.log Config.Distribution (fun () -> "[worker.ml] Received Evaluator role\n");
-        Distribution.WE.main ()
-    | Distrib.Local_manager ->
-        Config.log Config.Distribution (fun () -> "[worker.ml] Received Local manager role\n");
-        Distribution.WLM.main ()
-    | Distrib.Distant_manager ->
-        Config.log Config.Distribution (fun () -> "[worker.ml] Received Distant manager role\n");
-        Distribution.WDM.main ()
+  if Array.length Sys.argv > 1 && Sys.argv.(1) = "-v"
+  then Printf.printf "deepsec%%%s%%%s\n%!" Sys.ocaml_version Config.version
+  else
+    match ((input_value stdin): Distrib.worker) with
+      | Distrib.Evaluator ->
+          Config.log Config.Distribution (fun () -> "[worker.ml] Received Evaluator role\n");
+          Distribution.WE.main ()
+      | Distrib.Local_manager ->
+          Config.log Config.Distribution (fun () -> "[worker.ml] Received Local manager role\n");
+          Distribution.WLM.main ()
+      | Distrib.Distant_manager ->
+          Config.log Config.Distribution (fun () -> "[worker.ml] Received Distant manager role\n");
+          Distribution.WDM.main ()

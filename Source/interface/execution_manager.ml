@@ -553,10 +553,13 @@ let apply_progress progress to_write =
 
 let start_batch input_files batch_options =
 
+  let host_errors = Distrib.verify_distant_workers () in
+  let host_errors2 = List.map (fun (h,err) -> (err,h,[],true)) host_errors in
+
   let batch_dir = new_file_name "" (fun str -> (compress_int (int_of_float (Unix.time ())))^"_"^str) in
   let parsing_results = List.map (parse_dps_file batch_dir) input_files in
 
-  let all_success = List.for_all (function IRSuccess _ -> true | _ -> false) parsing_results in
+  let all_success = host_errors2 = [] && List.for_all (function IRSuccess _ -> true | _ -> false) parsing_results in
 
   if all_success
   then
@@ -572,9 +575,9 @@ let start_batch input_files batch_options =
       let batch_result =
         {
           name_batch = batch_dir^".json";
-          deepsec_version = !Config.version;
-          git_hash = !Config.git_commit;
-          git_branch = !Config.git_branch;
+          deepsec_version = Config.version;
+          git_hash = Config.git_commit;
+          git_branch = Config.git_branch;
           run_result_files = Some run_result_files;
           run_results = None;
           import_date = None;
@@ -644,11 +647,11 @@ let start_batch input_files batch_options =
       let errors_runs =
         List.fold_right2 (fun input_file status_parse acc -> match status_parse with
           | IRSuccess _ -> acc
-          | IRUser_error (msg,warnings) -> (msg, input_file, warnings)::acc
+          | IRUser_error (msg,warnings) -> (msg, input_file, warnings, false)::acc
         ) input_files parsing_results []
       in
       Config.log Config.Distribution (fun () -> "[execution_manager.ml >> start_batch] Sending User_error command\n");
-      Display_ui.send_output_command (User_error errors_runs);
+      Display_ui.send_output_command (User_error (host_errors2@errors_runs));
       send_exit ()
     end
 

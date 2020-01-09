@@ -8,6 +8,8 @@ type worker =
   | Local_manager
   | Distant_manager
 
+val verify_distant_workers : unit -> (string * string) list
+
 module type Evaluator_task = sig
   (** The type of a job *)
   type job

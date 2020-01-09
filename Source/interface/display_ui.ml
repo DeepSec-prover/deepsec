@@ -744,8 +744,10 @@ let of_output_command = function
   | User_error err_list ->
       JObject [
         "command", JString "user_error";
-        "error_runs", JList (List.map (fun (err_msg,file,warnings) ->
-          JObject [ "error_msg", JString err_msg; "file", JString file; "warnings", JList (List.map of_string warnings)]
+        "error_runs", JList (List.map (fun (err_msg,file,warnings,is_server) ->
+          if is_server
+          then JObject [ "error_msg", JString err_msg; "file", JString file; "warnings", JList (List.map of_string warnings)]
+          else JObject [ "error_msg", JString err_msg; "file", JString file; "warnings", JList (List.map of_string warnings); "host", JBool true]
         ) err_list)
       ]
   | Query_internal_error (_,file) ->
@@ -756,7 +758,7 @@ let of_output_command = function
   | Send_Configuration ->
       JObject [
         "command", JString "config";
-        "version", JString !Config.version;
+        "version", JString Config.version;
         "result_files_path", JString !Config.path_database
       ]
   (* Started *)
@@ -860,8 +862,11 @@ let print_output_command = function
   | Query_internal_error (err,_)->
       Printf.printf "\n%s: %s\nPlease report the bug to vincent.cheval@loria.fr with the input file and output\n%!" (Display.coloured_terminal_text Red [Underline;Bold] "Internal Error") err
   | User_error err_list ->
-      List.iter (fun (err_msg,file,warnings) ->
-        Printf.printf "\n%s on file %s:\n%!" (Display.coloured_terminal_text Red [Underline;Bold] "Error") file;
+      List.iter (fun (err_msg,file,warnings,host) ->
+        if host
+        then Printf.printf "\n%s with distant server %s:\n%!" (Display.coloured_terminal_text Red [Underline;Bold] "Error") file
+        else Printf.printf "\n%s on file %s:\n%!" (Display.coloured_terminal_text Red [Underline;Bold] "Error") file;
+
         Printf.printf "   %s\n" err_msg;
 
         if warnings <> []

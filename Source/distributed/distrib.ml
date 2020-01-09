@@ -18,6 +18,39 @@ type worker =
   | Local_manager
   | Distant_manager
 
+let verify_distant_workers () =
+  List.fold_left (fun acc (host,path,_) ->
+    let full_name = Filename.concat path "deepsec_worker -v" in
+    let path_name_worker_ssh = Printf.sprintf "ssh '%s' '%s'" host full_name in
+    let (in_ch,out_ch,err_ch) = Unix.open_process_full path_name_worker_ssh [||] in
+    let fd_in_ch = Unix.descr_of_in_channel in_ch in
+    let fd_err_ch = Unix.descr_of_in_channel err_ch in
+
+    let (av_fd_in,_,av_err) = Unix.select [fd_in_ch;fd_err_ch] [] [fd_err_ch] 5. in
+    match av_fd_in,av_err with
+      | [],[] ->  (host,"The distant deepsec does not seem responsive to version checking. Maybe it's an older version or wrong path ?")::acc
+      | [], av_err ->
+          let err = input_line err_ch in
+          ignore (Unix.close_process_full (in_ch,out_ch,err_ch));
+          (host,String.escaped err)::acc;
+      | in_fd::_,_ ->
+          let data = input_line (Unix.in_channel_of_descr in_fd) in
+          ignore (Unix.close_process_full (in_ch,out_ch,err_ch));
+          begin
+            match String.split_on_char '%' data with
+              | ["deepsec";ocaml_version;deepsec_version] ->
+                  let acc1 =
+                    if Config.version <> deepsec_version
+                    then (host,Printf.sprintf "The version of the local deepsec is %s whereas the version of the distant deepsec is %s. Distributed computation requires same version." Config.version deepsec_version)::acc
+                    else acc
+                  in
+                  if ocaml_version <> Sys.ocaml_version
+                  then (host,Printf.sprintf "The local deepsec was compiled with Ocaml %s whereas the distant deepsec was compiled with Ocaml %s. Distributed computation requires same version." Sys.ocaml_version ocaml_version)::acc1
+                  else acc1
+              | _ -> (host,Printf.sprintf "Version verification of distant deepsec failed. Message received: %s" data)::acc
+          end
+  ) [] !Config.distant_workers
+
 module type Evaluator_task = sig
   (** The type of a job *)
   type job
