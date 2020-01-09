@@ -19,6 +19,11 @@ type worker =
   | Distant_manager
 
 let verify_distant_workers () =
+  let (major,minor) = match String.split_on_char '.' Config.version with
+    | [major;minor;_] -> major,minor
+    | _ -> Config.internal_error "[distrib.ml >> verify_distant_workers] Unexpected format"
+  in
+
   List.fold_left (fun acc (host,path,_) ->
     let full_name = Filename.concat path "deepsec_worker -v" in
     let path_name_worker_ssh = Printf.sprintf "ssh '%s' '%s'" host full_name in
@@ -29,7 +34,7 @@ let verify_distant_workers () =
     let (av_fd_in,_,av_err) = Unix.select [fd_in_ch;fd_err_ch] [] [fd_err_ch] 5. in
     match av_fd_in,av_err with
       | [],[] ->  (host,"The distant deepsec does not seem responsive to version checking. Maybe it's an older version or wrong path ?")::acc
-      | [], av_err ->
+      | [], _ ->
           let err = input_line err_ch in
           ignore (Unix.close_process_full (in_ch,out_ch,err_ch));
           (host,String.escaped err)::acc;
@@ -40,9 +45,9 @@ let verify_distant_workers () =
             match String.split_on_char '%' data with
               | ["deepsec";ocaml_version;deepsec_version] ->
                   let acc1 =
-                    if Config.version <> deepsec_version
-                    then (host,Printf.sprintf "The version of the local deepsec is %s whereas the version of the distant deepsec is %s. Distributed computation requires same version." Config.version deepsec_version)::acc
-                    else acc
+                    match String.split_on_char '.' deepsec_version with
+                      | [major_dist;minor_dist;_] when major_dist = major && minor = minor_dist -> acc
+                      | _ -> (host,Printf.sprintf "The version of the local deepsec is %s whereas the version of the distant deepsec is %s. Version of distant deepsec should be %s.%s.x" Config.version deepsec_version major minor)::acc
                   in
                   if ocaml_version <> Sys.ocaml_version
                   then (host,Printf.sprintf "The local deepsec was compiled with Ocaml %s whereas the distant deepsec was compiled with Ocaml %s. Distributed computation requires same version." Sys.ocaml_version ocaml_version)::acc1
