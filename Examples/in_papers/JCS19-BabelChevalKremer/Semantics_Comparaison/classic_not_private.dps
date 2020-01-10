@@ -1,0 +1,28 @@
+(*
+  The two processes A and B are equivalent in classic semantcis
+  but not in private semantics nor in the eavesdrop semantics.
+*)
+
+free c.
+free a.
+free d.
+
+let P(y,s) =
+  if y = s
+  then
+    in(c,z);
+    out(c,s);
+    out(d,a)
+  else out(d,a).
+
+let A = new s; (
+    in(c,x);out(c,s);out(d,a)
+  | in(c,y); P(y,s)
+  ).
+
+let B = new s; in(c,x); (
+    out(c,s);out(d,a)
+  | in(c,y); P(y,s)
+  ).
+
+query trace_equiv(A,B).

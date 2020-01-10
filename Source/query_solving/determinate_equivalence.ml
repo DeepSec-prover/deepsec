@@ -2,6 +2,7 @@ open Types
 open Term
 open Determinate_process
 open Formula
+open Display
 
 type origin_process =
   | Left
@@ -24,13 +25,25 @@ type equivalence_problem =
     initial_processes : process * process
   }
 
-let display_symbolic_process symb =
-  let str_origin =
-    if symb.origin_process = Left
-    then "Origin = Left\n"
-    else "Origin = Right\n"
-  in
-  (display_configuration symb.configuration) ^ str_origin
+let display_origin sym = match sym.origin_process with
+  | Left -> "Left"
+  | _ -> "Right"
+
+let display_symbolic_process_csys tab csys =
+  display_object tab None [
+    "Constraint system", Constraint_system.display_constraint_system (tab+2) csys;
+    "Configuration", display_configuration csys.Constraint_system.additional_data.configuration;
+    "Origin", display_origin csys.Constraint_system.additional_data
+  ]
+
+let display_equivalence_problem equiv_pbl =
+  display_object 0 None [
+    "Constraint system set", display_list (display_symbolic_process_csys 2)  "" equiv_pbl.csys_set.Constraint_system.set;
+    "Eq recipe", Formula.R.display Display.Terminal equiv_pbl.csys_set.Constraint_system.eq_recipe;
+    "Size frame", string_of_int equiv_pbl.size_frame;
+    "Else branch", string_of_bool equiv_pbl.else_branch;
+    "Input added", string_of_bool equiv_pbl.input_added
+  ]
 
 let initialise_equivalence_problem init_processes else_branch csys_set =
   {
@@ -171,11 +184,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           (csys_1.Constraint_system.additional_data.origin_process = Right && csys_2.Constraint_system.additional_data.origin_process = Left)
           ->
             Config.log_in_debug Config.Process (Printf.sprintf "\n\n====Application of one transtion rule : (%d)=======" !nb_apply_one_transition_and_rules);
-            Config.log_in_debug Config.Process (display_symbolic_process csys_1.Constraint_system.additional_data);
-            Config.log_in_debug Config.Process (display_symbolic_process csys_2.Constraint_system.additional_data);
-            Config.log_in_debug Config.Process ("Eq recipe = "^(Formula.R.display Display.Terminal equiv_pbl.csys_set.Constraint_system.eq_recipe));
-            Config.log_in_debug Config.Process (Constraint_system.display_constraint_system 1 csys_1);
-            Config.log_in_debug Config.Process (Constraint_system.display_constraint_system 1 csys_2);
+            Config.log_in_debug Config.Process (display_equivalence_problem equiv_pbl);
             if csys_1.Constraint_system.eq_term <> Formula.T.Top || csys_2.Constraint_system.eq_term <> Formula.T.Top
             then Config.internal_error "[determinate_equivalence.ml >> apply_one_transition_and_rules] The disequations in the constraint systems should have been solved."
       | _ -> Config.internal_error "[determinate_equivalence >> apply_one_transition_and_rules] There should be only two constraint systems: one left, one right."
@@ -184,6 +193,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
   (*** Selection of the transition rule to apply ***)
 
   let csys = List.hd equiv_pbl.csys_set.Constraint_system.set in
+  Config.log Config.Debug (fun () -> Constraint_system.display_constraint_system 1 csys);
   let symb_proc = csys.Constraint_system.additional_data in
 
   match search_next_rule symb_proc.configuration with
@@ -674,7 +684,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                           if symb_test_1.origin_process = symb_test_2.origin_process
                           then
                             try
-                              let _ = is_equal_skeleton_conf equiv_pbl.size_frame symb_test_1.configuration symb_test_2.configuration in
+                              let _ = is_equal_skeleton_conf (equiv_pbl.size_frame+1) symb_test_1.configuration symb_test_2.configuration in
                               ()
                             with
                             | Faulty_skeleton _ -> found_bug := true
@@ -693,11 +703,11 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                   let result_skel_test =
                     try
                       Config.debug (fun () ->
-                        let _,_,is_focus_nil,_ = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
+                        let _,_,is_focus_nil,_ = is_equal_skeleton_conf (equiv_pbl.size_frame+1) symb_left.configuration symb_right.configuration in
                         if is_focus_nil
                         then Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] The focus should not be nil when output is applied (should be empty)"
                       );
-                      let cl,cr,_,input_added = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
+                      let cl,cr,_,input_added = is_equal_skeleton_conf (equiv_pbl.size_frame+1) symb_left.configuration symb_right.configuration in
                       OK (cl,cr,input_added)
                     with
                     | Faulty_skeleton (is_left,f_conf,f_action) -> Faulty (is_left,f_conf,f_action)

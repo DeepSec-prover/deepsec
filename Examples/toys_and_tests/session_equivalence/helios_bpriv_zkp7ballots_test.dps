@@ -1,0 +1,436 @@
+free alice, bob, attacker. // identities
+
+free c. // public channel
+free auth,internal [private]. // private channels
+
+// encryption
+fun aenc/3.
+fun pk/1.
+const decryption_key [private].
+reduc adec(aenc(x,r,pk(sk)),sk) -> x.
+
+// zero knowledge proofs
+fun zkp/4.
+fun zkpok/0.
+reduc checkzkp(zkp(xr, xid, xv, aenc(xv,xr,xpk)), xid, aenc(xv,xr,xpk)) -> zkpok.
+
+const zero. // blank vote
+
+// voting process
+let VoterReal(id,pkE) =
+  in(c,v); // receives voting instructions from the attacker
+  let (v0,v1) = v in
+  new r0;
+  let b0 = aenc(v0,r0,pkE) in
+  let zk0 = zkp(r0,id,v0,b0) in
+  in(internal,state);
+  let (vote1,vote2,vote3) = state in
+  out(c, (id,(b0,zk0))); // gives the real vote to the attacker
+  if id = alice then out(internal,(b0,vote2,vote3))
+  else out(internal,(vote1,b0,vote3)).
+
+let VoterFake(id,pkE) =
+  in(c,v); // receives voting instructions from the attacker
+  let (v0,v1) = v in
+  new r0; new r1;
+  let b0 = aenc(v0,r0,pkE) in
+  let b1 = aenc(v1,r1,pkE) in
+  let zk1 = zkp(r1,id,v1,b1) in
+  in(internal,state);
+  let (vote1,vote2,vote3) = state in
+  out(c, (id,(b1,zk1))); // gives the fake vote to the attacker
+  if id = alice then out(internal,(b0,vote2,vote3))
+  else out(internal,(vote1,b0,vote3)).
+
+
+
+// Tallying
+let VoterDishonest =
+  in(internal,state);
+  let (vote1,vote2,vote3) = state in // gets internal state
+  in(c,vote);
+  let (=attacker,(blob,zk)) = vote in
+    if checkzkp(zk,attacker,blob) = zkpok then out(internal,(vote1,vote2,blob))
+    else out(internal,state)
+  else out(internal,state).
+
+
+// getting the result of the subtallies and outputing in a mixnet
+let Mixnet =
+  in(internal,state);
+  let (vote1,vote2,vote3) = state in (
+    out(c,adec(vote1,decryption_key)) |
+    out(c,adec(vote2,decryption_key)) |
+    out(c,adec(vote3,decryption_key))
+  ).
+
+
+let init =
+  out(internal,(zero,zero,zero)).
+
+// process under equivalence (19 scenarios for 7 total revotes)
+let VotingSystemReal106 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^1 VoterReal(alice,pkE) |
+    !^6 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemFake106 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^1 VoterFake(alice,pkE) |
+    !^6 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemReal115 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^1 VoterReal(alice,pkE) |
+    !^1 VoterReal(bob,pkE) |
+    !^5 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemFake115 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^1 VoterFake(alice,pkE) |
+    !^1 VoterFake(bob,pkE) |
+    !^5 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemReal205 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^2 VoterReal(alice,pkE) |
+    !^5 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemFake205 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^2 VoterFake(alice,pkE) |
+    !^5 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemReal214 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^2 VoterReal(alice,pkE) |
+    !^1 VoterReal(bob,pkE) |
+    !^4 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemFake214 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^2 VoterFake(alice,pkE) |
+    !^1 VoterFake(bob,pkE) |
+    !^4 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemReal223 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^2 VoterReal(alice,pkE) |
+    !^2 VoterReal(bob,pkE) |
+    !^3 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemFake223 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^2 VoterFake(alice,pkE) |
+    !^2 VoterFake(bob,pkE) |
+    !^3 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemReal304 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^3 VoterReal(alice,pkE) |
+    !^4 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemFake304 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^3 VoterFake(alice,pkE) |
+    !^4 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemReal313 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^3 VoterReal(alice,pkE) |
+    !^1 VoterReal(bob,pkE) |
+    !^3 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemFake313 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^3 VoterFake(alice,pkE) |
+    !^1 VoterFake(bob,pkE) |
+    !^3 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemReal322 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^3 VoterReal(alice,pkE) |
+    !^2 VoterReal(bob,pkE) |
+    !^2 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemFake322 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^3 VoterFake(alice,pkE) |
+    !^2 VoterFake(bob,pkE) |
+    !^2 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemReal331 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^3 VoterReal(alice,pkE) |
+    !^3 VoterReal(bob,pkE) |
+    !^1 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemFake331 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^3 VoterFake(alice,pkE) |
+    !^3 VoterFake(bob,pkE) |
+    !^1 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemReal403 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^4 VoterReal(alice,pkE) |
+    !^3 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemFake403 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^4 VoterFake(alice,pkE) |
+    !^3 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemReal412 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^4 VoterReal(alice,pkE) |
+    !^1 VoterReal(bob,pkE) |
+    !^2 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemFake412 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^4 VoterFake(alice,pkE) |
+    !^1 VoterFake(bob,pkE) |
+    !^2 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemReal421 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^4 VoterReal(alice,pkE) |
+    !^2 VoterReal(bob,pkE) |
+    !^1 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemFake421 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^4 VoterFake(alice,pkE) |
+    !^2 VoterFake(bob,pkE) |
+    !^1 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemReal430 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^4 VoterReal(alice,pkE) |
+    !^3 VoterReal(bob,pkE) |
+    Mixnet
+  ).
+
+let VotingSystemFake430 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^4 VoterFake(alice,pkE) |
+    !^3 VoterFake(bob,pkE) |
+    Mixnet
+  ).
+
+let VotingSystemReal502 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^5 VoterReal(alice,pkE) |
+    !^2 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemFake502 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^5 VoterFake(alice,pkE) |
+    !^2 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemReal511 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^5 VoterReal(alice,pkE) |
+    !^1 VoterReal(bob,pkE) |
+    !^1 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemFake511 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^5 VoterFake(alice,pkE) |
+    !^1 VoterFake(bob,pkE) |
+    !^1 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemReal520 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^5 VoterReal(alice,pkE) |
+    !^2 VoterReal(bob,pkE) |
+    Mixnet
+  ).
+
+let VotingSystemFake520 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^5 VoterFake(alice,pkE) |
+    !^2 VoterFake(bob,pkE) |
+    Mixnet
+  ).
+
+let VotingSystemReal601 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^6 VoterReal(alice,pkE) |
+    !^1 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemFake601 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^6 VoterFake(alice,pkE) |
+    !^1 VoterDishonest |
+    Mixnet
+  ).
+
+let VotingSystemReal610 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^6 VoterReal(alice,pkE) |
+    !^1 VoterReal(bob,pkE) |
+    Mixnet
+  ).
+
+let VotingSystemFake610 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^6 VoterFake(alice,pkE) |
+    !^1 VoterFake(bob,pkE) |
+    Mixnet
+  ).
+
+let VotingSystemReal700 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^7 VoterReal(alice,pkE) |
+    Mixnet
+  ).
+
+let VotingSystemFake700 =
+  let pkE = pk(decryption_key) in
+  out(c,pkE); (
+    init |
+    !^7 VoterFake(alice,pkE) |
+    Mixnet
+  ).
+
+query session_equiv(VotingSystemReal106,VotingSystemFake106).
+query session_equiv(VotingSystemReal115,VotingSystemFake115).
+query session_equiv(VotingSystemReal205,VotingSystemFake205).
+query session_equiv(VotingSystemReal214,VotingSystemFake214).
+query session_equiv(VotingSystemReal223,VotingSystemFake223).
+query session_equiv(VotingSystemReal304,VotingSystemFake304).
+query session_equiv(VotingSystemReal313,VotingSystemFake313).

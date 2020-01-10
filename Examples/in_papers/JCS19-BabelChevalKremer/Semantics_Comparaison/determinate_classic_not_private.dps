@@ -1,0 +1,33 @@
+(*
+  The two processes A and B are determinate and equivalent in the
+  classic semantics but not in the private semantics nor in the eavesdrop
+  semantics.
+*)
+
+free c.
+free d.
+
+free k1,k2,k3,k4,k5,k6,k7 [private].
+
+let R5(x5) =
+  if x5 = k5 then
+  in(d,z);
+  (
+      out(c,k6)
+    | in(c,x6); if x6 = k6 then out(d,k7); in(c,x7); in(d,x8)
+  ).
+
+let R3 =
+  out(c,k4); in(d,x5); R5(x5) | in(c,x4); if x4 = k4 then out(d,k5).
+
+let R1(x1) =
+  if x1 = k1 then out(d,k2); in(c,x3); if x3 = k3 then R3 else in(d,x).
+
+let A =
+  in(c,x1); R1(x1) | out(c,k1) | in(d,x2); if x2 = k2 then out(c,k3).
+
+let B =
+  in(c,x1); R1(x1) | out(c,k1); in(d,x2); if x2 = k2 then out(c,k3).
+
+
+query trace_equiv(A,B).

@@ -7,6 +7,8 @@ let A =
   (
     new k;
     new k;
+    new kb;
+    new kb;
     !^2 in(c,y); if y = x then out(c,k) else out(c,b)
   ).
 

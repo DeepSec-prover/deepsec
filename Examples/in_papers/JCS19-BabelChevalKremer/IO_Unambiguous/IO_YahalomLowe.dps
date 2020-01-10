@@ -1,0 +1,78 @@
+(*
+  Yahalom - Lowe protocol (without the last message)
+  A, B, S :  principal
+  Na, Nb : fresh numbers
+  Kas, Kbs, Kab :   key
+
+  1.   A -> B : A, Na
+  2.   B -> S : {A, Na, Nb}Kbs
+  3.   S -> A : {B, Kab, Na, Nb}Kas
+  4.   S -> B : {A, Kab}Kbs
+*)
+
+//Channels :
+
+free c1,c2,c3.
+
+//Public data :
+free a,b,s.
+free s1,s2.
+
+fun senc/2.
+reduc sdec(senc(x,y),y) -> x.
+
+// Alice:
+let A(a,b,kas) =
+  new na;
+  out(c1,(a,na));
+  in(c3,x0);
+  let (=b,xkab,=na,xnb) = sdec(x0,kas) in
+  0.
+
+// Bob :
+let B(b,a,kbs) =
+  in(c1,y0);
+  let (=a,yna) = y0 in
+  new nb;
+  out(c2,senc((a,yna,nb),kbs));
+  in(c3,y1);
+  let (=a,ykab) = sdec(y1,kbs) in
+  0.
+
+// Server (+ property):
+let S1(a,b,kas,kbs) =
+  in(c2,z0);
+  let (=a,zna,znb) = sdec(z0,kbs) in
+  out(c3,(senc((b,s1,zna,znb),kas),senc((a,s1),kbs))).
+
+let S2(a,b,kas,kbs) =
+  in(c2,z0);
+  let (=a,zna,znb) = sdec(z0,kbs) in
+  out(c3,(senc((b,s2,zna,znb),kas),senc((a,s2),kbs))).
+
+//Server:
+let S(a,b,kas,kbs) =
+  in(c2,z0);
+  new kab;
+  let (=a,zna,znb) = sdec(z0,kbs) in
+  out(c3,(senc((b,kab,zna,znb),kas),senc((a,kab),kbs))).
+
+
+// Protocols :
+let P =
+  new kas; new kbs;
+  (
+    A(a,b,kas) | S1(a,b,kas,kbs) | B(b,a,kbs) |
+    A(a,b,kas) | S(a,b,kas,kbs) | B(b,a,kbs)
+  ).
+
+
+let Q =
+  new kas; new kbs;
+  (
+    A(a,b,kas) | S2(a,b,kas,kbs) | B(b,a,kbs) |
+    A(a,b,kas) | S(a,b,kas,kbs) | B(b,a,kbs)
+  ).
+
+
+query trace_equiv(P,Q).

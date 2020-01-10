@@ -1,0 +1,19 @@
+free c.
+free a.
+free k [private].
+fun h/1.
+fun g/1.
+
+let P_1 = new b; out(c,b) | out(c,a).
+
+let P_2 = out(c,k).
+
+let P_3 = out(c,h(a)).
+
+let P_4 = out(c,g(a)).
+
+query trace_equiv(P_1,P_2).
+
+query trace_incl(P_1,P_3).
+
+query trace_equiv(P_1,P_4).

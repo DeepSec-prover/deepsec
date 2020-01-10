@@ -1025,7 +1025,6 @@ let rec is_equal_skeleton p1 p2 = match p1, p2 with
       else List.for_all2 (fun (ch1,p1) (ch2,p2) -> (is_equal_list_channel ch1 ch2) && is_equal_skeleton p1 p2) pl_1 pl_2
   | SCondition _, _
   | SNew _, _
-  | _, SOutput _
   | _, SCondition _
   | _, SNew _ -> Config.internal_error "[process_determinate.ml >> is_equal_skeleton] We should test the equaly of skeletons on a normalised process."
   | _ -> false
