@@ -1,0 +1,16 @@
+free c.
+free ok,ko.
+          
+fun h/2.
+
+let P =
+  in(c,x);
+  if x = ok
+  then out(c,ok)
+  else out(c,ko).
+
+
+
+query trace_equiv(P|P,P|P).
+
+(* Should be equivalent *)
