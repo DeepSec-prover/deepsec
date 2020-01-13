@@ -168,7 +168,6 @@ module Distrib = functor (Task:Evaluator_task) -> struct
                   let result = Task.evaluation_single_core send_progress job in
                   Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Sending result");
                   send_output_command (Completed result);
-                  raise Exit
           done
         with
           | Interupt ->
