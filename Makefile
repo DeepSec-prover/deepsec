@@ -14,6 +14,7 @@ EXTENSION=$(if $(PROFILE),p.native,$(if $(ADVDEBUG),d.byte,native))
 GITCOMMIT = $(shell git rev-parse HEAD)
 GITBRANCH = $(shell git branch | grep \* | sed -E "s/^\* \(?//" | sed -E "s/\)$$//")
 PHYSICALCORE = $(shell $(SCRIPTS)/cpu_linux_osx)
+OSTYPE = $(shell uname)
 NBLINE = $(shell find Source -name "*.ml" -or -name "*.mli" -or -name "*.mly" -or -name "*.mll" | xargs cat | wc -l)
 
 .PHONY: check
@@ -36,7 +37,7 @@ debug:
 
 # generates config.ml
 config:
-	@sed -e "s/VERSION/${VERSION}/g" -e "s/GITCOMMIT/${GITCOMMIT}/g" -e "s/GITBRANCH/${GITBRANCH}/g" -e "s/PHYSICALCORE/${PHYSICALCORE}/g" < Source/core_library/config.ml.in > Source/core_library/config.ml
+	@sed -e "s/VERSION/${VERSION}/g" -e "s/GITCOMMIT/${GITCOMMIT}/g" -e "s/GITBRANCH/${GITBRANCH}/g" -e "s/PHYSICALCORE/${PHYSICALCORE}/g" -e "s/OSTYPE/${OSTYPE}/g" < Source/core_library/config.ml.in > Source/core_library/config.ml
 
 # configures and compiles
 compil:

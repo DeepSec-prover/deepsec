@@ -15,8 +15,8 @@ let _ =
     Config.log Config.Distribution (fun () -> Printf.sprintf "executable name escaped : %s" (String.escaped Sys.executable_name));
     Config.log Config.Distribution (fun () -> Printf.sprintf "Exe path : %s" exe_path);
     Config.path_deepsec := exe_path;
-    let database_path = Filename.concat exe_path "result_files" in
-    Config.path_database := database_path;
+
+    Config.setup_path_result_files ();
 
     (* Retrieve the command *)
     let in_cmd_str = read_line () in

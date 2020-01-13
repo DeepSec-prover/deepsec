@@ -102,7 +102,7 @@ let parse_file path =
 
 let copy_file path new_path =
   let channel_in = open_in path in
-  let channel_out = open_out_gen [Open_wronly; Open_creat; Open_trunc; Open_text] 0o444 new_path in
+  let channel_out = open_out new_path in
 
   try
     while true do

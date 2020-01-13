@@ -298,8 +298,8 @@ let _ =
   (* Retrieve deepsec path *)
   let exe_path = Filename.dirname (String.escaped Sys.executable_name) in
   Config.path_deepsec := exe_path;
-  let database_path = Filename.concat exe_path "result_files" in
-  Config.path_database := database_path;
+
+  Config.setup_path_result_files ();
 
   (* Retrieve the command *)
 
@@ -355,10 +355,6 @@ let _ =
         Execution_manager.set_up_batch_options !all_options;
 
         Sys.set_signal Sys.sigint (Sys.Signal_handle (fun _ -> Execution_manager.cancel_batch ()));
-
-        (* Generate database if not existent *)
-        if not (Sys.file_exists !Config.path_database)
-        then Unix.mkdir !Config.path_database 0o770;
 
         (* Batch started *)
         Execution_manager.start_batch !all_files !all_options;
