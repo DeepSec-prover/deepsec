@@ -261,21 +261,9 @@ module Name :  sig
 
   val link_search : name -> unit
 
-  val auto_deducible_cleanup_with_reset : ((unit -> unit) -> unit) -> (unit -> unit) -> unit
-
-  val auto_deducible_cleanup_with_reset_notail : (unit -> 'a) -> 'a
-
-  val auto_deducible_cleanup_with_exception : (unit -> 'a) -> 'a
-
   val auto_cleanup_with_reset_notail : (unit -> 'a) -> 'a
 
   val auto_cleanup_with_exception : (unit -> 'a) -> 'a
-
-  val set_deducible : name -> recipe -> unit
-
-  val currently_deducible : name list ref
-
-  val rename_and_instantiate : name -> name
 end
 
 (** {2 Terms} *)

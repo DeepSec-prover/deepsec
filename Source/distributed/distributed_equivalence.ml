@@ -30,7 +30,6 @@ struct
     | DGeneric of data_generic
     | DSession of data_session
 
-
   type job =
     {
       variable_counter : int;
@@ -47,6 +46,10 @@ struct
 
       data_equiv : data_equivalence
     }
+
+  let get_nb_constraint_system job = match job.data_equiv with
+    | DGeneric data -> List.length data.gen_equiv_problem.Generic_equivalence.csys_set.Constraint_system.set
+    | _ -> 0
 
   let evaluation job =
     Variable.set_up_counter job.variable_counter;
@@ -177,7 +180,6 @@ struct
             );
 
             Config.log Config.Distribution  (fun () -> Printf.sprintf "[distributed_equivalence.ml >> generate] Statistic: %s\n" (Statistic.display_statistic ()));
-
             if !job_list = []
             then Completed (RTrace_Equivalence None)
             else Job_list !job_list

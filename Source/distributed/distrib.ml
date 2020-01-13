@@ -30,7 +30,6 @@ let verify_distant_workers () =
     let (in_ch,out_ch,err_ch) = Unix.open_process_full path_name_worker_ssh [||] in
     let fd_in_ch = Unix.descr_of_in_channel in_ch in
     let fd_err_ch = Unix.descr_of_in_channel err_ch in
-
     let (av_fd_in,_,av_err) = Unix.select [fd_in_ch;fd_err_ch] [] [fd_err_ch] 2. in
     match av_fd_in,av_err with
       | [],[] ->  (host,["The distant deepsec does not seem responsive to version checking. Maybe it's an older version or wrong path ?"])::acc
@@ -64,6 +63,8 @@ let verify_distant_workers () =
 module type Evaluator_task = sig
   (** The type of a job *)
   type job
+
+  val get_nb_constraint_system : job -> int
 
   (** Standard evaluationn of a job for distributed computationn *)
   val evaluation : job -> verification_result
@@ -815,6 +816,14 @@ module Distrib = functor (Task:Evaluator_task) -> struct
     let rec evaluate_distributed round job_list =
       try
         let jobs_created_data = generate_jobs round job_list in
+        let (job_list,nb_jobs) = jobs_created_data in
+        let size_jobs = Obj.reachable_words (Obj.repr jobs_created_data) in
+        let nb_csys_set = List.fold_left (fun acc job -> acc + Task.get_nb_constraint_system job) 0 job_list in
+        Config.log_in_debug Config.Debug (Display.display_object 1 (Some "Data job list") [
+          "Nb jobs", string_of_int nb_jobs;
+          "Nb csys", string_of_int nb_csys_set;
+          "Memory", string_of_int size_jobs
+        ]);
         let remain_job_list_next_round = evaluate_jobs round jobs_created_data in
         evaluate_distributed (round+1) remain_job_list_next_round
       with Completed_execution result ->

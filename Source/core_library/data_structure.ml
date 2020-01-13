@@ -137,20 +137,30 @@ module DF = struct
 
   let remove_all_linked_variables (df:t) =
 
-    let rec explore_bfact_list = function
-      | [] -> []
+    let rec explore_bfact_list bfact_list = match bfact_list with
+      | [] -> bfact_list
       | bfact::q when bfact.bf_var.link_r = RNoLink ->
-          bfact::(explore_bfact_list q)
+          let q' = explore_bfact_list q in
+          if q == q'
+          then bfact_list
+          else bfact::q'
       | _::q -> explore_bfact_list q
     in
 
-    let rec explore = function
-      | [] -> []
-      | (i,bfact_list)::q ->
+    let rec explore df = match df with
+      | [] -> df
+      | ((i,bfact_list) as head)::q ->
           let bfact_list' = explore_bfact_list bfact_list in
-          if bfact_list' = []
-          then explore q
-          else (i,bfact_list')::(explore q)
+          if bfact_list == bfact_list'
+          then
+            let q' = explore q in
+            if q == q'
+            then df
+            else head :: q'
+          else
+            if bfact_list' = []
+            then explore q
+            else (i,bfact_list')::(explore q)
     in
 
     explore df
@@ -389,7 +399,10 @@ module DF = struct
 
   (******* Function for preparing the solving procedure *******)
 
-  let rename_and_instantiate (df:t) =
+  (* We do not try to  guarantee physical equality. This function is only applied after
+     generation of transitions. Thus they originally were deduction facts with variables as right
+     hand term, i.e. they would always need to be instantiate. *)
+  let rec rename_and_instantiate (df:t) =
     List.map (fun (i,bfact_list) ->
       (i,List.map (fun bfact -> { bfact with bf_term = Term.rename_and_instantiate bfact.bf_term }) bfact_list)
     ) df
@@ -466,7 +479,7 @@ module K = struct
       data : entry array
     }
 
-  let dummy_entry = { type_rec = 0; recipe = Axiom 0; term = Name { label_n = ""; index_n = 0; pure_fresh_n = false; link_n = NNoLink; deducible_n = None} }
+  let dummy_entry = { type_rec = 0; recipe = Axiom 0; term = Name { label_n = ""; index_n = 0; pure_fresh_n = false; link_n = NNoLink } }
 
   let empty = { max_type_r = 0; size = 0; data = Array.make 0 dummy_entry }
 

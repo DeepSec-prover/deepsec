@@ -18,8 +18,7 @@ type name =
     label_n : string;
     index_n : int;
     pure_fresh_n : bool;
-    mutable link_n : link_n;
-    mutable deducible_n : recipe option (* Indicate whether the name is deducible *)
+    mutable link_n : link_n
   }
 
 and link_n =

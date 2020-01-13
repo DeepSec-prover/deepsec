@@ -312,7 +312,7 @@ module Name = struct
   (******* Generation *******)
 
   let fresh_with_label ?(pure=false) n =
-    let name = { label_n = n; index_n = !accumulator; pure_fresh_n = pure; link_n = NNoLink; deducible_n = None } in
+    let name = { label_n = n; index_n = !accumulator; pure_fresh_n = pure; link_n = NNoLink } in
     accumulator := !accumulator + 1;
     name
 
@@ -321,7 +321,7 @@ module Name = struct
   let fresh_from name = fresh_with_label ~pure:name.pure_fresh_n name.label_n
 
   let pure_fresh_from name =
-    let name' = { label_n = name.label_n; index_n = !accumulator; pure_fresh_n = true; link_n = NNoLink; deducible_n = None } in
+    let name' = { label_n = name.label_n; index_n = !accumulator; pure_fresh_n = true; link_n = NNoLink } in
     accumulator := !accumulator + 1;
     name'
 
@@ -368,43 +368,6 @@ module Name = struct
     n.link_n <- NSLink;
     currently_linked := n :: !currently_linked
 
-  let currently_deducible : name list ref = ref []
-
-  let auto_deducible_cleanup_with_reset (f_cont:(unit -> unit) -> unit) (f_next:unit -> unit) =
-    let tmp = !currently_deducible in
-    currently_deducible := [];
-
-    f_cont (fun () ->
-      List.iter (fun n -> n.deducible_n <- None) !currently_deducible;
-      currently_deducible := tmp;
-      f_next ()
-    )
-
-  let auto_deducible_cleanup_with_reset_notail (f_cont:unit -> 'a) =
-    let tmp = !currently_deducible in
-    currently_deducible := [];
-
-    let r = f_cont () in
-
-    List.iter (fun n -> n.deducible_n <- None) !currently_deducible;
-    currently_deducible := tmp;
-    r
-
-  let auto_deducible_cleanup_with_exception (f_cont:unit -> 'a) =
-    let tmp = !currently_deducible in
-    currently_deducible := [];
-
-    try
-      let r = f_cont () in
-
-      List.iter (fun n -> n.deducible_n <- None) !currently_deducible;
-      currently_deducible := tmp;
-      r
-    with e ->
-      List.iter (fun n -> n.deducible_n <- None) !currently_deducible;
-      currently_deducible := tmp;
-      raise e
-
   let auto_cleanup_with_reset_notail (f_cont:unit -> 'a) =
     let tmp = !currently_linked in
     currently_linked := [];
@@ -429,23 +392,6 @@ module Name = struct
       List.iter (fun n -> n.link_n <- NNoLink) !currently_linked;
       currently_linked := tmp;
       raise e
-
-  let set_deducible n recipe =
-    Config.debug (fun () ->
-      if n.deducible_n <> None
-      then Config.internal_error "[term.ml >> set_deducible] Name is already deducible."
-    );
-    currently_deducible := n :: !currently_deducible;
-    n.deducible_n <- Some recipe
-
-  let rename_and_instantiate n = match n.link_n with
-    | NLink n' -> n' (* n' is the fresh replacement of n *)
-    | NNoLink ->
-        let n' = { label_n = n.label_n; index_n = n.index_n; pure_fresh_n = n.pure_fresh_n; link_n = NNoLink; deducible_n = n.deducible_n } in
-        Config.debug (fun () -> if n == n' then Config.internal_error "[term.ml >> Name.rename_and_instantiate] Should not be physically equal.");
-        link n n';
-        n'
-    | _ -> Config.internal_error "[term.ml >> Name.rename_and_instantiat] Unexpected link of name."
 end
 
 (*************************************
@@ -881,7 +827,7 @@ module Term = struct
 
   (********** Renaming function for preparing the solving procedure *********)
 
-  let rec rename_and_instantiate = function
+  let rec rename_and_instantiate term = match term with
     | Var v ->
         begin match v.link with
           | TLink t -> rename_and_instantiate t
@@ -892,16 +838,24 @@ module Term = struct
               Var v'
           | _ -> Config.internal_error "[term.ml >> Term.rename_and_instantiate] Unexpected link of variable."
         end
-    | Func(f,args) -> Func(f,List.map rename_and_instantiate args)
-    | Name n ->
-        match n.link_n with
-          | NLink n' -> Name n' (* n' is the fresh replacement of n *)
-          | NNoLink ->
-              let n' = { label_n = n.label_n; index_n = n.index_n; pure_fresh_n = n.pure_fresh_n; link_n = NNoLink; deducible_n = n.deducible_n } in
-              Config.debug (fun () -> if n == n' then Config.internal_error "[term.ml >> Term.rename_and_instantiate] Should not be physically equal.");
-              Name.link n n';
-              Name n'
-          | _ -> Config.internal_error "[term.ml >> Term.rename_and_instantiate] Unexpected link of name."
+    | Func(f,args) ->
+        let args' = rename_and_instantiate_list args in
+        if args == args'
+        then term
+        else Func(f,args')
+    | Name _ -> term
+
+  and rename_and_instantiate_list term_list = match term_list with
+    | [] -> term_list
+    | t::q ->
+        let t' = rename_and_instantiate t in
+        if t == t'
+        then
+          let q' = rename_and_instantiate_list q in
+          if q == q'
+          then term_list
+          else t'::q'
+        else t'::(rename_and_instantiate_list q)
 
   (*********** Debug ************)
 

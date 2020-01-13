@@ -193,7 +193,6 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
   (*** Selection of the transition rule to apply ***)
 
   let csys = List.hd equiv_pbl.csys_set.Constraint_system.set in
-  Config.log Config.Debug (fun () -> Constraint_system.display_constraint_system 1 csys);
   let symb_proc = csys.Constraint_system.additional_data in
 
   match search_next_rule symb_proc.configuration with
