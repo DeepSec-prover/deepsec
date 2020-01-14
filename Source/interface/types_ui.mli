@@ -178,6 +178,7 @@ type batch_options =
 
 type batch_result =
   {
+    pid : int;
     name_batch : string;
     b_status : run_batch_status;
     b_start_time : int option;
