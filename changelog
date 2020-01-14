@@ -1,15 +1,22 @@
 This file summarizes the most important changes between versions
 of DeepSec.
 
+Version 2.0.0 alpha rc2
+
+  - Improved parsing of recipe in deepsec_api.
+  - Allow deepsec_api to keep running even if its stdin and stdout are
+    destroyed.
+
+
 Version 2.0.0 alpha rc (14/01/2020)
 
-  DeepSec 2.0.0 is a major rework of DeepSec. It is still a command-line tool 
-  but it can also be used with the new user interface DeepSec UI. See 
+  DeepSec 2.0.0 is a major rework of DeepSec. It is still a command-line tool
+  but it can also be used with the new user interface DeepSec UI. See
   https://github.com/DeepSec-prover/deepsec_ui to download and install DeepSec UI 1.0.x.
   Amongst the new features of both DeepSec and DeepSec UI:
 
   - Improved efficiency when verifying queries.
-  - Support for "Eavesdrop", "Classic" and "Private" semantics (POST'17) for verifying 
+  - Support for "Eavesdrop", "Classic" and "Private" semantics (POST'17) for verifying
   trace equivalence.
   - Integration and improvements of session equivalence (CCS'19).
   - Recording of the result of your runs that can be displayed in DeepSec UI.
