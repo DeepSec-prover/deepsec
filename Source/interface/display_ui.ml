@@ -210,7 +210,7 @@ let of_option (obj_list:(string*json) list) (f_op:'a -> json) label = function
 
 let of_int i = JInt i
 
-let of_string str = JString str
+let of_string str = JString (String.escaped str)
 
 (* Basic types *)
 
