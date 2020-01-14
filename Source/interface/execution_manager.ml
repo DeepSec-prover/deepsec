@@ -248,6 +248,7 @@ let computation_status = ref
     remaining_runs = [];
     batch =
       {
+        pid = Unix.getpid ();
         name_batch = "";
         b_status = RBIn_progress;
         deepsec_version = "";
@@ -293,11 +294,11 @@ let catch_init_internal_error f =
     f ()
   with
     | Config.Internal_error err ->
-        Config.log Config.Distribution (fun () -> "[execution_manager.ml >> catch_init_internal_error] Send internal error\n");
+        Config.log Config.Distribution (fun () -> Printf.sprintf "[execution_manager.ml >> catch_init_internal_error] Send internal error: %s\n" err);
         Display_ui.send_output_command (Init_internal_error (err,true));
         send_exit ()
     | ex ->
-        Config.log Config.Distribution (fun () -> "[execution_manager.ml >> catch_init_internal_error] Send other error\n");
+        Config.log Config.Distribution (fun () -> Printf.sprintf "[execution_manager.ml >> catch_init_internal_error] Send other error: %s\n" (Printexc.to_string ex));
         Display_ui.send_output_command (Init_internal_error ((Printexc.to_string ex),true));
         send_exit ()
 
@@ -573,6 +574,7 @@ let start_batch input_files batch_options =
 
       let batch_result =
         {
+          pid = Unix.getpid ();
           name_batch = batch_dir^".json";
           deepsec_version = Config.version;
           git_hash = Config.git_commit;
@@ -729,78 +731,83 @@ let execute_query query_result =
 let listen_to_command_api in_ch out_ch translation_result =
   let fd_in_ch = Unix.descr_of_in_channel in_ch in
   let do_listen = ref true in
+  let channels_to_listen = ref [Unix.stdin;fd_in_ch] in
 
   while !do_listen do
     Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Waiting for Unix.select\n");
-    let (available_fd_in_ch,_,_) = Unix.select [Unix.stdin;fd_in_ch] [] [] (-1.) in
-
     try
-      List.iter (fun fd ->
-        if fd = Unix.stdin
-        then
-          (* Can receive JSON command to cancel executions. *)
-          let _ = Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Reading command on stdin\n") in
-          let str = input_line stdin in
-          let _ = Config.log Config.Distribution (fun () -> Printf.sprintf "[execution_manager.ml >> listen_to_command] Received following command : %s\n" str) in
-          match Parsing_functions_ui.input_command_of (Parsing_functions_ui.parse_json_from_string str) with
-            | Cancel_run file -> cancel_run file
-            | Cancel_query file -> cancel_query file
-            | Cancel_batch -> cancel_batch ()
-            | _ -> Config.internal_error "[execution_manager.ml >> listen_to_command] Unexpected command"
-        else
-          (* Message from the local manager *)
-          let _ = Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Reading command from local manager\n") in
-          match Distribution.WLM.get_output_command in_ch with
-            | Distribution.WLM.Completed(verif_result,memory) ->
-                Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Received Completed command\n");
-                (* The query was completed *)
-                let end_time = int_of_float (Unix.time ()) in
-                let cur_query = remove_current_query () in
-                let cur_query_0 = { cur_query with progression = PNot_defined; memory = memory } in
-                let cur_query_1 = Interface.query_result_of_equivalence_result cur_query_0 (translation_result verif_result) end_time in
-                write_query cur_query_1;
-                let running_time = match cur_query_1.q_end_time, cur_query_1.q_start_time with
-                  | Some e, Some s -> e - s
-                  | _ -> Config.internal_error "[execution_manager.ml >> execute_query] The query result should have a start and end time."
-                in
-                Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Send Query_ended command\n");
-                Display_ui.send_output_command (Query_ended(cur_query_1.name_query,cur_query_1.q_status,cur_query_1.q_index,running_time,memory,cur_query_1.query_type));
-                do_listen := false
-            | Distribution.WLM.Error_msg (err_msg,progress) ->
-                Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Received error message\n");
-                apply_internal_error_in_query err_msg progress
-            | Distribution.WLM.Progress(progress,to_write) ->
-                Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Received progression\n");
-                apply_progress progress to_write;
-                Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Send Acknowledgement command\n");
-                Distribution.WLM.send_input_command out_ch Distribution.WLM.Acknowledge
-            | Distribution.WLM.Computed_settings distrib_settings ->
-                Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Received computed settings\n");
-                let cur_batch = !computation_status.batch in
-                let cur_run = match !computation_status.cur_run with
-                  | None -> Config.internal_error "[execution_manager.ml >> listen_to_command] There should be a current run"
-                  | Some run ->
-                      let cur_query = match run.cur_query with
-                        | None -> Config.internal_error "[execution_manager.ml >> listen_to_command] There should be a current query"
-                        | Some (query,in_ch,out_ch) ->
-                            let progression = match distrib_settings with
-                              | None -> PSingleCore (PGeneration(0,!Config.core_factor))
-                              | Some set -> PDistributed(1,PGeneration(0,set.Distribution.WLM.comp_nb_jobs))
-                            in
-                            let query1 = { query with progression = progression} in
-                            write_query query1;
-                            Some (query1,in_ch,out_ch)
-                      in
-                      Some { run with cur_query = cur_query }
-                in
-                let cur_batch_1 = { cur_batch with command_options_cmp = command_options_of_distrib_settings distrib_settings cur_batch.command_options_cmp } in
-                write_batch cur_batch_1;
-                computation_status := { !computation_status with batch = cur_batch_1; cur_run = cur_run};
-                Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Send Acknowledgement command\n");
-                Distribution.WLM.send_input_command out_ch Distribution.WLM.Acknowledge
+      let (available_fd_in_ch,_,_) = Unix.select !channels_to_listen [] [] (-1.) in
 
-      ) available_fd_in_ch
-    with Current_canceled -> do_listen := false
+      try
+        List.iter (fun fd ->
+          if fd = Unix.stdin
+          then
+            (* Can receive JSON command to cancel executions. *)
+            let _ = Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Reading command on stdin\n") in
+            let str = input_line stdin in
+            let _ = Config.log Config.Distribution (fun () -> Printf.sprintf "[execution_manager.ml >> listen_to_command] Received following command : %s\n" str) in
+            match Parsing_functions_ui.input_command_of (Parsing_functions_ui.parse_json_from_string str) with
+              | Cancel_run file -> cancel_run file
+              | Cancel_query file -> cancel_query file
+              | Cancel_batch -> cancel_batch ()
+              | _ -> Config.internal_error "[execution_manager.ml >> listen_to_command] Unexpected command"
+          else
+            (* Message from the local manager *)
+            let _ = Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Reading command from local manager\n") in
+            match Distribution.WLM.get_output_command in_ch with
+              | Distribution.WLM.Completed(verif_result,memory) ->
+                  Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Received Completed command\n");
+                  (* The query was completed *)
+                  let end_time = int_of_float (Unix.time ()) in
+                  let cur_query = remove_current_query () in
+                  let cur_query_0 = { cur_query with progression = PNot_defined; memory = memory } in
+                  let cur_query_1 = Interface.query_result_of_equivalence_result cur_query_0 (translation_result verif_result) end_time in
+                  write_query cur_query_1;
+                  let running_time = match cur_query_1.q_end_time, cur_query_1.q_start_time with
+                    | Some e, Some s -> e - s
+                    | _ -> Config.internal_error "[execution_manager.ml >> execute_query] The query result should have a start and end time."
+                  in
+                  Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Send Query_ended command\n");
+                  Display_ui.send_output_command (Query_ended(cur_query_1.name_query,cur_query_1.q_status,cur_query_1.q_index,running_time,memory,cur_query_1.query_type));
+                  do_listen := false
+              | Distribution.WLM.Error_msg (err_msg,progress) ->
+                  Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Received error message\n");
+                  apply_internal_error_in_query err_msg progress
+              | Distribution.WLM.Progress(progress,to_write) ->
+                  Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Received progression\n");
+                  apply_progress progress to_write;
+                  Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Send Acknowledgement command\n");
+                  Distribution.WLM.send_input_command out_ch Distribution.WLM.Acknowledge
+              | Distribution.WLM.Computed_settings distrib_settings ->
+                  Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Received computed settings\n");
+                  let cur_batch = !computation_status.batch in
+                  let cur_run = match !computation_status.cur_run with
+                    | None -> Config.internal_error "[execution_manager.ml >> listen_to_command] There should be a current run"
+                    | Some run ->
+                        let cur_query = match run.cur_query with
+                          | None -> Config.internal_error "[execution_manager.ml >> listen_to_command] There should be a current query"
+                          | Some (query,in_ch,out_ch) ->
+                              let progression = match distrib_settings with
+                                | None -> PSingleCore (PGeneration(0,!Config.core_factor))
+                                | Some set -> PDistributed(1,PGeneration(0,set.Distribution.WLM.comp_nb_jobs))
+                              in
+                              let query1 = { query with progression = progression} in
+                              write_query query1;
+                              Some (query1,in_ch,out_ch)
+                        in
+                        Some { run with cur_query = cur_query }
+                  in
+                  let cur_batch_1 = { cur_batch with command_options_cmp = command_options_of_distrib_settings distrib_settings cur_batch.command_options_cmp } in
+                  write_batch cur_batch_1;
+                  computation_status := { !computation_status with batch = cur_batch_1; cur_run = cur_run};
+                  Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] Send Acknowledgement command\n");
+                  Distribution.WLM.send_input_command out_ch Distribution.WLM.Acknowledge
+
+        ) available_fd_in_ch
+      with Current_canceled -> do_listen := false
+    with End_of_file ->
+      Config.log Config.Distribution (fun () -> "[execution_manager.ml >> listen_to_command] End of file caught\n");
+      channels_to_listen := [fd_in_ch]
   done
 
 let listen_to_command_generic in_ch out_ch translation_result =

@@ -648,6 +648,7 @@ let of_batch_result batch_res =
     ) batch_res.command_options_cmp;
 
   let jlist1 = [
+    "pid", JInt batch_res.pid;
     "ocaml_version", JString batch_res.ocaml_version;
     "deepsec_version", JString batch_res.deepsec_version;
     "git_branch", JString batch_res.git_branch;
@@ -956,9 +957,19 @@ let print_output_command = function
 
 (* Sending command *)
 
+let keep_sending = ref true
+
 let send_command json_str =
-  output_string stdout (json_str^"\n");
-  flush stdout
+  try
+    if !keep_sending
+    then
+      begin
+        output_string stdout (json_str^"\n");
+        flush stdout
+      end
+  with End_of_file ->
+    Config.log Config.Distribution (fun () -> "[display_ui.ml >> send_command] End of file caught\n");
+    keep_sending := false
 
 let send_output_command out_cmd =
   if !Config.running_api
