@@ -155,6 +155,24 @@ module List = struct
   end
 end
 
+module Array = struct
+  include Array
+
+  (* Similar to Array.map but returns physically the same array
+     if f x == x for all x in the array *)
+  let map_q f ar =
+    let was_changed = ref false in
+    let f' i =
+      let i' = f i in
+      if i != i'
+      then was_changed := true;
+      i'
+    in
+    let ar' = map f' ar in
+    if !was_changed
+    then ar'
+    else ar
+end
 
 (* reimplementation and extension of the module Map *)
 module Map = struct

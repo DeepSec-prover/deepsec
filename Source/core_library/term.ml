@@ -807,10 +807,26 @@ module Term = struct
 
   (********** Instantiation ***********)
 
-  let rec instantiate = function
+  let rec instantiate term = match term with
     | Var { link = TLink t; _} -> instantiate t
-    | Func(f,args) -> Func(f,List.map instantiate args)
+    | Func(f,args) ->
+        let args' = instantiate_list args in
+        if args' == args
+        then term
+        else Func(f,args')
     | t -> t
+
+  and instantiate_list term_list = match term_list with
+    | [] -> term_list
+    | t::q ->
+        let t' = instantiate t in
+        if t == t'
+        then
+          let q' = instantiate_list q in
+          if q == q'
+          then term_list
+          else t'::q'
+        else t'::(instantiate_list q)
 
   let rec instantiate_pattern = function
     | PatEquality t -> PatEquality (instantiate t)

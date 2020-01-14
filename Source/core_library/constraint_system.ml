@@ -55,7 +55,6 @@ type 'a t =
     (* Original variables and names *)
 
     original_substitution : (variable * term) list;
-    original_names : (variable * name) list;
 
     (* Data for rules *)
     rule_data : rule_data
@@ -64,6 +63,7 @@ type 'a t =
 type 'a set =
   {
     eq_recipe : Formula.R.t;
+    knowledge_recipe : KR.t;
     set : 'a t list
   }
 
@@ -101,7 +101,6 @@ let empty data =
     eq_term = Formula.T.Top;
     eq_uniformity = Formula.T.Top;
     original_substitution = [];
-    original_names = [];
 
     rule_data =
       {
@@ -147,158 +146,76 @@ let add_non_deducible_terms csys l =
    Skeletons are updated accordingly.
    Finally, the knowledge base being mutable, we also do a copy of it. *)
 
-(** For now we do not instantiate the recipe. Need to check if it's working with
-    distributed computation. *)
-
-let prepare_for_solving_procedure_with_additional_data after_output additional_rename csys =
+let prepare_for_solving_procedure after_output set_kbr csys =
   Variable.auto_cleanup_with_reset_notail (fun () ->
-    Name.auto_cleanup_with_reset_notail (fun () ->
-      let (kb,ikb,id_assoc,cleanup_deducible_name) = IK.transfer_incremented_knowledge_into_knowledge after_output csys.knowledge csys.incremented_knowledge in
-      let df = DF.rename_and_instantiate csys.deduction_facts in
-      let non_deducible_terms = List.rev_map Term.rename_and_instantiate csys.non_deducible_terms in
-      let uf = UF.rename_and_instantiate csys.unsolved_facts in
-      let eq_term = Formula.T.rename_and_instantiate csys.eq_term in
-      let eq_uni = Formula.T.rename_and_instantiate csys.eq_uniformity in
-      let orig_subst = List.rev_map (fun (v,t) -> (v,Term.rename_and_instantiate t)) csys.original_substitution in
-      let orig_names = List.rev_map (fun (v,n) -> (v,Name.rename_and_instantiate n)) csys.original_names in
+    let (kbr,kb,ikb,id_assoc) = IK.transfer_incremented_knowledge_into_knowledge after_output set_kbr csys.knowledge csys.incremented_knowledge in
+    let df = DF.rename_and_instantiate csys.deduction_facts in
+    let non_deducible_terms = List.rev_map Term.rename_and_instantiate csys.non_deducible_terms in
+    let uf = UF.rename_and_instantiate csys.unsolved_facts in
+    let eq_term = Formula.T.rename_and_instantiate csys.eq_term in
+    let eq_uni = Formula.T.rename_and_instantiate csys.eq_uniformity in
+    let orig_subst = List.rev_map (fun (v,t) -> (v,Term.rename_and_instantiate t)) csys.original_substitution in
 
-      let history_skeleton =
-        List.map (fun hist ->
-          { hist with
-              fst_vars = List.map Variable.rename hist.fst_vars;
-              diseq = Formula.M.rename_and_instantiate hist.diseq
-          }
-        ) csys.rule_data.history_skeleton
-      in
-
-      let skeletons_checked_K = match csys.rule_data.skeletons_K, csys.rule_data.skeletons_IK with
-        | (checked_K,[]), (checked_IK,[]) ->
-            List.fold_left (fun acc (index_ikb,index_skel) ->
-              Config.debug (fun () ->
-                if List.assoc_opt index_ikb id_assoc = None
-                then Config.internal_error "[constraint_system.ml >> prepare_for_solving_procedure] Index not found."
-              );
-              (List.assoc index_ikb id_assoc,index_skel)::acc
-            ) checked_K checked_IK
-        | _ -> Config.internal_error "[constraint_system.ml >> prepare_for_solving_procedure] All skeletons should have been checked."
-      in
-
-      let equality_constructor_checked_K = match csys.rule_data.equality_constructor_K, csys.rule_data.equality_constructor_IK with
-        | (checked_K,[]), (checked_IK,[]) ->
-            List.fold_left (fun acc index_ikb ->
-              Config.debug (fun () ->
-                if List.assoc_opt index_ikb id_assoc = None
-                then Config.internal_error "[constraint_system.ml >> prepare_for_solving_procedure] Index not found (2)."
-              );
-              (List.assoc index_ikb id_assoc)::acc
-            ) checked_K checked_IK
-        | _ -> Config.internal_error "[constraint_system.ml >> prepare_for_solving_procedure] All constructor skeletons should have been checked."
-      in
-
-      let rule_data =
-        {
-          history_skeleton = history_skeleton;
-          skeletons_K = (skeletons_checked_K,[]);
-          skeletons_IK = ([],[]);
-          equality_constructor_K = (equality_constructor_checked_K,[]);
-          equality_constructor_IK = ([],[]);
-          normalisation_deduction_checked = csys.rule_data.normalisation_deduction_checked
+    let history_skeleton =
+      List.map (fun hist ->
+        { hist with
+            fst_vars = List.map Variable.rename hist.fst_vars;
+            diseq = Formula.M.rename_and_instantiate hist.diseq
         }
-      in
+      ) csys.rule_data.history_skeleton
+    in
 
-      let csys' =
-        { csys with
-          additional_data = additional_rename csys.additional_data;
-          deduction_facts = df;
-          non_deducible_terms = non_deducible_terms;
-          knowledge = kb;
-          incremented_knowledge = ikb;
-          unsolved_facts = uf;
-          eq_term = eq_term;
-          eq_uniformity = eq_uni;
-          original_substitution = orig_subst;
-          original_names = orig_names;
-          rule_data = rule_data
-        }
-      in
-      cleanup_deducible_name ();
-      csys'
-    )
-  )
+    let skeletons_checked_K = match csys.rule_data.skeletons_K, csys.rule_data.skeletons_IK with
+      | (checked_K,[]), (checked_IK,[]) ->
+          List.fold_left (fun acc (index_ikb,index_skel) ->
+            Config.debug (fun () ->
+              if List.assoc_opt index_ikb id_assoc = None
+              then Config.internal_error "[constraint_system.ml >> prepare_for_solving_procedure] Index not found."
+            );
+            (List.assoc index_ikb id_assoc,index_skel)::acc
+          ) checked_K checked_IK
+      | _ -> Config.internal_error "[constraint_system.ml >> prepare_for_solving_procedure] All skeletons should have been checked."
+    in
 
-let prepare_for_solving_procedure after_output csys =
-  Variable.auto_cleanup_with_reset_notail (fun () ->
-    Name.auto_cleanup_with_reset_notail (fun () ->
-      let (kb,ikb,id_assoc,cleanup_deducible_name) = IK.transfer_incremented_knowledge_into_knowledge after_output csys.knowledge csys.incremented_knowledge in
-      let df = DF.rename_and_instantiate csys.deduction_facts in
-      let non_deducible_terms = List.rev_map Term.rename_and_instantiate csys.non_deducible_terms in
-      let uf = UF.rename_and_instantiate csys.unsolved_facts in
-      let eq_term = Formula.T.rename_and_instantiate csys.eq_term in
-      let eq_uni = Formula.T.rename_and_instantiate csys.eq_uniformity in
-      let orig_subst = List.rev_map (fun (v,t) -> (v,Term.rename_and_instantiate t)) csys.original_substitution in
-      let orig_names = List.rev_map (fun (v,n) -> (v,Name.rename_and_instantiate n)) csys.original_names in
+    let equality_constructor_checked_K = match csys.rule_data.equality_constructor_K, csys.rule_data.equality_constructor_IK with
+      | (checked_K,[]), (checked_IK,[]) ->
+          List.fold_left (fun acc index_ikb ->
+            Config.debug (fun () ->
+              if List.assoc_opt index_ikb id_assoc = None
+              then Config.internal_error "[constraint_system.ml >> prepare_for_solving_procedure] Index not found (2)."
+            );
+            (List.assoc index_ikb id_assoc)::acc
+          ) checked_K checked_IK
+      | _ -> Config.internal_error "[constraint_system.ml >> prepare_for_solving_procedure] All constructor skeletons should have been checked."
+    in
 
-      let history_skeleton =
-        List.map (fun hist ->
-          { hist with
-              fst_vars = List.map Variable.rename hist.fst_vars;
-              diseq = Formula.M.rename_and_instantiate hist.diseq
-          }
-        ) csys.rule_data.history_skeleton
-      in
+    let rule_data =
+      {
+        history_skeleton = history_skeleton;
+        skeletons_K = (skeletons_checked_K,[]);
+        skeletons_IK = ([],[]);
+        equality_constructor_K = (equality_constructor_checked_K,[]);
+        equality_constructor_IK = ([],[]);
+        normalisation_deduction_checked = csys.rule_data.normalisation_deduction_checked
+      }
+    in
 
-      let skeletons_checked_K = match csys.rule_data.skeletons_K, csys.rule_data.skeletons_IK with
-        | (checked_K,[]), (checked_IK,[]) ->
-            List.fold_left (fun acc (index_ikb,index_skel) ->
-              Config.debug (fun () ->
-                if List.assoc_opt index_ikb id_assoc = None
-                then Config.internal_error "[constraint_system.ml >> prepare_for_solving_procedure] Index not found."
-              );
-              (List.assoc index_ikb id_assoc,index_skel)::acc
-            ) checked_K checked_IK
-        | _ -> Config.internal_error "[constraint_system.ml >> prepare_for_solving_procedure] All skeletons should have been checked."
-      in
-
-      let equality_constructor_checked_K = match csys.rule_data.equality_constructor_K, csys.rule_data.equality_constructor_IK with
-        | (checked_K,[]), (checked_IK,[]) ->
-            List.fold_left (fun acc index_ikb ->
-              Config.debug (fun () ->
-                if List.assoc_opt index_ikb id_assoc = None
-                then Config.internal_error "[constraint_system.ml >> prepare_for_solving_procedure] Index not found (2)."
-              );
-              (List.assoc index_ikb id_assoc)::acc
-            ) checked_K checked_IK
-        | _ -> Config.internal_error "[constraint_system.ml >> prepare_for_solving_procedure] All constructor skeletons should have been checked."
-      in
-
-      let rule_data =
-        {
-          history_skeleton = history_skeleton;
-          skeletons_K = (skeletons_checked_K,[]);
-          skeletons_IK = ([],[]);
-          equality_constructor_K = (equality_constructor_checked_K,[]);
-          equality_constructor_IK = ([],[]);
-          normalisation_deduction_checked = csys.rule_data.normalisation_deduction_checked
-        }
-      in
-
-      let csys' =
-        { csys with
-          deduction_facts = df;
-          non_deducible_terms = non_deducible_terms;
-          knowledge = kb;
-          incremented_knowledge = ikb;
-          unsolved_facts = uf;
-          eq_term = eq_term;
-          eq_uniformity = eq_uni;
-          original_substitution = orig_subst;
-          original_names = orig_names;
-          rule_data = rule_data
-        }
-      in
-      cleanup_deducible_name ();
-      csys'
-    )
+    let csys' =
+      { csys with
+        deduction_facts = df;
+        non_deducible_terms = non_deducible_terms;
+        knowledge = kb;
+        incremented_knowledge = ikb;
+        unsolved_facts = uf;
+        eq_term = eq_term;
+        eq_uniformity = eq_uni;
+        original_substitution = orig_subst;
+        original_names = orig_names;
+        rule_data = rule_data
+      }
+    in
+    cleanup_deducible_name ();
+    csys'
   )
 
 let prepare_for_solving_procedure_ground csys =
