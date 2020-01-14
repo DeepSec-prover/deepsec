@@ -957,7 +957,7 @@ let print_output_command = function
 
 (* Sending command *)
 
-let keep_sending = ref false
+let keep_sending = ref true
 
 let send_command json_str =
   try
