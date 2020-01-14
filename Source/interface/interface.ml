@@ -484,7 +484,7 @@ let apply_comm ch_ref t_ref pos_out pos_in conf =
     | Some ch, Some t -> apply_input ch t pos_in conf1
     | _ -> Config.internal_error "[interface.ml >> apply_comm] Applying the output transition should have instantiated the two references."
 
-let apply_transition semantics saturate assoc csys transition = match transition with
+let apply_transition semantics saturate assoc kbr csys transition = match transition with
   | JAOutput(r_ch,pos_out) ->
       let conf = csys.Constraint_system.additional_data in
       let ch = apply_recipe_on_conf r_ch conf in
@@ -498,14 +498,16 @@ let apply_transition semantics saturate assoc csys transition = match transition
       let csys_2 = { csys_1 with Constraint_system.additional_data = conf''} in
 
       if saturate
-      then Constraint_system.Rule_ground.solve csys_2, assoc
-      else csys_2, assoc
+      then
+        let (kbr_1,csys_3) = Constraint_system.Rule_ground.solve kbr csys_2 in
+        kbr_1,csys_3, assoc
+      else kbr,csys_2, assoc
   | JAInput(r_ch,r_t,pos_in) ->
       let conf = csys.Constraint_system.additional_data in
       let ch = apply_recipe_on_conf r_ch conf in
       let t = apply_recipe_on_conf r_t conf in
       let conf' = apply_input ch t pos_in conf in
-      { csys with Constraint_system.additional_data = conf' }, assoc
+      kbr, { csys with Constraint_system.additional_data = conf' }, assoc
   | JAEaves(r_ch,pos_out,pos_in) ->
       let conf = csys.Constraint_system.additional_data in
       let ch = apply_recipe_on_conf r_ch conf in
@@ -519,8 +521,10 @@ let apply_transition semantics saturate assoc csys transition = match transition
       let csys_2 = { csys_1 with Constraint_system.additional_data = conf''} in
 
       if saturate
-      then Constraint_system.Rule_ground.solve csys_2, assoc
-      else csys_2, assoc
+      then
+        let (kbr_1,csys_3) = Constraint_system.Rule_ground.solve kbr csys_2 in
+        kbr_1, csys_3, assoc
+      else kbr, csys_2, assoc
   | JAComm(pos_out,pos_in) ->
       let conf = csys.Constraint_system.additional_data in
       let ch_ref = ref None in
@@ -528,43 +532,36 @@ let apply_transition semantics saturate assoc csys transition = match transition
       let conf' = apply_comm ch_ref t_ref pos_out pos_in conf in
       let ch = get_term_from_transition ch_ref in
 
-      if semantics <> Classic && Constraint_system.Rule_ground.is_term_deducible csys ch
+      if semantics <> Classic && Constraint_system.Rule_ground.is_term_deducible kbr csys ch
       then raise (Invalid_transition (Channel_deducible ch));
 
-      { csys with Constraint_system.additional_data = conf' }, assoc
+      kbr, { csys with Constraint_system.additional_data = conf' }, assoc
   | JATau pos ->
       let conf = csys.Constraint_system.additional_data in
       let conf' = apply_tau_transition pos conf in
-      { csys with Constraint_system.additional_data = conf' }, assoc
+      kbr, { csys with Constraint_system.additional_data = conf' }, assoc
   | JABang(n,pos) ->
       let conf = csys.Constraint_system.additional_data in
       let (conf',assoc') = apply_bang_transition assoc pos n conf in
-      { csys with Constraint_system.additional_data = conf' }, assoc'
+      kbr, { csys with Constraint_system.additional_data = conf' }, assoc'
   | JAChoice(pos,side) ->
       let conf = csys.Constraint_system.additional_data in
       let conf' = apply_choice pos side conf in
-      { csys with Constraint_system.additional_data = conf' }, assoc
+      kbr, { csys with Constraint_system.additional_data = conf' }, assoc
 
 let execute_process semantics init_assoc js_init_proc js_trace =
-
+  let init_kbr = Data_structure.KR.empty in
   let init_conf = { size_frame = 0; frame = []; process = js_init_proc } in
-  let init_csys = Constraint_system.prepare_for_solving_procedure_ground (Constraint_system.empty init_conf) in
+  let (init_csys,kbr,_,_) = Constraint_system.prepare_for_solving_procedure_first_ground init_kbr (Constraint_system.empty init_conf) in
 
-  let rec explore_trace csys assoc = function
+  let rec explore_trace kbr csys assoc = function
     | [] -> []
     | trans::q ->
-        let (csys',assoc') = apply_transition semantics true assoc csys trans in
-        Config.debug (fun () ->
-          Data_structure.K.iter_term (function
-            | Name { deducible_n = None; _ } -> ()
-            | Name _ -> Config.internal_error "[interface.ml >> execute_process] All names should have been unlinked."
-            | _ -> ()
-          ) csys'.Constraint_system.knowledge
-        );
-        (csys',assoc')::(explore_trace csys' assoc' q)
+        let (kbr',csys',assoc') = apply_transition semantics true assoc kbr csys trans in
+        (csys',assoc')::(explore_trace kbr' csys' assoc' q)
   in
 
-  (init_csys,init_assoc) :: (explore_trace init_csys init_assoc js_trace)
+  (init_csys,init_assoc) :: (explore_trace kbr init_csys init_assoc js_trace)
 
 (*** Find next possible transition ***)
 
@@ -577,6 +574,8 @@ let execute_process semantics init_assoc js_init_proc js_trace =
 type simulated_state =
   {
     attacked_id_transition : int;
+
+    knowledge_recipe : Data_structure.KR.t;
 
     attacked_csys : configuration Constraint_system.t; (* The configuration is a dummy one. *)
     simulated_csys : configuration Constraint_system.t;
@@ -596,7 +595,7 @@ type forced_transition =
 
 (* We assume that the constraint systen [conf_csys] is saturated. Hence no need to apply
    additional rules to determinate deducible terms. *)
-let find_next_possible_transition locked semantics forced_transition conf_csys =
+let find_next_possible_transition locked semantics forced_transition kbr conf_csys =
   let actions = ref [] in
   let actions_all = ref [] in
 
@@ -619,7 +618,7 @@ let find_next_possible_transition locked semantics forced_transition conf_csys =
               (fun is_output ch' ->
                 if is_output && Term.is_equal ch ch'
                 then [AVDirect (r_ch,None,locked)]
-                else if Constraint_system.Rule_ground.is_term_deducible conf_csys ch' then [] else [AVComm]
+                else if Constraint_system.Rule_ground.is_term_deducible kbr conf_csys ch' then [] else [AVComm]
               )
         end
     | Transition (JAInput(r_ch,r_t,_)) ->
@@ -630,7 +629,7 @@ let find_next_possible_transition locked semantics forced_transition conf_csys =
               (fun is_output ch' ->
                 if not is_output && Term.is_equal ch ch'
                 then [AVDirect(r_ch,Some r_t,locked)]
-                else if Constraint_system.Rule_ground.is_term_deducible conf_csys ch' then [] else [AVComm]
+                else if Constraint_system.Rule_ground.is_term_deducible kbr conf_csys ch' then [] else [AVComm]
               )
         end
     | Transition (JAEaves(r,_,_)) ->
@@ -641,23 +640,23 @@ let find_next_possible_transition locked semantics forced_transition conf_csys =
               (fun _ ch' ->
                 if Term.is_equal ch ch'
                 then [AVEavesdrop r]
-                else if Constraint_system.Rule_ground.is_term_deducible conf_csys ch' then [] else [AVComm]
+                else if Constraint_system.Rule_ground.is_term_deducible kbr conf_csys ch' then [] else [AVComm]
               )
         end
     | Transition _ -> Config.internal_error "[interface.ml >> find_next_possible_transition] Only input / output / eavesdrop transition can be matched."
     | All_transitions ->
         begin match semantics with
           | Classic ->
-              (fun _ ch' -> match Constraint_system.Rule_ground.recipe_of_deducible_term conf_csys ch' with
+              (fun _ ch' -> match Constraint_system.Rule_ground.recipe_of_deducible_term kbr conf_csys ch' with
                 | None -> [AVComm]
                 | Some r -> [AVDirect(r,None,locked);AVComm])
           | Private ->
-              (fun _ ch' -> match Constraint_system.Rule_ground.recipe_of_deducible_term conf_csys ch' with
+              (fun _ ch' -> match Constraint_system.Rule_ground.recipe_of_deducible_term kbr conf_csys ch' with
                 | None -> [AVComm]
                 | Some r -> [AVDirect(r,None,locked)]
               )
           | Eavesdrop ->
-              (fun _ ch' -> match Constraint_system.Rule_ground.recipe_of_deducible_term conf_csys ch' with
+              (fun _ ch' -> match Constraint_system.Rule_ground.recipe_of_deducible_term kbr conf_csys ch' with
                 | None -> [AVComm]
                 | Some r -> [AVDirect(r,None,locked);AVEavesdrop r]
               )
@@ -666,7 +665,7 @@ let find_next_possible_transition locked semantics forced_transition conf_csys =
         begin match semantics with
           | Classic -> (fun _ _ -> [AVComm])
           | Private | Eavesdrop ->
-              (fun _ ch' -> match Constraint_system.Rule_ground.recipe_of_deducible_term conf_csys ch' with
+              (fun _ ch' -> match Constraint_system.Rule_ground.recipe_of_deducible_term kbr conf_csys ch' with
                 | None -> [AVComm]
                 | Some _ -> []
               )
@@ -867,6 +866,7 @@ let find_prev_transitions attacked_trace attacked_id_transition trans_list trans
   List.fold_right (fun pos acc -> (JATau pos) :: acc) pos_list [transition], transition
 
 let initial_attack_simulator_state semantics attacked_trace assoc_simulated process_simulated =
+  let init_kbr = Data_structure.KR.empty in
   let init_conf_simulated = { size_frame = 0; frame = []; process = process_simulated } in
   let init_conf_attacked = { size_frame = 0; frame = []; process = JNil } in
 
@@ -879,12 +879,13 @@ let initial_attack_simulator_state semantics attacked_trace assoc_simulated proc
     explore attacked_trace
   in
 
-  let attacked_csys = Constraint_system.prepare_for_solving_procedure_ground (Constraint_system.empty init_conf_attacked) in
-  let simulated_csys = Constraint_system.prepare_for_solving_procedure_ground (Constraint_system.empty init_conf_simulated) in
+  let (attacked_csys,kbr,ikb,assoc_id) = Constraint_system.prepare_for_solving_procedure_first_ground init_kbr (Constraint_system.empty init_conf_attacked) in
+  let simulated_csys = Constraint_system.prepare_for_solving_procedure_others_ground kbr ikb assoc_id (Constraint_system.empty init_conf_simulated) in
 
-  let (default_trans,all_trans) = find_next_possible_transition true semantics forced_transition simulated_csys in
+  let (default_trans,all_trans) = find_next_possible_transition true semantics forced_transition kbr simulated_csys in
 
   {
+    knowledge_recipe = kbr;
     attacked_id_transition = -1;
     attacked_csys = attacked_csys;
     simulated_csys = simulated_csys;

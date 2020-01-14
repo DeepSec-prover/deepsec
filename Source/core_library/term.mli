@@ -154,6 +154,8 @@ module Variable : sig
 
   val currently_linked : variable list ref
 
+  val link_search : variable -> unit
+
   val link : variable -> variable -> unit
 
   val link_term : variable -> term -> unit
@@ -353,6 +355,10 @@ module Term : sig
   val apply_renamings : term -> term
 
   val rename_and_instantiate : term -> term
+
+  val rename_and_instantiate_exclude_universal : term -> term
+
+  val rename_and_instantiate_exclude_universal_slink : term -> term
 
   exception No_match
 

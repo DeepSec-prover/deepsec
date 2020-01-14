@@ -95,6 +95,15 @@ module Variable = struct
     v.link <- TLink t;
     currently_linked := v :: !currently_linked
 
+  let link_search v =
+    Config.debug (fun () ->
+      if v.link <> NoLink
+      then Config.internal_error "[term.ml >> Variable.link_search] The first variable should not be already linked."
+    );
+
+    v.link <- SLink;
+    currently_linked := v :: !currently_linked
+
   let auto_cleanup_with_reset (f_cont:(unit -> unit) -> unit) (f_next:unit -> unit) =
     let tmp = !currently_linked in
     currently_linked := [];
@@ -872,6 +881,81 @@ module Term = struct
           then term_list
           else t'::q'
         else t'::(rename_and_instantiate_list q)
+
+  let rec rename_and_instantiate_exclude_universal term = match term with
+    | Var ({ quantifier = Universal; _ } as v) ->
+        Config.debug (fun () ->
+          if v.link <> NoLink
+          then Config.internal_error "[term.ml >> rename_and_instantiate_exclude_universal] Should not rename a universal variable that contain link."
+        );
+        term
+    | Var v ->
+        begin match v.link with
+          | TLink t -> rename_and_instantiate_exclude_universal t
+          | VLink v' -> Var v'
+          | NoLink ->
+              let v' = Variable.fresh_with_label v.quantifier v.label in
+              Variable.link v v';
+              Var v'
+          | _ -> Config.internal_error "[term.ml >> Term.rename_and_instantiate_exclude_universal] Unexpected link of variable."
+        end
+    | Func(f,args) ->
+        let args' = rename_and_instantiate_exclude_universal_list args in
+        if args == args'
+        then term
+        else Func(f,args')
+
+    | Name _ -> term
+
+  and rename_and_instantiate_exclude_universal_list term_list = match term_list with
+    | [] -> term_list
+    | t::q ->
+        let t' = rename_and_instantiate_exclude_universal t in
+        if t == t'
+        then
+          let q' = rename_and_instantiate_exclude_universal_list q in
+          if q == q'
+          then term_list
+          else t'::q'
+        else t'::(rename_and_instantiate_exclude_universal_list q)
+
+  let rec rename_and_instantiate_exclude_universal_slink term = match term with
+    | Var ({ quantifier = Universal; _ } as v) ->
+        Config.debug (fun () ->
+          if v.link <> NoLink
+          then Config.internal_error "[term.ml >> rename_and_instantiate_exclude_universal_slink] Should not rename a universal variable that contain link."
+        );
+        term
+    | Var v ->
+        begin match v.link with
+          | SLink -> term
+          | TLink t -> rename_and_instantiate_exclude_universal_slink t
+          | VLink v' -> Var v'
+          | NoLink ->
+              let v' = Variable.fresh_with_label v.quantifier v.label in
+              Variable.link v v';
+              Var v'
+          | _ -> Config.internal_error "[term.ml >> Term.rename_and_instantiate_exclude_universal_slink] Unexpected link of variable."
+        end
+    | Func(f,args) ->
+        let args' = rename_and_instantiate_exclude_universal_slink_list args in
+        if args == args'
+        then term
+        else Func(f,args')
+
+    | Name _ -> term
+
+  and rename_and_instantiate_exclude_universal_slink_list term_list = match term_list with
+    | [] -> term_list
+    | t::q ->
+        let t' = rename_and_instantiate_exclude_universal_slink t in
+        if t == t'
+        then
+          let q' = rename_and_instantiate_exclude_universal_slink_list q in
+          if q == q'
+          then term_list
+          else t'::q'
+        else t'::(rename_and_instantiate_exclude_universal_slink_list q)
 
   (*********** Debug ************)
 

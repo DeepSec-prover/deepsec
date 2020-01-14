@@ -377,7 +377,11 @@ let trace_equivalence_determinate proc1 proc2 =
 
   (**** Generate the initial set ****)
 
-  let csys_set = { Constraint_system.eq_recipe = Formula.Formula.R.Top; Constraint_system.set = [csys_1; csys_2] } in
+  let csys_set =
+    { Constraint_system.eq_recipe = Formula.Formula.R.Top;
+      Constraint_system.set = [csys_1; csys_2];
+      Constraint_system.knowledge_recipe = Data_structure.KR.empty
+    } in
 
   let setting = Symbol.get_settings () in
   let v_counter = Variable.get_counter () in
@@ -481,7 +485,8 @@ let trace_equivalence_generic semantics proc1 proc2 =
     Generic_equivalence.initialise_equivalence_problem
       {
         Constraint_system.set = [csys1;csys2];
-        Constraint_system.eq_recipe = Formula.Formula.R.Top
+        Constraint_system.eq_recipe = Formula.Formula.R.Top;
+        Constraint_system.knowledge_recipe = Data_structure.KR.empty
       }
   in
 

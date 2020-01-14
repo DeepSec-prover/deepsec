@@ -460,19 +460,12 @@ module Labelled_process = struct
 
   type equations = (variable * term) list
 
-  type used_data =
-    {
-      variables : variable list;
-      names : variable list
-    }
-
   type t =
     | PStart of t
     | PNil
-    | POutput of Channel.t * term * t * Label.t option * position * bool * used_data * channel_set
-    | PInput of Channel.t * variable * t * Label.t option * position * used_data * channel_set
-    | PCondition of equations list * Formula.T.t * variable list (* fresh variables *) * t * t * used_data
-    | PNew of variable * name * t * used_data
+    | POutput of Channel.t * term * t * Label.t option * position * bool * variable list * channel_set
+    | PInput of Channel.t * variable * t * Label.t option * position * variable list * channel_set
+    | PCondition of equations list * Formula.T.t * variable list (* fresh variables *) * t * t * variable list
     | PPar of t list
     | PBangStrong of t list (* Broken *) * t list (* Standard *)
     | PBangPartial of t list
@@ -483,35 +476,18 @@ module Labelled_process = struct
     List.iter (fun v -> match v.link with
       | NoLink -> v.link <- SLink; Variable.currently_linked := v :: !Variable.currently_linked
       | _ -> ()
-    ) data.variables;
-    List.iter (fun n -> match n.link with
-      | NoLink -> n.link <- SLink; Variable.currently_linked := n :: !Variable.currently_linked
-      | _ -> ()
-    ) data.names
+    ) data
 
-  let rec link_names n = function
-    | [] -> Config.internal_error "[session_process.ml >> link_names] Unexpected case"
-    | (n',x)::_ when n == n' ->
-        begin match x.link with
-          | NoLink ->
-              x.link <- SLink;
-              Variable.currently_linked := x :: !Variable.currently_linked
-          | SLink -> ()
-          | _ -> Config.internal_error "[session_process.ml >> link_names] Unexpected link."
-        end
-    | _::q -> link_names n q
-
-  let rec link_used_data_term assoc = function
+  let rec link_used_data_term = function
     | Var ({ link = NoLink; _} as v) ->
         v.link <- SLink;
         Variable.currently_linked := v :: !Variable.currently_linked
-    | Name n -> link_names n assoc
-    | Func(_,args) -> List.iter (link_used_data_term assoc) args
+    | Func(_,args) -> List.iter link_used_data_term args
     | _ -> ()
 
-  let rec link_used_data_pattern assoc = function
-    | PatEquality t -> link_used_data_term assoc t
-    | PatTuple(_,args) -> List.iter (link_used_data_pattern assoc) args
+  let rec link_used_data_pattern = function
+    | PatEquality t -> link_used_data_term t
+    | PatTuple(_,args) -> List.iter link_used_data_pattern args
     | _ -> ()
 
   (* We assume that the variables are not linked. *)
@@ -520,8 +496,7 @@ module Labelled_process = struct
     | PNil -> ()
     | POutput(_,_,_,_,_,_,data,_)
     | PInput(_,_,_,_,_,data,_)
-    | PCondition(_,_,_,_,_,data)
-    | PNew(_,_,_,data) -> link_used_data data
+    | PCondition(_,_,_,_,_,data) -> link_used_data data
     | PPar p_list
     | PBangPartial p_list -> List.iter link_used_data_process p_list
     | PBangStrong(p_list1,p_list2) ->
@@ -532,48 +507,6 @@ module Labelled_process = struct
     Variable.auto_cleanup_with_reset_notail f
 
   let of_process proc =
-
-    let rec replace_name_by_variables assoc t = match t with
-      | Name n -> Var(List.assq n assoc)
-      | Func(f,args) -> Func(f,List.map (replace_name_by_variables assoc) args)
-      | _ ->
-          Config.debug (fun () ->
-            match t with
-              | Var v when v.link <> NoLink -> Config.internal_error "[generic_process.ml >> generic_process_of_process] Variables should not be linked."
-              | _ -> ()
-          );
-          t
-    in
-
-    let replace_name_by_variables_formula assoc = function
-      | Formula.T.Bot -> Formula.T.Bot
-      | Formula.T.Top -> Formula.T.Top
-      | Formula.T.Conj conj_l ->
-          Formula.T.Conj (
-            List.map (function
-              | Diseq.T.Bot | Diseq.T.Top -> Config.internal_error "[generic_process.ml >> generic_process_of_process] Unexpected case"
-              | Diseq.T.Disj disj_l ->
-                  Diseq.T.Disj (
-                    List.map (fun (v,t) ->
-                      Config.debug (fun () ->
-                        if v.link <> NoLink
-                        then Config.internal_error "[generics_process.ml >> generic_process_of_process] Variables should not be linked (2)."
-                      );
-                      (v,replace_name_by_variables assoc t)
-                    ) disj_l
-                  )
-            ) conj_l
-          )
-    in
-
-    let replace_name_by_variables_equations assoc =
-        List.map (fun (v,t) ->
-          Config.debug (fun () ->
-            if v.link <> NoLink
-            then Config.internal_error "[generic_process.ml >> generic_process_of_process] Variables should not be linked (3)."
-          );
-          (v,replace_name_by_variables assoc t)
-        ) in
 
     let replace_fresh_vars_by_universal fresh_vars disequations =
       Variable.auto_cleanup_with_reset_notail (fun () ->
@@ -587,19 +520,10 @@ module Labelled_process = struct
     in
 
     let filter_used_data prev_data =
-      let vars =
-        List.fold_left (fun acc v -> match v.link with
-          | SLink -> v::acc
-          | _ -> acc
-        ) [] prev_data.variables
-      in
-      let names =
-        List.fold_left (fun acc n -> match n.link with
-          | SLink -> n::acc
-          | _ -> acc
-        ) [] prev_data.names
-      in
-      { variables = vars; names = names }
+      List.fold_left (fun acc v -> match v.link with
+        | SLink -> v::acc
+        | _ -> acc
+      ) [] prev_data
     in
 
     let rec get_pattern_vars vars = function
@@ -623,18 +547,18 @@ module Labelled_process = struct
           ) name_not_outputed args
     in
 
-    let rec explore name_not_outputed assoc prev_data = function
+    let rec explore name_not_outputed prev_data = function
       | Nil -> PNil, [], false
       | Output(ch,t,p,pos) ->
           let name_not_outputed' = filter_names name_not_outputed t in
           let name_occured = name_not_outputed != name_not_outputed' in
 
-          let (p',under_ch_set,is_sure_proper) = explore name_not_outputed' assoc prev_data p in
+          let (p',under_ch_set,is_sure_proper) = explore name_not_outputed' prev_data p in
 
           let used_data =
             auto_cleanup_all (fun () ->
               link_used_data_process p';
-              link_used_data_term assoc t;
+              link_used_data_term t;
               filter_used_data prev_data
             )
           in
@@ -644,14 +568,14 @@ module Labelled_process = struct
             | Channel.CPrivate n -> NameList.add n under_ch_set, NameList.remove n under_ch_set
             | _ -> under_ch_set, under_ch_set
           in
-          POutput(ch',replace_name_by_variables assoc t,p',None,pos,is_sure_proper',used_data,under_ch_set'), ch_set, is_sure_proper'
+          POutput(ch',t,p',None,pos,is_sure_proper',used_data,under_ch_set'), ch_set, is_sure_proper'
       | Input(ch,PatVar v,p,pos) ->
           Config.debug (fun () ->
             if v.link <> NoLink
             then Config.internal_error "[session_process.ml >> of_process] Variables should not be linked (4)."
           );
 
-          let (p',under_ch_set,_) = explore name_not_outputed assoc { prev_data with variables = v::prev_data.variables } p in
+          let (p',under_ch_set,_) = explore name_not_outputed (v::prev_data) p in
 
           let used_data =
             auto_cleanup_all (fun () ->
@@ -672,23 +596,21 @@ module Labelled_process = struct
             then Config.internal_error "[generic_process.ml >> generic_process_of_process] No variables or names should be linked."
           );
 
-          let (pthen',ch_set_then,is_sure_proper_then) = explore name_not_outputed assoc prev_data pthen in
-          let (pelse',ch_set_else,is_sure_proper_else) = explore name_not_outputed assoc prev_data pelse in
+          let (pthen',ch_set_then,is_sure_proper_then) = explore name_not_outputed prev_data pthen in
+          let (pelse',ch_set_else,is_sure_proper_else) = explore name_not_outputed prev_data pelse in
 
           let used_data =
             auto_cleanup_all (fun () ->
               link_used_data_process pthen';
               link_used_data_process pelse';
-              link_used_data_term assoc t1;
-              link_used_data_term assoc t2;
+              link_used_data_term t1;
+              link_used_data_term t2;
               filter_used_data prev_data
             )
           in
           let ch_set = NameList.union ch_set_then ch_set_else in
           let (equations_1,disequations_1) = Rewrite_rules.compute_equality_modulo_and_rewrite [(t1,t2)] in
-          let equations_2 = List.map (replace_name_by_variables_equations assoc) equations_1 in
-          let disequations_2 = replace_name_by_variables_formula assoc disequations_1 in
-          PCondition(equations_2,disequations_2,[],pthen',pelse',used_data), ch_set, is_sure_proper_then && is_sure_proper_else
+          PCondition(equations_1,disequations_1,[],pthen',pelse',used_data), ch_set, is_sure_proper_then && is_sure_proper_else
       | Let(pat,t,pthen,pelse,_) ->
           Config.debug (fun () ->
             if !Variable.currently_linked <> []
@@ -698,15 +620,15 @@ module Labelled_process = struct
           let fresh_vars = ref [] in
           get_pattern_vars fresh_vars pat;
 
-          let (pthen',ch_set_then,is_sure_proper_then) = explore name_not_outputed' assoc { prev_data with variables = !fresh_vars @ prev_data.variables } pthen in
-          let (pelse',ch_set_else,is_sure_proper_else) = explore name_not_outputed assoc prev_data pelse in
+          let (pthen',ch_set_then,is_sure_proper_then) = explore name_not_outputed' (!fresh_vars @ prev_data) pthen in
+          let (pelse',ch_set_else,is_sure_proper_else) = explore name_not_outputed prev_data pelse in
 
           let used_data =
             auto_cleanup_all (fun () ->
               link_used_data_process pthen';
               link_used_data_process pelse';
-              link_used_data_term assoc t;
-              link_used_data_pattern assoc pat;
+              link_used_data_term t;
+              link_used_data_pattern pat;
               filter_used_data prev_data
             )
           in
@@ -714,23 +636,12 @@ module Labelled_process = struct
           let ch_set = NameList.union ch_set_then ch_set_else in
           let (equations_1,disequations_1) = Rewrite_rules.compute_equality_modulo_and_rewrite [(t,term_of_pattern pat)] in
           let disequations_2 = replace_fresh_vars_by_universal !fresh_vars disequations_1 in
-          let disequations_3 = replace_name_by_variables_formula assoc disequations_2 in
-          let equations_2 = List.map (replace_name_by_variables_equations assoc) equations_1 in
-          PCondition(equations_2,disequations_3,!fresh_vars,pthen',pelse',used_data) ,ch_set, is_sure_proper_then && is_sure_proper_else
-      | New(n,p,_) ->
-          let x = Variable.fresh Free in
-          let (p',ch_set,is_sure_proper) = explore (n::name_not_outputed) ((n,x)::assoc) { prev_data with names = x::prev_data.names } p in
-          let used_data =
-            auto_cleanup_all (fun () ->
-              link_used_data_process p';
-              filter_used_data prev_data
-            )
-          in
-          PNew(x,n,p',used_data), ch_set,is_sure_proper
+          PCondition(equations_1,disequations_2,!fresh_vars,pthen',pelse',used_data) ,ch_set, is_sure_proper_then && is_sure_proper_else
+      | New(n,p,_) -> explore (n::name_not_outputed) prev_data p
       | Par p_list ->
           let (p_list',ch_set,is_sure_proper) =
             List.fold_right (fun p (acc_p,acc_ch_set,acc_proper) ->
-              let (p',ch_set',is_sure_proper) = explore [] assoc prev_data p in
+              let (p',ch_set',is_sure_proper) = explore [] prev_data p in
               let acc_ch_set' = NameList.union ch_set' acc_ch_set in
               (p'::acc_p,acc_ch_set',is_sure_proper || acc_proper)
             ) p_list ([],[],false)
@@ -739,7 +650,7 @@ module Labelled_process = struct
       | Bang(p_list,_) ->
           let (p_list',ch_set, is_sure_proper) =
             List.fold_right (fun p (acc_p,acc_ch_set,acc_proper) ->
-              let (p',ch_set',is_sure_proper) = explore [] assoc prev_data p in
+              let (p',ch_set',is_sure_proper) = explore [] prev_data p in
               let acc_ch_set' = NameList.union ch_set' acc_ch_set in
               (p'::acc_p,acc_ch_set',is_sure_proper || acc_proper)
             ) p_list ([],[],false)
@@ -748,7 +659,7 @@ module Labelled_process = struct
       | Choice _ -> Config.internal_error "[session_process.ml >> Labelled_process.of_process] Should not contain choice operator."
     in
 
-    let (p,_,_) = explore [] [] { variables = []; names = [] } proc in
+    let (p,_,_) = explore [] [] proc in
     PStart p
 
   (*** Skeletons gathering ***)
@@ -841,7 +752,6 @@ module Labelled_process = struct
   type gathering_normalise =
     {
       original_subst : (variable * term) list;
-      original_names : (variable * name) list;
       disequations : Formula.T.t
     }
 
@@ -910,7 +820,7 @@ module Labelled_process = struct
                     let disequations_1 = Formula.T.instantiate_and_normalise gather_norm.disequations in
                     if Formula.T.Bot = disequations_1
                     then f_next_2 ()
-                    else normalise_process current_index { gather_norm with original_subst = orig_subst_1; disequations = disequations_1 } gather_skel pthen f_continuation f_next_2
+                    else normalise_process current_index { original_subst = orig_subst_1; disequations = disequations_1 } gather_skel pthen f_continuation f_next_2
                   else f_next_2 ()
                 ) (fun () -> apply_positive f_next_1 q)
           in
@@ -927,11 +837,6 @@ module Labelled_process = struct
           apply_positive (fun () ->
             apply_negative f_next
           ) equation_list
-      | PNew(x,n,p,_) ->
-          Variable.auto_cleanup_with_reset (fun f_next_1 ->
-            Variable.link_term x (Name n);
-            normalise_process current_index { gather_norm with original_names = ((x,n)::gather_norm.original_names) } gather_skel p f_continuation f_next_1
-          ) f_next
       | PPar p_list ->
           normalise_process_list ~split_par:true current_index gather_norm gather_skel p_list (fun current_index_1 gather_norm_1 gather_skel_1 p_list_1 f_next_1 ->
             match p_list_1 with
@@ -1038,9 +943,8 @@ module Labelled_process = struct
   (*** Display ***)
 
   let display_used_data d =
-    Printf.sprintf "[Vars = %s] [Names = %s]"
-      (display_list (Variable.display Terminal) "," d.variables)
-      (display_list (Variable.display Terminal) "," d.names)
+    Printf.sprintf "[Vars = %s]"
+      (display_list (Variable.display Terminal) "," d)
 
   let display_equations = function
     | [] -> Display.bot Terminal
@@ -1093,9 +997,6 @@ module Labelled_process = struct
         let str_else = display (tab+1) pelse in
         let str_neg = "Else "^(Formula.T.display ~follow_link:false  Terminal neg_formula) in
         (display_with_tab tab str) ^ str_then ^ (display_with_tab tab str_neg) ^ str_else
-    | PNew(x,n,p,used_data) ->
-        let str = Printf.sprintf "new %s -> %s; %s" (Variable.display Terminal x) (Name.display Terminal n) (display_used_data used_data) in
-        (display_with_tab tab str) ^ (display tab p)
     | PPar p_list ->
         (display_with_tab tab "(") ^
         (display_list (display (tab+1)) (display_with_tab tab ") | (") p_list) ^
@@ -1344,7 +1245,7 @@ module Configuration = struct
   let update_private_channels_from_output_transition conf trans =
     merge_private_channels conf.private_channels trans.out_skeletons.Labelled_process.private_channels
 
-  let main_neg_phase proper_status matching_status target_channel original_subst original_names conf (f_continuation : output_transition -> t -> unit)=
+  let main_neg_phase proper_status matching_status target_channel original_subst conf (f_continuation : output_transition -> t -> unit)=
     Config.debug (fun () ->
       if conf.focused_proc <> None
       then Config.internal_error "[session_process.ml >> Configuration.next_public_output] An output transition should not be computed when there are still a focused process.";
@@ -1362,7 +1263,6 @@ module Configuration = struct
               let gather_norm =
                 {
                   Labelled_process.original_subst = original_subst;
-                  Labelled_process.original_names = original_names;
                   Labelled_process.disequations = Formula.T.Top
                 }
               in
@@ -1794,7 +1694,7 @@ module Configuration = struct
 
   (* Next focus phase *)
 
-  let main_next_focus_phase proper_status channel_priority matching_status original_subst original_names conf (f_continuation:input_and_comm_transition -> t -> unit) =
+  let main_next_focus_phase proper_status channel_priority matching_status original_subst conf (f_continuation:input_and_comm_transition -> t -> unit) =
 
     let is_input_applicable = match matching_status with
       | ForAll ->
@@ -1863,7 +1763,6 @@ module Configuration = struct
                 let gather_norm =
                   {
                     Labelled_process.original_subst = (in_data.in_data_var,x_fresh) :: original_subst;
-                    Labelled_process.original_names = original_names;
                     Labelled_process.disequations = Formula.T.Top
                   }
                 in
@@ -1914,7 +1813,6 @@ module Configuration = struct
                     let gather_norm =
                       {
                         Labelled_process.original_subst = (in_data.in_data_var,out_data.out_data_term) :: original_subst;
-                        Labelled_process.original_names = original_names;
                         Labelled_process.disequations = Formula.T.Top
                       }
                     in
@@ -1974,7 +1872,7 @@ module Configuration = struct
 
   (* Next positive phase *)
 
-  let main_next_pos_input proper_status matching_status original_subst original_names conf (f_continuation:input_and_comm_transition -> t -> unit) = match conf.focused_proc with
+  let main_next_pos_input proper_status matching_status original_subst conf (f_continuation:input_and_comm_transition -> t -> unit) = match conf.focused_proc with
     | Some Labelled_process.PInput(ch,x,p,Some label,pos,_,_) ->
         Variable.auto_cleanup_with_reset (fun f_next_1 ->
           (* Corresponds to an input transition on a public channel. We thus need to normalise. *)
@@ -1983,7 +1881,6 @@ module Configuration = struct
           let gather_norm =
             {
               Labelled_process.original_subst = (x,x_fresh) :: original_subst;
-              Labelled_process.original_names = original_names;
               Labelled_process.disequations = Formula.T.Top
             }
           in
@@ -2032,13 +1929,12 @@ module Configuration = struct
 
   (* Start phase *)
 
-  let next_start_phase matching_status original_subst original_names conf (f_continuation:start_transition -> t -> unit) = match conf.input_and_private_proc with
+  let next_start_phase matching_status original_subst conf (f_continuation:start_transition -> t -> unit) = match conf.input_and_private_proc with
     | [Labelled_process.PStart p] ->
         Variable.auto_cleanup_with_reset (fun f_next_1 ->
           let gather_norm =
             {
               Labelled_process.original_subst = original_subst;
-              Labelled_process.original_names = original_names;
               Labelled_process.disequations = Formula.T.Top
             }
           in

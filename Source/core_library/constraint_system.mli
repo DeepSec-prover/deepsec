@@ -40,7 +40,6 @@ type 'a t =
     (* Original variables and names *)
 
     original_substitution : (variable * term) list;
-    original_names : (variable * name) list;
 
     (* Data for rules *)
     rule_data : rule_data
@@ -49,6 +48,7 @@ type 'a t =
 type 'a set =
   {
     eq_recipe : Formula.R.t;
+    knowledge_recipe : KR.t;
     set : 'a t list
   }
 
@@ -79,17 +79,21 @@ val add_disequations : 'a t -> Diseq.T.t list -> 'a t
 
 val add_non_deducible_terms : 'a t -> term list -> 'a t
 
-val prepare_for_solving_procedure : bool -> 'a t -> 'a t
+val prepare_for_solving_procedure_first : bool -> KR.t -> 'a t -> 'a t * KR.t * IK.t * (int * int) list
 
-val prepare_for_solving_procedure_ground : 'a t -> 'a t
+val prepare_for_solving_procedure_others : KR.t -> IK.t -> (int * int) list -> 'a t -> 'a t
 
-val prepare_for_solving_procedure_with_additional_data : bool -> ('a -> 'a) -> 'a t -> 'a t
+val prepare_for_solving_procedure_first_ground : KR.t -> 'a t -> 'a t * KR.t * IK.t * (int * int) list
+
+val prepare_for_solving_procedure_others_ground : KR.t -> IK.t -> (int * int) list -> 'a t -> 'a t
 
 val instantiate : 'a t -> 'a t
 
+val link_deducible_name : 'a t -> unit
+
 val debug_on_constraint_system : string -> 'a t -> unit
 
-val display_constraint_system : int -> 'a t -> string
+val display_constraint_system : int -> KR.t -> 'a t -> string
 
 module Set : sig
 
@@ -117,13 +121,13 @@ module Rule_ground : sig
     | Witness_message of recipe
     | Witness_equality of recipe * recipe
 
-  val apply_rules : ('a t -> 'b t list -> 'c) -> 'a t -> 'b t list -> 'c
+  val apply_rules : ('a t -> 'b t list -> 'c) -> KR.t -> 'a t -> 'b t list -> 'c
 
-  val apply_rules_for_static_equivalence : 'a t -> 'a t -> 'a result_static_equivalence
+  val apply_rules_for_static_equivalence : KR.t -> 'a t -> 'a t -> 'a result_static_equivalence
 
-  val solve : 'a t -> 'a t
+  val solve : KR.t -> 'a t -> KR.t * 'a t
 
-  val is_term_deducible : 'a t -> term -> bool
+  val is_term_deducible : KR.t -> 'a t -> term -> bool
 
-  val recipe_of_deducible_term : 'a t -> term -> recipe option
+  val recipe_of_deducible_term : KR.t -> 'a t -> term -> recipe option
 end

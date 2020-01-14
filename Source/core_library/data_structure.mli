@@ -122,6 +122,9 @@ module KR : sig
 
   val empty : t
 
+  val size : t -> int
+
+  val instantiate : t -> t
 end
 
 module K : sig
@@ -218,6 +221,7 @@ module IK : sig
 
   val transfer_incremented_knowledge_into_knowledge_only_kb_no_rename : KR.t -> K.t -> t -> K.t
 
+  val instantiate : t -> t
 
   val debug_check_link_with_SLink : t -> unit
 end

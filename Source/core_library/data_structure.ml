@@ -481,6 +481,21 @@ module KR = struct
   let dummy_entry = { type_rec = 0; recipe = Axiom 0 }
 
   let empty = { max_type_r = 0; size = 0; data = Array.make 0 dummy_entry }
+
+  let size kbr = kbr.size
+
+  let instantiate kbr =
+    let data' =
+      Array.map_q (fun elt ->
+        let r' = Recipe.instantiate elt.recipe in
+        if elt.recipe == r'
+        then elt
+        else { elt with recipe = r'}
+      ) kbr.data
+    in
+    if data' == kbr.data
+    then kbr
+    else { kbr with data = data' }
 end
 
 module K = struct
@@ -1114,6 +1129,23 @@ module IK = struct
     List.iter (fun elt ->
       f elt.term
     ) ikb.data
+
+  let instantiate_entry elt =
+    let t = Term.instantiate elt.term in
+    if elt.term == t
+    then
+      let r = Recipe.instantiate elt.recipe in
+      if elt.recipe == r
+      then elt
+      else { elt with recipe = r }
+    else { elt with recipe = Recipe.instantiate elt.recipe; term = t }
+
+  let instantiate ikb =
+    let data = List.map_q instantiate_entry ikb.data in
+    if data == ikb.data
+    then ikb
+    else { ikb with data = data }
+
 
   (* Testing *)
 

@@ -24,6 +24,19 @@ module List = struct
     in
     explore (fun x -> x)
 
+  let rec map_q f l = match l with
+    | [] -> l
+    | t::q ->
+        let t' = f t in
+        if t == t'
+        then
+          let q' = map_q f q in
+          if q == q'
+          then l
+          else t'::q'
+        else t' :: map_q f q
+
+
   let removeq x l =
     let rec explore prev = function
       | [] -> raise Not_found
