@@ -137,6 +137,8 @@ module K : sig
 
   val instantiate : t -> t
 
+  val size : t -> int
+
   (** [find_unifier_with_recipe kb t ty f_continuation f_next] tries to unify [t] with
       every term of the knowledge base [kb]. When the unification is successul,
       the function [f_continuation is_identity r f_next'] is applied where [is_identity]
@@ -217,9 +219,9 @@ module IK : sig
 
   val transfer_incremented_knowledge_into_knowledge_no_rename : KR.t -> K.t -> t -> KR.t * K.t * t * (int * int) list
 
-  val transfer_incremented_knowledge_into_knowledge_only_kb : KR.t ->  K.t -> t -> K.t
+  val transfer_incremented_knowledge_into_knowledge_only_kb :  K.t -> t -> K.t
 
-  val transfer_incremented_knowledge_into_knowledge_only_kb_no_rename : KR.t -> K.t -> t -> K.t
+  val transfer_incremented_knowledge_into_knowledge_only_kb_no_rename : K.t -> t -> K.t
 
   val instantiate : t -> t
 

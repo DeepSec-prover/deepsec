@@ -19,6 +19,8 @@ type simulated_state =
   {
     attacked_id_transition : int;
 
+    knowledge_recipe : Data_structure.KR.t;
+
     attacked_csys : configuration Constraint_system.t; (* The configuration is a dummy one. *)
     simulated_csys : configuration Constraint_system.t;
 
@@ -56,6 +58,7 @@ val find_equivalent_trace : semantics -> full_association -> json_process -> jso
 
 type attacked_state =
   {
+    att_knowledge_recipe : Data_structure.KR.t;
     att_csys : configuration Constraint_system.t;
     att_assoc : full_association;
     att_default_available_actions : available_action list;

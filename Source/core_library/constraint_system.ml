@@ -166,11 +166,7 @@ let generic_prepare_for_solving kb ikb id_assoc csys =
       let diseq' = Formula.M.rename_and_instantiate hist.fst_vars hist.diseq in
       if diseq' == hist.diseq
       then hist
-      else
-        { hist with
-            fst_vars = List.map Variable.rename hist.fst_vars;
-            diseq = diseq'
-        }
+      else { hist with  diseq = diseq' }
     ) csys.rule_data.history_skeleton
   in
 
@@ -228,9 +224,9 @@ let prepare_for_solving_procedure_first after_output kbr csys =
     csys', kbr',ikb,id_assoc
   )
 
-let prepare_for_solving_procedure_others kbr ikb id_assoc csys =
+let prepare_for_solving_procedure_others ikb id_assoc csys =
   Variable.auto_cleanup_with_reset_notail (fun () ->
-    let kb = IK.transfer_incremented_knowledge_into_knowledge_only_kb kbr csys.knowledge csys.incremented_knowledge in
+    let kb = IK.transfer_incremented_knowledge_into_knowledge_only_kb csys.knowledge csys.incremented_knowledge in
     generic_prepare_for_solving kb ikb id_assoc csys
   )
 
@@ -281,9 +277,9 @@ let prepare_for_solving_procedure_first_ground kbr csys =
     csys', kbr', ikb, id_assoc
   )
 
-let prepare_for_solving_procedure_others_ground kbr ikb id_assoc csys =
+let prepare_for_solving_procedure_others_ground ikb id_assoc csys =
   Variable.auto_cleanup_with_reset_notail (fun () ->
-    let kb = IK.transfer_incremented_knowledge_into_knowledge_only_kb_no_rename kbr csys.knowledge csys.incremented_knowledge in
+    let kb = IK.transfer_incremented_knowledge_into_knowledge_only_kb_no_rename csys.knowledge csys.incremented_knowledge in
     generic_prepare_for_solving_ground kb ikb id_assoc csys
   )
 
@@ -1394,6 +1390,9 @@ module Set = struct
     explore csys_set.set
 
   let debug_check_structure str set =
+    if List.exists (fun csys -> K.size csys.knowledge <> KR.size set.knowledge_recipe) set.set
+    then Config.internal_error (str^" KBR structure incorrect");
+
     List.iter (fun csys1 ->
       List.iter (fun csys2 ->
         DF.debug_same_structure str csys1.deduction_facts csys2.deduction_facts
@@ -3258,7 +3257,7 @@ module Rule_ground = struct
     split_data_constructor (normalisation_deduction_consequence (rewrite (equality_constructor f_continuation kbr) kbr) kbr) kbr
 
   type 'a result_static_equivalence =
-    | Static_equivalent of 'a t * 'a t
+    | Static_equivalent of KR.t * 'a t * 'a t
     | Witness_message of recipe
     | Witness_equality of recipe * recipe
 
@@ -3266,9 +3265,9 @@ module Rule_ground = struct
     let f_continuation csys_1' csys_list = match csys_list with
       | [ csys_2' ] ->
           let (csys_1'',kbr',ikb,assoc_id) = prepare_for_solving_procedure_first_ground kbr csys_1' in
-          let csys_2'' = prepare_for_solving_procedure_others_ground kbr' ikb assoc_id csys_2' in
+          let csys_2'' = prepare_for_solving_procedure_others_ground ikb assoc_id csys_2' in
           find_witness := false;
-          Static_equivalent (csys_1'',csys_2'')
+          Static_equivalent (kbr', csys_1'',csys_2'')
       | _ -> Config.internal_error "[constraint_system.ml >> Rule_ground.apply_rules_for_static_equivalence] Unexpected number of constraint system."
     in
 

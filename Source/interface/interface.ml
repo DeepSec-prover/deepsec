@@ -880,7 +880,7 @@ let initial_attack_simulator_state semantics attacked_trace assoc_simulated proc
   in
 
   let (attacked_csys,kbr,ikb,assoc_id) = Constraint_system.prepare_for_solving_procedure_first_ground init_kbr (Constraint_system.empty init_conf_attacked) in
-  let simulated_csys = Constraint_system.prepare_for_solving_procedure_others_ground kbr ikb assoc_id (Constraint_system.empty init_conf_simulated) in
+  let simulated_csys = Constraint_system.prepare_for_solving_procedure_others_ground ikb assoc_id (Constraint_system.empty init_conf_simulated) in
 
   let (default_trans,all_trans) = find_next_possible_transition true semantics forced_transition kbr simulated_csys in
 
@@ -954,11 +954,11 @@ let attack_simulator_apply_next_step_user semantics id_attacked_proc full_attack
     | _ -> forced_transition
   in
 
-  let rec apply_all_transitions acc_simul_csys acc_assoc = function
+  let rec apply_all_transitions acc_kbr acc_simul_csys acc_assoc = function
     | [] -> Config.internal_error "[interface.ml >> attack_simulator_apply_next_step] There should be at least one transition."
     | [trans] ->
         (* The main transition *)
-        let (simulated_csys1,assoc1) = apply_transition semantics false acc_assoc acc_simul_csys trans in
+        let (_,simulated_csys1,assoc1) = apply_transition semantics false acc_assoc acc_kbr acc_simul_csys trans in
 
         let attacked_csys1 = match trans with
           | JAOutput _ | JAEaves _ ->
@@ -967,23 +967,24 @@ let attack_simulator_apply_next_step_user semantics id_attacked_proc full_attack
               Constraint_system.add_axiom simulated_state.attacked_csys size_frame term
           | _ -> simulated_state.attacked_csys
         in
-        let (attacked_csys2,simulated_csys2,status_equiv) = match real_transition with
+        let (acc_kbr1,attacked_csys2,simulated_csys2,status_equiv) = match real_transition with
           | JAOutput _ | JAEaves _ ->
-              begin match Constraint_system.Rule_ground.apply_rules_for_static_equivalence attacked_csys1 simulated_csys1 with
-                | Constraint_system.Rule_ground.Static_equivalent(att_csys,sim_csys) -> att_csys,sim_csys,Static_equivalent
-                | Constraint_system.Rule_ground.Witness_message r -> attacked_csys1, simulated_csys1, equiv_status_of_message simulated_csys1 r
-                | Constraint_system.Rule_ground.Witness_equality(r1,r2) -> attacked_csys1, simulated_csys1, equiv_status_of_equality simulated_csys1 r1 r2
+              begin match Constraint_system.Rule_ground.apply_rules_for_static_equivalence acc_kbr attacked_csys1 simulated_csys1 with
+                | Constraint_system.Rule_ground.Static_equivalent(kbr,att_csys,sim_csys) -> kbr, att_csys,sim_csys,Static_equivalent
+                | Constraint_system.Rule_ground.Witness_message r -> acc_kbr, attacked_csys1, simulated_csys1, equiv_status_of_message simulated_csys1 r
+                | Constraint_system.Rule_ground.Witness_equality(r1,r2) -> acc_kbr, attacked_csys1, simulated_csys1, equiv_status_of_equality simulated_csys1 r1 r2
               end
-          | _ -> attacked_csys1, simulated_csys1, Static_equivalent
+          | _ -> acc_kbr, attacked_csys1, simulated_csys1, Static_equivalent
         in
         let (default_trans,all_trans) =
           if status_equiv = Static_equivalent
-          then find_next_possible_transition true semantics forced_transition simulated_csys2
+          then find_next_possible_transition true semantics forced_transition acc_kbr1 simulated_csys2
           else ([],[])
         in
 
         let state =
           {
+            knowledge_recipe = acc_kbr1;
             attacked_id_transition = attacked_id_transition;
             attacked_csys = attacked_csys2;
             simulated_csys = simulated_csys2;
@@ -995,8 +996,8 @@ let attack_simulator_apply_next_step_user semantics id_attacked_proc full_attack
         in
         [state]
     | trans::q ->
-        let (simulated_csys,simulated_assoc) = apply_transition semantics false acc_assoc acc_simul_csys trans in
-        let (default_trans,all_trans) = find_next_possible_transition true semantics tau_forced_transition simulated_csys in
+        let (_,simulated_csys,simulated_assoc) = apply_transition semantics false acc_assoc acc_kbr acc_simul_csys trans in
+        let (default_trans,all_trans) = find_next_possible_transition true semantics tau_forced_transition acc_kbr simulated_csys in
         let state =
           { simulated_state with
             simulated_csys = simulated_csys;
@@ -1006,10 +1007,10 @@ let attack_simulator_apply_next_step_user semantics id_attacked_proc full_attack
             status_equivalence = Static_equivalent
           }
         in
-        state::(apply_all_transitions simulated_csys simulated_assoc q)
+        state::(apply_all_transitions acc_kbr simulated_csys simulated_assoc q)
   in
 
-  apply_all_transitions simulated_state.simulated_csys simulated_state.simulated_assoc list_transitions, list_transitions
+  apply_all_transitions simulated_state.knowledge_recipe simulated_state.simulated_csys simulated_state.simulated_assoc list_transitions, list_transitions
 
 let attack_simulator_apply_next_steps semantics id_attacked_proc full_attacked_frame attacked_trace simulated_state real_transition =
   let equiv_status_of_message sim_csys r =
@@ -1057,7 +1058,7 @@ let attack_simulator_apply_next_steps semantics id_attacked_proc full_attacked_f
   in
 
   (* The main transition *)
-  let (simulated_csys1,assoc1) = apply_transition semantics false simulated_state.simulated_assoc simulated_state.simulated_csys real_transition in
+  let (_,simulated_csys1,assoc1) = apply_transition semantics false simulated_state.simulated_assoc simulated_state.knowledge_recipe simulated_state.simulated_csys real_transition in
 
   let attacked_csys1 = match real_transition with
     | JAOutput _ | JAEaves _ ->
@@ -1066,18 +1067,19 @@ let attack_simulator_apply_next_steps semantics id_attacked_proc full_attacked_f
         Constraint_system.add_axiom simulated_state.attacked_csys size_frame term
     | _ -> simulated_state.attacked_csys
   in
-  let (attacked_csys2,simulated_csys2,status_equiv) = match real_transition with
+  let (kbr2,attacked_csys2,simulated_csys2,status_equiv) = match real_transition with
     | JAOutput _ | JAEaves _ ->
-        begin match Constraint_system.Rule_ground.apply_rules_for_static_equivalence attacked_csys1 simulated_csys1 with
-          | Constraint_system.Rule_ground.Static_equivalent(att_csys,sim_csys) -> att_csys,sim_csys,Static_equivalent
-          | Constraint_system.Rule_ground.Witness_message r -> attacked_csys1, simulated_csys1, equiv_status_of_message simulated_csys1 r
-          | Constraint_system.Rule_ground.Witness_equality(r1,r2) -> attacked_csys1, simulated_csys1, equiv_status_of_equality simulated_csys1 r1 r2
+        begin match Constraint_system.Rule_ground.apply_rules_for_static_equivalence simulated_state.knowledge_recipe attacked_csys1 simulated_csys1 with
+          | Constraint_system.Rule_ground.Static_equivalent(kbr,att_csys,sim_csys) -> kbr, att_csys,sim_csys,Static_equivalent
+          | Constraint_system.Rule_ground.Witness_message r -> simulated_state.knowledge_recipe,attacked_csys1, simulated_csys1, equiv_status_of_message simulated_csys1 r
+          | Constraint_system.Rule_ground.Witness_equality(r1,r2) -> simulated_state.knowledge_recipe,attacked_csys1, simulated_csys1, equiv_status_of_equality simulated_csys1 r1 r2
         end
-    | _ -> attacked_csys1, simulated_csys1, Static_equivalent
+    | _ -> simulated_state.knowledge_recipe, attacked_csys1, simulated_csys1, Static_equivalent
   in
-  let (default_trans,all_trans) = find_next_possible_transition true semantics forced_transition simulated_csys2 in
+  let (default_trans,all_trans) = find_next_possible_transition true semantics forced_transition kbr2 simulated_csys2 in
   let state =
     {
+      knowledge_recipe = kbr2;
       attacked_id_transition = attacked_id_transition;
       attacked_csys = attacked_csys2;
       simulated_csys = simulated_csys2;
@@ -1100,44 +1102,42 @@ type ground_configuration =
     gen_trace : transition list
   }
 
-let frame_rename conf = { conf with gen_frame = List.map (Term.rename_and_instantiate) conf.gen_frame }
-
 let clean_variables_names =
   List.rev_map (fun csys ->
     let conf = csys.Constraint_system.additional_data in
     link_used_data (fun () ->
       let original_subst = List.filter (fun (x,_) -> x.link = SLink) csys.Constraint_system.original_substitution in
-      let original_names = List.filter (fun (x,_) -> x.link = SLink) csys.Constraint_system.original_names in
-      { csys with Constraint_system.original_substitution = original_subst; Constraint_system.original_names = original_names }
+      { csys with Constraint_system.original_substitution = original_subst }
     ) conf.gen_process
   )
 
-let rec apply_attack_trace sem size_frame att_assoc att_trace att_csys sim_csys_list = match att_trace with
+let rec apply_attack_trace sem size_frame att_assoc att_trace kbr att_csys sim_csys_list = match att_trace with
   | [] -> sim_csys_list
   | JAOutput(r_ch,pos) :: q_trans ->
       let sim_csys_list_ref = ref [] in
       let axiom = size_frame + 1 in
 
+      let (_,att_csys_1,att_assoc_1) = apply_transition sem false att_assoc kbr att_csys (JAOutput(r_ch,pos)) in
+      let (att_csys_2,kbr',ikb,assoc_id) = Constraint_system.prepare_for_solving_procedure_first_ground kbr att_csys_1 in
+
       List.iter (fun csys ->
         let conf = csys.Constraint_system.additional_data in
         Variable.auto_cleanup_with_reset_notail (fun () ->
           List.iter (fun (x,t) -> Variable.link_term x t) csys.Constraint_system.original_substitution;
-          List.iter (fun (x,n) -> Variable.link_term x (Name n)) csys.Constraint_system.original_names;
 
           try
             let ch = apply_recipe_on_frame r_ch conf.gen_frame in
-            next_ground_output sem ch conf.gen_process csys.Constraint_system.original_substitution csys.Constraint_system.original_names conf.gen_trace (fun proc out_gathering ->
+            next_ground_output sem ch conf.gen_process csys.Constraint_system.original_substitution conf.gen_trace (fun proc out_gathering ->
               let csys_1 = Constraint_system.add_axiom csys axiom out_gathering.term in
               let csys_2 =
                 { csys_1 with
                   Constraint_system.additional_data = { gen_process = proc; gen_frame = conf.gen_frame @ [out_gathering.term]; gen_trace = AOutput(r_ch,out_gathering.position)::out_gathering.common_data.trace_transitions };
-                  Constraint_system.original_substitution = out_gathering.common_data.original_subst;
-                  Constraint_system.original_names = out_gathering.common_data.original_names
+                  Constraint_system.original_substitution = out_gathering.common_data.original_subst
                 }
               in
-              let csys_3 = Constraint_system.prepare_for_solving_procedure_with_additional_data true frame_rename csys_2 in
+              let csys_3 =  Constraint_system.prepare_for_solving_procedure_others ikb assoc_id csys_2 in
 
-              if List.for_all (fun pch -> (Data_structure.IK.consequence_term csys_3.Constraint_system.knowledge csys_3.Constraint_system.incremented_knowledge csys_3.Constraint_system.deduction_facts pch) = None) out_gathering.private_channels
+              if List.for_all (fun pch -> (Data_structure.IK.consequence_term kbr' csys_3.Constraint_system.knowledge csys_3.Constraint_system.incremented_knowledge csys_3.Constraint_system.deduction_facts pch) = None) out_gathering.private_channels
               then sim_csys_list_ref := csys_3 :: !sim_csys_list_ref
             )
           with Invalid_transition (Recipe_not_message _) ->  ()
@@ -1146,31 +1146,38 @@ let rec apply_attack_trace sem size_frame att_assoc att_trace att_csys sim_csys_
 
       sim_csys_list_ref := clean_variables_names !sim_csys_list_ref;
 
-      let (att_csys_1,att_assoc_1) = apply_transition sem false att_assoc att_csys (JAOutput(r_ch,pos)) in
-      let att_csys_2 = Constraint_system.prepare_for_solving_procedure_ground att_csys_1 in
-      Constraint_system.Rule_ground.apply_rules (apply_attack_trace sem (size_frame+1) att_assoc_1 q_trans) att_csys_2 !sim_csys_list_ref
+      Constraint_system.Rule_ground.apply_rules (apply_attack_trace sem (size_frame+1) att_assoc_1 q_trans kbr') kbr' att_csys_2 !sim_csys_list_ref
   | JAInput(r_ch,r_t,pos) :: q_trans ->
       let sim_csys_list_ref = ref [] in
+      let preparation_data = ref None in
       List.iter (fun csys ->
         let conf = csys.Constraint_system.additional_data in
         Variable.auto_cleanup_with_reset_notail (fun () ->
           List.iter (fun (x,t) -> Variable.link_term x t) csys.Constraint_system.original_substitution;
-          List.iter (fun (x,n) -> Variable.link_term x (Name n)) csys.Constraint_system.original_names;
 
           try
             let ch = apply_recipe_on_frame r_ch conf.gen_frame in
             let t = apply_recipe_on_frame r_t conf.gen_frame in
-            next_ground_input sem ch conf.gen_process csys.Constraint_system.original_substitution csys.Constraint_system.original_names conf.gen_trace (fun proc in_gathering ->
+            next_ground_input sem ch conf.gen_process csys.Constraint_system.original_substitution conf.gen_trace (fun proc in_gathering ->
               let csys_1 =
                 { csys with
                   Constraint_system.additional_data = { conf with gen_process = proc; gen_trace = AInput(r_ch,r_t,in_gathering.position)::in_gathering.common_data.trace_transitions };
                   Constraint_system.original_substitution = (Term.variable_of in_gathering.term, t)::in_gathering.common_data.original_subst;
-                  Constraint_system.original_names = in_gathering.common_data.original_names;
                 }
               in
-              let csys_2 = Constraint_system.prepare_for_solving_procedure_with_additional_data false frame_rename csys_1 in
+              let csys_2 = match !preparation_data with
+                | None ->
+                    let (csys',kbr',ikb',assoc_id) = Constraint_system.prepare_for_solving_procedure_first false kbr csys_1 in
+                    Config.debug (fun () ->
+                      if kbr != kbr'
+                      then Config.internal_error "[interface.ml >> apply_attack_trace] It should be the same kbr."
+                    );
+                    preparation_data := Some(kbr',ikb',assoc_id);
+                    csys'
+                | Some (_,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others ikb assoc_id csys_1
+              in
 
-              if List.for_all (fun pch -> (Data_structure.IK.consequence_term csys_2.Constraint_system.knowledge csys_2.Constraint_system.incremented_knowledge csys_2.Constraint_system.deduction_facts pch) = None) in_gathering.private_channels
+              if List.for_all (fun pch -> (Data_structure.IK.consequence_term kbr csys_2.Constraint_system.knowledge csys_2.Constraint_system.incremented_knowledge csys_2.Constraint_system.deduction_facts pch) = None) in_gathering.private_channels
               then sim_csys_list_ref := csys_2 :: !sim_csys_list_ref
             )
           with Invalid_transition (Recipe_not_message _) -> ()
@@ -1179,33 +1186,34 @@ let rec apply_attack_trace sem size_frame att_assoc att_trace att_csys sim_csys_
 
       sim_csys_list_ref := clean_variables_names !sim_csys_list_ref;
 
-      let (att_csys_1,att_assoc_1) = apply_transition sem false att_assoc att_csys (JAInput(r_ch,r_t,pos)) in
+      let (_,att_csys_1,att_assoc_1) = apply_transition sem false att_assoc kbr att_csys (JAInput(r_ch,r_t,pos)) in
 
-      apply_attack_trace sem size_frame att_assoc_1 q_trans att_csys_1 !sim_csys_list_ref
+      apply_attack_trace sem size_frame att_assoc_1 q_trans kbr att_csys_1 !sim_csys_list_ref
   | JAEaves(r_ch,out_pos,in_pos) :: q_trans ->
       let sim_csys_list_ref = ref [] in
       let axiom = size_frame + 1 in
+
+      let (_,att_csys_1,att_assoc_1) = apply_transition sem false att_assoc kbr att_csys (JAEaves(r_ch,out_pos,in_pos)) in
+      let (att_csys_2,kbr',ikb,assoc_id) = Constraint_system.prepare_for_solving_procedure_first_ground kbr att_csys_1 in
 
       List.iter (fun csys ->
         let conf = csys.Constraint_system.additional_data in
         Variable.auto_cleanup_with_reset_notail (fun () ->
           List.iter (fun (x,t) -> Variable.link_term x t) csys.Constraint_system.original_substitution;
-          List.iter (fun (x,n) -> Variable.link_term x (Name n)) csys.Constraint_system.original_names;
 
           try
             let ch = apply_recipe_on_frame r_ch conf.gen_frame in
-            next_ground_eavesdrop ch conf.gen_process csys.Constraint_system.original_substitution csys.Constraint_system.original_names conf.gen_trace (fun proc eav_gathering ->
+            next_ground_eavesdrop ch conf.gen_process csys.Constraint_system.original_substitution conf.gen_trace (fun proc eav_gathering ->
               let csys_1 = Constraint_system.add_axiom csys axiom eav_gathering.eav_term in
               let csys_2 =
                 { csys_1 with
                   Constraint_system.additional_data = { gen_process = proc; gen_frame = conf.gen_frame @ [eav_gathering.eav_term]; gen_trace = AEaves(r_ch,eav_gathering.eav_position_out,eav_gathering.eav_position_in)::eav_gathering.eav_common_data.trace_transitions };
-                  Constraint_system.original_substitution = eav_gathering.eav_common_data.original_subst;
-                  Constraint_system.original_names = eav_gathering.eav_common_data.original_names
+                  Constraint_system.original_substitution = eav_gathering.eav_common_data.original_subst
                 }
               in
-              let csys_3 = Constraint_system.prepare_for_solving_procedure_with_additional_data true frame_rename csys_2 in
+              let csys_3 = Constraint_system.prepare_for_solving_procedure_others ikb assoc_id csys_2 in
 
-              if List.for_all (fun pch -> (Data_structure.IK.consequence_term csys_3.Constraint_system.knowledge csys_3.Constraint_system.incremented_knowledge csys_3.Constraint_system.deduction_facts pch) = None) eav_gathering.eav_private_channels
+              if List.for_all (fun pch -> (Data_structure.IK.consequence_term kbr' csys_3.Constraint_system.knowledge csys_3.Constraint_system.incremented_knowledge csys_3.Constraint_system.deduction_facts pch) = None) eav_gathering.eav_private_channels
               then sim_csys_list_ref := csys_3 :: !sim_csys_list_ref
             )
           with Invalid_transition (Recipe_not_message _) -> ()
@@ -1214,12 +1222,10 @@ let rec apply_attack_trace sem size_frame att_assoc att_trace att_csys sim_csys_
 
       sim_csys_list_ref := clean_variables_names !sim_csys_list_ref;
 
-      let (att_csys_1,att_assoc_1) = apply_transition sem false att_assoc att_csys (JAEaves(r_ch,out_pos,in_pos)) in
-      let att_csys_2 = Constraint_system.prepare_for_solving_procedure_ground att_csys_1 in
-      Constraint_system.Rule_ground.apply_rules (apply_attack_trace sem (size_frame+1) att_assoc_1 q_trans) att_csys_2 !sim_csys_list_ref
+      Constraint_system.Rule_ground.apply_rules (apply_attack_trace sem (size_frame+1) att_assoc_1 q_trans kbr') kbr' att_csys_2 !sim_csys_list_ref
   | trans :: q_trans ->
-      let (att_csys_1,att_assoc_1) = apply_transition sem false att_assoc att_csys trans in
-      apply_attack_trace sem size_frame att_assoc_1 q_trans att_csys_1 sim_csys_list
+      let (_,att_csys_1,att_assoc_1) = apply_transition sem false att_assoc kbr att_csys trans in
+      apply_attack_trace sem size_frame att_assoc_1 q_trans kbr att_csys_1 sim_csys_list
 
 let find_equivalent_trace sem att_assoc att_js_proc att_trace sim_js_proc =
   (* We used json process for the att_process but we used
@@ -1234,7 +1240,9 @@ let find_equivalent_trace sem att_assoc att_js_proc att_trace sim_js_proc =
   let sim_csys = Constraint_system.empty sim_conf in
   let att_csys = Constraint_system.empty att_conf in
 
-  let equiv_sim_csys_list = apply_attack_trace sem 0 att_assoc att_trace att_csys [sim_csys] in
+  let init_kbr = Data_structure.KR.empty in
+
+  let equiv_sim_csys_list = apply_attack_trace sem 0 att_assoc att_trace init_kbr att_csys [sim_csys] in
 
   Config.debug (fun () ->
     if equiv_sim_csys_list = []
@@ -1249,6 +1257,7 @@ let find_equivalent_trace sem att_assoc att_js_proc att_trace sim_js_proc =
 
 type attacked_state =
   {
+    att_knowledge_recipe : Data_structure.KR.t;
     att_csys : configuration Constraint_system.t;
     att_assoc : full_association;
     att_default_available_actions : available_action list;
@@ -1258,10 +1267,11 @@ type attacked_state =
 
 let initial_equivalence_simulator_state sem att_assoc att_process =
   let init_conf = { size_frame = 0; frame = []; process = att_process } in
-  let init_csys = Constraint_system.prepare_for_solving_procedure_ground (Constraint_system.empty init_conf) in
-  let (default_trans,all_trans) = find_next_possible_transition false sem All_transitions init_csys in
+  let (init_csys,kbr,_,_) = Constraint_system.prepare_for_solving_procedure_first_ground Data_structure.KR.empty (Constraint_system.empty init_conf) in
+  let (default_trans,all_trans) = find_next_possible_transition false sem All_transitions kbr init_csys in
 
   {
+    att_knowledge_recipe = kbr;
     att_csys = init_csys;
     att_assoc = att_assoc;
     att_default_available_actions = default_trans;
@@ -1328,15 +1338,16 @@ let find_prev_transitions_from_transtion trans_list trans =
 
 let equivalence_simulator_apply_next_step sem att_state att_transition =
 
-  let rec apply_all_transitions acc_att_csys acc_att_assoc acc_att_trace = function
+  let rec apply_all_transitions acc_kbr acc_att_csys acc_att_assoc acc_att_trace = function
     | [] -> []
     | trans::q ->
         (* The main transition *)
-        let (att_csys_1,att_assoc_1) = apply_transition sem true acc_att_assoc acc_att_csys trans in
-        let (default_trans,all_trans) = find_next_possible_transition false sem All_transitions att_csys_1 in
+        let (kbr_1,att_csys_1,att_assoc_1) = apply_transition sem true acc_att_assoc acc_kbr acc_att_csys trans in
+        let (default_trans,all_trans) = find_next_possible_transition false sem All_transitions kbr_1 att_csys_1 in
         let att_trace = acc_att_trace @ [trans] in
         let state =
           {
+            att_knowledge_recipe = kbr_1;
             att_csys = att_csys_1;
             att_assoc = att_assoc_1;
             att_default_available_actions = default_trans;
@@ -1344,7 +1355,7 @@ let equivalence_simulator_apply_next_step sem att_state att_transition =
             att_trace = att_trace
           }
         in
-        state::(apply_all_transitions att_csys_1 att_assoc_1 att_trace q)
+        state::(apply_all_transitions kbr_1 att_csys_1 att_assoc_1 att_trace q)
   in
 
   (* We first search the corresponding action in the simulated state. *)
@@ -1357,4 +1368,4 @@ let equivalence_simulator_apply_next_step sem att_state att_transition =
       with Not_found -> Config.internal_error "[interface.ml >> equivalence_simulator_apply_next_step] The transition should be either within all or default."
   in
 
-  apply_all_transitions att_state.att_csys att_state.att_assoc att_state.att_trace list_transitions, list_transitions
+  apply_all_transitions att_state.att_knowledge_recipe att_state.att_csys att_state.att_assoc att_state.att_trace list_transitions, list_transitions

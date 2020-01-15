@@ -168,7 +168,7 @@ let apply_one_transition_and_rules_classic_input type_max equiv_pbl f_continuati
                     let (csys',kbr',ikb',assoc_id) = Constraint_system.prepare_for_solving_procedure_first false equiv_pbl.csys_set.Constraint_system.knowledge_recipe csys_1 in
                     preparation_data := Some(kbr',ikb',assoc_id);
                     csys'
-                | Some (kbr,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others kbr ikb assoc_id csys_1
+                | Some (_,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others ikb assoc_id csys_1
             )
           in
 
@@ -242,7 +242,7 @@ let apply_one_transition_and_rules_classic_output type_max equiv_pbl f_continuat
                     let (csys',kbr',ikb',assoc_id) = Constraint_system.prepare_for_solving_procedure_first true equiv_pbl.csys_set.Constraint_system.knowledge_recipe csys_2 in
                     preparation_data := Some(kbr',ikb',assoc_id);
                     csys'
-                | Some (kbr,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others kbr ikb assoc_id csys_2
+                | Some (_,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others ikb assoc_id csys_2
             )
           in
 
@@ -347,7 +347,7 @@ let apply_one_transition_and_rules_private_input type_max equiv_pbl f_continuati
                       let (csys',kbr',ikb',assoc_id) = Constraint_system.prepare_for_solving_procedure_first false equiv_pbl.csys_set.Constraint_system.knowledge_recipe csys_1 in
                       preparation_data := Some(kbr',ikb',assoc_id);
                       csys'
-                  | Some (kbr,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others kbr ikb assoc_id csys_1
+                  | Some (_,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others ikb assoc_id csys_1
               )
             in
 
@@ -429,7 +429,7 @@ let apply_one_transition_and_rules_private_output type_max equiv_pbl f_continuat
                       let (csys',kbr',ikb',assoc_id) = Constraint_system.prepare_for_solving_procedure_first true equiv_pbl.csys_set.Constraint_system.knowledge_recipe csys_2 in
                       preparation_data := Some(kbr',ikb',assoc_id);
                       csys'
-                  | Some (kbr,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others kbr ikb assoc_id csys_2
+                  | Some (_,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others ikb assoc_id csys_2
               )
             in
 
@@ -536,7 +536,7 @@ let apply_one_transition_and_rules_eavesdrop_eav_transition type_max equiv_pbl f
                   let (csys',kbr',ikb',assoc_id) = Constraint_system.prepare_for_solving_procedure_first true equiv_pbl.csys_set.Constraint_system.knowledge_recipe csys_2 in
                   preparation_data := Some(kbr',ikb',assoc_id);
                   csys'
-              | Some (kbr,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others kbr ikb assoc_id csys_2
+              | Some (_,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others ikb assoc_id csys_2
             in
 
             if eav_gathering.eav_private_channels <> []

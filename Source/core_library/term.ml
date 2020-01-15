@@ -148,7 +148,8 @@ module Variable = struct
         let v' = fresh_with_label v.quantifier v.label in
         link v v';
         v'
-    | _ -> Config.internal_error "[term.ml >> Variable.rename_term] Unexpected link"
+    | SLink -> v
+    | _ -> Config.internal_error "[term.ml >> Variable.rename] Unexpected link"
 
   (** [rename_term q t] renames the variables in [t] by fresh variables with quantifier [q].
       We assume that the variables can only be linked with VLink. *)
@@ -160,7 +161,9 @@ module Variable = struct
               let v' = fresh_with_label q v.label in
               link v v';
               Var v'
-          | _ -> Config.internal_error "[term.ml >> Variable.rename_term] Unexpected link"
+          | TLink _ -> Config.internal_error "[term.ml >> Variable.rename_term] Unexpected TLink"
+          | XLink _ -> Config.internal_error "[term.ml >> Variable.rename_term] Unexpected XLink"
+          | SLink -> Config.internal_error "[term.ml >> Variable.rename_term] Unexpected Slink"
         end
     | Func(f,args) -> Func(f, List.map (rename_term q) args)
     | _ -> t

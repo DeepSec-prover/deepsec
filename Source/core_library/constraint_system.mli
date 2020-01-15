@@ -81,11 +81,11 @@ val add_non_deducible_terms : 'a t -> term list -> 'a t
 
 val prepare_for_solving_procedure_first : bool -> KR.t -> 'a t -> 'a t * KR.t * IK.t * (int * int) list
 
-val prepare_for_solving_procedure_others : KR.t -> IK.t -> (int * int) list -> 'a t -> 'a t
+val prepare_for_solving_procedure_others : IK.t -> (int * int) list -> 'a t -> 'a t
 
 val prepare_for_solving_procedure_first_ground : KR.t -> 'a t -> 'a t * KR.t * IK.t * (int * int) list
 
-val prepare_for_solving_procedure_others_ground : KR.t -> IK.t -> (int * int) list -> 'a t -> 'a t
+val prepare_for_solving_procedure_others_ground : IK.t -> (int * int) list -> 'a t -> 'a t
 
 val instantiate : 'a t -> 'a t
 
@@ -117,7 +117,7 @@ end
 module Rule_ground : sig
 
   type 'a result_static_equivalence =
-    | Static_equivalent of 'a t * 'a t
+    | Static_equivalent of Data_structure.KR.t * 'a t * 'a t
     | Witness_message of recipe
     | Witness_equality of recipe * recipe
 

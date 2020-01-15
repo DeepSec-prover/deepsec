@@ -510,6 +510,8 @@ module K = struct
     let kb' = Array.map_q Term.instantiate kb in
     if kb == kb' then kb else kb'
 
+  let size kb = Array.length kb
+
   (* Iteration on the knowledge base *)
 
   let find_unifier_with_recipe_with_type kbr (kb:t) t type_r f_continuation (f_next:unit->unit) =
@@ -852,16 +854,16 @@ module IK = struct
         kbr',kb',ikb',id_assoc
       end
 
-  let transfer_incremented_knowledge_into_knowledge_only_kb kbr kb ikb =
+  let transfer_incremented_knowledge_into_knowledge_only_kb kb ikb =
 
     let size_ikb = List.length ikb.data in
-    let size_kbr = kbr.KR.size in
+    let size_kb = Array.length kb in
 
     if size_ikb = 0
     then
       begin
         Config.debug (fun () ->
-          if ikb.index_counter <> kbr.KR.size
+          if ikb.index_counter <> size_kb
           then Config.internal_error "[data_structure.ml >> IK.transfer_incremented_knowledge_into_knowledge] Incorrect index counter";
         );
         (* Nothing to be added in Kb *)
@@ -869,11 +871,11 @@ module IK = struct
       end
     else
       begin
-        let new_size = size_ikb + kbr.KR.size in
+        let new_size = size_ikb + size_kb in
         let kb' = Array.make new_size K.dummy_entry in
 
         (* Copy data of K *)
-        for i = 0 to size_kbr - 1 do
+        for i = 0 to  size_kb - 1 do
           kb'.(i) <- Term.rename_and_instantiate kb.(i)
         done;
 
@@ -890,8 +892,7 @@ module IK = struct
         kb'
       end
 
-  (* This function does not rename the variables meaning that terms may have links.
-     This function should also only be applied after and output. *)
+  (* his function should only be applied after and output. *)
   let transfer_incremented_knowledge_into_knowledge_no_rename kbr kb ikb =
 
     let size_ikb = List.length ikb.data in
@@ -928,8 +929,8 @@ module IK = struct
         let rec copy index acc = function
           | [] -> acc
           | elt::q ->
-              kb'.(index) <- elt.term;
-              data_kbr'.(index) <- { KR.type_rec = ikb.type_rec; KR.recipe = elt.recipe };
+              kb'.(index) <- Term.instantiate elt.term;
+              data_kbr'.(index) <- { KR.type_rec = ikb.type_rec; KR.recipe = Recipe.instantiate elt.recipe };
               copy (index-1) ((elt.id,index)::acc) q
         in
 
@@ -953,16 +954,16 @@ module IK = struct
         kbr',kb',ikb',id_assoc
       end
 
-  let transfer_incremented_knowledge_into_knowledge_only_kb_no_rename kbr kb ikb =
+  let transfer_incremented_knowledge_into_knowledge_only_kb_no_rename kb ikb =
 
     let size_ikb = List.length ikb.data in
-    let size_kbr = kbr.KR.size in
+    let size_kb = Array.length kb in
 
     if size_ikb = 0
     then
       begin
         Config.debug (fun () ->
-          if ikb.index_counter <> kbr.KR.size
+          if ikb.index_counter <> size_kb
           then Config.internal_error "[data_structure.ml >> IK.transfer_incremented_knowledge_into_knowledge] Incorrect index counter";
         );
         (* Nothing to be added in Kb *)
@@ -970,11 +971,11 @@ module IK = struct
       end
     else
       begin
-        let new_size = size_ikb + kbr.KR.size in
+        let new_size = size_ikb + size_kb in
         let kb' = Array.make new_size K.dummy_entry in
 
         (* Copy data of K *)
-        for i = 0 to size_kbr - 1 do
+        for i = 0 to size_kb - 1 do
           kb'.(i) <- kb.(i)
         done;
 
@@ -982,7 +983,7 @@ module IK = struct
         let rec copy index = function
           | [] -> ()
           | elt::q ->
-              kb'.(index) <- elt.term;
+              kb'.(index) <- Term.instantiate elt.term;
               copy (index-1)  q
         in
 

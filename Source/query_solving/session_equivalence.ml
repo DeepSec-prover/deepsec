@@ -1129,7 +1129,7 @@ let apply_neg_phase equiv_pbl f_continuation f_next =
                       let (csys',kbr',ikb',assoc_id) = Constraint_system.prepare_for_solving_procedure_first true equiv_pbl.knowledge_recipe csys_2 in
                       preparation_data := Some(kbr',ikb',assoc_id);
                       csys'
-                  | Some (kbr,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others kbr ikb assoc_id csys_2
+                  | Some (_,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others ikb assoc_id csys_2
                 in
 
                 match out_trans.Configuration.out_matching_status with
@@ -1365,7 +1365,7 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
                               let (csys',kbr',ikb',assoc_id) = Constraint_system.prepare_for_solving_procedure_first false equiv_pbl.knowledge_recipe csys_1 in
                               preparation_data := Some(kbr',ikb',assoc_id);
                               csys'
-                          | Some (kbr,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others kbr ikb assoc_id csys_1
+                          | Some (_,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others ikb assoc_id csys_1
                         in
 
                         begin match in_comm_trans.Configuration.in_comm_matching_status with
@@ -1400,7 +1400,7 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
                               let (csys',kbr',ikb',assoc_id) = Constraint_system.prepare_for_solving_procedure_first false equiv_pbl.knowledge_recipe csys_1 in
                               preparation_data := Some(kbr',ikb',assoc_id);
                               csys'
-                          | Some (kbr,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others kbr ikb assoc_id csys_1
+                          | Some (_,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others ikb assoc_id csys_1
                         in
 
                         begin match in_comm_trans.Configuration.in_comm_matching_status with
@@ -1618,7 +1618,7 @@ let apply_pos_phase equiv_pbl f_continuation f_next =
                             let (csys',kbr',ikb',assoc_id) = Constraint_system.prepare_for_solving_procedure_first false equiv_pbl.knowledge_recipe csys_1 in
                             preparation_data := Some(kbr',ikb',assoc_id);
                             csys'
-                        | Some (kbr,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others kbr ikb assoc_id csys_1
+                        | Some (_,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others ikb assoc_id csys_1
                       in
 
                       begin match in_comm_trans.Configuration.in_comm_matching_status with
@@ -1799,7 +1799,7 @@ let apply_start equiv_pbl f_continuation f_next =
                       let (csys',kbr',ikb',assoc_id) = Constraint_system.prepare_for_solving_procedure_first false equiv_pbl.knowledge_recipe csys_1 in
                       preparation_data := Some(kbr',ikb',assoc_id);
                       csys'
-                  | Some (kbr,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others kbr ikb assoc_id csys_1
+                  | Some (_,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others ikb assoc_id csys_1
                 in
 
                 begin match start_trans.Configuration.start_matching_status with
