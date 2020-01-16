@@ -306,13 +306,19 @@ let instantiate csys =
       else (v, t')
     ) csys.original_substitution
   in
+  let df' = DF.instantiate csys.deduction_facts in
+  let k' = K.instantiate csys.knowledge in
+  let ik' = IK.instantiate csys.incremented_knowledge in
 
-  { csys with
-    deduction_facts = DF.instantiate csys.deduction_facts;
-    knowledge = K.instantiate csys.knowledge;
-    incremented_knowledge = IK.instantiate csys.incremented_knowledge;
-    original_substitution = orig_subst
-  }
+  if df' == csys.deduction_facts && k' == csys.knowledge && ik' == csys.incremented_knowledge && orig_subst == csys.original_substitution
+  then csys
+  else
+    { csys with
+      deduction_facts = DF.instantiate csys.deduction_facts;
+      knowledge = K.instantiate csys.knowledge;
+      incremented_knowledge = IK.instantiate csys.incremented_knowledge;
+      original_substitution = orig_subst
+    }
 
 let rec link_top_level_names = function
   | Var { link = TLink t; _ } -> link_top_level_names t;

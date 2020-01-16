@@ -3,6 +3,7 @@ open Term
 open Formula
 open Generic_process
 open Display
+open Extensions
 
 type origin_process =
   | Left
@@ -109,8 +110,10 @@ let clean_variables_names =
   List.rev_map (fun csys ->
     let conf = csys.Constraint_system.additional_data in
     link_used_data (fun () ->
-      let original_subst = List.filter (fun (x,_) -> x.link = SLink) csys.Constraint_system.original_substitution in
-      { csys with Constraint_system.original_substitution = original_subst }
+      let original_subst = List.filter_q (fun (x,_) -> x.link = SLink) csys.Constraint_system.original_substitution in
+      if original_subst == csys.Constraint_system.original_substitution
+      then csys
+      else { csys with Constraint_system.original_substitution = original_subst }
     ) conf.current_process
   )
 
@@ -279,6 +282,7 @@ let apply_one_transition_and_rules_classic_output type_max equiv_pbl f_continuat
       } f_next
 
 let apply_one_transition_and_rules_classic equiv_pbl f_continuation f_next =
+  incr nb_apply_one_transition_and_rules;
   Config.debug (fun () ->
     incr nb_apply_one_transition_and_rules;
     Constraint_system.Set.debug_check_structure "[generic_equivalence >> apply_one_transition_and_rules_classic]" equiv_pbl.csys_set;

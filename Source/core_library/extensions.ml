@@ -36,6 +36,16 @@ module List = struct
           else t'::q'
         else t' :: map_q f q
 
+  let rec filter_q f l = match l with
+    | [] -> l
+    | t::q ->
+        let q' = filter_q f q in
+        if f t
+        then
+          if q == q'
+          then l
+          else t::q'
+        else q'
 
   let removeq x l =
     let rec explore prev = function

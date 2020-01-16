@@ -1080,16 +1080,48 @@ module Recipe = struct
 
   (********** Instantiation ***********)
 
-  let rec instantiate = function
-    | RVar { link_r = RLink r; _}
-    | CRFunc(_,r) -> instantiate r
-    | RFunc(f,args) -> RFunc(f,List.map instantiate args)
+  let rec instantiate r = match r with
+    | RVar { link_r = RLink r'; _}
+    | CRFunc(_,r') -> instantiate r'
+    | RFunc(f,args) ->
+        let args' = instantiate_list args in
+        if args == args'
+        then r
+        else RFunc(f,args')
+    | _ -> r
+
+  and instantiate_list rlist = match rlist with
+    | [] -> rlist
+    | r::q ->
+        let r' = instantiate r in
+        if r == r'
+        then
+          let q' = instantiate_list q in
+          if q == q'
+          then rlist
+          else r'::q'
+        else r'::(instantiate_list q)
+
+  let rec instantiate_preserve_context r = match r with
+    | RVar { link_r = RLink r'; _} -> instantiate_preserve_context r'
+    | RFunc(f,args) ->
+        let args' = instantiate_preserve_context_list args in
+        if args == args'
+        then r
+        else RFunc(f,args')
     | r -> r
 
-  let rec instantiate_preserve_context = function
-    | RVar { link_r = RLink r'; _} -> instantiate_preserve_context r'
-    | RFunc(f,args) -> RFunc(f,List.map instantiate_preserve_context args)
-    | r -> r
+  and instantiate_preserve_context_list rlist = match rlist with
+    | [] -> rlist
+    | r::q ->
+        let r' = instantiate_preserve_context r in
+        if r == r'
+        then
+          let q' = instantiate_preserve_context_list q in
+          if q == q'
+          then rlist
+          else r'::q'
+        else r'::(instantiate_preserve_context_list q)
 
   (********** Display **********)
 

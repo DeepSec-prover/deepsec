@@ -325,24 +325,34 @@ module DF = struct
     let removed_bfact = ref [] in
     let newly_linked = ref [] in
 
-    let rec explore_bfact_list = function
-      | [] -> []
+    let rec explore_bfact_list bfact_l = match bfact_l with
+      | [] -> bfact_l
       | bfact::q when bfact.bf_var.link_r = RNoLink ->
           bfact.bf_var.link_r <- RXLink bfact.bf_term;
           newly_linked := bfact.bf_var :: !newly_linked;
-          bfact::(explore_bfact_list q)
+          let q' = explore_bfact_list q in
+          if q == q'
+          then bfact_l
+          else bfact::q'
       | bfact::q ->
           removed_bfact := bfact :: !removed_bfact;
           explore_bfact_list q
     in
 
-    let rec explore = function
+    let rec explore l = match l with
       | [] -> []
-      | (i,bfact_list)::q ->
+      | ((i,bfact_list) as head)::q ->
           let bfact_list' = explore_bfact_list bfact_list in
-          if bfact_list' = []
-          then explore q
-          else (i,bfact_list')::(explore q)
+          if bfact_list' == bfact_list
+          then
+            let q' = explore q in
+            if q == q'
+            then l
+            else head::q'
+          else
+            if bfact_list' = []
+            then explore q
+            else (i,bfact_list')::(explore q)
     in
 
     let (result:t) = explore df in
@@ -408,8 +418,14 @@ module DF = struct
     ) df
 
   let instantiate (df:t) =
-    List.map (fun (i,bfact_list) ->
-      (i,List.map (fun bfact -> { bfact with bf_term = Term.instantiate bfact.bf_term }) bfact_list)
+    List.map_q (fun ((i,bfact_list) as elt) ->
+      let bfact_list' =
+        List.map_q (fun bfact ->
+          let t' = Term.instantiate bfact.bf_term in
+          if bfact.bf_term == t' then bfact else { bfact with bf_term = t' }
+        ) bfact_list
+      in
+      if bfact_list' == bfact_list then elt else (i,bfact_list')
     ) df
 
   (******* Function for debuging ******)
@@ -506,9 +522,7 @@ module K = struct
 
   let empty = Array.make 0 dummy_entry
 
-  let instantiate (kb:t) =
-    let kb' = Array.map_q Term.instantiate kb in
-    if kb == kb' then kb else kb'
+  let instantiate (kb:t) = Array.map_q Term.instantiate kb
 
   let size kb = Array.length kb
 

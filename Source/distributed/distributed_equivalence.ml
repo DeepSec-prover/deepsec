@@ -51,6 +51,53 @@ struct
     | DGeneric data -> List.length data.gen_equiv_problem.Generic_equivalence.csys_set.Constraint_system.set
     | _ -> 0
 
+  let rec add_in_memory t mem = match mem with
+    | [] -> [[t]]
+    | []::_ -> Config.internal_error "[Memory]"
+    | ((t'::_) as l)::mem_q when Term.is_equal t t' ->
+        if List.memq t l
+        then mem
+        else (t::l)::mem_q
+    | l::mem_q -> l::(add_in_memory t mem_q)
+
+  let memory_stat job = match job.data_equiv with
+    | DGeneric data ->
+        let memory = ref [] in
+
+        List.iter (fun csys ->
+          Data_structure.K.iter_term (fun t ->
+            memory := add_in_memory t !memory
+          ) csys.Constraint_system.knowledge
+        ) data.gen_equiv_problem.Generic_equivalence.csys_set.Constraint_system.set;
+
+        let total_term = List.fold_left (fun acc l -> List.length l + acc) 0 !memory in
+        let total_distinct_term = List.length !memory in
+        let distinct_terms = List.map (fun l -> List.hd l) !memory in
+        let total_memory = Obj.reachable_words (Obj.repr !memory) in
+        let distinct_memory = Obj.reachable_words (Obj.repr distinct_terms) in
+        let percent_memory =
+          if total_memory = 0
+          then 100
+          else ((distinct_memory * 100)/total_memory) in
+        let percent_nb =
+          if total_term = 0
+          then 100
+          else ((total_distinct_term * 100)/total_term)
+        in
+        if percent_nb <> 100
+        then
+        Config.log_in_debug Config.Debug (Display.display_object 1 None [
+          "nb_term", string_of_int total_term;
+          "nb_distinct_term", string_of_int total_distinct_term;
+          "nb_percent", string_of_int percent_nb;
+          "total_memory", string_of_int total_memory;
+          "distinct_memory", string_of_int distinct_memory;
+          "percent_memory", string_of_int percent_memory;
+
+        ])
+
+    | _ -> ()
+
   let evaluation job =
     Variable.set_up_counter job.variable_counter;
     Name.set_up_counter job.name_counter;

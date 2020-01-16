@@ -18,6 +18,8 @@ type equivalence_problem =
     size_frame : int
   }
 
+val nb_apply_one_transition_and_rules : int ref
+
 val export_equivalence_problem : equivalence_problem -> equivalence_problem * (recipe_variable * recipe) list
 
 val import_equivalence_problem : (unit -> 'a) -> equivalence_problem -> (recipe_variable * recipe) list -> 'a
