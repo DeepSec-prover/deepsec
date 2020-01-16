@@ -14,10 +14,6 @@ module type Evaluator_task = sig
   (** The type of a job *)
   type job
 
-  val get_nb_constraint_system : job -> int
-
-  val memory_stat : job -> unit
-
   (** Standard evaluationn of a job for distributed computationn *)
   val evaluation : job -> verification_result
 

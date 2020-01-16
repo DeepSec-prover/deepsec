@@ -64,10 +64,6 @@ module type Evaluator_task = sig
   (** The type of a job *)
   type job
 
-  val get_nb_constraint_system : job -> int
-
-  val memory_stat : job -> unit
-
   (** Standard evaluationn of a job for distributed computationn *)
   val evaluation : job -> verification_result
 
@@ -193,7 +189,6 @@ module Distrib = functor (Task:Evaluator_task) -> struct
       with
         | Exit ->
             Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Exit");
-            Config.log_in_debug Config.Debug ("Nb of transition rules = "^(string_of_int !Generic_equivalence.nb_apply_one_transition_and_rules));
             let memory = (Gc.quick_stat ()).Gc.top_heap_words * (Sys.word_size / 8) in
             send_output_command (Killed memory)
   end
@@ -818,24 +813,7 @@ module Distrib = functor (Task:Evaluator_task) -> struct
 
     let rec evaluate_distributed round job_list =
       try
-        let size_jobs = Obj.reachable_words (Obj.repr job_list) in
-        let nb_csys_set = List.fold_left (fun acc job -> acc + Task.get_nb_constraint_system job) 0 job_list in
-        Config.log_in_debug Config.Debug (Display.display_object 1 (Some "Data job list input") [
-          "Nb jobs", string_of_int (List.length job_list);
-          "Nb csys", string_of_int nb_csys_set;
-          "Memory", string_of_int size_jobs
-        ]);
-        List.iter Task.memory_stat job_list;
         let jobs_created_data = generate_jobs round job_list in
-        let (job_list,nb_jobs) = jobs_created_data in
-        let size_jobs = Obj.reachable_words (Obj.repr jobs_created_data) in
-        let nb_csys_set = List.fold_left (fun acc job -> acc + Task.get_nb_constraint_system job) 0 job_list in
-        Config.log_in_debug Config.Debug (Display.display_object 1 (Some "Data job list generated") [
-          "Nb jobs", string_of_int nb_jobs;
-          "Nb csys", string_of_int nb_csys_set;
-          "Memory", string_of_int size_jobs
-        ]);
-        List.iter Task.memory_stat job_list;
         let remain_job_list_next_round = evaluate_jobs round jobs_created_data in
         evaluate_distributed (round+1) remain_job_list_next_round
       with Completed_execution result ->

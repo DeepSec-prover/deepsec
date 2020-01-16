@@ -282,7 +282,6 @@ let apply_one_transition_and_rules_classic_output type_max equiv_pbl f_continuat
       } f_next
 
 let apply_one_transition_and_rules_classic equiv_pbl f_continuation f_next =
-  incr nb_apply_one_transition_and_rules;
   Config.debug (fun () ->
     incr nb_apply_one_transition_and_rules;
     Constraint_system.Set.debug_check_structure "[generic_equivalence >> apply_one_transition_and_rules_classic]" equiv_pbl.csys_set;

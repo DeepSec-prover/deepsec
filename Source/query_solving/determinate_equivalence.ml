@@ -340,8 +340,6 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
               csys_conf_list := (csys, csys.Constraint_system.additional_data.configuration) :: !csys_conf_list
             ) equiv_pbl.csys_set.Constraint_system.set;
 
-            Config.log Config.Debug (fun () -> "Before transition");
-
             apply_start_in var_X !csys_conf_list apply_conf (fun csys_var_list label f_next_1 ->
               let csys_list_for_input = ref [] in
 
@@ -380,7 +378,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                           Constraint_system.eq_uniformity = eq_uniformity
                         }
                       in
-                      Config.log Config.Debug (fun () -> "Before prepare for solving");
+
                       let csys_2 =
                         match !preparation_data with
                           | None ->
@@ -390,14 +388,10 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                           | Some (_,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others ikb assoc_id csys_1
                       in
 
-                      Config.log Config.Debug (fun () -> "After prepare for solving");
-
                       csys_list_for_input := csys_2 :: !csys_list_for_input
                   )
                 )
               ) csys_var_list;
-
-              Config.log Config.Debug (fun () -> "Transition completed");
 
               (* Optimise the original substitution within constraint systems *)
               csys_list_for_input :=

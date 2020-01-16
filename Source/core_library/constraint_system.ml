@@ -2751,28 +2751,28 @@ module Rule = struct
 
     internal csys_set.eq_recipe (ref None) [] csys_set.set f_next
 
-  let initialise_equality_constructor f_continuation csys_set (f_next:unit -> unit) =
+  let equality_constructor f_continuation csys_set (f_next:unit -> unit) =
     if csys_set.set = []
     then f_next ()
     else
       let one_csys = List.hd csys_set.set in
       let all_id = IK.get_all_index one_csys.incremented_knowledge in
+      if all_id = []
+      then f_continuation csys_set f_next
+      else
+        let csys_list =
+          List.rev_map (fun csys ->
+            Config.debug (fun () ->
+              if csys.rule_data.equality_constructor_IK <> ([],[])
+              then Config.internal_error "[constraint_system.ml >> initialise_equality_constructor] The equality constructor skeletons for IK should be empty.";
+            );
+            match csys.rule_data.equality_constructor_K with
+              | (checked_K,[]) -> { csys with rule_data = { csys.rule_data with equality_constructor_IK = ([],all_id); equality_constructor_K = ([],checked_K) } }
+              | _ -> Config.internal_error "[constraint_system.ml >> initialise_equality_constructor] The equality constructor skeletons for K should be empty.";
+          ) csys_set.set
+        in
 
-      let csys_list =
-        List.rev_map (fun csys ->
-          Config.debug (fun () ->
-            if csys.rule_data.equality_constructor_IK <> ([],[])
-            then Config.internal_error "[constraint_system.ml >> initialise_equality_constructor] The equality constructor skeletons for IK should be empty.";
-          );
-          match csys.rule_data.equality_constructor_K with
-            | (checked_K,[]) -> { csys with rule_data = { csys.rule_data with equality_constructor_IK = ([],all_id); equality_constructor_K = ([],checked_K) } }
-            | _ -> Config.internal_error "[constraint_system.ml >> initialise_equality_constructor] The equality constructor skeletons for K should be empty.";
-        ) csys_set.set
-      in
-
-      f_continuation { csys_set with set = csys_list } f_next
-
-  let equality_constructor f_continuation = initialise_equality_constructor (internal_equality_constructor f_continuation)
+        internal_equality_constructor f_continuation { csys_set with set = csys_list } f_next
 
   (*** Main functions ***)
 
