@@ -1,0 +1,16 @@
+free c.
+
+fun enc/2.
+
+reduc
+  dec(enc(x,y),y) -> x.
+
+
+let P = new k; new a; out(c,enc(a,k)); out(c,k).
+
+let Q = new k; new k'; new a; out(c,enc(a,k)); out(c,k').
+
+
+query trace_equiv(P,Q).
+
+(* Should not be equivalent *)
