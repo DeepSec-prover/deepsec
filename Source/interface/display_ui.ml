@@ -964,12 +964,18 @@ let send_command json_str =
     if !keep_sending
     then
       begin
+        Config.log Config.Debug (fun () -> "[display_ui.ml >> send_command] Sending");
         output_string stdout (json_str^"\n");
-        flush stdout
+        flush stdout;
+        Config.log Config.Debug (fun () -> "[display_ui.ml >> send_command] Message sent");
       end
-  with End_of_file ->
-    Config.log Config.Distribution (fun () -> "[display_ui.ml >> send_command] End of file caught\n");
-    keep_sending := false
+  with
+    | End_of_file ->
+      Config.log Config.Distribution (fun () -> "[display_ui.ml >> send_command] End of file caught");
+      keep_sending := false
+    | Sys_error _ ->
+      Config.log Config.Distribution (fun () -> "[display_ui.ml >> send_command] Sys_error caught");
+      keep_sending := false
 
 let send_output_command out_cmd =
   if !Config.running_api

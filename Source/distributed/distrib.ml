@@ -322,7 +322,9 @@ module Distrib = functor (Task:Evaluator_task) -> struct
       Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM] Waiting for acknowledgement");
       match get_input_command () with
         | Acknowledge -> Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM] Ack received")
-        | Die -> raise Exit
+        | Die ->
+             Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.send_output_command_ack] Received die command.");
+             raise Exit
         | _ -> Config.internal_error "[distrib.ml >> WLM.send_output_command_ack] Was expecting an acknowledgement."
 
     type distant_manager_data =
@@ -861,7 +863,9 @@ module Distrib = functor (Task:Evaluator_task) -> struct
     let main () =
       try
         begin match get_input_command () with
-          | Die -> raise Exit
+          | Die ->
+              Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM] Received Die command");
+              raise Exit
           | Execute_query job ->
               initialisation job;
               if !distributed
@@ -870,10 +874,12 @@ module Distrib = functor (Task:Evaluator_task) -> struct
           | _ -> send_error "[distrib.ml >> main] Unexpected input command"
         end
       with
-        | Exit -> ignore (kill_all ())
+        | Exit ->
+            ignore (kill_all ());
+            Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM] Exit");
         | ex ->
             ignore (kill_all ());
-            Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.main] Send error command");
+            Config.log Config.Distribution (fun () -> (Printf.sprintf "[distrib.ml >> WLM.main] Send error command : %s" (Printexc.to_string ex)));
             send_output_command (Error_msg ((Printexc.to_string ex),!current_progression))
   end
 end
