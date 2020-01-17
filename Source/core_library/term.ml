@@ -430,6 +430,10 @@ module Name = struct
       currently_linked := tmp;
       raise e
 
+  let cleanup () =
+    List.iter (fun n -> n.link_n <- NNoLink) !currently_linked;
+    currently_linked := []
+
   let set_deducible n recipe =
     Config.debug (fun () ->
       if n.deducible_n <> None
