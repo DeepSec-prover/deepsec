@@ -13,6 +13,8 @@ val setup_signature : query_result -> unit
 
 val execute_process : semantics -> full_association -> json_process -> json_transition list -> (configuration Constraint_system.t * full_association) list
 
+val get_private_names : configuration -> name list
+
 (* Attack simulator *)
 
 type simulated_state =

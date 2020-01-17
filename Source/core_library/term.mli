@@ -271,6 +271,8 @@ module Name :  sig
 
   val auto_cleanup_with_exception : (unit -> 'a) -> 'a
 
+  val cleanup : unit -> unit
+
   val set_deducible : name -> recipe -> unit
 
   val currently_deducible : name list ref
