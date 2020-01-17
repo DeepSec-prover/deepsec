@@ -139,6 +139,9 @@ module Variable = struct
       currently_linked := tmp;
       raise e
 
+  let cleanup () =
+    List.iter (fun v -> v.link <- NoLink) !currently_linked;
+    currently_linked := []
 
   (******* Renaming *******)
 
@@ -291,6 +294,10 @@ module Recipe_Variable = struct
       currently_linked := tmp;
       raise e
 
+  let cleanup () =
+    List.iter (fun v -> v.link_r <- RNoLink) !currently_linked;
+    currently_linked := []
+
   (******* Renaming *******)
 
   (** [rename_term q r] renames the variables in [t] by fresh variables with quantifier [q].
@@ -404,6 +411,10 @@ module Name = struct
       List.iter (fun n -> n.link_n <- NNoLink) !currently_linked;
       currently_linked := tmp;
       raise e
+
+    let cleanup () =
+      List.iter (fun n -> n.link_n <- NNoLink) !currently_linked;
+      currently_linked := []
 end
 
 (*************************************
@@ -982,7 +993,7 @@ module Term = struct
 end
 
 (*************************************
-***              Terms             ***
+***              Recipe            ***
 **************************************)
 
 

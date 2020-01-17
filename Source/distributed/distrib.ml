@@ -170,6 +170,10 @@ module Distrib = functor (Task:Evaluator_task) -> struct
           done
         with
           | Interupt ->
+              Term.Variable.cleanup ();
+              Term.Name.cleanup ();
+              Term.Recipe_Variable.cleanup ();
+              Session_equivalence.cleanup ();
               Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Interupted");
               send_output_command Interupted;
               run_execution ()
@@ -179,6 +183,10 @@ module Distrib = functor (Task:Evaluator_task) -> struct
               run_execution ()
           | Exit -> raise Exit
           | ex ->
+              Term.Variable.cleanup ();
+              Term.Name.cleanup ();
+              Term.Recipe_Variable.cleanup ();
+              Session_equivalence.cleanup ();
               Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WE] Other error : %s" (Printexc.to_string ex));
               send_output_command (Error_msg (Printexc.to_string ex));
               run_execution ()

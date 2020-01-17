@@ -1018,9 +1018,6 @@ let get_improper_inputs symb = match symb.link_c with
 
 let compute_before_focus_phase equiv_pbl =
 
-  if !linked_symbolic_configuration <> []
-  then Config.internal_error "[session_equivalence.ml >> compute_before_focus_phase] List of linked symbolic configuration should be empty.";
-
   let record_improper_conf = ref [] in
 
   let rec explore_forall_set = function
@@ -2044,3 +2041,11 @@ let import_equivalence_problem f_next equiv_pbl recipe_subst =
 
     f_next ()
   )
+
+(*** Cleanup ***)
+
+let cleanup () =
+  List.iter (fun symb -> symb.link_c <- CNoLink) !linked_symbolic_configuration;
+  linked_symbolic_configuration := [];
+  List.iter (fun imp_ref -> imp_ref := None) !linked_improper_reference;
+  linked_improper_reference := [];
