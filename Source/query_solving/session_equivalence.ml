@@ -703,7 +703,6 @@ let generate_attack_trace csys =
 
 let split_forall_set csys_list f_continuation (f_next:unit->unit) =
 
-  let marked_conf = ref [] in
   let all_csys = ref [] in
 
   let rec mark csys =
@@ -711,26 +710,32 @@ let split_forall_set csys_list f_continuation (f_next:unit->unit) =
     match conf.link_c with
       | CNoLink ->
           all_csys := csys :: !all_csys;
-          conf.link_c <- CSearch;
-          marked_conf := conf::!marked_conf;
+          link_symbolic_configuration conf CSearch;
           List.iter mark conf.forall_matched;
           List.iter (fun (csys',_) -> mark csys') conf.exists_matched
-      | _ -> ()
+      | CSearch -> ()
+      | CImproperInputs _ -> Config.internal_error "[session_equivalence.ml >> split_forall_set] Unexpected link : Improper"
+      | CCsys _ -> Config.internal_error "[session_equivalence.ml >> csplit_forall_set] Unexpected link : CCsys"
+      | CTransition _ -> Config.internal_error "[session_equivalence.ml >> split_forall_set] Unexpected link : CTransition"
+      | CChannelPriority _ -> Config.internal_error "[session_equivalence.ml >> split_forall_set] Unexpected link : CChannelPriority"
   in
 
   let rec explore csys_list_1 f_next_1 = match csys_list_1 with
     | [] -> f_next_1 ()
     | csys::q ->
-        mark csys;
-        let (marked,not_marked) = List.partition_unordered (fun csys' -> csys'.Constraint_system.additional_data.link_c = CSearch) q in
-        let marked_1 = csys::marked in
-        let csys_to_solve = !all_csys in
-        (* Cleanup *)
-        all_csys := [];
-        List.iter (fun conf -> conf.link_c <- CNoLink) !marked_conf;
-        marked_conf := [];
+        let (marked,not_marked,csys_to_solve) =
+          auto_cleanup_symbolic_configuration (fun () ->
+            mark csys;
+            let (marked,not_marked) = List.partition_unordered (fun csys' -> csys'.Constraint_system.additional_data.link_c = CSearch) q in
+            let marked_1 = csys::marked in
+            let csys_to_solve = !all_csys in
+            (* Cleanup *)
+            all_csys := [];
+            marked_1, not_marked, csys_to_solve
+          )
+        in
         (* Apply next *)
-        f_continuation marked_1 csys_to_solve (fun () ->
+        f_continuation marked csys_to_solve (fun () ->
           explore not_marked f_next_1
         )
   in
@@ -954,7 +959,12 @@ let determine_channel_priority forall_set =
       let sym_conf = csys.Constraint_system.additional_data in
       match sym_conf.link_c with
         | CChannelPriority (Configuration.ChPriority(ch,false)) -> sym_conf.link_c <- CChannelPriority (Configuration.ChPriority(ch,true))
-        | _ -> ()
+        | CChannelPriority _ -> ()
+        | CImproperInputs _ -> Config.internal_error "[session_equivalence.ml >> determine_channel_priority] Unexpected link : CCsys"
+        | CCsys _ -> Config.internal_error "[session_equivalence.ml >> determine_channel_priority] Unexpected link : CCsys"
+        | CSearch -> Config.internal_error "[session_equivalence.ml >> determine_channel_priority] Unexpected link : CSearch"
+        | CTransition _ -> Config.internal_error "[session_equivalence.ml >> determine_channel_priority] Unexpected link : CTransition"
+        | CNoLink -> Config.internal_error "[session_equivalence.ml >> determine_channel_priority] The symbolic configuration should be linked."
     ) forall_set;
 
   !all_priority
@@ -1001,15 +1011,21 @@ let get_improper_inputs symb = match symb.link_c with
       link_symbolic_configuration symb (CImproperInputs(imp_data,old_conf));
       imp_data
   | CImproperInputs(imp_data,_) -> imp_data
-  | _ -> Config.internal_error "[session_equivalence.ml >> link_symbolic_configuration_with_improper_inputs] Unexpected links"
+  | CCsys _ -> Config.internal_error "[session_equivalence.ml >> get_improper_inputs] Unexpected link : CCsys"
+  | CSearch -> Config.internal_error "[session_equivalence.ml >> get_improper_inputs] Unexpected link : CSearch"
+  | CTransition _ -> Config.internal_error "[session_equivalence.ml >> get_improper_inputs] Unexpected link : CTransition"
+  | CChannelPriority _ -> Config.internal_error "[session_equivalence.ml >> get_improper_inputs] Unexpected link : CChannelPriority"
 
 let compute_before_focus_phase equiv_pbl =
+
+  if !linked_symbolic_configuration <> []
+  then Config.internal_error "[session_equivalence.ml >> compute_before_focus_phase] List of linked symbolic configuration should be empty.";
 
   let record_improper_conf = ref [] in
 
   let rec explore_forall_set = function
     | [] ->
-        (* Not exception was raised meaning that we managed to match every improper inputs. *)
+        (* No exception was raised meaning that we managed to match every improper inputs. *)
         List.iter (fun symb -> symb.link_c <- CNoLink) !linked_symbolic_configuration;
         linked_symbolic_configuration := [];
         record_improper_conf := []
@@ -1043,7 +1059,11 @@ let compute_before_focus_phase equiv_pbl =
     (* Clean and restaure *)
     List.iter (fun symb -> match symb.link_c with
       | CImproperInputs(_,conf) -> symb.configuration <- conf
-      | _ -> Config.internal_error "[session_equivalence.ml >> compute_before_focus_phase] Symbolic configuration should be link."
+      | CNoLink -> Config.internal_error "[session_equivalence.ml >> compute_before_focus_phase] Symbolic configuration should be link."
+      | CCsys _ -> Config.internal_error "[session_equivalence.ml >> compute_before_focus_phase] Unexpected link : CCsys"
+      | CSearch -> Config.internal_error "[session_equivalence.ml >> compute_before_focus_phase] Unexpected link : CSearch"
+      | CTransition _ -> Config.internal_error "[session_equivalence.ml >> compute_before_focus_phase] Unexpected link : CTransition"
+      | CChannelPriority _ -> Config.internal_error "[session_equivalence.ml >> compute_before_focus_phase] Unexpected link : CChannelPriority"
     ) !linked_symbolic_configuration;
     linked_symbolic_configuration := [];
     List.iter (fun (symb,forall_bset,exists_matched) ->
@@ -1309,12 +1329,16 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
 
     let generate_transitions csys =
       let symb_conf = csys.Constraint_system.additional_data in
-      let generate_next_public_input_comm = match symb_conf.link_c with
-        | CChannelPriority ch -> Configuration.next_focus_phase ch
-        | _ -> generate_next_public_input_comm_nolink
-      in
       match symb_conf.link_c with
         | CNoLink | CChannelPriority _ ->
+            let generate_next_public_input_comm = match symb_conf.link_c with
+              | CChannelPriority ch -> Configuration.next_focus_phase ch
+              | CNoLink -> generate_next_public_input_comm_nolink
+              | CImproperInputs _ -> Config.internal_error "[session_equivalence.ml >> apply_focus_phase.generate_next_public_input_comm] Unexpected link : CCsys"
+              | CCsys _ -> Config.internal_error "[session_equivalence.ml >> apply_focus_phase.generate_next_public_input_comm] Unexpected link : CCsys"
+              | CSearch -> Config.internal_error "[session_equivalence.ml >> apply_focus_phase.generate_next_public_input_comm] Unexpected link : CSearch"
+              | CTransition _ -> Config.internal_error "[session_equivalence.ml >> apply_focus_phase.generate_next_public_input_comm] Unexpected link : CTransition"
+            in
             let improper_ref = ref None in
 
             let transitions_forall = ref [] in
@@ -1424,7 +1448,9 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
             else symb_conf.link_c <- CTransition gen_trans;
             gen_trans
         | CTransition gen_trans -> gen_trans
-        | _ -> Config.internal_error "[session_equivalence.ml >> apply_public_output] Unexpected link during generation of transitions."
+        | CImproperInputs _ -> Config.internal_error "[session_equivalence.ml >> apply_focus_phase.generate_transitions] Unexpected link : CCsys"
+        | CCsys _ -> Config.internal_error "[session_equivalence.ml >> apply_focus_phase.generate_transitions] Unexpected link : CCsys"
+        | CSearch -> Config.internal_error "[session_equivalence.ml >> apply_focus_phase.generate_transitions] Unexpected link : CSearch"
     in
 
     List.iter (fun forall_csys ->
