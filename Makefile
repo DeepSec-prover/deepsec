@@ -11,9 +11,10 @@ PROFILE= # seems broken on OSX 10.9 or later
 ADVDEBUG=
 EXTENSION=$(if $(PROFILE),p.native,$(if $(ADVDEBUG),d.byte,native))
 
-GITCOMMIT = $(shell git rev-parse HEAD)
-GITBRANCH = $(shell git branch | grep \* | sed -E "s/^\* \(?//" | sed -E "s/\)$$//")
-PHYSICALCORE = $(shell $(SCRIPTS)/cpu_linux_osx)
+GITCOMMIT = $(shell git rev-parse HEAD 2> /dev/null)
+GITBRANCH = $(shell git branch 2> /dev/null | grep \* | sed -E "s/^\* \(?//" | sed -E "s/\)$$//" )
+PHYSICALCORE_SCRIPT = $(shell $(SCRIPTS)/cpu_linux_osx 2> /dev/null)
+PHYSICALCORE = $(if $(PHYSICALCORE_SCRIPT) == 0,1,$(PHYSICALCORE_SCRIPT))
 OSTYPE = $(shell uname)
 NBLINE = $(shell find Source -name "*.ml" -or -name "*.mli" -or -name "*.mly" -or -name "*.mll" | xargs cat | wc -l)
 
@@ -22,18 +23,36 @@ NBLINE = $(shell find Source -name "*.ml" -or -name "*.mli" -or -name "*.mly" -o
 
 # whole compilation
 all:
-	@printf "\033[1mCompilation of DeepSec $(VERSION)\033[0m\n"
-	@echo $(CORES)
-	@printf "\033[1mBuilding sources$(if $(PROFILE), (PROFILE on),$(if $(ADVDEBUG), (ADVDEBUG on),))...\033[0m\n"
+	@printf "\e[1mCompilation of DeepSec $(VERSION)\e[0m\n"
+	@echo
+	@make -s core_check git_check
+	@printf "\e[1mBuilding sources$(if $(PROFILE), (PROFILE on),$(if $(ADVDEBUG), (ADVDEBUG on),))...\e[0m\n"
 	@make -s config compil
 
 # same, but activates debugging functions in the code (for development only)
 debug:
-	@printf "\033[1mCompiling DeepSec (debugging functions on)...\033[0m\n"
+	@printf "\e[1mCompiling DeepSec (debugging functions on)...\e[0m\n"
 	@make -s config
 	@sed /debug_activated/s/false/true/ Source/core_library/config.ml > .tmp.ml
 	@mv .tmp.ml Source/core_library/config.ml
 	@make -s compil
+
+# Check the number of physical core
+core_check:
+	@if [ $(PHYSICALCORE_SCRIPT) -eq 0 ]; then \
+		if [$(uname) = 'Darwin']; then \
+	    printf "\e[33m\e[1mWarning:\e[0m Could not detect the number of physical core of your machine (most probably sysctl is not installed). Set to 1.\n"; \
+	  else \
+			printf "\e[33m\e[1mWarning:\e[0m Could not detect the number of physical core of your machine (most probably lscpu is not installed). Set to 1.\n"; \
+		fi \
+	fi
+
+git_check:
+	@if [ -z "$(GITCOMMIT)" ]; then \
+		printf "\e[33m\e[1mWarning:\e[0m Could not detect the git branch or git commit. Cloning the git repository is recommended for bug report and updates.\n"; \
+	fi
+
+# Check the presen
 
 # generates config.ml
 config:
@@ -46,11 +65,11 @@ compil:
 	@mv _build/Source/main_api.$(EXTENSION) deepsec_api
 	@mv _build/Source/distributed/worker.$(EXTENSION) deepsec_worker
 	rm main.$(EXTENSION) main_api.$(EXTENSION) worker.$(EXTENSION)
-	@printf "\033[1mBuild successful!\033[0m You can invoke ./deepsec alone to display version data, or ./deepsec -help for usage information.\n\033[1mNumber of lines in the source code: $(NBLINE)\033[0m\n"
+	@printf "\e[32m\e[1mBuild successful!\033[0m You can invoke ./deepsec alone or with option --help to display version data and usage information.\n\033[1mNumber of lines in the source code: $(NBLINE)\e[0m\n"
 
 # checks installation requirements
 check:
-	@printf "\033[1mChecking installation requirements...\033[0m\n"
+	@printf "\e[1mChecking installation requirements...\e[0m\n"
 	@$(SCRIPTS)check
 
 # removes automatically generated files
