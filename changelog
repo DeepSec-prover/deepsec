@@ -3,10 +3,15 @@ of DeepSec.
 
 Version 2.0.0 alpha rc2
 
-  - Improved parsing of recipe in deepsec_api.
-  - Allow deepsec_api to keep running even if its stdin and stdout are
+  - Does not return an internal error when an incorrect path of file is given
+    as argument. Returns a user error instead.
+  - Improved Makefile to handle the cases where Git Commit, Git Hash and detection
+    of physical core are not possible.
+  - [API] Improved parsing of recipe.
+  - [API] Allow deepsec_api to keep running even if its stdin and stdout are
     destroyed.
-
+  - [API] List of privates names in process and frames are sent when receiving
+    commands for the simulators and display of traces.
 
 Version 2.0.0 alpha rc (14/01/2020)
 

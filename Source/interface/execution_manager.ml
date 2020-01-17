@@ -81,24 +81,26 @@ type parsing_result =
   | PSuccess of (Types.equivalence * Types.process * Types.process) list
 
 let parse_file path =
+  if Sys.file_exists path
+  then
+    let channel_in = open_in path in
+    let lexbuf = Lexing.from_channel channel_in in
 
-  let channel_in = open_in path in
-  let lexbuf = Lexing.from_channel channel_in in
-
-  try
-    while true do
-      Parser_functions.parse_one_declaration (Grammar.main Lexer.token lexbuf)
-    done;
-    Config.internal_error "[execution_manager.ml >> parse_file] One of the two exceptions should always be raised."
-  with
-    | Parser_functions.User_Error msg ->
-        close_in channel_in;
-        PUser_error msg, !Parser_functions.warnings
-    | End_of_file ->
-        close_in channel_in;
-        if !Parser_functions.query_list = []
-        then PUser_error "The input file does not contain a query.", !Parser_functions.warnings
-        else PSuccess (List.rev !Parser_functions.query_list), !Parser_functions.warnings (*putting queries in the same order as in the file *)
+    try
+      while true do
+        Parser_functions.parse_one_declaration (Grammar.main Lexer.token lexbuf)
+      done;
+      Config.internal_error "[execution_manager.ml >> parse_file] One of the two exceptions should always be raised."
+    with
+      | Parser_functions.User_Error msg ->
+          close_in channel_in;
+          PUser_error msg, !Parser_functions.warnings
+      | End_of_file ->
+          close_in channel_in;
+          if !Parser_functions.query_list = []
+          then PUser_error "The input file does not contain a query.", !Parser_functions.warnings
+          else PSuccess (List.rev !Parser_functions.query_list), !Parser_functions.warnings (*putting queries in the same order as in the file *)
+  else PUser_error "No such file", []
 
 let copy_file path new_path =
   let channel_in = open_in path in
