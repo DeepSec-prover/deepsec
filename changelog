@@ -12,6 +12,8 @@ Version 2.0.0 alpha rc2
     destroyed.
   - [API] List of privates names in process and frames are sent when receiving
     commands for the simulators and display of traces.
+  - [API] Send a specific error message when there is a '%' in a recipe given by
+    a user.
 
 Version 2.0.0 alpha rc (14/01/2020)
 
