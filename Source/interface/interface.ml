@@ -1411,3 +1411,24 @@ let equivalence_simulator_apply_next_step sem att_state att_transition =
   in
 
   apply_all_transitions att_state.att_csys att_state.att_assoc att_state.att_trace list_transitions, list_transitions
+
+let equivalence_simulator_apply_next_steps sem att_state att_transition_list =
+  let rec apply_all_transitions acc_att_csys acc_att_assoc acc_att_trace = function
+    | [] -> []
+    | trans::q ->
+        (* The main transition *)
+        let (att_csys_1,att_assoc_1) = apply_transition sem true acc_att_assoc acc_att_csys trans in
+        let (default_trans,all_trans) = find_next_possible_transition false sem All_transitions att_csys_1 in
+        let att_trace = acc_att_trace @ [trans] in
+        let state =
+          {
+            att_csys = att_csys_1;
+            att_assoc = att_assoc_1;
+            att_default_available_actions = default_trans;
+            att_all_available_actions = all_trans;
+            att_trace = att_trace
+          }
+        in
+        state::(apply_all_transitions att_csys_1 att_assoc_1 att_trace q)
+  in
+  apply_all_transitions att_state.att_csys att_state.att_assoc att_state.att_trace att_transition_list

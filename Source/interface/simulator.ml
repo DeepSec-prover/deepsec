@@ -288,6 +288,13 @@ let equivalence_simulator json_file id =
               | Interface.Invalid_transition (Interface.Too_much_unfold n) -> Display_ui.send_output_command (Init_internal_error (Printf.sprintf "Too much unfolding: %d." n,true))
 
             end
+        | Next_steps trans_list ->
+            let last_state = List.hd (List.rev !attack_state_list) in
+            let new_states = Interface.equivalence_simulator_apply_next_steps semantics last_state trans_list in
+            let new_last_state = List.hd (List.rev new_states) in
+            attack_state_list := !attack_state_list @ new_states;
+            current_id_action_attack := (List.length !attack_state_list) - 2;
+            Display_ui.send_output_command (get_current_step_phase_1 new_last_state [])
         | Die -> raise Exit
         | _ -> Display_ui.send_output_command (Init_internal_error ("Unexpected input command.",true))
     done

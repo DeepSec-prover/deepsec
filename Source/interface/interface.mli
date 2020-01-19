@@ -68,3 +68,5 @@ type attacked_state =
 val initial_equivalence_simulator_state : semantics -> full_association -> json_process -> attacked_state
 
 val equivalence_simulator_apply_next_step : semantics -> attacked_state -> json_transition -> attacked_state list * json_transition list
+
+val equivalence_simulator_apply_next_steps : semantics -> attacked_state -> json_transition list -> attacked_state list
