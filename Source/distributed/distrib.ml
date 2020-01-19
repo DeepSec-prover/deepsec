@@ -30,7 +30,6 @@ let verify_distant_workers () =
     let (in_ch,out_ch,err_ch) = Unix.open_process_full path_name_worker_ssh [||] in
     let fd_in_ch = Unix.descr_of_in_channel in_ch in
     let fd_err_ch = Unix.descr_of_in_channel err_ch in
-
     let (av_fd_in,_,av_err) = Unix.select [fd_in_ch;fd_err_ch] [] [fd_err_ch] 2. in
     match av_fd_in,av_err with
       | [],[] ->  (host,["The distant deepsec does not seem responsive to version checking. Maybe it's an older version or wrong path ?"])::acc
@@ -171,6 +170,10 @@ module Distrib = functor (Task:Evaluator_task) -> struct
           done
         with
           | Interupt ->
+              Term.Variable.cleanup ();
+              Term.Name.cleanup ();
+              Term.Recipe_Variable.cleanup ();
+              Session_equivalence.cleanup ();
               Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Interupted");
               send_output_command Interupted;
               run_execution ()
@@ -180,6 +183,10 @@ module Distrib = functor (Task:Evaluator_task) -> struct
               run_execution ()
           | Exit -> raise Exit
           | ex ->
+              Term.Variable.cleanup ();
+              Term.Name.cleanup ();
+              Term.Recipe_Variable.cleanup ();
+              Session_equivalence.cleanup ();
               Config.log Config.Distribution (fun () -> Printf.sprintf "[distrib.ml >> WE] Other error : %s" (Printexc.to_string ex));
               send_output_command (Error_msg (Printexc.to_string ex));
               run_execution ()

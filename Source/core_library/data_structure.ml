@@ -137,20 +137,30 @@ module DF = struct
 
   let remove_all_linked_variables (df:t) =
 
-    let rec explore_bfact_list = function
-      | [] -> []
+    let rec explore_bfact_list bfact_list = match bfact_list with
+      | [] -> bfact_list
       | bfact::q when bfact.bf_var.link_r = RNoLink ->
-          bfact::(explore_bfact_list q)
+          let q' = explore_bfact_list q in
+          if q == q'
+          then bfact_list
+          else bfact::q'
       | _::q -> explore_bfact_list q
     in
 
-    let rec explore = function
-      | [] -> []
-      | (i,bfact_list)::q ->
+    let rec explore df = match df with
+      | [] -> df
+      | ((i,bfact_list) as head)::q ->
           let bfact_list' = explore_bfact_list bfact_list in
-          if bfact_list' = []
-          then explore q
-          else (i,bfact_list')::(explore q)
+          if bfact_list == bfact_list'
+          then
+            let q' = explore q in
+            if q == q'
+            then df
+            else head :: q'
+          else
+            if bfact_list' = []
+            then explore q
+            else (i,bfact_list')::(explore q)
     in
 
     explore df
@@ -315,24 +325,34 @@ module DF = struct
     let removed_bfact = ref [] in
     let newly_linked = ref [] in
 
-    let rec explore_bfact_list = function
-      | [] -> []
+    let rec explore_bfact_list bfact_l = match bfact_l with
+      | [] -> bfact_l
       | bfact::q when bfact.bf_var.link_r = RNoLink ->
           bfact.bf_var.link_r <- RXLink bfact.bf_term;
           newly_linked := bfact.bf_var :: !newly_linked;
-          bfact::(explore_bfact_list q)
+          let q' = explore_bfact_list q in
+          if q == q'
+          then bfact_l
+          else bfact::q'
       | bfact::q ->
           removed_bfact := bfact :: !removed_bfact;
           explore_bfact_list q
     in
 
-    let rec explore = function
+    let rec explore l = match l with
       | [] -> []
-      | (i,bfact_list)::q ->
+      | ((i,bfact_list) as head)::q ->
           let bfact_list' = explore_bfact_list bfact_list in
-          if bfact_list' = []
-          then explore q
-          else (i,bfact_list')::(explore q)
+          if bfact_list' == bfact_list
+          then
+            let q' = explore q in
+            if q == q'
+            then l
+            else head::q'
+          else
+            if bfact_list' = []
+            then explore q
+            else (i,bfact_list')::(explore q)
     in
 
     let (result:t) = explore df in
@@ -389,14 +409,23 @@ module DF = struct
 
   (******* Function for preparing the solving procedure *******)
 
+  (* We do not try to  guarantee physical equality. This function is only applied after
+     generation of transitions. Thus they originally were deduction facts with variables as right
+     hand term, i.e. they would always need to be instantiate. *)
   let rename_and_instantiate (df:t) =
     List.map (fun (i,bfact_list) ->
       (i,List.map (fun bfact -> { bfact with bf_term = Term.rename_and_instantiate bfact.bf_term }) bfact_list)
     ) df
 
   let instantiate (df:t) =
-    List.map (fun (i,bfact_list) ->
-      (i,List.map (fun bfact -> { bfact with bf_term = Term.instantiate bfact.bf_term }) bfact_list)
+    List.map_q (fun ((i,bfact_list) as elt) ->
+      let bfact_list' =
+        List.map_q (fun bfact ->
+          let t' = Term.instantiate bfact.bf_term in
+          if bfact.bf_term == t' then bfact else { bfact with bf_term = t' }
+        ) bfact_list
+      in
+      if bfact_list' == bfact_list then elt else (i,bfact_list')
     ) df
 
   (******* Function for debuging ******)
@@ -450,13 +479,12 @@ end
 ***       Knowledge base       ***
 **********************************)
 
-module K = struct
+module KR = struct
 
   type entry =
     {
       type_rec : int;
       recipe : recipe;
-      term : term
     }
 
   type t =
@@ -466,27 +494,46 @@ module K = struct
       data : entry array
     }
 
-  let dummy_entry = { type_rec = 0; recipe = Axiom 0; term = Name { label_n = ""; index_n = 0; pure_fresh_n = false; link_n = NNoLink; deducible_n = None} }
+  let dummy_entry = { type_rec = 0; recipe = Axiom 0 }
 
   let empty = { max_type_r = 0; size = 0; data = Array.make 0 dummy_entry }
 
-  let size kb = kb.size
+  let size kbr = kbr.size
 
-  let get_term kb index = kb.data.(index).term
+  let instantiate kbr =
+    let data' =
+      Array.map_q (fun elt ->
+        let r' = Recipe.instantiate elt.recipe in
+        if elt.recipe == r'
+        then elt
+        else { elt with recipe = r'}
+      ) kbr.data
+    in
+    if data' == kbr.data
+    then kbr
+    else { kbr with data = data' }
+end
 
-  let instantiate kb =
-    { kb with
-      data = Array.map (fun elt -> { elt with recipe = Recipe.instantiate elt.recipe; term = Term.instantiate elt.term }) kb.data
-    }
+module K = struct
+
+  type t = term array
+
+  let dummy_entry = Name { label_n = ""; index_n = 0; pure_fresh_n = false; link_n = NNoLink }
+
+  let empty = Array.make 0 dummy_entry
+
+  let instantiate (kb:t) = Array.map_q Term.instantiate kb
+
+  let size kb = Array.length kb
 
   (* Iteration on the knowledge base *)
 
-  let find_unifier_with_recipe_with_type kb t type_r f_continuation (f_next:unit->unit) =
+  let find_unifier_with_recipe_with_type kbr (kb:t) t type_r f_continuation (f_next:unit->unit) =
 
     let rec explore = function
-      | i when i = kb.size -> f_next ()
+      | i when i = kbr.KR.size -> f_next ()
       | i ->
-          if kb.data.(i).type_rec > type_r
+          if kbr.KR.data.(i).KR.type_rec > type_r
           then f_next ()
           else
             begin
@@ -495,7 +542,7 @@ module K = struct
 
               let is_unifiable =
                 try
-                  Term.unify kb.data.(i).term t;
+                  Term.unify kb.(i) t;
                   true
                 with Term.Not_unifiable -> false
               in
@@ -504,12 +551,12 @@ module K = struct
                 if !Variable.currently_linked = []
                 then
                   (* Identity substitution *)
-                  f_continuation true (CRFunc(i,kb.data.(i).recipe)) (fun () ->
+                  f_continuation true (CRFunc(i,kbr.KR.data.(i).KR.recipe)) (fun () ->
                     Variable.currently_linked := tmp;
                     f_next ()
                   )
                 else
-                  f_continuation false (CRFunc(i,kb.data.(i).recipe)) (fun () ->
+                  f_continuation false (CRFunc(i,kbr.KR.data.(i).KR.recipe)) (fun () ->
                     List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
                     Variable.currently_linked := tmp;
                     explore (i+1)
@@ -524,17 +571,17 @@ module K = struct
     in
     explore 0
 
-  let find_unifier_with_recipe_no_type kb t f_continuation (f_next:unit->unit) =
+  let find_unifier_with_recipe_no_type kbr (kb:t) t f_continuation (f_next:unit->unit) =
 
     let rec explore = function
-      | i when i = kb.size -> f_next ()
+      | i when i = kbr.KR.size -> f_next ()
       | i ->
           let tmp = !Variable.currently_linked in
           Variable.currently_linked := [];
 
           let is_unifiable =
             try
-              Term.unify kb.data.(i).term t;
+              Term.unify kb.(i) t;
               true
             with Term.Not_unifiable -> false
           in
@@ -543,12 +590,12 @@ module K = struct
             if !Variable.currently_linked = []
             then
               (* Identity substitution *)
-              f_continuation true (CRFunc(i,kb.data.(i).recipe)) (fun () ->
+              f_continuation true (CRFunc(i,kbr.KR.data.(i).KR.recipe)) (fun () ->
                 Variable.currently_linked := tmp;
                 f_next ()
               )
             else
-              f_continuation false (CRFunc(i,kb.data.(i).recipe)) (fun () ->
+              f_continuation false (CRFunc(i,kbr.KR.data.(i).KR.recipe)) (fun () ->
                 List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
                 Variable.currently_linked := tmp;
                 explore (i+1)
@@ -562,17 +609,17 @@ module K = struct
     in
     explore 0
 
-  let find_unifier_with_recipe kb t type_r f_continuation f_next =
-    if type_r >= kb.max_type_r
-    then find_unifier_with_recipe_no_type kb t f_continuation f_next
-    else find_unifier_with_recipe_with_type kb t type_r f_continuation f_next
+  let find_unifier_with_recipe kbr (kb:t) t type_r f_continuation f_next =
+    if type_r >= kbr.KR.max_type_r
+    then find_unifier_with_recipe_no_type kbr kb t f_continuation f_next
+    else find_unifier_with_recipe_with_type kbr kb t type_r f_continuation f_next
 
-  let find_unifier_with_recipe_with_stop_with_type kb t type_r stop_ref f_continuation (f_next:unit->unit) =
+  let find_unifier_with_recipe_with_stop_with_type kbr (kb:t) t type_r stop_ref f_continuation (f_next:unit->unit) =
 
     let rec explore = function
-      | i when i = kb.size -> f_next ()
+      | i when i = kbr.KR.size -> f_next ()
       | i ->
-          if kb.data.(i).type_rec > type_r
+          if kbr.KR.data.(i).KR.type_rec > type_r
           then f_next ()
           else
             begin
@@ -581,7 +628,7 @@ module K = struct
 
               let is_unifiable =
                 try
-                  Term.unify kb.data.(i).term t;
+                  Term.unify kb.(i) t;
                   true
                 with Term.Not_unifiable -> false
               in
@@ -590,12 +637,12 @@ module K = struct
                 if !Variable.currently_linked = []
                 then
                   (* Identity substitution *)
-                  f_continuation true (CRFunc(i,kb.data.(i).recipe)) (fun () ->
+                  f_continuation true (CRFunc(i,kbr.KR.data.(i).KR.recipe)) (fun () ->
                     Variable.currently_linked := tmp;
                     f_next ()
                   )
                 else
-                  f_continuation false (CRFunc(i,kb.data.(i).recipe)) (fun () ->
+                  f_continuation false (CRFunc(i,kbr.KR.data.(i).KR.recipe)) (fun () ->
                     List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
                     Variable.currently_linked := tmp;
                     if !stop_ref then f_next () else explore (i+1)
@@ -610,17 +657,17 @@ module K = struct
     in
     explore 0
 
-  let find_unifier_with_recipe_with_stop_no_type kb t stop_ref f_continuation (f_next:unit->unit) =
+  let find_unifier_with_recipe_with_stop_no_type kbr (kb:t) t stop_ref f_continuation (f_next:unit->unit) =
 
     let rec explore = function
-      | i when i = kb.size -> f_next ()
+      | i when i = kbr.KR.size -> f_next ()
       | i ->
           let tmp = !Variable.currently_linked in
           Variable.currently_linked := [];
 
           let is_unifiable =
             try
-              Term.unify kb.data.(i).term t;
+              Term.unify kb.(i) t;
               true
             with Term.Not_unifiable -> false
           in
@@ -629,12 +676,12 @@ module K = struct
             if !Variable.currently_linked = []
             then
               (* Identity substitution *)
-              f_continuation true (CRFunc(i,kb.data.(i).recipe)) (fun () ->
+              f_continuation true (CRFunc(i,kbr.KR.data.(i).KR.recipe)) (fun () ->
                 Variable.currently_linked := tmp;
                 f_next ()
               )
             else
-              f_continuation false (CRFunc(i,kb.data.(i).recipe)) (fun () ->
+              f_continuation false (CRFunc(i,kbr.KR.data.(i).KR.recipe)) (fun () ->
                 List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
                 Variable.currently_linked := tmp;
                 if !stop_ref then f_next () else explore (i+1)
@@ -648,30 +695,30 @@ module K = struct
     in
     explore 0
 
-  let find_unifier_with_recipe_with_stop kb t type_r stop_ref f_continuation (f_next:unit->unit) =
-    if type_r >= kb.max_type_r
-    then find_unifier_with_recipe_with_stop_no_type kb t stop_ref f_continuation f_next
-    else find_unifier_with_recipe_with_stop_with_type kb t type_r stop_ref f_continuation f_next
+  let find_unifier_with_recipe_with_stop kbr (kb:t) t type_r stop_ref f_continuation (f_next:unit->unit) =
+    if type_r >= kbr.KR.max_type_r
+    then find_unifier_with_recipe_with_stop_no_type kbr kb t stop_ref f_continuation f_next
+    else find_unifier_with_recipe_with_stop_with_type kbr kb t type_r stop_ref f_continuation f_next
 
-  let iteri f kb =
-    for i = 0 to kb.size - 1 do
-      f i kb.data.(i).recipe kb.data.(i).term
+  let iteri f kbr kb =
+    for i = 0 to kbr.KR.size - 1 do
+      f i kbr.KR.data.(i).KR.recipe kb.(i)
     done
 
   let iter_term f kb =
-    for i = 0 to kb.size - 1 do
-      f kb.data.(i).term
+    for i = 0 to Array.length kb - 1 do
+      f kb.(i)
     done
 
   (* Consequence *)
 
   exception Uniformity_falsified
 
-  let consequence_uniform_recipe kb eq_uni r =
+  let consequence_uniform_recipe kbr kb eq_uni r =
 
     let rec consequence eq_uni = function
       | RVar { link_r = RLink r; _ } -> consequence eq_uni r
-      | CRFunc(i,_) -> eq_uni, kb.data.(i).term, kb.data.(i).type_rec
+      | CRFunc(i,_) -> eq_uni, kb.(i), kbr.KR.data.(i).KR.type_rec
       | RFunc(f,args_r) ->
           Config.debug (fun () ->
             if not (Symbol.is_constructor f)
@@ -685,7 +732,7 @@ module K = struct
               let t = Func(f,args_t) in
               let acc_eq_uni_ref = ref eq_uni_1 in
               let result = ref None in
-              find_unifier_with_recipe kb t type_r (fun is_identity _ f_next ->
+              find_unifier_with_recipe kbr kb t type_r (fun is_identity _ f_next ->
                 if is_identity
                 then acc_eq_uni_ref := Formula.T.Bot
                 else acc_eq_uni_ref := Formula.T.wedge (Diseq.T.of_linked_variables !Variable.currently_linked) !acc_eq_uni_ref;
@@ -715,8 +762,8 @@ module K = struct
   (* Debug *)
 
   let debug_check_link_with_SLink kb =
-    for i = 0 to kb.size - 1 do
-      Term.debug_check_link_with_SLink kb.data.(i).term
+    for i = 0 to Array.length kb - 1 do
+      Term.debug_check_link_with_SLink kb.(i)
     done
 end
 
@@ -737,11 +784,11 @@ module IK = struct
       data : entry list (* To be always kept ordered. The first element is the last added. *)
     }
 
-  let display tab kb ikb =
+  let display tab kbr kb ikb =
     let accK = ref "" in
 
-    for i = 0 to kb.K.size - 1 do
-      accK := !accK ^ (Printf.sprintf "%s,%d |-%d %s, " (Recipe.display Display.Terminal kb.K.data.(i).K.recipe) kb.K.data.(i).K.type_rec i (Term.display Display.Terminal kb.K.data.(i).K.term))
+    for i = 0 to kbr.KR.size - 1 do
+      accK := !accK ^ (Printf.sprintf "%s,%d |-%d %s, " (Recipe.display Display.Terminal kbr.KR.data.(i).KR.recipe) kbr.KR.data.(i).KR.type_rec i (Term.display Display.Terminal kb.(i)))
     done;
 
     let accIK = ref "" in
@@ -752,161 +799,212 @@ module IK = struct
 
     display_object tab None [ "K", !accK ; "IK", !accIK]
 
-  let empty = { index_counter = 0; type_rec = 0; data = []}
+  let empty = { index_counter = 0; type_rec = 0; data = [] }
 
-  let rec prepare_names_for_transfer cleanup_name index = function
-    | [] -> ()
-    | elt::q -> prepare_names_for_transfer_term cleanup_name index q elt.id elt.term
+  let transfer_incremented_knowledge_into_knowledge after_output kbr kb ikb =
 
-  and prepare_names_for_transfer_term cleanup_name index q id = function
-    | Var { link = TLink t; _ } -> prepare_names_for_transfer_term cleanup_name index q id t
-    | Name n ->
-        begin match n.deducible_n with
-          | None -> Config.internal_error "[data_structure.ml >> IK.prepare_names_for_transfer_term] A name in incremented_knowledge is deducible."
-          | Some (CRFunc(i,r)) ->
-              Config.debug (fun () ->
-                if List.exists (fun (n',_) -> n == n') !cleanup_name
-                then Config.internal_error "[data_structure.ml >> IK.prepare_for_transfer_term] The name already occurs in the cleanup list."
-              );
-              cleanup_name := (n,n.deducible_n)::!cleanup_name;
-              Config.debug (fun () ->
-                if i <> id
-                then Config.internal_error "[data_structure.ml >> IK.prepare_names_for_transfer_term] Incorrect index"
-              );
-              n.deducible_n <- Some(CRFunc(index,r));
-
-              prepare_names_for_transfer cleanup_name (index-1) q
-          | _ -> Config.internal_error "[data_structure.ml >> IK.prepare_names_for_transfer_term] A name in incremented_knowledge is deducible from a context."
-        end
-    | Var _ -> Config.internal_error "[data_structure.ml >> IK.prepare_names_for_transfer_term] Unexpected variable."
-    | _ -> prepare_names_for_transfer cleanup_name (index-1) q
-
-  let transfer_incremented_knowledge_into_knowledge after_output kb ikb =
-    Config.debug (fun () ->
-      for i = 0 to kb.K.size - 1 do
-        match kb.K.data.(i).K.term with
-          | Name { deducible_n = Some (CRFunc(i',_)); _ } ->
-              if i <> i'
-              then Config.internal_error "[data_structure.ml >> transfer_incremented_knowledge_into_knowledge] Name indices have not been properly transfered"
-          | Name { deducible_n = Some _ ; _ } -> Config.internal_error "[data_structure.ml >> transfer_incremented_knowledge_into_knowledge] Name should have been set to deducible with a context."
-          | Name { deducible_n = None; _ } -> Config.internal_error "[data_structure.ml >> transfer_incremented_knowledge_into_knowledge] Name should have been set to deducible."
-          | _ -> ()
-      done
-    );
     let size_ikb = List.length ikb.data in
-    let new_size = size_ikb + kb.K.size in
+    let size_kbr = kbr.KR.size in
 
-    let cleanup_name = ref [] in
+    if size_ikb = 0
+    then
+      begin
+        Config.debug (fun () ->
+          if ikb.index_counter <> kbr.KR.size
+          then Config.internal_error "[data_structure.ml >> IK.transfer_incremented_knowledge_into_knowledge] Incorrect index counter";
+        );
+        (* Nothing to be added in Kb *)
+        let kb' = Array.map_q Term.rename_and_instantiate kb in
 
-    prepare_names_for_transfer cleanup_name (new_size-1) ikb.data;
+        let ikb' =
+          if after_output
+          then { ikb with type_rec = ikb.type_rec + 1 }
+          else ikb
+        in
+        kbr, kb',ikb',[]
+      end
+    else
+      begin
+        let new_size = size_ikb + kbr.KR.size in
+        let kb' = Array.make new_size K.dummy_entry in
+        let data_kbr' = Array.make new_size KR.dummy_entry in
 
-    let data = Array.make new_size K.dummy_entry in
+        (* Copy data of K *)
+        for i = 0 to size_kbr - 1 do
+          kb'.(i) <- Term.rename_and_instantiate kb.(i)
+        done;
 
-    (* Copy data of K *)
-    for i = 0 to kb.K.size - 1 do
-      let entry = { kb.K.data.(i) with K.term = Term.rename_and_instantiate kb.K.data.(i).K.term } in
-      data.(i) <- entry
-    done;
+        (* Copy data of KR *)
+        for i = 0 to size_kbr - 1 do
+          data_kbr'.(i) <- kbr.KR.data.(i)
+        done;
 
-    (* Copy data of IK *)
-    let rec copy index acc = function
-      | [] -> acc
-      | elt::q ->
-          data.(index) <- { K.type_rec = ikb.type_rec; K.recipe = elt.recipe; K.term = Term.rename_and_instantiate elt.term };
-          copy (index-1) ((elt.id,index)::acc) q
-    in
-    let id_assoc = copy (new_size-1) [] ikb.data in
+        (* Copy data of IK *)
+        let rec copy index acc = function
+          | [] -> acc
+          | elt::q ->
+              kb'.(index) <- Term.rename_and_instantiate elt.term;
+              data_kbr'.(index) <- { KR.type_rec = ikb.type_rec; KR.recipe = elt.recipe };
+              copy (index-1) ((elt.id,index)::acc) q
+        in
 
-    let kb' =
-      {
-        K.max_type_r = if size_ikb = 0 then kb.K.max_type_r else ikb.type_rec;
-        K.size = new_size;
-        K.data = data
-      }
-    in
-    let ikb' =
-      {
-        index_counter = new_size;
-        type_rec = if after_output then ikb.type_rec + 1 else ikb.type_rec;
-        data = []
-      }
-    in
-    Config.debug (fun () ->
-      for i = 0 to kb'.K.size - 1 do
-        match kb'.K.data.(i).K.term with
-          | Name { deducible_n = Some (CRFunc(i',_)); _ } ->
-              if i <> i'
-              then Config.internal_error "[data_structure.ml >> transfer_incremented_knowledge_into_knowledge] Name indices have not been properly transfered(2)"
-          | Name { deducible_n = Some _ ; _ } -> Config.internal_error "[data_structure.ml >> transfer_incremented_knowledge_into_knowledge] Name should have been set to deducible with a context(2)."
-          | Name { deducible_n = None; _ } -> Config.internal_error "[data_structure.ml >> transfer_incremented_knowledge_into_knowledge] Name should have been set to deducible(2)."
-          | _ -> ()
-      done
-    );
-    let cleanup_f () =  List.iter (fun (n,l) -> n.deducible_n <- l) !cleanup_name in
-    kb',ikb',id_assoc, cleanup_f
+        let id_assoc = copy (new_size-1) [] ikb.data in
 
-  let transfer_incremented_knowledge_into_knowledge_no_rename kb ikb =
-    Config.debug (fun () ->
-      for i = 0 to kb.K.size - 1 do
-        match kb.K.data.(i).K.term with
-          | Name { deducible_n = Some (CRFunc(i',_)); _ } ->
-              if i <> i'
-              then Config.internal_error "[data_structure.ml >> transfer_incremented_knowledge_into_knowledge_no_rename] Name indices have not been properly transfered"
-          | Name { deducible_n = Some _ ; _ } -> Config.internal_error "[data_structure.ml >> transfer_incremented_knowledge_into_knowledge_no_rename] Name should have been set to deducible with a context."
-          | Name { deducible_n = None; _ } -> Config.internal_error "[data_structure.ml >> transfer_incremented_knowledge_into_knowledge_no_rename] Name should have been set to deducible."
-          | _ -> ()
-      done
-    );
+        let kbr' =
+          {
+            KR.max_type_r = ikb.type_rec;
+            KR.size = new_size;
+            KR.data = data_kbr'
+          }
+        in
+
+        let ikb' =
+          {
+            index_counter = new_size;
+            type_rec = if after_output then ikb.type_rec + 1 else ikb.type_rec;
+            data = []
+          }
+        in
+        kbr',kb',ikb',id_assoc
+      end
+
+  let transfer_incremented_knowledge_into_knowledge_only_kb kb ikb =
+
     let size_ikb = List.length ikb.data in
-    let new_size = size_ikb + kb.K.size in
+    let size_kb = Array.length kb in
 
-    let cleanup_name = ref [] in
+    if size_ikb = 0
+    then
+      begin
+        Config.debug (fun () ->
+          if ikb.index_counter <> size_kb
+          then Config.internal_error "[data_structure.ml >> IK.transfer_incremented_knowledge_into_knowledge] Incorrect index counter";
+        );
+        (* Nothing to be added in Kb *)
+        Array.map_q Term.rename_and_instantiate kb
+      end
+    else
+      begin
+        let new_size = size_ikb + size_kb in
+        let kb' = Array.make new_size K.dummy_entry in
 
-    prepare_names_for_transfer cleanup_name (new_size-1) ikb.data;
+        (* Copy data of K *)
+        for i = 0 to  size_kb - 1 do
+          kb'.(i) <- Term.rename_and_instantiate kb.(i)
+        done;
 
-    let data = Array.make new_size K.dummy_entry in
+        (* Copy data of IK *)
+        let rec copy index = function
+          | [] -> ()
+          | elt::q ->
+              kb'.(index) <- Term.rename_and_instantiate elt.term;
+              copy (index-1) q
+        in
 
-    (* Copy data of K *)
-    for i = 0 to kb.K.size - 1 do
-      data.(i) <- { kb.K.data.(i) with K.term = kb.K.data.(i).K.term }
-    done;
+        copy (new_size-1) ikb.data;
 
-    (* Copy data of IK *)
-    let rec copy index acc = function
-      | [] -> acc
-      | elt::q ->
-          data.(index) <- { K.type_rec = ikb.type_rec; K.recipe = Recipe.instantiate elt.recipe; K.term = Term.instantiate elt.term };
-          copy (index-1) ((elt.id,index)::acc) q
-    in
-    let id_assoc = copy (new_size-1) [] ikb.data in
+        kb'
+      end
 
-    let kb' =
-      {
-        K.max_type_r = if size_ikb = 0 then kb.K.max_type_r else ikb.type_rec;
-        K.size = new_size;
-        K.data = data
-      }
-    in
-    let ikb' =
-      {
-        index_counter = new_size;
-        type_rec = ikb.type_rec + 1;
-        data = []
-      }
-    in
-    Config.debug (fun () ->
-      for i = 0 to kb'.K.size - 1 do
-        match kb'.K.data.(i).K.term with
-          | Name { deducible_n = Some (CRFunc(i',_)); _ } ->
-              if i <> i'
-              then Config.internal_error "[data_structure.ml >> transfer_incremented_knowledge_into_knowledge_no_rename] Name indices have not been properly transfered(2)"
-          | Name { deducible_n = Some _ ; _ } -> Config.internal_error "[data_structure.ml >> transfer_incremented_knowledge_into_knowledge_no_rename] Name should have been set to deducible with a context(2)."
-          | Name { deducible_n = None; _ } -> Config.internal_error "[data_structure.ml >> transfer_incremented_knowledge_into_knowledge_no_rename] Name should have been set to deducible(2)."
-          | _ -> ()
-      done
-    );
-    let cleanup_f () =  List.iter (fun (n,l) -> n.deducible_n <- l) !cleanup_name in
-    kb',ikb',id_assoc, cleanup_f
+  (* his function should only be applied after and output. *)
+  let transfer_incremented_knowledge_into_knowledge_no_rename kbr kb ikb =
+
+    let size_ikb = List.length ikb.data in
+    let size_kbr = kbr.KR.size in
+
+    if size_ikb = 0
+    then
+      begin
+        Config.debug (fun () ->
+          if ikb.index_counter <> kbr.KR.size
+          then Config.internal_error "[data_structure.ml >> IK.transfer_incremented_knowledge_into_knowledge] Incorrect index counter";
+        );
+
+        let ikb' = { ikb with type_rec = ikb.type_rec + 1 } in
+        kbr, kb,ikb',[]
+      end
+    else
+      begin
+        let new_size = size_ikb + kbr.KR.size in
+        let kb' = Array.make new_size K.dummy_entry in
+        let data_kbr' = Array.make new_size KR.dummy_entry in
+
+        (* Copy data of K *)
+        for i = 0 to size_kbr - 1 do
+          kb'.(i) <- kb.(i)
+        done;
+
+        (* Copy data of KR *)
+        for i = 0 to size_kbr - 1 do
+          data_kbr'.(i) <- kbr.KR.data.(i)
+        done;
+
+        (* Copy data of IK *)
+        let rec copy index acc = function
+          | [] -> acc
+          | elt::q ->
+              kb'.(index) <- Term.instantiate elt.term;
+              data_kbr'.(index) <- { KR.type_rec = ikb.type_rec; KR.recipe = Recipe.instantiate elt.recipe };
+              copy (index-1) ((elt.id,index)::acc) q
+        in
+
+        let id_assoc = copy (new_size-1) [] ikb.data in
+
+        let kbr' =
+          {
+            KR.max_type_r = ikb.type_rec;
+            KR.size = new_size;
+            KR.data = data_kbr'
+          }
+        in
+
+        let ikb' =
+          {
+            index_counter = new_size;
+            type_rec = ikb.type_rec + 1;
+            data = []
+          }
+        in
+        kbr',kb',ikb',id_assoc
+      end
+
+  let transfer_incremented_knowledge_into_knowledge_only_kb_no_rename kb ikb =
+
+    let size_ikb = List.length ikb.data in
+    let size_kb = Array.length kb in
+
+    if size_ikb = 0
+    then
+      begin
+        Config.debug (fun () ->
+          if ikb.index_counter <> size_kb
+          then Config.internal_error "[data_structure.ml >> IK.transfer_incremented_knowledge_into_knowledge] Incorrect index counter";
+        );
+        (* Nothing to be added in Kb *)
+        kb
+      end
+    else
+      begin
+        let new_size = size_ikb + size_kb in
+        let kb' = Array.make new_size K.dummy_entry in
+
+        (* Copy data of K *)
+        for i = 0 to size_kb - 1 do
+          kb'.(i) <- kb.(i)
+        done;
+
+        (* Copy data of IK *)
+        let rec copy index = function
+          | [] -> ()
+          | elt::q ->
+              kb'.(index) <- Term.instantiate elt.term;
+              copy (index-1)  q
+        in
+
+        copy (new_size-1) ikb.data;
+
+        kb'
+      end
 
   let add ikb dfact =
     let index = ikb.index_counter in
@@ -934,11 +1032,11 @@ module IK = struct
 
   let get_all_index ikb = List.map (fun elt -> elt.id) ikb.data
 
-  let get_previous_index_in_knowledge_base kb ikb index =
+  let get_previous_index_in_knowledge_base kbr ikb index =
     if index = 0
     then None
     else
-      if index < kb.K.size
+      if index < kbr.KR.size
       then Some(index - 1)
       else
         let rec explore = function
@@ -948,15 +1046,15 @@ module IK = struct
                 if elt.id <> index
                 then Config.internal_error "[data_structure.ml >> get_previous_index_in_knowledge_base] The index should be part of IK at that point (2)."
               );
-              if kb.K.size = 0 then None else Some (kb.K.size - 1)
+              if kbr.KR.size = 0 then None else Some (kbr.KR.size - 1)
           | elt1::elt2::_ when elt1.id = index -> Some(elt2.id)
           | _::q -> explore q
         in
         explore ikb.data
 
   let get_term kb ikb index =
-    if index < kb.K.size
-    then kb.K.data.(index).K.term
+    if index < Array.length kb
+    then kb.(index)
     else
       let rec explore = function
         | [] -> Config.internal_error "[data_structure.ml >> IK.get_term] Invalid index."
@@ -965,9 +1063,9 @@ module IK = struct
       in
       explore ikb.data
 
-  let get_recipe kb ikb index =
-    if index < kb.K.size
-    then kb.K.data.(index).K.recipe
+  let get_recipe kbr ikb index =
+    if index < kbr.KR.size
+    then kbr.KR.data.(index).KR.recipe
     else
       let rec explore = function
         | [] -> Config.internal_error "[data_structure.ml >> IK.get_recipe] Invalid index."
@@ -976,9 +1074,9 @@ module IK = struct
       in
       explore ikb.data
 
-  let get kb ikb index =
-    if index < kb.K.size
-    then kb.K.data.(index).K.recipe, kb.K.data.(index).K.term
+  let get kbr kb ikb index =
+    if index < kbr.KR.size
+    then kbr.KR.data.(index).KR.recipe, kb.(index)
     else
       let rec explore = function
         | [] -> Config.internal_error "[data_structure.ml >> IK.get] Invalid index."
@@ -987,14 +1085,14 @@ module IK = struct
       in
       explore ikb.data
 
-  let get_max_type_recipe kb ikb =
+  let get_max_type_recipe kbr ikb =
     if ikb.data = []
-    then kb.K.max_type_r
+    then kbr.KR.max_type_r
     else ikb.type_rec
 
-  let find_unifier_with_recipe_with_stop kb ikb t type_r stop_ref f_continuation (f_next:unit->unit) = match compare type_r kb.K.max_type_r with
-    | -1 -> K.find_unifier_with_recipe_with_stop_with_type kb t type_r stop_ref f_continuation f_next
-    | 0 -> K.find_unifier_with_recipe_with_stop_no_type kb t stop_ref f_continuation f_next
+  let find_unifier_with_recipe_with_stop kbr kb ikb t type_r stop_ref f_continuation (f_next:unit->unit) = match compare type_r kbr.KR.max_type_r with
+    | -1 -> K.find_unifier_with_recipe_with_stop_with_type kbr kb t type_r stop_ref f_continuation f_next
+    | 0 -> K.find_unifier_with_recipe_with_stop_no_type kbr kb t stop_ref f_continuation f_next
     | _ ->
         let rec explore = function
           | [] -> f_next ()
@@ -1031,16 +1129,11 @@ module IK = struct
                 end
         in
 
-        K.find_unifier_with_recipe_with_stop_no_type kb t stop_ref f_continuation (fun () ->
+        K.find_unifier_with_recipe_with_stop_no_type kbr kb t stop_ref f_continuation (fun () ->
           if !stop_ref || type_r < ikb.type_rec
           then f_next ()
           else explore ikb.data
         )
-
-  let instantiate ik =
-    { ik with
-      data = List.map (fun elt -> { elt with recipe = Recipe.instantiate elt.recipe; term = Term.instantiate elt.term} ) ik.data
-    }
 
   let iteri f ikb =
     List.iter (fun elt ->
@@ -1052,13 +1145,30 @@ module IK = struct
       f elt.term
     ) ikb.data
 
+  let instantiate_entry elt =
+    let t = Term.instantiate elt.term in
+    if elt.term == t
+    then
+      let r = Recipe.instantiate elt.recipe in
+      if elt.recipe == r
+      then elt
+      else { elt with recipe = r }
+    else { elt with recipe = Recipe.instantiate elt.recipe; term = t }
+
+  let instantiate ikb =
+    let data = List.map_q instantiate_entry ikb.data in
+    if data == ikb.data
+    then ikb
+    else { ikb with data = data }
+
+
   (* Testing *)
 
   let for_all_term f_test ikb = List.for_all (fun e -> f_test e.term) ikb.data
 
   (* Consequence *)
 
-  let find f_cont kb ikb =
+  let find f_cont kbr kb ikb =
 
     let rec explore_ikb = function
       | [] -> raise Not_found
@@ -1069,10 +1179,10 @@ module IK = struct
     in
 
     let rec explore_k = function
-      | i when i = kb.K.size -> raise Not_found
+      | i when i = kbr.KR.size -> raise Not_found
       | i ->
           try
-            f_cont (CRFunc(i,kb.K.data.(i).K.recipe)) kb.K.data.(i).K.term
+            f_cont (CRFunc(i,kbr.KR.data.(i).KR.recipe)) kb.(i)
           with Not_found -> explore_k (i+1)
     in
 
@@ -1081,7 +1191,7 @@ module IK = struct
     with Not_found ->
       explore_ikb ikb.data
 
-  let consequence_term kb kbi df term =
+  let consequence_term kbr kb kbi df term =
 
     let accu_variables = ref [] in
 
@@ -1095,43 +1205,19 @@ module IK = struct
                 explore f_next (Var v)
             | _ -> Config.internal_error "[data_structure.ml >> IK.consequence_term] Unexpected link."
           end
-      | Name ({ deducible_n = Some r; _ } as n) ->
-          Config.debug (fun () ->
-            let found = ref false in
-            for i = 0 to kb.K.size - 1 do
-              match kb.K.data.(i).K.term with
-                | Name n' when n == n' ->
-                    begin match r with
-                      | CRFunc(i',_) when i = i' -> found := true
-                      | CRFunc _ -> Config.internal_error "[data_structure.ml >> IK.consequence_term] Incoherent index for name."
-                      | _ -> Config.internal_error "[data_structure.ml >> IK.consequence_term] Incoherent recipe for name."
-                    end
-                | Var _ -> Config.internal_error "[data_structure.ml >> IK.consequence_term] Unexpected variable."
-                | _ -> ()
-            done;
-            List.iter (fun elt ->
-              match elt.term with
-                | Name n' when n == n' ->
-                    begin match r with
-                      | CRFunc(i',_) when elt.id = i' -> found := true
-                      | CRFunc _ -> Config.internal_error "[data_structure.ml >> IK.consequence_term] Incoherent index for name (2)."
-                      | _ -> Config.internal_error "[data_structure.ml >> IK.consequence_term] Incoherent recipe for name (2)."
-                    end
-                | Var _ -> Config.internal_error "[data_structure.ml >> IK.consequence_term] Unexpected variable (2)."
-                | _ -> ()
-            ) kbi.data;
-            if not !found
-            then Config.internal_error "[data_structure.ml >> IK.consequence_term] A name is linked as deducible but is not within the knowledge bases."
-          );
-          f_next r
-      | Name _ -> raise Not_found
+      | (Name _) as t ->
+          find (fun recipe term ->
+            if Term.is_equal t term
+            then f_next recipe
+            else raise Not_found
+          ) kbr kb kbi
       | Func(f,_) when f.arity = 0 && f.public -> f_next (RFunc(f,[]))
       | (Func(f,_)) as t when not f.public ->
           find (fun recipe term ->
             if Term.is_equal t term
             then f_next recipe
             else raise Not_found
-          ) kb kbi
+          ) kbr kb kbi
       | (Func(f,args_t)) as t ->
           try
             explore_list (fun args_r ->
@@ -1142,7 +1228,7 @@ module IK = struct
               if Term.is_equal t term
               then f_next recipe
               else raise Not_found
-            ) kb kbi
+            ) kbr kb kbi
 
     and explore_list f_next = function
       | [] -> f_next []
@@ -1438,10 +1524,14 @@ module UF = struct
 
     match uf.ded_formula with
       | DedPattern([],[dfact]) ->
-          {
-            eq_formula = EqNone;
-            ded_formula = DedPattern([],[{ dfact with df_term = Term.rename_and_instantiate dfact.df_term}])
-          }
+          let t' = Term.rename_and_instantiate dfact.df_term in
+          if dfact.df_term == t'
+          then uf
+          else
+            {
+              eq_formula = EqNone;
+              ded_formula = DedPattern([],[{ dfact with df_term = Term.rename_and_instantiate dfact.df_term}])
+            }
       | DedNone -> uf
       | _ -> Config.internal_error "[data_structure.ml >> UF.rename_and_instantiate] Unexpected case."
 

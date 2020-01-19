@@ -1,6 +1,7 @@
 open Types
 open Term
 open Display
+open Extensions
 
 (***********************************
 ***          Disequations        ***
@@ -129,10 +130,18 @@ module Diseq = struct
           Variable.currently_linked := [x];
           result
 
-    let rename_and_instantiate = function
-      | Top -> Top
-      | Bot -> Bot
-      | Disj disj -> Disj(List.map (fun (v,t) -> Variable.rename v, Term.rename_and_instantiate t) disj)
+    (* Does not rename universal variables. *)
+    let rename_and_instantiate form = match form with
+      | Top | Bot -> form
+      | Disj disj ->
+          Config.debug (fun () ->
+            if List.exists (fun (v,_) -> v.quantifier = Universal) disj
+            then Config.internal_error "[formula.ml >> Diseq.T.rename_and_instantiate] The formula should be normalised before renaming.";
+
+            if disj = []
+            then Config.internal_error "[formula.ml >> Diseq.T.rename_and_instantiate] The list should not be empty.";
+          );
+          Disj(List.map (fun (v,t) -> Variable.rename v, Term.rename_and_instantiate_exclude_universal t) disj)
 
     (* Display *)
 
@@ -490,10 +499,20 @@ module Diseq = struct
                 end
           end
 
-    let rename_and_instantiate = function
-      | Top -> Top
-      | Bot -> Bot
-      | Disj(disj_t,disj_r) -> Disj(List.map (fun (v,t) -> Variable.rename v, Term.rename_and_instantiate t) disj_t, disj_r)
+    let rename_and_instantiate_exclude_universal_slink mixed = match mixed with
+      | Top | Bot -> mixed
+      | Disj(disj_t,disj_r) ->
+          if disj_t = []
+          then mixed
+          else
+            begin
+              Config.debug (fun () ->
+                if List.exists (fun (v,_) -> v.quantifier = Universal) disj_t
+                then Config.internal_error "[formula.ml >> Diseq.M.rename_and_instantiate] The formula should be normalised before renaming.";
+              );
+
+              Disj(List.map (fun (v,t) -> Variable.rename v, Term.rename_and_instantiate_exclude_universal_slink t) disj_t, disj_r)
+            end
   end
 end
 
@@ -580,10 +599,14 @@ module Formula = struct
             else Conj diseq_l_1
           with Is_Bot -> Bot
 
-    let rename_and_instantiate = function
-      | Top -> Top
-      | Bot -> Bot
-      | Conj conj -> Conj (List.map Diseq.T.rename_and_instantiate conj)
+    let rename_and_instantiate form = match form with
+      | Top | Bot -> form
+      | Conj conj ->
+          Config.debug (fun () ->
+            if List.exists (fun dis -> dis = Diseq.T.Top || dis = Diseq.T.Bot) conj
+            then Config.internal_error "[formula.ml >> Formula.T.rename_and_instantiate] The formula should be normalised before applying renaming."
+          );
+          Conj (List.map Diseq.T.rename_and_instantiate conj)
 
     let debug_no_linked_variables = function
       | Top
@@ -733,10 +756,17 @@ module Formula = struct
       | Bot -> Bot
       | Conj diseq_l -> Conj (diseq::diseq_l)
 
-    let rename_and_instantiate = function
-      | Top -> Top
-      | Bot -> Bot
-      | Conj conj -> Conj (List.map Diseq.M.rename_and_instantiate conj)
+    let rename_and_instantiate vars form = match form with
+      | Top | Bot -> form
+      | Conj conj ->
+          Variable.auto_cleanup_with_reset_notail (fun () ->
+            List.iter (fun v -> Variable.link_search v) vars;
+            let conj' = List.map_q Diseq.M.rename_and_instantiate_exclude_universal_slink conj in
+            if conj == conj'
+            then form
+            else Conj conj'
+          )
+
 
   end
 end

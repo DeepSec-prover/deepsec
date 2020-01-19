@@ -25,7 +25,6 @@ type simple_process =
   | SOutput of symbol * term * simple_process * position * variable list
   | SInput of symbol * variable * simple_process * position * variable list
   | SCondition of equations list * Formula.T.t * variable list (* fresh variable *) * simple_process * simple_process * position
-  | SNew of variable * name * simple_process * position
   | SPar of simple_process list
   | SParMult of (symbol list * simple_process) list
 
@@ -121,9 +120,6 @@ let rec display_simple_process tab = function
       let str_else = display_simple_process (tab+1) pelse in
       let str_neg = "Else "^(Formula.T.display Terminal neg_formula) in
       (display_with_tab tab str) ^ str_then ^ (display_with_tab tab str_neg) ^ str_else
-  | SNew(x,n,p,pos) ->
-      let str = Printf.sprintf "{%s} new %s -> %s;" (display_position pos) (Variable.display Terminal x) (Name.display Terminal n) in
-      (display_with_tab tab str) ^ (display_simple_process tab p)
   | SPar(p_list) ->
       (display_with_tab tab "(") ^
       (display_list (display_simple_process (tab+1)) (display_with_tab tab ") | (") p_list) ^
@@ -327,7 +323,6 @@ let rec do_else_branches_lead_to_improper_block after_in = function
       else false
   | SCondition _ -> false
   | SPar p_list -> List.for_all (do_else_branches_lead_to_improper_block false) p_list
-  | SNew(_,_,p,_) -> do_else_branches_lead_to_improper_block after_in p
   | SParMult p_list -> List.for_all (fun (_,p) -> do_else_branches_lead_to_improper_block false p) p_list
 
 let rec no_else_branch_and_par = function
@@ -336,7 +331,6 @@ let rec no_else_branch_and_par = function
   | SInput _
   | SOutput _ -> true
   | SCondition(_,_,_,pthen,SNil,_) -> no_else_branch_and_par pthen
-  | SNew(_,_,p,_) -> no_else_branch_and_par p
   | _ -> false
 
 let do_else_branches_lead_to_improper_block_conf conf = match conf.unsure_proc, conf.focused_proc with
@@ -754,7 +748,6 @@ let rec get_used_variables = function
       ) equations;
       get_used_variables p1;
       get_used_variables p2
-  | SNew(_,_,p,_) -> get_used_variables p
   | SPar p_list -> List.iter get_used_variables p_list
   | SParMult p_list -> List.iter (fun (_,p) -> get_used_variables p) p_list
 
@@ -794,48 +787,6 @@ let link_used_variables f_next conf =
 
 let simple_process_of_intermediate_process proc =
 
-  let rec replace_name_by_variables assoc t = match t with
-    | Name n -> Var(List.assq n assoc)
-    | Func(f,args) -> Func(f,List.map (replace_name_by_variables assoc) args)
-    | _ ->
-        Config.debug (fun () ->
-          match t with
-            | Var v when v.link <> NoLink -> Config.internal_error "[determinate_process.ml >> simple_process_of_intermediate_process] Variables should not be linked."
-            | _ -> ()
-        );
-        t
-  in
-
-  let replace_name_by_variables_formula assoc = function
-    | Formula.T.Bot -> Formula.T.Bot
-    | Formula.T.Top -> Formula.T.Top
-    | Formula.T.Conj conj_l ->
-        Formula.T.Conj (
-          List.map (function
-            | Diseq.T.Bot | Diseq.T.Top -> Config.internal_error "[determinate_process.ml >> simple_process_of_intermediate_process] Unexpected case"
-            | Diseq.T.Disj disj_l ->
-                Diseq.T.Disj (
-                  List.map (fun (v,t) ->
-                    Config.debug (fun () ->
-                      if v.link <> NoLink
-                      then Config.internal_error "[determinate_process.ml >> simple_process_of_intermediate_process] Variables should not be linked (2)."
-                    );
-                    (v,replace_name_by_variables assoc t)
-                  ) disj_l
-                )
-          ) conj_l
-        )
-  in
-
-  let replace_name_by_variables_equations assoc =
-      List.map (fun (v,t) ->
-        Config.debug (fun () ->
-          if v.link <> NoLink
-          then Config.internal_error "[determinate_process.ml >> simple_process_of_intermediate_process] Variables should not be linked (3)."
-        );
-        (v,replace_name_by_variables assoc t)
-      ) in
-
   let replace_fresh_vars_by_universal fresh_vars disequations =
     Variable.auto_cleanup_with_reset_notail (fun () ->
       List.iter (fun x ->
@@ -847,11 +798,11 @@ let simple_process_of_intermediate_process proc =
     )
   in
 
-  let rec explore assoc prev_vars = function
-    | IStart p -> SStart (explore assoc prev_vars p)
+  let rec explore prev_vars = function
+    | IStart p -> SStart (explore prev_vars p)
     | INil -> SNil
     | IOutput(ch,t,p,pos) ->
-        let p' = explore assoc prev_vars p in
+        let p' = explore prev_vars p in
 
         let used_vars =
           Variable.auto_cleanup_with_reset_notail (fun () ->
@@ -863,14 +814,14 @@ let simple_process_of_intermediate_process proc =
             ) [] prev_vars
           )
         in
-        SOutput(ch,replace_name_by_variables assoc t,p',pos,used_vars)
+        SOutput(ch,t,p',pos,used_vars)
     | IInput(ch,v,p,pos) ->
         Config.debug (fun () ->
           if v.link <> NoLink
           then Config.internal_error "[determinate_process.ml >> simple_process_of_intermediate_process] Variables should not be linked (4)."
         );
 
-        let p' = explore assoc (v::prev_vars) p in
+        let p' = explore (v::prev_vars) p in
 
         let used_vars =
           Variable.auto_cleanup_with_reset_notail (fun () ->
@@ -888,9 +839,7 @@ let simple_process_of_intermediate_process proc =
           then Config.internal_error "[determinate_process.ml >> simple_process_of_intermediate_process] No variables should be linked."
         );
         let (equations_1,disequations_1) = Rewrite_rules.compute_equality_modulo_and_rewrite [(t1,t2)] in
-        let equations_2 = List.map (replace_name_by_variables_equations assoc) equations_1 in
-        let disequations_2 = replace_name_by_variables_formula assoc disequations_1 in
-        SCondition(equations_2,disequations_2,[],explore assoc prev_vars pthen,explore assoc prev_vars pelse,pos)
+        SCondition(equations_1,disequations_1,[],explore prev_vars pthen,explore prev_vars pelse,pos)
     | ILet(t,cond,fresh_vars,pthen,pelse,pos) ->
         Config.debug (fun () ->
           if !Variable.currently_linked <> []
@@ -898,18 +847,13 @@ let simple_process_of_intermediate_process proc =
         );
         let (equations_1,disequations_1) = Rewrite_rules.compute_equality_modulo_and_rewrite [(t,cond)] in
         let disequations_2 = replace_fresh_vars_by_universal fresh_vars disequations_1 in
-        let disequations_3 = replace_name_by_variables_formula assoc disequations_2 in
-        let equations_2 = List.map (replace_name_by_variables_equations assoc) equations_1 in
-        SCondition(equations_2,disequations_3,fresh_vars,explore assoc (fresh_vars@prev_vars) pthen, explore assoc prev_vars pelse,pos)
-    | INew(n,p,pos) ->
-        let x = Variable.fresh Free in
-        let det_p = explore ((n,x)::assoc) prev_vars p in
-        SNew(x,n,det_p,pos)
-    | IPar p_list -> SPar(List.map (explore assoc prev_vars) p_list)
-    | IParMult p_list -> SParMult (List.map (fun (s_l,p) -> (s_l,explore assoc prev_vars p)) p_list)
+        SCondition(equations_1,disequations_2,fresh_vars,explore (fresh_vars@prev_vars) pthen, explore prev_vars pelse,pos)
+    | INew(_,p,_) -> explore prev_vars p
+    | IPar p_list -> SPar(List.map (explore prev_vars) p_list)
+    | IParMult p_list -> SParMult (List.map (fun (s_l,p) -> (s_l,explore prev_vars p)) p_list)
   in
 
-  explore [] [] proc
+  explore [] proc
 
 let generate_initial_configurations proc1 proc2 =
   let p1 = clean_intermediate_process (IStart(intermediate_process_of_process proc1)) in
@@ -1024,9 +968,7 @@ let rec is_equal_skeleton p1 p2 = match p1, p2 with
       then false
       else List.for_all2 (fun (ch1,p1) (ch2,p2) -> (is_equal_list_channel ch1 ch2) && is_equal_skeleton p1 p2) pl_1 pl_2
   | SCondition _, _
-  | SNew _, _
-  | _, SCondition _
-  | _, SNew _ -> Config.internal_error "[process_determinate.ml >> is_equal_skeleton] We should test the equaly of skeletons on a normalised process."
+  | _, SCondition _ -> Config.internal_error "[process_determinate.ml >> is_equal_skeleton] We should test the equaly of skeletons on a normalised process."
   | _ -> false
 
 (* Will be equal to 0 if the label are sequentially dependant *)
@@ -1044,7 +986,6 @@ let order_flatten_process_list p_list =
         | SNil -> print_string "Nil"; true
         | SStart _ -> print_string "Start"; true
         | SCondition _ -> print_string "Condition"; true
-        | SNew _ -> print_string "New"; true
         | SPar _ -> print_string "Par"; true) p_list
     then Config.internal_error "[process_determinate.ml >> order_flatten_process_list] We should only order on a normalised flatten list."
   );
@@ -1366,16 +1307,15 @@ let get_minimal_axiom block = block.minimal_axiom
 type gathering_normalise =
   {
     original_subst : (variable * term) list;
-    original_names : (variable * name) list;
     disequations : Formula.T.t
   }
 
-let rec normalise_simple_det_process proc else_branch orig_subst orig_names disequations f_continuation f_next = match proc with
+let rec normalise_simple_det_process proc else_branch orig_subst disequations f_continuation f_next = match proc with
   | SStart _
   | SNil
   | SOutput _
   | SInput _ ->
-      let gather = { original_subst = orig_subst; original_names = orig_names; disequations = disequations } in
+      let gather = { original_subst = orig_subst;  disequations = disequations } in
       f_continuation gather proc f_next
   | SCondition(equation_list,diseq_form,fresh_vars,pthen,pelse,_) ->
       let rec apply_positive f_next_1 = function
@@ -1402,7 +1342,7 @@ let rec normalise_simple_det_process proc else_branch orig_subst orig_names dise
                 let disequations_1 = Formula.T.instantiate_and_normalise disequations in
                 if Formula.T.Bot = disequations_1
                 then f_next_2 ()
-                else normalise_simple_det_process pthen else_branch orig_subst_1 orig_names disequations_1 f_continuation f_next_2
+                else normalise_simple_det_process pthen else_branch orig_subst_1 disequations_1 f_continuation f_next_2
               else f_next_2 ()
             ) (fun () ->
               apply_positive f_next_1 q
@@ -1417,7 +1357,7 @@ let rec normalise_simple_det_process proc else_branch orig_subst orig_names dise
           then f_next_1 ()
           else
             let disequations_1 = Formula.T.wedge_formula diseq_form_1 disequations in
-            normalise_simple_det_process pelse else_branch orig_subst orig_names disequations_1 f_continuation f_next_1
+            normalise_simple_det_process pelse else_branch orig_subst disequations_1 f_continuation f_next_1
         else
           begin
             Config.debug (fun () ->
@@ -1431,13 +1371,8 @@ let rec normalise_simple_det_process proc else_branch orig_subst orig_names dise
       apply_positive (fun () ->
         apply_negative f_next
       ) equation_list
-  | SNew(x,n,p,_) ->
-      Variable.auto_cleanup_with_reset (fun f_next_1 ->
-        Variable.link_term x (Name n);
-        normalise_simple_det_process p else_branch orig_subst ((x,n)::orig_names) disequations f_continuation f_next_1
-      ) f_next
   | SPar(p_list) ->
-      normalise_simple_det_process_list p_list else_branch orig_subst orig_names disequations (fun gather p_list_1 f_next_1 ->
+      normalise_simple_det_process_list p_list else_branch orig_subst disequations (fun gather p_list_1 f_next_1 ->
         match p_list_1 with
           | [] -> f_continuation gather SNil f_next_1
           | [p] -> f_continuation gather p f_next_1
@@ -1448,7 +1383,7 @@ let rec normalise_simple_det_process proc else_branch orig_subst orig_names dise
         if p_list = []
         then Config.internal_error "[normalise_simple_det_process] The list should not be empty (1)."
       );
-      normalise_simple_det_channel_process_list p_list else_branch orig_subst orig_names disequations (fun gather p_list_1 f_next_1 ->
+      normalise_simple_det_channel_process_list p_list else_branch orig_subst disequations (fun gather p_list_1 f_next_1 ->
         Config.debug (fun () ->
           if p_list_1 = []
           then Config.internal_error "[normalise_simple_det_process] The list should not be empty (2)."
@@ -1457,11 +1392,11 @@ let rec normalise_simple_det_process proc else_branch orig_subst orig_names dise
         f_continuation gather (SParMult p_list_1) f_next_1
       ) f_next
 
-and normalise_simple_det_process_list p_list else_branch orig_subst orig_names disequations f_continuation f_next = match p_list with
-  | [] -> f_continuation { original_subst = orig_subst; original_names = orig_names; disequations = disequations } [] f_next
+and normalise_simple_det_process_list p_list else_branch orig_subst disequations f_continuation f_next = match p_list with
+  | [] -> f_continuation { original_subst = orig_subst; disequations = disequations } [] f_next
   | p::q ->
-      normalise_simple_det_process_list q else_branch orig_subst orig_names disequations (fun gather_1 q_1 f_next_1 ->
-        normalise_simple_det_process p else_branch gather_1.original_subst gather_1.original_names gather_1.disequations (fun gather_2 proc f_next_2 ->
+      normalise_simple_det_process_list q else_branch orig_subst disequations (fun gather_1 q_1 f_next_1 ->
+        normalise_simple_det_process p else_branch gather_1.original_subst gather_1.disequations (fun gather_2 proc f_next_2 ->
           match proc with
             | SNil -> f_continuation gather_2 q_1 f_next_2
             | SPar p_list_1 -> f_continuation gather_2 (List.rev_append p_list_1 q_1) f_next_2
@@ -1469,35 +1404,35 @@ and normalise_simple_det_process_list p_list else_branch orig_subst orig_names d
         ) f_next_1
       ) f_next
 
-and normalise_simple_det_channel_process_list p_list else_branch orig_subst orig_names disequations f_continuation f_next = match p_list with
-  | [] -> f_continuation { original_subst = orig_subst; original_names = orig_names; disequations = disequations } [] f_next
+and normalise_simple_det_channel_process_list p_list else_branch orig_subst disequations f_continuation f_next = match p_list with
+  | [] -> f_continuation { original_subst = orig_subst; disequations = disequations } [] f_next
   | (ch,p)::q ->
-      normalise_simple_det_channel_process_list q else_branch orig_subst orig_names disequations (fun gather_1 q_1 f_next_1 ->
-        normalise_simple_det_process p else_branch gather_1.original_subst gather_1.original_names gather_1.disequations (fun gather_2 proc f_next_2 ->
+      normalise_simple_det_channel_process_list q else_branch orig_subst disequations (fun gather_1 q_1 f_next_1 ->
+        normalise_simple_det_process p else_branch gather_1.original_subst gather_1.disequations (fun gather_2 proc f_next_2 ->
           f_continuation gather_2 ((ch,proc)::q_1) f_next_2
         ) f_next_1
       ) f_next
 
-let normalise_det_process p_det else_branch equations orig_names disequations f_continuation f_next =
-  normalise_simple_det_process p_det.proc else_branch equations orig_names disequations (fun gather p f_next_1 ->
+let normalise_det_process p_det else_branch equations disequations f_continuation f_next =
+  normalise_simple_det_process p_det.proc else_branch equations disequations (fun gather p f_next_1 ->
     f_continuation gather { p_det with proc = p } f_next_1
   ) f_next
 
-let normalise_configuration conf else_branch orig_subst orig_names f_continuation =
+let normalise_configuration conf else_branch orig_subst f_continuation =
   Config.debug (fun () ->
     if conf.sure_uncheked_skeletons <> None
     then Config.internal_error "[process_determinate.ml >> normalise_configuration] Sure unchecked should be empty."
   );
 
   match conf.unsure_proc, conf.focused_proc with
-    | None, None -> f_continuation { original_subst = orig_subst; original_names = orig_names; disequations = Formula.T.Top } conf
+    | None, None -> f_continuation { original_subst = orig_subst; disequations = Formula.T.Top } conf
     | None, Some p ->
-        normalise_det_process p else_branch orig_subst orig_names Formula.T.Top (fun gather p_1 f_next ->
+        normalise_det_process p else_branch orig_subst Formula.T.Top (fun gather p_1 f_next ->
           f_continuation gather { conf with focused_proc = Some p_1 };
           f_next ()
         ) (fun () -> ())
     | Some p, None ->
-        normalise_det_process p else_branch orig_subst orig_names Formula.T.Top (fun gather p_1 f_next ->
+        normalise_det_process p else_branch orig_subst Formula.T.Top (fun gather p_1 f_next ->
           f_continuation gather { conf with sure_uncheked_skeletons = Some p_1; unsure_proc = None };
           f_next ()
         ) (fun () -> ())

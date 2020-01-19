@@ -65,6 +65,7 @@ and generate_transition =
 type equivalence_problem =
   {
     size_frame : int;
+    knowledge_recipe : Data_structure.KR.t;
     forall_set : symbolic_configuration Constraint_system.t list;
     eq_recipe : Formula.R.t;
     general_blocks : Block.general_blocks;
@@ -374,13 +375,13 @@ let display_constraint_system_set csys_set =
       "origin", string_of_bool csys.Constraint_system.additional_data.origin;
       "configuration", Configuration.display 3 csys.Constraint_system.additional_data.configuration;
       "trace", display_list Process.display_transition "." csys.Constraint_system.additional_data.trace;
-      "constraint_system", Constraint_system.display_constraint_system 3 csys;
+      "constraint_system", Constraint_system.display_constraint_system 3 (csys_set.Constraint_system.knowledge_recipe) csys;
       "matching_status", display_matching_status csys.Constraint_system.additional_data.matching_status
     ]
     else ""
   ) "" csys_set.Constraint_system.set
 
-let display_forall_set forall_set =
+let display_forall_set kbr forall_set =
   let csys_ref = ref [] in
   let counter = ref 1 in
 
@@ -425,7 +426,7 @@ let display_forall_set forall_set =
         "origin", string_of_bool csys.Constraint_system.additional_data.origin;
         "configuration", Configuration.display 3 csys.Constraint_system.additional_data.configuration;
         "trace", display_list Process.display_transition "." csys.Constraint_system.additional_data.trace;
-        "constraint_system", Constraint_system.display_constraint_system 3 csys;
+        "constraint_system", Constraint_system.display_constraint_system 3 kbr csys;
         "matching_status", display_matching_status csys.Constraint_system.additional_data.matching_status
       ]
     in
@@ -485,7 +486,7 @@ let display_equivalence_problem equiv_pbl =
         "origin", string_of_bool csys.Constraint_system.additional_data.origin;
         "configuration", Configuration.display 3 csys.Constraint_system.additional_data.configuration;
         "trace", display_list Process.display_transition "." csys.Constraint_system.additional_data.trace;
-        "constraint_system", Constraint_system.display_constraint_system 3 csys;
+        "constraint_system", Constraint_system.display_constraint_system 3 equiv_pbl.knowledge_recipe csys;
         "matching_status", display_matching_status csys.Constraint_system.additional_data.matching_status
       ]
     in
@@ -658,6 +659,7 @@ let generate_initial_equivalence_problem is_equiv_query proc1 proc2 =
       symb_conf2.forall_bset <- Bijection_set.initial;
       {
         size_frame = 0;
+        knowledge_recipe = Data_structure.KR.empty;
         forall_set = [csys1;csys2];
         eq_recipe = Formula.R.Top;
         general_blocks = general_blocks;
@@ -671,6 +673,7 @@ let generate_initial_equivalence_problem is_equiv_query proc1 proc2 =
       symb_conf2.forall_matched <- [csys1];
       {
         size_frame = 0;
+        knowledge_recipe = Data_structure.KR.empty;
         forall_set = [csys1];
         eq_recipe = Formula.R.Top;
         general_blocks = general_blocks;
@@ -700,7 +703,6 @@ let generate_attack_trace csys =
 
 let split_forall_set csys_list f_continuation (f_next:unit->unit) =
 
-  let marked_conf = ref [] in
   let all_csys = ref [] in
 
   let rec mark csys =
@@ -708,26 +710,32 @@ let split_forall_set csys_list f_continuation (f_next:unit->unit) =
     match conf.link_c with
       | CNoLink ->
           all_csys := csys :: !all_csys;
-          conf.link_c <- CSearch;
-          marked_conf := conf::!marked_conf;
+          link_symbolic_configuration conf CSearch;
           List.iter mark conf.forall_matched;
           List.iter (fun (csys',_) -> mark csys') conf.exists_matched
-      | _ -> ()
+      | CSearch -> ()
+      | CImproperInputs _ -> Config.internal_error "[session_equivalence.ml >> split_forall_set] Unexpected link : Improper"
+      | CCsys _ -> Config.internal_error "[session_equivalence.ml >> csplit_forall_set] Unexpected link : CCsys"
+      | CTransition _ -> Config.internal_error "[session_equivalence.ml >> split_forall_set] Unexpected link : CTransition"
+      | CChannelPriority _ -> Config.internal_error "[session_equivalence.ml >> split_forall_set] Unexpected link : CChannelPriority"
   in
 
   let rec explore csys_list_1 f_next_1 = match csys_list_1 with
     | [] -> f_next_1 ()
     | csys::q ->
-        mark csys;
-        let (marked,not_marked) = List.partition_unordered (fun csys' -> csys'.Constraint_system.additional_data.link_c = CSearch) q in
-        let marked_1 = csys::marked in
-        let csys_to_solve = !all_csys in
-        (* Cleanup *)
-        all_csys := [];
-        List.iter (fun conf -> conf.link_c <- CNoLink) !marked_conf;
-        marked_conf := [];
+        let (marked,not_marked,csys_to_solve) =
+          auto_cleanup_symbolic_configuration (fun () ->
+            mark csys;
+            let (marked,not_marked) = List.partition_unordered (fun csys' -> csys'.Constraint_system.additional_data.link_c = CSearch) q in
+            let marked_1 = csys::marked in
+            let csys_to_solve = !all_csys in
+            (* Cleanup *)
+            all_csys := [];
+            marked_1, not_marked, csys_to_solve
+          )
+        in
         (* Apply next *)
-        f_continuation marked_1 csys_to_solve (fun () ->
+        f_continuation marked csys_to_solve (fun () ->
           explore not_marked f_next_1
         )
   in
@@ -741,8 +749,7 @@ let clean_variables_names =
     let conf = csys.Constraint_system.additional_data in
     Configuration.link_used_data (fun () ->
       let original_subst = List.filter (fun (x,_) -> x.link = SLink) csys.Constraint_system.original_substitution in
-      let original_names = List.filter (fun (x,_) -> x.link = SLink) csys.Constraint_system.original_names in
-      { csys with Constraint_system.original_substitution = original_subst; Constraint_system.original_names = original_names }
+      { csys with Constraint_system.original_substitution = original_subst  }
     ) conf.configuration
   )
 
@@ -750,7 +757,7 @@ let clean_variables_names =
 
 let add_axiom_in_blocks blocks csys_set =
   let csys = List.hd csys_set.Constraint_system.set in
-  let type_max = Data_structure.IK.get_max_type_recipe csys.Constraint_system.knowledge csys.Constraint_system.incremented_knowledge in
+  let type_max = Data_structure.IK.get_max_type_recipe csys_set.Constraint_system.knowledge_recipe csys.Constraint_system.incremented_knowledge in
   Block.add_axiom_after_constraint_solving type_max blocks
 
 (** Cleaning constraint systems **)
@@ -952,7 +959,12 @@ let determine_channel_priority forall_set =
       let sym_conf = csys.Constraint_system.additional_data in
       match sym_conf.link_c with
         | CChannelPriority (Configuration.ChPriority(ch,false)) -> sym_conf.link_c <- CChannelPriority (Configuration.ChPriority(ch,true))
-        | _ -> ()
+        | CChannelPriority _ -> ()
+        | CImproperInputs _ -> Config.internal_error "[session_equivalence.ml >> determine_channel_priority] Unexpected link : CCsys"
+        | CCsys _ -> Config.internal_error "[session_equivalence.ml >> determine_channel_priority] Unexpected link : CCsys"
+        | CSearch -> Config.internal_error "[session_equivalence.ml >> determine_channel_priority] Unexpected link : CSearch"
+        | CTransition _ -> Config.internal_error "[session_equivalence.ml >> determine_channel_priority] Unexpected link : CTransition"
+        | CNoLink -> Config.internal_error "[session_equivalence.ml >> determine_channel_priority] The symbolic configuration should be linked."
     ) forall_set;
 
   !all_priority
@@ -999,7 +1011,10 @@ let get_improper_inputs symb = match symb.link_c with
       link_symbolic_configuration symb (CImproperInputs(imp_data,old_conf));
       imp_data
   | CImproperInputs(imp_data,_) -> imp_data
-  | _ -> Config.internal_error "[session_equivalence.ml >> link_symbolic_configuration_with_improper_inputs] Unexpected links"
+  | CCsys _ -> Config.internal_error "[session_equivalence.ml >> get_improper_inputs] Unexpected link : CCsys"
+  | CSearch -> Config.internal_error "[session_equivalence.ml >> get_improper_inputs] Unexpected link : CSearch"
+  | CTransition _ -> Config.internal_error "[session_equivalence.ml >> get_improper_inputs] Unexpected link : CTransition"
+  | CChannelPriority _ -> Config.internal_error "[session_equivalence.ml >> get_improper_inputs] Unexpected link : CChannelPriority"
 
 let compute_before_focus_phase equiv_pbl =
 
@@ -1007,7 +1022,7 @@ let compute_before_focus_phase equiv_pbl =
 
   let rec explore_forall_set = function
     | [] ->
-        (* Not exception was raised meaning that we managed to match every improper inputs. *)
+        (* No exception was raised meaning that we managed to match every improper inputs. *)
         List.iter (fun symb -> symb.link_c <- CNoLink) !linked_symbolic_configuration;
         linked_symbolic_configuration := [];
         record_improper_conf := []
@@ -1041,7 +1056,11 @@ let compute_before_focus_phase equiv_pbl =
     (* Clean and restaure *)
     List.iter (fun symb -> match symb.link_c with
       | CImproperInputs(_,conf) -> symb.configuration <- conf
-      | _ -> Config.internal_error "[session_equivalence.ml >> compute_before_focus_phase] Symbolic configuration should be link."
+      | CNoLink -> Config.internal_error "[session_equivalence.ml >> compute_before_focus_phase] Symbolic configuration should be link."
+      | CCsys _ -> Config.internal_error "[session_equivalence.ml >> compute_before_focus_phase] Unexpected link : CCsys"
+      | CSearch -> Config.internal_error "[session_equivalence.ml >> compute_before_focus_phase] Unexpected link : CSearch"
+      | CTransition _ -> Config.internal_error "[session_equivalence.ml >> compute_before_focus_phase] Unexpected link : CTransition"
+      | CChannelPriority _ -> Config.internal_error "[session_equivalence.ml >> compute_before_focus_phase] Unexpected link : CChannelPriority"
     ) !linked_symbolic_configuration;
     linked_symbolic_configuration := [];
     List.iter (fun (symb,forall_bset,exists_matched) ->
@@ -1051,6 +1070,10 @@ let compute_before_focus_phase equiv_pbl =
     record_improper_conf := []
 
 (** Application of transitions **)
+
+let get_knowledge_recipe_from_preparation_data = function
+  | None -> Config.internal_error "[session_equivalence.ml >> get_knowledge_recipe_from_preparation_data] Should be defined."
+  | Some(kbr,_,_) -> kbr
 
 let apply_neg_phase equiv_pbl f_continuation f_next =
   Config.debug (fun () ->
@@ -1078,6 +1101,7 @@ let apply_neg_phase equiv_pbl f_continuation f_next =
   let target_ch_recipe = Channel.recipe_of target_ch in
 
   let axiom = equiv_pbl.size_frame + 1 in
+  let preparation_data = ref None in
 
   let generate_transitions csys =
     let symb_conf = csys.Constraint_system.additional_data in
@@ -1090,9 +1114,8 @@ let apply_neg_phase equiv_pbl f_continuation f_next =
 
           Variable.auto_cleanup_with_reset_notail (fun () ->
             List.iter (fun (x,t) -> Variable.link_term x t) csys.Constraint_system.original_substitution;
-            List.iter (fun (x,n) -> Variable.link_term x (Name n)) csys.Constraint_system.original_names;
 
-            generate_next_public_output symb_conf.matching_status target_ch csys.Constraint_system.original_substitution csys.Constraint_system.original_names symb_conf.configuration (fun out_trans conf_1 ->
+            generate_next_public_output symb_conf.matching_status target_ch csys.Constraint_system.original_substitution symb_conf.configuration (fun out_trans conf_1 ->
               let eq_uniformity = Formula.T.instantiate_and_normalise_full csys.Constraint_system.eq_uniformity in
               if eq_uniformity = Formula.T.Bot
               then ()
@@ -1114,12 +1137,17 @@ let apply_neg_phase equiv_pbl f_continuation f_next =
                   { csys_1 with
                     Constraint_system.eq_term = out_trans.Configuration.out_gathering_normalise.Labelled_process.disequations;
                     Constraint_system.original_substitution = out_trans.Configuration.out_gathering_normalise.Labelled_process.original_subst;
-                    Constraint_system.original_names = out_trans.Configuration.out_gathering_normalise.Labelled_process.original_names;
                     Constraint_system.eq_uniformity = eq_uniformity;
                     Constraint_system.additional_data = symb_conf_1
                   }
                 in
-                let csys_3 = Constraint_system.prepare_for_solving_procedure true csys_2 in
+                let csys_3 = match !preparation_data with
+                  | None ->
+                      let (csys',kbr',ikb',assoc_id) = Constraint_system.prepare_for_solving_procedure_first true equiv_pbl.knowledge_recipe csys_2 in
+                      preparation_data := Some(kbr',ikb',assoc_id);
+                      csys'
+                  | Some (_,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others ikb assoc_id csys_2
+                in
 
                 match out_trans.Configuration.out_matching_status with
                   | Configuration.Exists -> transitions_exists := csys_3::!transitions_exists
@@ -1196,6 +1224,7 @@ let apply_neg_phase equiv_pbl f_continuation f_next =
 
     let csys_set =
       {
+        Constraint_system.knowledge_recipe = get_knowledge_recipe_from_preparation_data !preparation_data;
         Constraint_system.eq_recipe = equiv_pbl.eq_recipe;
         Constraint_system.set = csys_to_solve
       }
@@ -1228,6 +1257,7 @@ let apply_neg_phase equiv_pbl f_continuation f_next =
                 split_forall_set forall_set_3 (fun forall_set_4 _ f_next_4 ->
                   let equiv_pbl_1 =
                     {
+                      knowledge_recipe = csys_solved_2.Constraint_system.knowledge_recipe;
                       size_frame = equiv_pbl.size_frame + 1;
                       forall_set = forall_set_4;
                       eq_recipe = csys_solved_2.Constraint_system.eq_recipe;
@@ -1270,10 +1300,10 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
 
   let type_max =
     let csys = List.hd equiv_pbl.forall_set in
-    (Data_structure.IK.get_max_type_recipe csys.Constraint_system.knowledge csys.Constraint_system.incremented_knowledge)
+    (Data_structure.IK.get_max_type_recipe equiv_pbl.knowledge_recipe csys.Constraint_system.incremented_knowledge)
   in
   let var_X_t = Recipe_Variable.fresh Free type_max in
-
+  let preparation_data = ref None in
   (* Generate the new matching set *)
 
   let forall_set_1 = ref [] in
@@ -1296,12 +1326,16 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
 
     let generate_transitions csys =
       let symb_conf = csys.Constraint_system.additional_data in
-      let generate_next_public_input_comm = match symb_conf.link_c with
-        | CChannelPriority ch -> Configuration.next_focus_phase ch
-        | _ -> generate_next_public_input_comm_nolink
-      in
       match symb_conf.link_c with
         | CNoLink | CChannelPriority _ ->
+            let generate_next_public_input_comm = match symb_conf.link_c with
+              | CChannelPriority ch -> Configuration.next_focus_phase ch
+              | CNoLink -> generate_next_public_input_comm_nolink
+              | CImproperInputs _ -> Config.internal_error "[session_equivalence.ml >> apply_focus_phase.generate_next_public_input_comm] Unexpected link : CCsys"
+              | CCsys _ -> Config.internal_error "[session_equivalence.ml >> apply_focus_phase.generate_next_public_input_comm] Unexpected link : CCsys"
+              | CSearch -> Config.internal_error "[session_equivalence.ml >> apply_focus_phase.generate_next_public_input_comm] Unexpected link : CSearch"
+              | CTransition _ -> Config.internal_error "[session_equivalence.ml >> apply_focus_phase.generate_next_public_input_comm] Unexpected link : CTransition"
+            in
             let improper_ref = ref None in
 
             let transitions_forall = ref [] in
@@ -1316,9 +1350,8 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
 
             Variable.auto_cleanup_with_reset_notail (fun () ->
               List.iter (fun (x,t) -> Variable.link_term x t) csys.Constraint_system.original_substitution;
-              List.iter (fun (x,n) -> Variable.link_term x (Name n)) csys.Constraint_system.original_names;
 
-              generate_next_public_input_comm symb_conf.matching_status csys.Constraint_system.original_substitution csys.Constraint_system.original_names closed_configuration (fun in_comm_trans conf_1 ->
+              generate_next_public_input_comm symb_conf.matching_status csys.Constraint_system.original_substitution closed_configuration (fun in_comm_trans conf_1 ->
                 let eq_uniformity = Formula.T.instantiate_and_normalise_full csys.Constraint_system.eq_uniformity in
                 if eq_uniformity = Formula.T.Bot
                 then ()
@@ -1344,12 +1377,17 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
                             Constraint_system.deduction_facts = Data_structure.DF.add_multiple_max_type csys.Constraint_system.deduction_facts [dfact_t];
                             Constraint_system.eq_term = in_comm_trans.Configuration.in_comm_gathering_normalise.Labelled_process.disequations;
                             Constraint_system.original_substitution = in_comm_trans.Configuration.in_comm_gathering_normalise.Labelled_process.original_subst;
-                            Constraint_system.original_names = in_comm_trans.Configuration.in_comm_gathering_normalise.Labelled_process.original_names;
                             Constraint_system.eq_uniformity = eq_uniformity;
                             Constraint_system.additional_data = symb_conf_1
                           }
                         in
-                        let csys_2 = Constraint_system.prepare_for_solving_procedure false csys_1 in
+                        let csys_2 = match !preparation_data with
+                          | None ->
+                              let (csys',kbr',ikb',assoc_id) = Constraint_system.prepare_for_solving_procedure_first false equiv_pbl.knowledge_recipe csys_1 in
+                              preparation_data := Some(kbr',ikb',assoc_id);
+                              csys'
+                          | Some (_,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others ikb assoc_id csys_1
+                        in
 
                         begin match in_comm_trans.Configuration.in_comm_matching_status with
                           | Configuration.Exists -> transitions_exists := csys_2::!transitions_exists
@@ -1374,12 +1412,17 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
                           { csys with
                             Constraint_system.eq_term = in_comm_trans.Configuration.in_comm_gathering_normalise.Labelled_process.disequations;
                             Constraint_system.original_substitution = in_comm_trans.Configuration.in_comm_gathering_normalise.Labelled_process.original_subst;
-                            Constraint_system.original_names = in_comm_trans.Configuration.in_comm_gathering_normalise.Labelled_process.original_names;
                             Constraint_system.eq_uniformity = eq_uniformity;
                             Constraint_system.additional_data = symb_conf_1
                           }
                         in
-                        let csys_2 = Constraint_system.prepare_for_solving_procedure false csys_1 in
+                        let csys_2 = match !preparation_data with
+                          | None ->
+                              let (csys',kbr',ikb',assoc_id) = Constraint_system.prepare_for_solving_procedure_first false equiv_pbl.knowledge_recipe csys_1 in
+                              preparation_data := Some(kbr',ikb',assoc_id);
+                              csys'
+                          | Some (_,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others ikb assoc_id csys_1
+                        in
 
                         begin match in_comm_trans.Configuration.in_comm_matching_status with
                           | Configuration.Exists -> transitions_exists := csys_2::!transitions_exists
@@ -1402,7 +1445,9 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
             else symb_conf.link_c <- CTransition gen_trans;
             gen_trans
         | CTransition gen_trans -> gen_trans
-        | _ -> Config.internal_error "[session_equivalence.ml >> apply_public_output] Unexpected link during generation of transitions."
+        | CImproperInputs _ -> Config.internal_error "[session_equivalence.ml >> apply_focus_phase.generate_transitions] Unexpected link : CCsys"
+        | CCsys _ -> Config.internal_error "[session_equivalence.ml >> apply_focus_phase.generate_transitions] Unexpected link : CCsys"
+        | CSearch -> Config.internal_error "[session_equivalence.ml >> apply_focus_phase.generate_transitions] Unexpected link : CSearch"
     in
 
     List.iter (fun forall_csys ->
@@ -1475,6 +1520,7 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
 
     let csys_set =
       {
+        Constraint_system.knowledge_recipe = get_knowledge_recipe_from_preparation_data !preparation_data;
         Constraint_system.eq_recipe = equiv_pbl.eq_recipe;
         Constraint_system.set = csys_to_solve
       }
@@ -1509,6 +1555,7 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
 
             let equiv_pbl_1 =
               { equiv_pbl with
+                knowledge_recipe = csys_solved_2.Constraint_system.knowledge_recipe;
                 forall_set = forall_set_4;
                 eq_recipe = csys_solved_2.Constraint_system.eq_recipe;
                 general_blocks = general_blocks_3;
@@ -1544,9 +1591,10 @@ let apply_pos_phase equiv_pbl f_continuation f_next =
 
   let type_max =
     let csys = List.hd equiv_pbl.forall_set in
-    (Data_structure.IK.get_max_type_recipe csys.Constraint_system.knowledge csys.Constraint_system.incremented_knowledge)
+    (Data_structure.IK.get_max_type_recipe equiv_pbl.knowledge_recipe csys.Constraint_system.incremented_knowledge)
   in
   let var_X_t = Recipe_Variable.fresh Free type_max in
+  let preparation_data = ref None in
 
   let generate_transitions csys =
     let symb_conf = csys.Constraint_system.additional_data in
@@ -1558,9 +1606,8 @@ let apply_pos_phase equiv_pbl f_continuation f_next =
 
           Variable.auto_cleanup_with_reset_notail (fun () ->
             List.iter (fun (x,t) -> Variable.link_term x t) csys.Constraint_system.original_substitution;
-            List.iter (fun (x,n) -> Variable.link_term x (Name n)) csys.Constraint_system.original_names;
 
-            generate_next_public_input symb_conf.matching_status csys.Constraint_system.original_substitution csys.Constraint_system.original_names symb_conf.configuration (fun in_comm_trans conf_1 ->
+            generate_next_public_input symb_conf.matching_status csys.Constraint_system.original_substitution symb_conf.configuration (fun in_comm_trans conf_1 ->
               let eq_uniformity = Formula.T.instantiate_and_normalise_full csys.Constraint_system.eq_uniformity in
               if eq_uniformity = Formula.T.Bot
               then ()
@@ -1585,12 +1632,17 @@ let apply_pos_phase equiv_pbl f_continuation f_next =
                           Constraint_system.deduction_facts = Data_structure.DF.add_multiple_max_type csys.Constraint_system.deduction_facts [dfact_t];
                           Constraint_system.eq_term = in_comm_trans.Configuration.in_comm_gathering_normalise.Labelled_process.disequations;
                           Constraint_system.original_substitution =in_comm_trans.Configuration.in_comm_gathering_normalise.Labelled_process.original_subst;
-                          Constraint_system.original_names = in_comm_trans.Configuration.in_comm_gathering_normalise.Labelled_process.original_names;
                           Constraint_system.eq_uniformity = eq_uniformity;
                           Constraint_system.additional_data = symb_conf_1
                         }
                       in
-                      let csys_2 = Constraint_system.prepare_for_solving_procedure false csys_1 in
+                      let csys_2 = match !preparation_data with
+                        | None ->
+                            let (csys',kbr',ikb',assoc_id) = Constraint_system.prepare_for_solving_procedure_first false equiv_pbl.knowledge_recipe csys_1 in
+                            preparation_data := Some(kbr',ikb',assoc_id);
+                            csys'
+                        | Some (_,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others ikb assoc_id csys_1
+                      in
 
                       begin match in_comm_trans.Configuration.in_comm_matching_status with
                         | Configuration.Exists -> transitions_exists := csys_2::!transitions_exists
@@ -1677,6 +1729,7 @@ let apply_pos_phase equiv_pbl f_continuation f_next =
 
     let csys_set =
       {
+        Constraint_system.knowledge_recipe = get_knowledge_recipe_from_preparation_data !preparation_data;
         Constraint_system.eq_recipe = equiv_pbl.eq_recipe;
         Constraint_system.set = csys_to_solve
       }
@@ -1703,6 +1756,7 @@ let apply_pos_phase equiv_pbl f_continuation f_next =
           split_forall_set forall_set_3 (fun forall_set_4 _ f_next_4 ->
             let equiv_pbl_1 =
               { equiv_pbl with
+                knowledge_recipe = csys_solved_2.Constraint_system.knowledge_recipe;
                 forall_set = forall_set_4;
                 eq_recipe = csys_solved_2.Constraint_system.eq_recipe;
                 general_blocks = general_blocks_3;
@@ -1724,6 +1778,8 @@ let apply_start equiv_pbl f_continuation f_next =
     Config.log_in_debug Config.Process "[session_equivalence.ml] Apply start";
   );
 
+  let preparation_data = ref None in
+
   let generate_transitions csys =
     let symb_conf = csys.Constraint_system.additional_data in
     match symb_conf.link_c with
@@ -1735,9 +1791,8 @@ let apply_start equiv_pbl f_continuation f_next =
 
           Variable.auto_cleanup_with_reset_notail (fun () ->
             List.iter (fun (x,t) -> Variable.link_term x t) csys.Constraint_system.original_substitution;
-            List.iter (fun (x,n) -> Variable.link_term x (Name n)) csys.Constraint_system.original_names;
 
-            Configuration.next_start_phase symb_conf.matching_status csys.Constraint_system.original_substitution csys.Constraint_system.original_names symb_conf.configuration (fun start_trans conf_1 ->
+            Configuration.next_start_phase symb_conf.matching_status csys.Constraint_system.original_substitution symb_conf.configuration (fun start_trans conf_1 ->
               let eq_uniformity = Formula.T.instantiate_and_normalise_full csys.Constraint_system.eq_uniformity in
               if eq_uniformity = Formula.T.Bot
               then ()
@@ -1758,12 +1813,17 @@ let apply_start equiv_pbl f_continuation f_next =
                   { csys with
                     Constraint_system.eq_term = start_trans.Configuration.start_gathering_normalise.Labelled_process.disequations;
                     Constraint_system.original_substitution = start_trans.Configuration.start_gathering_normalise.Labelled_process.original_subst;
-                    Constraint_system.original_names = start_trans.Configuration.start_gathering_normalise.Labelled_process.original_names;
                     Constraint_system.eq_uniformity = eq_uniformity;
                     Constraint_system.additional_data = symb_conf_1
                   }
                 in
-                let csys_2 = Constraint_system.prepare_for_solving_procedure false csys_1 in
+                let csys_2 = match !preparation_data with
+                  | None ->
+                      let (csys',kbr',ikb',assoc_id) = Constraint_system.prepare_for_solving_procedure_first false equiv_pbl.knowledge_recipe csys_1 in
+                      preparation_data := Some(kbr',ikb',assoc_id);
+                      csys'
+                  | Some (_,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others ikb assoc_id csys_1
+                in
 
                 begin match start_trans.Configuration.start_matching_status with
                   | Configuration.Exists -> transitions_exists := csys_2::!transitions_exists
@@ -1841,6 +1901,7 @@ let apply_start equiv_pbl f_continuation f_next =
 
     let csys_set =
       {
+        Constraint_system.knowledge_recipe = get_knowledge_recipe_from_preparation_data !preparation_data;
         Constraint_system.eq_recipe = equiv_pbl.eq_recipe;
         Constraint_system.set = csys_to_solve
       }
@@ -1866,6 +1927,7 @@ let apply_start equiv_pbl f_continuation f_next =
           split_forall_set forall_set_3 (fun forall_set_4 _ f_next_4 ->
             let equiv_pbl_1 =
               { equiv_pbl with
+                knowledge_recipe = csys_solved_2.Constraint_system.knowledge_recipe;
                 forall_set = forall_set_4;
                 eq_recipe = csys_solved_2.Constraint_system.eq_recipe;
                 general_blocks = general_blocks_3;
@@ -1950,7 +2012,7 @@ let export_equivalence_problem equiv_pbl =
         symb_conf.exists_matched <- List.rev_map (fun (csys,bset) -> get_instantiated_csys csys,bset) symb_conf.exists_matched
       ) !symb_conf_to_update;
 
-      { equiv_pbl with forall_set = forall_set' }
+      { equiv_pbl with forall_set = forall_set'; knowledge_recipe = Data_structure.KR.instantiate equiv_pbl.knowledge_recipe; }
     )
   in
 
@@ -1973,35 +2035,17 @@ let export_equivalence_problem equiv_pbl =
 let import_equivalence_problem f_next equiv_pbl recipe_subst =
   Config.debug (fun () ->  debug_equivalence_problem "[session_equivalence.ml >> import_equivalence_problem]" equiv_pbl);
 
-  let set_up_deducible_name i r t = match t with
-    | Name ({ deducible_n = None; _} as n) ->
-        Name.set_deducible n (CRFunc(i,r))
-    | _ -> ()
-  in
-
-  let set_up_csys csys = match csys.Constraint_system.additional_data.link_c with
-    | CNoLink ->
-        Data_structure.K.iteri set_up_deducible_name csys.Constraint_system.knowledge;
-        Data_structure.IK.iteri set_up_deducible_name csys.Constraint_system.incremented_knowledge;
-        link_symbolic_configuration csys.Constraint_system.additional_data CSearch
-    | CSearch -> ()
-    | _ -> Config.internal_error "[session_equivalence.ml >> import_equivalence_problem] Unexpected link."
-  in
-
   Recipe_Variable.auto_cleanup_with_reset_notail (fun () ->
     (* We link the recipe substitution *)
     List.iter (fun (x,r) -> Recipe_Variable.link_recipe x r) recipe_subst;
 
-    (* Set up the deducible names *)
-
-    Name.auto_deducible_cleanup_with_reset_notail (fun () ->
-      auto_cleanup_symbolic_configuration (fun () ->
-        List.iter (fun csys ->
-          set_up_csys csys;
-          List.iter (fun (csys',_) -> set_up_csys csys') csys.Constraint_system.additional_data.exists_matched
-        ) equiv_pbl.forall_set;
-      );
-
-      f_next ()
-    )
+    f_next ()
   )
+
+(*** Cleanup ***)
+
+let cleanup () =
+  List.iter (fun symb -> symb.link_c <- CNoLink) !linked_symbolic_configuration;
+  linked_symbolic_configuration := [];
+  List.iter (fun imp_ref -> imp_ref := None) !linked_improper_reference;
+  linked_improper_reference := [];

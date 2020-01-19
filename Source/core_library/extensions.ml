@@ -24,6 +24,29 @@ module List = struct
     in
     explore (fun x -> x)
 
+  let rec map_q f l = match l with
+    | [] -> l
+    | t::q ->
+        let t' = f t in
+        if t == t'
+        then
+          let q' = map_q f q in
+          if q == q'
+          then l
+          else t'::q'
+        else t' :: map_q f q
+
+  let rec filter_q f l = match l with
+    | [] -> l
+    | t::q ->
+        let q' = filter_q f q in
+        if f t
+        then
+          if q == q'
+          then l
+          else t::q'
+        else q'
+
   let removeq x l =
     let rec explore prev = function
       | [] -> raise Not_found
@@ -155,6 +178,24 @@ module List = struct
   end
 end
 
+module Array = struct
+  include Array
+
+  (* Similar to Array.map but returns physically the same array
+     if f x == x for all x in the array *)
+  let map_q f ar =
+    let was_changed = ref false in
+    let f' i =
+      let i' = f i in
+      if i != i'
+      then was_changed := true;
+      i'
+    in
+    let ar' = map f' ar in
+    if !was_changed
+    then ar'
+    else ar
+end
 
 (* reimplementation and extension of the module Map *)
 module Map = struct

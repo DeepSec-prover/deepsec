@@ -95,6 +95,15 @@ module Variable = struct
     v.link <- TLink t;
     currently_linked := v :: !currently_linked
 
+  let link_search v =
+    Config.debug (fun () ->
+      if v.link <> NoLink
+      then Config.internal_error "[term.ml >> Variable.link_search] The first variable should not be already linked."
+    );
+
+    v.link <- SLink;
+    currently_linked := v :: !currently_linked
+
   let auto_cleanup_with_reset (f_cont:(unit -> unit) -> unit) (f_next:unit -> unit) =
     let tmp = !currently_linked in
     currently_linked := [];
@@ -130,6 +139,9 @@ module Variable = struct
       currently_linked := tmp;
       raise e
 
+  let cleanup () =
+    List.iter (fun v -> v.link <- NoLink) !currently_linked;
+    currently_linked := []
 
   (******* Renaming *******)
 
@@ -139,7 +151,8 @@ module Variable = struct
         let v' = fresh_with_label v.quantifier v.label in
         link v v';
         v'
-    | _ -> Config.internal_error "[term.ml >> Variable.rename_term] Unexpected link"
+    | SLink -> v
+    | _ -> Config.internal_error "[term.ml >> Variable.rename] Unexpected link"
 
   (** [rename_term q t] renames the variables in [t] by fresh variables with quantifier [q].
       We assume that the variables can only be linked with VLink. *)
@@ -151,7 +164,9 @@ module Variable = struct
               let v' = fresh_with_label q v.label in
               link v v';
               Var v'
-          | _ -> Config.internal_error "[term.ml >> Variable.rename_term] Unexpected link"
+          | TLink _ -> Config.internal_error "[term.ml >> Variable.rename_term] Unexpected TLink"
+          | XLink _ -> Config.internal_error "[term.ml >> Variable.rename_term] Unexpected XLink"
+          | SLink -> Config.internal_error "[term.ml >> Variable.rename_term] Unexpected Slink"
         end
     | Func(f,args) -> Func(f, List.map (rename_term q) args)
     | _ -> t
@@ -279,6 +294,10 @@ module Recipe_Variable = struct
       currently_linked := tmp;
       raise e
 
+  let cleanup () =
+    List.iter (fun v -> v.link_r <- RNoLink) !currently_linked;
+    currently_linked := []
+
   (******* Renaming *******)
 
   (** [rename_term q r] renames the variables in [t] by fresh variables with quantifier [q].
@@ -312,7 +331,7 @@ module Name = struct
   (******* Generation *******)
 
   let fresh_with_label ?(pure=false) n =
-    let name = { label_n = n; index_n = !accumulator; pure_fresh_n = pure; link_n = NNoLink; deducible_n = None } in
+    let name = { label_n = n; index_n = !accumulator; pure_fresh_n = pure; link_n = NNoLink } in
     accumulator := !accumulator + 1;
     name
 
@@ -321,7 +340,7 @@ module Name = struct
   let fresh_from name = fresh_with_label ~pure:name.pure_fresh_n name.label_n
 
   let pure_fresh_from name =
-    let name' = { label_n = name.label_n; index_n = !accumulator; pure_fresh_n = true; link_n = NNoLink; deducible_n = None } in
+    let name' = { label_n = name.label_n; index_n = !accumulator; pure_fresh_n = true; link_n = NNoLink } in
     accumulator := !accumulator + 1;
     name'
 
@@ -368,43 +387,6 @@ module Name = struct
     n.link_n <- NSLink;
     currently_linked := n :: !currently_linked
 
-  let currently_deducible : name list ref = ref []
-
-  let auto_deducible_cleanup_with_reset (f_cont:(unit -> unit) -> unit) (f_next:unit -> unit) =
-    let tmp = !currently_deducible in
-    currently_deducible := [];
-
-    f_cont (fun () ->
-      List.iter (fun n -> n.deducible_n <- None) !currently_deducible;
-      currently_deducible := tmp;
-      f_next ()
-    )
-
-  let auto_deducible_cleanup_with_reset_notail (f_cont:unit -> 'a) =
-    let tmp = !currently_deducible in
-    currently_deducible := [];
-
-    let r = f_cont () in
-
-    List.iter (fun n -> n.deducible_n <- None) !currently_deducible;
-    currently_deducible := tmp;
-    r
-
-  let auto_deducible_cleanup_with_exception (f_cont:unit -> 'a) =
-    let tmp = !currently_deducible in
-    currently_deducible := [];
-
-    try
-      let r = f_cont () in
-
-      List.iter (fun n -> n.deducible_n <- None) !currently_deducible;
-      currently_deducible := tmp;
-      r
-    with e ->
-      List.iter (fun n -> n.deducible_n <- None) !currently_deducible;
-      currently_deducible := tmp;
-      raise e
-
   let auto_cleanup_with_reset_notail (f_cont:unit -> 'a) =
     let tmp = !currently_linked in
     currently_linked := [];
@@ -430,26 +412,9 @@ module Name = struct
       currently_linked := tmp;
       raise e
 
-  let cleanup () =
-    List.iter (fun n -> n.link_n <- NNoLink) !currently_linked;
-    currently_linked := []
-
-  let set_deducible n recipe =
-    Config.debug (fun () ->
-      if n.deducible_n <> None
-      then Config.internal_error "[term.ml >> set_deducible] Name is already deducible."
-    );
-    currently_deducible := n :: !currently_deducible;
-    n.deducible_n <- Some recipe
-
-  let rename_and_instantiate n = match n.link_n with
-    | NLink n' -> n' (* n' is the fresh replacement of n *)
-    | NNoLink ->
-        let n' = { label_n = n.label_n; index_n = n.index_n; pure_fresh_n = n.pure_fresh_n; link_n = NNoLink; deducible_n = n.deducible_n } in
-        Config.debug (fun () -> if n == n' then Config.internal_error "[term.ml >> Name.rename_and_instantiate] Should not be physically equal.");
-        link n n';
-        n'
-    | _ -> Config.internal_error "[term.ml >> Name.rename_and_instantiat] Unexpected link of name."
+    let cleanup () =
+      List.iter (fun n -> n.link_n <- NNoLink) !currently_linked;
+      currently_linked := []
 end
 
 (*************************************
@@ -865,10 +830,26 @@ module Term = struct
 
   (********** Instantiation ***********)
 
-  let rec instantiate = function
+  let rec instantiate term = match term with
     | Var { link = TLink t; _} -> instantiate t
-    | Func(f,args) -> Func(f,List.map instantiate args)
+    | Func(f,args) ->
+        let args' = instantiate_list args in
+        if args' == args
+        then term
+        else Func(f,args')
     | t -> t
+
+  and instantiate_list term_list = match term_list with
+    | [] -> term_list
+    | t::q ->
+        let t' = instantiate t in
+        if t == t'
+        then
+          let q' = instantiate_list q in
+          if q == q'
+          then term_list
+          else t'::q'
+        else t'::(instantiate_list q)
 
   let rec instantiate_pattern = function
     | PatEquality t -> PatEquality (instantiate t)
@@ -885,7 +866,7 @@ module Term = struct
 
   (********** Renaming function for preparing the solving procedure *********)
 
-  let rec rename_and_instantiate = function
+  let rec rename_and_instantiate term = match term with
     | Var v ->
         begin match v.link with
           | TLink t -> rename_and_instantiate t
@@ -896,16 +877,99 @@ module Term = struct
               Var v'
           | _ -> Config.internal_error "[term.ml >> Term.rename_and_instantiate] Unexpected link of variable."
         end
-    | Func(f,args) -> Func(f,List.map rename_and_instantiate args)
-    | Name n ->
-        match n.link_n with
-          | NLink n' -> Name n' (* n' is the fresh replacement of n *)
-          | NNoLink ->
-              let n' = { label_n = n.label_n; index_n = n.index_n; pure_fresh_n = n.pure_fresh_n; link_n = NNoLink; deducible_n = n.deducible_n } in
-              Config.debug (fun () -> if n == n' then Config.internal_error "[term.ml >> Term.rename_and_instantiate] Should not be physically equal.");
-              Name.link n n';
-              Name n'
-          | _ -> Config.internal_error "[term.ml >> Term.rename_and_instantiate] Unexpected link of name."
+    | Func(f,args) ->
+        let args' = rename_and_instantiate_list args in
+        if args == args'
+        then term
+        else Func(f,args')
+    | Name _ -> term
+
+  and rename_and_instantiate_list term_list = match term_list with
+    | [] -> term_list
+    | t::q ->
+        let t' = rename_and_instantiate t in
+        if t == t'
+        then
+          let q' = rename_and_instantiate_list q in
+          if q == q'
+          then term_list
+          else t'::q'
+        else t'::(rename_and_instantiate_list q)
+
+  let rec rename_and_instantiate_exclude_universal term = match term with
+    | Var ({ quantifier = Universal; _ } as v) ->
+        Config.debug (fun () ->
+          if v.link <> NoLink
+          then Config.internal_error "[term.ml >> rename_and_instantiate_exclude_universal] Should not rename a universal variable that contain link."
+        );
+        term
+    | Var v ->
+        begin match v.link with
+          | TLink t -> rename_and_instantiate_exclude_universal t
+          | VLink v' -> Var v'
+          | NoLink ->
+              let v' = Variable.fresh_with_label v.quantifier v.label in
+              Variable.link v v';
+              Var v'
+          | _ -> Config.internal_error "[term.ml >> Term.rename_and_instantiate_exclude_universal] Unexpected link of variable."
+        end
+    | Func(f,args) ->
+        let args' = rename_and_instantiate_exclude_universal_list args in
+        if args == args'
+        then term
+        else Func(f,args')
+
+    | Name _ -> term
+
+  and rename_and_instantiate_exclude_universal_list term_list = match term_list with
+    | [] -> term_list
+    | t::q ->
+        let t' = rename_and_instantiate_exclude_universal t in
+        if t == t'
+        then
+          let q' = rename_and_instantiate_exclude_universal_list q in
+          if q == q'
+          then term_list
+          else t'::q'
+        else t'::(rename_and_instantiate_exclude_universal_list q)
+
+  let rec rename_and_instantiate_exclude_universal_slink term = match term with
+    | Var ({ quantifier = Universal; _ } as v) ->
+        Config.debug (fun () ->
+          if v.link <> NoLink
+          then Config.internal_error "[term.ml >> rename_and_instantiate_exclude_universal_slink] Should not rename a universal variable that contain link."
+        );
+        term
+    | Var v ->
+        begin match v.link with
+          | SLink -> term
+          | TLink t -> rename_and_instantiate_exclude_universal_slink t
+          | VLink v' -> Var v'
+          | NoLink ->
+              let v' = Variable.fresh_with_label v.quantifier v.label in
+              Variable.link v v';
+              Var v'
+          | _ -> Config.internal_error "[term.ml >> Term.rename_and_instantiate_exclude_universal_slink] Unexpected link of variable."
+        end
+    | Func(f,args) ->
+        let args' = rename_and_instantiate_exclude_universal_slink_list args in
+        if args == args'
+        then term
+        else Func(f,args')
+
+    | Name _ -> term
+
+  and rename_and_instantiate_exclude_universal_slink_list term_list = match term_list with
+    | [] -> term_list
+    | t::q ->
+        let t' = rename_and_instantiate_exclude_universal_slink t in
+        if t == t'
+        then
+          let q' = rename_and_instantiate_exclude_universal_slink_list q in
+          if q == q'
+          then term_list
+          else t'::q'
+        else t'::(rename_and_instantiate_exclude_universal_slink_list q)
 
   (*********** Debug ************)
 
@@ -929,7 +993,7 @@ module Term = struct
 end
 
 (*************************************
-***              Terms             ***
+***              Recipe            ***
 **************************************)
 
 
@@ -1027,16 +1091,48 @@ module Recipe = struct
 
   (********** Instantiation ***********)
 
-  let rec instantiate = function
-    | RVar { link_r = RLink r; _}
-    | CRFunc(_,r) -> instantiate r
-    | RFunc(f,args) -> RFunc(f,List.map instantiate args)
+  let rec instantiate r = match r with
+    | RVar { link_r = RLink r'; _}
+    | CRFunc(_,r') -> instantiate r'
+    | RFunc(f,args) ->
+        let args' = instantiate_list args in
+        if args == args'
+        then r
+        else RFunc(f,args')
+    | _ -> r
+
+  and instantiate_list rlist = match rlist with
+    | [] -> rlist
+    | r::q ->
+        let r' = instantiate r in
+        if r == r'
+        then
+          let q' = instantiate_list q in
+          if q == q'
+          then rlist
+          else r'::q'
+        else r'::(instantiate_list q)
+
+  let rec instantiate_preserve_context r = match r with
+    | RVar { link_r = RLink r'; _} -> instantiate_preserve_context r'
+    | RFunc(f,args) ->
+        let args' = instantiate_preserve_context_list args in
+        if args == args'
+        then r
+        else RFunc(f,args')
     | r -> r
 
-  let rec instantiate_preserve_context = function
-    | RVar { link_r = RLink r'; _} -> instantiate_preserve_context r'
-    | RFunc(f,args) -> RFunc(f,List.map instantiate_preserve_context args)
-    | r -> r
+  and instantiate_preserve_context_list rlist = match rlist with
+    | [] -> rlist
+    | r::q ->
+        let r' = instantiate_preserve_context r in
+        if r == r'
+        then
+          let q' = instantiate_preserve_context_list q in
+          if q == q'
+          then rlist
+          else r'::q'
+        else r'::(instantiate_preserve_context_list q)
 
   (********** Display **********)
 
