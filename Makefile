@@ -1,5 +1,5 @@
 NAME_PROGRAMME = DeepSec
-VERSION = 2.0.0
+VERSION = 2.0.0alpha2
 SOURCE = Source/
 SCRIPTS = script/
 
@@ -14,7 +14,11 @@ EXTENSION=$(if $(PROFILE),p.native,$(if $(ADVDEBUG),d.byte,native))
 GITCOMMIT = $(shell git rev-parse HEAD 2> /dev/null)
 GITBRANCH = $(shell git branch 2> /dev/null | grep \* | sed -E "s/^\* \(?//" | sed -E "s/\)$$//" )
 PHYSICALCORE_SCRIPT = $(shell $(SCRIPTS)/cpu_linux_osx 2> /dev/null)
-PHYSICALCORE = $(if $(PHYSICALCORE_SCRIPT) == 0,1,$(PHYSICALCORE_SCRIPT))
+ifeq ($(PHYSICALCORE_SCRIPT),0)
+PHYSICALCORE = 1
+else
+PHYSICALCORE = $(PHYSICALCORE_SCRIPT)
+endif
 OSTYPE = $(shell uname)
 NBLINE = $(shell find Source -name "*.ml" -or -name "*.mli" -or -name "*.mly" -or -name "*.mll" | xargs cat | wc -l)
 

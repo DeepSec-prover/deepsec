@@ -3042,11 +3042,13 @@ module Rule_ground = struct
               | Some f, _ | _, Some f ->
                   if !find_witness
                   then
-                    if f.arity = 0
-                    then raise (WitnessEquality (RFunc(f,[]),dfact.df_recipe))
-                    else
-                      let proj = List.hd (Symbol.get_projections f) in
-                      raise (WitnessMessage (RFunc(proj,[dfact.df_recipe])))
+                    begin
+                      if f.arity = 0
+                      then raise (WitnessEquality (RFunc(f,[]),dfact.df_recipe))
+                      else
+                        let proj = List.hd (Symbol.get_projections f) in
+                        raise (WitnessMessage (RFunc(proj,[dfact.df_recipe])))
+                    end
           ) csys_list;
           split_data_constructor f_continuation target_csys_1 !csys_list_ref
 
@@ -3180,6 +3182,20 @@ module Rule_ground = struct
 
   (*** The rule rewrite ***)
 
+  let update_skeleton_history dfact csys =
+
+    let f = Recipe.root dfact.df_recipe in
+
+    let rec replace_history = function
+      | [] -> Config.internal_error "[constraint_system.ml >> Rule.update_skeleton] Unexpected case"
+      | hist::q when hist.destructor == f ->
+          let diseq = Rewrite_rules.generate_mixed_formulas_for_skeletons csys.knowledge csys.incremented_knowledge csys.deduction_facts hist.fst_vars hist.snd_vars dfact.df_recipe in
+          { hist with diseq = Formula.M.wedge diseq hist.diseq }::q
+      | hist::q -> hist::(replace_history q)
+    in
+
+    replace_history csys.rule_data.history_skeleton
+
   let rewrite (f_continuation:'a t -> 'b t list -> 'c) (target_csys:'a t) (csys_list:'b t list) =
     Config.debug (fun () ->
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Rule rewrite : Nb csys = %d" (List.length csys_list));
@@ -3212,7 +3228,7 @@ module Rule_ground = struct
           let application_on_IK = index_kb >= size_K in
           let removal_allowed = application_on_IK && (Rewrite_rules.get_skeleton index_skel).Rewrite_rules.removal_allowed in
           let no_history = (Rewrite_rules.get_skeleton index_skel).Rewrite_rules.no_history in
-          
+
           let update_constraint_system csys fact =
             let new_ik =
               if removal_allowed
@@ -3229,7 +3245,7 @@ module Rule_ground = struct
                 else
                   let (skels_checked,skels_to_check) = csys.rule_data.skeletons_K in
                   { csys.rule_data with skeletons_K = (skels_checked,Rule.remove_skeletons (index_kb,index_skel) skels_to_check) }
-              else { csys.rule_data with history_skeleton =  Rule.update_skeleton_history csys }
+              else { csys.rule_data with history_skeleton = update_skeleton_history fact csys }
             in
             { csys with
               incremented_knowledge = new_ik;
