@@ -162,18 +162,24 @@ struct
           | Eavesdrop -> Generic_equivalence.apply_one_transition_and_rules_eavesdrop
         in
         begin try
+          Config.log_in_debug Config.Debug "Import";
           Generic_equivalence.import_equivalence_problem (fun () ->
             let job_list = ref [] in
+            Config.log_in_debug Config.Debug "End import";
             Statistic.reset ();
             Statistic.record_notail Statistic.time_other (fun () ->
               apply_one_transition data.gen_equiv_problem
                 (fun equiv_pbl_1 f_next_1 ->
+                  Config.log_in_debug Config.Debug "Export";
                   let (equiv_pbl_2,recipe_subst) = Generic_equivalence.export_equivalence_problem equiv_pbl_1 in
                   job_list := { job with data_equiv = DGeneric { gen_equiv_problem = equiv_pbl_2; gen_recipe_substitution = recipe_subst; gen_semantics = data.gen_semantics }; variable_counter = Variable.get_counter (); name_counter = Name.get_counter (); number_of_attacker_name = Symbol.get_number_of_attacker_name () } :: !job_list;
+                  Config.log_in_debug Config.Debug "End Export";
                   f_next_1 ()
                 )
                 (fun () -> ());
             );
+
+            Config.log_in_debug Config.Debug "End";
 
             Config.log Config.Distribution  (fun () -> Printf.sprintf "[distributed_equivalence.ml >> generate] Statistic: %s\n" (Statistic.display_statistic ()));
             if !job_list = []

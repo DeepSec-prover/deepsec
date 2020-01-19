@@ -493,12 +493,9 @@ let apply_one_transition_and_rules_private equiv_pbl f_continuation f_next =
     (Data_structure.IK.get_max_type_recipe equiv_pbl.csys_set.Constraint_system.knowledge_recipe csys.Constraint_system.incremented_knowledge)
   in
 
-  try
-    apply_one_transition_and_rules_private_output type_max equiv_pbl f_continuation (fun () ->
-      apply_one_transition_and_rules_private_input type_max equiv_pbl f_continuation f_next
-    )
-  with _ ->
-    Config.log_in_debug Config.Debug (display_list (display_symbolic_constraint equiv_pbl.csys_set.Constraint_system.knowledge_recipe) "" equiv_pbl.csys_set.Constraint_system.set)
+  apply_one_transition_and_rules_private_output type_max equiv_pbl f_continuation (fun () ->
+    apply_one_transition_and_rules_private_input type_max equiv_pbl f_continuation f_next
+  )
 
 (*** Eavesdrop ***)
 
