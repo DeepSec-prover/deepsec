@@ -67,7 +67,7 @@ let log_in_debug log_level s =
     end
 
 let log =
-  if debug_activated || record_time || true
+  if debug_activated || record_time
   then (fun log_level f -> log_in_debug log_level (f ()))
   else fun _ _ -> ()
 
