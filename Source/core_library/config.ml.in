@@ -6,7 +6,7 @@ let debug_activated = false
 let record_time = false
 
 let log_file =
-  if debug_activated || record_time
+  if debug_activated || record_time || true
   then
     begin
       let exe_path = Filename.dirname (String.escaped Sys.executable_name) in
@@ -67,7 +67,7 @@ let log_in_debug log_level s =
     end
 
 let log =
-  if debug_activated || record_time
+  if debug_activated || record_time || true
   then (fun log_level f -> log_in_debug log_level (f ()))
   else fun _ _ -> ()
 
