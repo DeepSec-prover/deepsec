@@ -164,7 +164,8 @@ struct
         begin try
           Generic_equivalence.import_equivalence_problem (fun () ->
             let job_list = ref [] in
-
+            Config.log_in_debug Config.Debug ("Eq recipe = "^(Formula.Formula.R.display Display.Terminal data.gen_equiv_problem.csys_set.Constraint_system.eq_recipe));
+            Config.log_in_debug Config.Debug (Display.display_list (Generic_equivalence.display_symbolic_constraint data.gen_equiv_problem.csys_set.Constraint_system.knowledge_recipe) "" data.gen_equiv_problem.csys_set.Constraint_system.set);
             Statistic.reset ();
             Statistic.record_notail Statistic.time_other (fun () ->
               Config.log_in_debug Config.Debug "End import";

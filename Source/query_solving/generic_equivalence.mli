@@ -18,6 +18,8 @@ type equivalence_problem =
     size_frame : int
   }
 
+val display_symbolic_constraint : Data_structure.KR.t -> configuration Constraint_system.t -> string
+
 val export_equivalence_problem : equivalence_problem -> equivalence_problem * (recipe_variable * recipe) list
 
 val import_equivalence_problem : (unit -> 'a) -> equivalence_problem -> (recipe_variable * recipe) list -> 'a
