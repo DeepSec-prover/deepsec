@@ -275,9 +275,8 @@ let remove_current_query () =
   in
   let cur_query = match cur_run.cur_query with
     | None -> Config.internal_error "[execution_manager.ml >> remove_current_query] Should have a current query."
-    | Some (cur_query,in_ch,out_ch) ->
+    | Some (cur_query,_,_) ->
         Config.log Config.Distribution (fun () -> "[execution_manager.ml >> remove_current_query] Closing process");
-        ignore (Unix.close_process (in_ch,out_ch));
         cur_query
   in
 
@@ -322,12 +321,11 @@ let catch_batch_internal_error f =
             List.iter (fun query -> write_query { query with q_status = QCanceled; q_end_time = Some end_time }) run_comp.remaining_queries;
             match run_comp.cur_query with
               | None -> ()
-              | Some (query_comp,in_ch,out_ch) ->
+              | Some (query_comp,_,out_ch) ->
                   Unix.sleep 1;
                   Config.log Config.Distribution (fun () -> "[execution_manager.ml >> catch_batch_internal_error] Send die command");
                   Distribution.WLM.send_input_command out_ch Distribution.WLM.Die;
                   Config.log Config.Distribution (fun () -> "[execution_manager.ml >> catch_batch_internal_error] Wait for it to die");
-                  ignore (Unix.close_process (in_ch,out_ch));
                   write_query { query_comp with q_status = QInternal_error err; q_end_time = Some end_time }
       end;
       List.iter (fun (run,_,qlist) ->
@@ -392,12 +390,11 @@ let cancel_batch () =
             List.iter (fun query -> write_query { query with q_status = QCanceled; q_end_time = Some end_time }) run_comp.remaining_queries;
             match run_comp.cur_query with
               | None -> ()
-              | Some (query_comp,in_ch,out_ch) ->
+              | Some (query_comp,_,out_ch) ->
                   Unix.sleep 1;
                   Config.log Config.Distribution (fun () -> "[execution_manager.ml >> Cancel_batch] Send die command");
                   Distribution.WLM.send_input_command out_ch Distribution.WLM.Die;
                   Config.log Config.Distribution (fun () -> "[execution_manager.ml >> Cancel_batch] Wait for it to die");
-                  ignore (Unix.close_process (in_ch,out_ch));
                   write_query { query_comp with q_status = QCanceled; q_end_time = Some end_time }
       end;
       List.iter (fun (run,_,qlist) ->
@@ -423,12 +420,11 @@ let cancel_run file =
         List.iter (fun query -> write_query { query with q_status = QCanceled; q_end_time = Some end_time }) run_comp.remaining_queries;
         begin match run_comp.cur_query with
           | None -> ()
-          | Some (query_comp,in_ch,out_ch) ->
+          | Some (query_comp,_,out_ch) ->
               Unix.sleep 1;
               Config.log Config.Distribution (fun () -> "[execution_manager.ml >> Cancel_run] Send die command");
               Distribution.WLM.send_input_command out_ch Distribution.WLM.Die;
               Config.log Config.Distribution (fun () -> "[execution_manager.ml >> Cancel_run] Wait for it to die");
-              ignore (Unix.close_process (in_ch,out_ch));
               write_query { query_comp with q_status = QCanceled; q_end_time = Some end_time };
               computation_status := { !computation_status with one_run_canceled = true; cur_run = None };
               Config.log Config.Distribution (fun () -> "[execution_manager.ml >> Cancel_run] Send Run_canceled command (1)");
@@ -470,12 +466,11 @@ let cancel_query file =
     begin match !computation_status.cur_run with
       | Some run_comp ->
           begin match run_comp.cur_query with
-            | Some (query_comp,in_ch,out_ch) when query_comp.name_query = file ->
+            | Some (query_comp,_,out_ch) when query_comp.name_query = file ->
                 Unix.sleep 1;
                 Config.log Config.Distribution (fun () -> "[execution_manager.ml >> Cancel_query] Send Die command");
                 Distribution.WLM.send_input_command out_ch Distribution.WLM.Die;
                 Config.log Config.Distribution (fun () -> "[execution_manager.ml >> Cancel_query] Wait for it to die");
-                ignore (Unix.close_process (in_ch,out_ch));
                 write_query { query_comp with q_status = QCanceled; q_end_time = Some end_time };
                 let run_comp' = { run_comp with cur_query = None; one_query_canceled = true } in
                 computation_status := { !computation_status with one_run_canceled = true; cur_run = Some run_comp' };
