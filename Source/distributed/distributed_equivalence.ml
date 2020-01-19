@@ -162,12 +162,12 @@ struct
           | Eavesdrop -> Generic_equivalence.apply_one_transition_and_rules_eavesdrop
         in
         begin try
-          Config.log_in_debug Config.Debug "Import";
           Generic_equivalence.import_equivalence_problem (fun () ->
             let job_list = ref [] in
-            Config.log_in_debug Config.Debug "End import";
+
             Statistic.reset ();
             Statistic.record_notail Statistic.time_other (fun () ->
+              Config.log_in_debug Config.Debug "End import";
               apply_one_transition data.gen_equiv_problem
                 (fun equiv_pbl_1 f_next_1 ->
                   Config.log_in_debug Config.Debug "Export";
