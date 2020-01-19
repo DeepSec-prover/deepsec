@@ -292,6 +292,60 @@ let rec fresh_process assoc_ref n = function
   | JBang(n',p,pos) -> JBang(n',fresh_process assoc_ref n p,add_pos pos n)
   | JChoice(p1,p2,pos) -> JChoice(fresh_process assoc_ref n p1, fresh_process assoc_ref n p2, add_pos pos n)
 
+(*** Retreive the private names ***)
+
+let rec get_private_names_term accu_names = function
+  | Name ({ link_n = NNoLink; _ } as n) ->
+      Name.link_search n;
+      accu_names := n :: !accu_names
+  | Func(_,args) -> List.iter (get_private_names_term accu_names) args
+  | Var ({ link = TLink t; _}) -> get_private_names_term accu_names t
+  | _ -> ()
+
+let rec get_private_names_pattern accu_names = function
+  | JPEquality t -> get_private_names_term accu_names t
+  | JPTuple(_,args) -> List.iter (get_private_names_pattern accu_names) args
+  | _ -> ()
+
+let rec get_private_names_process accu_names = function
+  | JNil -> ()
+  | JOutput(c,t,p,_) ->
+      get_private_names_term accu_names c;
+      get_private_names_term accu_names t;
+      get_private_names_process accu_names p
+  | JInput(c,pat,p,_) ->
+      get_private_names_term accu_names c;
+      get_private_names_pattern accu_names pat;
+      get_private_names_process accu_names p
+  | JIfThenElse(t1,t2,p1,p2,_) ->
+      get_private_names_term accu_names t1;
+      get_private_names_term accu_names t2;
+      get_private_names_process accu_names p1;
+      get_private_names_process accu_names p2
+  | JLet(pat,t,p1,p2,_) ->
+      get_private_names_term accu_names t;
+      get_private_names_pattern accu_names pat;
+      get_private_names_process accu_names p1;
+      get_private_names_process accu_names p2
+  | JNew(n,_,p,_) ->
+      Name.link_search n;
+      get_private_names_process accu_names p
+  | JPar plist -> List.iter (get_private_names_process accu_names) plist
+  | JBang(_,p,_) -> get_private_names_process accu_names p
+  | JChoice(p1,p2,_) ->
+      get_private_names_process accu_names p1;
+      get_private_names_process accu_names p2
+
+let get_private_names conf =
+  let accu_names = ref [] in
+
+  List.iter (get_private_names_term accu_names) conf.frame;
+  get_private_names_process accu_names conf.process;
+
+  let name_list = !accu_names in
+  Name.cleanup ();
+  name_list
+
 (*** Execute a json_process ***)
 
 type error_transition =
@@ -1369,3 +1423,25 @@ let equivalence_simulator_apply_next_step sem att_state att_transition =
   in
 
   apply_all_transitions att_state.att_knowledge_recipe att_state.att_csys att_state.att_assoc att_state.att_trace list_transitions, list_transitions
+
+let equivalence_simulator_apply_next_steps sem att_state att_transition_list =
+  let rec apply_all_transitions acc_kbr acc_att_csys acc_att_assoc acc_att_trace = function
+    | [] -> []
+    | trans::q ->
+        (* The main transition *)
+        let (kbr_1,att_csys_1,att_assoc_1) = apply_transition sem true acc_att_assoc acc_kbr acc_att_csys trans in
+        let (default_trans,all_trans) = find_next_possible_transition false sem All_transitions kbr_1 att_csys_1 in
+        let att_trace = acc_att_trace @ [trans] in
+        let state =
+          {
+            att_knowledge_recipe = kbr_1;
+            att_csys = att_csys_1;
+            att_assoc = att_assoc_1;
+            att_default_available_actions = default_trans;
+            att_all_available_actions = all_trans;
+            att_trace = att_trace
+          }
+        in
+        state::(apply_all_transitions kbr_1 att_csys_1 att_assoc_1 att_trace q)
+  in
+  apply_all_transitions att_state.att_knowledge_recipe att_state.att_csys att_state.att_assoc att_state.att_trace att_transition_list

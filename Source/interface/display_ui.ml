@@ -210,11 +210,17 @@ let of_option (obj_list:(string*json) list) (f_op:'a -> json) label = function
 
 let of_int i = JInt i
 
-let of_string str = JString str
+let of_string str = JString (String.escaped str)
 
 (* Basic types *)
 
 let reg_proj = Str.regexp "proj_{\\([0-9]+\\),\\([0-9]+\\)}"
+
+let of_name assoc n =
+  let (id,args) = get_name_id assoc n in
+  if args = []
+  then JObject [ "type", JString "Atomic"; "id", JInt id]
+  else JObject [ "type", JString "Atomic"; "id", JInt id; "bang", JList (List.map of_int args)]
 
 let rec of_term assoc = function
   | Var v ->
@@ -222,11 +228,7 @@ let rec of_term assoc = function
       if args = []
       then JObject [ "type", JString "Atomic"; "id", JInt id]
       else JObject [ "type", JString "Atomic"; "id", JInt id; "bang", JList (List.map of_int args)]
-  | Name n ->
-      let (id,args) = get_name_id assoc n in
-      if args = []
-      then JObject [ "type", JString "Atomic"; "id", JInt id]
-      else JObject [ "type", JString "Atomic"; "id", JInt id; "bang", JList (List.map of_int args)]
+  | Name n -> of_name assoc n
   | Func({ represents = AttackerPublicName i; _},[]) when i >= 0 ->
       JObject [ "type", JString "Attacker"; "label", JString ("#n_"^(string_of_int i)) ]
   | Func({ represents = AttackerPublicName _; label_s = str; _},[])  ->
@@ -648,6 +650,7 @@ let of_batch_result batch_res =
     ) batch_res.command_options_cmp;
 
   let jlist1 = [
+    "pid", JInt batch_res.pid;
     "ocaml_version", JString batch_res.ocaml_version;
     "deepsec_version", JString batch_res.deepsec_version;
     "git_branch", JString batch_res.git_branch;
@@ -794,15 +797,16 @@ let of_output_command = function
   | Run_canceled file -> JObject [ "command", JString "run_ended"; "file", JString file ]
   | Batch_canceled file -> JObject [ "command", JString "batch_ended"; "file", JString file ]
   (* Simulator: Generic command *)
-  | SCurrent_step_displayed (assoc,conf,step,id_proc_op) ->
+  | SCurrent_step_displayed (assoc,conf,priv_names,step,id_proc_op) ->
       let jlist = of_option [] of_int "process_id" id_proc_op in
       JObject ([
         "command", JString "current_step_displayed";
         "process", of_json_process assoc conf.process;
         "frame", JList (List.map (of_term assoc) conf.frame);
+        "names", JList (List.map (of_name assoc) priv_names);
         "current_action_id", JInt step
       ] @ jlist)
-  | SCurrent_step_user(assoc,conf,new_trans,all_actions,default_actions,status_equiv_op,id_proc) ->
+  | SCurrent_step_user(assoc,conf,priv_names,new_trans,all_actions,default_actions,status_equiv_op,id_proc) ->
       let jlist1 = of_option [] (of_status_static_equivalence assoc) "status_equiv" status_equiv_op in
       let available_actions =
         JObject [
@@ -816,6 +820,7 @@ let of_output_command = function
           "process_id", JInt id_proc;
           "process", of_json_process assoc conf.process;
           "frame", JList (List.map (of_term assoc) conf.frame);
+          "names", JList (List.map (of_name assoc) priv_names);
           "available_actions", available_actions
         ] @ jlist1
       in
@@ -956,9 +961,25 @@ let print_output_command = function
 
 (* Sending command *)
 
+let keep_sending = ref true
+
 let send_command json_str =
-  output_string stdout (json_str^"\n");
-  flush stdout
+  try
+    if !keep_sending
+    then
+      begin
+        Config.log Config.Debug (fun () -> "[display_ui.ml >> send_command] Sending");
+        output_string stdout (json_str^"\n");
+        flush stdout;
+        Config.log Config.Debug (fun () -> "[display_ui.ml >> send_command] Message sent");
+      end
+  with
+    | End_of_file ->
+      Config.log Config.Distribution (fun () -> "[display_ui.ml >> send_command] End of file caught");
+      keep_sending := false
+    | Sys_error _ ->
+      Config.log Config.Distribution (fun () -> "[display_ui.ml >> send_command] Sys_error caught");
+      keep_sending := false
 
 let send_output_command out_cmd =
   if !Config.running_api

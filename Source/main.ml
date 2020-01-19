@@ -15,13 +15,21 @@ let display_string_list str_list =
   List.fold_right (fun (tab,str) acc -> (display_with_tab tab str)^"\n"^acc) str_list ""
 
 let header =
-  display_string_list [
-    0, coloured_terminal_text Black [Bold] "DeepSec - DEciding Equivalence Properties for SECurity protocols";
-    2, Printf.sprintf "Version: %s" Config.version;
-    2, Printf.sprintf "Git hash: %s" Config.git_commit;
-    2, Printf.sprintf "Git branch: %s" Config.git_branch;
-    2, Printf.sprintf "Website: https://deepsec-prover.github.io\n"
-  ]
+  if Config.git_branch <> "" || Config.git_commit <> ""
+  then
+    display_string_list [
+      0, coloured_terminal_text Black [Bold] "DeepSec - DEciding Equivalence Properties for SECurity protocols";
+      2, Printf.sprintf "Version: %s" Config.version;
+      2, Printf.sprintf "Git hash: %s" Config.git_commit;
+      2, Printf.sprintf "Git branch: %s" Config.git_branch;
+      2, Printf.sprintf "Website: https://deepsec-prover.github.io\n"
+    ]
+  else
+    display_string_list [
+      0, coloured_terminal_text Black [Bold] "DeepSec - DEciding Equivalence Properties for SECurity protocols";
+      2, Printf.sprintf "Version: %s" Config.version;
+      2, Printf.sprintf "Website: https://deepsec-prover.github.io\n"
+    ]
 
 let help =
   let file = coloured_terminal_text Black [Underline] "FILE" in

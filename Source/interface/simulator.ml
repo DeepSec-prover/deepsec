@@ -38,8 +38,8 @@ let display_trace json_file id =
         let conf_list = List.map (fun (csys,assoc) -> csys.Constraint_system.additional_data,assoc) conf_csys_list in
 
         let (first_conf,first_assoc) = List.nth conf_list (id+1) in
-        Display_ui.send_output_command (SCurrent_step_displayed(first_assoc,first_conf,id,Some attack_trace.id_proc));
-        
+        Display_ui.send_output_command (SCurrent_step_displayed(first_assoc,first_conf,Interface.get_private_names first_conf,id,Some attack_trace.id_proc));
+
         begin try
           while true do
             let in_cmd_str = read_line () in
@@ -49,7 +49,7 @@ let display_trace json_file id =
             match in_cmd with
               | Goto_step(_,n) ->
                   let (conf,assoc) = List.nth conf_list (n+1) in
-                  Display_ui.send_output_command (SCurrent_step_displayed(assoc,conf,n,Some attack_trace.id_proc))
+                  Display_ui.send_output_command (SCurrent_step_displayed(assoc,conf,Interface.get_private_names conf,n,Some attack_trace.id_proc))
               | Die -> raise Exit
               | _ -> Display_ui.send_output_command (Init_internal_error ("Unexpected input command.",true))
           done
@@ -95,6 +95,7 @@ let attack_simulator json_file =
           SCurrent_step_user (
             state.Interface.simulated_assoc,
             state.Interface.simulated_csys.Constraint_system.additional_data,
+            Interface.get_private_names state.Interface.simulated_csys.Constraint_system.additional_data,
             new_trans,
             state.Interface.all_available_actions,
             state.Interface.default_available_actions,
@@ -116,7 +117,7 @@ let attack_simulator json_file =
                   if id_proc = attacked_id_proc
                   then
                     let (conf,assoc) = List.nth conf_list (n+1) in
-                    Display_ui.send_output_command (SCurrent_step_displayed(assoc,conf,n,Some id_proc))
+                    Display_ui.send_output_command (SCurrent_step_displayed(assoc,conf,Interface.get_private_names conf,n,Some id_proc))
                   else
                     begin
                       let (state,cut_state_list) = cut_list (n+1) !simulated_states in
@@ -182,6 +183,7 @@ let equivalence_simulator json_file id =
     SCurrent_step_user (
       state.Interface.att_assoc,
       state.Interface.att_csys.Constraint_system.additional_data,
+      Interface.get_private_names state.Interface.att_csys.Constraint_system.additional_data,
       new_trans,
       state.Interface.att_all_available_actions,
       state.Interface.att_default_available_actions,
@@ -196,11 +198,12 @@ let equivalence_simulator json_file id =
       begin
         let state = List.nth !attack_state_list (id_trans+1) in
         current_id_action_attack := id_trans;
-        SCurrent_step_displayed(state.Interface.att_assoc,state.Interface.att_csys.Constraint_system.additional_data,id_trans,Some id_proc)
+        let conf = state.Interface.att_csys.Constraint_system.additional_data in
+        SCurrent_step_displayed(state.Interface.att_assoc,conf,Interface.get_private_names conf,id_trans,Some id_proc)
       end
     else
       let (conf_csys,assoc) = List.nth !simulated_conf_csys_list (id_trans+1) in
-      SCurrent_step_displayed(assoc,conf_csys.Constraint_system.additional_data,id_trans,Some id_proc)
+      SCurrent_step_displayed(assoc,conf_csys.Constraint_system.additional_data,Interface.get_private_names conf_csys.Constraint_system.additional_data,id_trans,Some id_proc)
   in
 
   (* Initial command output *)
@@ -285,6 +288,13 @@ let equivalence_simulator json_file id =
               | Interface.Invalid_transition (Interface.Too_much_unfold n) -> Display_ui.send_output_command (Init_internal_error (Printf.sprintf "Too much unfolding: %d." n,true))
 
             end
+        | Next_steps trans_list ->
+            let last_state = List.hd (List.rev !attack_state_list) in
+            let new_states = Interface.equivalence_simulator_apply_next_steps semantics last_state trans_list in
+            let new_last_state = List.hd (List.rev new_states) in
+            attack_state_list := !attack_state_list @ new_states;
+            current_id_action_attack := (List.length !attack_state_list) - 2;
+            Display_ui.send_output_command (get_current_step_phase_1 new_last_state [])
         | Die -> raise Exit
         | _ -> Display_ui.send_output_command (Init_internal_error ("Unexpected input command.",true))
     done

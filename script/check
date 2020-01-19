@@ -12,16 +12,16 @@ function prog_exists() {
 function checks() {
   # printf "Checking installation requirements...\n"
   if prog_exists ocamlopt; then
-    printf " \xE2\x9C\x94 ocamlopt found\n";
+    printf " \e[32m\e[1m\xE2\x9C\x94\e[0m ocamlopt found\n";
     if $(command -v ocamlopt | grep opam); then
-      printf " \xE2\x9C\x94 ocaml has been installed with opam\n";
+      printf " \e[32m\e[1m\xE2\x9C\x94\e[0m ocaml has been installed with opam\n";
       REQUIREDOCAML=4.05.0
       CURRENTOCAML=$(ocamlopt --version)
       if [ "$(printf '%s\n' "$REQUIREDOCAML" "$CURRENTOCAML" | sort -V | head -n1)" = "$CURRENTOCAML" ]; then
         printf " - ocaml version should be >$REQUIREDOCAML (installed version: $CURRENTOCAML). Install a more recent version by using 'opam switch'\n";
         return 1;
       else
-        printf " \xE2\x9C\x94 ocaml version ($CURRENTOCAML) is recent enough (>$REQUIREDOCAML)\n";
+        printf " \e[32m\e[1m\xE2\x9C\x94\e[0m ocaml version ($CURRENTOCAML) is recent enough (>$REQUIREDOCAML)\n";
         return 0;
       fi
     else
@@ -33,7 +33,7 @@ function checks() {
 }
 
 if checks; then
-  printf "$(tput bold)All installation requirements are satisfied$(tput sgr0)\n";
+  printf "\e[1mAll installation requirements are satisfied\e[0m\n";
 else
-  printf "\033[91m$(tput bold)Some installation requirements are not met. It is advised to patch them before running 'make'.$(tput sgr0)\n";
+  printf "\e[31m\e[1mSome installation requirements are not met. It is advised to patch them before running 'make'.\e[0m\n";
 fi

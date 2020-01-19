@@ -1,0 +1,30 @@
+free c.
+
+fun enc/2.
+
+reduc
+  dec(enc(x,y),y) -> x.
+
+
+let P = new k; new k'; new a; out(c,enc(a,k)); out(c,k').
+
+let Q = new k; new k'; new a;
+  new a1;
+  new a2;
+  new a3;
+  new a4;
+  new a5;
+  new a6;
+  new adzf1;
+  new azadza2;
+  new adaed3;
+  new aada4;
+  new aade5;
+  new aad6;
+  out(c,enc(a,k)); out(c,k'); out(c,a1); out(c,a2); out(c,a3); out(c,a4); out(c,a5); out(c,a6);
+out(c,adzf1); out(c,azadza2); out(c,adaed3); out(c,aada4); out(c,aade5); out(c,aad6).
+
+
+query trace_equiv(P,Q).
+
+(* Should not be equivalent *)

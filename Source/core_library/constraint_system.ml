@@ -332,6 +332,21 @@ let rec link_top_level_names = function
 
 let link_deducible_name csys = K.iter_term link_top_level_names csys.knowledge
 
+
+let display_couple_list f (l1,l2) =
+  Printf.sprintf "(%s,%s)"
+    (display_list f "," l1)
+    (display_list f "," l2)
+
+let display_rule_data tab data =
+  display_object tab None [
+    "skeletons_K", (display_couple_list (fun (x1,x2) -> Printf.sprintf "(%d,%d)" x1 x2) data.skeletons_K);
+    "skeletons_IK", (display_couple_list (fun (x1,x2) -> Printf.sprintf "(%d,%d)" x1 x2) data.skeletons_IK);
+    "equality_cons_K", (display_couple_list string_of_int data.equality_constructor_K);
+    "equality_cons_IK", (display_couple_list string_of_int data.equality_constructor_IK);
+    "normalisation_checked", string_of_bool data.normalisation_deduction_checked
+  ]
+
 let display_constraint_system tab kbr csys =
   display_object tab None [
     "Size frame", string_of_int csys.size_frame;
@@ -341,7 +356,8 @@ let display_constraint_system tab kbr csys =
     "Eq_term", Formula.T.display Display.Terminal csys.eq_term;
     "Orig_subst", (Display.display_list (fun (x,t) ->
         Printf.sprintf "%s -> %s" (Variable.display Display.Terminal x) (Term.display Display.Terminal t)
-      ) "; " csys.original_substitution)
+      ) "; " csys.original_substitution);
+    "rule_data", display_rule_data (tab+1) csys.rule_data
   ]
 
 let debug_check_origination msg csys =
@@ -2982,11 +2998,13 @@ module Rule_ground = struct
               | Some f, _ | _, Some f ->
                   if !find_witness
                   then
-                    if f.arity = 0
-                    then raise (WitnessEquality (RFunc(f,[]),dfact.df_recipe))
-                    else
-                      let proj = List.hd (Symbol.get_projections f) in
-                      raise (WitnessMessage (RFunc(proj,[dfact.df_recipe])))
+                    begin
+                      if f.arity = 0
+                      then raise (WitnessEquality (RFunc(f,[]),dfact.df_recipe))
+                      else
+                        let proj = List.hd (Symbol.get_projections f) in
+                        raise (WitnessMessage (RFunc(proj,[dfact.df_recipe])))
+                    end
           ) csys_list;
           split_data_constructor f_continuation kbr target_csys_1 !csys_list_ref
 
@@ -3035,6 +3053,18 @@ module Rule_ground = struct
             | None -> explore_no_consequence false [] csys_list
             | Some r -> false, explore_consequence r [] csys_list
 
+  let add_skeletons_in_rule_data csys new_term index_new_elt =
+    let new_skeletons = List.map (fun index_skel -> (index_new_elt,index_skel)) (Rewrite_rules.get_possible_skeletons_for_terms new_term) in
+    let (skeletons_checked_IK,skeletons_to_check_IK) = csys.rule_data.skeletons_IK in
+    let (skeletons_checked_K,skeletons_to_check_K) = csys.rule_data.skeletons_K in
+    let new_skeletons_to_check_K = List.rev_append skeletons_to_check_K skeletons_checked_K in
+    let new_skeletons_to_check_IK = List.rev_append new_skeletons (List.rev_append skeletons_to_check_IK skeletons_checked_IK) in
+
+    { csys.rule_data with
+      skeletons_K = ([],new_skeletons_to_check_K);
+      skeletons_IK = ([],new_skeletons_to_check_IK)
+    }
+
   (** Purpose : Check whether a deduction fact is consequence or not of the knowledge base and incremented knowledge base.
      Input : Only deductions facts (no formula nor equality) and same amount. (Can we have several ?)
      Output :
@@ -3055,11 +3085,13 @@ module Rule_ground = struct
       if to_add
       then
         begin
+          let index_new_elt = IK.get_next_index target_csys.incremented_knowledge in
           let target_csys1 =
             let (dfact,uf) = UF.pop_and_remove_deduction_fact target_csys.unsolved_facts in
             { target_csys with
               unsolved_facts = uf;
-              incremented_knowledge = IK.add target_csys.incremented_knowledge dfact
+              incremented_knowledge = IK.add target_csys.incremented_knowledge dfact;
+              rule_data = add_skeletons_in_rule_data target_csys dfact.df_term index_new_elt
             }
           in
           let csys_list2 =
@@ -3067,7 +3099,8 @@ module Rule_ground = struct
               let (dfact,uf) = UF.pop_and_remove_deduction_fact csys.unsolved_facts in
               { csys with
                 unsolved_facts = uf;
-                incremented_knowledge = IK.add csys.incremented_knowledge dfact
+                incremented_knowledge = IK.add csys.incremented_knowledge dfact;
+                rule_data = add_skeletons_in_rule_data csys dfact.df_term index_new_elt
               }
             ) csys_list1
           in
@@ -3086,6 +3119,21 @@ module Rule_ground = struct
     else f_continuation target_csys csys_list
 
   (*** The rule rewrite ***)
+
+
+  let update_skeleton_history dfact csys =
+
+    let f = Recipe.root dfact.df_recipe in
+
+    let rec replace_history = function
+      | [] -> Config.internal_error "[constraint_system.ml >> Rule.update_skeleton] Unexpected case"
+      | hist::q when hist.destructor == f ->
+          let diseq = Rewrite_rules.generate_mixed_formulas_for_skeletons csys.knowledge csys.incremented_knowledge csys.deduction_facts hist.fst_vars hist.snd_vars dfact.df_recipe in
+          { hist with diseq = Formula.M.wedge diseq hist.diseq }::q
+      | hist::q -> hist::(replace_history q)
+    in
+
+    replace_history csys.rule_data.history_skeleton
 
   let rewrite (f_continuation:'a t -> 'b t list -> 'c) kbr (target_csys:'a t) (csys_list:'b t list) =
     Config.debug (fun () ->
@@ -3118,33 +3166,40 @@ module Rule_ground = struct
           let removal_allowed = application_on_IK && (Rewrite_rules.get_skeleton index_skel).Rewrite_rules.removal_allowed in
           let no_history = (Rewrite_rules.get_skeleton index_skel).Rewrite_rules.no_history in
 
+          let update_constraint_system csys fact =
+            let new_ik =
+              if removal_allowed
+              then IK.remove csys.incremented_knowledge index_kb
+              else csys.incremented_knowledge
+            in
+            let rule_data =
+              if no_history
+              then
+                if application_on_IK
+                then
+                  let (skels_checked,skels_to_check) = csys.rule_data.skeletons_IK in
+                  { csys.rule_data with skeletons_IK = (skels_checked,Rule.remove_skeletons (index_kb,index_skel) skels_to_check) }
+                else
+                  let (skels_checked,skels_to_check) = csys.rule_data.skeletons_K in
+                  { csys.rule_data with skeletons_K = (skels_checked,Rule.remove_skeletons (index_kb,index_skel) skels_to_check) }
+              else { csys.rule_data with history_skeleton = update_skeleton_history fact csys }
+            in
+            { csys with
+              incremented_knowledge = new_ik;
+              rule_data = rule_data;
+              unsolved_facts = UF.add_deduction_fact csys.unsolved_facts fact
+            }
+          in
+
+          let target_csys2 = match Rule.create_generic_skeleton_formula target_csys1 index_skel recipe with
+            | Rule.FoundFact fact -> update_constraint_system target_csys1 fact
+            | _ -> Config.internal_error "[constraint_system.ml >> Rule_ground.rewrite] We should have found a fact"
+          in
+
           let csys_list_ref = ref [] in
           List.iter (fun csys -> match Rule.create_generic_skeleton_formula csys index_skel recipe with
             | Rule.FoundFact fact ->
-                let new_ik =
-                  if removal_allowed
-                  then IK.remove csys.incremented_knowledge index_kb
-                  else csys.incremented_knowledge
-                in
-                let rule_data =
-                  if no_history
-                  then
-                    if application_on_IK
-                    then
-                      let (skels_checked,skels_to_check) = csys.rule_data.skeletons_IK in
-                      { csys.rule_data with skeletons_IK = (skels_checked,Rule.remove_skeletons (index_kb,index_skel) skels_to_check) }
-                    else
-                      let (skels_checked,skels_to_check) = csys.rule_data.skeletons_K in
-                      { csys.rule_data with skeletons_K = (skels_checked,Rule.remove_skeletons (index_kb,index_skel) skels_to_check) }
-                  else { csys.rule_data with history_skeleton =  Rule.update_skeleton_history csys }
-                in
-                let csys' =
-                  { csys with
-                    incremented_knowledge = new_ik;
-                    rule_data = rule_data;
-                    unsolved_facts = UF.add_deduction_fact csys.unsolved_facts fact
-                  }
-                in
+                let csys' = update_constraint_system csys fact in
                 csys_list_ref := csys' :: !csys_list_ref
             | Rule.NoFormula ->
                 if !find_witness
@@ -3152,7 +3207,7 @@ module Rule_ground = struct
             | Rule.Unsolved _ -> Config.internal_error "[constraint_system.ml >> Rule_ground.rewrite] Since the frame is ground, there should not be unsolved formula."
           ) csys_list;
 
-          split_data_constructor (normalisation_deduction_consequence internal_target kbr) kbr target_csys1 !csys_list_ref
+          split_data_constructor (normalisation_deduction_consequence internal_target kbr) kbr target_csys2 !csys_list_ref
       | _ -> Config.internal_error "[constraint_system.ml >> Rule_ground.rewrite] Unexpected number of constraint system returned by exploration."
     in
 
