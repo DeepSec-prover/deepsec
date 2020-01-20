@@ -1446,6 +1446,7 @@ module Rule = struct
   let debug_sat_index = ref 0
 
   let sat f_continuation csys_set f_next =
+    Config.log_in_debug Config.Debug "Sat";
     Config.debug (fun () ->
       incr debug_sat_index;
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Rule Sat (%d): Nb csys = %d" !debug_sat_index (List.length csys_set.set));
@@ -1525,6 +1526,7 @@ module Rule = struct
         Some(new_csys,diseq,q), prev_set
 
   let sat_disequation f_continuation csys_set f_next =
+    Config.log_in_debug Config.Debug "Sat Diseq";
     Config.debug (fun () ->
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Rule Sat disequation (%d): Nb csys = %d" !debug_sat_index (List.length csys_set.set));
       Set.debug_check_structure "[Sat disequation]" csys_set;
@@ -1595,6 +1597,7 @@ module Rule = struct
           | Some mgs_data -> Some(csys,mgs_data,q), prev_set
 
   let sat_non_deducible_terms f_continuation csys_set f_next =
+    Config.log_in_debug Config.Debug "Sat Non";
     Config.debug (fun () ->
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Sat non deducible terms : Nb csys = %d" (List.length csys_set.set));
       Set.debug_check_structure "[Sat non_deducible_terms]" csys_set;
@@ -1661,6 +1664,7 @@ module Rule = struct
                 | MGS.SFSome(subst,simple_csys) -> Some(csys,subst,simple_csys,q), no_eq_csys, eq_fact_csys
 
   let sat_equality_formula ?(universal=true) (f_continuation_pos:'a set -> (unit -> unit) -> unit) f_continuation_neg csys_set f_next =
+    Config.log_in_debug Config.Debug "Sat Eq";
     Config.debug (fun () ->
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Sat equality formula : Nb csys no_formula = %d, Nb csys solved = %d, Nb csys unsolved = %d"
         (List.length csys_set.satf_no_formula) (List.length csys_set.satf_solved) (List.length csys_set.satf_unsolved)
@@ -1756,6 +1760,7 @@ module Rule = struct
     }
 
   let sat_deduction_formula (f_continuation_pos:'a set -> (unit -> unit) -> unit) f_continuation_neg csys_set f_next =
+    Config.log_in_debug Config.Debug "Sat Ded";
     Config.debug (fun () ->
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Sat deduction formula : Nb csys no_formula = %d, Nb csys solved = %d, Nb csys unsolved = %d"
         (List.length csys_set.satf_no_formula) (List.length csys_set.satf_solved) (List.length csys_set.satf_unsolved));
@@ -1897,6 +1902,7 @@ module Rule = struct
           end
 
   let rec split_data_constructor f_continuation csys_set f_next =
+    Config.log_in_debug Config.Debug "Split";
     Config.debug (fun () ->
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Rule split data constructor : Nb csys = %d" (List.length csys_set.set));
       Set.debug_check_structure "[Split data constructor]" csys_set;
@@ -1970,6 +1976,7 @@ module Rule = struct
   (**** The rule Equality for element of the knowledge base. ****)
 
   let equality_knowledge_base f_continuation csys_set f_next =
+    Config.log_in_debug Config.Debug "Eq knowledge";
     Config.debug (fun () ->
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Rule equality_knowledge_base : Nb csys = %d" (List.length csys_set.set));
       Set.debug_check_structure "[Equality knowledge base]" csys_set;
@@ -2108,6 +2115,7 @@ module Rule = struct
       - When there are consequence -> add an equality formula and check it.
       *)
   let rec normalisation_deduction_consequence f_continuation csys_set f_next =
+    Config.log_in_debug Config.Debug "Normalisation";
     Config.debug (fun () ->
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Rule normalisation_deduction_consequence : Nb csys = %d" (List.length csys_set.set));
       Set.debug_check_structure "[Normalisation deduction consequence]" csys_set;
@@ -2364,6 +2372,7 @@ module Rule = struct
               explore true skeletons_checked_K skeletons_to_check_K
 
   let rewrite f_continuation csys_set f_next =
+    Config.log_in_debug Config.Debug "Rewrite";
     Config.debug (fun () ->
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Rule Rewrite : Nb csys = %d" (List.length csys_set.set));
       Set.debug_check_structure "[Rewrite]" csys_set;
@@ -2768,6 +2777,7 @@ module Rule = struct
     internal csys_set.eq_recipe (ref None) [] csys_set.set f_next
 
   let equality_constructor f_continuation csys_set (f_next:unit -> unit) =
+    Config.log_in_debug Config.Debug "Eq constructor";
     if csys_set.set = []
     then f_next ()
     else

@@ -308,7 +308,6 @@ let apply_one_transition_and_rules_classic equiv_pbl f_continuation f_next =
 (*** Private transitions ***)
 
 let apply_one_transition_and_rules_private_input type_max equiv_pbl f_continuation f_next =
-  Config.log_in_debug Config.Debug "Apply input";
   (*** Generate the set for the next input ***)
   let csys_list = ref [] in
 
@@ -369,7 +368,6 @@ let apply_one_transition_and_rules_private_input type_max equiv_pbl f_continuati
 
   (* The final test *)
   let apply_final_test csys_set f_next_1 =
-    Config.log_in_debug Config.Debug "Apply final input";
     if csys_set.Constraint_system.set = []
     then f_next_1 ()
     else
@@ -387,7 +385,6 @@ let apply_one_transition_and_rules_private_input type_max equiv_pbl f_continuati
   then f_next ()
   else
     begin
-      Config.log_in_debug Config.Debug "Apply rules input";
       Constraint_system.Rule.apply_rules_after_input !has_private_channels apply_final_test
         { equiv_pbl.csys_set with
           Constraint_system.set = !csys_list;

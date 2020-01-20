@@ -164,16 +164,6 @@ struct
         begin try
           Generic_equivalence.import_equivalence_problem (fun () ->
             let job_list = ref [] in
-            Config.log_in_debug Config.Debug ("Eq recipe = "^(Formula.Formula.R.display Display.Terminal data.gen_equiv_problem.csys_set.Constraint_system.eq_recipe));
-            List.iter (fun csys ->
-              Config.log_in_debug Config.Debug "Symbolic Process";
-              Config.log_in_debug Config.Debug (Generic_equivalence.display_configuration csys.Constraint_system.additional_data)
-            ) data.gen_equiv_problem.csys_set.Constraint_system.set;
-
-            List.iter (fun csys ->
-              Config.log_in_debug Config.Debug "Constraint system";
-              Config.log_in_debug Config.Debug (Constraint_system.display_constraint_system 1 data.gen_equiv_problem.csys_set.Constraint_system.knowledge_recipe csys)
-            ) data.gen_equiv_problem.csys_set.Constraint_system.set;
             Config.log_in_debug Config.Debug ("End of Constraint system: "^string_of_int (List.length data.gen_equiv_problem.csys_set.Constraint_system.set));
 
             Config.log_in_debug Config.Debug "Test";
