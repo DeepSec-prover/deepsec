@@ -1995,7 +1995,7 @@ module Rule = struct
               let last_term_list = match !last_term_list_ref with
                 | Some t_list -> t_list
                 | None ->
-                    let t_list = List.map (fun csys -> IK.get_last_term csys.incremented_knowledge) csys_set_1.set in
+                    let t_list = List.map_tail (fun csys -> IK.get_last_term csys.incremented_knowledge) csys_set_1.set in
                     last_term_list_ref := Some t_list;
                     t_list
               in
@@ -2026,7 +2026,7 @@ module Rule = struct
               let last_term_list = match !last_term_list_ref with
                 | Some t_list -> t_list
                 | None ->
-                    let t_list = List.map (fun csys -> IK.get_last_term csys.incremented_knowledge) csys_set_1.set in
+                    let t_list = List.map_tail (fun csys -> IK.get_last_term csys.incremented_knowledge) csys_set_1.set in
                     last_term_list_ref := Some t_list;
                     t_list
               in
@@ -2044,7 +2044,7 @@ module Rule = struct
                     then eq_solved_csys := csys :: !eq_solved_csys
                     else
                       let ef_form =
-                        List.map (fun v -> match v.link with
+                        List.rev_map (fun v -> match v.link with
                           | TLink t -> v,t
                           | _ -> Config.internal_error "[constraint_system.ml >> equality_knowledge_base] Unexpected link."
                         ) !Variable.currently_linked
@@ -2168,7 +2168,7 @@ module Rule = struct
                       then solved_eq_csys := csys' :: !solved_eq_csys
                       else
                         let form =
-                          List.map (fun v -> match v.link with
+                          List.rev_map (fun v -> match v.link with
                             | TLink t' -> (v,t')
                             | _ -> Config.internal_error "[constraint_system.ml >> normalisation_deduction_consequence] Unexpected link."
                           ) !Variable.currently_linked
@@ -2562,7 +2562,7 @@ module Rule = struct
 
               if !Variable.currently_linked = []
               then SolvedEq
-              else UnsolvedEq(List.map (fun x -> (x,Term.instantiate (Var x))) !Variable.currently_linked)
+              else UnsolvedEq(List.rev_map (fun x -> (x,Term.instantiate (Var x))) !Variable.currently_linked)
             with Term.Not_unifiable -> NoEq
           )
       | _ -> NoEq
