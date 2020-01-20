@@ -176,7 +176,6 @@ struct
             ) data.gen_equiv_problem.csys_set.Constraint_system.set;
             Config.log_in_debug Config.Debug ("End of Constraint system: "^string_of_int (List.length data.gen_equiv_problem.csys_set.Constraint_system.set));
 
-            Config.log_in_debug Config.Debug (Display.display_list (Generic_equivalence.display_symbolic_constraint data.gen_equiv_problem.csys_set.Constraint_system.knowledge_recipe) "" data.gen_equiv_problem.csys_set.Constraint_system.set);
             Config.log_in_debug Config.Debug "Test";
             Statistic.reset ();
             Statistic.record_notail Statistic.time_other (fun () ->
