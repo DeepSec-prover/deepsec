@@ -968,10 +968,8 @@ let send_command json_str =
     if !keep_sending
     then
       begin
-        Config.log Config.Debug (fun () -> "[display_ui.ml >> send_command] Sending");
         output_string stdout (json_str^"\n");
-        flush stdout;
-        Config.log Config.Debug (fun () -> "[display_ui.ml >> send_command] Message sent");
+        flush stdout
       end
   with
     | End_of_file ->
