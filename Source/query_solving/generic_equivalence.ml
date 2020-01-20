@@ -384,11 +384,13 @@ let apply_one_transition_and_rules_private_input type_max equiv_pbl f_continuati
   if !csys_list = []
   then f_next ()
   else
-    Constraint_system.Rule.apply_rules_after_input !has_private_channels apply_final_test
-      { equiv_pbl.csys_set with
-        Constraint_system.set = !csys_list;
-        Constraint_system.knowledge_recipe = get_knowledge_recipe_from_preparation_data !preparation_data
-      } f_next
+    begin
+      Constraint_system.Rule.apply_rules_after_input !has_private_channels apply_final_test
+        { equiv_pbl.csys_set with
+          Constraint_system.set = !csys_list;
+          Constraint_system.knowledge_recipe = get_knowledge_recipe_from_preparation_data !preparation_data
+        } f_next
+    end
 
 let apply_one_transition_and_rules_private_output type_max equiv_pbl f_continuation f_next =
   (*** Generate the set for the next output ***)
@@ -466,11 +468,13 @@ let apply_one_transition_and_rules_private_output type_max equiv_pbl f_continuat
   if !csys_list = []
   then f_next ()
   else
-    Constraint_system.Rule.apply_rules_after_output !has_private_channels apply_final_test
-      { equiv_pbl.csys_set with
-        Constraint_system.set = !csys_list;
-        Constraint_system.knowledge_recipe = get_knowledge_recipe_from_preparation_data !preparation_data
-      } f_next
+    begin
+      Constraint_system.Rule.apply_rules_after_output !has_private_channels apply_final_test
+        { equiv_pbl.csys_set with
+          Constraint_system.set = !csys_list;
+          Constraint_system.knowledge_recipe = get_knowledge_recipe_from_preparation_data !preparation_data
+        } f_next
+    end
 
 let apply_one_transition_and_rules_private equiv_pbl f_continuation f_next =
   Config.debug (fun () ->
