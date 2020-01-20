@@ -844,8 +844,8 @@ let print_text =
     then
       let diff = !previous_size - size in
       if diff > 0
-      then print_string ("\x0d"^str^(String.make (diff+5) ' '))
-      else print_string ("\x0d"^str^(String.make 5 ' '))
+      then print_string ("\x0d"^str^(String.make (diff+10) ' '))
+      else print_string ("\x0d"^str^(String.make 10 ' '))
     else print_string str;
 
     if newline
