@@ -1,0 +1,11 @@
+free i.
+free kis, kis1.
+free cb, cs, c.
+
+
+let P = in(cs,x); (in(c,y); out(c,i) | in(cs,z); out(cs,kis)).
+
+let Q = in(cs,x); (in(c,y); out(c,i) | in(cs,z); out(cs,kis1)).
+
+
+query trace_equiv(P,Q).
