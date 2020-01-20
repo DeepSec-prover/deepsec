@@ -170,6 +170,11 @@ struct
               Config.log_in_debug Config.Debug (Generic_equivalence.display_configuration csys.Constraint_system.additional_data)
             ) data.gen_equiv_problem.csys_set.Constraint_system.set;
 
+            List.iter (fun csys ->
+              Config.log_in_debug Config.Debug "Constraint system";
+              Config.log_in_debug Config.Debug (Constraint_system.display_constraint_system 1 data.gen_equiv_problem.csys_set.Constraint_system.knowledge_recipe csys)
+            ) data.gen_equiv_problem.csys_set.Constraint_system.set;
+
             Config.log_in_debug Config.Debug (Display.display_list (Generic_equivalence.display_symbolic_constraint data.gen_equiv_problem.csys_set.Constraint_system.knowledge_recipe) "" data.gen_equiv_problem.csys_set.Constraint_system.set);
             Config.log_in_debug Config.Debug "Test";
             Statistic.reset ();
