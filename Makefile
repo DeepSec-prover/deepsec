@@ -44,7 +44,7 @@ debug:
 # Check the number of physical core
 core_check:
 	@if [ $(PHYSICALCORE_SCRIPT) -eq 0 ]; then \
-		if [$(uname) = 'Darwin']; then \
+		if [ $(OSTYPE) = 'Darwin' ]; then \
 	    printf "\e[33m\e[1mWarning:\e[0m Could not detect the number of physical core of your machine (most probably sysctl is not installed). Set to 1.\n"; \
 	  else \
 			printf "\e[33m\e[1mWarning:\e[0m Could not detect the number of physical core of your machine (most probably lscpu is not installed). Set to 1.\n"; \
