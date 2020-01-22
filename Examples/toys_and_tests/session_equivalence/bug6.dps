@@ -1,0 +1,21 @@
+free c.
+free d[private].
+
+let A1 =
+  in(d,y);
+  in(c,z);
+  out(c,y).
+
+let A2 =
+  in(d,y);
+  in(c,z);
+  let (z1,z2) = y in
+    out(c,z1)
+  else
+    out(c,y).
+
+let B =
+  in(c,x);
+  out(d,x).
+
+query session_equiv(A1 | B,A2 | B). // Not equivalent
