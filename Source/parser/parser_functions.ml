@@ -350,11 +350,14 @@ let rec process_of_intermediate_process occurence_list = function
   | IPar p_list ->
       Types.Par (List.map (process_of_intermediate_process occurence_list) p_list)
   | IBang(n,p,pos) ->
-      let rec explore = function
-        | 0 -> []
-        | n -> (process_of_intermediate_process (occurence_list @ [n]) p)::(explore (n-1))
-      in
-      Types.Bang(explore n,(pos,occurence_list))
+      if n = 1
+      then process_of_intermediate_process occurence_list p
+      else
+        let rec explore = function
+          | 0 -> []
+          | n -> (process_of_intermediate_process (occurence_list @ [n]) p)::(explore (n-1))
+        in
+        Types.Bang(explore n,(pos,occurence_list))
   | IChoice(p1,p2,pos) -> Types.Choice(process_of_intermediate_process occurence_list p1,process_of_intermediate_process occurence_list p2, (pos,occurence_list))
 
 let parse_intermediate_process env = function
