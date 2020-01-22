@@ -882,7 +882,10 @@ let instantiate_clean_generate_forall_set is_proper_phase cur_was_modified was_m
                 new_csys::acc
               end
             else acc
-          else acc
+          else
+            if old_symb_conf.matching_status = Configuration.Exists
+            then acc
+            else raise (Not_Session_Equivalent (generate_attack_trace new_csys))
       | _ -> Config.internal_error "[session_equivalence.ml >> instantiate_clean_generate_forall_set] All constraint system should be linked."
     ) [] csys_solved.Constraint_system.set
   in
