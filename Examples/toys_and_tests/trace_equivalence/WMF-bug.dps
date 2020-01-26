@@ -1,0 +1,48 @@
+free a.
+free b.
+free i.
+free kis.
+free m1.
+free m2.
+free ca.
+free cb.
+free cs.
+
+fun senc/2.
+reduc sdec(senc(x,y),y) -> x.
+
+let processA(ca,a,kas,b) =
+ new kab;
+ in(ca,z);
+ out(ca, (a, senc((b,kab),kas))).
+
+let processS(cs,a,b,kas,kbs) =
+ in(cs, x);
+ let (xa,xenc) = x in
+ if xa = a then
+ let (xb,xk) = sdec(xenc,kas) in
+ if xb = b
+ then out(cs, senc((a,xk),kbs)).
+
+let processB1(cb,b,a,kbs) =
+ in(cb,y);
+ let (ya,yk) = sdec(y,kbs) in
+ if ya = a then out(cb,senc(m1,yk)).
+
+let processB2(cb,b,a,kbs) =
+ in(cb,y);
+ let (ya,yk) = sdec(y,kbs) in
+ if ya = a then new k; out(cb,senc(m2,k)).
+
+
+let P =
+ new kas; new kbs; 
+ ( processS(cs,i,b,kis,kbs) | processB1(cb,b,i,kbs)).
+
+
+let Q =
+ new kas; new kbs; 
+ ( processS(cs,i,b,kis,kbs) | processB2(cb,b,i,kbs)).
+
+
+query trace_equiv(P,Q).

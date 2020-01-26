@@ -1,0 +1,83 @@
+
+free ca.
+free cb.
+free cs.
+
+free a.
+free b.
+free i.
+free s.
+free m1.
+free m2.
+
+free kis.
+
+free c1.
+free c2.
+free c3.
+free c4.
+
+fun senc/2.
+reduc sdec(senc(x,y),y) -> x.
+
+let A(ca,a,b,kas)=
+ in(ca,xinit);
+ new na;
+ out(ca,(a,na));
+ in(ca,x0);
+ let (xnb,x1,x2) = x0 in
+ let (xc2,xb,xkab,xna) = sdec(x1,kas) in
+ if (xc2,xb,xna) = (c2,b,na) then
+ out(ca,(x2,senc((c4,xnb),xkab))).
+
+
+let BP(cb,b,a,kbs)=
+ in(cb,y0);
+ let (ya,yna) = y0 in
+ if ya = a then
+ new nb;
+ out(cb,(b,nb,senc((c1,a,yna),kbs)));
+ in(cb,y1);
+ let (y2,y3) = y1 in
+ let (yc3,yaa,ybb,ykab,ynb) = sdec(y2,kbs) in
+ if (yc3,yaa,ybb,ynb) = (c3,a,b,nb) then
+ let (yc4,yynb) = sdec(y3,ykab) in
+ if (yc4,yynb) = (c4,nb) then
+ out(cb,senc(m1,ykab)).
+
+let BQ(cb,b,a,kbs)=
+ in(cb,y0);
+ let (ya,yna) = y0 in
+ if ya = a then
+ new nb;
+ out(cb,(b,nb,senc((c1,a,yna),kbs)));
+ in(cb,y1);
+ let (y2,y3) = y1 in
+ let (yc3,yaa,ybb,ykab,ynb) = sdec(y2,kbs) in
+ if (yc3,yaa,ybb,ynb) = (c3,a,b,nb) then
+ let (yc4,yynb) = sdec(y3,ykab) in
+ if (yc4,yynb) = (c4,nb) then
+ new k;
+ out(cb,senc(m2,k)).
+
+let S(cs,a,b,kas,kbs)=
+ in(cs,z0);
+ let (zb,znb,z1) = z0 in
+ let (zc1,za,zna) = sdec(z1,kbs) in
+ if (zc1,za,zb) = (c1,a,b) then
+ new kab;
+ out(cs,(znb, senc((c2,b,kab,zna),kas),senc((c3,a,b,kab,znb),kbs)) ).
+
+
+
+let P =
+ new kas; new kbs;
+ ( S(cs,i,b,kis,kbs) |  BP(cb,b,i,kbs)).
+
+
+let Q =
+ new kas; new kbs;
+ ( S(cs,i,b,kis,kbs) |  BQ(cb,b,i,kbs)).
+
+
+query trace_equiv(P,Q).

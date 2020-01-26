@@ -1,10 +1,41 @@
 This file summarizes the most important changes between versions
 of DeepSec.
 
-Version 2.0.0
+Version 2.0.0 alpha rc2
 
-  - Complete rework of the constraint solving procedure
-  - New executable deepsec_api that work with Deepsec UI
+  - Does not return an internal error when an incorrect path of file is given
+    as argument. Returns a user error instead.
+  - Improved Makefile to handle the cases where Git Commit, Git Hash and detection
+    of physical core are not possible.
+  - [API] Improved parsing of recipe.
+  - [API] Allow deepsec_api to keep running even if its stdin and stdout are
+    destroyed.
+  - [API] List of privates names in process and frames are sent when receiving
+    commands for the simulators and display of traces.
+  - [API] Send a specific error message when there is a '%' in a recipe given by
+    a user.
+
+Version 2.0.0 alpha rc (14/01/2020)
+
+  DeepSec 2.0.0 is a major rework of DeepSec. It is still a command-line tool
+  but it can also be used with the new user interface DeepSec UI. See
+  https://github.com/DeepSec-prover/deepsec_ui to download and install DeepSec UI 1.0.x.
+  Amongst the new features of both DeepSec and DeepSec UI:
+
+  - Improved efficiency when verifying queries.
+  - Support for "Eavesdrop", "Classic" and "Private" semantics (POST'17) for verifying
+  trace equivalence.
+  - Integration and improvements of session equivalence (CCS'19).
+  - Recording of the result of your runs that can be displayed in DeepSec UI.
+  - DeepSec UI supports all of DeepSec's abilities does but with a nice interface.
+  - Interactive display of attacks for violated queries.
+
+  - Attack and equivalence simulators in DeepSec UI for trace equivalence:
+  when a trace equivalence query holds, you can select a trace on any of
+  the two processes and request an equivalent trace; when violated there
+  is an attack trace on one of the processes, and you can select any trace
+  on the other process to see why they are not equivalent. Note that these
+  simulators only work with trace equivalence and not session equivalence.
 
 Version 1.02 (16/08/2019)
 

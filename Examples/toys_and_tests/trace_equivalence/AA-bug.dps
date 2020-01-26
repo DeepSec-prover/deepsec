@@ -1,0 +1,116 @@
+// Passive Authentication Protocol between a passport (P) and a reader (R)
+// We test the anonymity of the passport
+// SHOULD BE TRUE
+
+// channels
+free c.
+free chP1,chR1,chP2,chR2,chP3,chR3,chP4,chR4,chP5,chR5.
+
+// constants
+free ok.
+free ini.
+free m1, m2.
+
+free ksenci, ksmaci.
+
+// functions
+fun hash/1.
+fun senc/2.
+fun sign/2.
+fun vk/1.
+
+
+reduc sdec(senc(x,y),y) -> x.
+reduc checksign(sign(x,y),vk(y)) -> ok.
+reduc getmsg(sign(x,y)) -> x.
+
+/*
+Description of the passport role:
+*/
+
+let passport(sk,ksenc,ksmac,ch) =
+  in(ch, x);
+  let (xenc, xmac) = x in
+  if xmac = hash((xenc, ksmac)) then
+  let (=ini,xr1) = sdec(xenc,ksenc) in
+  new n0;
+  let ysign = sign((n0,xr1),sk) in
+  let ysenc = senc(ysign,ksenc) in
+  let ymac  = hash((ysenc,ksmac))  in
+  out(ch,(ysenc,ymac)).
+
+/*
+Description of the Reader role
+*/
+
+let reader(vk,ksenc,ksmac,ch) =
+  new r1 ;
+  let menc = senc((ini,r1),ksenc) in
+  let mmac = hash((menc,ksmac)) in
+  out(ch, (menc, mmac));
+  in(ch,x);
+  let (xenc, xmac) = x in
+  if xmac = hash((xenc,xmac)) then
+  let xsign = sdec(xenc,ksenc) in
+  if ok = checksign(xsign,vk) then
+  let (xn1,=r1) = getmsg(xsign) in
+  out(ch,ok).
+
+let readerP(vk,ksenc,ksmac,ch) =
+  new r1 ;
+  let menc = senc((ini,r1),ksenc) in
+  let mmac = hash((menc,ksmac)) in
+  out(ch, (menc, mmac));
+  in(ch,x);
+  let (xenc, xmac) = x in
+  if xmac = hash((xenc,xmac)) then
+  let xsign = sdec(xenc,ksenc) in
+  if ok = checksign(xsign,vk) then
+  let (xn1,=r1) = getmsg(xsign) in
+  out(ch,senc(m1,xn1)).
+
+let readerQ(vk,ksenc,ksmac,ch) =
+  new r1 ;
+  let menc = senc((ini,r1),ksenc) in
+  let mmac = hash((menc,ksmac)) in
+  out(ch, (menc, mmac));
+  in(ch,x);
+  let (xenc, xmac) = x in
+  if xmac = hash((xenc,xmac)) then
+  let xsign = sdec(xenc,ksenc) in
+  if ok = checksign(xsign,vk) then
+  let (xn1,=r1) = getmsg(xsign) in
+  new k ;
+  out(ch,senc(m2,k)).
+
+
+
+/*
+Passport and Reader in parallel
+*/
+
+let OneSessionPassportP(sk,chP,chR) =
+  (readerP(vk(sk),ksenci,ksmaci,chR) | passport(sk,ksenci,ksmaci,chP)).
+
+let OneSessionPassportQ(sk,chP,chR) =
+  (readerQ(vk(sk),ksenci,ksmaci,chR) | passport(sk,ksenci,ksmaci,chP)).
+
+let Process1 =
+  new sk;
+  out(c, ok);
+  out(c, ini);
+  out(c, vk(sk));
+  (
+    OneSessionPassportP(sk,chP1,chR1)
+  ).
+
+let Process2 =
+  new sk;
+  out(c, ok);
+  out(c, ini);
+  out(c, vk(sk));
+  (
+    OneSessionPassportQ(sk,chP1,chR1)
+  ).
+
+query trace_equiv(Process1,Process2).

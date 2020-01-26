@@ -2,6 +2,7 @@ open Types
 open Term
 open Determinate_process
 open Formula
+open Display
 
 type origin_process =
   | Left
@@ -24,13 +25,25 @@ type equivalence_problem =
     initial_processes : process * process
   }
 
-let display_symbolic_process symb =
-  let str_origin =
-    if symb.origin_process = Left
-    then "Origin = Left\n"
-    else "Origin = Right\n"
-  in
-  (display_configuration symb.configuration) ^ str_origin
+let display_origin sym = match sym.origin_process with
+  | Left -> "Left"
+  | _ -> "Right"
+
+let display_symbolic_process_csys tab kbr csys =
+  display_object tab None [
+    "Constraint system", Constraint_system.display_constraint_system (tab+2) kbr csys;
+    "Configuration", display_configuration csys.Constraint_system.additional_data.configuration;
+    "Origin", display_origin csys.Constraint_system.additional_data
+  ]
+
+let display_equivalence_problem equiv_pbl =
+  display_object 0 None [
+    "Constraint system set", display_list (display_symbolic_process_csys 2 equiv_pbl.csys_set.Constraint_system.knowledge_recipe)  "" equiv_pbl.csys_set.Constraint_system.set;
+    "Eq recipe", Formula.R.display Display.Terminal equiv_pbl.csys_set.Constraint_system.eq_recipe;
+    "Size frame", string_of_int equiv_pbl.size_frame;
+    "Else branch", string_of_bool equiv_pbl.else_branch;
+    "Input added", string_of_bool equiv_pbl.input_added
+  ]
 
 let initialise_equivalence_problem init_processes else_branch csys_set =
   {
@@ -63,7 +76,15 @@ let export_equivalence_problem equiv_pbl =
     Constraint_system.Set.debug_check_structure "[determinate_equivalence.ml >> export_equivalence_problem]" equiv_pbl.csys_set;
     List.iter (fun csys -> Constraint_system.debug_on_constraint_system "[determinate_equivalence.ml >> export_equivalence_problem]" csys) equiv_pbl.csys_set.Constraint_system.set
   );
-  let equiv_pbl' = { equiv_pbl with csys_set = { equiv_pbl.csys_set with Constraint_system.set = List.rev_map Constraint_system.instantiate equiv_pbl.csys_set.Constraint_system.set } } in
+  let equiv_pbl' =
+    { equiv_pbl with
+      csys_set =
+        { equiv_pbl.csys_set with
+          Constraint_system.set = List.rev_map Constraint_system.instantiate equiv_pbl.csys_set.Constraint_system.set;
+          Constraint_system.knowledge_recipe = Data_structure.KR.instantiate equiv_pbl.csys_set.Constraint_system.knowledge_recipe
+        }
+    }
+  in
 
   Config.debug (fun () ->
     Constraint_system.Set.debug_check_structure "[determinate_equivalence.ml >> export_equivalence_problem >> After]" equiv_pbl'.csys_set;
@@ -100,22 +121,7 @@ let import_equivalence_problem f_next equiv_pbl recipe_subst =
   Recipe_Variable.auto_cleanup_with_reset_notail (fun () ->
     (* We link the recipe substitution *)
     List.iter (fun (x,r) -> Recipe_Variable.link_recipe x r) recipe_subst;
-
-    (* Set up the deducible names *)
-    let set_up_deducible_name i r t = match t with
-      | Name ({ deducible_n = None; _} as n) ->
-          Name.set_deducible n (CRFunc(i,r))
-      | _ -> ()
-    in
-
-    Name.auto_deducible_cleanup_with_reset_notail (fun () ->
-      List.iter (fun csys ->
-        Data_structure.K.iteri set_up_deducible_name csys.Constraint_system.knowledge;
-        Data_structure.IK.iteri set_up_deducible_name csys.Constraint_system.incremented_knowledge
-      ) equiv_pbl.csys_set.Constraint_system.set;
-
-      f_next ()
-    )
+    f_next ()
   )
 
 (*** Applying the determinate rules ***)
@@ -153,13 +159,17 @@ let is_current_block_proper csys equiv_pbl =
         | None -> Config.internal_error "[determinate_equivalence.ml >> is_current_block_proper] There should be an ongoing block"
         | Some block -> get_minimal_axiom block
       in
-      let current_max_type_recipe = Data_structure.IK.get_max_type_recipe csys.Constraint_system.knowledge csys.Constraint_system.incremented_knowledge in
+      let current_max_type_recipe = Data_structure.IK.get_max_type_recipe equiv_pbl.csys_set.Constraint_system.knowledge_recipe csys.Constraint_system.incremented_knowledge in
       Config.debug (fun () ->
         if minimal_axiom > current_max_type_recipe
         then Config.log_in_debug Config.Process "Found an improper block !"
       );
       minimal_axiom <= current_max_type_recipe
     end
+
+let get_knowledge_recipe_from_preparation_data = function
+  | None -> Config.internal_error "[generic_equivalence.ml >> get_knowledge_recipe_from_preparation_data] Should be defined."
+  | Some(kbr,_,_) -> kbr
 
 let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
   Config.debug (fun () ->
@@ -171,11 +181,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           (csys_1.Constraint_system.additional_data.origin_process = Right && csys_2.Constraint_system.additional_data.origin_process = Left)
           ->
             Config.log_in_debug Config.Process (Printf.sprintf "\n\n====Application of one transtion rule : (%d)=======" !nb_apply_one_transition_and_rules);
-            Config.log_in_debug Config.Process (display_symbolic_process csys_1.Constraint_system.additional_data);
-            Config.log_in_debug Config.Process (display_symbolic_process csys_2.Constraint_system.additional_data);
-            Config.log_in_debug Config.Process ("Eq recipe = "^(Formula.R.display Display.Terminal equiv_pbl.csys_set.Constraint_system.eq_recipe));
-            Config.log_in_debug Config.Process (Constraint_system.display_constraint_system 1 csys_1);
-            Config.log_in_debug Config.Process (Constraint_system.display_constraint_system 1 csys_2);
+            Config.log_in_debug Config.Process (display_equivalence_problem equiv_pbl);
             if csys_1.Constraint_system.eq_term <> Formula.T.Top || csys_2.Constraint_system.eq_term <> Formula.T.Top
             then Config.internal_error "[determinate_equivalence.ml >> apply_one_transition_and_rules] The disequations in the constraint systems should have been solved."
       | _ -> Config.internal_error "[determinate_equivalence >> apply_one_transition_and_rules] There should be only two constraint systems: one left, one right."
@@ -196,6 +202,8 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           then not (List.for_all (fun csys -> do_else_branches_lead_to_improper_block_conf csys.Constraint_system.additional_data.configuration) equiv_pbl.csys_set.Constraint_system.set)
           else false
         in
+        let preparation_data = ref None in
+        let equiv_pbl_kbr = equiv_pbl.csys_set.Constraint_system.knowledge_recipe in
 
         List.iter (fun csys ->
           let symb_proc = csys.Constraint_system.additional_data in
@@ -204,11 +212,9 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           Variable.auto_cleanup_with_reset_notail (fun () ->
           (* We link the initial substitution from the constraint system *)
           let original_subst = csys.Constraint_system.original_substitution in
-          let original_names = csys.Constraint_system.original_names in
           List.iter (fun (x,t) -> Variable.link_term x t) original_subst;
-          List.iter (fun (x,n) -> Variable.link_term x (Name n)) original_names;
 
-          normalise_configuration conf else_branch original_subst original_names (fun gathering conf_1 ->
+          normalise_configuration conf else_branch original_subst (fun gathering conf_1 ->
             let eq_uniformity = Formula.T.instantiate_and_normalise_full csys.Constraint_system.eq_uniformity in
             if eq_uniformity = Formula.T.Bot
             then ()
@@ -216,13 +222,18 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
               let csys_1 =
                 { csys with
                   Constraint_system.original_substitution = gathering.original_subst;
-                  Constraint_system.original_names = gathering.original_names;
                   Constraint_system.additional_data = { symb_proc with configuration = conf_1 };
                   Constraint_system.eq_term = gathering.disequations;
                   Constraint_system.eq_uniformity = eq_uniformity
                 }
               in
-              let csys_2 = Constraint_system.prepare_for_solving_procedure false csys_1 in
+              let csys_2 = match !preparation_data with
+                | None ->
+                    let (csys',kbr',ikb',assoc_id) = Constraint_system.prepare_for_solving_procedure_first false equiv_pbl_kbr csys_1 in
+                    preparation_data := Some(kbr',ikb',assoc_id);
+                    csys'
+                | Some (_,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others ikb assoc_id csys_1
+              in
               csys_list_for_start := csys_2 :: !csys_list_for_start
             )
           )
@@ -237,10 +248,6 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
               { csys with Constraint_system.original_substitution = original_subst }
             ) conf
           ) !csys_list_for_start;
-
-        let csys_set_for_start = { equiv_pbl.csys_set with Constraint_system.set = !csys_list_for_start } in
-
-        (*** Application of the transformation rules for inputs ***)
 
         let in_apply_final_test csys_set f_next =
           Config.debug (fun () ->
@@ -306,14 +313,21 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                     apply_faulty (csys_left, symb_left) (csys_right, symb_right) is_left f_conf f_action
         in
 
-        Constraint_system.Rule.apply_rules_after_input false in_apply_final_test csys_set_for_start f_next
+        if !csys_list_for_start = []
+        then f_next ()
+        else
+          Constraint_system.Rule.apply_rules_after_input false in_apply_final_test
+            { equiv_pbl.csys_set with
+              Constraint_system.set = !csys_list_for_start;
+              Constraint_system.knowledge_recipe = get_knowledge_recipe_from_preparation_data !preparation_data
+            } f_next
     | RStartIn ->
         Config.log Config.Process (fun () -> "apply Start In");
         if is_current_block_proper csys equiv_pbl && is_block_list_authorized equiv_pbl.complete_blocks equiv_pbl.ongoing_block
         then
           begin
-            let var_X = Recipe_Variable.fresh Free (Data_structure.IK.get_max_type_recipe csys.Constraint_system.knowledge csys.Constraint_system.incremented_knowledge) in
-
+            let var_X = Recipe_Variable.fresh Free (Data_structure.IK.get_max_type_recipe equiv_pbl.csys_set.Constraint_system.knowledge_recipe csys.Constraint_system.incremented_knowledge) in
+            let preparation_data = ref None in
             let apply_conf csys conf =
               { csys with
                 Constraint_system.additional_data = { csys.Constraint_system.additional_data with configuration = conf }
@@ -347,11 +361,9 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
                   (* We link the initial substitution from the constraint system *)
                   let original_subst = (x,Var x_fresh)::csys.Constraint_system.original_substitution in
-                  let original_names = csys.Constraint_system.original_names in
                   List.iter (fun (x,t) -> Variable.link_term x t) original_subst;
-                  List.iter (fun (x,n) -> Variable.link_term x (Name n)) original_names;
 
-                  normalise_configuration symb_proc.configuration else_branch original_subst original_names (fun gathering conf_1 ->
+                  normalise_configuration symb_proc.configuration else_branch original_subst (fun gathering conf_1 ->
                     let eq_uniformity = Formula.T.instantiate_and_normalise_full csys.Constraint_system.eq_uniformity in
                     if eq_uniformity = Formula.T.Bot
                     then ()
@@ -363,11 +375,18 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                           Constraint_system.eq_term = gathering.disequations;
                           Constraint_system.additional_data = { symb_proc with configuration = conf_1 };
                           Constraint_system.original_substitution = gathering.original_subst;
-                          Constraint_system.original_names = gathering.original_names;
                           Constraint_system.eq_uniformity = eq_uniformity
                         }
                       in
-                      let csys_2 = Constraint_system.prepare_for_solving_procedure false csys_1 in
+
+                      let csys_2 =
+                        match !preparation_data with
+                          | None ->
+                              let (csys',kbr',ikb',assoc_id) = Constraint_system.prepare_for_solving_procedure_first false equiv_pbl.csys_set.Constraint_system.knowledge_recipe csys_1 in
+                              preparation_data := Some(kbr',ikb',assoc_id);
+                              csys'
+                          | Some (_,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others ikb assoc_id csys_1
+                      in
 
                       csys_list_for_input := csys_2 :: !csys_list_for_input
                   )
@@ -383,8 +402,6 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                     { csys with Constraint_system.original_substitution = original_subst }
                   ) conf
                 ) !csys_list_for_input;
-
-              let csys_set_for_input = { equiv_pbl.csys_set with Constraint_system.set = !csys_list_for_input } in
 
               let in_apply_final_test csys_set f_next =
                 Config.debug (fun () ->
@@ -459,14 +476,21 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                           apply_faulty (csys_left, symb_left) (csys_right, symb_right) is_left f_conf f_action
               in
 
-              Constraint_system.Rule.apply_rules_after_input false in_apply_final_test csys_set_for_input f_next_1
+              if !csys_list_for_input = []
+              then f_next ()
+              else
+                Constraint_system.Rule.apply_rules_after_input false in_apply_final_test
+                  { equiv_pbl.csys_set with
+                    Constraint_system.set = !csys_list_for_input;
+                    Constraint_system.knowledge_recipe = get_knowledge_recipe_from_preparation_data !preparation_data
+                  } f_next_1
             ) f_next
           end
         else f_next ()
     | RPosIn ->
         Config.log Config.Process (fun () -> "apply PosIn");
-        let var_X = Recipe_Variable.fresh Free (Data_structure.IK.get_max_type_recipe csys.Constraint_system.knowledge csys.Constraint_system.incremented_knowledge) in
-
+        let var_X = Recipe_Variable.fresh Free (Data_structure.IK.get_max_type_recipe equiv_pbl.csys_set.Constraint_system.knowledge_recipe csys.Constraint_system.incremented_knowledge) in
+        let preparation_data = ref None in
         let csys_list_for_input = ref [] in
 
         let (else_branch, csys_var_list) =
@@ -484,11 +508,9 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
 
             (* We link the initial substitution from the constraint system *)
             let original_subst = (x,Var x_fresh)::csys.Constraint_system.original_substitution in
-            let original_names = csys.Constraint_system.original_names in
             List.iter (fun (x,t) -> Variable.link_term x t) original_subst;
-            List.iter (fun (x,n) -> Variable.link_term x (Name n)) original_names;
 
-            normalise_configuration conf else_branch original_subst original_names (fun gathering conf_1 ->
+            normalise_configuration conf else_branch original_subst (fun gathering conf_1 ->
               let eq_uniformity = Formula.T.instantiate_and_normalise_full csys.Constraint_system.eq_uniformity in
               if eq_uniformity = Formula.T.Bot
               then ()
@@ -500,11 +522,17 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                     Constraint_system.eq_term = gathering.disequations;
                     Constraint_system.additional_data = { symb_proc with configuration = conf_1 };
                     Constraint_system.original_substitution = gathering.original_subst;
-                    Constraint_system.original_names = gathering.original_names;
                     Constraint_system.eq_uniformity = eq_uniformity
                   }
                 in
-                let csys_2 = Constraint_system.prepare_for_solving_procedure false csys_1 in
+                let csys_2 =
+                  match !preparation_data with
+                    | None ->
+                        let (csys',kbr',ikb',assoc_id) = Constraint_system.prepare_for_solving_procedure_first false equiv_pbl.csys_set.Constraint_system.knowledge_recipe csys_1 in
+                        preparation_data := Some(kbr',ikb',assoc_id);
+                        csys'
+                    | Some (_,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others ikb assoc_id csys_1
+                in
 
                 csys_list_for_input := csys_2 :: !csys_list_for_input
             )
@@ -520,8 +548,6 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
               { csys with Constraint_system.original_substitution = original_subst }
             ) conf
           ) !csys_list_for_input;
-
-        let csys_set_for_input = { equiv_pbl.csys_set with Constraint_system.set = !csys_list_for_input } in
 
         let in_apply_final_test csys_set f_next =
           Config.debug (fun () ->
@@ -596,14 +622,22 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                     apply_faulty (csys_left, symb_left) (csys_right, symb_right) is_left f_conf f_action
         in
 
-        Constraint_system.Rule.apply_rules_after_input false in_apply_final_test csys_set_for_input f_next
+
+        if !csys_list_for_input = []
+        then f_next ()
+        else
+          Constraint_system.Rule.apply_rules_after_input false in_apply_final_test
+            { equiv_pbl.csys_set with
+              Constraint_system.set = !csys_list_for_input;
+              Constraint_system.knowledge_recipe = get_knowledge_recipe_from_preparation_data !preparation_data
+            } f_next
     | RNegOut ->
         Config.log Config.Process (fun () -> "apply neg out");
         if is_block_list_authorized equiv_pbl.complete_blocks equiv_pbl.ongoing_block
         then
           begin
             let axiom = equiv_pbl.size_frame + 1 in
-
+            let preparation_data = ref None in
             let csys_list_for_output = ref [] in
 
             List.iter (fun csys ->
@@ -613,11 +647,9 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
               Variable.auto_cleanup_with_reset_notail (fun () ->
                 (* We link the initial substitution from the constraint system *)
                 let original_subst = csys.Constraint_system.original_substitution in
-                let original_names = csys.Constraint_system.original_names in
                 List.iter (fun (x,t) -> Variable.link_term x t) original_subst;
-                List.iter (fun (x,n) -> Variable.link_term x (Name n)) original_names;
 
-                normalise_configuration conf equiv_pbl.else_branch original_subst original_names (fun gathering conf_1 ->
+                normalise_configuration conf equiv_pbl.else_branch original_subst (fun gathering conf_1 ->
                   let eq_uniformity = Formula.T.instantiate_and_normalise_full csys.Constraint_system.eq_uniformity in
                   if eq_uniformity = Formula.T.Bot
                   then ()
@@ -628,11 +660,17 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                         Constraint_system.eq_term = gathering.disequations;
                         Constraint_system.additional_data = { symb_proc with configuration = conf_1 };
                         Constraint_system.original_substitution = gathering.original_subst;
-                        Constraint_system.original_names = gathering.original_names;
                         Constraint_system.eq_uniformity = eq_uniformity
                       }
                     in
-                    let csys_3 = Constraint_system.prepare_for_solving_procedure true csys_2 in
+                    let csys_3 =
+                      match !preparation_data with
+                        | None ->
+                            let (csys',kbr',ikb',assoc_id) = Constraint_system.prepare_for_solving_procedure_first true equiv_pbl.csys_set.Constraint_system.knowledge_recipe csys_2 in
+                            preparation_data := Some(kbr',ikb',assoc_id);
+                            csys'
+                        | Some (_,ikb,assoc_id) -> Constraint_system.prepare_for_solving_procedure_others ikb assoc_id csys_2
+                    in
 
                     csys_list_for_output := csys_3 :: !csys_list_for_output
                 )
@@ -648,8 +686,6 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                   { csys with Constraint_system.original_substitution = original_subst }
                 ) conf
               ) !csys_list_for_output;
-
-            let csys_set_for_output = { equiv_pbl.csys_set with Constraint_system.set = !csys_list_for_output } in
 
             let out_apply_final_test csys_set f_next =
               Config.debug (fun () ->
@@ -674,7 +710,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                           if symb_test_1.origin_process = symb_test_2.origin_process
                           then
                             try
-                              let _ = is_equal_skeleton_conf equiv_pbl.size_frame symb_test_1.configuration symb_test_2.configuration in
+                              let _ = is_equal_skeleton_conf (equiv_pbl.size_frame+1) symb_test_1.configuration symb_test_2.configuration in
                               ()
                             with
                             | Faulty_skeleton _ -> found_bug := true
@@ -693,11 +729,11 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                   let result_skel_test =
                     try
                       Config.debug (fun () ->
-                        let _,_,is_focus_nil,_ = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
+                        let _,_,is_focus_nil,_ = is_equal_skeleton_conf (equiv_pbl.size_frame+1) symb_left.configuration symb_right.configuration in
                         if is_focus_nil
                         then Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] The focus should not be nil when output is applied (should be empty)"
                       );
-                      let cl,cr,_,input_added = is_equal_skeleton_conf equiv_pbl.size_frame symb_left.configuration symb_right.configuration in
+                      let cl,cr,_,input_added = is_equal_skeleton_conf (equiv_pbl.size_frame+1) symb_left.configuration symb_right.configuration in
                       OK (cl,cr,input_added)
                     with
                     | Faulty_skeleton (is_left,f_conf,f_action) -> Faulty (is_left,f_conf,f_action)
@@ -723,7 +759,14 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                     | FocusNil -> Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] The focus should not be nil when output is applied (should be empty) (2)"
             in
 
-            Constraint_system.Rule.apply_rules_after_output false out_apply_final_test csys_set_for_output f_next
+            if !csys_list_for_output = []
+            then f_next ()
+            else
+              Constraint_system.Rule.apply_rules_after_output false out_apply_final_test
+                { equiv_pbl.csys_set with
+                  Constraint_system.set = !csys_list_for_output;
+                  Constraint_system.knowledge_recipe = get_knowledge_recipe_from_preparation_data !preparation_data
+                } f_next
           end
         else f_next ()
     | RNothing ->

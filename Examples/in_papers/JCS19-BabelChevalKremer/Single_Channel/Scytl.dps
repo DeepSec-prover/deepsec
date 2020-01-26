@@ -218,6 +218,6 @@ let Main_process(vote1,vote2) =
   | Tally(c,ske(election),pubs(sks(signature)),deltaId(honest(svka)),deltaId(honest(svkb)))
   ).
 
-(*query trace_equiv(Main_process(ja1,jb1),Main_process(ja1,ja1)).*)
+query trace_equiv(Main_process(ja1,jb1),Main_process(ja1,ja1)).
 
 query trace_equiv(Main_process(ja1,jb1),Main_process(jb1,ja1)).

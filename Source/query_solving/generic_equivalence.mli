@@ -12,7 +12,11 @@ type configuration =
     trace : transition list
   }
 
-type equivalence_problem
+type equivalence_problem =
+  {
+    csys_set : configuration Constraint_system.set;
+    size_frame : int
+  }
 
 val export_equivalence_problem : equivalence_problem -> equivalence_problem * (recipe_variable * recipe) list
 

@@ -1,0 +1,13 @@
+free c.
+fun h/2.
+
+let P = in(c,x); in(c,y); out(c,h(x,y)).
+
+let Q = !^4 P.
+
+query trace_equiv(Q,Q).
+
+/* Experiments (4 sessions)
+DEEPSEC: 11min
+Akiss: instant
+ProVerif: instant */

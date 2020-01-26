@@ -178,6 +178,7 @@ type batch_options =
 
 type batch_result =
   {
+    pid : int;
     name_batch : string;
     b_status : run_batch_status;
     b_start_time : int option;
@@ -271,7 +272,7 @@ type output_command =
   (* Progression *)
   | Progression of int (* Index of query *) * int (* execution time *) * query_progression * string (* json_file *)
   (* Simulator: Generic command *)
-  | SCurrent_step_displayed of full_association * configuration * int * int option (* Process id *)
-  | SCurrent_step_user of full_association * configuration * json_transition list (* New transitions *) * available_action list (* All *)* available_action list (* default *)* status_static_equivalence option * int (* Process id *)
+  | SCurrent_step_displayed of full_association * configuration * name list * int * int option (* Process id *)
+  | SCurrent_step_user of full_association * configuration * name list * json_transition list (* New transitions *) * available_action list (* All *)* available_action list (* default *)* status_static_equivalence option * int (* Process id *)
   | SFound_equivalent_trace of full_association * json_transition list
   | SUser_error of string

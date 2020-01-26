@@ -1,0 +1,34 @@
+free i.
+free kis.
+free cb, cs.
+
+fun senc/2.
+reduc sdec(senc(x,y),y) -> x.
+
+let processS(cs,kbs) =
+ in(cs,x);
+ out(cs, senc(i,kbs)).
+
+
+let processB1(cb,kbs) =
+ in(cb,y);
+ out(cb,y).
+
+let processB2(cb,kbs) =
+ in(cb,y);
+ new k; out(cb,k).
+
+
+let P =
+new kbs ;
+( processS(cs,kbs) 
+| processB1(cb,kbs)).
+
+
+let Q =
+new kbs ;
+( processS(cs,kbs) 
+| processB2(cb,kbs)).
+
+
+query trace_equiv(P,Q).

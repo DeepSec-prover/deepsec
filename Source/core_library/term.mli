@@ -154,6 +154,8 @@ module Variable : sig
 
   val currently_linked : variable list ref
 
+  val link_search : variable -> unit
+
   val link : variable -> variable -> unit
 
   val link_term : variable -> term -> unit
@@ -163,6 +165,8 @@ module Variable : sig
   val auto_cleanup_with_reset_notail : (unit -> 'a) -> 'a
 
   val auto_cleanup_with_exception : (unit -> 'a) -> 'a
+
+  val cleanup : unit -> unit
 end
 
 (** {2 Recipe Variables} *)
@@ -213,6 +217,8 @@ module Recipe_Variable : sig
   val auto_cleanup_with_reset_notail : (unit -> 'a) -> 'a
 
   val auto_cleanup_with_exception : (unit -> 'a) -> 'a
+
+  val cleanup : unit -> unit
 end
 
 (** {3 Axioms} *)
@@ -261,21 +267,11 @@ module Name :  sig
 
   val link_search : name -> unit
 
-  val auto_deducible_cleanup_with_reset : ((unit -> unit) -> unit) -> (unit -> unit) -> unit
-
-  val auto_deducible_cleanup_with_reset_notail : (unit -> 'a) -> 'a
-
-  val auto_deducible_cleanup_with_exception : (unit -> 'a) -> 'a
-
   val auto_cleanup_with_reset_notail : (unit -> 'a) -> 'a
 
   val auto_cleanup_with_exception : (unit -> 'a) -> 'a
 
-  val set_deducible : name -> recipe -> unit
-
-  val currently_deducible : name list ref
-
-  val rename_and_instantiate : name -> name
+  val cleanup : unit -> unit
 end
 
 (** {2 Terms} *)
@@ -365,6 +361,10 @@ module Term : sig
   val apply_renamings : term -> term
 
   val rename_and_instantiate : term -> term
+
+  val rename_and_instantiate_exclude_universal : term -> term
+
+  val rename_and_instantiate_exclude_universal_slink : term -> term
 
   exception No_match
 

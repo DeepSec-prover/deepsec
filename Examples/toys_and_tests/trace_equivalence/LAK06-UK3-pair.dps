@@ -1,0 +1,54 @@
+// Unlinkability LAK with pairs - 2 sessions
+// In the CSF'18 paper about Tamarin/XOR, they studied the version with XOR,
+// and replacing the XOR with pair lead to a file on which Tamarin establish the equivalence.
+// Si success visible avec out(ok) alors non-equivalent
+// Si success non visible avec then 0 alors equivalent.
+//
+//  R -> T: r0
+//  T -> R: r1, h(r0 XOR r1 XOR k)
+//  R -> T: h(h(r0 XOR r1 XOR k) XOR k XOR r0)
+//
+
+
+
+fun h/3.
+
+free cr.
+free ct.
+free ok.
+free ko.
+
+// Description of the reader role
+
+let reader(k) =
+  new r0;
+  out(cr,r0);
+  in(cr,xr);
+  let (xr1, xh) = xr in
+  if xh = h(r0,xr1,k) then
+  out(cr,h(xh,k,r0)).
+
+// Description of tag role
+
+let tag(k) =
+  in(ct,xr0);
+  new r1;
+  out(ct,(r1,h(xr0,r1,k)));
+  in(ct,y);
+  if y = h(h(xr0,r1,k),k,xr0) then out(ct,ok).
+
+// Unlinkability
+
+let system1 =
+  (new k1; (tag(k1) | reader(k1))) |
+  (new k2; (tag(k2) | reader(k2))).
+
+let system2 =
+  new k;
+  (
+    tag(k) | reader(k) |
+    tag(k) | reader(k)
+  ).
+
+
+query trace_equiv(system1,system2).

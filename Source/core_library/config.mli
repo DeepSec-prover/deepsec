@@ -45,6 +45,8 @@ val path_deepsec : string ref
 
 val path_database : string ref
 
+val setup_path_result_files : unit -> unit
+
 (** Indicates whether or not Deepsec should gather informations about the attack trace. It will be faster if
     disabled. *)
 val display_trace : bool ref

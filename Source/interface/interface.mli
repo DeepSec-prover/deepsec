@@ -13,11 +13,15 @@ val setup_signature : query_result -> unit
 
 val execute_process : semantics -> full_association -> json_process -> json_transition list -> (configuration Constraint_system.t * full_association) list
 
+val get_private_names : configuration -> name list
+
 (* Attack simulator *)
 
 type simulated_state =
   {
     attacked_id_transition : int;
+
+    knowledge_recipe : Data_structure.KR.t;
 
     attacked_csys : configuration Constraint_system.t; (* The configuration is a dummy one. *)
     simulated_csys : configuration Constraint_system.t;
@@ -56,6 +60,7 @@ val find_equivalent_trace : semantics -> full_association -> json_process -> jso
 
 type attacked_state =
   {
+    att_knowledge_recipe : Data_structure.KR.t;
     att_csys : configuration Constraint_system.t;
     att_assoc : full_association;
     att_default_available_actions : available_action list;
@@ -66,3 +71,5 @@ type attacked_state =
 val initial_equivalence_simulator_state : semantics -> full_association -> json_process -> attacked_state
 
 val equivalence_simulator_apply_next_step : semantics -> attacked_state -> json_transition -> attacked_state list * json_transition list
+
+val equivalence_simulator_apply_next_steps : semantics -> attacked_state -> json_transition list -> attacked_state list

@@ -116,6 +116,17 @@ end
     the deduction facts that corresponding to the latest axiom. The former
     are thus the deduction facts corresponding to previous axiom. *)
 
+module KR : sig
+
+  type t
+
+  val empty : t
+
+  val size : t -> int
+
+  val instantiate : t -> t
+end
+
 module K : sig
 
   (** The type represents the set of solved deduction formulas that will be used in constraint systems, {% i.e. $\Solved$. %} *)
@@ -124,11 +135,9 @@ module K : sig
   (** The empty set *)
   val empty : t
 
-  val size : t -> int
-
-  val get_term : t -> int -> term
-
   val instantiate : t -> t
+
+  val size : t -> int
 
   (** [find_unifier_with_recipe kb t ty f_continuation f_next] tries to unify [t] with
       every term of the knowledge base [kb]. When the unification is successul,
@@ -136,23 +145,23 @@ module K : sig
       is true when the unification did not instantied any variable. [r] is the corresponding
       recipe of the knowledge base [kb]. Note that when an indentity is found, the function
       [find_unifier_with_recipe] does not try any more unification. *)
-  val find_unifier_with_recipe : t -> term -> int ->
+  val find_unifier_with_recipe : KR.t -> t -> term -> int ->
     (bool -> recipe -> (unit -> unit) -> unit) ->
     (unit -> unit) ->
     unit
 
-  val find_unifier_with_recipe_with_stop : t -> term -> int -> bool ref ->
+  val find_unifier_with_recipe_with_stop : KR.t -> t -> term -> int -> bool ref ->
     (bool -> recipe -> (unit -> unit) -> unit) ->
     (unit -> unit) ->
     unit
 
-  val iteri : (int -> recipe -> term -> unit) -> t -> unit
+  val iteri : (int -> recipe -> term -> unit) -> KR.t -> t -> unit
 
   val iter_term : (term -> unit) -> t -> unit
 
   exception Uniformity_falsified
 
-  val consequence_uniform_recipe : t -> Formula.T.t -> recipe -> Formula.T.t * term * int
+  val consequence_uniform_recipe : KR.t -> t -> Formula.T.t -> recipe -> Formula.T.t * term * int
 
   val debug_check_link_with_SLink : t -> unit
 end
@@ -162,7 +171,7 @@ module IK : sig
   (** The type represents the set of solved deduction formulas that will be used in constraint systems, {% i.e. $\Solved$. %} *)
   type t
 
-  val display : int -> K.t -> t -> string
+  val display : int -> KR.t -> K.t -> t -> string
 
   (** The empty set *)
   val empty : t
@@ -171,7 +180,7 @@ module IK : sig
 
   val get_next_index : t -> int
 
-  val get_previous_index_in_knowledge_base : K.t -> t -> int -> int option
+  val get_previous_index_in_knowledge_base : KR.t -> t -> int -> int option
 
   val get_last_index : t -> int
 
@@ -181,36 +190,40 @@ module IK : sig
 
   val get_term : K.t -> t -> int -> term
 
-  val get_recipe : K.t -> t -> int -> recipe
+  val get_recipe : KR.t -> t -> int -> recipe
 
-  val get : K.t -> t -> int -> recipe * term
+  val get : KR.t -> K.t -> t -> int -> recipe * term
 
-  val get_max_type_recipe : K.t -> t -> int
+  val get_max_type_recipe : KR.t -> t -> int
 
   val remove : t -> int -> t
 
   val remove_last_entry : t -> t
 
-  val instantiate : t -> t
-
   val iteri : (int -> recipe -> term -> unit) -> t -> unit
 
   val iter_term : (term -> unit) -> t -> unit
 
-  val find_unifier_with_recipe_with_stop : K.t -> t -> term -> int -> bool ref ->
+  val find_unifier_with_recipe_with_stop : KR.t -> K.t -> t -> term -> int -> bool ref ->
     (bool -> recipe -> (unit -> unit) -> unit) ->
     (unit -> unit) ->
     unit
 
   val for_all_term : (term -> bool) -> t -> bool
 
-  val consequence_term : K.t -> t -> DF.t -> term -> recipe option
+  val consequence_term : KR.t -> K.t -> t -> DF.t -> term -> recipe option
 
   val consequence_recipe : K.t -> t -> DF.t -> recipe -> term
 
-  val transfer_incremented_knowledge_into_knowledge : bool -> K.t -> t -> K.t * t * (int * int) list * (unit -> unit)
+  val transfer_incremented_knowledge_into_knowledge : bool -> KR.t ->  K.t -> t -> KR.t * K.t * t * (int * int) list
 
-  val transfer_incremented_knowledge_into_knowledge_no_rename : K.t -> t -> K.t * t * (int * int) list * (unit -> unit)
+  val transfer_incremented_knowledge_into_knowledge_no_rename : KR.t -> K.t -> t -> KR.t * K.t * t * (int * int) list
+
+  val transfer_incremented_knowledge_into_knowledge_only_kb :  K.t -> t -> K.t
+
+  val transfer_incremented_knowledge_into_knowledge_only_kb_no_rename : K.t -> t -> K.t
+
+  val instantiate : t -> t
 
   val debug_check_link_with_SLink : t -> unit
 end

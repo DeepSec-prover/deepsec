@@ -30,7 +30,7 @@ let internal_error msg =
   if debug_activated
   then
     begin
-      Printf.fprintf log_file "Internal error : %s\nPlease report the bug to vincent.cheval@loria.fr with the input file and output\n" msg;
+      Printf.fprintf log_file "Internal error : %s\nPlease report the bug to vincent.cheval@inria.fr with the input file and output, or post an issue at https://github.com/DeepSec-prover/deepsec/issues\n" msg;
       flush log_file
     end;
   raise (Internal_error msg)
@@ -76,11 +76,48 @@ let log =
 let version = "VERSION"
 let git_commit = "GITCOMMIT"
 let git_branch = "GITBRANCH"
+let os_type = "OSTYPE"
 
 (**** Paths ****)
 
 let path_deepsec = ref ""
 let path_database = ref ""
+
+let setup_path_result_files () = match Sys.os_type with
+  | "Unix" ->
+      if os_type = "Darwin"
+      then
+        begin
+          let home = Unix.getenv "HOME" in
+          let app_support = Filename.concat home "Library/Application Support/DeepSec" in
+          if not (Sys.file_exists app_support)
+          then Unix.mkdir app_support 0o770;
+
+          path_database := Filename.concat app_support "result_files";
+
+          if not (Sys.file_exists !path_database)
+          then Unix.mkdir !path_database 0o770
+        end
+      else
+        begin
+          let home = Unix.getenv "HOME" in
+          let app_support = Filename.concat home ".deepsec" in
+          if not (Sys.file_exists app_support)
+          then Unix.mkdir app_support 0o770;
+
+          path_database := Filename.concat app_support "result_files";
+
+          if not (Sys.file_exists !path_database)
+          then Unix.mkdir !path_database 0o770
+        end
+  | "Cygwin" ->
+      let main_path = Filename.concat (Filename.concat "%USERPROFILE%" "AppData") "deepsec" in
+      if not (Sys.file_exists main_path)
+      then Unix.mkdir main_path 0o770;
+      path_database := Filename.concat main_path "result_files";
+      if not (Sys.file_exists !path_database)
+      then Unix.mkdir !path_database 0o770
+  | _ -> internal_error "Operating system not supported."
 
 (**** Trace display ****)
 

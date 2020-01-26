@@ -20,7 +20,7 @@ open Parser_functions
 %token LPAR RPAR LBRACE RBRACE
 %token RIGHTARROW
 
-%token SHARP
+%token <string> ATTACKER
 %token <int>AXIOM
 %token <int*int> PROJ
 
@@ -221,8 +221,8 @@ recipe_ident:
 recipe:
   | recipe_ident
       { RFuncApp($1,[]) }
-  | SHARP STRING
-      { RAttacker ("#"^$2) }
+  | ATTACKER
+      { RAttacker $1 }
   | AXIOM { RAxiom($1,get_element_position_in_grammar ()) }
   | PROJ LPAR recipe RPAR
       {

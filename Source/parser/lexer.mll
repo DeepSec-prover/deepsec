@@ -64,7 +64,17 @@ rule token = parse
 | '['   { LBRACE }
 | ']'   { RBRACE }
 | "->"  { RIGHTARROW }
-| '#'   { SHARP }
+| '#' ['A'-'Z' 'a'-'z'] ['a'-'z' 'A'-'Z' '_' ''' '0'-'9']* as id
+    {
+      if !Parser_functions.parsing_file
+      then
+        begin
+          let pos_elt = Parser_functions.get_element_position_in_lexer lexbuf in
+          Parser_functions.error_message pos_elt "Identifier starting with # should not occur in input files. They are reserved for attacker names."
+        end;
+
+      ATTACKER(id)
+    }
 | "ax_"  (['0'-'9']+ as id)  {
     if !Parser_functions.parsing_file
     then
@@ -72,7 +82,7 @@ rule token = parse
         let pos_elt = Parser_functions.get_element_position_in_lexer lexbuf in
         Parser_functions.error_message pos_elt "Identifier ax_n for any integer n should not occur in input files. They are reserved for axioms."
       end;
-      
+
     AXIOM(int_of_string id)
   }
 | "proj_{" (['0'-'9']+ as id1) "," (['0'-'9']+ as id2) "}" { PROJ(int_of_string id1,int_of_string id2) }

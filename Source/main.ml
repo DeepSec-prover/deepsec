@@ -15,13 +15,21 @@ let display_string_list str_list =
   List.fold_right (fun (tab,str) acc -> (display_with_tab tab str)^"\n"^acc) str_list ""
 
 let header =
-  display_string_list [
-    0, coloured_terminal_text Black [Bold] "DeepSec - DEciding Equivalence Properties for SECurity protocols";
-    2, Printf.sprintf "Version: %s" Config.version;
-    2, Printf.sprintf "Git hash: %s" Config.git_commit;
-    2, Printf.sprintf "Git branch: %s" Config.git_branch;
-    2, Printf.sprintf "Website: https://deepsec-prover.github.io\n"
-  ]
+  if Config.git_branch <> "" || Config.git_commit <> ""
+  then
+    display_string_list [
+      0, coloured_terminal_text Black [Bold] "DeepSec - DEciding Equivalence Properties for SECurity protocols";
+      2, Printf.sprintf "Version: %s" Config.version;
+      2, Printf.sprintf "Git hash: %s" Config.git_commit;
+      2, Printf.sprintf "Git branch: %s" Config.git_branch;
+      2, Printf.sprintf "Website: https://deepsec-prover.github.io\n"
+    ]
+  else
+    display_string_list [
+      0, coloured_terminal_text Black [Bold] "DeepSec - DEciding Equivalence Properties for SECurity protocols";
+      2, Printf.sprintf "Version: %s" Config.version;
+      2, Printf.sprintf "Website: https://deepsec-prover.github.io\n"
+    ]
 
 let help =
   let file = coloured_terminal_text Black [Underline] "FILE" in
@@ -298,8 +306,8 @@ let _ =
   (* Retrieve deepsec path *)
   let exe_path = Filename.dirname (String.escaped Sys.executable_name) in
   Config.path_deepsec := exe_path;
-  let database_path = Filename.concat exe_path "result_files" in
-  Config.path_database := database_path;
+
+  Config.setup_path_result_files ();
 
   (* Retrieve the command *)
 
@@ -355,10 +363,6 @@ let _ =
         Execution_manager.set_up_batch_options !all_options;
 
         Sys.set_signal Sys.sigint (Sys.Signal_handle (fun _ -> Execution_manager.cancel_batch ()));
-
-        (* Generate database if not existent *)
-        if not (Sys.file_exists !Config.path_database)
-        then Unix.mkdir !Config.path_database 0o770;
 
         (* Batch started *)
         Execution_manager.start_batch !all_files !all_options;

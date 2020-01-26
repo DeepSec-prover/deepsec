@@ -44,6 +44,8 @@ let rec recipe_of_parsed_recipe ori_str max_ax = function
 
 let parse_recipe_from_string max_ax str_r =
   Parser_functions.parsing_file := false;
+  if String.contains str_r '%'
+  then raise (Parser_functions.User_Error (Printf.sprintf "Character %d: Illegal character" (String.index str_r '%')));
   let parsed_r =
     try
 
@@ -411,7 +413,7 @@ let atomic_association_of = function
         | "Name" ->
             let label = string_of (member "label" json) in
             let index = int_of (member "index" json) in
-            assoc.(i) <- JAtomName {label_n = label; index_n = index; pure_fresh_n = false; link_n = NNoLink; deducible_n = None}
+            assoc.(i) <- JAtomName {label_n = label; index_n = index; pure_fresh_n = false; link_n = NNoLink }
         | "Symbol" ->
             let cat = member "category" json in
             begin match string_of (member "type" cat) with

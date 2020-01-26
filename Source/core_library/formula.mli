@@ -119,7 +119,7 @@ module Formula : sig
 
     val wedge : Diseq.M.t -> t -> t
 
-    val rename_and_instantiate : t -> t
+    val rename_and_instantiate : variable list -> t -> t
 
   end
 end

@@ -1,0 +1,88 @@
+// Passive Authentication Protocol between a passport (P) and a reader (R)
+// We test the anonymity of the passport
+// SHOULD BE TRUE
+
+// Pieces of data stored in the different passports
+free dgA, dgB, dgC.
+
+// channels
+free c0,c1,c2,c3.
+
+// constants
+free ok.
+free read.
+
+// functions
+fun h/1.
+fun mac/2.
+fun senc/2.
+fun sign/2.
+fun vk/1.
+
+reduc sdec(senc(x,y),y) -> x.
+reduc checksign(sign(x,y),vk(y)) -> x.
+
+/*
+Description of the passport role:
+- it plays on channel c
+- it uses encryption/mac keys ksenc/ksmac
+- it stores data dg and the signed version sod
+*/
+
+let passport(ksenc,ksmac,dg,sod) =
+  in(c1, x);
+  let (xenc, xmac) = x in
+  if xmac = mac(xenc, ksmac) then
+  if read = sdec(xenc,ksenc) then
+  let menc = senc((dg, sod),ksenc) in
+  let mmac = mac(menc,ksmac) in
+  out(c2, (menc,mmac)).
+
+/*
+Description of the Reader role:
+- it plays on channel c
+- it uses encryption/mac keys ksenc/ksmac
+- it has the signature key KPrDS
+*/
+
+let reader(KPrDS,ksenc,ksmac) =
+  let menc = senc(read,ksenc) in
+  let mmac = mac(menc,ksmac) in
+  out(c1, (menc, mmac));
+  in(c2,x);
+  let (xenc, xmac) = x in
+  if xmac = mac(xenc, ksmac) then
+  let (xdg,(xhdg, xshdg)) = sdec(xenc,ksenc) in
+  if xhdg = checksign(xshdg, vk(KPrDS)) then
+  if xhdg = h(xdg) then
+  out(c3, ok).
+
+/*
+Passport and Reader in parallel
+*/
+
+let OneSessionPassport(KPrDS,dg) =
+  new ksenc;
+  new ksmac;
+  let sod = (h(dg), sign(h(dg),KPrDS)) in
+  (reader(KPrDS,ksenc,ksmac) | passport(ksenc,ksmac,dg,sod)).
+
+let Process1 =
+  new KPrDS;
+  out(c0, vk(KPrDS));
+  (
+    OneSessionPassport(KPrDS,dgA) |       // Passport of A
+    OneSessionPassport(KPrDS,dgA) |       // Passport of A
+    OneSessionPassport(KPrDS,dgC)         // Passport of C
+  ).
+
+let Process2 =
+  new KPrDS;
+  out(c0, vk(KPrDS));
+  (
+    OneSessionPassport(KPrDS,dgA) |       // Passport of A
+    OneSessionPassport(KPrDS,dgB) |       // Passport of B
+    OneSessionPassport(KPrDS,dgC)         // Passport of C
+  ).
+
+query trace_equiv(Process1,Process2).

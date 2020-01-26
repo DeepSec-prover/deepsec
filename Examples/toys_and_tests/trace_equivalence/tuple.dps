@@ -1,0 +1,12 @@
+free c.
+free a,b.
+
+let P = in(c,x); out(c,x); if x = (a,b) then out(c,a).
+
+let Q = in(c,x); out(c,(a,b)).
+
+let Q1 = in(c,x); out(c,(a,b)); if x = (a,b) then out(c,a).
+
+query trace_equiv(P+Q,Q1+P).
+
+(* Should be equivalent ! *)

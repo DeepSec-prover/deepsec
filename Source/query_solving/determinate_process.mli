@@ -53,7 +53,6 @@ val display_configuration : configuration -> string
 type gathering_normalise =
   {
     original_subst : (variable * term) list;
-    original_names : (variable * name) list;
     disequations : Formula.Formula.T.t
   }
 
@@ -61,7 +60,6 @@ val normalise_configuration :
   configuration ->
   bool ->
   (variable * term) list ->
-  (variable * name) list ->
   (gathering_normalise -> configuration -> unit) ->
   unit
 

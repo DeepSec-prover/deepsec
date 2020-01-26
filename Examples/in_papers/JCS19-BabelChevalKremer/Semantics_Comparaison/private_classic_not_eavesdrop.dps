@@ -1,0 +1,24 @@
+(*
+  The two processes A and B are equivalent in both classic and
+  private semantics but not equivalent in eavesdrop semantics.
+*)
+
+free c.
+free e.
+free d.
+
+let P2(x,s1,s2) = if x = s1 then in(d,z); if z = s1 then out(d,s2).
+
+let P1(x,s1,s2) = P2(x,s1,s2) | if x = s2 then out(e,x).
+
+let A = new s1; new s2; (
+    out(c,s1);in(c,x); P1(x,s1,s2)
+  | in(c,y); P2(y,s1,s2)
+  ).
+
+let B = new s1; new s2; (
+    out(c,s1);in(c,x); P2(x,s1,s2)
+  | in(c,y); P1(y,s1,s2)
+  ).
+
+query trace_equiv(A,B).

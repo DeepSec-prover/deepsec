@@ -1,0 +1,14 @@
+free c.
+fun mac/2.
+
+let A =
+  new n_t;
+  out(c,n_t).
+
+let B(k) =
+  in(c,n_t);
+  out(c,mac(n_t,k)).
+
+let sys = !^2 A | new k; !^2 B(k).
+
+query trace_equiv(sys,sys).
