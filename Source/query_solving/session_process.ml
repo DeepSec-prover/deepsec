@@ -112,6 +112,7 @@ module Block = struct
         Inverse index of a list [ t1,...,t_n ] are n-1, ..., 0 *)
 
       current_block_sure_proper : bool;
+      current_checked_once: bool;
       last_added_axiom : int (* Last axiom that was added *)
     }
 
@@ -173,6 +174,7 @@ module Block = struct
       number_blocks = 0;
       ground_index = -1;
       current_block_sure_proper = false;
+      current_checked_once = false;
       last_added_axiom = 0
     }
 
@@ -217,13 +219,15 @@ module Block = struct
             recipe_blocks = c_block::gen_block.recipe_blocks;
             current_recipe_block = Some empty_recipe_block;
             number_blocks = gen_block.number_blocks + 1;
-            current_block_sure_proper = false
+            current_block_sure_proper = false;
+            current_checked_once = false
           }
         else
           { gen_block with
             current_recipe_block = None;
             number_blocks = gen_block.number_blocks;
-            current_block_sure_proper = false
+            current_block_sure_proper = false;
+            current_checked_once = false
           }
 
   (** [update_recipe block] instantiate the variables in the blocks. Returns [(block',is_ground,was_modified)]
@@ -298,22 +302,25 @@ module Block = struct
     in
 
     let (recipe_blocks',_) = explore_blocks (gen_block.number_blocks-1) gen_block.recipe_blocks in
-    let (current_recipe_block',cur_was_modified) =
-      if gen_block.current_block_sure_proper
-      then
-        match gen_block.current_recipe_block with
-        | None -> None, false
+
+    if gen_block.current_block_sure_proper
+    then
+      match gen_block.current_recipe_block with
+        | None ->
+            { gen_block with recipe_blocks = recipe_blocks'; current_recipe_block = None; ground_index = !ground_index },
+            !was_modified, false
         | Some c_block ->
             let (c_block',_,was_modified') = update_recipe c_block in
-            Some c_block', was_modified'
-      else gen_block.current_recipe_block, false
-    in
-
-    { gen_block with
-      recipe_blocks = recipe_blocks';
-      current_recipe_block = current_recipe_block';
-      ground_index = !ground_index
-    }, !was_modified, cur_was_modified
+            if gen_block.current_checked_once
+            then
+              { gen_block with recipe_blocks = recipe_blocks'; current_recipe_block = Some c_block'; ground_index = !ground_index },
+              !was_modified, was_modified'
+            else
+              { gen_block with recipe_blocks = recipe_blocks'; current_recipe_block = Some c_block'; ground_index = !ground_index; current_checked_once = true },
+              !was_modified, true
+    else
+      { gen_block with recipe_blocks = recipe_blocks'; ground_index = !ground_index },
+      !was_modified, false
 
   let transition_proper_to_improper_phase local_blocks = match local_blocks.local_proper_blocks with
     | [] -> Config.internal_error "[session_process.ml >> Block.transition_proper_to_improper_phase] The local block should contain at least the initial label."
