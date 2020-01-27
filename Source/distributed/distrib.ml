@@ -88,6 +88,7 @@ module Distrib = functor (Task:Evaluator_task) -> struct
       | Evaluate of Task.job
       | Generate of Task.job
       | Evaluate_single_core of Task.job
+      | SingleCoreAcknowledge
 
     (** When the error command is sent, the worker terminates.
         When the completed or job_list command is sent, the worker waits for a new
@@ -140,7 +141,12 @@ module Distrib = functor (Task:Evaluator_task) -> struct
       ));
 
       (* Sending the progress command *)
-      let send_progress (prog,to_write) = send_output_command (Progress (prog,to_write)) in
+      let send_progress (prog,to_write) =
+        send_output_command (Progress (prog,to_write));
+        match get_input_command () with
+          | SingleCoreAcknowledge -> Config.log Config.Distribution (fun () -> "[distrib.ml >> WE.send_progress] Ack received")
+          | _ -> Config.internal_error "[distrib.ml >> WE.send_progress] Was expecting an acknowledgement."
+      in
 
       let rec run_execution () =
         try
@@ -167,6 +173,7 @@ module Distrib = functor (Task:Evaluator_task) -> struct
                   let result = Task.evaluation_single_core send_progress job in
                   Config.log Config.Distribution (fun () -> "[distrib.ml >> WE] Sending result");
                   send_output_command (Completed result);
+              | _ -> Config.internal_error  "[distrib.ml >> WE] Unexpected command."
           done
         with
           | Interupt ->
@@ -856,6 +863,7 @@ module Distrib = functor (Task:Evaluator_task) -> struct
                   | WE.Progress(prog,to_write) ->
                       Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.evaluate_single_core] Received progression");
                       current_progression := PSingleCore prog;
+                      WE.send_input_command eval.WE.out_ch (WE.SingleCoreAcknowledge);
                       send_output_command_ack (Progress(PSingleCore prog,to_write))
                   | _ ->
                       Config.log Config.Distribution (fun () -> "[distrib.ml >> WLM.evaluate_single_core] Received other input command");
