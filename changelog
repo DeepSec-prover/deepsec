@@ -1,7 +1,23 @@
 This file summarizes the most important changes between versions
 of DeepSec.
 
-Version 2.0.0 alpha rc2
+Version 2.0.0 beta2 (29/01/2020)
+  - Fix a bug in session equivalence that prevented the function authorised block
+    to be applied correctly.
+  - Fix a bug when distributed computation is deactivated: The worker could send
+    progression status without an acknowledgement which would cause issue when
+    calling Unix.select in the local manager.
+
+Version 2.0.0 beta1 (22/01/2020)
+  - Fix a bug in the Makefile for detecting the number of physical CPU
+  - Fix a bug that would raise an internal error when using !^1 in the input file
+
+Version 2.0.0 beta (21/01/2020)
+  - The memory consumption of DeepSec has been reduced (up to 4 times less memory).
+  - Better integration with DeepSec UI Alpha RC3
+  - Fix many bugs
+
+Version 2.0.0 alpha rc2 (14/01/2020)
 
   - Does not return an internal error when an incorrect path of file is given
     as argument. Returns a user error instead.

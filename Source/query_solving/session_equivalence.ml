@@ -814,9 +814,19 @@ let instantiate_clean_generate_forall_set is_proper_phase cur_was_modified was_m
           | None -> Config.internal_error "[session_equivalence.ml >> instantiate_clean_generate_forall_set] We should be in proper phase."
           | Some c_block ->
               let (c_block',_,cur_modified) = Block.update_recipe c_block in
-              let gen_block = { general_blocks with Block.current_recipe_block = Some c_block' } in
-              updated_current_block := Some (gen_block,cur_modified);
-              gen_block,cur_modified
+              if general_blocks.Block.current_checked_once
+              then
+                begin
+                  let gen_block = { general_blocks with Block.current_recipe_block = Some c_block' } in
+                  updated_current_block := Some (gen_block,cur_modified);
+                  gen_block,cur_modified
+                end
+              else
+                begin
+                  let gen_block = { general_blocks with Block.current_recipe_block = Some c_block'; Block.current_checked_once = true } in
+                  updated_current_block := Some (gen_block,true);
+                  gen_block,true
+                end
   in
 
   let is_next_phase_improper_focus =
