@@ -1738,12 +1738,11 @@ module Rule = struct
           then csys
           else { csys with unsolved_facts = UF.normalise_deductions csys.unsolved_facts }
         in
-        match UF.get_deduction_formula_option csys.unsolved_facts with
+        match UF.get_deduction_formula_option new_csys_1.unsolved_facts with
           | None, true ->
               exploration_sat_deduction_formula false no_ded_csys (new_csys_1::ded_fact_csys) q
           | None, false ->
-              let new_csys_2 = { new_csys_1 with unsolved_facts = UF.set_no_deduction new_csys_1.unsolved_facts } in
-              exploration_sat_deduction_formula false (new_csys_2::no_ded_csys) ded_fact_csys q
+              exploration_sat_deduction_formula false (new_csys_1::no_ded_csys) ded_fact_csys q
           | Some [], _ ->  Config.internal_error "[constraint_system.ml >> Rule.exploration_sat_deduction_formula] It should not be any empty list."
           | Some (form::form_list), _ -> Some(new_csys_1,form,form_list,q), no_ded_csys, ded_fact_csys
 
@@ -1823,10 +1822,10 @@ module Rule = struct
             if ded_form_list = []
             then
               let new_csys = { csys with unsolved_facts = UF.set_no_deduction csys.unsolved_facts } in
-              internal (new_csys::no_ded_csys) ded_fact_csys ded_form_csys { data with dsd_eq_rec = eq_rec'; dsd_head_normalised = false } f_next_1
+              internal (new_csys::no_ded_csys_1) ded_fact_csys_1 ded_form_csys_1 { data with dsd_eq_rec = eq_rec'; dsd_head_normalised = false } f_next_1
             else
               let new_csys = { csys with unsolved_facts = UF.replace_deduction_formula csys.unsolved_facts ded_form_list } in
-              internal no_ded_csys ded_fact_csys (new_csys::ded_form_csys) { data with dsd_eq_rec = eq_rec'; dsd_head_normalised = true } f_next_1
+              internal no_ded_csys_1 ded_fact_csys_1 (new_csys::ded_form_csys_1) { data with dsd_eq_rec = eq_rec'; dsd_head_normalised = true } f_next_1
           )
     in
 
