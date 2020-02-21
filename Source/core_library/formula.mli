@@ -121,5 +121,6 @@ module Formula : sig
 
     val rename_and_instantiate : variable list -> t -> t
 
+    val display : output -> t -> string
   end
 end

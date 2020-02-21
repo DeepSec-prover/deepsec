@@ -233,7 +233,10 @@ module Recipe_Variable = struct
     if display_type
     then
       match out with
-        | Terminal | HTML -> Printf.sprintf "%s:%d" index_label v.type_r
+        | Terminal | HTML ->
+            if v.type_r = infinite_type
+            then Printf.sprintf "%s:∞" index_label
+            else Printf.sprintf "%s:%d" index_label v.type_r
         | Latex -> Printf.sprintf "%s\\text{:}%d" index_label v.type_r
     else index_label
 

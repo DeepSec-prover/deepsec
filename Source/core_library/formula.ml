@@ -159,7 +159,7 @@ module Diseq = struct
             | Name _ -> ()
           in
 
-          let display_single (v,t) = Printf.sprintf "%s %s %s" (Variable.display out v) (neqs out) (Term.display ~follow_link:follow_link out t) in
+          let display_single (v,t) = Printf.sprintf "%s %s %s" (Term.display ~follow_link:follow_link out (Var v)) (neqs out) (Term.display ~follow_link:follow_link out t) in
 
           List.iter (fun (_,t2) -> find_univ_var t2) diseq_list;
 
@@ -193,7 +193,6 @@ module Diseq = struct
             | XLink _ -> Config.log_in_debug Config.Always "[debug_no_linked_variables_term] XLink in variable"; false
           end
           ) vlist
-
   end
 
   module R = struct
@@ -277,7 +276,7 @@ module Diseq = struct
 
     let rec restrict_recipe k = function
       | Axiom i ->
-          if i <= k
+          if i > k
           then raise Recipe.Not_unifiable
       | CRFunc(_,r) -> restrict_recipe k r
       | RFunc(_,args) -> List.iter (restrict_recipe k) args
@@ -522,14 +521,15 @@ module Diseq = struct
                       v.link_r <- RSLink;
                       univ_vars := v :: !univ_vars
                   | RNoLink -> ()
-                  | _ -> Config.internal_error "[formula.ml >> Diseq.R.display] The variables in the disequality should not be linked."
+                  | RLink r -> find_univ_var r
+                  | _ -> Config.internal_error "[formula.ml >> Diseq.R.display] Unexpected link"
                 end
             | RFunc(_,args) -> List.iter find_univ_var args
             | CRFunc(_,r) -> find_univ_var r
             | Axiom _ -> ()
           in
 
-          let display_single (v,t) = Printf.sprintf "%s %s %s" (Recipe_Variable.display out v) (neqs out) (Recipe.display ~follow_link:follow_link out t) in
+          let display_single (v,t) = Printf.sprintf "%s %s %s" (Recipe.display ~follow_link:follow_link out (RVar v)) (neqs out) (Recipe.display ~follow_link:follow_link out t) in
           let display_restriction (v,k) = Printf.sprintf "%s > %d" (Recipe_Variable.display out v) k in
 
           List.iter (fun (_,t2) -> find_univ_var t2) diseq_list;
@@ -546,7 +546,7 @@ module Diseq = struct
           else
             begin
               List.iter (fun v -> v.link_r <- RNoLink) !univ_vars;
-              Printf.sprintf "%s %s.%s" (forall out) (display_list (fun v -> Recipe_Variable.display out v) "," !univ_vars) display_disj
+              Printf.sprintf "%s %s.%s" (forall out) (display_list (fun v -> Recipe_Variable.display ~display_type:true out v) "," !univ_vars) display_disj
             end
   end
 
@@ -613,6 +613,13 @@ module Diseq = struct
 
               Disj(List.map (fun (v,t) -> Variable.rename v, Term.rename_and_instantiate_exclude_universal_slink t) disj_t, restr_r,disj_r)
             end
+
+    let display out = function
+      | Top -> top out
+      | Bot -> bot out
+      | Disj([],restr_r,disj_r) -> R.display out (R.Disj(restr_r,disj_r))
+      | Disj(disj_t,[],[]) -> T.display out (T.Disj disj_t)
+      | Disj(disj_t,restr_r,disj_r) -> (T.display out (T.Disj disj_t)) ^ " " ^ (vee out) ^" "^(R.display out (R.Disj(restr_r,disj_r)))
   end
 end
 
@@ -867,6 +874,10 @@ module Formula = struct
             else Conj conj'
           )
 
-
+    let display out = function
+      | Top -> top out
+      | Bot -> bot out
+      | Conj conj ->
+          display_list (Diseq.M.display out) (Display.wedge out) conj
   end
 end
