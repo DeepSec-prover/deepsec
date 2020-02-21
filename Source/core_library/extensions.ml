@@ -84,6 +84,14 @@ module List = struct
     in
     explore [] l
 
+  let extract_opt f l =
+    let rec explore prev = function
+      | [] -> None
+      | t::q when f t -> Some (t, rev_append prev q)
+      | t::q -> explore (t::prev) q
+    in
+    explore [] l
+
   let extract_nth n l =
     let rec explore n prev = function
       | [] -> raise Not_found

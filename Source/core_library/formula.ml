@@ -201,7 +201,7 @@ module Diseq = struct
     type t =
       | Top
       | Bot
-      | Disj of (recipe_variable * recipe) list
+      | Disj of (recipe_variable * int) list * (recipe_variable * recipe) list
           (* Type of the variable is almost equal or bigger than the type of the recipe *)
 
     (* [of_maybe_linked_variables v_list to_be_univ_vars] returns the disequalities corresponding to
@@ -223,7 +223,7 @@ module Diseq = struct
         in
         if diseq = []
         then Bot
-        else Disj diseq
+        else Disj ([],diseq)
       else
         begin
           let renamed_vars = ref [] in
@@ -270,8 +270,29 @@ module Diseq = struct
 
           if diseq = []
           then Bot
-          else Disj diseq
+          else Disj ([],diseq)
         end
+
+    let restricted_vars = ref []
+
+    let rec restrict_recipe k = function
+      | Axiom i ->
+          if i <= k
+          then raise Recipe.Not_unifiable
+      | CRFunc(_,r) -> restrict_recipe k r
+      | RFunc(_,args) -> List.iter (restrict_recipe k) args
+      | RVar x ->
+          match x.link_r with
+            | RLink r -> restrict_recipe k r
+            | RNoLink ->
+                if x.type_r > k
+                then
+                  begin
+                    restricted_vars := x :: !restricted_vars;
+                    x.link_r <- RRLink k
+                  end
+            | RRLink k' -> x.link_r <- RRLink (min k k')
+            | _ -> Config.internal_error "[formula.ml >> Diseq.R.restrict_recipe] Unexpected link"
 
     (* We assume that [r] is of the form [f(x_1,...,x_n)] with x_1,...,x_n fresh
        or [r] is ground.
@@ -279,11 +300,14 @@ module Diseq = struct
     let instantiate_and_normalise_one_variable_constructor x r = function
       | Top -> Top
       | Bot -> Bot
-      | Disj diseq_list ->
+      | Disj(restriction_list,diseq_list) ->
           Config.debug (fun () ->
             if x.link_r = RNoLink
             then Config.internal_error "[formula.ml >> Diseq.R.instantiate_and_normalise_one_variable_constructor] The variable x should be linked to the term.";
           );
+
+          if !restricted_vars <> []
+          then Config.internal_error "[formula.ml >> Diseq.R.instantiate_and_normalise_one_variable_constructor] Restriction vars list should be empty.";
 
           (* We link the variables of the disequality *)
           x.link_r <- RNoLink;
@@ -294,12 +318,23 @@ module Diseq = struct
             | RNoLink ->
                 (* In such a case, we can directly instantiate the variables without
                    applying [Recipe.unify] since [x_1,...,x_n] are fresh or [r] is ground *)
-
-                let diseq = Disj (List.rev_map (fun (y,r') -> y, Recipe.instantiate r') diseq_list) in
-                List.iter (fun (y,_) -> y.link_r <- RNoLink) diseq_list;
                 x.link_r <- RLink r;
-                diseq
+                let diseq_list' = List.rev_map (fun (y,r') -> y, Recipe.instantiate r') diseq_list in
+                let restriction_list' = match List.extract_opt (fun (v,_) -> v == x) restriction_list with
+                  | None -> restriction_list
+                  | Some((_,k),restr_list) ->
+                      match r with
+                        | RFunc(_,args) ->
+                            List.fold_left (fun acc r' -> match r' with
+                              | RVar x' -> (x',k)::acc
+                              | _ -> Config.internal_error "[formula.ml >> Diseq.R.instantiate_and_normalise_one_variable_constructor] Unexpected recipe (1)"
+                            ) restr_list args
+                        | _ -> Config.internal_error "[formula.ml >> Diseq.R.instantiate_and_normalise_one_variable_constructor] Unexpected recipe (2)"
+                in
+                List.iter (fun (y,_) -> y.link_r <- RNoLink) diseq_list;
+                Disj(restriction_list',diseq_list')
             | RLink r' ->
+                let tmp = !Recipe_Variable.currently_linked in
                 Recipe_Variable.currently_linked := [];
                 let result =
                   try
@@ -308,7 +343,11 @@ module Diseq = struct
                     let diseq_list_1 =
                       List.fold_left (fun acc var ->
                         if var.quantifier_r = Universal
-                        then acc
+                        then
+                          begin
+                            restrict_recipe var.type_r (RVar var);
+                            acc
+                          end
                         else (var,Recipe.instantiate (RVar var))::acc
                       ) [] !Recipe_Variable.currently_linked
                     in
@@ -320,16 +359,28 @@ module Diseq = struct
                         else (y,Recipe.instantiate r')::acc
                       ) diseq_list_1 diseq_list
                     in
-                    if diseq_list_2 = []
+
+                    (* We check the old variable restrictions *)
+                    List.iter (fun (v,k) -> restrict_recipe k (RVar v)) restriction_list;
+
+                    let restriction_list' =
+                      List.rev_map (fun var -> match var.link_r with
+                        | RRLink k -> (var,k)
+                        | _ -> Config.internal_error "[formula.ml >> Diseq.R.instantiate_and_normalise_one_variable_constructor] The should be a restricted link."
+                      ) !restricted_vars
+                    in
+
+                    if diseq_list_2 = [] && restriction_list' = []
                     then Bot
-                    else Disj diseq_list_2
+                    else Disj(restriction_list',diseq_list_2)
                   with Recipe.Not_unifiable -> Top
                 in
-
+                List.iter (fun v -> v.link_r <- RNoLink) !restricted_vars;
                 List.iter (fun v -> v.link_r <- RNoLink) !Recipe_Variable.currently_linked;
                 List.iter (fun (v,_) -> v.link_r <- RNoLink) diseq_list;
                 x.link_r <- RLink r;
-                Recipe_Variable.currently_linked := [x];
+                Recipe_Variable.currently_linked := tmp;
+                restricted_vars := [];
 
                 result
             | _ -> Config.internal_error "[formula.ml >> Diseq.R.instantiate_and_normalise_constructor] Unexpected link."
@@ -338,11 +389,14 @@ module Diseq = struct
     let instantiate_and_normalise_one_variable x r = function
       | Top -> Top
       | Bot -> Bot
-      | Disj diseq_list ->
+      | Disj(restriction_list,diseq_list) ->
           Config.debug (fun () ->
             if x.link_r = RNoLink
             then Config.internal_error "[formula.ml >> Diseq.R.instantiate_and_normalise_one_variable_constructor] The variable x should not be linked to the term.";
           );
+
+          if !restricted_vars <> []
+          then Config.internal_error "[formula.ml >> Diseq.R.instantiate_and_normalise_one_variable] Restriction vars list should be empty.";
 
           (* We link the variables of the disequality *)
           x.link_r <- RNoLink;
@@ -357,7 +411,11 @@ module Diseq = struct
               let diseq_list_1 =
                 List.fold_left (fun acc var ->
                   if var.quantifier_r = Universal || var == x
-                  then acc
+                  then
+                    begin
+                      restrict_recipe var.type_r (RVar var);
+                      acc
+                    end
                   else (var,Recipe.instantiate (RVar var))::acc
                 ) [] !Recipe_Variable.currently_linked
               in
@@ -370,27 +428,42 @@ module Diseq = struct
                 ) diseq_list_1 diseq_list
               in
 
-              if diseq_list_2 = []
+              (* We check the old variable restrictions *)
+              List.iter (fun (v,k) -> restrict_recipe k (RVar v)) restriction_list;
+
+              let restriction_list' =
+                List.rev_map (fun var -> match var.link_r with
+                  | RRLink k -> (var,k)
+                  | _ -> Config.internal_error "[formula.ml >> Diseq.R.instantiate_and_normalise_one_variable] The should be a restricted link."
+                ) !restricted_vars
+              in
+
+              if diseq_list_2 = []  && restriction_list' = []
               then Bot
-              else Disj diseq_list_2
+              else Disj(restriction_list',diseq_list_2)
             with Recipe.Not_unifiable -> Top
           in
-
+          List.iter (fun v -> v.link_r <- RNoLink) !restricted_vars;
           List.iter (fun v -> v.link_r <- RNoLink) !Recipe_Variable.currently_linked;
           List.iter (fun (v,_) -> v.link_r <- RNoLink) diseq_list;
           x.link_r <- RLink r;
           Recipe_Variable.currently_linked := [x];
+          restricted_vars := [];
 
           result
 
     let instantiate_and_normalise = function
       | Bot -> Bot
       | Top -> Top
-      | Disj diseq_list ->
+      | Disj(restriction_list, diseq_list) ->
           let tmp = !Recipe_Variable.currently_linked in
           Recipe_Variable.currently_linked := [];
 
+          if !restricted_vars <> []
+          then Config.internal_error "[formula.ml >> Diseq.R.instantiate_and_normalise] Restriction vars list should be empty.";
+
           try
+            (* First we unify the disequalities *)
             List.iter (fun (t1,t2) ->
               Recipe.unify (RVar t1) t2
             ) diseq_list;
@@ -398,20 +471,39 @@ module Diseq = struct
             let diseq_list' =
               List.fold_left (fun acc var ->
                 if var.quantifier_r = Universal
-                then acc
+                then
+                  begin
+                    restrict_recipe var.type_r (RVar var);
+                    acc
+                  end
                 else (var,Recipe.instantiate (RVar var))::acc
               ) [] !Recipe_Variable.currently_linked
             in
 
-            List.iter (fun v -> v.link_r <- RNoLink) !Recipe_Variable.currently_linked;
-            Recipe_Variable.currently_linked := tmp;
+            (* We check the old variable restrictions *)
+            List.iter (fun (v,k) -> restrict_recipe k (RVar v)) restriction_list;
 
-            if diseq_list' = []
-            then Bot
-            else Disj diseq_list'
-          with Recipe.Not_unifiable ->
+            let restriction_list' =
+              List.rev_map (fun var -> match var.link_r with
+                | RRLink k -> (var,k)
+                | _ -> Config.internal_error "[formula.ml >> Diseq.R.instantiate_and_normalise] The should be a restricted link."
+              ) !restricted_vars
+            in
+
+            (* We cleanup *)
+            List.iter (fun v -> v.link_r <- RNoLink) !restricted_vars;
             List.iter (fun v -> v.link_r <- RNoLink) !Recipe_Variable.currently_linked;
             Recipe_Variable.currently_linked := tmp;
+            restricted_vars := [];
+
+            if diseq_list' = [] && restriction_list' = []
+            then Bot
+            else Disj(restriction_list',diseq_list')
+          with Recipe.Not_unifiable ->
+            List.iter (fun v -> v.link_r <- RNoLink) !restricted_vars;
+            List.iter (fun v -> v.link_r <- RNoLink) !Recipe_Variable.currently_linked;
+            Recipe_Variable.currently_linked := tmp;
+            restricted_vars := [];
             Top
 
     (* Display *)
@@ -419,7 +511,7 @@ module Diseq = struct
     let display ?(follow_link=true) out = function
       | Top -> top out
       | Bot -> bot out
-      | Disj diseq_list ->
+      | Disj(restriction_list,diseq_list) ->
           let univ_vars = ref [] in
 
           let rec find_univ_var = function
@@ -438,15 +530,23 @@ module Diseq = struct
           in
 
           let display_single (v,t) = Printf.sprintf "%s %s %s" (Recipe_Variable.display out v) (neqs out) (Recipe.display ~follow_link:follow_link out t) in
+          let display_restriction (v,k) = Printf.sprintf "%s > %d" (Recipe_Variable.display out v) k in
 
           List.iter (fun (_,t2) -> find_univ_var t2) diseq_list;
 
+          let display_disj = match restriction_list,diseq_list with
+            | [], [] -> Config.internal_error "[formula.ml >> Formula.R.display] Unexpected case"
+            | [], _ -> display_list display_single (Printf.sprintf " %s " (vee out)) diseq_list
+            | _, [] -> display_list display_restriction (Printf.sprintf " %s " (vee out)) restriction_list
+            | _ -> (display_list display_restriction (Printf.sprintf " %s " (vee out)) restriction_list) ^ " " ^ (vee out) ^ (display_list display_single (Printf.sprintf " %s " (vee out)) diseq_list)
+          in
+
           if !univ_vars = []
-          then Printf.sprintf "%s" (display_list display_single (Printf.sprintf " %s " (vee out)) diseq_list)
+          then display_disj
           else
             begin
               List.iter (fun v -> v.link_r <- RNoLink) !univ_vars;
-              Printf.sprintf "%s %s.%s" (forall out) (display_list (fun v -> Recipe_Variable.display out v) "," !univ_vars) (display_list display_single (Printf.sprintf " %s " (vee out)) diseq_list)
+              Printf.sprintf "%s %s.%s" (forall out) (display_list (fun v -> Recipe_Variable.display out v) "," !univ_vars) display_disj
             end
   end
 
@@ -455,53 +555,53 @@ module Diseq = struct
     type t =
       | Top
       | Bot
-      | Disj of (variable * term) list * (recipe_variable * recipe) list
+      | Disj of (variable * term) list * (recipe_variable * int) list * (recipe_variable * recipe) list
 
     let instantiate_and_normalise_only_recipe f_norm diseq = match diseq with
       | Top
       | Bot
-      | Disj(_,[]) -> diseq
-      | Disj(disj_t,disj_r) ->
-          match f_norm (R.Disj disj_r) with
+      | Disj(_,[],[]) -> diseq
+      | Disj(disj_t,restr_r,disj_r) ->
+          match f_norm (R.Disj(restr_r,disj_r)) with
             | R.Top -> Top
-            | R.Bot -> if disj_t = [] then Bot else Disj(disj_t,[])
-            | R.Disj disj_r' -> Disj(disj_t,disj_r')
+            | R.Bot -> if disj_t = [] then Bot else Disj(disj_t,[],[])
+            | R.Disj(restr_r',disj_r') -> Disj(disj_t,restr_r',disj_r')
 
     let instantiate_and_normalise f_norm_term f_norm_rec diseq = match diseq with
       | Top
       | Bot -> diseq
-      | Disj([],disj_r) ->
-          begin match f_norm_rec (R.Disj disj_r) with
+      | Disj([],restr_r,disj_r) ->
+          begin match f_norm_rec (R.Disj(restr_r,disj_r)) with
             | R.Top -> Top
             | R.Bot -> Bot
-            | R.Disj disj_r' -> Disj([],disj_r')
+            | R.Disj(restr_r',disj_r') -> Disj([],restr_r',disj_r')
           end
-      | Disj(disj_t,[]) ->
+      | Disj(disj_t,[],[]) ->
           begin match f_norm_term (T.Disj disj_t) with
             | T.Top -> Top
             | T.Bot -> Bot
-            | T.Disj disj_t' -> Disj(disj_t',[])
+            | T.Disj disj_t' -> Disj(disj_t',[],[])
           end
-      | Disj(disj_t,disj_r) ->
+      | Disj(disj_t,restr_r,disj_r) ->
           begin match f_norm_term (T.Disj disj_t) with
             | T.Top -> Top
             | T.Bot ->
-                begin match f_norm_rec (R.Disj disj_r) with
+                begin match f_norm_rec (R.Disj (restr_r,disj_r)) with
                   | R.Top -> Top
                   | R.Bot -> Bot
-                  | R.Disj disj_r' -> Disj([],disj_r')
+                  | R.Disj(restr_r',disj_r') -> Disj([],restr_r',disj_r')
                 end
             | T.Disj disj_t' ->
-                begin match f_norm_rec (R.Disj disj_r) with
+                begin match f_norm_rec (R.Disj (restr_r,disj_r)) with
                   | R.Top -> Top
-                  | R.Bot -> Disj(disj_t',[])
-                  | R.Disj disj_r' -> Disj(disj_t',disj_r')
+                  | R.Bot -> Disj(disj_t',[],[])
+                  | R.Disj(restr_r',disj_r') -> Disj(disj_t',restr_r',disj_r')
                 end
           end
 
     let rename_and_instantiate_exclude_universal_slink mixed = match mixed with
       | Top | Bot -> mixed
-      | Disj(disj_t,disj_r) ->
+      | Disj(disj_t,restr_r,disj_r) ->
           if disj_t = []
           then mixed
           else
@@ -511,7 +611,7 @@ module Diseq = struct
                 then Config.internal_error "[formula.ml >> Diseq.M.rename_and_instantiate] The formula should be normalised before renaming.";
               );
 
-              Disj(List.map (fun (v,t) -> Variable.rename v, Term.rename_and_instantiate_exclude_universal_slink t) disj_t, disj_r)
+              Disj(List.map (fun (v,t) -> Variable.rename v, Term.rename_and_instantiate_exclude_universal_slink t) disj_t, restr_r,disj_r)
             end
   end
 end

@@ -28,7 +28,7 @@ module Variable = struct
 
   let fresh_with_label q s =
     let var = { label = s; index = !accumulator; link = NoLink; quantifier = q } in
-    incr accumulator;
+    incr accumulator ;
     var
 
   let fresh q = fresh_with_label q "x"
@@ -1037,7 +1037,6 @@ module Recipe = struct
         | RVar v when v == var -> true
         | RVar {link_r = RLink r; _}
         | CRFunc(_,r)-> explore_recipe r
-        | RVar v when v.type_r > var.type_r -> true
         | Axiom ax when ax > var.type_r -> true
         | RFunc(_,args) -> List.exists explore_recipe args
         | _ -> false

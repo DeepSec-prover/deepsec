@@ -1,0 +1,23 @@
+free c1, c2.
+
+fun sign/2.
+fun pk/1.
+
+let ProcessA(c1) =
+  in(c1, msg);
+  new sk;
+  out(c1, (sign(msg, sk), pk(sk))).
+
+let ProcessB(c1, c2) =
+  in(c2, msg);
+  let (x, y, z) = msg in
+  out(c1, z).
+
+let ProcessC(c1, c2) =
+  in(c2, msg);
+  out(c1, msg).
+
+let Process =
+    ProcessA(c2) | !^2 ProcessB(c2, c1) | ProcessC(c2, c1).
+
+query trace_equiv(Process, Process).

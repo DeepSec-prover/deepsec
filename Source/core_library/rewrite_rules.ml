@@ -129,9 +129,9 @@ let generate_mixed_formulas_for_skeletons kb ikb df term_vars recipe_vars recipe
           | _ -> (x,r)::acc
       ) [] recipe_vars recipe_l
     in
-    Diseq.M.Disj(eq_fst,eq_snd)
+    Diseq.M.Disj(eq_fst,[],eq_snd)
   else
-    Diseq.M.Disj(List.map2 (fun x t -> (x,t)) term_vars term_l, [])
+    Diseq.M.Disj(List.map2 (fun x t -> (x,t)) term_vars term_l, [],[])
 
 let rec get_possible_skeletons_for_terms = function
   | Var { link = TLink t; _ } -> get_possible_skeletons_for_terms t
@@ -682,7 +682,7 @@ let initialise_skeletons_constructor () =
               in
               if fst_diseq = [] && snd_diseq = []
               then Formula.M.Bot
-              else Formula.M.wedge (Diseq.M.Disj (fst_diseq,snd_diseq)) acc
+              else Formula.M.wedge (Diseq.M.Disj (fst_diseq,[],snd_diseq)) acc
             )
           )
       ) Formula.M.Top !list_found_symb
