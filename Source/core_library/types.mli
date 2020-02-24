@@ -85,6 +85,7 @@ and recipe_link =
   | RVLink of recipe_variable (* Used for renaming *)
   | RXLink of term (* Used for applying mgs *)
   | RSLink (* Used for searching *)
+  | RRLink of int (* Type restriction *)
 
 and recipe =
   | CRFunc of int * recipe

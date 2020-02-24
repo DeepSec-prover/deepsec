@@ -28,7 +28,7 @@ module Variable = struct
 
   let fresh_with_label q s =
     let var = { label = s; index = !accumulator; link = NoLink; quantifier = q } in
-    incr accumulator;
+    incr accumulator ;
     var
 
   let fresh q = fresh_with_label q "x"
@@ -233,7 +233,10 @@ module Recipe_Variable = struct
     if display_type
     then
       match out with
-        | Terminal | HTML -> Printf.sprintf "%s:%d" index_label v.type_r
+        | Terminal | HTML ->
+            if v.type_r = infinite_type
+            then Printf.sprintf "%s:∞" index_label
+            else Printf.sprintf "%s:%d" index_label v.type_r
         | Latex -> Printf.sprintf "%s\\text{:}%d" index_label v.type_r
     else index_label
 
@@ -1037,7 +1040,6 @@ module Recipe = struct
         | RVar v when v == var -> true
         | RVar {link_r = RLink r; _}
         | CRFunc(_,r)-> explore_recipe r
-        | RVar v when v.type_r > var.type_r -> true
         | Axiom ax when ax > var.type_r -> true
         | RFunc(_,args) -> List.exists explore_recipe args
         | _ -> false

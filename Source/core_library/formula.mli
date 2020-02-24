@@ -30,7 +30,7 @@ module Diseq : sig
     type t =
       | Top
       | Bot
-      | Disj of (recipe_variable * recipe) list
+      | Disj of (recipe_variable * int) list * (recipe_variable * recipe) list
           (* Type of the variable is almost equal or bigger than the type of the recipe *)
 
     (* [of_maybe_linked_variables v_list to_be_univ_vars] returns the disequalities corresponding to
@@ -48,7 +48,7 @@ module Diseq : sig
     type t =
       | Top
       | Bot
-      | Disj of (variable * term) list * (recipe_variable * recipe) list
+      | Disj of (variable * term) list * (recipe_variable * int) list * (recipe_variable * recipe) list
   end
 end
 
@@ -121,5 +121,6 @@ module Formula : sig
 
     val rename_and_instantiate : variable list -> t -> t
 
+    val display : output -> t -> string
   end
 end

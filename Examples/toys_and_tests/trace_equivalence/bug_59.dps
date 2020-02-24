@@ -1,0 +1,20 @@
+free c.
+
+fun sign/2.
+fun pk/1.
+
+reduc verify(sign(m, sk), m, pk(sk)) -> m.
+
+// Sign what is received on Channel c and
+// additionally pass public key back on c
+let ProcessA(c) =
+  in(c, msg);
+    new sk;
+    out(c, (sign(msg, sk), pk(sk))).
+
+// Simply receive and do nothing
+let ProcessB(c) =
+  in(c, msg).
+
+let Process = ProcessA(c) | ProcessB(c).
+query trace_equiv(Process, Process).

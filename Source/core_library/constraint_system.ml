@@ -338,13 +338,24 @@ let display_couple_list f (l1,l2) =
     (display_list f "," l1)
     (display_list f "," l2)
 
+let display_history_skeleton tab hist =
+  let str = Printf.sprintf "Symb = %s / Fst vars = %s / Snd vars = %s / Mixed diseq = %s"
+    (Symbol.display Terminal hist.destructor)
+    (display_list (Variable.display Terminal) "," hist.fst_vars)
+    (display_list (Recipe_Variable.display ~display_type:true ~label:"X" Terminal) "," hist.snd_vars)
+    (Formula.M.display Terminal hist.diseq)
+  in
+
+  display_with_tab tab str
+
 let display_rule_data tab data =
   display_object tab None [
     "skeletons_K", (display_couple_list (fun (x1,x2) -> Printf.sprintf "(%d,%d)" x1 x2) data.skeletons_K);
     "skeletons_IK", (display_couple_list (fun (x1,x2) -> Printf.sprintf "(%d,%d)" x1 x2) data.skeletons_IK);
     "equality_cons_K", (display_couple_list string_of_int data.equality_constructor_K);
     "equality_cons_IK", (display_couple_list string_of_int data.equality_constructor_IK);
-    "normalisation_checked", string_of_bool data.normalisation_deduction_checked
+    "normalisation_checked", string_of_bool data.normalisation_deduction_checked;
+    "history_skeleton", ("\n"^(display_list (display_history_skeleton (tab+1)) "" data.history_skeleton))
   ]
 
 let display_constraint_system tab kbr csys =
@@ -1665,8 +1676,8 @@ module Rule = struct
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Sat equality formula : Nb csys no_formula = %d, Nb csys solved = %d, Nb csys unsolved = %d"
         (List.length csys_set.satf_no_formula) (List.length csys_set.satf_solved) (List.length csys_set.satf_unsolved)
       );
-      Set.debug_check_structure "[Sat equality_formula]" { set = csys_set.satf_no_formula @ csys_set.satf_solved @ csys_set.satf_unsolved; eq_recipe = csys_set.satf_eq_recipe; knowledge_recipe = csys_set.satf_knowledge_recipe };
-
+      let csys_set = { set = csys_set.satf_no_formula @ csys_set.satf_solved @ csys_set.satf_unsolved; eq_recipe = csys_set.satf_eq_recipe; knowledge_recipe = csys_set.satf_knowledge_recipe } in
+      Set.debug_check_structure "[Sat equality_formula]" csys_set
     );
     let rec internal no_eq_csys eq_fact_csys eq_form_csys eq_rec vars_df_ref f_next_1 = match exploration_sat_equality_formula ~universal:universal csys_set.satf_knowledge_recipe eq_rec no_eq_csys eq_fact_csys eq_form_csys with
       | None, no_eq_csys_1, eq_fact_csys_1 ->
@@ -1738,12 +1749,11 @@ module Rule = struct
           then csys
           else { csys with unsolved_facts = UF.normalise_deductions csys.unsolved_facts }
         in
-        match UF.get_deduction_formula_option csys.unsolved_facts with
+        match UF.get_deduction_formula_option new_csys_1.unsolved_facts with
           | None, true ->
               exploration_sat_deduction_formula false no_ded_csys (new_csys_1::ded_fact_csys) q
           | None, false ->
-              let new_csys_2 = { new_csys_1 with unsolved_facts = UF.set_no_deduction new_csys_1.unsolved_facts } in
-              exploration_sat_deduction_formula false (new_csys_2::no_ded_csys) ded_fact_csys q
+              exploration_sat_deduction_formula false (new_csys_1::no_ded_csys) ded_fact_csys q
           | Some [], _ ->  Config.internal_error "[constraint_system.ml >> Rule.exploration_sat_deduction_formula] It should not be any empty list."
           | Some (form::form_list), _ -> Some(new_csys_1,form,form_list,q), no_ded_csys, ded_fact_csys
 
@@ -1759,7 +1769,8 @@ module Rule = struct
     Config.debug (fun () ->
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Sat deduction formula : Nb csys no_formula = %d, Nb csys solved = %d, Nb csys unsolved = %d"
         (List.length csys_set.satf_no_formula) (List.length csys_set.satf_solved) (List.length csys_set.satf_unsolved));
-      Set.debug_check_structure "[sat_deduction_formula]" { set = csys_set.satf_no_formula @ csys_set.satf_solved @ csys_set.satf_unsolved; eq_recipe = csys_set.satf_eq_recipe; knowledge_recipe = csys_set.satf_knowledge_recipe };
+      let csys_set = { set = csys_set.satf_no_formula @ csys_set.satf_solved @ csys_set.satf_unsolved; eq_recipe = csys_set.satf_eq_recipe; knowledge_recipe = csys_set.satf_knowledge_recipe } in
+      Set.debug_check_structure "[sat_deduction_formula]" csys_set
     );
     let rec internal no_ded_csys ded_fact_csys ded_form_csys data f_next_1 = match exploration_sat_deduction_formula data.dsd_head_normalised no_ded_csys ded_fact_csys ded_form_csys with
       | None, no_ded_csys_1, ded_fact_csys_1 ->
@@ -1823,10 +1834,10 @@ module Rule = struct
             if ded_form_list = []
             then
               let new_csys = { csys with unsolved_facts = UF.set_no_deduction csys.unsolved_facts } in
-              internal (new_csys::no_ded_csys) ded_fact_csys ded_form_csys { data with dsd_eq_rec = eq_rec'; dsd_head_normalised = false } f_next_1
+              internal (new_csys::no_ded_csys_1) ded_fact_csys_1 ded_form_csys_1 { data with dsd_eq_rec = eq_rec'; dsd_head_normalised = false } f_next_1
             else
               let new_csys = { csys with unsolved_facts = UF.replace_deduction_formula csys.unsolved_facts ded_form_list } in
-              internal no_ded_csys ded_fact_csys (new_csys::ded_form_csys) { data with dsd_eq_rec = eq_rec'; dsd_head_normalised = true } f_next_1
+              internal no_ded_csys_1 ded_fact_csys_1 (new_csys::ded_form_csys_1) { data with dsd_eq_rec = eq_rec'; dsd_head_normalised = true } f_next_1
           )
     in
 
@@ -2110,7 +2121,7 @@ module Rule = struct
   let rec normalisation_deduction_consequence f_continuation csys_set f_next =
     Config.debug (fun () ->
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Rule normalisation_deduction_consequence : Nb csys = %d" (List.length csys_set.set));
-      Set.debug_check_structure "[Normalisation deduction consequence]" csys_set;
+      Set.debug_check_structure "[Normalisation deduction consequence]" csys_set
     );
     if csys_set.set = []
     then f_next ()
