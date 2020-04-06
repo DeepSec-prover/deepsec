@@ -264,8 +264,8 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
             let origin_process = csys.Constraint_system.additional_data.origin_process in
             if List.for_all (fun csys -> csys.Constraint_system.additional_data.origin_process = origin_process) csys_list
             then
-              let (att_conf,att_action) = find_one_action equiv_pbl.size_frame csys.additional_data.configuration in
-              apply_single_faulty csys csys.additional_data att_conf att_action
+              let (att_conf,att_action) = find_one_action equiv_pbl.size_frame csys.Constraint_system.additional_data.configuration in
+              apply_single_faulty csys csys.Constraint_system.additional_data att_conf att_action
             else
               let csys_left, csys_right =
                 Config.debug (fun () ->
@@ -419,8 +419,8 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                   let origin_process = csys.Constraint_system.additional_data.origin_process in
                   if List.for_all (fun csys -> csys.Constraint_system.additional_data.origin_process = origin_process) csys_list
                   then
-                    let (att_conf,att_action) = find_one_action equiv_pbl.size_frame csys.additional_data.configuration in
-                    apply_single_faulty csys csys.additional_data att_conf att_action
+                    let (att_conf,att_action) = find_one_action equiv_pbl.size_frame csys.Constraint_system.additional_data.configuration in
+                    apply_single_faulty csys csys.Constraint_system.additional_data att_conf att_action
                   else
                     let complete_blocks_1 = match equiv_pbl.ongoing_block with
                       | None -> Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] Ongoing blocks should exists"
@@ -567,8 +567,8 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
             let origin_process = csys.Constraint_system.additional_data.origin_process in
             if List.for_all (fun csys -> csys.Constraint_system.additional_data.origin_process = origin_process) csys_list
             then
-              let (att_conf,att_action) = find_one_action equiv_pbl.size_frame csys.additional_data.configuration in
-              apply_single_faulty csys csys.additional_data att_conf att_action
+              let (att_conf,att_action) = find_one_action equiv_pbl.size_frame csys.Constraint_system.additional_data.configuration in
+              apply_single_faulty csys csys.Constraint_system.additional_data att_conf att_action
             else
               let csys_left, csys_right =
                 Config.debug (fun () ->
