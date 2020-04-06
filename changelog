@@ -1,6 +1,15 @@
 This file summarizes the most important changes between versions
 of DeepSec.
 
+Version 2.0.0 beta5 (06/04/2020)
+  - Fix a bug in session equivalence when dealing with improper block. Would raise
+    an internal error.
+  - Fix a bug in determinate equivalence which would not display the proper attack
+    trace when the processes contain only trivial else branches.
+
+Version 2.0.0 beta4 (24/02/2020)
+  - Fix a bug in the representation of formula on recipe.
+
 Version 2.0.0 beta2 (29/01/2020)
   - Fix a bug in session equivalence that prevented the function authorised block
     to be applied correctly.

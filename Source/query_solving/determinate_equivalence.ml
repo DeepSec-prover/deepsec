@@ -133,18 +133,20 @@ type result_skeleton =
   | Faulty of bool * configuration * action
   | FocusNil
 
+let apply_single_faulty wit_csys wit_symb_proc att_conf att_action = match att_action with
+  | FOutput(ax,t) ->
+      let wit_csys_1 = Constraint_system.add_axiom wit_csys ax t in
+      let wit_csys_2 = { wit_csys_1 with Constraint_system.additional_data = { wit_symb_proc with configuration = att_conf } } in
+      raise (Not_Trace_Equivalent (generate_attack_trace wit_csys_2))
+  | FInput(var_X,t) ->
+      let ded_fact_term = { Data_structure.bf_var = var_X; Data_structure.bf_term = t } in
+      let wit_csys_1 = Constraint_system.add_basic_facts wit_csys [ded_fact_term] in
+      let wit_csys_2 = { wit_csys_1 with Constraint_system.additional_data = { wit_symb_proc with configuration = att_conf } } in
+      raise (Not_Trace_Equivalent (generate_attack_trace wit_csys_2))
+
 let apply_faulty (csys_left,symb_left) (csys_right,symb_right) is_left f_conf f_action =
   let wit_csys, symb_proc = if is_left then csys_left, symb_left else csys_right, symb_right in
-  match f_action with
-    | FOutput(ax,t) ->
-        let wit_csys_1 = Constraint_system.add_axiom wit_csys ax t in
-        let wit_csys_2 = { wit_csys_1 with Constraint_system.additional_data = { symb_proc with configuration = f_conf } } in
-        raise (Not_Trace_Equivalent (generate_attack_trace wit_csys_2))
-    | FInput(var_X,t) ->
-        let ded_fact_term = { Data_structure.bf_var = var_X; Data_structure.bf_term = t } in
-        let wit_csys_1 = Constraint_system.add_basic_facts wit_csys [ded_fact_term] in
-        let wit_csys_2 = { wit_csys_1 with Constraint_system.additional_data = { symb_proc with configuration = f_conf } } in
-        raise (Not_Trace_Equivalent (generate_attack_trace wit_csys_2))
+  apply_single_faulty wit_csys symb_proc f_conf f_action
 
 let nb_apply_one_transition_and_rules = ref 0
 
@@ -261,7 +263,9 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
             let csys = List.hd csys_list in
             let origin_process = csys.Constraint_system.additional_data.origin_process in
             if List.for_all (fun csys -> csys.Constraint_system.additional_data.origin_process = origin_process) csys_list
-            then raise (Not_Trace_Equivalent (generate_attack_trace csys))
+            then
+              let (att_conf,att_action) = find_one_action equiv_pbl.size_frame csys.additional_data.configuration in
+              apply_single_faulty csys csys.additional_data att_conf att_action
             else
               let csys_left, csys_right =
                 Config.debug (fun () ->
@@ -414,7 +418,9 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                   let csys = List.hd csys_list in
                   let origin_process = csys.Constraint_system.additional_data.origin_process in
                   if List.for_all (fun csys -> csys.Constraint_system.additional_data.origin_process = origin_process) csys_list
-                  then raise (Not_Trace_Equivalent (generate_attack_trace csys))
+                  then
+                    let (att_conf,att_action) = find_one_action equiv_pbl.size_frame csys.additional_data.configuration in
+                    apply_single_faulty csys csys.additional_data att_conf att_action
                   else
                     let complete_blocks_1 = match equiv_pbl.ongoing_block with
                       | None -> Config.internal_error "[equivalence_determinate.ml >> apply_one_transition_and_rules] Ongoing blocks should exists"
@@ -454,7 +460,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                         then FocusNil
                         else OK (cl,cr,input_added)
                       with
-                      | Faulty_skeleton (is_left,f_conf,f_action) -> Faulty (is_left,f_conf,f_action)
+                        | Faulty_skeleton (is_left,f_conf,f_action) -> Faulty (is_left,f_conf,f_action)
                     in
 
                     match result_skel_test with
@@ -561,10 +567,8 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
             let origin_process = csys.Constraint_system.additional_data.origin_process in
             if List.for_all (fun csys -> csys.Constraint_system.additional_data.origin_process = origin_process) csys_list
             then
-              begin
-                Config.log Config.Process  (fun () -> "Attack trace found due not deepsec solving");
-                raise (Not_Trace_Equivalent (generate_attack_trace csys))
-              end
+              let (att_conf,att_action) = find_one_action equiv_pbl.size_frame csys.additional_data.configuration in
+              apply_single_faulty csys csys.additional_data att_conf att_action
             else
               let csys_left, csys_right =
                 Config.debug (fun () ->

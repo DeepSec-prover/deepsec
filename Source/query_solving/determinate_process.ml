@@ -1013,6 +1013,32 @@ let rec exists_output = function
   | SParMult pl -> List.exists (fun (_,p) -> exists_output p) pl
   | _ -> Config.internal_error "[process_determinate.ml >> exists_output] The process should be normalised."
 
+let retrieve_action size_frame conf = function
+  | SOutput(c,t,_,pos,_) ->
+      let axiom = size_frame + 1 in
+      let f_action = FOutput (axiom, t) in
+      let f_conf = { conf with trace = TrOutput(c,pos) :: conf.trace } in
+      (f_conf,f_action)
+  | SInput(c,x,_,pos,_) ->
+      let var_X = Recipe_Variable.fresh Free size_frame in
+      let f_action = FInput (var_X, Var x) in
+      let f_conf = { conf with trace = TrInput(c,var_X,pos) :: conf.trace } in
+      (f_conf,f_action)
+  | _ -> Config.internal_error "[process_determinate.ml >> retrieve_action] Should only contain inputs and outputs."
+
+let find_one_action size_frame conf = match conf.focused_proc with
+  | None -> Config.internal_error "[process_determinate.ml >> find_one_action] Should only be call on a configuration with a focused process (i.e. after start or in transition)"
+  | Some p ->
+      let rec get_one p = match p with
+        | SOutput _
+        | SInput _ -> p
+        | SNil -> Config.internal_error "[process_determinate.ml >> find_one_action] Should not be applied on a nil process."
+        | SPar (p::_) -> get_one p
+        | SParMult ((_,p)::_) ->  get_one p
+        | _ -> Config.internal_error "[process_determinate.ml >> find_one_action] Processes are not of the expected form after normalisation."
+      in
+      retrieve_action size_frame conf (get_one p.proc)
+
 let find_faulty_skeleton_det size_frame conf1 conf2 p1 p2 =
   Config.debug (fun () ->
     if p1.label_p <> p2.label_p
@@ -1034,36 +1060,24 @@ let find_faulty_skeleton_det size_frame conf1 conf2 p1 p2 =
   let ordered_list_1 = List.fast_sort compare_normalised_process list_1 in
   let ordered_list_2 = List.fast_sort compare_normalised_process list_2 in
 
-  let retrieve_action conf = function
-    | SOutput(c,t,_,pos,_) ->
-        let axiom = size_frame + 1 in
-        let f_action = FOutput (axiom, t) in
-        let f_conf = { conf with trace = TrOutput(c,pos) :: conf.trace } in
-        (f_conf,f_action)
-    | SInput(c,x,_,pos,_) ->
-        let var_X = Recipe_Variable.fresh Free size_frame in
-        let f_action = FInput (var_X, Var x) in
-        let f_conf = { conf with trace = TrInput(c,var_X,pos) :: conf.trace } in
-        (f_conf,f_action)
-    | _ -> Config.internal_error "[process_determinate.ml >> find_faulty_skeleton_det] Should only contain inputs and outputs."
-  in
+
 
   let rec find_different pl1 pl2 = match pl1, pl2 with
     | [], [] -> Config.internal_error "[process_determinate.ml >> find_faulty_skeleton_det] The ordered lists should not have the same skeletons."
     | [], p2::_ ->
-        let (conf,action) = retrieve_action conf2 p2 in
+        let (conf,action) = retrieve_action size_frame conf2 p2 in
         (false,conf,action)
     | p1::_ , [] ->
-        let (conf,action) = retrieve_action conf1 p1 in
+        let (conf,action) = retrieve_action size_frame  conf1 p1 in
         (true,conf,action)
     | p1::q1, p2::q2 ->
         begin match compare_normalised_process p1 p2 with
           | 0 -> find_different q1 q2
           | -1 ->
-              let (conf,action) = retrieve_action conf1 p1 in
+              let (conf,action) = retrieve_action size_frame  conf1 p1 in
               (true,conf,action)
           | _ ->
-              let (conf,action) = retrieve_action conf2 p2 in
+              let (conf,action) = retrieve_action size_frame conf2 p2 in
               (true,conf,action)
         end
   in

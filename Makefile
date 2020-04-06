@@ -1,5 +1,5 @@
 NAME_PROGRAMME = DeepSec
-VERSION = 2.0.0-beta4
+VERSION = 2.0.0-beta5
 SOURCE = Source/
 SCRIPTS = script/
 

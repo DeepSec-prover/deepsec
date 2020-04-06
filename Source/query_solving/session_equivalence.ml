@@ -344,7 +344,6 @@ module Bijection_set = struct
           then { perm with perm_matching = perm_matching' } :: q_bset
           else { perm with perm_matching = perm_matching' } :: (check_and_remove_exists (cur_index+1) q_i exists_imp' q_bset)
         else raise Not_found
-
 end
 
 let iter_forall_both f gen_trans =
@@ -361,6 +360,14 @@ type selected_transition_debug =
   | SDInput of position option
   | SDOutput of position option
   | SDComm of (position * position) option
+
+let display_configuration_link = function
+  | CNoLink -> "CNoLink"
+  | CCsys _ -> "CCsys"
+  | CSearch -> "CSearch"
+  | CTransition _ -> "CTransition"
+  | CChannelPriority _ -> "CChannelPriority"
+  | CImproperInputs _ -> "CImproperInputs"
 
 let display_matching_status = function
   | Configuration.ForAll -> "Forall"
@@ -577,7 +584,7 @@ let debug_forall_exists_matched msg forall_set =
             if List.for_all (fun (e_csys,_) -> csys != e_csys) f_csys'.Constraint_system.additional_data.exists_matched
             then Config.internal_error (msg^": A constraint system csys1 has a csys2 in its forall_matched but csys2 does not have csys1 in its exists_matched.")
           ) symb_conf.forall_matched
-    | _ -> Config.internal_error (msg^": The constraint systems should not have been linked.")
+      | _ -> Config.internal_error (msg^": The constraint systems should not have been linked - "^(display_configuration_link symb_conf.link_c))
   in
 
   auto_cleanup_symbolic_configuration (fun () ->
@@ -1068,7 +1075,9 @@ let compute_before_focus_phase equiv_pbl =
   with Not_found ->
     (* Clean and restaure *)
     List.iter (fun symb -> match symb.link_c with
-      | CImproperInputs(_,conf) -> symb.configuration <- conf
+      | CImproperInputs(_,conf) ->
+          symb.configuration <- conf;
+          symb.link_c <- CNoLink
       | CNoLink -> Config.internal_error "[session_equivalence.ml >> compute_before_focus_phase] Symbolic configuration should be link."
       | CCsys _ -> Config.internal_error "[session_equivalence.ml >> compute_before_focus_phase] Unexpected link : CCsys"
       | CSearch -> Config.internal_error "[session_equivalence.ml >> compute_before_focus_phase] Unexpected link : CSearch"
@@ -1458,7 +1467,7 @@ let apply_focus_phase equiv_pbl f_continuation f_next =
             else symb_conf.link_c <- CTransition gen_trans;
             gen_trans
         | CTransition gen_trans -> gen_trans
-        | CImproperInputs _ -> Config.internal_error "[session_equivalence.ml >> apply_focus_phase.generate_transitions] Unexpected link : CCsys"
+        | CImproperInputs _ -> Config.internal_error "[session_equivalence.ml >> apply_focus_phase.generate_transitions] Unexpected link : CImproperInputs"
         | CCsys _ -> Config.internal_error "[session_equivalence.ml >> apply_focus_phase.generate_transitions] Unexpected link : CCsys"
         | CSearch -> Config.internal_error "[session_equivalence.ml >> apply_focus_phase.generate_transitions] Unexpected link : CSearch"
     in

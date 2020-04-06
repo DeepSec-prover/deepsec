@@ -44,6 +44,8 @@ type action =
 
 exception Faulty_skeleton of bool * configuration * action
 
+val find_one_action : int -> configuration -> configuration * action
+
 val is_equal_skeleton_conf : int -> configuration -> configuration -> configuration * configuration * bool * bool
 
 val display_configuration : configuration -> string
