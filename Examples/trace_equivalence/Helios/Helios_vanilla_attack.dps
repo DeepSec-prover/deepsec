@@ -3,11 +3,10 @@
 fun aenc/3.
 fun pk/1.
 
-
 reduc adec(aenc(x,r,pk(y)),y) -> x.
 
 free ch.
-
+free bb, mn [private].
 free a,b,c.
 free yes,no.
 
@@ -37,8 +36,6 @@ let T(skT,mn) =
 let AyBn =
   new skT;
   let pkT = pk(skT) in
-  new bb;
-  new mn;
   out(ch,pkT);
   (
     V(a,yes,pkT,bb) | V(b,no,pkT,bb) | BB(bb,mn) | T(skT,mn)
@@ -47,8 +44,6 @@ let AyBn =
 let AnBy =
   new skT;
   let pkT = pk(skT) in
-  new bb;
-  new mn;
   out(ch, pkT);
   (
     V(a,no,pkT,bb) | V(b,yes,pkT,bb) | BB(bb,mn) | T(skT,mn)

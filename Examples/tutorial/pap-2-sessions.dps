@@ -5,8 +5,8 @@
                   {Nb}pub(B) otherwise
 *)
 
-free ca.
-free cb.
+free ca1,ca2.
+free cb1,cb2.
 free c.
 
 free ska, skb, skc [private].
@@ -52,7 +52,8 @@ let ProcessAB =
   out(c,pk(skb));
   out(c,pk(skc));
   (
-    processA(ca,ska,pk(skb)) | processB(cb,skb,pk(ska))
+    processA(ska,pk(skb)) | processB(skb,pk(ska)) | // B expects to talk to A
+    processA(ska,pk(skb)) | processB(skb,pk(ska))   // B expects to talk to A
   ).
 
 let ProcessCB =
@@ -60,8 +61,12 @@ let ProcessCB =
   out(c,pk(skb));
   out(c,pk(skc));
   (
-    processA(ca,skc,pk(skb)) | processB(cb,skb,pk(ska))
+    processA(skc,pk(skb)) | processB(skb,pk(skc)) | // B expects to talk to C
+    processA(ska,pk(skb)) | processB(skb,pk(ska))   // B expects to talk to A
   ).
 
 
 query trace_equiv(ProcessAB,ProcessCB).
+
+
+

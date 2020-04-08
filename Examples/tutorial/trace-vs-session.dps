@@ -1,0 +1,11 @@
+free c.
+
+const a.
+
+let P = out(c,a) ; out(c,a).
+let Q = out(c,a) | out(c,a).
+
+query trace_equiv(P,Q).
+query session_equiv(P,Q).
+
+
