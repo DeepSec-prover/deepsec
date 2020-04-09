@@ -1,4 +1,4 @@
-**_IMPORTANT NOTE:_** *All installation and usage information below can be found in the official [DeepSec website](https://deepsec-prover.github.io) with more details, a tutorial for the tool, and references to academic publications.*
+**_IMPORTANT NOTE:_** *All information below can be found in the official [DeepSec website](https://deepsec-prover.github.io) with more details, a tutorial for the tool, and references to academic publications. It is advised to refer to the website rather than this README.*
 
 # DeepSec: Deciding Equivalence Properties in Security Protocols
 
