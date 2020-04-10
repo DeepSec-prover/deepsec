@@ -116,3 +116,4 @@ let Process2 =
 
 
 query session_equiv(Process1,Process2).
+query trace_equiv(Process1,Process2).
