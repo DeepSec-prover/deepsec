@@ -1,0 +1,9 @@
+free c.
+
+fun f/2.
+fun g/1.
+reduc h(f(x,g(y))) -> g(y).
+
+let P = new k; out(c,f(c,g(k))).
+
+query trace_equiv(P,P).
