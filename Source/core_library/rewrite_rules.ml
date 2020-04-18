@@ -368,6 +368,16 @@ let rename_recipe_in_protocol_term (recipe:recipe) =
 
   explore_term recipe
 
+(* checks whether t1 is a syntactic subterm of t2. Assumes that rewrite
+rules do not contain names. *)
+let rec is_subterm t1 t2 = match t1, t2 with
+  | Var x, Var y -> x == y
+  | Var _, Func(_,l) -> List.exists (is_subterm t1) l
+  | Func _, Var _ -> false
+  | _, Func(_,l2) -> Term.is_equal t1 t2 || List.exists (is_subterm t1) l2
+  | Name _, _
+  | _, Name _ -> Config.internal_error "[rewrite_rules.ml >> is_subterm] rewrite rules should not contain names"
+
 let initialise_skeletons_destructor () =
   let accumulator = ref [] in
 
@@ -494,6 +504,8 @@ let initialise_skeletons_destructor () =
     then
       let bfct_r = { bf_var = Recipe_Variable.fresh Universal Recipe_Variable.infinite_type; bf_term = skel.rhs } in
       if
+        is_subterm skel.rhs skel.pos_term &&
+        not (Term.is_equal skel.rhs skel.pos_term) &&
         List.for_all (fun t ->
           match consequence_protocol_term (bfct_r::skel.basic_deduction_facts) t with
             | None -> false
@@ -886,16 +898,6 @@ let set_up_skeleton_settings settings =
 (***** Checking of subterm convergence *****)
 
 exception Not_subterm of term * term
-
-(* checks whether t1 is a syntactic subterm of t2. Assumes that rewrite
-rules do not contain names. *)
-let rec is_subterm t1 t2 = match t1, t2 with
-  | Var x, Var y -> x == y
-  | Var _, Func(_,l) -> List.exists (is_subterm t1) l
-  | Func _, Var _ -> false
-  | _, Func(_,l2) -> Term.is_equal t1 t2 || List.exists (is_subterm t1) l2
-  | Name _, _
-  | _, Name _ -> Config.internal_error "[rewrite_rules.ml >> is_subterm] rewrite rules should not contain names"
 
 (* checks whether a rewrite rule satisfies the subterm property *)
 let check_subterm_rule f (lhs,rhs) =

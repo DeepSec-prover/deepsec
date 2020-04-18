@@ -1770,7 +1770,10 @@ module Rule = struct
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Sat deduction formula : Nb csys no_formula = %d, Nb csys solved = %d, Nb csys unsolved = %d"
         (List.length csys_set.satf_no_formula) (List.length csys_set.satf_solved) (List.length csys_set.satf_unsolved));
       let csys_set = { set = csys_set.satf_no_formula @ csys_set.satf_solved @ csys_set.satf_unsolved; eq_recipe = csys_set.satf_eq_recipe; knowledge_recipe = csys_set.satf_knowledge_recipe } in
-      Set.debug_check_structure "[sat_deduction_formula]" csys_set
+      Set.debug_check_structure "[sat_deduction_formula]" csys_set;
+      List.iter (fun csys ->
+        Config.log_in_debug Config.Constraint_systems (display_constraint_system 1 csys_set.knowledge_recipe csys)
+      ) csys_set.set
     );
     let rec internal no_ded_csys ded_fact_csys ded_form_csys data f_next_1 = match exploration_sat_deduction_formula data.dsd_head_normalised no_ded_csys ded_fact_csys ded_form_csys with
       | None, no_ded_csys_1, ded_fact_csys_1 ->
@@ -2121,7 +2124,10 @@ module Rule = struct
   let rec normalisation_deduction_consequence f_continuation csys_set f_next =
     Config.debug (fun () ->
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Rule normalisation_deduction_consequence : Nb csys = %d" (List.length csys_set.set));
-      Set.debug_check_structure "[Normalisation deduction consequence]" csys_set
+      Set.debug_check_structure "[Normalisation deduction consequence]" csys_set;
+      List.iter (fun csys ->
+        Config.log_in_debug Config.Constraint_systems (display_constraint_system 1 csys_set.knowledge_recipe csys)
+      ) csys_set.set
     );
     if csys_set.set = []
     then f_next ()
@@ -2290,6 +2296,11 @@ module Rule = struct
     in
     explore (fun x -> x) skel_list
 
+  let rec remove_all_skeletons id_kb = function
+    | [] -> []
+    | (id_kb',_)::q when id_kb = id_kb' -> remove_all_skeletons id_kb q
+    | t::q -> t::(remove_all_skeletons id_kb q)
+
   let rec instantiate_infinite_variables is_for_ground_rule = function
     | RVar { link_r = RLink r; _ } -> instantiate_infinite_variables is_for_ground_rule r
     | RVar v when v.type_r = Recipe_Variable.infinite_type ->
@@ -2423,11 +2434,23 @@ module Rule = struct
                         if application_on_IK
                         then
                           let (skels_checked,skels_to_check) = csys.rule_data.skeletons_IK in
-                          { csys.rule_data with skeletons_IK = (skels_checked,remove_skeletons (index_kb,index_skel) skels_to_check) }
+                          if removal_allowed
+                          then
+                            let (skels_checked',skels_to_check') = (remove_all_skeletons index_kb skels_checked,remove_all_skeletons index_kb skels_to_check ) in
+                            { csys.rule_data with skeletons_IK = (skels_checked',skels_to_check') }
+                          else { csys.rule_data with skeletons_IK = (skels_checked,remove_skeletons (index_kb,index_skel) skels_to_check) }
                         else
                           let (skels_checked,skels_to_check) = csys.rule_data.skeletons_K in
                           { csys.rule_data with skeletons_K = (skels_checked,remove_skeletons (index_kb,index_skel) skels_to_check) }
-                      else { csys.rule_data with history_skeleton =  update_skeleton_history csys }
+                      else
+                        if removal_allowed
+                        then
+                          begin
+                            let (skels_checked,skels_to_check) = csys.rule_data.skeletons_IK in
+                            let (skels_checked',skels_to_check') = (remove_all_skeletons index_kb skels_checked,remove_all_skeletons index_kb skels_to_check ) in
+                            { csys.rule_data with history_skeleton =  update_skeleton_history csys; skeletons_IK = (skels_checked',skels_to_check') }
+                          end
+                        else { csys.rule_data with history_skeleton =  update_skeleton_history csys }
                     in
                     { csys with incremented_knowledge = new_ik; rule_data = rule_data }
                   ) csys_set_2.set
