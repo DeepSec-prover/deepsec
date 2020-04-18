@@ -1,6 +1,8 @@
+**_IMPORTANT NOTE:_** *All information below can be found in the official [DeepSec website](https://deepsec-prover.github.io) with more details, a tutorial for the tool, and references to academic publications. It is advised to refer to the website rather than this README.*
+
 # DeepSec: Deciding Equivalence Properties in Security Protocols
 
-Automated verification has become an essential part in the security evaluation of cryptographic protocols. Recently, there has been a considerable effort to lift the theory and tool support that existed for reachability properties to the more complex case of equivalence properties. **DeepSec** allows you to decide trace equivalence and session equivalence for a large variety of cryptographic primitives---those that can be represented by a subterm convergent destructor rewrite system. 
+Automated verification has become an essential part in the security evaluation of cryptographic protocols. Recently, there has been a considerable effort to lift the theory and tool support that existed for reachability properties to the more complex case of equivalence properties. **DeepSec** allows you to decide trace equivalence and session equivalence for a large variety of cryptographic primitives---those that can be represented by a subterm convergent destructor rewrite system.
 
 ## How to install DeepSec?
 

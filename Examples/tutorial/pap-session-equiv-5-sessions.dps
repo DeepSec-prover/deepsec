@@ -1,0 +1,77 @@
+(* Private Authentication Protocol
+
+ 1. A -> B: {Na, pub(A)}pub(B)
+ 2. B -> A: {Na, Nb,pub(B)}pub(A) if B wants to communicate with A
+                  {Nb}pub(B) otherwise
+*)
+
+free c.
+
+free ski.
+free ska, skb, skc [private].
+
+fun aenc/2.
+fun pk/1.
+
+reduc adec(aenc(x,pk(y)),y) -> x.
+
+/*
+    Description of role A played:
+ - on channel ca
+ - by the agent with private key ska
+ - with the agent with public key pkb
+*/
+
+let processA(ska,pkb) =
+  new na;
+  out(c,aenc((na,pk(ska)),pkb));
+  in(c,x).
+
+
+/*
+    Description of role B played:
+ - on channel cb
+ - by the agent with private key skb
+ - with the agent with public key pka
+*/
+
+let processB(skb,pka) =
+  in(c,yb);
+  new nb;
+  let (yna,=pka) = adec(yb,skb) in
+    out(c,aenc((yna,nb,pk(skb)),pka))
+  else out(c,aenc(nb,pk(skb))).
+
+/*
+ Main
+*/
+
+let ProcessAB =
+  out(c,pk(ska));
+  out(c,pk(skb));
+  out(c,pk(skc));
+  (
+    processA(ska,pk(skb)) | processB(skb,pk(ska)) | // B expects to talk to A
+    processA(ska,pk(skb)) | processB(skb,pk(ska)) | // B expects to talk to A
+    processA(skc,pk(ska)) | processB(ska,pk(skc)) | // A expects to talk to C 
+    processA(ska,pk(ski)) |                         // I (intruder) expects to talk to A
+    processB(skb,pk(ski))                           // B expects to talk to I
+  ).
+
+let ProcessCB =
+  out(c,pk(ska));
+  out(c,pk(skb));
+  out(c,pk(skc));
+  (
+    processA(skc,pk(skb)) | processB(skb,pk(skc)) | // B expects to talk to C
+    processA(ska,pk(skb)) | processB(skb,pk(ska)) | // B expects to talk to A
+    processA(skc,pk(ska)) | processB(ska,pk(skc)) | // A expects to talk to C 
+    processA(ska,pk(ski)) |                         // I (intruder) expects to talk to A
+    processB(skb,pk(ski))                           // B expects to talk to I
+  ).
+
+
+query session_equiv(ProcessAB,ProcessCB).
+
+
+
