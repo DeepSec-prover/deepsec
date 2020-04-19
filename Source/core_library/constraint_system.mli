@@ -91,7 +91,7 @@ val instantiate : 'a t -> 'a t
 
 val link_deducible_name : 'a t -> unit
 
-val debug_on_constraint_system : string -> 'a t -> unit
+val debug_on_constraint_system : string -> ?solved:bool -> 'a t -> unit
 
 val display_constraint_system : int -> KR.t -> 'a t -> string
 

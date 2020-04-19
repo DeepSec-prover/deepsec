@@ -1,6 +1,9 @@
 This file summarizes the most important changes between versions
 of DeepSec.
 
+Version 2.0.0 beta7 (19/04/2020)
+  - Fix a bug in the constraint solving when working on deduction formula.
+
 Version 2.0.0 beta6 (18/04/2020)
   - Fix a bug in the constraint solving when a rewrite rule can be allow a deduction
     fact to be removed from the incremental knowledge.

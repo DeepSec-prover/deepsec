@@ -357,7 +357,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
                 let symb_proc = csys.Constraint_system.additional_data in
 
                 Config.debug (fun () ->
-                  Constraint_system.debug_on_constraint_system "[determinate_equivalence >> StartIn]" csys
+                  Constraint_system.debug_on_constraint_system ~solved:false "[determinate_equivalence >> StartIn]" csys
                 );
 
                 Variable.auto_cleanup_with_reset_notail (fun () ->

@@ -382,8 +382,10 @@ let debug_check_origination msg csys =
     )
   with Not_found -> Config.internal_error (msg^" Origination incorrect")
 
-let debug_on_constraint_system msg csys =
+let debug_on_constraint_system msg ?(solved=true) csys =
   DF.debug msg csys.deduction_facts;
+  if solved && not (DF.is_solved csys.deduction_facts)
+  then Config.internal_error (msg^" The constraint system should be solved.");
   debug_check_origination msg csys;
   if not (Formula.T.debug_no_linked_variables csys.eq_term)
   then Config.internal_error (msg^" Variables in eq_term should not be linked.");
@@ -513,30 +515,43 @@ module MGS = struct
       SFNone
 
   let simple_of_deduction_formula csys kbr eq_recipe form =
-    try
-      List.iter (fun (v,t) -> Term.unify (Var v) t) form.df_equations;
+    let tmp = !Variable.currently_linked in
+    Variable.currently_linked := [];
 
-      List.iter (fun v -> Term.replace_universal_to_existential (Var v)) !Variable.currently_linked;
+    let result =
+      try
+        List.iter (fun (v,t) -> Term.unify (Var v) t) form.df_equations;
 
-      let eq_term = Formula.T.instantiate_and_normalise csys.eq_term in
-      if Formula.T.Bot = eq_term
-      then None
-      else
-        let eq_uni = Formula.T.instantiate_and_normalise csys.eq_uniformity in
-        if Formula.T.Bot = eq_uni
+        List.iter (fun v -> Term.replace_universal_to_existential (Var v)) !Variable.currently_linked;
+
+        let eq_term = Formula.T.instantiate_and_normalise csys.eq_term in
+        if Formula.T.Bot = eq_term
         then None
         else
-          Some {
-            simp_deduction_facts = csys.deduction_facts;
-            simp_knowledge_recipe = kbr;
-            simp_knowledge = csys.knowledge;
-            simp_incremented_knowledge = csys.incremented_knowledge;
-            simp_eq_term = eq_term;
-            simp_eq_recipe = eq_recipe;
-            simp_eq_uniformity = eq_uni;
-            simp_eq_skeleton = Formula.M.Top
-          }
-    with Term.Not_unifiable -> None
+          let eq_uni = Formula.T.instantiate_and_normalise csys.eq_uniformity in
+          if Formula.T.Bot = eq_uni
+          then None
+          else
+            Some {
+              simp_deduction_facts = csys.deduction_facts;
+              simp_knowledge_recipe = kbr;
+              simp_knowledge = csys.knowledge;
+              simp_incremented_knowledge = csys.incremented_knowledge;
+              simp_eq_term = eq_term;
+              simp_eq_recipe = eq_recipe;
+              simp_eq_uniformity = eq_uni;
+              simp_eq_skeleton = Formula.M.Top
+            }
+      with Term.Not_unifiable -> None
+    in
+    if result = None
+    then
+      begin
+        List.iter (fun v -> v.link <- NoLink) !Variable.currently_linked;
+        Variable.currently_linked := tmp;
+        None
+      end
+    else result
 
   type result_simple_of_skeleton =
     | RSSNone
@@ -1462,11 +1477,12 @@ module Rule = struct
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Rule Sat (%d): Nb csys = %d" !debug_sat_index (List.length csys_set.set));
       Set.debug_check_structure "[Sat]" csys_set;
       List.iter (fun csys ->
-        debug_on_constraint_system "[Rule Sat]" csys;
+        debug_on_constraint_system "[Rule Sat]" ~solved:false csys;
         if not (Formula.T.debug_no_linked_variables csys.eq_term)
         then Config.internal_error "[constraint_system.ml >> sat] Variables in eq_term should not be linked.";
         if not (Formula.T.debug_no_linked_variables csys.eq_uniformity)
         then Config.internal_error "[constraint_system.ml >> sat] Variables in eq_uniformity should not be linked.";
+        Config.log_in_debug Config.Constraint_systems ("Eq recipe = "^(Formula.R.display Terminal csys_set.eq_recipe));
         Config.log_in_debug Config.Constraint_systems (display_constraint_system 1 csys_set.knowledge_recipe csys)
       ) csys_set.set
     );
@@ -1483,9 +1499,9 @@ module Rule = struct
           in
 
           Config.debug (fun () ->
-            debug_on_constraint_system "[Rule Sat >> internal >> Found unsolved csys]" csys;
-            List.iter (fun csys' -> debug_on_constraint_system "[Rule Sat >> internal >> Found unsolved csys]" csys') checked_csys_1;
-            List.iter (fun csys' -> debug_on_constraint_system "[Rule Sat >> internal >> Found unsolved csys]" csys') to_check_csys_1;
+            debug_on_constraint_system "[Rule Sat >> internal >> Found unsolved csys]" ~solved:false csys;
+            List.iter (fun csys' -> debug_on_constraint_system "[Rule Sat >> internal >> Found unsolved csys]" ~solved:false csys') checked_csys_1;
+            List.iter (fun csys' -> debug_on_constraint_system "[Rule Sat >> internal >> Found unsolved csys]" ~solved:false csys') to_check_csys_1;
           );
 
           MGS.compute_all simple_csys (fun mgs_data f_next_2 ->
@@ -1512,8 +1528,8 @@ module Rule = struct
             ) f_next_2
           ) (fun () ->
             Config.debug (fun () ->
-              List.iter (fun csys' -> debug_on_constraint_system "[Rule Sat >> internal >> After compute all >> Negation Checked]" csys') checked_csys_1;
-              List.iter (fun csys' -> debug_on_constraint_system "[Rule Sat >> internal >> After compute all >> Negation To Check]" csys') to_check_csys_1
+              List.iter (fun csys' -> debug_on_constraint_system "[Rule Sat >> internal >> After compute all >> Negation Checked]" ~solved:false csys') checked_csys_1;
+              List.iter (fun csys' -> debug_on_constraint_system "[Rule Sat >> internal >> After compute all >> Negation To Check]" ~solved:false csys') to_check_csys_1
             );
             if !accu_neg_eq_recipe = []
             then internal checked_csys_1 to_check_csys_1 eq_rec (Some vars_df) f_next_1 (* Implies that no MGS was found. *)
@@ -1539,6 +1555,7 @@ module Rule = struct
     Config.debug (fun () ->
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Rule Sat disequation (%d): Nb csys = %d" !debug_sat_index (List.length csys_set.set));
       Set.debug_check_structure "[Sat disequation]" csys_set;
+      List.iter (debug_on_constraint_system ~solved:true "[sat_disequation]") csys_set.set;
       List.iter (fun csys ->
         if not (Formula.T.debug_no_linked_variables csys.eq_term)
         then Config.internal_error "[constraint_system.ml >> sat_disequation] Variables in eq_term should not be linked.";
@@ -1677,6 +1694,7 @@ module Rule = struct
         (List.length csys_set.satf_no_formula) (List.length csys_set.satf_solved) (List.length csys_set.satf_unsolved)
       );
       let csys_set = { set = csys_set.satf_no_formula @ csys_set.satf_solved @ csys_set.satf_unsolved; eq_recipe = csys_set.satf_eq_recipe; knowledge_recipe = csys_set.satf_knowledge_recipe } in
+      List.iter (debug_on_constraint_system ~solved:true "[Sat equality_formula]") csys_set.set;
       Set.debug_check_structure "[Sat equality_formula]" csys_set
     );
     let rec internal no_eq_csys eq_fact_csys eq_form_csys eq_rec vars_df_ref f_next_1 = match exploration_sat_equality_formula ~universal:universal csys_set.satf_knowledge_recipe eq_rec no_eq_csys eq_fact_csys eq_form_csys with
@@ -1771,6 +1789,8 @@ module Rule = struct
         (List.length csys_set.satf_no_formula) (List.length csys_set.satf_solved) (List.length csys_set.satf_unsolved));
       let csys_set = { set = csys_set.satf_no_formula @ csys_set.satf_solved @ csys_set.satf_unsolved; eq_recipe = csys_set.satf_eq_recipe; knowledge_recipe = csys_set.satf_knowledge_recipe } in
       Set.debug_check_structure "[sat_deduction_formula]" csys_set;
+      List.iter (debug_on_constraint_system ~solved:true "[sat_deduction_formula]") csys_set.set;
+      Config.log_in_debug Config.Constraint_systems ("Eq recipe = "^(Formula.R.display Terminal csys_set.eq_recipe));
       List.iter (fun csys ->
         Config.log_in_debug Config.Constraint_systems (display_constraint_system 1 csys_set.knowledge_recipe csys)
       ) csys_set.set
@@ -1914,6 +1934,7 @@ module Rule = struct
     Config.debug (fun () ->
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Rule split data constructor : Nb csys = %d" (List.length csys_set.set));
       Set.debug_check_structure "[Split data constructor]" csys_set;
+      List.iter (debug_on_constraint_system ~solved:true "[split_data_constructor]") csys_set.set;
       List.iter (fun csys -> Config.log_in_debug Config.Constraint_systems (display_constraint_system 1 csys_set.knowledge_recipe csys)) csys_set.set
     );
     match csys_set.set with
@@ -1987,6 +2008,7 @@ module Rule = struct
     Config.debug (fun () ->
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Rule equality_knowledge_base : Nb csys = %d" (List.length csys_set.set));
       Set.debug_check_structure "[Equality knowledge base]" csys_set;
+      Config.log_in_debug Config.Constraint_systems ("Eq recipe = "^(Formula.R.display Terminal csys_set.eq_recipe));
       List.iter (fun csys ->
         debug_on_constraint_system "[equality_knowledge_base]" csys;
         Config.log_in_debug Config.Constraint_systems (display_constraint_system 1 csys_set.knowledge_recipe csys)
@@ -2125,6 +2147,8 @@ module Rule = struct
     Config.debug (fun () ->
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Rule normalisation_deduction_consequence : Nb csys = %d" (List.length csys_set.set));
       Set.debug_check_structure "[Normalisation deduction consequence]" csys_set;
+      List.iter (debug_on_constraint_system ~solved:true "[normalisation_deduction_consequence]") csys_set.set;
+      Config.log_in_debug Config.Constraint_systems ("Eq recipe = "^(Formula.R.display Terminal csys_set.eq_recipe));
       List.iter (fun csys ->
         Config.log_in_debug Config.Constraint_systems (display_constraint_system 1 csys_set.knowledge_recipe csys)
       ) csys_set.set
@@ -2388,7 +2412,12 @@ module Rule = struct
   let rewrite f_continuation csys_set f_next =
     Config.debug (fun () ->
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Rule Rewrite : Nb csys = %d" (List.length csys_set.set));
+      Config.log_in_debug Config.Constraint_systems ("Eq recipe = "^(Formula.R.display Terminal csys_set.eq_recipe));
+      List.iter (fun csys ->
+        Config.log_in_debug Config.Constraint_systems (display_constraint_system 1 csys_set.knowledge_recipe csys)
+      ) csys_set.set;
       Set.debug_check_structure "[Rewrite]" csys_set;
+      List.iter (debug_on_constraint_system ~solved:true "[Rewrite]") csys_set.set
     );
     let rec internal eq_recipe vars_df_ref checked_csys to_check_csys f_next_0 =
       Symbol.auto_cleanup_attacker_name (fun f_next_1 ->
@@ -2519,11 +2548,21 @@ module Rule = struct
                             if application_on_IK
                             then
                               let (skels_checked,skels_to_check) = csys.rule_data.skeletons_IK in
-                              { csys.rule_data with skeletons_IK = (skels_checked,remove_skeletons (index_kb,index_skel) skels_to_check) }
+                              if removal_allowed
+                              then
+                                let (skels_checked',skels_to_check') = (remove_all_skeletons index_kb skels_checked,remove_all_skeletons index_kb skels_to_check ) in
+                                { csys.rule_data with skeletons_IK = (skels_checked',skels_to_check') }
+                              else { csys.rule_data with skeletons_IK = (skels_checked,remove_skeletons (index_kb,index_skel) skels_to_check) }
                             else
                               let (skels_checked,skels_to_check) = csys.rule_data.skeletons_K in
                               { csys.rule_data with skeletons_K = (skels_checked,remove_skeletons (index_kb,index_skel) skels_to_check) }
-                          else { csys.rule_data with history_skeleton =  update_skeleton_history csys }
+                          else
+                            if removal_allowed
+                            then
+                              let (skels_checked,skels_to_check) = csys.rule_data.skeletons_IK in
+                              let (skels_checked',skels_to_check') = (remove_all_skeletons index_kb skels_checked,remove_all_skeletons index_kb skels_to_check ) in
+                              { csys.rule_data with history_skeleton =  update_skeleton_history csys; skeletons_IK = (skels_checked',skels_to_check') }
+                            else { csys.rule_data with history_skeleton =  update_skeleton_history csys }
                         in
                         { csys with incremented_knowledge = new_ik; rule_data = rule_data }
                       ) csys_set_4.set
@@ -2664,7 +2703,12 @@ module Rule = struct
   let internal_equality_constructor f_continuation csys_set f_next =
     Config.debug (fun () ->
       Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] Rule internal equality constructor : Nb csys = %d" (List.length csys_set.set));
+      Config.log_in_debug Config.Constraint_systems ("Eq recipe = "^(Formula.R.display Terminal csys_set.eq_recipe));
+      List.iter (fun csys ->
+        Config.log_in_debug Config.Constraint_systems (display_constraint_system 1 csys_set.knowledge_recipe csys)
+      ) csys_set.set;
       Set.debug_check_structure "[Internal equality constructor]" csys_set;
+      List.iter (debug_on_constraint_system ~solved:true "[Internal equality constructor]") csys_set.set
     );
     let rec internal eq_recipe vars_df_ref checked_csys to_check_csys f_next_0 =
       Symbol.auto_cleanup_attacker_name (fun f_next_1 ->
@@ -2914,6 +2958,7 @@ module Rule = struct
     | Var { link = NoLink; _ } -> f_next ()
     | Var { link = SLink; _ } -> ()
     | Var { link = TLink t; _ } -> record_marked_variables f_next t
+    | Var _ -> Config.internal_error "[constraint_system.ml >> record_marked_variables] Unexpected link."
     | _ -> Config.internal_error "[constraint_system.ml >> record_marked_variables] Unexpected term."
 
   let rec instantiate_useless_deduction_facts_list rec_vars = function
@@ -2939,6 +2984,16 @@ module Rule = struct
         else instantiate_useless_deduction_facts_list rec_vars' q
 
   let instantiate_useless_deduction_facts f_continuation csys_set f_next =
+    Config.debug (fun () ->
+      Config.log_in_debug Config.Constraint_solving (Printf.sprintf "[constraint_system.ml >> Rule] instantiate_useless_deduction_facts : Nb csys = %d" (List.length csys_set.set));
+
+      Set.debug_check_structure "[generic_equivalence >> apply_one_transition_and_rules_private]" csys_set;
+      Config.log_in_debug Config.Constraint_systems ("Eq recipe = "^(Formula.R.display Terminal csys_set.eq_recipe));
+      List.iter (fun csys ->
+        Config.log_in_debug Config.Constraint_systems (display_constraint_system 1 csys_set.knowledge_recipe csys)
+      ) csys_set.set
+    );
+
     if csys_set.set = []
     then f_continuation csys_set f_next
     else
