@@ -1078,7 +1078,7 @@ let find_faulty_skeleton_det size_frame conf1 conf2 p1 p2 =
               (true,conf,action)
           | _ ->
               let (conf,action) = retrieve_action size_frame conf2 p2 in
-              (true,conf,action)
+              (false,conf,action)
         end
   in
 
