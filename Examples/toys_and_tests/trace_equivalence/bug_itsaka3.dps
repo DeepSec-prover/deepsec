@@ -1,0 +1,24 @@
+// symmetric encryption.
+fun aenc/3.
+fun pk/1.
+reduc adec(aenc(x,y,pk(z)),z) -> x.
+
+free s [private].
+free ca,cb,err.
+
+let A(err_ch) =
+  new r; out(ca,aenc(s,r,pk(s)));
+  in(ca,x); // no internal error with cb instead of ca
+  let y = adec(x,s) in out(err_ch,ca). // no internal error with ca instead of err_ch
+
+let B =
+  in(cb,x);
+  new r;
+  out(cb,aenc(adec(x,s),r,pk(s))).
+
+
+let P = A(err) | B.
+let Q = A(ca) | B.
+
+query trace_equiv(P,Q).
+query trace_equiv(Q,P).

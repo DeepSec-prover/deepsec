@@ -1154,7 +1154,11 @@ let simplify_for_determinate p =
   );
   let retrieve_trace trans_list =
     Config.debug (fun () ->
-      Config.log_in_debug Config.Process (Printf.sprintf "Input retrieve_trace = %s\n" (display_list display_transition  "; " trans_list))
+      Config.log_in_debug Config.Process (Printf.sprintf "Input retrieve_trace = %s\nPos Match Normalised = %s\nProcess:\n%s\n"
+        (display_list display_transition  "; " trans_list)
+        (display_list (fun (pos1,pos2) -> Printf.sprintf "(%s,%s)" (display_position pos1) (display_position pos2)) "; " pos_match_normalised)
+        (display 1 p)
+      )
     );
     let result = retrieve_trace (fun x -> x) pos_match_normalised { frame = []; process = p } trans_list in
     Config.debug (fun () ->
