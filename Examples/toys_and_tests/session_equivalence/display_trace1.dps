@@ -1,0 +1,9 @@
+// symmetric encryption.
+fun aenc/3.
+fun pk/1.
+reduc adec(aenc(x,y,pk(z)),z) -> x.
+
+free s [private].
+free ca,cb,err.
+
+query session_equiv(out(ca,s),out(cb,s)).

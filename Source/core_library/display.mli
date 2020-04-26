@@ -115,3 +115,6 @@ val rbrace : output -> string
 
 (** Display of the symbol {% $\emptyset$ %} *)
 val emptyset : output -> string
+
+(** Display of the symbol {% $\varepsilon$ %} *)
+val varepsilon : output -> string

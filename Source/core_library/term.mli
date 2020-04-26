@@ -428,5 +428,5 @@ module Recipe : sig
 
   val matching : recipe -> recipe -> unit
 
-  val display : ?follow_link:bool -> Display.output -> recipe -> string
+  val display : ?follow_link:bool -> ?display_context:bool -> Display.output -> recipe -> string
 end

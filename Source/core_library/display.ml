@@ -258,3 +258,8 @@ let emptyset = function
   | Terminal -> "∅"
   | HTML -> "&#8709;"
   | Latex -> "\\emptyset"
+
+let varepsilon = function
+  | Terminal -> "ε"
+  | HTML -> "&#949;"
+  | Latex -> "\\varepsilon"

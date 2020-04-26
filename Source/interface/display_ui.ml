@@ -3,6 +3,33 @@ open Types
 open Types_ui
 open Display
 
+(*** Specific print_text for dealing with return ***)
+
+let print_text =
+  let previous_size = ref 0 in
+
+  let f return newline str =
+    let size = String.length str in
+
+    if return
+    then
+      let diff = !previous_size - size in
+      if diff > 0
+      then print_string ("\x0d"^str^(String.make (diff+10) ' '))
+      else print_string ("\x0d"^str^(String.make 10 ' '))
+    else print_string str;
+
+    if newline
+    then print_string "\n";
+
+    if newline
+    then previous_size := 0
+    else previous_size := size;
+
+    flush stdout
+  in
+  f
+
 (*** Display ***)
 
 let display_with_tab n str =
@@ -81,6 +108,51 @@ let display_association assoc =
     ("Variables: "^(display_list (fun (f,n) -> Printf.sprintf "%s->%s" (Variable.display Terminal f) (display_args n [])) "," assoc.std.variables))
     ("Repl Names: "^(display_list (fun (f,(n,args)) -> Printf.sprintf "%s->%s" (Name.display Terminal f) (display_args n args)) "," assoc.repl.repl_names))
     ("Repl Variables: "^(display_list (fun (f,(n,args)) -> Printf.sprintf "%s->%s" (Variable.display Terminal f) (display_args n args)) "," assoc.repl.repl_variables))
+
+(** Display Verification Result **)
+
+let display_verification_result result =
+  if !Config.running_api
+  then ()
+  else
+    let display_transitions trace =
+
+      let display_one_transition ax = function
+        | AOutput(r_ch,_) ->
+            incr ax;
+            Printf.sprintf "out(%s,ax_%d)" (Recipe.display ~display_context:false Terminal r_ch) !ax
+        | AInput(r_ch,r_t,_) -> Printf.sprintf "in(%s,%s)" (Recipe.display ~display_context:false Terminal r_ch) (Recipe.display ~display_context:false Terminal r_t)
+        | AEaves(r_ch,_,_) ->
+            incr ax;
+            Printf.sprintf "eav(%s,ax_%d)" (Recipe.display ~display_context:false Terminal r_ch) !ax
+        | _ -> Config.internal_error "[display_ui.ml >> display_verification_result] Unexpected transition."
+      in
+
+      let trace' = List.filter (function AOutput _ | AInput _ | AEaves _ -> true | _ -> false) trace in
+
+      if trace' = []
+      then varepsilon Terminal
+      else
+        begin
+          let ax = ref 0 in
+          let first = display_one_transition ax (List.hd trace') in
+          List.fold_left (fun acc trans ->
+            acc ^ ";" ^ (display_one_transition ax trans)
+          ) first (List.tl trace')
+        end
+    in
+
+    match result with
+      | RTrace_Equivalence (Some (is_left,trace)) | RSession_Equivalence (Some (is_left,trace)) ->
+          print_text true true (Printf.sprintf "The following attack trace has been found on the %s process: %s"
+            (if is_left then "1st" else "2nd")
+            (display_transitions trace)
+          )
+      | RTrace_Inclusion (Some trace) | RSession_Inclusion (Some trace) ->
+          print_text true true (Printf.sprintf "The following attack trace has been found: %s"
+            (display_transitions trace)
+          )
+      | _ -> ()
 
 (*** Record atomic data ***)
 
@@ -833,31 +905,6 @@ let of_output_command = function
         "action_sequence", JList (List.map (of_transition assoc) trans_list)
       ]
   | SUser_error str -> JObject [ "command", JString "user_error"; "error_msg", JString str ]
-
-let print_text =
-  let previous_size = ref 0 in
-
-  let f return newline str =
-    let size = String.length str in
-
-    if return
-    then
-      let diff = !previous_size - size in
-      if diff > 0
-      then print_string ("\x0d"^str^(String.make (diff+10) ' '))
-      else print_string ("\x0d"^str^(String.make 10 ' '))
-    else print_string str;
-
-    if newline
-    then print_string "\n";
-
-    if newline
-    then previous_size := 0
-    else previous_size := size;
-
-    flush stdout
-  in
-  f
 
 let print_output_command = function
   (* Errors *)

@@ -1138,15 +1138,18 @@ module Recipe = struct
 
   (********** Display **********)
 
-  let rec display ?(follow_link=true) out = function
-    | RVar { link_r = RLink r; _ } when follow_link -> display out r
-    | CRFunc(i,r) -> Printf.sprintf "CR[%d,%s]" i (display out r)
+  let rec display ?(follow_link=true) ?(display_context=true) out = function
+    | RVar { link_r = RLink r; _ } when follow_link -> display ~display_context:display_context out r
+    | CRFunc(i,r) ->
+        if display_context
+        then Printf.sprintf "CR[%d,%s]" i (display ~follow_link:follow_link ~display_context:display_context out r)
+        else display ~follow_link:follow_link ~display_context:display_context out r
     | RVar v -> Recipe_Variable.display out v
     | Axiom ax -> Axiom.display out ax
     | RFunc(f_symb,_) when f_symb.arity = 0 ->
         Printf.sprintf "%s" (Symbol.display out f_symb)
     | RFunc(f_symb,args) when f_symb.cat = Tuple ->
-        Printf.sprintf "(%s)" (display_list (display ~follow_link:follow_link out) "," args)
+        Printf.sprintf "(%s)" (display_list (display ~follow_link:follow_link ~display_context:display_context out) "," args)
     | RFunc(f_symb,args) ->
-        Printf.sprintf "%s(%s)" (Symbol.display out f_symb) (display_list (display ~follow_link:follow_link out) "," args)
+        Printf.sprintf "%s(%s)" (Symbol.display out f_symb) (display_list (display ~follow_link:follow_link ~display_context:display_context out) "," args)
 end

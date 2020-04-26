@@ -11,6 +11,8 @@ val display_process : int -> json_process -> string
 
 val display_association : full_association -> string
 
+val display_verification_result : verification_result -> unit
+
 (*** Id retrieval ***)
 
 val get_variable_id : full_association -> variable -> int * int list

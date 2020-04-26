@@ -820,6 +820,9 @@ let listen_to_command_generic in_ch out_ch translation_result =
             let end_time = int_of_float (Unix.time ()) in
             let cur_query = remove_current_query () in
             let cur_query_0 = { cur_query with progression = PNot_defined; memory = memory } in
+            let verif_result_translated = translation_result verif_result in
+            if !Config.display_trace
+            then Display_ui.display_verification_result verif_result_translated;
             let cur_query_1 = Interface.query_result_of_equivalence_result cur_query_0 (translation_result verif_result) end_time in
             write_query cur_query_1;
             let running_time = match cur_query_1.q_end_time, cur_query_1.q_start_time with
