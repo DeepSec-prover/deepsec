@@ -5,6 +5,8 @@ Version 2.0.0 beta8 (26/04/2020)
   - Fix a bug when reconstructing the attack trace on equivalence between deter-
   minate processes.
 
+Version 2.0.0 beta7 (19/04/2020)
+  - Fix a bug in the constraint solving when working on deduction formula.
 
 Version 2.0.0 beta6 (18/04/2020)
   - Fix a bug in the constraint solving when a rewrite rule can be allow a deduction
