@@ -1,7 +1,7 @@
 This file summarizes the most important changes between versions
 of DeepSec.
 
-Version 2.0.0 beta7 (26/04/2020)
+Version 2.0.0 beta8 (26/04/2020)
   - Fix a bug when reconstructing the attack trace on equivalence between deter-
   minate processes.
 
