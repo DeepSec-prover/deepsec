@@ -2,6 +2,7 @@ NAME_PROGRAMME = DeepSec
 VERSION = 2.0.0-beta8
 SOURCE = Source/
 SCRIPTS = script/
+BINDIR = ~
 
 PACKAGES = -package str -package unix
 TEMP = *.native *.p.native *.d.byte result
@@ -75,6 +76,12 @@ compil:
 check:
 	@printf "\e[1mChecking installation requirements...\e[0m\n"
 	@$(SCRIPTS)check
+
+# moving executables
+install:
+	@cp deepsec $(BINDIR)
+	@cp deepsec_api $(BINDIR)
+	@cp deepsec_worker $(BINDIR)
 
 # removes automatically generated files
 clean:
