@@ -1,6 +1,10 @@
 This file summarizes the most important changes between versions
 of DeepSec.
 
+Version 2.0.0 (01/05/2020)
+  - Official release
+  - Creation of opam package
+
 Version 2.0.0 beta8 (26/04/2020)
   - Add a display of the attack trace in the terminal when DeepSec is executed
   with the option --trace

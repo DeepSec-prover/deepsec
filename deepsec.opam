@@ -1,7 +1,7 @@
 opam-version: "2.0"
 name: "deepsec"
 version: "2.0.0"
-synopsis: "DEEPSEC: DEciding Equivalence Properties in SECurity Protocols"
+synopsis: "DeepSec: DEciding Equivalence Properties in SECurity Protocols"
 description: """
 Automated verification has become an essential part in the security evaluation of cryptographic protocols. Recently, there has been a considerable effort to lift the theory and tool support that existed for reachability properties to the more complex case of equivalence properties.
 
@@ -23,7 +23,6 @@ depends: ["ocaml" { >= "4.05" }
 	  "ocamlfind"
 	  "ocamlbuild"
 	   ]
-build: [make] 
+build: [make]
 
 install: [make "install" "BINDIR=%{bin}%"]
-
