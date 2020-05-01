@@ -12,8 +12,22 @@ PROFILE= # seems broken on OSX 10.9 or later
 ADVDEBUG=
 EXTENSION=$(if $(PROFILE),p.native,$(if $(ADVDEBUG),d.byte,native))
 
-GITCOMMIT = $(shell git rev-parse HEAD 2> /dev/null)
-GITBRANCH = $(shell git branch 2> /dev/null | grep \* | sed -E "s/^\* \(?//" | sed -E "s/\)$$//" )
+GITC = $(shell git rev-parse HEAD 2> /dev/null)
+ifeq ($(GITC),)
+GITCOMMIT="not_available"
+else
+GITCOMMIT = $(GITC)
+endif
+
+GITB = $(shell git branch 2> /dev/null | grep \* | sed -E "s/^\* \(?//" | sed -E "s/\)$$//" )
+ifeq ($(GITB),)
+GITBRANCH="not_available"
+else
+GITBRANCH = $(GITB)
+endif
+
+
+
 PHYSICALCORE_SCRIPT = $(shell $(SCRIPTS)/cpu_linux_osx 2> /dev/null)
 ifeq ($(PHYSICALCORE_SCRIPT),0)
 PHYSICALCORE = 1
