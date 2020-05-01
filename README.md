@@ -5,13 +5,9 @@ Automated verification has become an essential part in the security evaluation o
 
 ## Website
 
-More information on **DeepSec** is available on its website:
-
-https://deepsec-prover.github.io/
+More information on **DeepSec** is available on its website: https://deepsec-prover.github.io/
 
 ## User manual
 
-The user manual (html and pdf) is available at:
-
-https://deepsec-prover.github.io/manual/
+The user manual (html and pdf) is available at: https://deepsec-prover.github.io/manual/
 

@@ -16,14 +16,14 @@ maintainer:
 authors:
   "Vincent Cheval <vincent.cheval@inria.fr>, Steve Kremer <steve.kremer@inria.fr>, Itsaka Rakotonirina <itsaka.rakotonirina@inria.fr>,"
 homepage: "https://deepsec-prover.github.io/"
-bug-reports: ""
+bug-reports: "Bug reports should be filed as issues on the github repository: https://github.com/DeepSec-prover/deepsec/issues"
 license: "GNU General Public License v3.0"
 
 depends: ["ocaml" { >= "4.05" }
 	  "ocamlfind"
 	  "ocamlbuild"
 	   ]
-build: [ "make"] 
+build: [make] 
 
-install: [ "make" "install" "BINDIR=%{bin}%" ]
+install: [make "install" "BINDIR=%{bin}%"]
 
