@@ -1,3 +1,5 @@
+(* Original author : Lucca Hirschi *)
+
 free c.
 free cqRead, cqWrite, cqMeasure [private].
 free cp [private].

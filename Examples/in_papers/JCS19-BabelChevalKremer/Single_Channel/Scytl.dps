@@ -1,3 +1,5 @@
+(* Original authors : Mathieu Turuani and Véronique Cortier *)
+
 (* Post-review: Unified ProVerif specification, version 11, for Scytl's Voting Protocol. All variants included. Tabulation size : 8 spaces. *)
 (* Reachability ............ : For Cast as Intended and Tallied as Cast properties; from study_v13.pve with the 'REA' option.               *)
 (* Observational Equivalence : For Ballot Provivacy; 2 honest + 1 or 0 dishonest in the challenge; [..] with the 'OBS' option w/ or w/o HH. *)
