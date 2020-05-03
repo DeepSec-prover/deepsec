@@ -737,7 +737,18 @@ let execute_query query_result =
           | _ -> Config.internal_error "[main_ui.ml >> execute_query] Should not occur when equivalence (2)."
         in
         let is_equiv_query = query_result.query_type = Types.Session_Equivalence in
-        session_equivalence is_equiv_query proc1 proc2
+        if is_equiv_query
+        then
+          if !Config.por && Determinate_process.is_strongly_action_determinate proc1 && Determinate_process.is_strongly_action_determinate proc2
+          then
+            let (in_ch,out_ch,trans_result) = trace_equivalence_determinate proc1 proc2 in
+            let trans_result' verif_result = match trans_result verif_result with
+              | RTrace_Equivalence res -> RSession_Equivalence res
+              | _ -> Config.internal_error "[execution_manager.ml >> execute_query] Should only be trace equivalence"
+            in
+            (in_ch,out_ch,trans_result')
+          else session_equivalence is_equiv_query proc1 proc2
+        else session_equivalence is_equiv_query proc1 proc2
     | _ -> Config.internal_error "[main_ui.ml >> execute_query] Currently, only trace equivalence, session equivalence and session inclusion are implemented."
 
 let listen_to_command_api in_ch out_ch translation_result =

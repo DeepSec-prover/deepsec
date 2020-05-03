@@ -1,6 +1,11 @@
 This file summarizes the most important changes between versions
 of DeepSec.
 
+Version 2.0.1 (03/05/2020)
+  - For session equivalence queries, if the two processes are both strongly
+  determinate, deepsec execute the verification procedure for determinate pro-
+  cesses as session equivalence and trace equivalence coincide in this case.
+
 Version 2.0.0 (01/05/2020)
   - Official release
   - Creation of opam package
