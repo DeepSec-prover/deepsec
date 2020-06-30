@@ -806,6 +806,14 @@ module Term = struct
     | Var _ -> false
     | Func(_,args) -> List.for_all is_ground args
 
+  let rec contains_private_symbol = function
+    | Var _
+    | Name _ -> false
+    | Func(f,args) ->
+        if f.public
+        then List.exists contains_private_symbol args
+        else true
+
   (********* Renaming *********)
 
   let rec apply_renamings = function

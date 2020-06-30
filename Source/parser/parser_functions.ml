@@ -477,9 +477,9 @@ let parse_rewrite_rule line env (lhs,rhs) = match lhs with
 
       let (args',env') = parse_rewrite_rule_term_list env args in
       let rhs' = parse_term env' rhs in
-      if Term.Term.does_not_contain_name rhs' && Term.Term.is_constructor rhs'
+      if Term.Term.does_not_contain_name rhs' && Term.Term.is_constructor rhs' && not (Term.Term.contains_private_symbol rhs')
       then (s,args',rhs')
-      else error_message line "The right-hand side of a rewrite rule should be a name-free constructor term."
+      else error_message line "The right-hand side of a rewrite rule should be a name-free constructor term without private function or constant."
   | _ -> error_message line "The left-hand side of a rewrite rule cannot be a tuple."
 
 let parse_functions env = function

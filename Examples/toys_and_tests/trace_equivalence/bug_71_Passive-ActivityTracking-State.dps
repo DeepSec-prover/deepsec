@@ -1,0 +1,26 @@
+// Activity Inference: Passive attack Traffic Analysis BLE Analysis
+
+free c.
+free p [private].//For protocol communication
+free s [private].//To update state
+free request, granted.//Requests for connection
+const s0, s1 [private].
+
+reduc
+	update(s0) -> s1;
+	update(s1) -> s0.
+
+let device1 =
+	out(p, request).
+
+let device2 = 
+	in(s, state); in(p, x); out(c, update(state)); out(p, granted); out(s, update(state)).
+
+let system1 =
+  	out(s, s0); out(c, s0); device1 | device2.
+
+let system2 =
+	new state; out(c, s0); out(c, state).
+
+query trace_equiv(system1, system2).
+(* Not trace equivalent hence one could deduce the specific activity *)

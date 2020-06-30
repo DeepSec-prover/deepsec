@@ -1,0 +1,18 @@
+
+free c.
+free s [private].
+const s0 [private].
+const s1 [private].
+
+reduc
+	update(s0) -> s1;
+	update(s1) -> s0.
+
+let system1 =
+  	out(c, s0); out(c,s1).
+
+let system2 =
+	new state; out(c, s0); out(c, state).
+
+query trace_equiv(system1, system2).
+(* Not trace equivalent hence one could deduce the specific activity *)
