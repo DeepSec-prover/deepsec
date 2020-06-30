@@ -825,17 +825,13 @@ module IK = struct
     if size_ikb = 0
     then
       begin
-        Config.debug (fun () ->
-          if ikb.index_counter <> kbr.KR.size
-          then Config.internal_error "[data_structure.ml >> IK.transfer_incremented_knowledge_into_knowledge] Incorrect index counter";
-        );
         (* Nothing to be added in Kb *)
         let kb' = Array.map_q Term.rename_and_instantiate kb in
 
         let ikb' =
           if after_output
-          then { ikb with type_rec = ikb.type_rec + 1 }
-          else ikb
+          then { ikb with type_rec = ikb.type_rec + 1; index_counter = kbr.KR.size }
+          else { ikb with index_counter = kbr.KR.size }
         in
         kbr, kb',ikb',[]
       end
@@ -891,14 +887,8 @@ module IK = struct
 
     if size_ikb = 0
     then
-      begin
-        Config.debug (fun () ->
-          if ikb.index_counter <> size_kb
-          then Config.internal_error "[data_structure.ml >> IK.transfer_incremented_knowledge_into_knowledge] Incorrect index counter";
-        );
-        (* Nothing to be added in Kb *)
-        Array.map_q Term.rename_and_instantiate kb
-      end
+      (* Nothing to be added in Kb *)
+      Array.map_q Term.rename_and_instantiate kb
     else
       begin
         let new_size = size_ikb + size_kb in
@@ -922,7 +912,7 @@ module IK = struct
         kb'
       end
 
-  (* his function should only be applied after and output. *)
+  (* This function should only be applied after and output. *)
   let transfer_incremented_knowledge_into_knowledge_no_rename kbr kb ikb =
 
     let size_ikb = List.length ikb.data in
@@ -930,15 +920,8 @@ module IK = struct
 
     if size_ikb = 0
     then
-      begin
-        Config.debug (fun () ->
-          if ikb.index_counter <> kbr.KR.size
-          then Config.internal_error "[data_structure.ml >> IK.transfer_incremented_knowledge_into_knowledge] Incorrect index counter";
-        );
-
-        let ikb' = { ikb with type_rec = ikb.type_rec + 1 } in
-        kbr, kb,ikb',[]
-      end
+      let ikb' = { ikb with type_rec = ikb.type_rec + 1; index_counter = kbr.KR.size } in
+      kbr, kb,ikb',[]
     else
       begin
         let new_size = size_ikb + kbr.KR.size in
@@ -991,14 +974,8 @@ module IK = struct
 
     if size_ikb = 0
     then
-      begin
-        Config.debug (fun () ->
-          if ikb.index_counter <> size_kb
-          then Config.internal_error "[data_structure.ml >> IK.transfer_incremented_knowledge_into_knowledge] Incorrect index counter";
-        );
-        (* Nothing to be added in Kb *)
-        kb
-      end
+      (* Nothing to be added in Kb *)
+      kb
     else
       begin
         let new_size = size_ikb + size_kb in
@@ -1296,6 +1273,12 @@ module IK = struct
     t
 
   (* Debug *)
+
+  let debug_check msg kb ikb =
+    let size_ikb = List.length ikb.data in
+    let size_kb = Array.length kb in
+    if size_ikb = 0 && ikb.index_counter <> size_kb
+    then Config.internal_error (Printf.sprintf "%s IK.debug_check : Incorrect index counter" msg)
 
   let debug_check_link_with_SLink ikb =
     List.iter (fun entry -> Term.debug_check_link_with_SLink entry.term) ikb.data

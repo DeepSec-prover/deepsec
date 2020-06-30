@@ -1980,18 +1980,22 @@ let apply_start equiv_pbl f_continuation f_next =
 
 (** Apply all transitions **)
 
+let nb_apply_one_transition_and_rules = ref 0
+
 let apply_one_step equiv_pbl f_continuation f_next =
 
   (*** Cleaning of memory ***)
 
   Config.debug (fun () ->
+    incr nb_apply_one_transition_and_rules;
+
     if equiv_pbl.forall_set = []
     then Config.internal_error "[session_equivalence.ml >> apply_one_step] The equivalence problem should not be empty.";
 
     if select_specified_trace equiv_pbl
     then
       begin
-        Config.log_in_debug Config.Process "[session_equivalence.ml] Apply one step";
+        Config.log_in_debug Config.Always (Printf.sprintf "[session_equivalence.ml] Apply one step (%d)" !nb_apply_one_transition_and_rules);
         Config.log_in_debug Config.Process ("[session_equivalence.ml] "^(display_equivalence_problem equiv_pbl))
       end;
   );
