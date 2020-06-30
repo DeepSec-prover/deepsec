@@ -1,0 +1,77 @@
+// A file where verifying equivalence by session is faster than trace
+// equivalence determinate. The process models a sequence
+// (A|B); (A|B); ...; (A|B)
+// using a token-passing mechanism:
+//  - Each session dynamically generates a session number and reveals it to the
+//    adversary
+//  - A session numbered [n] can only be executed if the adversary knows
+//    [finishA(n)] and [finishB(n)] where
+fun finishA/1 [private].
+fun finishB/1 [private].
+//  - When an instance of [A|B] starts, the adversary chooses the next session
+//    number [next] to execute and, at the end of their executions, [A] and [B]
+//    reveal [finishA(next)] and [finishB(next)] respectively.
+
+// NB: the weird behaviour disappears when removing the sequentialisation or
+// even when only removing all instances if [finishA] in all processes. Removing
+// instances of [finishB] makes the problem less significant but does not
+// suppress it completely.
+
+
+// definitions of the processes A and B
+fun f/2.
+free test.
+
+let A(c,next_sess) =
+  in(c,x);
+  if x = test then // the problem disappears if this dummy test is removed
+    out(c, finishA(next_sess))
+  else
+    out(c, finishA(next_sess))
+  .
+
+let B(c,next_sess) =
+  in(c,x);
+  new k; out(c,f(x,k)); // the problem disappears if this output is removed
+  out(c, finishB(next_sess))
+  .
+
+
+// initialisation of the token
+let init(c) =
+  in(c,first_sess); // attacker chooses the first sequence to execute
+  out(c,finishA(first_sess)); // releasing the token
+  out(c,finishB(first_sess)).
+
+
+// one session of A|B + token managment
+let P(c,d) =
+  new num_sess; out(c,num_sess); // generates dynamically a session num
+  in(c,tok1); if tok1 = finishA(num_sess) then // checks that the token is free
+  in(c,tok2); if tok2 = finishB(num_sess) then
+  in(c,next_sess); // attacker chooses the session to be executed after this one
+  (
+    A(c,next_sess) | B(d,next_sess)
+  ).
+
+
+// query
+free a,b,c,c0,c1,d1,c2,d3,c3,d4,c4,d5,c5,d6,c6,d2,c7,d7,c8,d8,c9,d9,c10,d10.
+
+let PD =
+  init(c0)
+  | P(c1 ,d1 )
+  | P(c2 ,d2 )
+  | P(c3 ,d3 )
+  | P(c4 ,d4 )
+  | P(c5 ,d5 )
+  | P(c6 ,d6 )
+  | P(c7 ,d7 )
+  | P(c8 ,d8 )
+  | P(c9 ,d9 )
+  | P(c10,d10)
+  .
+query trace_equiv(PD,PD). // 8 sessions: 10s, 9 sessions: 45s
+
+let PS = init(a) | !^10 P(b,c).
+query session_equiv(PS,PS). // 8 sessions: <1s, 9 sessions: 1s
