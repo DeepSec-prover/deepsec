@@ -395,17 +395,25 @@ let of_category assoc = function
   | Constructor -> JObject ["type",JString "Constructor"]
   | Destructor rw_rules ->
       let projection_info = match rw_rules with
-        | [[Func(f,args)], x] ->
-            (* Projection possible *)
-            if f.cat = Tuple
-            then
-              let rec find_proj_number i = function
-                | [] -> Config.internal_error "[display_ui.ml >> of_category] Unexpected case"
-                | y::_  when Term.is_equal x y -> i
-                | _::q -> find_proj_number (i+1) q
-              in
-              Some(get_symbol_id assoc f,find_proj_number 1 args)
-            else None
+        | [[Func({ cat = Tuple; _ } as f,args)], x] ->
+            let rec all_distinct_vars prev_vars = function
+              | [] -> true
+              | Var x::_ when List.memq x prev_vars -> false
+              | Var x::q -> all_distinct_vars (x::prev_vars) q
+              | _ -> false
+            in
+            let rec find_proj_number i = function
+              | [] -> raise Not_found
+              | y::_  when Term.is_equal x y -> i
+              | _::q -> find_proj_number (i+1) q
+            in
+            begin
+              try
+                if all_distinct_vars [] args
+                then raise Not_found
+                else Some(get_symbol_id assoc f,find_proj_number 1 args)
+              with Not_found -> None
+            end
         | _ -> None
       in
       match projection_info with

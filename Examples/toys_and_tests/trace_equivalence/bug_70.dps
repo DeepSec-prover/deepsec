@@ -1,0 +1,15 @@
+free c.
+
+const double.
+
+/* bug */
+reduc test((x,x)) -> double.
+let A(x,y) = if test((x,y)) = double then out(c,c).
+
+/* no bug */
+/* reduc test(x,x) -> double.
+let A(x,y) = if test(x,y) = double then out(c,c). */
+
+// a query to avoid an error but the bug is independent of it
+let P = out(c,c).
+query trace_equiv(P,P).
