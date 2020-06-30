@@ -427,7 +427,7 @@ let rec parse_rewrite_rule_term env = function
           | Func(f) when Term.Symbol.get_arity f = 0 && Term.Symbol.is_constructor f -> Types.Func(f,[]), env
           | env_elt -> error_message line (Printf.sprintf "The identifiant %s is declared as %s (expected a variable or a constant)." s (display_env_elt_type env_elt))
       with
-        | _ ->
+        | Not_found ->
             let x = Term.Variable.fresh Types.Existential in
             let env' = Env.add s (Var x) env in
             Types.Var(x), env'

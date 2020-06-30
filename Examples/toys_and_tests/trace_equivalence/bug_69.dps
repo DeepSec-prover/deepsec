@@ -1,0 +1,9 @@
+free c.
+
+free x.
+reduc f(x) -> x. // here [x] is parsed as a variable, i.e. [f(c) = c]. Note that if we wrote f(z) -> x, [x] would be parsed as a constant
+query trace_equiv(out(c,c),out(c,f(c))).
+
+const y.
+reduc g(y) -> y. // here [y] is parsed as a constant, i.e. [g(c)] fails
+query trace_equiv(out(c,c),out(c,g(c))).
