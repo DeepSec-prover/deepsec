@@ -1400,6 +1400,10 @@ module UF = struct
           | Var { link = TLink t; _ } -> generate_dfact_list t
           | Func(f,args) when f.cat = Tuple && f.arity <> 0 ->
               let projections = Symbol.get_projections f in
+              Config.debug (fun () ->
+                if List.length projections <> List.length args
+                then Config.internal_error "[data_structure.ml >> UF.validate_head_deduction_facts_for_pattern] Inconsistent size of lists.";
+              );
               { uf with ded_formula = DedPattern(checked,List.fold_left2 (fun acc f_proj t -> { df_recipe = RFunc(f_proj,[dfact.df_recipe]); df_term = t}::acc) q_dfact projections args) }
           | _ ->
               { uf with ded_formula = if q_dfact = [] then DedSolved(dfact::checked) else DedPattern(dfact::checked,q_dfact) }

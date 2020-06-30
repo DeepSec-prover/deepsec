@@ -1,0 +1,58 @@
+// Unlinkability for BAC-UK Version
+(*
+    BAC-UK Version 
+    Reader -> Tag: getChallenge
+    Tag -> Reader: nT
+    Reader -> Tag: senc((nR, nT, kR), kE), mac(senc((nR, nT, kR), kE), kM)
+    Tag -> Reader: senc((nT, nR, kT), kE), mac(senc((nT, nR, kT), kE), kM)
+*)
+
+free c.
+free error.
+free getChallenge.
+
+fun senc/2.
+fun mac/2.
+
+reduc sdec(senc(x,y),y) -> x.
+
+
+let reader(ke, km) =
+  out(c,getChallenge);
+  in(c, x);
+  new nr;
+  new kr;
+  let m = senc((nr, x, kr), ke) in
+    out(c, (m, mac(m, km)));
+  in(c, y).
+
+
+let tag(ke, km) =
+  in(c,x);
+  if x = getChallenge
+  then
+    new nt;
+    new kt;
+    out(c,nt);
+    in(c,y);
+    let (xe, xm) = y in
+      if xm = mac(xe, km)
+      then
+        let (nr, =nt, kr) = sdec(xe, ke) in
+          let m = senc((nt, nr, kt), ke) in
+            out(c, (m, mac(m, km)))
+          else
+            out(c, error)
+        else out(c, error)
+    else out(c, error).
+
+let system(ke,km) = 
+  reader(ke,km) | tag(ke,km).
+
+let system1 =
+  !^2 new ke; new km; system(ke,km).
+
+let system2 =
+  new ke; new km; !^2 system(ke,km).
+
+query trace_equiv(system1,system2).

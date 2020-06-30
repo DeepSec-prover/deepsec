@@ -409,7 +409,7 @@ let of_category assoc = function
             in
             begin
               try
-                if all_distinct_vars [] args
+                if not (all_distinct_vars [] args)
                 then raise Not_found
                 else Some(get_symbol_id assoc f,find_proj_number 1 args)
               with Not_found -> None
