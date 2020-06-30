@@ -1,0 +1,12 @@
+fun f/2.
+free a,b.
+free p,k [private].
+
+let A(k) = out(a,k).
+let start = out(p,a).
+
+let P = start | A(a) | A(a).
+let Q = start | A(a) | A(b).
+
+query session_equiv(P,Q). // Should not hold
+query trace_equiv(P,Q). // Should not hold
