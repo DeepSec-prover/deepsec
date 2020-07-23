@@ -198,7 +198,7 @@ let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
           (csys_1.Constraint_system.additional_data.origin_process = Left && csys_2.Constraint_system.additional_data.origin_process = Right) ||
           (csys_1.Constraint_system.additional_data.origin_process = Right && csys_2.Constraint_system.additional_data.origin_process = Left)
           ->
-            Config.log_in_debug Config.Process (Printf.sprintf "\n\n====Application of one transtion rule : (%d)=======" !nb_apply_one_transition_and_rules);
+            Config.log_in_debug Config.Always (Printf.sprintf "\n\n====Application of one transtion rule : (%d)=======" !nb_apply_one_transition_and_rules);
             Config.log_in_debug Config.Process (display_equivalence_problem equiv_pbl);
             if csys_1.Constraint_system.eq_term <> Formula.T.Top || csys_2.Constraint_system.eq_term <> Formula.T.Top
             then Config.internal_error "[determinate_equivalence.ml >> apply_one_transition_and_rules] The disequations in the constraint systems should have been solved."

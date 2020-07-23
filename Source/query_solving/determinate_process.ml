@@ -475,6 +475,10 @@ let rec is_equal_modulo_renaming channels1 channels2 proc1 proc2 =
         if List.length fresh_variables_1 = List.length fresh_variables_2
         then
           let xrho1',xrho2' =
+            Config.debug (fun () ->
+              if List.length fresh_variables_1 <> List.length fresh_variables_2
+              then Config.internal_error "[determinate_process.ml >> is_equal_modulo_renaming] Inconsistent lenght of list.";
+            );
             List.fold_left2 (fun (acc_rho1,acc_rho2) x1 x2 ->
               let new_x = Variable.fresh Free in
               (x1,new_x)::acc_rho1, (x2,new_x)::acc_rho2

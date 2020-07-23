@@ -131,6 +131,14 @@ let generate_mixed_formulas_for_skeletons kb ikb df term_vars recipe_vars recipe
 
   List.iter (fun v -> v.link_r <- RNoLink) !accu_variables;
 
+  Config.debug (fun () ->
+    if List.length term_vars <> List.length term_l
+    then Config.internal_error "[rewrite_rules.ml >> Inconsistent size of lists]";
+
+    if List.length recipe_vars <> List.length recipe_l
+    then Config.internal_error "[rewrite_rules.ml >> Inconsistent size of lists]";
+  );
+
   if attacker
   then
     let eq_fst =

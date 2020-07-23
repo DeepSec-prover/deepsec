@@ -1894,22 +1894,22 @@ let apply_start equiv_pbl f_continuation f_next =
       iter_forall_both (fun forall_csys_1 ->
         let forall_trans = match forall_csys_1.Constraint_system.additional_data.transition_data with
           | TransStart trans -> trans
-          | _ -> Config.internal_error "[session_equivalence.ml >> apply_pos_phase] Expecting an in/comm transition."
+          | _ -> Config.internal_error "[session_equivalence.ml >> apply_start] Expecting a start transition."
         in
         let (generate_bset_exists, forall_bset) = Bijection_set.generate_forall Label.initial forall_trans.Configuration.start_skeletons forall_csys.Constraint_system.additional_data.forall_bset in
+        forall_csys_1.Constraint_system.additional_data.forall_bset <- forall_bset;
         List.iter (fun (exists_csys,exists_bset) ->
           let gen_exists_transitions = generate_transitions exists_csys in
           iter_exists_both (fun exists_csys_1 ->
             let exists_trans = match exists_csys_1.Constraint_system.additional_data.transition_data with
               | TransStart trans -> trans
-              | _ -> Config.internal_error "[session_equivalence.ml >> apply_pos_phase] Expecting an in/comm transition (2)."
+              | _ -> Config.internal_error "[session_equivalence.ml >> apply_start] Expecting a start transition (2)."
             in
             match generate_bset_exists Label.initial exists_trans.Configuration.start_skeletons exists_bset with
               | None -> ()
               | Some exists_bset1 ->
                   exists_csys_1.Constraint_system.additional_data.forall_matched <- forall_csys_1 :: exists_csys_1.Constraint_system.additional_data.forall_matched;
-                  forall_csys_1.Constraint_system.additional_data.exists_matched <- (exists_csys_1,exists_bset1) :: forall_csys_1.Constraint_system.additional_data.exists_matched;
-                  forall_csys_1.Constraint_system.additional_data.forall_bset <- forall_bset
+                  forall_csys_1.Constraint_system.additional_data.exists_matched <- (exists_csys_1,exists_bset1) :: forall_csys_1.Constraint_system.additional_data.exists_matched
           ) gen_exists_transitions;
         ) forall_csys.Constraint_system.additional_data.exists_matched;
         forall_set_1 := forall_csys_1 :: !forall_set_1
@@ -1980,18 +1980,22 @@ let apply_start equiv_pbl f_continuation f_next =
 
 (** Apply all transitions **)
 
+let nb_apply_one_transition_and_rules = ref 0
+
 let apply_one_step equiv_pbl f_continuation f_next =
 
   (*** Cleaning of memory ***)
 
   Config.debug (fun () ->
+    incr nb_apply_one_transition_and_rules;
+
     if equiv_pbl.forall_set = []
     then Config.internal_error "[session_equivalence.ml >> apply_one_step] The equivalence problem should not be empty.";
 
     if select_specified_trace equiv_pbl
     then
       begin
-        Config.log_in_debug Config.Process "[session_equivalence.ml] Apply one step";
+        Config.log_in_debug Config.Always (Printf.sprintf "[session_equivalence.ml] Apply one step (%d)" !nb_apply_one_transition_and_rules);
         Config.log_in_debug Config.Process ("[session_equivalence.ml] "^(display_equivalence_problem equiv_pbl))
       end;
   );

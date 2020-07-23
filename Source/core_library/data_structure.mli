@@ -241,6 +241,8 @@ module IK : sig
 
   val instantiate : t -> t
 
+  val debug_check : string -> K.t -> t -> unit
+
   val debug_check_link_with_SLink : t -> unit
 end
 

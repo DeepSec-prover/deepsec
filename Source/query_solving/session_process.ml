@@ -757,8 +757,8 @@ module Labelled_process = struct
         i1 = i2 && Channel.is_equal ch1 ch2 && (is_equal_input_output q1 q2)
 
   let is_equal_skeletons skel1 skel2 =
-    skel1.private_input_skel = skel2.private_input_skel &&
-    skel1.private_output_skel = skel2.private_output_skel &&
+    fst (skel1.private_input_skel) = fst (skel2.private_input_skel) &&
+    fst (skel1.private_output_skel) = fst (skel2.private_output_skel) &&
     is_equal_input_output skel1.input_skel skel2.input_skel &&
     is_equal_input_output skel1.output_skel skel2.output_skel
 

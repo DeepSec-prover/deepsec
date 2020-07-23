@@ -356,6 +356,9 @@ module Term : sig
   (** [is_ground t] returns [true] iff [term] is a ground term, i.e. does not contain variables. *)
   val is_ground : term -> bool
 
+  (** [contains_private_symbol t] returns [true] iff [term] contains a private function symbol. *)
+  val contains_private_symbol : term -> bool
+
   (** {3 Main functions} *)
 
   (** [instantiate t] returns the term [t] in which the variables linked with [TLink] are replaced
