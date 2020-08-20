@@ -727,8 +727,10 @@ let execute_query query_result =
           | _ -> Config.internal_error "[main_ui.ml >> execute_query] Should not occur when equivalence."
         in
         let is_equiv_query = query_result.query_type = Types.Trace_Equivalence in
-        if !Config.por && Determinate_process.is_strongly_action_determinate proc1 && Determinate_process.is_strongly_action_determinate proc2
-        then trace_equivalence_determinate is_equiv_query proc1 proc2
+        if is_equiv_query then
+          if !Config.por && Determinate_process.is_strongly_action_determinate proc1 && Determinate_process.is_strongly_action_determinate proc2
+          then trace_equivalence_determinate proc1 proc2
+          else trace_equivalence_generic is_equiv_query query_result.semantics proc1 proc2
         else trace_equivalence_generic is_equiv_query query_result.semantics proc1 proc2
     | Types.Session_Equivalence | Types.Session_Inclusion ->
         let (proc1,proc2) = match query_result.processes with
@@ -742,7 +744,7 @@ let execute_query query_result =
         then
           if !Config.por && Determinate_process.is_strongly_action_determinate proc1 && Determinate_process.is_strongly_action_determinate proc2
           then
-            let (in_ch,out_ch,trans_result) = trace_equivalence_determinate true proc1 proc2 in
+            let (in_ch,out_ch,trans_result) = trace_equivalence_determinate proc1 proc2 in
             let trans_result' verif_result = match trans_result verif_result with
               | RTrace_Equivalence res -> RSession_Equivalence res
               | _ -> Config.internal_error "[execution_manager.ml >> execute_query] Should only be trace equivalence"

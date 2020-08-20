@@ -38,7 +38,7 @@ val import_equivalence_problem : (unit -> 'a) -> equivalence_problem -> (recipe_
 exception Not_Trace_Equivalent of (bool * transition list)
 
 val apply_one_transition_and_rules :
-  bool -> equivalence_problem ->
+  equivalence_problem ->
   (equivalence_problem -> (unit -> unit) -> unit) ->
   (unit -> unit) ->
   unit

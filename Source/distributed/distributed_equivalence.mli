@@ -93,7 +93,7 @@ end
     Due to the marshalling, the initial processes are given in each job and returned by each worker to ensure that physical equality within the processes
     are preserved. As such, when displaying an attack trace given by [res], one should use the processes [proc1'] and [proc2'] instead of [proc1] and [proc2]. *)
 
-val trace_equivalence_determinate : bool -> Types.process -> Types.process -> in_channel * out_channel * (verification_result -> verification_result)
+val trace_equivalence_determinate : Types.process -> Types.process -> in_channel * out_channel * (verification_result -> verification_result)
 
 val trace_equivalence_generic : bool -> Types.semantics -> Types.process -> Types.process -> in_channel * out_channel * (verification_result -> verification_result)
 
