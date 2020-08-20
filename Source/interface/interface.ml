@@ -195,7 +195,7 @@ let replace_structural_transition assoc = function
   | trans -> trans
 
 let query_result_of_equivalence_result query_result result end_time = match result with
-  | RTrace_Equivalence None | RSession_Equivalence None | RSession_Inclusion None ->
+  | RTrace_Equivalence None | RTrace_Inclusion None | RSession_Equivalence None | RSession_Inclusion None ->
       { query_result with
         q_status = QCompleted None;
         q_end_time = Some end_time;
@@ -217,6 +217,7 @@ let query_result_of_equivalence_result query_result result end_time = match resu
         settings = { query_result.settings with symbol_set = Symbol.get_settings () };
         progression = PNot_defined
       }
+  | RTrace_Inclusion (Some trans_list)
   | RSession_Inclusion (Some trans_list) ->
       let trans_list' = List.map (replace_structural_transition query_result.association) trans_list in
 
@@ -232,7 +233,7 @@ let query_result_of_equivalence_result query_result result end_time = match resu
         settings = { query_result.settings with symbol_set = Symbol.get_settings () };
         progression = PNot_defined
       }
-  | _ -> Config.internal_error "[interface.ml >> query_result_of_equivalence_result] Not implemented yet."
+  (* | _ -> Config.internal_error "[interface.ml >> query_result_of_equivalence_result] Not implemented yet." *)
 
 (*** Instantiate ***)
 

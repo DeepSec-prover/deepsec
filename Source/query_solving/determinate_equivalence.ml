@@ -189,7 +189,7 @@ let get_knowledge_recipe_from_preparation_data = function
   | None -> Config.internal_error "[generic_equivalence.ml >> get_knowledge_recipe_from_preparation_data] Should be defined."
   | Some(kbr,_,_) -> kbr
 
-let apply_one_transition_and_rules equiv_pbl f_continuation f_next =
+let apply_one_transition_and_rules is_equiv_query equiv_pbl f_continuation f_next =
   Config.debug (fun () ->
     incr nb_apply_one_transition_and_rules;
     Constraint_system.Set.debug_check_structure "[Determinate_process >> apply_one_transition_and_rules]" equiv_pbl.csys_set;

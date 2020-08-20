@@ -80,6 +80,7 @@ type extended_process =
 
 type query =
   | Trace_Eq of extended_process * extended_process
+  | Trace_Incl of extended_process * extended_process
   | Obs_Eq of extended_process * extended_process
   | Sess_Eq of extended_process * extended_process
   | Sess_Incl of extended_process * extended_process
@@ -537,7 +538,10 @@ let parse_setting line sem =
 let query_list = ref []
 
 let parse_query env line = function
-  | Trace_Eq(proc_1,proc_2) -> query_list := (Types.Trace_Equivalence,process_of_intermediate_process [] (parse_intermediate_process env proc_1), process_of_intermediate_process [] (parse_intermediate_process env proc_2))::!query_list
+  | Trace_Eq(proc_1,proc_2) ->
+    query_list := (Types.Trace_Equivalence,process_of_intermediate_process [] (parse_intermediate_process env proc_1), process_of_intermediate_process [] (parse_intermediate_process env proc_2))::!query_list
+  | Trace_Incl(proc_1,proc_2) ->
+    query_list := (Types.Trace_Inclusion,process_of_intermediate_process [] (parse_intermediate_process env proc_1), process_of_intermediate_process [] (parse_intermediate_process env proc_2))::!query_list
   | Sess_Eq(proc_1,proc_2) ->
       if !Config.local_semantics = Some Types.Classic || (!Config.default_semantics = Types.Classic && !Config.local_semantics = None)
       then warning_message line "The Classic semantics have been set but a session equivalence query can only be verified in the Private semantics. The semantics have been modified accordingly for this query.";
@@ -568,7 +572,8 @@ let parse_query env line = function
         with Process.Session_error err -> error_message line err
       end;
       query_list := (Types.Session_Inclusion,proc_1',proc_2')::!query_list
-  | Obs_Eq(_,_) -> error_message line "Observational equivalence not implemented yet"
+  | Obs_Eq(_,_) ->
+    error_message line "Observational equivalence not implemented yet"
 
 (****** Parse declaration *******)
 

@@ -24,7 +24,8 @@ struct
   type data_determinate =
     {
       det_equiv_problem : Determinate_equivalence.equivalence_problem;
-      det_recipe_substitution : (recipe_variable * recipe) list
+      det_recipe_substitution : (recipe_variable * recipe) list;
+      det_eq_query : bool
     }
 
   type data_session =
@@ -38,7 +39,8 @@ struct
     {
       gen_equiv_problem : Generic_equivalence.equivalence_problem;
       gen_recipe_substitution : (recipe_variable * recipe) list;
-      gen_semantics : semantics
+      gen_semantics : semantics;
+      trace_eq_query : bool
     }
 
   type data_equivalence =
@@ -81,21 +83,22 @@ struct
 
     match job.data_equiv with
       | DDeterminate data ->
-          let rec apply_rules equiv_pbl f_next = Determinate_equivalence.apply_one_transition_and_rules equiv_pbl apply_rules f_next in
+          let rec apply_rules equiv_pbl f_next = Determinate_equivalence.apply_one_transition_and_rules data.det_eq_query equiv_pbl apply_rules f_next in
 
           begin try
             Determinate_equivalence.import_equivalence_problem (fun () ->
               apply_rules data.det_equiv_problem (fun () -> ());
               RTrace_Equivalence None
             ) data.det_equiv_problem data.det_recipe_substitution
-          with
-            | Determinate_equivalence.Not_Trace_Equivalent attack -> RTrace_Equivalence (Some attack)
+          with Determinate_equivalence.Not_Trace_Equivalent attack ->
+            if data.det_eq_query then RTrace_Equivalence (Some attack)
+            else RTrace_Inclusion (Some (snd attack))
           end
       | DGeneric data ->
           let apply_one_transition = match data.gen_semantics with
-            | Classic -> Generic_equivalence.apply_one_transition_and_rules_classic
-            | Private -> Generic_equivalence.apply_one_transition_and_rules_private
-            | Eavesdrop -> Generic_equivalence.apply_one_transition_and_rules_eavesdrop
+            | Classic -> Generic_equivalence.apply_one_transition_and_rules_classic data.trace_eq_query
+            | Private -> Generic_equivalence.apply_one_transition_and_rules_private data.trace_eq_query
+            | Eavesdrop -> Generic_equivalence.apply_one_transition_and_rules_eavesdrop data.trace_eq_query
           in
 
           let rec apply_rules equiv_pbl f_next = apply_one_transition equiv_pbl apply_rules f_next in
@@ -106,13 +109,18 @@ struct
               Statistic.record_notail Statistic.time_other (fun () ->
                 Generic_equivalence.import_equivalence_problem (fun () ->
                   apply_rules data.gen_equiv_problem (fun () -> ());
-                  RTrace_Equivalence None
+                  if data.trace_eq_query
+                  then RTrace_Equivalence None
+                  else RTrace_Inclusion None
                 ) data.gen_equiv_problem data.gen_recipe_substitution
               )
             in
             Config.log Config.Distribution (fun () -> Printf.sprintf "[distributed_equivalence.ml >> evaluate] Statistic: %s\n" (Statistic.display_statistic ()));
             res
-          with Generic_equivalence.Not_Trace_Equivalent attack -> RTrace_Equivalence (Some attack)
+          with Generic_equivalence.Not_Trace_Equivalent(is_left,attack) ->
+            if data.trace_eq_query
+            then RTrace_Equivalence (Some (is_left,attack))
+            else RTrace_Inclusion (Some attack)
           end
       | DSession data ->
           let rec apply_rules equiv_pbl f_next = Session_equivalence.apply_one_step equiv_pbl apply_rules f_next in
@@ -157,25 +165,30 @@ struct
           begin try
             Determinate_equivalence.import_equivalence_problem (fun () ->
               let job_list = ref [] in
-              Determinate_equivalence.apply_one_transition_and_rules data.det_equiv_problem
+              Determinate_equivalence.apply_one_transition_and_rules data.det_eq_query data.det_equiv_problem
                 (fun equiv_pbl_1 f_next_1 ->
                   let (equiv_pbl_2,recipe_subst) = Determinate_equivalence.export_equivalence_problem equiv_pbl_1 in
-                  job_list := { job with data_equiv = DDeterminate { det_equiv_problem = equiv_pbl_2; det_recipe_substitution = recipe_subst }; variable_counter = Variable.get_counter (); name_counter = Name.get_counter (); number_of_attacker_name = Symbol.get_number_of_attacker_name () } :: !job_list;
+                  job_list := { job with data_equiv = DDeterminate { det_equiv_problem = equiv_pbl_2; det_recipe_substitution = recipe_subst; det_eq_query = data.det_eq_query }; variable_counter = Variable.get_counter (); name_counter = Name.get_counter (); number_of_attacker_name = Symbol.get_number_of_attacker_name () } :: !job_list;
                   f_next_1 ()
                 )
                 (fun () -> ());
 
               if !job_list = []
-              then Completed (RTrace_Equivalence None)
+              then
+                if data.det_eq_query then Completed (RTrace_Equivalence None)
+                else Completed (RTrace_Inclusion None)
               else Job_list !job_list
             ) data.det_equiv_problem data.det_recipe_substitution
-          with Determinate_equivalence.Not_Trace_Equivalent attack -> Completed (RTrace_Equivalence (Some attack))
+          with Determinate_equivalence.Not_Trace_Equivalent attack ->
+              if data.det_eq_query then
+                Completed (RTrace_Equivalence (Some attack))
+              else Completed (RTrace_Inclusion (Some (snd attack)))
           end
     | DGeneric data ->
         let apply_one_transition = match data.gen_semantics with
-          | Classic -> Generic_equivalence.apply_one_transition_and_rules_classic
-          | Private -> Generic_equivalence.apply_one_transition_and_rules_private
-          | Eavesdrop -> Generic_equivalence.apply_one_transition_and_rules_eavesdrop
+          | Classic -> Generic_equivalence.apply_one_transition_and_rules_classic data.trace_eq_query
+          | Private -> Generic_equivalence.apply_one_transition_and_rules_private data.trace_eq_query
+          | Eavesdrop -> Generic_equivalence.apply_one_transition_and_rules_eavesdrop data.trace_eq_query
         in
         begin try
           Generic_equivalence.import_equivalence_problem (fun () ->
@@ -185,7 +198,7 @@ struct
               apply_one_transition data.gen_equiv_problem
                 (fun equiv_pbl_1 f_next_1 ->
                   let (equiv_pbl_2,recipe_subst) = Generic_equivalence.export_equivalence_problem equiv_pbl_1 in
-                  job_list := { job with data_equiv = DGeneric { gen_equiv_problem = equiv_pbl_2; gen_recipe_substitution = recipe_subst; gen_semantics = data.gen_semantics }; variable_counter = Variable.get_counter (); name_counter = Name.get_counter (); number_of_attacker_name = Symbol.get_number_of_attacker_name () } :: !job_list;
+                  job_list := { job with data_equiv = DGeneric { gen_equiv_problem = equiv_pbl_2; gen_recipe_substitution = recipe_subst; gen_semantics = data.gen_semantics; trace_eq_query = data.trace_eq_query }; variable_counter = Variable.get_counter (); name_counter = Name.get_counter (); number_of_attacker_name = Symbol.get_number_of_attacker_name () } :: !job_list;
                   f_next_1 ()
                 )
                 (fun () -> ());
@@ -196,7 +209,10 @@ struct
             then Completed (RTrace_Equivalence None)
             else Job_list !job_list
           ) data.gen_equiv_problem data.gen_recipe_substitution
-        with Generic_equivalence.Not_Trace_Equivalent attack -> Completed (RTrace_Equivalence (Some attack))
+        with Generic_equivalence.Not_Trace_Equivalent attack ->
+          if data.trace_eq_query then
+            Completed (RTrace_Equivalence (Some attack))
+          else Completed (RTrace_Inclusion (Some (snd attack)))
         end
     | DSession data ->
         begin try
@@ -359,7 +375,7 @@ let convert_trace_to_original_symbols trace =
 
   List.map convert_transition trace
 
-let trace_equivalence_determinate proc1 proc2 =
+let trace_equivalence_determinate is_equiv_query proc1 proc2 =
 
   (*** Initialise skeletons ***)
 
@@ -404,7 +420,8 @@ let trace_equivalence_determinate proc1 proc2 =
   let data : EquivJob.data_determinate =
     {
       EquivJob.det_equiv_problem = equiv_pbl;
-      EquivJob.det_recipe_substitution = []
+      EquivJob.det_recipe_substitution = [];
+      EquivJob.det_eq_query = is_equiv_query
     }
   in
 
@@ -445,7 +462,7 @@ let trace_equivalence_determinate proc1 proc2 =
       Distribution.WLM.distant_workers = !Config.distant_workers;
       Distribution.WLM.nb_jobs = !Config.number_of_jobs;
       Distribution.WLM.time_between_round = !Config.round_timer;
-      Distribution.WLM.equivalence_type = Trace_Equivalence;
+      Distribution.WLM.equivalence_type = if is_equiv_query then Trace_Equivalence else Trace_Inclusion;
       Distribution.WLM.initial_job = job
     }
   in
@@ -465,7 +482,7 @@ let trace_equivalence_determinate proc1 proc2 =
 
   (in_ch,out_ch,convert_result)
 
-let trace_equivalence_generic semantics proc1 proc2 =
+let trace_equivalence_generic is_equiv_query semantics proc1 proc2 =
   (*** Initialise skeletons ***)
 
   Rewrite_rules.initialise_all_skeletons ();
@@ -510,7 +527,8 @@ let trace_equivalence_generic semantics proc1 proc2 =
     {
       EquivJob.gen_equiv_problem = equiv_pbl;
       EquivJob.gen_semantics = semantics;
-      EquivJob.gen_recipe_substitution = []
+      EquivJob.gen_recipe_substitution = [];
+      EquivJob.trace_eq_query = is_equiv_query
     }
   in
 

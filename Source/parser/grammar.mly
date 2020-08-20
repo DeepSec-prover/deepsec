@@ -28,7 +28,7 @@ open Parser_functions
 %token FREE CONST
 %token NEW IF THEN ELSE IN OUT LET
 %token PHASE
-%token QUERY TRACEEQ OBSEQ SESSEQ SESSINCL
+%token QUERY TRACEEQ TRACEINCL OBSEQ SESSEQ SESSINCL
 
 %token EQ
 %token SLASH SEMI DOT MID BANG COMMA
@@ -135,6 +135,8 @@ free_name_declaration:
 query_declaration:
   | QUERY TRACEEQ LPAR extended_process COMMA extended_process RPAR DOT
       { Trace_Eq($4,$6) }
+  | QUERY TRACEINCL LPAR extended_process COMMA extended_process RPAR DOT
+      { Trace_Incl($4,$6) }
   | QUERY OBSEQ LPAR extended_process COMMA extended_process RPAR DOT
       { Obs_Eq($4,$6) }
   | QUERY SESSEQ LPAR extended_process COMMA extended_process RPAR DOT

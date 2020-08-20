@@ -50,6 +50,7 @@
         (* Query *)
         "query", QUERY;
         "trace_equiv", TRACEEQ;
+        "trace_incl", TRACEINCL;
         "obs_equiv", OBSEQ;
         "session_equiv", SESSEQ;
         "session_incl", SESSINCL;

@@ -148,7 +148,7 @@ let get_knowledge_recipe_from_preparation_data = function
 
 (*** TODO: When we improve the internal communication for classic transitions, we need to link the deducible names *)
 
-let apply_one_transition_and_rules_classic_input type_max equiv_pbl f_continuation f_next =
+let apply_one_transition_and_rules_classic_input is_equiv_query type_max equiv_pbl f_continuation f_next =
   (*** Generate the set for the next input ***)
   let csys_list = ref [] in
 
@@ -207,7 +207,12 @@ let apply_one_transition_and_rules_classic_input type_max equiv_pbl f_continuati
       let csys = List.hd csys_set.Constraint_system.set in
       let origin_process = csys.Constraint_system.additional_data.origin_process in
       if List.for_all (fun csys' -> csys'.Constraint_system.additional_data.origin_process = origin_process) csys_set.Constraint_system.set
-      then raise (Not_Trace_Equivalent (generate_attack_trace csys))
+      then
+        if is_equiv_query then
+          raise (Not_Trace_Equivalent (generate_attack_trace csys))
+        else if origin_process = Left then
+          raise (Not_Trace_Equivalent (generate_attack_trace csys))
+        else f_next_1 ()
       else
         Constraint_system.Rule.instantiate_useless_deduction_facts (fun csys_set_1 f_next_2 ->
           f_continuation { equiv_pbl with csys_set = csys_set_1 } f_next_2
@@ -223,7 +228,7 @@ let apply_one_transition_and_rules_classic_input type_max equiv_pbl f_continuati
         Constraint_system.knowledge_recipe = get_knowledge_recipe_from_preparation_data !preparation_data
       } f_next
 
-let apply_one_transition_and_rules_classic_output type_max equiv_pbl f_continuation f_next =
+let apply_one_transition_and_rules_classic_output is_equiv_query type_max equiv_pbl f_continuation f_next =
   (*** Generate the set for the next output ***)
   let csys_list = ref [] in
 
@@ -281,7 +286,12 @@ let apply_one_transition_and_rules_classic_output type_max equiv_pbl f_continuat
       let csys = List.hd csys_set.Constraint_system.set in
       let origin_process = csys.Constraint_system.additional_data.origin_process in
       if List.for_all (fun csys' -> csys'.Constraint_system.additional_data.origin_process = origin_process) csys_set.Constraint_system.set
-      then raise (Not_Trace_Equivalent (generate_attack_trace csys))
+      then
+        if is_equiv_query then
+          raise (Not_Trace_Equivalent (generate_attack_trace csys))
+        else if origin_process = Left then
+          raise (Not_Trace_Equivalent (generate_attack_trace csys))
+        else f_next_1 ()
       else
         Constraint_system.Rule.instantiate_useless_deduction_facts (fun csys_set_1 f_next_2 ->
           f_continuation { size_frame = equiv_pbl.size_frame + 1; csys_set = csys_set_1 } f_next_2
@@ -297,7 +307,7 @@ let apply_one_transition_and_rules_classic_output type_max equiv_pbl f_continuat
         Constraint_system.knowledge_recipe = get_knowledge_recipe_from_preparation_data !preparation_data
       } f_next
 
-let apply_one_transition_and_rules_classic equiv_pbl f_continuation f_next =
+let apply_one_transition_and_rules_classic is_equiv_query equiv_pbl f_continuation f_next =
   Config.debug (fun () ->
     incr nb_apply_one_transition_and_rules;
     Constraint_system.Set.debug_check_structure "[generic_equivalence >> apply_one_transition_and_rules_classic]" equiv_pbl.csys_set;
@@ -317,13 +327,13 @@ let apply_one_transition_and_rules_classic equiv_pbl f_continuation f_next =
     (Data_structure.IK.get_max_type_recipe equiv_pbl.csys_set.Constraint_system.knowledge_recipe csys.Constraint_system.incremented_knowledge)
   in
 
-  apply_one_transition_and_rules_classic_output type_max equiv_pbl f_continuation (fun () ->
-    apply_one_transition_and_rules_classic_input type_max equiv_pbl f_continuation f_next
+  apply_one_transition_and_rules_classic_output is_equiv_query type_max equiv_pbl f_continuation (fun () ->
+    apply_one_transition_and_rules_classic_input is_equiv_query type_max equiv_pbl f_continuation f_next
   )
 
 (*** Private transitions ***)
 
-let apply_one_transition_and_rules_private_input type_max equiv_pbl f_continuation f_next =
+let apply_one_transition_and_rules_private_input is_equiv_query type_max equiv_pbl f_continuation f_next =
   (*** Generate the set for the next input ***)
   let csys_list = ref [] in
 
@@ -390,7 +400,12 @@ let apply_one_transition_and_rules_private_input type_max equiv_pbl f_continuati
       let csys = List.hd csys_set.Constraint_system.set in
       let origin_process = csys.Constraint_system.additional_data.origin_process in
       if List.for_all (fun csys' -> csys'.Constraint_system.additional_data.origin_process = origin_process) csys_set.Constraint_system.set
-      then raise (Not_Trace_Equivalent (generate_attack_trace csys))
+      then
+        if is_equiv_query then
+          raise (Not_Trace_Equivalent (generate_attack_trace csys))
+        else if origin_process = Left then
+          raise (Not_Trace_Equivalent (generate_attack_trace csys))
+        else f_next_1 ()
       else
         Constraint_system.Rule.instantiate_useless_deduction_facts (fun csys_set_1 f_next_2 ->
           f_continuation { equiv_pbl with csys_set = csys_set_1 } f_next_2
@@ -408,7 +423,7 @@ let apply_one_transition_and_rules_private_input type_max equiv_pbl f_continuati
         } f_next
     end
 
-let apply_one_transition_and_rules_private_output type_max equiv_pbl f_continuation f_next =
+let apply_one_transition_and_rules_private_output is_equiv_query type_max equiv_pbl f_continuation f_next =
   (*** Generate the set for the next output ***)
   let csys_list = ref [] in
 
@@ -474,7 +489,12 @@ let apply_one_transition_and_rules_private_output type_max equiv_pbl f_continuat
       let csys = List.hd csys_set.Constraint_system.set in
       let origin_process = csys.Constraint_system.additional_data.origin_process in
       if List.for_all (fun csys' -> csys'.Constraint_system.additional_data.origin_process = origin_process) csys_set.Constraint_system.set
-      then raise (Not_Trace_Equivalent (generate_attack_trace csys))
+      then
+        if is_equiv_query then
+          raise (Not_Trace_Equivalent (generate_attack_trace csys))
+        else if origin_process = Left then
+          raise (Not_Trace_Equivalent (generate_attack_trace csys))
+        else f_next_1 ()
       else
         Constraint_system.Rule.instantiate_useless_deduction_facts (fun csys_set_1 f_next_2 ->
           f_continuation { size_frame = equiv_pbl.size_frame + 1; csys_set = csys_set_1 } f_next_2
@@ -492,7 +512,7 @@ let apply_one_transition_and_rules_private_output type_max equiv_pbl f_continuat
         } f_next
     end
 
-let apply_one_transition_and_rules_private equiv_pbl f_continuation f_next =
+let apply_one_transition_and_rules_private is_equiv_query equiv_pbl f_continuation f_next =
   Config.debug (fun () ->
     incr nb_apply_one_transition_and_rules;
     Constraint_system.Set.debug_check_structure "[generic_equivalence >> apply_one_transition_and_rules_private]" equiv_pbl.csys_set;
@@ -513,13 +533,13 @@ let apply_one_transition_and_rules_private equiv_pbl f_continuation f_next =
     (Data_structure.IK.get_max_type_recipe equiv_pbl.csys_set.Constraint_system.knowledge_recipe csys.Constraint_system.incremented_knowledge)
   in
 
-  apply_one_transition_and_rules_private_output type_max equiv_pbl f_continuation (fun () ->
-    apply_one_transition_and_rules_private_input type_max equiv_pbl f_continuation f_next
+  apply_one_transition_and_rules_private_output is_equiv_query type_max equiv_pbl f_continuation (fun () ->
+    apply_one_transition_and_rules_private_input is_equiv_query type_max equiv_pbl f_continuation f_next
   )
 
 (*** Eavesdrop ***)
 
-let apply_one_transition_and_rules_eavesdrop_eav_transition type_max equiv_pbl f_continuation f_next =
+let apply_one_transition_and_rules_eavesdrop_eav_transition is_equiv_query type_max equiv_pbl f_continuation f_next =
   (*** Generate the set for the next output ***)
   let csys_list = ref [] in
 
@@ -582,7 +602,12 @@ let apply_one_transition_and_rules_eavesdrop_eav_transition type_max equiv_pbl f
       let csys = List.hd csys_set.Constraint_system.set in
       let origin_process = csys.Constraint_system.additional_data.origin_process in
       if List.for_all (fun csys' -> csys'.Constraint_system.additional_data.origin_process = origin_process) csys_set.Constraint_system.set
-      then raise (Not_Trace_Equivalent (generate_attack_trace csys))
+      then
+        if is_equiv_query then
+          raise (Not_Trace_Equivalent (generate_attack_trace csys))
+        else if origin_process = Left then
+          raise (Not_Trace_Equivalent (generate_attack_trace csys))
+        else f_next_1 ()
       else
         Constraint_system.Rule.instantiate_useless_deduction_facts (fun csys_set_1 f_next_2 ->
           f_continuation { size_frame = equiv_pbl.size_frame + 1; csys_set = csys_set_1 } f_next_2
@@ -598,7 +623,7 @@ let apply_one_transition_and_rules_eavesdrop_eav_transition type_max equiv_pbl f
         Constraint_system.knowledge_recipe = get_knowledge_recipe_from_preparation_data !preparation_data
       } f_next
 
-let apply_one_transition_and_rules_eavesdrop equiv_pbl f_continuation f_next =
+let apply_one_transition_and_rules_eavesdrop is_equiv_query equiv_pbl f_continuation f_next =
   Config.debug (fun () ->
     incr nb_apply_one_transition_and_rules;
     Constraint_system.Set.debug_check_structure "[generic_equivalence >> apply_one_transition_and_rules_eavesdrop]" equiv_pbl.csys_set;
@@ -619,8 +644,8 @@ let apply_one_transition_and_rules_eavesdrop equiv_pbl f_continuation f_next =
     (Data_structure.IK.get_max_type_recipe equiv_pbl.csys_set.Constraint_system.knowledge_recipe csys.Constraint_system.incremented_knowledge)
   in
 
-  apply_one_transition_and_rules_private_output type_max equiv_pbl f_continuation (fun () ->
-    apply_one_transition_and_rules_eavesdrop_eav_transition type_max equiv_pbl f_continuation (fun () ->
-      apply_one_transition_and_rules_private_input type_max equiv_pbl f_continuation f_next
+  apply_one_transition_and_rules_private_output is_equiv_query type_max equiv_pbl f_continuation (fun () ->
+    apply_one_transition_and_rules_eavesdrop_eav_transition is_equiv_query type_max equiv_pbl f_continuation (fun () ->
+      apply_one_transition_and_rules_private_input is_equiv_query type_max equiv_pbl f_continuation f_next
     )
   )

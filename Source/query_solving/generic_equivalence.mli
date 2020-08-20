@@ -44,8 +44,8 @@ val initialise_equivalence_problem : configuration Constraint_system.set -> equi
 
 exception Not_Trace_Equivalent of (bool * transition list)
 
-val apply_one_transition_and_rules_classic : equivalence_problem -> (equivalence_problem -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
+val apply_one_transition_and_rules_classic : bool -> equivalence_problem -> (equivalence_problem -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
 
-val apply_one_transition_and_rules_private : equivalence_problem -> (equivalence_problem -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
+val apply_one_transition_and_rules_private : bool -> equivalence_problem -> (equivalence_problem -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
 
-val apply_one_transition_and_rules_eavesdrop : equivalence_problem -> (equivalence_problem -> (unit -> unit) -> unit) -> (unit -> unit) -> unit
+val apply_one_transition_and_rules_eavesdrop : bool -> equivalence_problem -> (equivalence_problem -> (unit -> unit) -> unit) -> (unit -> unit) -> unit

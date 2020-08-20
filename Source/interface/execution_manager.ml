@@ -719,16 +719,17 @@ let execute_query query_result =
 
   (* We retrieve the query_type *)
   match query_result.query_type with
-    | Types.Trace_Equivalence ->
+    | Types.Trace_Equivalence | Types.Trace_Inclusion ->
         let (proc1,proc2) = match query_result.processes with
           | [ p1; p2 ] ->
               Interface.process_of_json_process p1,
               Interface.process_of_json_process p2
           | _ -> Config.internal_error "[main_ui.ml >> execute_query] Should not occur when equivalence."
         in
+        let is_equiv_query = query_result.query_type = Types.Trace_Equivalence in
         if !Config.por && Determinate_process.is_strongly_action_determinate proc1 && Determinate_process.is_strongly_action_determinate proc2
-        then trace_equivalence_determinate proc1 proc2
-        else trace_equivalence_generic query_result.semantics proc1 proc2
+        then trace_equivalence_determinate is_equiv_query proc1 proc2
+        else trace_equivalence_generic is_equiv_query query_result.semantics proc1 proc2
     | Types.Session_Equivalence | Types.Session_Inclusion ->
         let (proc1,proc2) = match query_result.processes with
           | [ p1; p2 ] ->
@@ -741,7 +742,7 @@ let execute_query query_result =
         then
           if !Config.por && Determinate_process.is_strongly_action_determinate proc1 && Determinate_process.is_strongly_action_determinate proc2
           then
-            let (in_ch,out_ch,trans_result) = trace_equivalence_determinate proc1 proc2 in
+            let (in_ch,out_ch,trans_result) = trace_equivalence_determinate true proc1 proc2 in
             let trans_result' verif_result = match trans_result verif_result with
               | RTrace_Equivalence res -> RSession_Equivalence res
               | _ -> Config.internal_error "[execution_manager.ml >> execute_query] Should only be trace equivalence"
@@ -749,7 +750,7 @@ let execute_query query_result =
             (in_ch,out_ch,trans_result')
           else session_equivalence is_equiv_query proc1 proc2
         else session_equivalence is_equiv_query proc1 proc2
-    | _ -> Config.internal_error "[main_ui.ml >> execute_query] Currently, only trace equivalence, session equivalence and session inclusion are implemented."
+    (* | _ -> Config.internal_error "[main_ui.ml >> execute_query] Currently, only trace equivalence, session equivalence and session inclusion are implemented." *)
 
 let listen_to_command_api in_ch out_ch translation_result =
   let fd_in_ch = Unix.descr_of_in_channel in_ch in
