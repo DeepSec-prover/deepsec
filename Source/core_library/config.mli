@@ -92,3 +92,5 @@ val default_semantics : Types.semantics ref
 val local_semantics : Types.semantics option ref
 
 val por : bool ref
+
+val probabilistic : bool ref

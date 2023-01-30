@@ -264,7 +264,7 @@ module Map = struct
     val singleton: key -> 'a -> 'a t
     val remove: key -> 'a t -> 'a t
     val remove_exception: key -> 'a t -> 'a * 'a t
-    val remove2: ('a -> unit) -> key -> 'a t
+    val remove2: ('a -> unit) -> key -> 'a t -> 'a t
     val add_or_remove : key -> 'a -> ('a -> bool) -> 'a t -> 'a t
 
     val merge:

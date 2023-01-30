@@ -79,6 +79,8 @@ rule token = parse
 | ')'   { RPAR }
 | '['   { LBRACE }
 | ']'   { RBRACE }
+| '{'   { LBRACKET }
+| '}'   { RBRACKET }
 | "->"  { RIGHTARROW }
 | '#' ['A'-'Z' 'a'-'z'] ['a'-'z' 'A'-'Z' '_' ''' '0'-'9']* as id
     {

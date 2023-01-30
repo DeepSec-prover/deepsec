@@ -61,11 +61,13 @@ type intermediate_process =
   | IPar of intermediate_process list
   | IBang of int * intermediate_process * int
   | IChoice of intermediate_process * intermediate_process * int
+  | IChoiceP of intermediate_process * intermediate_process * float * int
 
 type plain_process =
   | Nil
   | Call of ident * term list
   | Choice of plain_process * plain_process
+  | ChoiceP of plain_process * plain_process * float
   | Par of plain_process * plain_process
   | Bang of int * plain_process * element_position
   | New of ident * plain_process
@@ -256,6 +258,7 @@ let rec parse_plain_process env = function
       end
   | Nil -> INil
   | Choice(p1,p2) -> IChoice(parse_plain_process env p1,parse_plain_process env p2,fresh_position ())
+  | ChoiceP(p1,p2,proba) -> IChoiceP(parse_plain_process env p1,parse_plain_process env p2,proba,fresh_position ())
   | Seq(_,_)-> error_message { line = 0; start_char = 0; end_char = 0 } "Sequence is not yet implemented."
   | Par(p1,p2) ->
       begin match parse_plain_process env p1, parse_plain_process env p2 with
@@ -374,6 +377,9 @@ let rec process_of_intermediate_process occurence_list = function
         in
         Types.Bang(explore n,(pos,occurence_list))
   | IChoice(p1,p2,pos) -> Types.Choice(process_of_intermediate_process occurence_list p1,process_of_intermediate_process occurence_list p2, (pos,occurence_list))
+  | IChoiceP(p1,p2,proba,pos) -> 
+      Config.probabilistic := true;
+      Types.ChoiceP(process_of_intermediate_process occurence_list p1,process_of_intermediate_process occurence_list p2, proba, (pos,occurence_list))
 
 let parse_intermediate_process env = function
   | EPlain proc -> parse_plain_process env proc
@@ -539,6 +545,9 @@ let query_list = ref []
 let parse_query env line = function
   | Trace_Eq(proc_1,proc_2) -> query_list := (Types.Trace_Equivalence,process_of_intermediate_process [] (parse_intermediate_process env proc_1), process_of_intermediate_process [] (parse_intermediate_process env proc_2))::!query_list
   | Sess_Eq(proc_1,proc_2) ->
+      if !Config.probabilistic
+      then error_message line "Probabilistic processes cannot be used in session equivalence.";
+
       if !Config.local_semantics = Some Types.Classic || (!Config.default_semantics = Types.Classic && !Config.local_semantics = None)
       then warning_message line "The Classic semantics have been set but a session equivalence query can only be verified in the Private semantics. The semantics have been modified accordingly for this query.";
       if !Config.local_semantics = Some Types.Eavesdrop || (!Config.default_semantics = Types.Eavesdrop && !Config.local_semantics = None)
@@ -554,6 +563,9 @@ let parse_query env line = function
       end;
       query_list := (Types.Session_Equivalence,proc_1',proc_2')::!query_list
   | Sess_Incl(proc_1,proc_2) ->
+      if !Config.probabilistic
+      then error_message line "Probabilistic processes cannot be used in session inclusion.";
+
       if !Config.local_semantics = Some Types.Classic || (!Config.default_semantics = Types.Classic && !Config.local_semantics = None)
       then warning_message line "The Classic semantics have been set but a session inclusion query can only be verified in the Private semantics. The semantics have been modified accordingly for this query.";
       if !Config.local_semantics = Some Types.Eavesdrop || (!Config.default_semantics = Types.Eavesdrop && !Config.local_semantics = None)

@@ -251,10 +251,11 @@ let rec record_from_process assoc_ref = function
   | Par p_list -> List.iter (record_from_process assoc_ref) p_list
   | Bang([],_) -> Config.internal_error "[display_ui.ml >> record_from_process] Bang should at least contain one process."
   | Bang(p::_,_) -> record_from_process assoc_ref p
-  | Choice(p1,p2,_) ->
+  | Choice(p1,p2,_) 
+  | ChoiceP(p1,p2,_,_) ->
       record_from_process assoc_ref p1;
       record_from_process assoc_ref p2
-
+      
 (*** Retrieving id of atomic data ***)
 
 let get_name_id assoc n = match List.assq_opt n assoc.std.names with

@@ -680,6 +680,7 @@ module Labelled_process = struct
           in
           PBangStrong([],p_list'), ch_set, is_sure_proper
       | Choice _ -> Config.internal_error "[session_process.ml >> Labelled_process.of_process] Should not contain choice operator."
+      | ChoiceP _ -> Config.internal_error "[session_process.ml >> Labelled_process.of_process] Should not contain probabilistic choice operator."
     in
 
     let (p,_,_) = explore [] [] proc in

@@ -156,3 +156,4 @@ let core_factor = ref 100
 let default_semantics = ref Types.Private
 let local_semantics = ref None
 let por = ref true
+let probabilistic = ref false

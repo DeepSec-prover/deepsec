@@ -33,7 +33,7 @@ open Parser_functions
 %token EQ
 %token SLASH SEMI DOT MID BANG COMMA
 %token PLUS QUADDOT
-%token LPAR RPAR LBRACE RBRACE
+%token LPAR RPAR LBRACE RBRACE LBRACKET RBRACKET
 %token RIGHTARROW
 
 %token <string> ATTACKER
@@ -173,6 +173,8 @@ plain_process:
       { Par($1,$3) }
   | plain_process PLUS plain_process
       { Choice($1,$3) }
+  | plain_process PLUS LBRACKET float RBRACKET plain_process
+      { ChoiceP($1,$6,$4) }
   | plain_process QUADDOT plain_process
       { Seq($1,$3) }
   | NEW ident SEMI plain_process
@@ -193,6 +195,14 @@ plain_process:
       { Let($2,$4,$6,Nil) }
   | LET pattern EQ term IN plain_process ELSE plain_process
       { Let($2,$4,$6,$8) }
+
+/***** Float ******/
+
+float:
+  | INT 
+      { float_of_int $1}
+  | INT DOT INT
+      { float_of_string ((string_of_int $1)^"."^(string_of_int $3)) }
 
 /***** Pattern ******/
 

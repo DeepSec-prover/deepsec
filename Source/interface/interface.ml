@@ -70,8 +70,12 @@ let json_process_of_process assoc proc =
     | Bang(p::l,pos) ->
         let size = List.length l + 1 in
         JBang(size,explore (nb_to_remove+1) p,of_position nb_to_remove pos)
-    | Choice(p1,p2,pos) ->
+    | Choice(p1,p2,pos) ->  
         JChoice(explore nb_to_remove p1, explore nb_to_remove p2, of_position nb_to_remove pos)
+    | ChoiceP(p1,p2,_,pos) ->
+        JChoice(explore nb_to_remove p1, explore nb_to_remove p2, of_position nb_to_remove pos)
+    (* Will need to change the interface*)
+
   in
 
   explore 0 proc
@@ -145,6 +149,8 @@ let process_of_json_process proc =
         Bang(explore_bang mult,add_pos pos_to_add pos)
     | JChoice(p1,p2,pos) ->
         Choice(explore pos_to_add p1, explore pos_to_add p2, add_pos pos_to_add pos)
+    | JChoiceP(p1,p2,proba,pos) ->
+        ChoiceP(explore pos_to_add p1, explore pos_to_add p2, proba, add_pos pos_to_add pos)
   in
 
   explore [] proc
@@ -253,6 +259,7 @@ let rec instantiate_process = function
   | JPar p_list -> JPar (List.map instantiate_process p_list)
   | JBang(n,p,pos) -> JBang(n,instantiate_process p,pos)
   | JChoice(p1,p2,pos) -> JChoice(instantiate_process p1, instantiate_process p2,pos)
+  | JChoiceP(p1,p2,proba,pos) -> JChoiceP(instantiate_process p1, instantiate_process p2,proba,pos)
 
 (*** Fresh copy ***)
 
@@ -307,6 +314,7 @@ let rec fresh_process assoc_ref n = function
   | JPar p_list -> JPar (List.map (fresh_process assoc_ref n) p_list)
   | JBang(n',p,pos) -> JBang(n',fresh_process assoc_ref n p,add_pos pos n)
   | JChoice(p1,p2,pos) -> JChoice(fresh_process assoc_ref n p1, fresh_process assoc_ref n p2, add_pos pos n)
+  | JChoiceP(p1,p2,proba,pos) -> JChoiceP(fresh_process assoc_ref n p1, fresh_process assoc_ref n p2, proba,add_pos pos n)
 
 (*** Retreive the private names ***)
 
@@ -348,7 +356,8 @@ let rec get_private_names_process accu_names = function
       get_private_names_process accu_names p
   | JPar plist -> List.iter (get_private_names_process accu_names) plist
   | JBang(_,p,_) -> get_private_names_process accu_names p
-  | JChoice(p1,p2,_) ->
+  | JChoice(p1,p2,_) 
+  | JChoiceP(p1,p2,_,_) ->
       get_private_names_process accu_names p1;
       get_private_names_process accu_names p2
 
@@ -386,6 +395,7 @@ let rec is_position_at_top_level pos = function
   | JLet(_,_,_,_,pos')
   | JNew(_,_,_,pos')
   | JChoice(_,_,pos')
+  | JChoiceP(_,_,_,pos')
   | JBang(_,_,pos') -> is_equal_position pos pos'
   | JPar p_list -> List.exists (is_position_at_top_level pos) p_list
   | JNil -> false
@@ -492,6 +502,8 @@ let apply_choice target_pos side conf =
   let rec explore = function
     | JChoice(p1,p2,pos) when is_equal_position pos target_pos ->
         if side then p1 else p2
+    | JChoiceP(p1,p2,_,pos) when is_equal_position pos target_pos ->
+      if side then p1 else p2
     | JPar p_list ->
         let p_list' = apply_transition_list explore p_list in
         if p_list' = [] then JNil else JPar p_list'
@@ -1169,7 +1181,8 @@ type ground_configuration =
   {
     gen_process : Generic_process.generic_process;
     gen_frame : term list;
-    gen_trace : transition list
+    gen_trace : transition list;
+    gen_probability : probability
   }
 
 let clean_variables_names =
@@ -1197,11 +1210,11 @@ let rec apply_attack_trace sem size_frame att_assoc att_trace kbr att_csys sim_c
 
           try
             let ch = apply_recipe_on_frame r_ch conf.gen_frame in
-            next_ground_output sem ch conf.gen_process csys.Constraint_system.original_substitution conf.gen_trace (fun proc out_gathering ->
+            next_ground_output sem ch conf.gen_process csys.Constraint_system.original_substitution conf.gen_probability conf.gen_trace (fun proc out_gathering ->
               let csys_1 = Constraint_system.add_axiom csys axiom out_gathering.term in
               let csys_2 =
                 { csys_1 with
-                  Constraint_system.additional_data = { gen_process = proc; gen_frame = conf.gen_frame @ [out_gathering.term]; gen_trace = AOutput(r_ch,out_gathering.position)::out_gathering.common_data.trace_transitions };
+                  Constraint_system.additional_data = { gen_process = proc; gen_frame = conf.gen_frame @ [out_gathering.term]; gen_trace = AOutput(r_ch,out_gathering.position)::out_gathering.common_data.trace_transitions; gen_probability = out_gathering.common_data.proba };
                   Constraint_system.original_substitution = out_gathering.common_data.original_subst
                 }
               in
@@ -1228,10 +1241,10 @@ let rec apply_attack_trace sem size_frame att_assoc att_trace kbr att_csys sim_c
           try
             let ch = apply_recipe_on_frame r_ch conf.gen_frame in
             let t = apply_recipe_on_frame r_t conf.gen_frame in
-            next_ground_input sem ch conf.gen_process csys.Constraint_system.original_substitution conf.gen_trace (fun proc in_gathering ->
+            next_ground_input sem ch conf.gen_process csys.Constraint_system.original_substitution conf.gen_probability conf.gen_trace (fun proc in_gathering ->
               let csys_1 =
                 { csys with
-                  Constraint_system.additional_data = { conf with gen_process = proc; gen_trace = AInput(r_ch,r_t,in_gathering.position)::in_gathering.common_data.trace_transitions };
+                  Constraint_system.additional_data = { conf with gen_process = proc; gen_trace = AInput(r_ch,r_t,in_gathering.position)::in_gathering.common_data.trace_transitions; gen_probability = in_gathering.common_data.proba };
                   Constraint_system.original_substitution = (Term.variable_of in_gathering.term, t)::in_gathering.common_data.original_subst;
                 }
               in
@@ -1273,11 +1286,11 @@ let rec apply_attack_trace sem size_frame att_assoc att_trace kbr att_csys sim_c
 
           try
             let ch = apply_recipe_on_frame r_ch conf.gen_frame in
-            next_ground_eavesdrop ch conf.gen_process csys.Constraint_system.original_substitution conf.gen_trace (fun proc eav_gathering ->
+            next_ground_eavesdrop ch conf.gen_process csys.Constraint_system.original_substitution conf.gen_probability conf.gen_trace (fun proc eav_gathering ->
               let csys_1 = Constraint_system.add_axiom csys axiom eav_gathering.eav_term in
               let csys_2 =
                 { csys_1 with
-                  Constraint_system.additional_data = { gen_process = proc; gen_frame = conf.gen_frame @ [eav_gathering.eav_term]; gen_trace = AEaves(r_ch,eav_gathering.eav_position_out,eav_gathering.eav_position_in)::eav_gathering.eav_common_data.trace_transitions };
+                  Constraint_system.additional_data = { gen_process = proc; gen_frame = conf.gen_frame @ [eav_gathering.eav_term]; gen_trace = AEaves(r_ch,eav_gathering.eav_position_out,eav_gathering.eav_position_in)::eav_gathering.eav_common_data.trace_transitions; gen_probability = eav_gathering.eav_common_data.proba };
                   Constraint_system.original_substitution = eav_gathering.eav_common_data.original_subst
                 }
               in
@@ -1304,7 +1317,7 @@ let find_equivalent_trace sem att_assoc att_js_proc att_trace sim_js_proc =
   let (sim_proc_2,translate_trace) = Process.simplify_for_generic sim_proc_1 in
   let gen_sim_proc = Generic_process.generic_process_of_process sim_proc_2 in
 
-  let sim_conf = { gen_process = gen_sim_proc; gen_frame = []; gen_trace = [] } in
+  let sim_conf = { gen_process = gen_sim_proc; gen_frame = []; gen_trace = []; gen_probability = 1. } in
   let att_conf = { size_frame = 0; frame = []; process = att_js_proc } in
 
   let sim_csys = Constraint_system.empty sim_conf in

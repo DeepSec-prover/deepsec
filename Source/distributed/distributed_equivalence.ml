@@ -479,14 +479,16 @@ let trace_equivalence_generic semantics proc1 proc2 =
     {
       Generic_equivalence.origin_process = Generic_equivalence.Left;
       Generic_equivalence.current_process = Generic_process.generic_process_of_process proc1';
-      Generic_equivalence.trace = []
+      Generic_equivalence.trace = [];
+      Generic_equivalence.probability = 1.
     }
   in
   let conf2 =
     {
       Generic_equivalence.origin_process = Generic_equivalence.Right;
       Generic_equivalence.current_process = Generic_process.generic_process_of_process proc2';
-      Generic_equivalence.trace = []
+      Generic_equivalence.trace = [];
+      Generic_equivalence.probability = 1.
     }
   in
 

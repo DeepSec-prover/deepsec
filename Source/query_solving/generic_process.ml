@@ -50,6 +50,7 @@ type generic_process =
   | SPar of generic_process list
   | SBang of generic_process list
   | SChoice of generic_process * generic_process * position
+  | SChoiceP of generic_process * generic_process * probability * position 
 
 (*** Display function ***)
 
@@ -119,6 +120,10 @@ let rec display_generic_process tab = function
       (display_generic_process (tab+1) p1) ^
       (display_with_tab tab (Printf.sprintf "{%s} +" (display_position pos))) ^
       (display_generic_process (tab+1) p2)
+  | SChoiceP(p1,p2,prob,pos) ->
+      (display_generic_process (tab+1) p1) ^
+      (display_with_tab tab (Printf.sprintf "{%s} +_%f" (display_position pos) prob)) ^
+      (display_generic_process (tab+1) p2)
 
 (*** Transformation from processes to simple process ***)
 
@@ -148,9 +153,11 @@ let rec link_used_data_process = function
   | SCondition(_,_,_,_,_,data) -> link_used_data data
   | SPar p_list -> List.iter link_used_data_process p_list
   | SBang p_list -> link_used_data_process (List.hd p_list)
-  | SChoice(p1,p2,_) ->
+  | SChoice(p1,p2,_)
+  | SChoiceP(p1,p2,_,_) ->
       link_used_data_process p1;
       link_used_data_process p2
+  
 
 let auto_cleanup_all f =
   Variable.auto_cleanup_with_reset_notail f
@@ -355,6 +362,13 @@ let generic_process_of_process proc =
         let in_ch = union_occurrence_channel in_ch1 in_ch2 in
         let out_ch = union_occurrence_channel out_ch1 out_ch2 in
         SChoice(p1',p2',pos), CTOther, in_ch, out_ch
+    | ChoiceP(p1,p2,prob,pos) ->
+        let (p1',_,in_ch1,out_ch1) = explore prev_vars p1 in
+        let (p2',_,in_ch2,out_ch2) = explore prev_vars p2 in
+
+        let in_ch = union_occurrence_channel in_ch1 in_ch2 in
+        let out_ch = union_occurrence_channel out_ch1 out_ch2 in
+        SChoiceP(p1',p2',prob,pos), CTOther, in_ch, out_ch
   in
 
   let (p,_,_,_) = explore [] proc in
@@ -368,7 +382,8 @@ type common_data =
   {
     trace_transitions : transition list;
     original_subst : (variable * term) list;
-    disequations : Formula.T.t
+    disequations : Formula.T.t;
+    proba : probability
   }
 
 type gathering =
@@ -454,8 +469,14 @@ let next_tau f_apply proc rest_proc data f_next = match proc with
         | _,_ -> apply_positive (fun () -> apply_negative f_next) equation_list
       end
   | SChoice(p1,p2,pos) ->
+      Config.log Config.Always (fun () -> "Entering Tau SChoice");
       f_apply p1 rest_proc { data with trace_transitions =  AChoice(pos,true)::data.trace_transitions } (fun () ->
         f_apply p2 rest_proc { data with trace_transitions =  AChoice(pos,false)::data.trace_transitions } f_next
+      )
+  | SChoiceP(p1,p2,prob,pos) ->
+      Config.log Config.Always (fun () -> "Entering Tau SChoice P");
+      f_apply p1 rest_proc { data with trace_transitions =  AChoice(pos,true)::data.trace_transitions; proba = data.proba *. prob } (fun () ->
+        f_apply p2 rest_proc { data with trace_transitions =  AChoice(pos,false)::data.trace_transitions; proba = data.proba *. (1. -. prob) } f_next
       )
   | SPar [p1;p2] ->
       f_apply p1 (make_par_processes p2 rest_proc) data (fun () ->
@@ -512,7 +533,8 @@ let rec next_output_classic f_continuation proc rest_proc data f_next = match pr
                     {
                       trace_transitions = (AComm(pos,in_gathering.position)::in_gathering.common_data.trace_transitions);
                       original_subst = (x,t)::in_gathering.common_data.original_subst;
-                      disequations = disequations_1
+                      disequations = disequations_1;
+                      proba =  in_gathering.common_data.proba
                     }
                   in
                   next_output_classic f_continuation p rest_proc' data_1 f_next_3
@@ -539,7 +561,8 @@ let rec next_output_classic f_continuation proc rest_proc data f_next = match pr
                   {
                     trace_transitions = (AComm(out_gathering.position,pos)::out_gathering.common_data.trace_transitions);
                     original_subst = (x,out_gathering.term)::out_gathering.common_data.original_subst;
-                    disequations = disequations_1
+                    disequations = disequations_1;
+                    proba =  out_gathering.common_data.proba
                   }
                 in
                 next_output_classic f_continuation p rest_proc' data_1  f_next_2
@@ -570,7 +593,8 @@ and next_input_classic f_continuation proc rest_proc data f_next = match proc wi
                   {
                     trace_transitions = (AComm(pos,in_gathering.position)::in_gathering.common_data.trace_transitions);
                     original_subst = (x,t)::in_gathering.common_data.original_subst;
-                    disequations = disequations_1
+                    disequations = disequations_1;
+                    proba =  in_gathering.common_data.proba
                   }
                 in
                 next_input_classic f_continuation p rest_proc' data_1  f_next_2
@@ -598,7 +622,8 @@ and next_input_classic f_continuation proc rest_proc data f_next = match proc wi
                     {
                       trace_transitions = (AComm(out_gathering.position,pos)::out_gathering.common_data.trace_transitions);
                       original_subst = (x,out_gathering.term)::out_gathering.common_data.original_subst;
-                      disequations = disequations_1
+                      disequations = disequations_1;
+                      proba =  out_gathering.common_data.proba
                     }
                   in
                   next_input_classic f_continuation p rest_proc' data_1 f_next_3
@@ -716,8 +741,14 @@ let rec next_tau_private f_apply ch_to_check ch_info proc rest_proc data f_next 
           | _,_ -> apply_positive true (fun () -> apply_negative true f_next) equation_list
       else f_next ()
   | SChoice(p1,p2,pos) ->
+      Config.log Config.Always (fun () -> "Entering Tau SChoice");
       next_tau_private f_apply true ch_info p1 rest_proc { data with trace_transitions =  AChoice(pos,true)::data.trace_transitions } (fun () ->
         next_tau_private f_apply true ch_info p2 rest_proc { data with trace_transitions =  AChoice(pos,false)::data.trace_transitions } f_next
+      )
+  | SChoiceP(p1,p2,prob,pos) ->
+      Config.log Config.Always (fun () -> "Entering Tau SChoice P");
+      next_tau_private f_apply true ch_info p1 rest_proc { data with trace_transitions =  AChoice(pos,true)::data.trace_transitions; proba =  data.proba *. prob } (fun () ->
+        next_tau_private f_apply true ch_info p2 rest_proc { data with trace_transitions =  AChoice(pos,false)::data.trace_transitions; proba =  data.proba *. (1. -. prob) } f_next
       )
   | SPar [p1;p2] ->
       next_tau_private f_apply true ch_info p1 (make_par_processes p2 rest_proc) data (fun () ->
@@ -950,7 +981,8 @@ let rec next_eavesdrop_communication f_continuation priv_channels proc rest_proc
                         {
                           trace_transitions = (AComm(pos,in_gathering.position)::in_gathering.common_data.trace_transitions);
                           original_subst = (x,t)::in_gathering.common_data.original_subst;
-                          disequations = disequations_1
+                          disequations = disequations_1;
+                          proba =  in_gathering.common_data.proba
                         }
                       in
                       next_eavesdrop_communication f_continuation in_gathering.private_channels p rest_proc' data_2 f_next_2
@@ -961,7 +993,8 @@ let rec next_eavesdrop_communication f_continuation priv_channels proc rest_proc
                           {
                             trace_transitions = (AComm(pos,in_gathering.position)::in_gathering.common_data.trace_transitions);
                             original_subst = (x,t)::in_gathering.common_data.original_subst;
-                            disequations = disequations_1
+                            disequations = disequations_1;
+                            proba =  in_gathering.common_data.proba
                           }
                         in
                         next_eavesdrop_communication f_continuation (add_private_channel ch in_gathering.private_channels) p rest_proc' data_2 f_next_2
@@ -988,7 +1021,8 @@ let rec next_eavesdrop_communication f_continuation priv_channels proc rest_proc
                     {
                       trace_transitions = (AComm(out_gathering.position,pos)::out_gathering.common_data.trace_transitions);
                       original_subst = (x,out_gathering.term)::out_gathering.common_data.original_subst;
-                      disequations = disequations_1
+                      disequations = disequations_1;
+                      proba =  out_gathering.common_data.proba
                     }
                   in
                   if not_deduc
@@ -1009,16 +1043,16 @@ let rec next_eavesdrop_communication f_continuation priv_channels proc rest_proc
 
 (**** Main functions *****)
 
-let next_output sem proc orig_subst transitions (f_continuation:generic_process -> gathering -> unit) = match sem with
-  | Classic -> next_output_classic (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) proc SNil { original_subst = orig_subst; disequations = Formula.T.Top; trace_transitions = transitions } (fun () -> ())
-  | _ -> next_output_private (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) PublicComm [] proc SNil { original_subst = orig_subst; disequations = Formula.T.Top; trace_transitions = transitions } (fun () -> ())
+let next_output sem proc orig_subst proba transitions (f_continuation:generic_process -> gathering -> unit) = match sem with
+  | Classic -> next_output_classic (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) proc SNil { original_subst = orig_subst; disequations = Formula.T.Top; trace_transitions = transitions; proba =  proba } (fun () -> ())
+  | _ -> next_output_private (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) PublicComm [] proc SNil { original_subst = orig_subst; disequations = Formula.T.Top; trace_transitions = transitions; proba =  proba } (fun () -> ())
 
 let next_output =
   if Config.record_time
   then
-    (fun sem proc orig_subst transitions f_continuation ->
+    (fun sem proc orig_subst proba transitions f_continuation ->
       Statistic.record_notail Statistic.time_next_transition (fun () ->
-        next_output sem proc orig_subst transitions (fun proc gather ->
+        next_output sem proc orig_subst proba transitions (fun proc gather ->
           Statistic.record_notail Statistic.time_other (fun () ->
             f_continuation proc gather
           )
@@ -1027,16 +1061,16 @@ let next_output =
     )
   else next_output
 
-let next_input sem proc orig_subst transitions (f_continuation:generic_process -> gathering -> unit) = match sem with
-  | Classic -> next_input_classic (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) proc SNil { original_subst = orig_subst; disequations = Formula.T.Top; trace_transitions = transitions } (fun () -> ())
-  | _ -> next_input_private (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) PublicComm [] proc SNil { original_subst = orig_subst; disequations = Formula.T.Top; trace_transitions = transitions } (fun () -> ())
+let next_input sem proc orig_subst proba transitions (f_continuation:generic_process -> gathering -> unit) = match sem with
+  | Classic -> next_input_classic (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) proc SNil { original_subst = orig_subst; disequations = Formula.T.Top; trace_transitions = transitions; proba =  proba } (fun () -> ())
+  | _ -> next_input_private (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) PublicComm [] proc SNil { original_subst = orig_subst; disequations = Formula.T.Top; trace_transitions = transitions; proba =  proba } (fun () -> ())
 
 let next_input =
   if Config.record_time
   then
-    (fun sem proc orig_subst transitions f_continuation ->
+    (fun sem proc orig_subst proba transitions f_continuation ->
       Statistic.record_notail Statistic.time_next_transition (fun () ->
-        next_input sem proc orig_subst transitions (fun proc gather ->
+        next_input sem proc orig_subst proba transitions (fun proc gather ->
           Statistic.record_notail Statistic.time_other (fun () ->
             f_continuation proc gather
           )
@@ -1045,15 +1079,15 @@ let next_input =
     )
   else next_input
 
-let next_eavesdrop proc orig_subst transitions (f_continuation:generic_process -> eavesdrop_gathering -> unit) =
-  next_eavesdrop_communication (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) [] proc SNil { original_subst = orig_subst; disequations = Formula.T.Top; trace_transitions = transitions } (fun () -> ())
+let next_eavesdrop proc orig_subst proba transitions (f_continuation:generic_process -> eavesdrop_gathering -> unit) =
+  next_eavesdrop_communication (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) [] proc SNil { original_subst = orig_subst; disequations = Formula.T.Top; trace_transitions = transitions; proba =  proba } (fun () -> ())
 
 let next_eavesdrop =
   if Config.record_time
   then
-    (fun proc orig_subst transitions f_continuation ->
+    (fun proc orig_subst proba transitions f_continuation ->
       Statistic.record_notail Statistic.time_next_transition (fun () ->
-        next_eavesdrop proc orig_subst transitions (fun proc gather ->
+        next_eavesdrop proc orig_subst proba transitions (fun proc gather ->
           Statistic.record_notail Statistic.time_other (fun () ->
             f_continuation proc gather
           )
@@ -1082,7 +1116,8 @@ let rec next_ground_output_classic f_continuation ch_target proc rest_proc data 
             let data_1 =
               { in_gathering.common_data with
                 trace_transitions = (AComm(pos,in_gathering.position)::in_gathering.common_data.trace_transitions);
-                original_subst = (x,t)::in_gathering.common_data.original_subst
+                original_subst = (x,t)::in_gathering.common_data.original_subst;
+                proba =  in_gathering.common_data.proba
               }
             in
             next_ground_output_classic f_continuation ch_target p rest_proc' data_1 f_next_3
@@ -1101,7 +1136,8 @@ let rec next_ground_output_classic f_continuation ch_target proc rest_proc data 
           let data_1 =
             { out_gathering.common_data with
               trace_transitions = (AComm(out_gathering.position,pos)::out_gathering.common_data.trace_transitions);
-              original_subst = (x,out_gathering.term)::out_gathering.common_data.original_subst
+              original_subst = (x,out_gathering.term)::out_gathering.common_data.original_subst;
+              proba =  out_gathering.common_data.proba
             }
           in
           next_ground_output_classic f_continuation ch_target p rest_proc' data_1 f_next_2
@@ -1122,7 +1158,8 @@ and next_ground_input_classic f_continuation ch_target proc rest_proc data f_nex
           let data_1 =
             { in_gathering.common_data with
               trace_transitions = (AComm(pos,in_gathering.position)::in_gathering.common_data.trace_transitions);
-              original_subst = (x,t)::in_gathering.common_data.original_subst
+              original_subst = (x,t)::in_gathering.common_data.original_subst;
+              proba =  in_gathering.common_data.proba
             }
           in
           next_ground_input_classic f_continuation ch_target p rest_proc' data_1  f_next_2
@@ -1143,7 +1180,8 @@ and next_ground_input_classic f_continuation ch_target proc rest_proc data f_nex
                 let data_1 =
                   { out_gathering.common_data with
                     trace_transitions = (AComm(out_gathering.position,pos)::out_gathering.common_data.trace_transitions);
-                    original_subst = (x,out_gathering.term)::out_gathering.common_data.original_subst
+                    original_subst = (x,out_gathering.term)::out_gathering.common_data.original_subst;
+                    proba =  out_gathering.common_data.proba
                   }
                 in
                 next_ground_input_classic f_continuation ch_target p rest_proc' data_1 f_next_3
@@ -1183,7 +1221,8 @@ let rec next_ground_output_private f_continuation ch_target comm_type priv_chann
               let data_1 =
                 { in_gathering.common_data with
                   trace_transitions = (AComm(pos,in_gathering.position)::in_gathering.common_data.trace_transitions);
-                  original_subst = (x,t)::in_gathering.common_data.original_subst
+                  original_subst = (x,t)::in_gathering.common_data.original_subst;
+                  proba =  in_gathering.common_data.proba
                 }
               in
               if not_deduc
@@ -1388,13 +1427,13 @@ let rec next_ground_eavesdrop_communication f_continuation ch_target priv_channe
       end
   | _ -> next_tau (next_ground_eavesdrop_communication f_continuation ch_target priv_channels) proc rest_proc data f_next
 
-let next_ground_output sem ch_target proc orig_subst transitions (f_continuation:generic_process -> gathering -> unit) = match sem with
-  | Classic -> next_ground_output_classic (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) ch_target proc SNil { original_subst = orig_subst; disequations = Formula.T.Top; trace_transitions = transitions } (fun () -> ())
-  | _ -> next_ground_output_private (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) ch_target PublicComm [] proc SNil { original_subst = orig_subst; disequations = Formula.T.Top; trace_transitions = transitions } (fun () -> ())
+let next_ground_output sem ch_target proc orig_subst proba transitions (f_continuation:generic_process -> gathering -> unit) = match sem with
+  | Classic -> next_ground_output_classic (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) ch_target proc SNil { original_subst = orig_subst; disequations = Formula.T.Top; trace_transitions = transitions; proba =  proba } (fun () -> ())
+  | _ -> next_ground_output_private (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) ch_target PublicComm [] proc SNil { original_subst = orig_subst; disequations = Formula.T.Top; trace_transitions = transitions; proba =  proba } (fun () -> ())
 
-let next_ground_input sem ch_target proc orig_subst transitions (f_continuation:generic_process -> gathering -> unit) = match sem with
-  | Classic -> next_ground_input_classic (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) ch_target proc SNil { original_subst = orig_subst; disequations = Formula.T.Top; trace_transitions = transitions } (fun () -> ())
-  | _ -> next_ground_input_private (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) ch_target PublicComm [] proc SNil { original_subst = orig_subst; disequations = Formula.T.Top; trace_transitions = transitions } (fun () -> ())
+let next_ground_input sem ch_target proc orig_subst proba transitions (f_continuation:generic_process -> gathering -> unit) = match sem with
+  | Classic -> next_ground_input_classic (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) ch_target proc SNil { original_subst = orig_subst; disequations = Formula.T.Top; trace_transitions = transitions; proba =  proba } (fun () -> ())
+  | _ -> next_ground_input_private (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) ch_target PublicComm [] proc SNil { original_subst = orig_subst; disequations = Formula.T.Top; trace_transitions = transitions; proba =  proba } (fun () -> ())
 
-let next_ground_eavesdrop ch_target proc orig_subst transitions (f_continuation:generic_process -> eavesdrop_gathering -> unit) =
-  next_ground_eavesdrop_communication (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) ch_target [] proc SNil { original_subst = orig_subst; disequations = Formula.T.Top; trace_transitions = transitions } (fun () -> ())
+let next_ground_eavesdrop ch_target proc orig_subst proba transitions (f_continuation:generic_process -> eavesdrop_gathering -> unit) =
+  next_ground_eavesdrop_communication (fun proc' gather' f_next' -> f_continuation proc' gather'; f_next' ()) ch_target [] proc SNil { original_subst = orig_subst; disequations = Formula.T.Top; trace_transitions = transitions; proba =  proba } (fun () -> ())

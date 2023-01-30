@@ -39,6 +39,7 @@ type json_process =
   | JPar of json_process list
   | JBang of int * json_process * json_position
   | JChoice of json_process * json_process * json_position
+  | JChoiceP of json_process * json_process * float * json_position
 
 type configuration =
   {

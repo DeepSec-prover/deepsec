@@ -726,7 +726,7 @@ let execute_query query_result =
               Interface.process_of_json_process p2
           | _ -> Config.internal_error "[main_ui.ml >> execute_query] Should not occur when equivalence."
         in
-        if !Config.por && Determinate_process.is_strongly_action_determinate proc1 && Determinate_process.is_strongly_action_determinate proc2
+        if !Config.por && not !Config.probabilistic && Determinate_process.is_strongly_action_determinate proc1 && Determinate_process.is_strongly_action_determinate proc2
         then trace_equivalence_determinate proc1 proc2
         else trace_equivalence_generic query_result.semantics proc1 proc2
     | Types.Session_Equivalence | Types.Session_Inclusion ->

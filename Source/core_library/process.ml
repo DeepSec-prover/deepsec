@@ -36,6 +36,7 @@ let rec instantiate = function
   | Par p_list -> Par (List.map instantiate p_list)
   | Bang(p_list,pos) -> Bang(List.map instantiate p_list,pos)
   | Choice(p1,p2,pos) -> Choice(instantiate p1,instantiate p2,pos)
+  | ChoiceP(p1,p2,prob,pos) -> ChoiceP(instantiate p1,instantiate p2,prob,pos)
 
 (*** Display functions (for debugging) ***)
 
@@ -100,6 +101,11 @@ let rec display tab = function
       let str_2 = display (tab+1) p2 in
       let str_plus = Printf.sprintf "{%s} +" (display_position pos) in
       str_1 ^ (display_with_tab tab str_plus) ^ str_2
+  | ChoiceP(p1,p2,prob,pos) ->
+      let str_1 = display (tab+1) p1 in
+      let str_2 = display (tab+1) p2 in
+      let str_plus = Printf.sprintf "{%s} +_%f" (display_position pos) prob in
+      str_1 ^ (display_with_tab tab str_plus) ^ str_2
 
 let display_transition = function
   | AInput(ch,x,pos) -> Printf.sprintf "in(%s,%s,%s)" (Recipe.display Terminal ch) (Recipe.display Terminal x) (display_position pos)
@@ -148,7 +154,8 @@ let rec occur_in_process n = function
   | New(_,p,_) -> occur_in_process n p
   | Par p_list
   | Bang (p_list,_) -> List.exists (occur_in_process n) p_list
-  | Choice (p1,p2,_) -> occur_in_process n p1 || occur_in_process n p2
+  | Choice (p1,p2,_) 
+  | ChoiceP (p1,p2,_,_) -> occur_in_process n p1 || occur_in_process n p2
 
 let is_name_pure_fresh n p =
   let already_occ_ref = ref false in
@@ -182,8 +189,8 @@ let is_name_pure_fresh n p =
     | New(_,p,_) -> explore p;
     | Par p_list
     | Bang(p_list, _) -> List.iter explore p_list
-    | Choice(p1,p2,_) ->
-        explore_branch p1 p2
+    | Choice(p1,p2,_) 
+    | ChoiceP(p1,p2,_,_) -> explore_branch p1 p2
 
   and explore_branch p1 p2 =
     let tmp = !already_occ_ref in
@@ -221,6 +228,8 @@ let rec replace_name_in_process = function
       Let(replace_name_in_pattern pat,replace_name_in_term t,replace_name_in_process p1, replace_name_in_process p2, pos)
   | Choice(p1,p2,pos) ->
       Choice(replace_name_in_process p1, replace_name_in_process p2,pos)
+  | ChoiceP(p1,p2,prob,pos) ->
+      ChoiceP(replace_name_in_process p1, replace_name_in_process p2,prob,pos)
   | Par p_list ->
       Par (List.map replace_name_in_process p_list)
   | Bang(p_list,pos) ->
@@ -238,7 +247,8 @@ let detect_and_replace_pure_fresh_name p =
     | Input(_,_,p,_) -> retrieve_pure_fresh_name p
     | IfThenElse(_,_,p1,p2,_)
     | Let(_,_,p1,p2,_)
-    | Choice(p1,p2,_) ->
+    | Choice(p1,p2,_) 
+    | ChoiceP(p1,p2,_,_) ->
         retrieve_pure_fresh_name p1;
         retrieve_pure_fresh_name p2
     | Par p_list
@@ -281,7 +291,8 @@ let rec exists_input_or_output = function
   | New(_,p,_) -> exists_input_or_output p
   | Par p_list -> List.exists exists_input_or_output p_list
   | Bang (p_list,_) -> List.exists exists_input_or_output p_list
-  | Choice(p1,p2,_) -> exists_input_or_output p1 || exists_input_or_output p2
+  | Choice(p1,p2,_) 
+  | ChoiceP(p1,p2,_,_) -> exists_input_or_output p1 || exists_input_or_output p2
 
 let rec clean proc =
   if exists_input_or_output proc
@@ -311,6 +322,12 @@ let rec clean proc =
           if p1' = Nil && p2' = Nil
           then Nil
           else Choice(p1',p2',pos)
+      | ChoiceP(p1,p2,prob,pos) ->
+        let p1' = clean p1 in
+        let p2' = clean p2 in
+        if p1' = Nil && p2' = Nil
+        then Nil
+        else ChoiceP(p1',p2',prob,pos)
       | Bang(p_list,pos) ->
           let p_list' =
            List.fold_right (fun p acc ->
@@ -379,6 +396,7 @@ let rec insert_name n fresh proc = match proc with
       then apply_replacement n fresh proc
       else proc
   | Choice(p1,p2,pos) -> Choice(insert_name n true p1,insert_name n true p2,pos)
+  | ChoiceP(p1,p2,prob,pos) -> ChoiceP(insert_name n true p1,insert_name n true p2,prob,pos)
 
 let rec move_new_name = function
   | Nil -> Nil
@@ -389,6 +407,7 @@ let rec move_new_name = function
   | Par p_list -> Par (List.map move_new_name p_list)
   | Bang(p_list,pos) -> Bang(List.map move_new_name p_list,pos)
   | Choice(p1,p2,pos) -> Choice(move_new_name p1,move_new_name p2,pos)
+  | ChoiceP(p1,p2,prob,pos) -> ChoiceP(move_new_name p1,move_new_name p2,prob,pos)
   | New(n,p,_) -> insert_name n false (move_new_name p)
 
 (*** Apply trivial let ***)
@@ -427,6 +446,7 @@ let rec add_let_for_output_input = function
   | Par p_list -> Par (List.map add_let_for_output_input p_list)
   | Bang(p_list,pos) -> Bang(List.map add_let_for_output_input p_list,pos)
   | Choice(p1,p2,pos) -> Choice(add_let_for_output_input p1, add_let_for_output_input p2,pos)
+  | ChoiceP(p1,p2,prob,pos) -> ChoiceP(add_let_for_output_input p1, add_let_for_output_input p2,prob,pos)
 
 let rec does_not_occurs vars_pat = function
   | Var v -> not (List.memq v vars_pat)
@@ -523,6 +543,7 @@ let rec apply_trivial_let = function
   | Par p_list -> Par (List.map apply_trivial_let p_list)
   | Bang(p_list,pos) -> Bang(List.map apply_trivial_let p_list,pos)
   | Choice(p1,p2,pos) -> Choice(apply_trivial_let p1,apply_trivial_let p2, pos)
+  | ChoiceP(p1,p2,prob,pos) -> ChoiceP(apply_trivial_let p1,apply_trivial_let p2, prob,pos)
 
 (*** Equality modulo renaming ***)
 
@@ -690,6 +711,23 @@ let rec equal_modulo_renaming f_next proc1 proc2 = match proc1, proc2 with
             ) p2 p1'
           ) p1 p2'
       end
+  | ChoiceP(p1,p2,prob1,pos1), ChoiceP(p1',p2',prob2,pos2) ->
+    begin
+      try
+        if prob1 <> prob2 then raise No_Match;
+        equal_modulo_renaming (fun pos_match ->
+          equal_modulo_renaming (fun pos_match' ->
+            f_next ((pos1,pos2)::pos_match @ pos_match')
+          ) p2 p2'
+        ) p1 p1'
+      with No_Match ->
+        if prob1 <> (1. -. prob2) then raise No_Match;
+        equal_modulo_renaming (fun pos_match ->
+          equal_modulo_renaming (fun pos_match' ->
+            f_next ((pos1,pos2)::pos_match @ pos_match')
+          ) p2 p1'
+        ) p1 p2'
+    end
   | _ -> raise No_Match
 
 and equal_modulo_renaming_list f_next proc_l1 proc_l2 = match proc_l1 with
@@ -855,6 +893,10 @@ let rec regroup_else_branches = function
       let (p1',pos_match1) = regroup_else_branches p1 in
       let (p2',pos_match2) = regroup_else_branches p2 in
       Choice(p1',p2',pos), pos_match1 @ pos_match2
+  | ChoiceP(p1,p2,prob,pos) ->
+    let (p1',pos_match1) = regroup_else_branches p1 in
+    let (p2',pos_match2) = regroup_else_branches p2 in
+    ChoiceP(p1',p2',prob,pos), pos_match1 @ pos_match2
 
 (*** Regroup equal process from par in bang ***)
 
@@ -924,6 +966,7 @@ let rec regroup_equal_par_processes = function
         | _ -> Bang(p_list',pos)
       end
   | Choice(p1,p2,pos) -> Choice(regroup_equal_par_processes p1, regroup_equal_par_processes p2,pos)
+  | ChoiceP(p1,p2,prob,pos) -> ChoiceP(regroup_equal_par_processes p1, regroup_equal_par_processes p2,prob,pos)
 
 (*** Replace private constant by names ***)
 
@@ -947,6 +990,7 @@ let rec replace_private_name_process assoc = function
   | Par plist -> Par (List.map (replace_private_name_process assoc) plist)
   | Bang(plist,pos) -> Bang(List.map (replace_private_name_process assoc) plist,pos)
   | Choice(p1,p2,pos) -> Choice(replace_private_name_process assoc p1,replace_private_name_process assoc p2,pos)
+  | ChoiceP(p1,p2,prob,pos) -> ChoiceP(replace_private_name_process assoc p1,replace_private_name_process assoc p2,prob,pos)
 
 let rec private_constant_not_in_term f = function
   | Func(f',_) when f == f' -> false
@@ -1007,7 +1051,8 @@ let is_pos_in_process pos_match pos proc =
     | New(_,p,_) -> explore p
     | Par p_list
     | Bang (p_list,_) -> List.exists explore p_list
-    | Choice(_,_,pos') -> is_equal_pos pos_match pos' pos
+    | Choice(_,_,pos')
+    | ChoiceP(_,_,_,pos') -> is_equal_pos pos_match pos' pos
   in
 
   explore proc
@@ -1078,6 +1123,10 @@ let rec retrieve_transition_list f_next pos_match act conf = match conf.process,
       if choose_left
       then f_next pos [] { conf with process = p1 }
       else f_next pos [] { conf with process = p2 }
+  | ChoiceP(p1,p2,_,pos), AChoice(pos',choose_left) when is_equal_pos pos_match pos pos' ->
+    if choose_left
+    then f_next pos [] { conf with process = p1 }
+    else f_next pos [] { conf with process = p2 }
   | _ -> Config.internal_error "[process.ml >> retrieve_transition_list] Unexpected case."
 
 and retrieve_transition_list_from_par f_next pos_match pos act frame prev_p = function
@@ -1250,7 +1299,8 @@ let check_process_for_session proc =
     | New(_,p,_) -> mark_channels p
     | Par p_list
     | Bang (p_list,_) -> List.iter mark_channels p_list
-    | Choice _ ->
+    | Choice _ 
+    | ChoiceP _ ->
         let err_msg = "Choice operator is not allowed for session equivalence and session inclusion." in
         raise (Session_error err_msg)
   in
@@ -1310,7 +1360,8 @@ let check_process_for_session proc =
     | New(_,p,_) -> check_channels p
     | Par plist
     | Bang (plist,_) -> List.iter check_channels plist
-    | Choice _ -> Config.internal_error "[process.ml >> check_process_for_session] Choice operator should have been catched before applying this function."
+    | Choice _
+    | ChoiceP _ -> Config.internal_error "[process.ml >> check_process_for_session] Choice operator should have been catched before applying this function."
   in
 
   Name.auto_cleanup_with_exception (fun () ->
@@ -1324,7 +1375,8 @@ let rec only_public_channel = function
   | Input(Func(f,[]),_,p,_) when f.public -> only_public_channel p
   | IfThenElse(_,_,p1,p2,_)
   | Let(_,_,p1,p2,_)
-  | Choice(p1,p2,_) -> only_public_channel p1 && only_public_channel p2
+  | Choice(p1,p2,_) 
+  | ChoiceP(p1,p2,_,_) -> only_public_channel p1 && only_public_channel p2
   | New(_,p,_) -> only_public_channel p
   | Par p_list
   | Bang(p_list,_) -> List.for_all only_public_channel p_list

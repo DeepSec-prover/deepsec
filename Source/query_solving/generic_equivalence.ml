@@ -29,13 +29,15 @@ type configuration =
   {
     current_process : generic_process;
     origin_process : origin_process;
-    trace : transition list
+    trace : transition list;
+    probability : probability
   }
 
 type equivalence_problem =
   {
     csys_set : configuration Constraint_system.set;
-    size_frame : int
+    size_frame : int;
+    includes_probability : bool
   }
 
 let display_configuration symb =
@@ -100,7 +102,8 @@ let import_equivalence_problem f_next equiv_pbl recipe_subst =
     f_next ()
   )
 
-let initialise_equivalence_problem csys_set = { csys_set = csys_set; size_frame = 0 }
+let initialise_equivalence_problem csys_set = 
+  { csys_set = csys_set; size_frame = 0; includes_probability = !Config.probabilistic }
 
 (*** Generation of attack traces from initial processes ***)
 
@@ -139,6 +142,35 @@ exception Not_Trace_Equivalent of (bool * transition list)
 
 let nb_apply_one_transition_and_rules = ref 0
 
+(*** Final test ***)
+
+let check_final_test includes_proba csys_set =
+  let csys = List.hd csys_set.Constraint_system.set in
+  let origin_process = csys.Constraint_system.additional_data.origin_process in
+
+  let attack = 
+    if includes_proba
+    then 
+      begin 
+        let acc_orig = ref 0. in
+        let acc_other = ref 0. in
+        List.iter (fun csys' ->
+          if csys'.Constraint_system.additional_data.origin_process = origin_process
+          then acc_orig := !acc_orig +. csys'.Constraint_system.additional_data.probability
+          else acc_other := !acc_other +. csys'.Constraint_system.additional_data.probability
+        ) csys_set.Constraint_system.set;
+        
+        Config.log Always (fun () ->
+          Printf.sprintf "Probabilistic test: (%f, %f)\n" !acc_orig !acc_other
+        );
+        !acc_orig <> !acc_other
+      end
+    else List.for_all (fun csys' -> csys'.Constraint_system.additional_data.origin_process = origin_process) csys_set.Constraint_system.set
+  in
+
+  if attack
+  then raise (Not_Trace_Equivalent (generate_attack_trace csys))
+
 (*** Classic transitions ***)
 
 let get_knowledge_recipe_from_preparation_data = function
@@ -164,7 +196,7 @@ let apply_one_transition_and_rules_classic_input type_max equiv_pbl f_continuati
     Variable.auto_cleanup_with_reset_notail (fun () ->
       List.iter (fun (x,t) -> Variable.link_term x t) csys.Constraint_system.original_substitution;
 
-      next_input Classic conf.current_process csys.Constraint_system.original_substitution conf.trace (fun proc in_gathering ->
+      next_input Classic conf.current_process csys.Constraint_system.original_substitution conf.probability conf.trace (fun proc in_gathering ->
         let eq_uniformity = Formula.T.instantiate_and_normalise_full csys.Constraint_system.eq_uniformity in
         if eq_uniformity = Formula.T.Bot
         then ()
@@ -175,7 +207,7 @@ let apply_one_transition_and_rules_classic_input type_max equiv_pbl f_continuati
             { csys with
               Constraint_system.deduction_facts = Data_structure.DF.add_multiple_max_type csys.Constraint_system.deduction_facts [dfact_ch;dfact_t];
               Constraint_system.eq_term = in_gathering.common_data.disequations;
-              Constraint_system.additional_data = { conf with current_process = proc; trace = AInput(RVar var_X_ch,RVar var_X_t,in_gathering.position)::in_gathering.common_data.trace_transitions };
+              Constraint_system.additional_data = { conf with current_process = proc; trace = AInput(RVar var_X_ch,RVar var_X_t,in_gathering.position)::in_gathering.common_data.trace_transitions; probability = in_gathering.common_data.proba };
               Constraint_system.original_substitution = (Term.variable_of in_gathering.term, Var x_fresh)::in_gathering.common_data.original_subst;
               Constraint_system.eq_uniformity = eq_uniformity
             }
@@ -204,14 +236,12 @@ let apply_one_transition_and_rules_classic_input type_max equiv_pbl f_continuati
     if csys_set.Constraint_system.set = []
     then f_next_1 ()
     else
-      let csys = List.hd csys_set.Constraint_system.set in
-      let origin_process = csys.Constraint_system.additional_data.origin_process in
-      if List.for_all (fun csys' -> csys'.Constraint_system.additional_data.origin_process = origin_process) csys_set.Constraint_system.set
-      then raise (Not_Trace_Equivalent (generate_attack_trace csys))
-      else
+      begin 
+        check_final_test equiv_pbl.includes_probability csys_set;
         Constraint_system.Rule.instantiate_useless_deduction_facts (fun csys_set_1 f_next_2 ->
           f_continuation { equiv_pbl with csys_set = csys_set_1 } f_next_2
         ) csys_set f_next_1
+      end
   in
 
   if !csys_list = []
@@ -238,7 +268,7 @@ let apply_one_transition_and_rules_classic_output type_max equiv_pbl f_continuat
     Variable.auto_cleanup_with_reset_notail (fun () ->
       List.iter (fun (x,t) -> Variable.link_term x t) csys.Constraint_system.original_substitution;
 
-      next_output Classic conf.current_process csys.Constraint_system.original_substitution conf.trace (fun proc out_gathering ->
+      next_output Classic conf.current_process csys.Constraint_system.original_substitution conf.probability conf.trace (fun proc out_gathering ->
         let eq_uniformity = Formula.T.instantiate_and_normalise_full csys.Constraint_system.eq_uniformity in
         if eq_uniformity = Formula.T.Bot
         then ()
@@ -249,7 +279,7 @@ let apply_one_transition_and_rules_classic_output type_max equiv_pbl f_continuat
             { csys_1 with
               Constraint_system.deduction_facts = Data_structure.DF.add_multiple_max_type csys.Constraint_system.deduction_facts [dfact_ch];
               Constraint_system.eq_term = out_gathering.common_data.disequations;
-              Constraint_system.additional_data = { conf with current_process = proc; trace = AOutput(RVar var_X_ch,out_gathering.position)::out_gathering.common_data.trace_transitions };
+              Constraint_system.additional_data = { conf with current_process = proc; trace = AOutput(RVar var_X_ch,out_gathering.position)::out_gathering.common_data.trace_transitions; probability = out_gathering.common_data.proba };
               Constraint_system.original_substitution = out_gathering.common_data.original_subst;
               Constraint_system.eq_uniformity = eq_uniformity
             }
@@ -278,14 +308,12 @@ let apply_one_transition_and_rules_classic_output type_max equiv_pbl f_continuat
     if csys_set.Constraint_system.set = []
     then f_next_1 ()
     else
-      let csys = List.hd csys_set.Constraint_system.set in
-      let origin_process = csys.Constraint_system.additional_data.origin_process in
-      if List.for_all (fun csys' -> csys'.Constraint_system.additional_data.origin_process = origin_process) csys_set.Constraint_system.set
-      then raise (Not_Trace_Equivalent (generate_attack_trace csys))
-      else
+      begin 
+        check_final_test equiv_pbl.includes_probability csys_set;
         Constraint_system.Rule.instantiate_useless_deduction_facts (fun csys_set_1 f_next_2 ->
-          f_continuation { size_frame = equiv_pbl.size_frame + 1; csys_set = csys_set_1 } f_next_2
+          f_continuation { equiv_pbl with size_frame = equiv_pbl.size_frame + 1; csys_set = csys_set_1 } f_next_2
         ) csys_set f_next_1
+      end
   in
 
   if !csys_list = []
@@ -342,7 +370,7 @@ let apply_one_transition_and_rules_private_input type_max equiv_pbl f_continuati
       Variable.auto_cleanup_with_reset_notail (fun () ->
         List.iter (fun (x,t) -> Variable.link_term x t) csys.Constraint_system.original_substitution;
 
-        next_input Private conf.current_process csys.Constraint_system.original_substitution conf.trace (fun proc in_gathering ->
+        next_input Private conf.current_process csys.Constraint_system.original_substitution conf.probability conf.trace (fun proc in_gathering ->
           let eq_uniformity = Formula.T.instantiate_and_normalise_full csys.Constraint_system.eq_uniformity in
           if eq_uniformity = Formula.T.Bot
           then ()
@@ -353,7 +381,7 @@ let apply_one_transition_and_rules_private_input type_max equiv_pbl f_continuati
               { csys with
                 Constraint_system.deduction_facts = Data_structure.DF.add_multiple_max_type csys.Constraint_system.deduction_facts [dfact_ch;dfact_t];
                 Constraint_system.eq_term = in_gathering.common_data.disequations;
-                Constraint_system.additional_data = { conf with current_process = proc; trace = AInput(RVar var_X_ch,RVar var_X_t,in_gathering.position)::in_gathering.common_data.trace_transitions };
+                Constraint_system.additional_data = { conf with current_process = proc; trace = AInput(RVar var_X_ch,RVar var_X_t,in_gathering.position)::in_gathering.common_data.trace_transitions; probability = in_gathering.common_data.proba };
                 Constraint_system.original_substitution = (Term.variable_of in_gathering.term, Var x_fresh)::in_gathering.common_data.original_subst;
                 Constraint_system.eq_uniformity = eq_uniformity;
                 Constraint_system.non_deducible_terms = in_gathering.private_channels
@@ -387,14 +415,12 @@ let apply_one_transition_and_rules_private_input type_max equiv_pbl f_continuati
     if csys_set.Constraint_system.set = []
     then f_next_1 ()
     else
-      let csys = List.hd csys_set.Constraint_system.set in
-      let origin_process = csys.Constraint_system.additional_data.origin_process in
-      if List.for_all (fun csys' -> csys'.Constraint_system.additional_data.origin_process = origin_process) csys_set.Constraint_system.set
-      then raise (Not_Trace_Equivalent (generate_attack_trace csys))
-      else
+      begin
+        check_final_test equiv_pbl.includes_probability csys_set;
         Constraint_system.Rule.instantiate_useless_deduction_facts (fun csys_set_1 f_next_2 ->
           f_continuation { equiv_pbl with csys_set = csys_set_1 } f_next_2
         ) csys_set f_next_1
+      end
   in
 
   if !csys_list = []
@@ -426,7 +452,7 @@ let apply_one_transition_and_rules_private_output type_max equiv_pbl f_continuat
       Variable.auto_cleanup_with_reset_notail (fun () ->
         List.iter (fun (x,t) -> Variable.link_term x t) csys.Constraint_system.original_substitution;
 
-        next_output Private conf.current_process csys.Constraint_system.original_substitution conf.trace (fun proc out_gathering ->
+        next_output Private conf.current_process csys.Constraint_system.original_substitution conf.probability conf.trace (fun proc out_gathering ->
           let eq_uniformity = Formula.T.instantiate_and_normalise_full csys.Constraint_system.eq_uniformity in
           if eq_uniformity = Formula.T.Bot
           then ()
@@ -437,7 +463,7 @@ let apply_one_transition_and_rules_private_output type_max equiv_pbl f_continuat
               { csys_1 with
                 Constraint_system.deduction_facts = Data_structure.DF.add_multiple_max_type csys.Constraint_system.deduction_facts [dfact_ch];
                 Constraint_system.eq_term = out_gathering.common_data.disequations;
-                Constraint_system.additional_data = { conf with current_process = proc; trace = AOutput(RVar var_X_ch,out_gathering.position)::out_gathering.common_data.trace_transitions };
+                Constraint_system.additional_data = { conf with current_process = proc; trace = AOutput(RVar var_X_ch,out_gathering.position)::out_gathering.common_data.trace_transitions; probability = out_gathering.common_data.proba };
                 Constraint_system.original_substitution = out_gathering.common_data.original_subst;
                 Constraint_system.eq_uniformity = eq_uniformity;
                 Constraint_system.non_deducible_terms = out_gathering.private_channels
@@ -471,14 +497,12 @@ let apply_one_transition_and_rules_private_output type_max equiv_pbl f_continuat
     if csys_set.Constraint_system.set = []
     then f_next_1 ()
     else
-      let csys = List.hd csys_set.Constraint_system.set in
-      let origin_process = csys.Constraint_system.additional_data.origin_process in
-      if List.for_all (fun csys' -> csys'.Constraint_system.additional_data.origin_process = origin_process) csys_set.Constraint_system.set
-      then raise (Not_Trace_Equivalent (generate_attack_trace csys))
-      else
+      begin
+        check_final_test equiv_pbl.includes_probability csys_set;
         Constraint_system.Rule.instantiate_useless_deduction_facts (fun csys_set_1 f_next_2 ->
-          f_continuation { size_frame = equiv_pbl.size_frame + 1; csys_set = csys_set_1 } f_next_2
+          f_continuation { equiv_pbl with size_frame = equiv_pbl.size_frame + 1; csys_set = csys_set_1 } f_next_2
         ) csys_set f_next_1
+      end
   in
 
   if !csys_list = []
@@ -537,7 +561,7 @@ let apply_one_transition_and_rules_eavesdrop_eav_transition type_max equiv_pbl f
       Variable.auto_cleanup_with_reset_notail (fun () ->
         List.iter (fun (x,t) -> Variable.link_term x t) csys.Constraint_system.original_substitution;
 
-        next_eavesdrop conf.current_process csys.Constraint_system.original_substitution conf.trace (fun proc eav_gathering ->
+        next_eavesdrop conf.current_process csys.Constraint_system.original_substitution conf.probability conf.trace (fun proc eav_gathering ->
           let eq_uniformity = Formula.T.instantiate_and_normalise_full csys.Constraint_system.eq_uniformity in
           if eq_uniformity = Formula.T.Bot
           then ()
@@ -548,7 +572,7 @@ let apply_one_transition_and_rules_eavesdrop_eav_transition type_max equiv_pbl f
               { csys_1 with
                 Constraint_system.deduction_facts = Data_structure.DF.add_multiple_max_type csys.Constraint_system.deduction_facts [dfact_ch];
                 Constraint_system.eq_term = eav_gathering.eav_common_data.disequations;
-                Constraint_system.additional_data = { conf with current_process = proc; trace = AEaves(RVar var_X_ch,eav_gathering.eav_position_out,eav_gathering.eav_position_in)::eav_gathering.eav_common_data.trace_transitions };
+                Constraint_system.additional_data = { conf with current_process = proc; trace = AEaves(RVar var_X_ch,eav_gathering.eav_position_out,eav_gathering.eav_position_in)::eav_gathering.eav_common_data.trace_transitions; probability = eav_gathering.eav_common_data.proba };
                 Constraint_system.original_substitution = eav_gathering.eav_common_data.original_subst;
                 Constraint_system.eq_uniformity = eq_uniformity;
                 Constraint_system.non_deducible_terms = eav_gathering.eav_private_channels
@@ -579,14 +603,12 @@ let apply_one_transition_and_rules_eavesdrop_eav_transition type_max equiv_pbl f
     if csys_set.Constraint_system.set = []
     then f_next_1 ()
     else
-      let csys = List.hd csys_set.Constraint_system.set in
-      let origin_process = csys.Constraint_system.additional_data.origin_process in
-      if List.for_all (fun csys' -> csys'.Constraint_system.additional_data.origin_process = origin_process) csys_set.Constraint_system.set
-      then raise (Not_Trace_Equivalent (generate_attack_trace csys))
-      else
+      begin
+        check_final_test equiv_pbl.includes_probability csys_set;
         Constraint_system.Rule.instantiate_useless_deduction_facts (fun csys_set_1 f_next_2 ->
-          f_continuation { size_frame = equiv_pbl.size_frame + 1; csys_set = csys_set_1 } f_next_2
+          f_continuation { equiv_pbl with size_frame = equiv_pbl.size_frame + 1; csys_set = csys_set_1 } f_next_2
         ) csys_set f_next_1
+      end
   in
 
   if !csys_list = []

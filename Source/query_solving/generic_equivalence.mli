@@ -25,13 +25,15 @@ type configuration =
   {
     current_process : generic_process;
     origin_process : origin_process;
-    trace : transition list
+    trace : transition list;
+    probability : probability
   }
 
 type equivalence_problem =
   {
     csys_set : configuration Constraint_system.set;
-    size_frame : int
+    size_frame : int;
+    includes_probability : bool
   }
 
 val export_equivalence_problem : equivalence_problem -> equivalence_problem * (recipe_variable * recipe) list

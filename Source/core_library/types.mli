@@ -112,6 +112,8 @@ and recipe =
 
 (**** Processes ****)
 
+type probability = float
+
 type position = int * int list
 
 type pattern =
@@ -129,6 +131,7 @@ type process =
   | Par of process list
   | Bang of process list * position
   | Choice of process * process * position
+  | ChoiceP of process * process * probability * position
 
 type semantics =
   | Classic

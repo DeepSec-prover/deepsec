@@ -55,6 +55,7 @@ type plain_process =
   | Nil
   | Call of ident * term list
   | Choice of plain_process * plain_process
+  | ChoiceP of plain_process * plain_process * float
   | Par of plain_process * plain_process
   | Bang of int * plain_process * element_position
   | New of ident * plain_process
