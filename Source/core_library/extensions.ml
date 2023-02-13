@@ -618,7 +618,7 @@ module Map = struct
     let rec iter2 f m1 m2 = match m1, m2 with
         Empty,Empty -> ()
       | Node n1, Node n2 ->
-          iter2 f n1.l n2.l; f n1.d n2.d; iter2 f n1.r n2.r
+          iter2 f n1.l n2.l; f n1.v n1.d n2.d; iter2 f n1.r n2.r
       | _ -> raise (Invalid_argument "[extension.ml >> Map.iter2] The two maps should have the same keys")
 
     let rec map f = function

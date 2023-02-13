@@ -237,7 +237,7 @@ sig
     val choose_and_apply: (elt -> elt -> unit) -> t -> unit
   end
 
-  module Make : functor (_ : OrderedType) -> S
+  module Make : functor (Ord : OrderedType) -> S with type elt = Ord.t
 end
 
 
