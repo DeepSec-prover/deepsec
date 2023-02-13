@@ -30,7 +30,7 @@ type configuration =
     current_process : generic_process;
     origin_process : origin_process;
     trace : transition list;
-    probability : probability
+    probability : (probability * history_entry list) option
   }
 
 type equivalence_problem =
@@ -144,27 +144,128 @@ let nb_apply_one_transition_and_rules = ref 0
 
 (*** Final test ***)
 
+let rec get_largest_prefix hist1 hist2 = match hist1, hist2 with
+  | [], _ 
+  | _, [] -> []
+  | h1::q1, h2::q2 when h1=h2 -> h1 :: get_largest_prefix q1 q2
+  | _ -> []
+
+let compare_hist_entry (_,hist1) (_,hist2) = match hist1,hist2 with
+  | [], _ | _, [] -> Config.internal_error "[compare_hist_entry] If the history is empty then it should have been a singleton."
+  | x1::_, x2::_ ->
+      match x1, x2 with
+      | HistProba(p1,is_left1), HistProba (p2,is_left2) -> 
+          let c = compare p1 p2 in
+          if c = 0
+          then 
+            match is_left1,is_left2 with
+            | true,true -> 0
+            | false,false -> 0
+            | true, false -> -1
+            | false, true -> 1
+          else c
+      | HistProba _ , _ -> -1
+      | _, HistProba _ -> 1
+      | _ -> compare x1 x2
+
+let rec compute_probability proba_l = match proba_l with
+  | [] -> 0.
+  | [p,_] -> p
+  | (_,hist)::q ->
+      let largest_prefix_init = hist in
+
+      let largest_prefix = 
+        List.fold_left (fun acc (_,hist') -> 
+          get_largest_prefix acc hist'
+        ) largest_prefix_init q
+      in
+
+      let size_largest_prefix = List.length largest_prefix in
+
+      let prob_l2 = List.map (fun (p,hist) -> p,List.remove_first_n size_largest_prefix hist) proba_l in
+      
+      let ordered_prob_l = List.sort compare_hist_entry prob_l2 in
+
+      let h = match ordered_prob_l with
+        | (_,h::_)::_ -> h
+        | _ -> Config.internal_error "[compute_probability] Should not be empty."
+      in
+
+      regroup_proba_l h [List.hd ordered_prob_l] None 0. (List.tl ordered_prob_l)
+
+and regroup_proba_l current_h current_proba_l left_proba_value current_max = function
+  | [] -> 
+      let m = compute_probability current_proba_l in
+      let m' = match left_proba_value with
+        | None -> m
+        | Some m_left -> m_left +. m 
+      in
+      max current_max m'
+  | (_,[])::_ -> Config.internal_error "[regroup_proba_l] Should not be empty"
+  | ((_,h::_) as e_hist)::q ->
+      if h = current_h
+      then regroup_proba_l current_h (e_hist::current_proba_l) left_proba_value current_max q
+      else 
+        match current_h, h with
+        | HistProba(pos,true), HistProba(pos',false) when pos = pos' -> 
+            let m = compute_probability current_proba_l in
+            regroup_proba_l h [e_hist] (Some m) current_max q
+        | _ -> 
+            let m = compute_probability current_proba_l in
+            let m' = match left_proba_value with
+              | None -> m
+              | Some m_left -> m_left +. m 
+            in
+            regroup_proba_l h [e_hist] None (max current_max m') q
+
+let display_history hist = 
+  Display.display_list (function
+    | HistOne((pos,_)) -> Printf.sprintf "One(%d)" pos
+    | HistComm((posout,_),(posin,_)) -> Printf.sprintf "Comm(%d,%d)" posout posin
+    | HistProba((pos,_),b) -> Printf.sprintf "Proba(%d,%b)" pos b
+  ) "; " hist 
+
+let check_final_probabilistic_test csys_set =
+  let (left_symb_l,right_symb_l) = 
+    List.partition_unordered (fun csys ->
+      csys.Constraint_system.additional_data.origin_process = Left
+    ) csys_set.Constraint_system.set
+  in
+
+  let extract_proba csys = match csys.Constraint_system.additional_data.probability with
+    | Some (p,hist) -> p,hist
+    | None -> Config.internal_error "[check_final_probabilistic_test] Should contain probabilistic data"
+  in
+
+  let left_proba_l = List.map extract_proba left_symb_l 
+  and right_proba_l = List.map extract_proba right_symb_l in
+
+  Config.log Always (fun () ->
+    "Left proba = \n"^
+    (Display.display_list (fun (p,hist) ->
+      Printf.sprintf "(%f,[%s])" p (display_history hist)
+    ) "\n" left_proba_l)
+    ^"\nRight proba = \n"^
+    (Display.display_list (fun (p,hist) ->
+      Printf.sprintf "(%f,[%s])" p (display_history hist)
+    ) "\n" right_proba_l)
+  );
+
+  let left_max_proba = compute_probability left_proba_l in
+  let right_max_proba = compute_probability right_proba_l in
+  
+  Config.log Always (fun () ->
+    Printf.sprintf "Probabilistic test: (%f, %f)\n" left_max_proba right_max_proba
+  );
+  left_max_proba <> right_max_proba
+
 let check_final_test includes_proba csys_set =
   let csys = List.hd csys_set.Constraint_system.set in
   let origin_process = csys.Constraint_system.additional_data.origin_process in
 
   let attack = 
     if includes_proba
-    then 
-      begin 
-        let acc_orig = ref 0. in
-        let acc_other = ref 0. in
-        List.iter (fun csys' ->
-          if csys'.Constraint_system.additional_data.origin_process = origin_process
-          then acc_orig := !acc_orig +. csys'.Constraint_system.additional_data.probability
-          else acc_other := !acc_other +. csys'.Constraint_system.additional_data.probability
-        ) csys_set.Constraint_system.set;
-        
-        Config.log Always (fun () ->
-          Printf.sprintf "Probabilistic test: (%f, %f)\n" !acc_orig !acc_other
-        );
-        !acc_orig <> !acc_other
-      end
+    then check_final_probabilistic_test csys_set 
     else List.for_all (fun csys' -> csys'.Constraint_system.additional_data.origin_process = origin_process) csys_set.Constraint_system.set
   in
 
@@ -203,11 +304,15 @@ let apply_one_transition_and_rules_classic_input type_max equiv_pbl f_continuati
         else
           let dfact_ch = { Data_structure.bf_var = var_X_ch; Data_structure.bf_term = in_gathering.channel  } in
           let dfact_t = { Data_structure.bf_var = var_X_t; Data_structure.bf_term = Var x_fresh  } in
+          let proba = match in_gathering.common_data.proba with
+            | None -> None
+            | Some (p,hist) -> Some(p,hist@[HistOne in_gathering.position])
+          in
           let csys_1 =
             { csys with
               Constraint_system.deduction_facts = Data_structure.DF.add_multiple_max_type csys.Constraint_system.deduction_facts [dfact_ch;dfact_t];
               Constraint_system.eq_term = in_gathering.common_data.disequations;
-              Constraint_system.additional_data = { conf with current_process = proc; trace = AInput(RVar var_X_ch,RVar var_X_t,in_gathering.position)::in_gathering.common_data.trace_transitions; probability = in_gathering.common_data.proba };
+              Constraint_system.additional_data = { conf with current_process = proc; trace = AInput(RVar var_X_ch,RVar var_X_t,in_gathering.position)::in_gathering.common_data.trace_transitions; probability = proba };
               Constraint_system.original_substitution = (Term.variable_of in_gathering.term, Var x_fresh)::in_gathering.common_data.original_subst;
               Constraint_system.eq_uniformity = eq_uniformity
             }
@@ -274,12 +379,16 @@ let apply_one_transition_and_rules_classic_output type_max equiv_pbl f_continuat
         then ()
         else
           let dfact_ch = { Data_structure.bf_var = var_X_ch; Data_structure.bf_term = out_gathering.channel } in
+          let proba = match out_gathering.common_data.proba with
+            | None -> None
+            | Some (p,hist) -> Some(p,hist@[HistOne out_gathering.position])
+          in
           let csys_1 = Constraint_system.add_axiom csys axiom out_gathering.term in
           let csys_2 =
             { csys_1 with
               Constraint_system.deduction_facts = Data_structure.DF.add_multiple_max_type csys.Constraint_system.deduction_facts [dfact_ch];
               Constraint_system.eq_term = out_gathering.common_data.disequations;
-              Constraint_system.additional_data = { conf with current_process = proc; trace = AOutput(RVar var_X_ch,out_gathering.position)::out_gathering.common_data.trace_transitions; probability = out_gathering.common_data.proba };
+              Constraint_system.additional_data = { conf with current_process = proc; trace = AOutput(RVar var_X_ch,out_gathering.position)::out_gathering.common_data.trace_transitions; probability = proba };
               Constraint_system.original_substitution = out_gathering.common_data.original_subst;
               Constraint_system.eq_uniformity = eq_uniformity
             }

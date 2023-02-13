@@ -1,0 +1,7 @@
+free a,b,c.
+
+let P = out(c,a) +{0.5} out(c,b).
+
+let Q = out(c,a) +{0.2} out(c,b).
+
+query trace_equiv(P,Q).

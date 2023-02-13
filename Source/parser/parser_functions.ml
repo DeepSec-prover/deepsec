@@ -379,6 +379,7 @@ let rec process_of_intermediate_process occurence_list = function
   | IChoice(p1,p2,pos) -> Types.Choice(process_of_intermediate_process occurence_list p1,process_of_intermediate_process occurence_list p2, (pos,occurence_list))
   | IChoiceP(p1,p2,proba,pos) -> 
       Config.probabilistic := true;
+      Config.local_semantics := Some Classic;
       Types.ChoiceP(process_of_intermediate_process occurence_list p1,process_of_intermediate_process occurence_list p2, proba, (pos,occurence_list))
 
 let parse_intermediate_process env = function

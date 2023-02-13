@@ -281,6 +281,7 @@ let rec display_json = function
   | JBool b -> string_of_bool b
   | JInt i -> string_of_int i
   | JNull -> "null"
+  | JFloat f -> string_of_float f
   | JObject args ->
       let args_str =
         Display.display_list (fun (label,json) ->
@@ -494,6 +495,13 @@ let of_json_process assoc proc =
         JObject ([
           "type", JString "Choice";
           "position", of_position pos
+        ]@procs)
+    | JChoiceP(p1,p2,proba,pos) ->
+        let procs = add_nil p1 "process1" (add_nil p2 "process2" []) in
+        JObject ([
+          "type", JString "Choice";
+          "position", of_position pos;
+          "proba", JFloat proba
         ]@procs)
   in
   explore proc

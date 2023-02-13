@@ -36,7 +36,7 @@ type common_data =
     trace_transitions : transition list;
     original_subst : (variable * term) list;
     disequations : Formula.T.t;
-    proba : probability
+    proba : (probability * history_entry list) option
   }
 
 type gathering =
@@ -62,7 +62,7 @@ val next_output :
   semantics ->
   generic_process ->
   (variable * term) list ->
-  probability -> 
+  (probability * history_entry list) option -> 
   transition list ->
   (generic_process -> gathering -> unit) ->
   unit
@@ -71,7 +71,7 @@ val next_input :
   semantics ->
   generic_process ->
   (variable * term) list ->
-  probability -> 
+  (probability * history_entry list) option -> 
   transition list ->
   (generic_process -> gathering -> unit) ->
   unit
@@ -79,7 +79,7 @@ val next_input :
 val next_eavesdrop :
   generic_process ->
   (variable * term) list ->
-  probability -> 
+  (probability * history_entry list) option -> 
   transition list ->
   (generic_process -> eavesdrop_gathering -> unit) ->
   unit
@@ -91,7 +91,7 @@ val next_ground_output :
   term ->
   generic_process ->
   (variable * term) list ->
-  probability -> 
+  (probability * history_entry list) option -> 
   transition list ->
   (generic_process -> gathering -> unit) ->
   unit
@@ -101,7 +101,7 @@ val next_ground_input :
   term ->
   generic_process ->
   (variable * term) list ->
-  probability -> 
+  (probability * history_entry list) option -> 
   transition list ->
   (generic_process -> gathering -> unit) ->
   unit
@@ -110,7 +110,7 @@ val next_ground_eavesdrop :
   term ->
   generic_process ->
   (variable * term) list ->
-  probability -> 
+  (probability * history_entry list) option -> 
   transition list ->
   (generic_process -> eavesdrop_gathering -> unit) ->
   unit

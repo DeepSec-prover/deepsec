@@ -72,8 +72,8 @@ let json_process_of_process assoc proc =
         JBang(size,explore (nb_to_remove+1) p,of_position nb_to_remove pos)
     | Choice(p1,p2,pos) ->  
         JChoice(explore nb_to_remove p1, explore nb_to_remove p2, of_position nb_to_remove pos)
-    | ChoiceP(p1,p2,_,pos) ->
-        JChoice(explore nb_to_remove p1, explore nb_to_remove p2, of_position nb_to_remove pos)
+    | ChoiceP(p1,p2,proba,pos) ->
+        JChoiceP(explore nb_to_remove p1, explore nb_to_remove p2, proba, of_position nb_to_remove pos)
     (* Will need to change the interface*)
 
   in
@@ -1182,7 +1182,7 @@ type ground_configuration =
     gen_process : Generic_process.generic_process;
     gen_frame : term list;
     gen_trace : transition list;
-    gen_probability : probability
+    gen_probability : (probability * history_entry list) option
   }
 
 let clean_variables_names =
@@ -1317,7 +1317,7 @@ let find_equivalent_trace sem att_assoc att_js_proc att_trace sim_js_proc =
   let (sim_proc_2,translate_trace) = Process.simplify_for_generic sim_proc_1 in
   let gen_sim_proc = Generic_process.generic_process_of_process sim_proc_2 in
 
-  let sim_conf = { gen_process = gen_sim_proc; gen_frame = []; gen_trace = []; gen_probability = 1. } in
+  let sim_conf = { gen_process = gen_sim_proc; gen_frame = []; gen_trace = []; gen_probability = None } in
   let att_conf = { size_frame = 0; frame = []; process = att_js_proc } in
 
   let sim_csys = Constraint_system.empty sim_conf in

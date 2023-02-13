@@ -102,6 +102,7 @@ type json =
   | JString of string
   | JBool of bool
   | JInt of int
+  | JFloat of float
   | JNull
   | JObject of (string * json) list
   | JList of json list

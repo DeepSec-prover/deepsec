@@ -383,7 +383,7 @@ type common_data =
     trace_transitions : transition list;
     original_subst : (variable * term) list;
     disequations : Formula.T.t;
-    proba : probability
+    proba : (probability * history_entry list) option
   }
 
 type gathering =
@@ -475,8 +475,15 @@ let next_tau f_apply proc rest_proc data f_next = match proc with
       )
   | SChoiceP(p1,p2,prob,pos) ->
       Config.log Config.Always (fun () -> "Entering Tau SChoice P");
-      f_apply p1 rest_proc { data with trace_transitions =  AChoice(pos,true)::data.trace_transitions; proba = data.proba *. prob } (fun () ->
-        f_apply p2 rest_proc { data with trace_transitions =  AChoice(pos,false)::data.trace_transitions; proba = data.proba *. (1. -. prob) } f_next
+      let prob_left,prob_right = match data.proba with
+        | None -> Config.internal_error "[generic_process.ml >> next_tau] Should have some proba"
+        | Some (p,hist) ->
+            Config.log Config.Always (fun () -> Printf.sprintf "Probability found: %f" prob);
+            Some (p *. prob, hist @ [HistProba(pos,true)]),
+            Some (p *. (1. -. prob), hist @ [HistProba(pos,false)])
+      in
+      f_apply p1 rest_proc { data with trace_transitions =  AChoice(pos,true)::data.trace_transitions; proba = prob_left } (fun () ->
+        f_apply p2 rest_proc { data with trace_transitions =  AChoice(pos,false)::data.trace_transitions; proba = prob_right } f_next
       )
   | SPar [p1;p2] ->
       f_apply p1 (make_par_processes p2 rest_proc) data (fun () ->
@@ -529,12 +536,16 @@ let rec next_output_classic f_continuation proc rest_proc data f_next = match pr
                 if Formula.T.Bot = disequations_1
                 then f_next_3 ()
                 else
+                  let proba = match in_gathering.common_data.proba with
+                    | None -> None
+                    | Some (p,hist) -> Some (p,hist @ [HistComm(pos,in_gathering.position)])
+                  in
                   let data_1 =
                     {
                       trace_transitions = (AComm(pos,in_gathering.position)::in_gathering.common_data.trace_transitions);
                       original_subst = (x,t)::in_gathering.common_data.original_subst;
                       disequations = disequations_1;
-                      proba =  in_gathering.common_data.proba
+                      proba = proba
                     }
                   in
                   next_output_classic f_continuation p rest_proc' data_1 f_next_3
@@ -557,12 +568,16 @@ let rec next_output_classic f_continuation proc rest_proc data f_next = match pr
               if Formula.T.Bot = disequations_1
               then f_next_2 ()
               else
+                let proba = match out_gathering.common_data.proba with
+                  | None -> None
+                  | Some (p,hist) -> Some (p,hist @ [HistComm(out_gathering.position,pos)])
+                in
                 let data_1 =
                   {
                     trace_transitions = (AComm(out_gathering.position,pos)::out_gathering.common_data.trace_transitions);
                     original_subst = (x,out_gathering.term)::out_gathering.common_data.original_subst;
                     disequations = disequations_1;
-                    proba =  out_gathering.common_data.proba
+                    proba = proba
                   }
                 in
                 next_output_classic f_continuation p rest_proc' data_1  f_next_2
@@ -589,12 +604,16 @@ and next_input_classic f_continuation proc rest_proc data f_next = match proc wi
               if Formula.T.Bot = disequations_1
               then f_next_2 ()
               else
+                let proba = match in_gathering.common_data.proba with
+                  | None -> None
+                  | Some (p,hist) -> Some (p,hist @ [HistComm(pos,in_gathering.position)])
+                in
                 let data_1 =
                   {
                     trace_transitions = (AComm(pos,in_gathering.position)::in_gathering.common_data.trace_transitions);
                     original_subst = (x,t)::in_gathering.common_data.original_subst;
                     disequations = disequations_1;
-                    proba =  in_gathering.common_data.proba
+                    proba = proba
                   }
                 in
                 next_input_classic f_continuation p rest_proc' data_1  f_next_2
@@ -618,12 +637,16 @@ and next_input_classic f_continuation proc rest_proc data f_next = match proc wi
                 if Formula.T.Bot = disequations_1
                 then f_next_3 ()
                 else
+                  let proba = match out_gathering.common_data.proba with
+                    | None -> None
+                    | Some (p,hist) -> Some (p,hist @ [HistComm(out_gathering.position,pos)])
+                  in
                   let data_1 =
                     {
                       trace_transitions = (AComm(out_gathering.position,pos)::out_gathering.common_data.trace_transitions);
                       original_subst = (x,out_gathering.term)::out_gathering.common_data.original_subst;
                       disequations = disequations_1;
-                      proba =  out_gathering.common_data.proba
+                      proba = proba
                     }
                   in
                   next_input_classic f_continuation p rest_proc' data_1 f_next_3
@@ -747,8 +770,8 @@ let rec next_tau_private f_apply ch_to_check ch_info proc rest_proc data f_next 
       )
   | SChoiceP(p1,p2,prob,pos) ->
       Config.log Config.Always (fun () -> "Entering Tau SChoice P");
-      next_tau_private f_apply true ch_info p1 rest_proc { data with trace_transitions =  AChoice(pos,true)::data.trace_transitions; proba =  data.proba *. prob } (fun () ->
-        next_tau_private f_apply true ch_info p2 rest_proc { data with trace_transitions =  AChoice(pos,false)::data.trace_transitions; proba =  data.proba *. (1. -. prob) } f_next
+      next_tau_private f_apply true ch_info p1 rest_proc { data with trace_transitions =  AChoice(pos,true)::data.trace_transitions; proba =  None } (fun () ->
+        next_tau_private f_apply true ch_info p2 rest_proc { data with trace_transitions =  AChoice(pos,false)::data.trace_transitions; proba =  None } f_next
       )
   | SPar [p1;p2] ->
       next_tau_private f_apply true ch_info p1 (make_par_processes p2 rest_proc) data (fun () ->

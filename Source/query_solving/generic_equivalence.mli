@@ -26,7 +26,7 @@ type configuration =
     current_process : generic_process;
     origin_process : origin_process;
     trace : transition list;
-    probability : probability
+    probability : (probability * history_entry list) option
   }
 
 type equivalence_problem =

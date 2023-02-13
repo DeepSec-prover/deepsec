@@ -153,6 +153,12 @@ type transition =
   | ATau of position
   | AChoice of position * bool (* True when the left process is chosen *)
 
+(* Used for probabilistic equivalence *)
+type history_entry =
+  | HistOne of position
+  | HistComm of position (* output *) * position (* input *)
+  | HistProba of position * bool (* true when left and false when right *)
+
 type verification_result =
   | RTrace_Equivalence of (bool * transition list) option
   | RTrace_Inclusion of transition list option
