@@ -1,0 +1,30 @@
+const true,false.
+free pch1, pch2, pch3 [private].
+free ch1, ch2, ch3.
+
+reduc xor(false, false, false) -> false;
+      xor(false, false, true) -> true;
+      xor(false, true, false) -> true;
+      xor(false, true, true) -> false;
+      xor(true, false, false) -> true;
+      xor(true, false, true) -> false;
+      xor(true, true, false) -> false;
+      xor(true, true, true) -> true.
+      
+      
+let toss(c1,c2) =
+// using a biases coin (probability differs from 0.5)
+// falsifies the query as expected
+    ( out(c1,true); out(c2,true) ) +{0.5}
+    ( out(c1,false); out(c2,false) ).
+
+let DC(pc,c,paid) = 
+    in (pc,b1); in (pc, b2);
+    out(c, xor(b1,b2,paid)).
+    
+
+let P(paid1,paid2,paid3) =
+    	toss(pch1,pch2) | toss(pch1,pch3) | toss(pch2,pch3) |
+      	DC(pch1,ch1,paid1) | DC(pch2,ch2,paid2) | DC(pch3,ch3,paid3).
+      	
+query trace_equiv(P(true,false,false),P(false,true,false)).
