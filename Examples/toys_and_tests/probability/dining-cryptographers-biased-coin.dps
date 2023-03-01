@@ -14,8 +14,8 @@ reduc xor(false, false, false) -> false;
       
 let O(cl,cr) =
 // coin tossing oracle:
-// sends the result of a fair coin toss on channels cl and cr
-    ( out(cl,true) | out(cr,true) ) +{0.5}
+// sends the result of a biased coin toss on channels cl and cr
+    ( out(cl,true) | out(cr,true) ) +{0.4}
     ( out(cl,false) | out(cr,false) ).
 
 let A(cl,cr,c,b) =
