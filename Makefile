@@ -79,7 +79,7 @@ config:
 
 # configures and compiles
 compil:
-	@ocamlbuild $(PACKAGES) main.$(EXTENSION) worker.$(EXTENSION) main_api.$(EXTENSION)
+	@ocamlbuild -use-ocamlfind $(PACKAGES) main.$(EXTENSION) worker.$(EXTENSION) main_api.$(EXTENSION)
 	@mv _build/Source/main.$(EXTENSION)  deepsec
 	@mv _build/Source/main_api.$(EXTENSION) deepsec_api
 	@mv _build/Source/distributed/worker.$(EXTENSION) deepsec_worker

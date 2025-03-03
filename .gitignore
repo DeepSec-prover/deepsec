@@ -67,3 +67,6 @@ manager_deepsec
 /Examples/session_equivalence/tests/scratch.dps
 /documentation/files/*
 !/documentation/files/.content
+
+.envrc
+.direnv

@@ -1,4 +1,4 @@
-#! /bin/bash
+#!/nix/store/rj7zvmif800bgg3sbznq6g5g438jx104-bash-5.2p37/bin/bash
 
 # checks requirements for DeepSec installation
 

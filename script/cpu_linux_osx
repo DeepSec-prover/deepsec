@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/nix/store/rj7zvmif800bgg3sbznq6g5g438jx104-bash-5.2p37/bin/sh
 
 # macOS:           Use `sysctl -n hw.*cpu_max`, which returns the values of
 #                  interest directly.
